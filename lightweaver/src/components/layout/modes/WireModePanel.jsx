@@ -397,7 +397,14 @@ export function WireModePanel({ state, connected, cardHost }) {
         <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
       </div>
       <WiringPlanSummary wiring={wiring} strips={strips}/>
-      {discoveredByOutput.size > 0 && (
+      {/* These lines speak in the present tense about the card ("plugged in
+          right now", "counted on your card") but are read from the OPEN
+          PROJECT's saved discovery. When the card itself currently records no
+          strips, that saved copy is history, not observation — and printing it
+          directly above "This card has no strips recorded yet" put two
+          opposite claims about the same card in one panel. Stay quiet and let
+          the card's own answer stand. */}
+      {discoveredByOutput.size > 0 && !cardNeedsStripDiscovery && (
         <section className="wire-discovered-list" aria-label="What is plugged in right now">
           {/*
             The design and the card are different things. A 41-light development

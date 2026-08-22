@@ -47,6 +47,12 @@ const ACTION_COPY = Object.freeze({
     explanation: 'Install your project so the card plays your design instead of its factory defaults.',
     primaryLabel: 'Install your project',
   }),
+  'relearn-current-card': Object.freeze({
+    legacyId: 'connected',
+    title: 'This card is up to date',
+    explanation: 'This card is already running the current Lightweaver software. Studio had an older note of it. Nothing needs installing.',
+    primaryLabel: 'Use this card',
+  }),
   'needs-card-update': Object.freeze({
     legacyId: 'web-serial-install',
     title: 'Update this Lightweaver card',
@@ -153,6 +159,18 @@ export function connectingCardAction() {
     pending: true,
     primaryDisabled: true,
   });
+}
+
+// Exact agreement with the signed release Studio itself publishes. Anything
+// less than an exact build match must keep the ordinary update question.
+function matchesReleaseFirmware(card, release) {
+  if (!card || !release) return false;
+  const buildId = String(card.buildId || '').trim();
+  const releaseBuildId = String(release.buildId || '').trim();
+  if (!buildId || buildId !== releaseBuildId) return false;
+  const version = String(card.firmwareVersion || '').trim();
+  const releaseVersion = String(release.firmwareVersion || '').trim();
+  return !releaseVersion || version === releaseVersion;
 }
 
 function hasCardIdentity(value) {
@@ -322,12 +340,24 @@ export function nextCardConnectionAction(input = {}) {
     // re-learn its new firmware — the existing re-pair path does the rest.
     const discovered = input.discoveredCard || link.discoveredCard || null;
     const remembered = input.rememberedCard || null;
-    if (
-      (reason === 'wrong-firmware-build' || reason === 'wrong-firmware-version')
-      && hasCardIdentity(discovered)
+    const sameCard = hasCardIdentity(discovered)
       && hasCardIdentity(remembered)
-      && (discovered.id ?? discovered.cardId).trim() === (remembered.id ?? remembered.cardId).trim()
-    ) {
+      && (discovered.id ?? discovered.cardId).trim() === (remembered.id ?? remembered.cardId).trim();
+    if ((reason === 'wrong-firmware-build' || reason === 'wrong-firmware-version') && sameCard) {
+      // The card is running the OFFICIAL current software and the only stale
+      // thing is what Studio wrote down. Offering "Update this Lightweaver
+      // card" here was worse than noise: the newest possible firmware was on
+      // the card, the panel printed the identical build number on both rows
+      // while claiming the firmware had changed, and the offered fix would
+      // have reflashed the very build already installed. Nothing needs
+      // updating — Studio's note does, and re-pairing is what rewrites it.
+      if (matchesReleaseFirmware(discovered, input.firmwareRelease)) {
+        return action('relearn-current-card', {
+          explanation: 'This card is already running the current Lightweaver software. Studio had an '
+            + 'older note of it, which is why it stopped to check. Nothing needs installing.',
+          secondaryAction: null,
+        });
+      }
       return action('needs-card-update', {
         explanation: 'This is the card Studio remembers, but its firmware changed — usually because it '
           + 'was just updated or reflashed. Updating from here would overwrite that firmware. '

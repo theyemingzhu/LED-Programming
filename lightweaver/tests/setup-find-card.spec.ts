@@ -42,12 +42,26 @@ async function installFindCardHarness(page: Page) {
   await page.evaluate(() => { (window as any).__findCardHarness.captureSweep = true; });
 }
 
-test('Find my card opens the contained connection setup before launching a local card page', async ({ page }) => {
+// The button says "Find my card", so pressing it must LOOK for the card. It
+// used to open the connect panel without trying anything, and that panel's
+// first move was to ask the owner what colour the LEDs were — on a screen
+// already displaying the card's address. Reported as the button doing nothing.
+//
+// What must NOT come back: launching a card-page window uninvited while a
+// direct route is still available. That stays asserted below.
+test('Find my card searches first, and only opens the connection panel once that fails', async ({ page }) => {
   await installFindCardHarness(page);
 
   await page.getByTestId('setup-connect-card').click();
 
-  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible();
+  // A real search ran — including across the addresses this card has answered
+  // on before, which is the recovery for a card the router has moved.
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__findCardHarness.sweepStarted), { timeout: 20000 })
+    .toBe(true);
+
+  // Nothing answered, so the panel's triage steps are now the right offer.
+  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible({ timeout: 30000 });
+  // And no card-page window was opened behind the owner's back on the way.
   expect(await page.evaluate(() => (window as any).__findCardHarness.opens)).toEqual([]);
-  expect(await page.evaluate(() => (window as any).__findCardHarness.sweepStarted)).toBe(false);
 });
