@@ -14,7 +14,7 @@ import { currentInstallation, structurallyInstalledRecord } from '../lib/project
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
-import { pairDiscoveredCard } from '../lib/cardPairing.js';
+import { findAndConnectCard } from '../lib/cardFind.js';
 import { useCardActions } from './CardActionsProvider.jsx';
 
 // The reconstruction itself moved to lib/cardProjectAdoption.js (the
@@ -31,10 +31,13 @@ function exactCardName(cardLink, cardHost) {
     || 'No exact card yet';
 }
 
-function installRelationship(resolution, installedProjectId = '', installationMatch = false, openProjectId = '') {
+function installRelationship(resolution, installedProjectId = '', installationMatch = false, openProjectId = '', provisionalSetup = false) {
+  // A temporary light-finding setup is not an installation, whatever project
+  // id it was written under. Reporting "Installed project matches" for one
+  // contradicted the banner beside it.
+  if (provisionalSetup || resolution.kind === 'bench') return 'Temporary setup — not installed';
   if (resolution.kind === 'matches-current' || installationMatch) return 'Installed project matches';
   if (resolution.kind === 'saved-match') return 'Matching saved project found';
-  if (resolution.kind === 'bench') return 'Temporary setup — not installed';
   // The card told us what it holds. Reporting "Project not installed" over the
   // top of that is simply false, and it was the line that made a healthy,
   // correctly installed card look broken.
@@ -340,11 +343,21 @@ export function SetupScreen({
     return () => onLoadOfferChange(false);
   }, [onLoadOfferChange, savedMatchLoadOffer]);
 
+  // Whether the card is still holding the TEMPORARY light-finding setup is a
+  // fact the card reports about itself. It used to be ASSERTED per branch —
+  // hardcoded false whenever the installed project id matched the open one —
+  // and since the discovery setup is written under the open project's own id,
+  // that branch always won. The result was SETUP COMPLETE with four ticks
+  // printed directly beneath this same screen's "discovery evidence, not a
+  // finished installation" banner. Read it, do not assume it.
+  const provisionalSetup = cardState.status?.provisionalSetup === true
+    || cardLink?.readiness?.provisionalSetup === true
+    || resolution.kind === 'bench';
   const journeyResolution = matchesOpenProject
-    ? { matchesCurrentProject: true, playbackAccess: 'ready', provisionalSetup: false }
+    ? { matchesCurrentProject: true, playbackAccess: 'ready', provisionalSetup }
     : resolution.kind === 'saved-match'
-      ? { savedProjectMatch: true, playbackAccess: 'ready', provisionalSetup: false }
-      : resolution.kind === 'bench'
+      ? { savedProjectMatch: true, playbackAccess: 'ready', provisionalSetup }
+      : provisionalSetup
         ? { provisionalSetup: true }
         : null;
   const journey = useMemo(() => deriveSetupJourney({
@@ -353,7 +366,7 @@ export function SetupScreen({
     commissioningFlow,
     project: currentProject,
     resolution: journeyResolution,
-  }), [cardLifecycle, cardLink, commissioningFlow, currentProject, installationMatch, resolution.kind]);
+  }), [cardLifecycle, cardLink, commissioningFlow, currentProject, installationMatch, provisionalSetup, resolution.kind]);
 
   // The app shell reads SETUP_SKIP_STORAGE_KEY before React mounts to decide
   // whether a bare URL still lands on the Setup front door. The key was read
@@ -450,25 +463,25 @@ export function SetupScreen({
   // sent the owner back to this screen.
   const recheckCard = () => setRecheckTick(tick => tick + 1);
 
-  // Phase 1's primary button PAIRS. It used to open the Connection Center,
-  // which — for the ordinary case where Studio had already found the card —
-  // did nothing but restate "a card was found" and ask for the same click
-  // again in a second window. The panel is still the answer when pairing
-  // actually fails (stale bridge takeover, wrong card, address entry), so a
-  // failure hands off to it rather than dead-ending here.
-  const pairThisCard = async () => {
+  // Phase 1's primary button DOES THE THING IT IS NAMED AFTER — it looks for
+  // the card, on whichever route this page can actually use, and pairs what it
+  // finds. It used to open the Connection Center, which asked the owner to
+  // describe the LEDs before Studio had tried anything; on a screen already
+  // showing the card's address that reads as a button that does nothing.
+  // The panel is still the answer once a real attempt has failed, so every
+  // failure hands off to it with the reason stated first.
+  const findMyCard = async () => {
     if (pairState.busy) return;
     setPairState({ busy: true, message: '' });
-    const result = await pairDiscoveredCard(cardLink || {});
+    const result = await findAndConnectCard({
+      link: cardLink || {},
+      onProgress: message => setPairState({ busy: true, message }),
+    });
     setPairState({ busy: false, message: result.ok ? '' : result.message });
     if (result.ok) {
       setRecheckTick(tick => tick + 1);
       return;
     }
-    // Every failure hands off to the panel: taking over a stale bridge,
-    // launching one, or entering an address all live there. Removing the
-    // extra click on the path that works must not remove the recovery on the
-    // path that does not.
     onOpenConnectionCenter?.();
   };
 
@@ -503,11 +516,9 @@ export function SetupScreen({
       const connectionLabel = taskId === 'pair-card' ? 'Pair this card'
         : taskId === 'reconnect-card' ? 'Reconnect this card'
           : 'Find my card';
-      // Studio can only pair what it has already FOUND. A discovered card (the
-      // "Found — pair" state) is the whole precondition; without one there is
-      // nothing to pair here and the panel's find, bridge and by-address steps
-      // are the real answer, so the button keeps opening it.
-      const canPairInPlace = taskId === 'pair-card' && Boolean(cardLink?.discoveredCard?.id);
+      // Every connect-shaped task is answered by looking for the card. There is
+      // no state in this family where asking a question first beats trying.
+      const canFindInPlace = ['connect-card', 'pair-card', 'reconnect-card'].includes(taskId);
       // The card holds a project Studio has not matched. This is the state the
       // owner was looping in: it used to fall through to a generic "Find my
       // card" that reopened the connection center, whose only exit was back
@@ -581,14 +592,20 @@ export function SetupScreen({
             >Continue Wi-Fi setup</button>
           ) : (
             <>
-              {canPairInPlace ? (
-                <button type="button" className="btn primary" data-testid="setup-connect-card" disabled={pairState.busy} onClick={() => void pairThisCard()}>
-                  {pairState.busy ? 'Pairing this card…' : connectionLabel}
+              {canFindInPlace ? (
+                <button type="button" className="btn primary" data-testid="setup-connect-card" disabled={pairState.busy} onClick={() => void findMyCard()}>
+                  {pairState.busy ? 'Looking…' : connectionLabel}
                 </button>
               ) : (
                 <button type="button" className="btn primary" data-testid="setup-connect-card" onClick={() => onOpenConnectionCenter?.()}>{connectionLabel}</button>
               )}
-              {pairState.message && <p className="card-connection-failure" role="alert" data-testid="setup-pair-failure">{pairState.message}</p>}
+              {pairState.message && (
+                <p
+                  className={pairState.busy ? 'lw-setup-progress' : 'card-connection-failure'}
+                  role="status"
+                  data-testid="setup-pair-failure"
+                >{pairState.message}</p>
+              )}
               <button type="button" className="btn" data-testid="setup-connect-manual" onClick={() => onOpenConnectionCenter?.()}>Card connection options</button>
             </>
           )}
@@ -653,7 +670,7 @@ export function SetupScreen({
         <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
         <div><span>Connection</span><strong>{identityStatus}</strong></div>
         <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
-        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id)}</strong></div>
+        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup)}</strong></div>
       </section>
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
@@ -666,7 +683,12 @@ export function SetupScreen({
             <p>This is discovery evidence, not a finished installation. Continue through artwork placement and the visible final test.</p>
           </section>
         )}
-        {matchesOpenProject && (
+        {/* "Already set up" is a claim about a FINISHED installation, so it
+            stands down while the card is still holding the temporary
+            light-finding setup. It used to print directly above the
+            "discovery evidence, not a finished installation" banner and an
+            unfinished phase ladder — three verdicts, one screen. */}
+        {matchesOpenProject && !provisionalSetup && (
           <section className="card-support-panel lw-setup-banner">
             <h2>This exact card is already set up</h2>
             <p>Its installed project matches the project open in Studio. The card&rsquo;s own page stays connected for controls.</p>

@@ -323,6 +323,16 @@ export function deriveSetupJourney({
   } else if (!exactVerificationComplete(verification)) {
     currentPhaseId = 'verify';
     nextAction = nextVerificationAction(verification);
+  } else if (resolution?.provisionalSetup === true) {
+    // The card is still holding the TEMPORARY light-finding setup. Whatever
+    // the recorded progress says, the owner's real project has not replaced it
+    // yet, so this is not a finished installation — the screen's own banner
+    // says as much ("discovery evidence, not a finished installation") while
+    // the ladder above it printed SETUP COMPLETE with four ticks. One of them
+    // was lying, and it was the ladder. What remains is the last phase: send
+    // the real project and confirm it on the actual lights.
+    currentPhaseId = 'verify';
+    nextAction = { id: 'test-and-save', taskId: 'test-and-save', phaseId: 'verify' };
   } else {
     return withTask({
       diagnosis: { state: 'setup-complete' },

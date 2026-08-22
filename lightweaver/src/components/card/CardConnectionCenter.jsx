@@ -112,6 +112,7 @@ export function CardConnectionCenter({
     evidence: {
       rememberedCard,
       discoveredCard: link.discoveredCard,
+      firmwareRelease,
       ...flowEvidence,
     },
   });
@@ -408,6 +409,15 @@ export function CardConnectionCenter({
         return <button type="button" className="btn primary" onClick={closeAndRestore}>Done</button>;
       case 'pair-local-card':
         return <button type="button" className="btn primary" onClick={useDiscoveredCard} disabled={pairingBusy}>{pairingBusy ? 'Connecting…' : 'Connect'}</button>;
+      case 'relearn-current-card':
+        // Same verified re-pair as "Keep the new firmware on this card". The
+        // difference is that nothing here is a question: the card matches the
+        // signed release exactly, so this only rewrites Studio's stale note.
+        return (
+          <button type="button" className="btn primary" data-testid="relearn-current-card" onClick={useDiscoveredCard} disabled={pairingBusy}>
+            {pairingBusy ? 'Using this card…' : 'Use this card'}
+          </button>
+        );
       case 'ready-browser-usb':
         return <button type="button" className="btn primary" onClick={openInstall}>Start installation</button>;
       case 'escape-insecure-card-frame':
@@ -529,8 +539,16 @@ export function CardConnectionCenter({
                 Open local Studio
               </button>
             )}
+            {/* "Check or update firmware" used to sit here. The card being
+                unreachable from an https page is not a firmware problem, and
+                that button sent owners of perfectly current cards into the
+                install wizard, which then asked them to join a setup network
+                their card was not broadcasting. The route that actually works
+                from this page is the card's own page. */}
             {directAttempt?.connected === false && directAttempt.reason === 'direct-unavailable' && (
-              <button type="button" className="btn primary" onClick={onOpenFirmwareUpdate || openInstall}>Check or update firmware</button>
+              <button type="button" className="btn primary" onClick={() => connect(stableRecoveryHost, { bridge: true })}>
+                Open the card&rsquo;s own page
+              </button>
             )}
             {incompatibleFirmware && (
               <button type="button" className="btn primary" onClick={onOpenFirmwareUpdate || openInstall}>Install current firmware</button>

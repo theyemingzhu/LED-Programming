@@ -18,9 +18,35 @@ import { adoptDiscoveredDirectCard } from './cardLink.js';
 
 export const PAIR_STALE_HOST = 'stale-host';
 
+// Benign races with the background discovery poll. Pairing snapshots the
+// discovery revision and refuses if a newer poll landed mid-flight — correct,
+// because it must not bind identity from a snapshot that has moved. But
+// discovery polls continuously, so an owner pressing the button could simply
+// lose that race and be told "A newer card discovery replaced this pairing
+// attempt. Try again" for something they did nothing wrong in. It is the same
+// card either way; retrying against the newer snapshot is what "try again"
+// meant, so do it here instead of asking.
+const RETRYABLE_PAIR_REASONS = new Set(['stale-discovery', 'stale-identity']);
+const PAIR_RETRY_LIMIT = 3;
+const PAIR_RETRY_DELAY_MS = 400;
+
 // Resolves rather than throws: every caller renders the failure, and a thrown
 // rejection crossing two screens was how one of them ended up silent.
-export async function pairDiscoveredCard(link = {}, {
+export async function pairDiscoveredCard(link = {}, options = {}) {
+  const {
+    retryLimit = PAIR_RETRY_LIMIT,
+    delay = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  } = options;
+  let result = await pairDiscoveredCardOnce(link, options);
+  for (let attempt = 1; !result.ok && attempt <= retryLimit; attempt += 1) {
+    if (!RETRYABLE_PAIR_REASONS.has(result.reason)) break;
+    await delay(PAIR_RETRY_DELAY_MS);
+    result = await pairDiscoveredCardOnce(link, options);
+  }
+  return result;
+}
+
+async function pairDiscoveredCardOnce(link = {}, {
   adoptDirect = adoptDiscoveredDirectCard,
   adoptBridge = adoptDiscoveredCardBridgeIdentity,
   rePairBridge = rePairDiscoveredCardBridgeIdentity,
@@ -46,7 +72,7 @@ export async function pairDiscoveredCard(link = {}, {
     }
     return {
       ok: false,
-      reason: 'failed',
+      reason: error?.reason || 'failed',
       takeoverHost: '',
       message: error?.message || 'Studio could not pair this card.',
     };

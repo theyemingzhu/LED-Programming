@@ -997,6 +997,17 @@ export function StripDiscoveryPanel({
               Studio to light. Pick a port from the list above that is not in use by the controls.
             </p>
           )}
+          {/* The one state where the primary button is disabled and nothing on
+              screen said why. An owner who has already pressed a port, watched
+              their strip light up, and can see the answer is right there ends
+              up pressing a dead button instead. Name the missing step. */}
+          {probeTargets.length === 0 && !busy && (
+            <p className="lw-card-banner is-inline" role="status" data-testid="discovery-needs-port">
+              {selectedPort === null
+                ? 'Pick the port your lights are plugged into. Press a GPIO above — the card lights that port straight away — then tick “Lights are installed on GPIO …”.'
+                : `Tick “Lights are installed on GPIO ${selectedPort}” above to confirm that is the port, then Studio can start.`}
+            </p>
+          )}
           <button
             type="button"
             className="btn primary"

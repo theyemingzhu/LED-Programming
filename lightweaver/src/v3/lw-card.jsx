@@ -305,6 +305,12 @@ function CardHomePanels({
       // ladder's question, not this surface's — exactly as before.
       presentation = benchProject ? presentations.bench() : presentations.readyForLightCheck();
       break;
+    case 'discovery-setup':
+      // The temporary Find-my-strips setup, now named by the lifecycle instead
+      // of arriving here inside the attention bucket. Same presentation it
+      // always had; it just no longer has to be a "failure" to reach it.
+      presentation = presentations.bench();
+      break;
     case 'found-unpaired':
       presentation = presentations.foundUnpaired();
       break;
@@ -531,7 +537,12 @@ function CardHomePanels({
           this panel stands down instead of offering a second copy of the same
           adoption (both run the identical guarded machine). The probe effect
           keeps running either way, so edit-intent auto-open is unaffected. */}
-      {ready && !suppressMatchingProject && (
+      {/* Not while the card is holding the temporary Find-my-strips setup. What
+          it "matches" then is discovery scaffolding, and offering to load it as
+          your project — in a second orange primary button, beside the setup
+          step's own — put two competing headline actions on one screen for a
+          card that is mid-setup. The banner above already names that state. */}
+      {ready && !suppressMatchingProject && !benchProject && (
         <section className="card-support-panel" aria-label="Matching card project">
           <h2>Matching card project</h2>
           <p>Open the exact active Studio project installed on this card before changing patterns, so its LED count, wiring, protocol, and power limit stay aligned.</p>

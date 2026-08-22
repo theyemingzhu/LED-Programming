@@ -405,10 +405,16 @@ test('an unreachable card stays a network or permission failure and does not gue
   await expect(alert).not.toContainText(/firmware is (?:old|out of date)|firmware needs an update/i);
   await expect(dialog.getByRole('button', { name: 'Install current firmware' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Open local Studio' })).toBeVisible();
-  const checkFirmware = dialog.getByRole('button', { name: 'Check or update firmware' });
-  await expect(checkFirmware).toBeVisible();
-  await checkFirmware.click();
-  await expect(page).toHaveURL(/#screen=card&section=install$/);
+  // The offered escape must be a way to REACH the card, not the install
+  // wizard. "Check or update firmware" used to sit here and was the single
+  // worst misdirect in the flow: an owner whose only problem was that an
+  // https page cannot fetch an http address was sent to update firmware that
+  // was already current, and from there into joining a setup network their
+  // card was not broadcasting. The alert itself still refuses to blame
+  // firmware — the button must not either.
+  await expect(dialog.getByRole('button', { name: 'Check or update firmware' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Update card' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Open the card’s own page' })).toBeVisible();
 });
 
 test('ready-browser-usb opens the fixed local install screen', async ({ page }) => {

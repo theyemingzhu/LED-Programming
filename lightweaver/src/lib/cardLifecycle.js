@@ -19,6 +19,7 @@ const LABELS = Object.freeze({
   'setup-required': 'Needs project',
   'project-mismatch': 'Needs attention',
   'attention-required': 'Needs attention',
+  'discovery-setup': 'Finding lights',
   confirming: 'Checking card',
   ready: 'Connected',
 });
@@ -40,6 +41,7 @@ const SETUP_TASKS = Object.freeze({
   'setup-required': 'install-project',
   'project-mismatch': 'load-matching-project',
   'attention-required': 'recover-operation',
+  'discovery-setup': 'discover-lights',
   confirming: 'reconnect-card',
   ready: 'open-patterns',
 });
@@ -127,6 +129,17 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   else if (link.reason === 'firmware-too-old' || link.reason === 'identity-missing') state = 'update-required';
   else if (exactCard && link.cardBlank === true) state = 'setup-required';
   else if (link.activity === 'failed' || link.reason === 'operation-uncertain' || link.reason === 'popup-blocked') state = 'attention-required';
+  // The temporary light-finding setup Studio itself writes to the card. Every
+  // readiness signal is true; the ONLY thing holding commandReady down is
+  // `provisionalSetup`, which is this flow working exactly as designed. It used
+  // to fall through to the catch-all below and be reported as
+  // "Needs attention — Studio could not confirm the result of the last card
+  // operation", offering a re-read that could never change it, on a card that
+  // was mid-setup and perfectly healthy. It is a step, not a fault.
+  else if (verifiedTransport
+    && readiness.provisionalSetup === true
+    && readiness.commandReady === true
+    && readiness.runtimePhase === 'ready') state = 'discovery-setup';
   else if (commandReady && !exactProject) state = 'project-mismatch';
   else if (commandReady && exactProject) state = 'ready';
   // Every failure, update, wrong-card, and blank branch above has already

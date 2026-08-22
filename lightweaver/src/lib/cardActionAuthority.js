@@ -54,6 +54,10 @@ const SETUP_SURFACE_STATES = new Set([
   'setup-required',
   'project-mismatch',
   'attention-required',
+  // Mid light-discovery belongs to guided Setup, which owns that step. Sending
+  // it to the Connection Center asked a transport question about a card whose
+  // transport was never in doubt.
+  'discovery-setup',
 ]);
 
 export function cardSurfaceForLifecycle(lifecycle) {
@@ -73,6 +77,7 @@ const TONES = Object.freeze({
   'update-recovering': 'connecting',
   disconnected: 'disconnected',
   'found-unpaired': 'disconnected',
+  'discovery-setup': 'connected',
 });
 
 // Verbatim collapse from CardConnectionCenter.jsx (lifecycleConnectionAction):
@@ -115,6 +120,11 @@ export function deriveCardAction({
     discoveredCard,
     setupNetwork: evidence.setupNetwork,
     setupMode: evidence.setupMode,
+    // The signed release Studio publishes. Without it the flow cannot tell a
+    // card that was updated ON PURPOSE (now matching the official build) from
+    // one that drifted, and it asked every owner of an up-to-date card to
+    // install the software they already had.
+    firmwareRelease: evidence.firmwareRelease,
   });
 
   let action = lifecycleConnectionAction(lifecycle, flowAction);
