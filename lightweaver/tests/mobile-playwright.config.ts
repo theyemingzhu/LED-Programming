@@ -28,7 +28,7 @@ export default defineConfig({
   // failing for a known reason (desktop-era locators behind the mobile sheet),
   // which makes a deliberate run worthless. ADD A FILE HERE as you convert it —
   // a green run should mean "the converted set genuinely works on a phone".
-  testMatch: /pattern-lab-(isolation|stateful|handoff|live-preview|naming|sleeping-phone|tap-feedback)\.spec\.ts/,
+  testMatch: /(pattern-lab-(isolation|stateful|handoff|live-preview|naming|sleeping-phone|tap-feedback)|setup-phone)\.spec\.ts/,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   use: {
