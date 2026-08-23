@@ -57,6 +57,7 @@ export type CardSimulator = {
 };
 
 const ZONE_ID = 'zone-all';
+const STAGED_ACTIVATION_ID = 'act-matrix-1';
 
 function hasProject(state: CardStateSpec) {
   return String(state.projectId || '').trim() !== '';
@@ -262,7 +263,7 @@ function wiringStatusBody(state: CardSimulator['state']) {
     ok: true,
     state: staged ? 'staged' : 'known-good',
     candidateState: staged ? 'staged' : 'none',
-    activationId: staged ? 'act-matrix-1' : '',
+    activationId: staged ? STAGED_ACTIVATION_ID : '',
     ledType: 'WS2812B',
     hasKnownGood: state.pixels > 0,
     hasCandidate: staged,
@@ -355,6 +356,9 @@ export function createCardSimulator(
     cardId: options.cardId || MATRIX_CARD_ID,
     bootId: 'boot-matrix-1',
     stateRevision: 1,
+    // Wiring the card is holding but has not adopted — the candidate slot.
+    stagedPixels: undefined as number | undefined,
+    stagedPin: undefined as number | undefined,
   };
   const requests: CardRequest[] = [];
   const unhandled: string[] = [];
@@ -461,20 +465,79 @@ export function createCardSimulator(
         };
       case '/api/wiring/status':
         return ok(wiringStatusBody(state));
+      case '/api/wiring/activate':
+        // The card boots the candidate and enters probation with a new bootId,
+        // exactly as the firmware does — which is what makes Studio have to
+        // survive a reboot mid-install.
+        if (Number.isFinite(state.stagedPixels)) state.pixels = Number(state.stagedPixels);
+        if (Number.isFinite(state.stagedPin)) state.pin = Number(state.stagedPin);
+        state.bootId = `${state.bootId}-act`;
+        return ok({
+          ok: true, state: 'testing', activationId: STAGED_ACTIVATION_ID,
+          rebooting: true, remainingProbationMs: 90000,
+          nextStep: 'confirm-physical-lights',
+          currentOutputs: wiringStatusBody(state).currentOutputs,
+        });
       case '/api/wiring/confirm':
       case '/api/wiring/rollback':
         state.wiringTransactionOpen = false;
+        state.stagedPixels = undefined;
+        state.stagedPin = undefined;
         return ok({
           ok: true, state: path.endsWith('confirm') ? 'known-good' : 'rolled-back',
-          activationId: 'act-matrix-1', rebooting: !path.endsWith('confirm'),
+          activationId: STAGED_ACTIVATION_ID, rebooting: !path.endsWith('confirm'),
           remainingProbationMs: 0, nextStep: path.endsWith('confirm') ? 'none' : 'find-led-wire',
           currentOutputs: wiringStatusBody(state).currentOutputs,
         });
       case '/api/reboot':
         state.bootId = `${state.bootId}-r`;
         return ok({ ok: true, message: 'rebooting' });
-      case '/api/config':
+      case '/api/config': {
+        // The firmware's actual rule, and the reason "save to card" is two
+        // steps rather than one: a config that changes WIRING is staged, not
+        // applied, and waits for a human to confirm the lights still look
+        // right. Anything else applies immediately. A simulator that just
+        // answered {ok:true} could not tell those apart, so the entire
+        // stage/activate/confirm lifecycle — the part that actually programs
+        // the card — was untestable.
+        const led = (payload.led || {}) as Record<string, unknown>;
+        const nextPixels = Number(led.pixels ?? state.pixels);
+        const outputs = (led.outputs || []) as { pin?: number }[];
+        const nextPin = Number(outputs[0]?.pin ?? state.pin);
+        const wiringChanged = state.pixels > 0
+          && (nextPixels !== state.pixels || nextPin !== state.pin);
+
+        if (wiringChanged) {
+          state.wiringTransactionOpen = true;
+          state.stagedPixels = nextPixels;
+          state.stagedPin = nextPin;
+          return {
+            body: {
+              ok: true, state: 'staged', activationId: STAGED_ACTIVATION_ID,
+              message: 'wiring change staged', requiresReboot: false,
+              requiresConfirmation: true,
+            },
+            status: 200,
+          };
+        }
+
+        const piece = (payload.piece || {}) as Record<string, unknown>;
+        state.pixels = nextPixels;
+        state.pin = nextPin;
+        state.projectId = String(piece.id || payload.projectId || state.projectId);
+        state.projectName = String(piece.name || state.projectName);
+        state.projectRevision = Number(payload.projectRevision ?? state.projectRevision);
+        state.projectFingerprint = String(payload.projectFingerprint ?? state.projectFingerprint);
+        state.provisionalSetup = payload.provisional === true;
+        const looks = (payload.looks || payload.patterns || []) as { id?: string; label?: string }[];
+        if (looks.length) {
+          state.patterns = looks.map(look => ({
+            id: String(look.id || ''),
+            label: String(look.label || look.id || ''),
+          })).filter(entry => entry.id);
+        }
         return ok({ ok: true, message: 'applied', requiresReboot: true });
+      }
       case '/api/beacon/port':
         return ok({ ok: true, available: true, pixelsPerPort: 8, ports: [state.pin] });
       default:
@@ -497,6 +560,7 @@ export function createCardSimulator(
     'recover-lights': { method: 'POST', path: '/api/recover-lights' },
     'clear-project': { method: 'POST', path: '/api/clear-project' },
     'wiring-status': { method: 'GET', path: '/api/wiring/status' },
+    'wiring-activate': { method: 'POST', path: '/api/wiring/activate' },
     'wiring-confirm': { method: 'POST', path: '/api/wiring/confirm' },
     'wiring-rollback': { method: 'POST', path: '/api/wiring/rollback' },
     'beacon-ports': { method: 'GET', path: '/api/beacon/port' },
