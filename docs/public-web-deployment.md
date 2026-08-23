@@ -30,7 +30,7 @@ Do not use Cloudflare Workers KV as a card relay. The retired `/api/lw/*` path r
 
 ## Production ownership
 
-- Repository: `git@github-tech:technicianofthesacred/LED-Programming.git`
+- Repository: `git@github-tech:adroart/LED-Programming.git`
 - Cloudflare Pages project: `lightweaver`
 - Production branch: `main`
 - Canonical URL: `https://led.mandalacodes.com/`
