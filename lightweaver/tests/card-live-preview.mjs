@@ -361,6 +361,37 @@ assert.deepEqual(await readCardPatternsFromCard({ host: 'lightweaver.local', tim
   currentId: 'bench-warm', currentIndex: 0,
   patterns: [{ id: 'bench-warm', label: 'Warm bench', mode: 'preset', runtimePatternId: 'warm-white', controls: { customColor: false, breathe: true, drift: false }, zones: [] }],
 });
+// Reported from a real card: the Connected Card panel said "The card returned
+// an invalid pattern list" on a healthy card whose only fault was that its
+// lights were off. currentIndex -1 is the card saying nothing from the list is
+// playing, and in that state it names a runtime id ("blackout") that is not a
+// member — demanding membership anyway rejected the entire list.
+globalThis.fetch = async () => ({
+  ok: true,
+  json: async () => ({
+    currentId: 'blackout', currentIndex: -1,
+    patterns: [{ id: 'aurora', label: 'Aurora', mode: 'procedural', runtimePatternId: 'aurora', zones: [] }],
+  }),
+});
+const blackedOut = await readCardPatternsFromCard({ host: 'lightweaver.local', timeoutMs: 50 });
+assert.equal(blackedOut.currentIndex, -1, 'a card playing nothing is not an invalid pattern list');
+assert.equal(blackedOut.currentId, 'blackout');
+assert.equal(blackedOut.patterns.length, 1);
+
+// A card that claims it IS playing an entry must still name a listed one.
+globalThis.fetch = async () => ({
+  ok: true,
+  json: async () => ({
+    currentId: 'not-listed', currentIndex: 0,
+    patterns: [{ id: 'aurora', label: 'Aurora', mode: 'procedural', zones: [] }],
+  }),
+});
+await assert.rejects(
+  readCardPatternsFromCard({ host: 'lightweaver.local', timeoutMs: 50 }),
+  error => error?.reason === 'invalid-patterns',
+  'a card claiming to play a pattern it does not list is still rejected',
+);
+
 globalThis.fetch = async () => ({
   ok: true,
   json: async () => ({ currentId: 'bad id', currentIndex: 0, patterns: [{ id: 'bad id', label: 'Bad', mode: 'procedural', zones: [] }] }),

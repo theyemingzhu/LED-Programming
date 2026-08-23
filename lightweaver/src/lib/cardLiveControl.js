@@ -823,7 +823,17 @@ function normalizeCardPatternsPayload(payload) {
   });
   const currentId = boundedPatternText(payload.currentId);
   const currentIndex = Number(payload.currentIndex);
-  if (!patterns.length || !seen.has(currentId) || !Number.isInteger(currentIndex) || currentIndex < -1 || currentIndex >= patterns.length) {
+  // currentIndex -1 is the card saying "nothing from this list is playing" —
+  // blackout, a bare factory beacon, a look the owner stopped. In that state it
+  // reports a runtime id like "blackout" that is NOT a member of the list, and
+  // demanding membership anyway rejected the card's whole pattern list as
+  // invalid. Every screen that reads patterns then failed, on a healthy card,
+  // for the sole reason that its lights were off. Membership is only meaningful
+  // when the card says it IS playing one of them.
+  const playingFromList = Number.isInteger(currentIndex) && currentIndex >= 0;
+  if (!patterns.length
+    || !Number.isInteger(currentIndex) || currentIndex < -1 || currentIndex >= patterns.length
+    || (playingFromList && !seen.has(currentId))) {
     throw new CardPushError('invalid-patterns', 'The card returned an invalid pattern list.');
   }
   return { currentId, currentIndex, patterns };

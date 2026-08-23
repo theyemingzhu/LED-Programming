@@ -898,7 +898,18 @@ import {
         : installedFirmware ? 'last verified for this exact card' : '';
     const updateReadiness = preservingFixture?.readiness || cardLink?.readiness || null;
     const connectedCardCandidate = preservingFixture?.card || cardLink?.card || null;
-    const connectedUpdateCard = cardSupportsNetworkFirmwareUpdate(updateReadiness) && connectedCardCandidate
+    // A card already running the published release has nothing to update TO.
+    // Offering "Update this card over Wi-Fi" with the identical version and
+    // build printed on both the Installed and Update rows is the same false
+    // alarm the connect panel used to raise — and here it is the first thing an
+    // owner sees on the Install screen.
+    const publishedManifest = updateReleaseState.state === 'ready' ? updateReleaseState.release.manifest : null;
+    const alreadyOnPublishedFirmware = Boolean(
+      publishedManifest?.buildId
+      && String(updateReadiness?.buildId || '').trim() === String(publishedManifest.buildId).trim(),
+    );
+    const connectedUpdateCard = cardSupportsNetworkFirmwareUpdate(updateReadiness)
+      && connectedCardCandidate && !alreadyOnPublishedFirmware
       ? { ...connectedCardCandidate, bootId: updateReadiness.bootId, projectHead: updateReadiness.projectHead }
       : null;
     const usbUpdateCard = (cardState.state === 'ready' || cardState.state === 'reconnecting')
