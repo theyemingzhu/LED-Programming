@@ -85,3 +85,28 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led/lightweaver" && np
 
 Read a run as passed only on `unexpected: 0` from the JSON reporter — a list
 reporter's tail hides failures above the fold.
+
+## What it found on its first run
+
+Two things, and the split between them is the point.
+
+**Nine of twenty-one first-run failures were the fixture, not Studio.** The card
+states named pattern ids (`drift`, `ember`) that do not exist in the card's
+pattern bank, so Studio correctly refused them. Reported without checking, that
+would have been nine invented bugs. The rewrite that made the simulator
+faithful to the firmware — every required field, readiness derived rather than
+authored — is what separated them.
+
+**One real defect, and it was the one stopping the owner at step one.** Card
+Home probes for a matching Studio project by itself on every card read, and
+reported "No active Studio project exactly matches the project identity on this
+card" as a red alert on the first screen, before the owner touched anything.
+That is the ordinary condition of a card whose project this browser has never
+held, and the screen already offers the two real answers directly below it.
+A probe now says nothing when it finds nothing; a load the owner asked for
+still reports its failure in full.
+
+**One open question, marked not deleted.** The `stale-firmware` cells are
+`test.fixme` — see the comment above them and the TODO entry. They are the
+specification of a fix that is waiting on an owner decision, and they turn
+green the moment it lands.
