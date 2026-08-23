@@ -103,10 +103,16 @@ export function benchSkipReasonText(reason) {
 
 export function isBenchProjectEvidence(evidence) {
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return false;
-  // The card's own claim wins when present (raw /api/status from new
-  // firmware); the projectId string match remains for older firmware and for
-  // normalized evidence objects that do not carry provisionalSetup.
-  if (evidence.provisionalSetup === true) return true;
+  // The card's own claim wins when present — in BOTH directions. Only checking
+  // it for `true` meant a card that had said "no, this is a permanent install"
+  // still fell through to the project-id match, and a project derived from
+  // discovery keeps that id after it is properly installed. So any card that
+  // had ever run Find-my-strips was branded a temporary setup for the rest of
+  // its life: a fully verified, known-good card showed SETUP COMPLETE beside a
+  // "Temporary light setup detected" banner, "not installed" in the identity
+  // row, and no action at all. The id match is what the comment always said it
+  // was — a fallback for firmware that does not report the field.
+  if (typeof evidence.provisionalSetup === 'boolean') return evidence.provisionalSetup;
   return evidence.projectId === BENCH_PROJECT_ID;
 }
 

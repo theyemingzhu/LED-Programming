@@ -36,6 +36,19 @@ export function cardBuildLabel(card = {}) {
   return buildId ? `Build ${buildId.slice(0, 12)}` : '';
 }
 
+// The name the temporary Find-my-strips setup writes while it is on the card.
+// Duplicated as a literal rather than imported from benchConfig.js, which
+// imports the commissioning stack and would make this module's dependency graph
+// circular. It is a scaffold label, never a name for anything the owner owns:
+// adopting it made Studio call the owner's CARD "Lightweaver Bench Discovery"
+// in the footer, the identity row, the Patterns section chip and the layer-mix
+// name, and it stayed there long after the scaffold was replaced.
+const BENCH_SCAFFOLD_NAME = 'Lightweaver Bench Discovery';
+
+function scaffoldFreeName(value) {
+  return value === BENCH_SCAFFOLD_NAME ? '' : value;
+}
+
 export function normalizeCardIdentity(payload = {}, host = '') {
   const source = payload && typeof payload === 'object' ? payload : {};
   const resolvedHost = normalizeHost(host || source.host || source.wifi?.ip || source.wifi?.hostname || source.piece?.hostname);
@@ -50,7 +63,7 @@ export function normalizeCardIdentity(payload = {}, host = '') {
   const pixelCount = outputPixels || reportedPixels;
   return {
     id: cleanText(source.cardId || source.id || source.pieceId || source.piece?.cardId, 64),
-    name: cleanText(source.cardName || source.name || source.pieceName || source.piece?.name, 128) || 'Lightweaver',
+    name: scaffoldFreeName(cleanText(source.cardName || source.name || source.pieceName || source.piece?.name, 128)) || 'Lightweaver',
     firmwareVersion: cleanText(source.firmwareVersion, 48),
     buildId: cleanText(source.buildId || source.firmwareBuild || source.build, 96),
     // The comparable firmware identity the card compiles in as LW_BUILD_NUMBER.
@@ -138,6 +151,14 @@ export function normalizeCardProjectEvidence(payload = {}) {
     ...(identity.productionJobDigest ? { productionJobDigest: identity.productionJobDigest } : {}),
     ...(capabilities ? { capabilities } : {}),
     ...(hasMappings ? { kaleidoscopeMappings } : {}),
+    // The card's own answer to "is what I am holding the temporary
+    // Find-my-strips setup?". It was dropped here, so every consumer fell back
+    // to matching the bench PROJECT ID — and a project derived from discovery
+    // keeps that id after it is properly installed. A fully verified card was
+    // therefore branded a temporary setup for the rest of its life. Carried
+    // only when the card actually reported it, so older firmware still falls
+    // back to the id.
+    ...(typeof source.provisionalSetup === 'boolean' ? { provisionalSetup: source.provisionalSetup } : {}),
   };
 }
 

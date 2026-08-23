@@ -35,6 +35,7 @@ export function WiringBenchTest({
   strips = [], adjustableRunIds = [], onAdjustBoundary,
   adjustableOutputIds = [], onAdjustOutput,
   onDefer,
+  onColorProblem,
 }) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [state, dispatch] = useReducer(wiringChaseReducer, null);
@@ -296,7 +297,16 @@ export function WiringBenchTest({
           footer={<button type="button" className="btn primary lwb-btn-compact" title="Send the current test frame to the card again." data-tooltip="Send the current test frame to the card again." onClick={retry}>Try again</button>}
         />
       )}
-      <button type="button" className="btn primary lwb-btn" title={`Confirm the observed result for ${activeOutputLabel || activeLabel} and advance to the next wiring check.`} data-tooltip={`Confirm the observed result for ${activeOutputLabel || activeLabel} and advance to the next wiring check.`} disabled={!confirmedDelivery} onClick={onPrimary}>{primaryLabel}</button>
+      {/* Confirming the LAST step leaves the screen identical: the step index is
+          clamped to the final step, so the same question, the same illustration
+          and the same button stay on screen while the answer HAS been recorded
+          and Finish has quietly become the real next action. Owners press the
+          same button again and again. Say it. */}
+      {state.canComplete ? (
+        <p className="lwb-complete" role="status" data-testid="bench-all-confirmed">Every output is confirmed — press Finish below to save these checks.</p>
+      ) : (
+        <button type="button" className="btn primary lwb-btn" title={`Confirm the observed result for ${activeOutputLabel || activeLabel} and advance to the next wiring check.`} data-tooltip={`Confirm the observed result for ${activeOutputLabel || activeLabel} and advance to the next wiring check.`} disabled={!confirmedDelivery} onClick={onPrimary}>{primaryLabel}</button>
+      )}
       <button
         type="button"
         className="btn btn-ghost lwb-btn lwb-btn-row"
@@ -322,6 +332,12 @@ export function WiringBenchTest({
                   <button type="button" className="lw-bench-nudge" aria-label={`Add one LED to ${activeLabel}`} title={`Extend ${activeLabel} by one LED so its red marker reaches the physical end.`} data-tooltip={`Extend ${activeLabel} by one LED so its red marker reaches the physical end.`} disabled={!confirmedDelivery || !adjustableRunIds.includes(activeStep.runId)} onClick={() => adjustBoundary(1)}>+</button>
                 </div>
               </div>
+              {onColorProblem && (
+                <div className="lwb-trouble-item">
+                  <span>The colours are wrong</span>
+                  <button type="button" className="btn lwb-btn-compact" data-testid="bench-color-problem" title="Check the LED colour order first — this step is judged by colour, so it cannot be answered until colour is right." data-tooltip="Check the LED colour order first — this step is judged by colour, so it cannot be answered until colour is right." onClick={onColorProblem}>Check colour order</button>
+                </div>
+              )}
               <p className="lwb-detail">Blue and red set the artwork mapping; electrical data direction does not change.</p>
             </>
           )}
@@ -335,6 +351,12 @@ export function WiringBenchTest({
                   <button type="button" className="lw-bench-nudge" aria-label={`Add one LED to ${activeOutputLabel}`} title={`Extend ${activeOutputLabel} by one LED so its red marker reaches the final physical LED.`} data-tooltip={`Extend ${activeOutputLabel} by one LED so its red marker reaches the final physical LED.`} disabled={!confirmedDelivery || !adjustableOutputIds.includes(activeStep.outputId)} onClick={() => adjustOutput(1)}>+</button>
                 </div>
               </div>
+              {onColorProblem && (
+                <div className="lwb-trouble-item">
+                  <span>The colours are wrong</span>
+                  <button type="button" className="btn lwb-btn-compact" data-testid="bench-color-problem" title="Check the LED colour order first — this step is judged by colour, so it cannot be answered until colour is right." data-tooltip="Check the LED colour order first — this step is judged by colour, so it cannot be answered until colour is right." onClick={onColorProblem}>Check colour order</button>
+                </div>
+              )}
               <p className="lwb-detail">GPIO {activeStep.pin} · Move red to this wire’s final LED.</p>
             </>
           )}

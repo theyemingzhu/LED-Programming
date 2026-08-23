@@ -693,7 +693,11 @@ export function SetupScreen({
             light-finding setup. It used to print directly above the
             "discovery evidence, not a finished installation" banner and an
             unfinished phase ladder — three verdicts, one screen. */}
-        {matchesOpenProject && !provisionalSetup && (
+        {/* And not before the card is actually paired. This banner offers
+            "Open Patterns" — a live card action — while phase 1 was still
+            asking the owner to pair, so the screen carried two headline
+            buttons and two different accounts of where the owner was. */}
+        {matchesOpenProject && !provisionalSetup && exactTransport && (
           <section className="card-support-panel lw-setup-banner">
             <h2>This exact card is already set up</h2>
             <p>Its installed project matches the project open in Studio. The card&rsquo;s own page stays connected for controls.</p>

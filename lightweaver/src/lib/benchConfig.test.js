@@ -46,6 +46,18 @@ test('the fixture pin menu leaves at least four ports free of control GPIOs', ()
   assert.ok(SAFE_PINS.length >= CARD_HARDWARE_CONTRACT.maxOutputs, JSON.stringify({ PINS, SAFE_PINS }));
 });
 
+// Reported from a real card: a fully installed, verified, known-good card kept
+// showing "Temporary light setup detected" and "not installed" forever, because
+// a project derived from discovery KEEPS the bench project id after it is
+// properly installed. The card had already said provisionalSetup:false; that
+// answer must be believed in both directions.
+test('a card that says it is NOT provisional is believed, whatever the project id', () => {
+  assert.equal(isBenchProjectEvidence({ projectId: BENCH_PROJECT_ID, provisionalSetup: false }), false);
+  assert.equal(isBenchProjectEvidence({ projectId: BENCH_PROJECT_ID, provisionalSetup: true }), true);
+  // Firmware that does not report the field still falls back to the id.
+  assert.equal(isBenchProjectEvidence({ projectId: BENCH_PROJECT_ID }), true);
+});
+
 test('isBenchProjectEvidence recognizes only the bench sentinel', () => {
   assert.equal(isBenchProjectEvidence({ projectId: BENCH_PROJECT_ID }), true);
   assert.equal(isBenchProjectEvidence({ projectId: 'lwproj-abc-123' }), false);

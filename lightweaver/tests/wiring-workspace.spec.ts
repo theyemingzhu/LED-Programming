@@ -629,19 +629,31 @@ test('editing the canonical Wire plan after the bench check invalidates it', asy
   expect(project.layout.wiring.verified).toBe(false);
 });
 
-test('a loaded locked-but-unchecked project points at Unlock to edit under Advanced', async ({ page }) => {
+// This state was believed to be a loaded-file edge and given a SENTENCE
+// pointing at a control inside the collapsed "Advanced installation tools"
+// section. It is reachable in the ordinary flow — declining to confirm a light
+// test restores the card and clears the verification — and it is the LAST step
+// of setup, so the owner was sent hunting instead of being handed the action.
+test('a locked-but-unchecked project offers the check itself, not a hunt through Advanced', async ({ page }) => {
   await gotoWire(page);
   const project = await saveProject(page);
-  project.layout.wiring.locked = true; // verified stays false — loaded-state edge
+  project.layout.wiring.locked = true; // verified stays false
   await page.evaluate(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
 
-  await expect(page.getByText(/locked but not fully checked/)).toBeVisible();
-  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
+  await expect(page.getByText(/has not been checked on the real lights yet/)).toBeVisible();
+  const start = page.getByTestId('unlock-and-check');
+  await expect(start).toBeVisible();
+  await expect(start).toBeEnabled();
+
+  // Unlock to edit still exists under Advanced for anyone who wants it.
   await openAdvanced(page);
-  await page.getByTestId('unlock-wiring').click();
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByTestId('unlock-wiring')).toBeVisible();
+
+  // And the one button does both jobs: unlock, then open the check.
+  await start.click();
+  await expect(page.getByTestId('wiring-bench-test')).toBeVisible();
 });
 
 test('color confirmation requires a successful live test for the current order', async ({ page }) => {
