@@ -315,9 +315,35 @@ test('session acknowledges real delivery, times out, and restores in cancel-then
     setTimeoutImpl: callback => { timeoutCallback = callback; return 1; },
     clearTimeoutImpl() {},
   });
+  // The FIRST frame opens the realtime stream on a card that is still playing
+  // its own project, which reliably takes longer than the steady-state budget.
+  // Owners met "The lights didn't reach the card" as the opening move of the
+  // light check every time, and Try again always worked.
   const timedOut = timeoutSession.show(['1A0000']);
   timeoutCallback();
-  await assert.rejects(timedOut, /1.5 seconds/);
+  await assert.rejects(timedOut, /6 seconds/);
+
+  // Once a frame has been acknowledged the stream is open, so the tight budget
+  // applies again and a genuine stall is still reported quickly.
+  let laterTimeout = null;
+  const openSession = createWiringChaseSession({
+    createStream: () => fakeStream,
+    setTimeoutImpl: callback => { laterTimeout = callback; return 1; },
+    clearTimeoutImpl() {},
+  });
+  let openHealth = null;
+  const openSession2 = createWiringChaseSession({
+    createStream: options => { openHealth = options.onHealth; return fakeStream; },
+    setTimeoutImpl: callback => { laterTimeout = callback; return 1; },
+    clearTimeoutImpl() {},
+  });
+  const first = openSession2.show(['1A0000']);
+  openHealth({ delivered: true, consecutiveFailures: 0 });
+  await first;
+  const second = openSession2.show(['1A0000']);
+  laterTimeout();
+  await assert.rejects(second, /1.5 seconds/);
+  void openSession;
 });
 
 test('failure and completion cancel before restore; no confirmed look cancels only', async () => {

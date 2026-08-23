@@ -22,6 +22,7 @@ import {
   waitForClearedCard,
 } from '../../lib/benchInstall.js';
 import { clearCardProject } from '../../lib/cardClearProject.js';
+import { clearDanglingWiringTransaction } from '../../lib/cardSetupDeploy.js';
 import { getCardBridgeState } from '../../lib/cardBridge.js';
 import { cardHostToUrl, normalizeCardHost, readStoredCardHost } from '../../lib/cardConnection.js';
 import { prepareCardDeployment } from '../../lib/cardDeployment.js';
@@ -587,12 +588,15 @@ export function StripDiscoveryPanel({
     current.map(entry => (entry.pin === pin ? { ...entry, role } : entry)),
   ));
 
-  const startDiscovery = async () => {
+  const startDiscovery = async ({ clearedAlready = false } = {}) => {
     setBusy(true);
     setFailure('');
     setFailureDetail('');
     setFailureReason('');
-    setBenchNotice('');
+    // Keep the "Studio cleared the old setup and started again" note across the
+    // retry it triggers — clearing it here erased the only account of what just
+    // happened, leaving the owner with a card that had silently changed.
+    if (!clearedAlready) setBenchNotice('');
     setStreamHealth(null);
     // A fresh run replaces whatever interrupted run was stored (ui-repair B2).
     clearDiscoveryRun();
@@ -620,6 +624,43 @@ export function StripDiscoveryPanel({
       });
       setSession(current => advance(current, { type: 'bench-installed' }));
     } catch (error) {
+      // A card already holding a saved setup is the ORDINARY state of any card
+      // that has been used — including one this same flow set up an hour ago —
+      // and clearing it is the only thing the owner could have done anyway.
+      // Stopping to explain that, and offering the single button that does it,
+      // made the first step of setup a dead end for anyone whose card was not
+      // factory-fresh. Do it, say what was done, and carry on. The card keeps
+      // its Wi-Fi, and its project is being replaced by this run regardless.
+      // Leftover state from ANY earlier run — a saved project, or a wiring
+      // change the card is still holding open — is the ordinary condition of
+      // every card that has been used once. Both block the write, both have a
+      // known remedy, and neither is a decision the owner can make better than
+      // Studio can. They were reported as errors with a button, which made the
+      // FIRST step of setup a dead end on any card that was not factory-fresh.
+      // Clear whatever is in the way, say what was done, and carry on. The card
+      // keeps its Wi-Fi, and this run replaces its project regardless.
+      const blockedByLeftovers = error?.reason === 'staged-existing-project'
+        || /wiring transaction is active/i.test(String(error?.message || ''));
+      if (blockedByLeftovers && !clearedAlready) {
+        setBenchNotice('This card was still holding an earlier setup. Studio cleared it (the Wi-Fi is kept) and started again.');
+        try {
+          // Rolling back a half-finished wiring change first: with one open,
+          // the card refuses every later write, including the clear itself.
+          await clearDanglingWiringTransaction(host).catch(() => false);
+          await clearCardProject({ host }).catch(() => null);
+          await waitForClearedCard({ host }).catch(() => null);
+          setBusy(false);
+          await startDiscovery({ clearedAlready: true });
+          return;
+        } catch (clearError) {
+          const clearMessage = clearError?.message || 'Studio could not clear the card.';
+          setBenchNotice('');
+          setFailure(clearMessage);
+          setFailureReason('staged-existing-project');
+          setSession(current => advance(current, { type: 'bench-failed', error: clearMessage }));
+          return;
+        }
+      }
       const message = error?.message || 'Studio could not set this card up for discovery.';
       setFailure(message);
       setFailureReason(error?.reason || '');
@@ -1295,7 +1336,11 @@ export function StripDiscoveryPanel({
         </p>
       )}
 
-      {failure && (
+      {/* Not when the install-failure block above is already showing this exact
+          sentence with the action beside it. The same words appeared twice on
+          one screen — once as the explanation, once again as a red alert
+          underneath — which reads as two separate problems. */}
+      {failure && !(phase === 'bench-install' && failure === session?.error) && (
         <div className="card-connection-failure" role="alert" data-testid="discovery-failure">
           <p>{failure}</p>
           {/* Size is never the reason discovery stops for good, so the numbers

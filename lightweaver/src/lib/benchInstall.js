@@ -22,7 +22,7 @@
 //     and the owner read a dark strip as "no LEDs here". Apply -> reboot ->
 //     poll until the card itself says playback is admitted -> only then frames.
 
-import { classifyCardReadiness } from './cardReadiness.js';
+import { classifyCardReadiness, isDifferentCardMismatch, isStaleFirmwareMismatch } from './cardReadiness.js';
 import {
   authorizeBlankCardDiscoveryConfig,
   sendCardBridgeRequest,
@@ -31,7 +31,7 @@ import {
   canPushDirectlyToCard,
   cardHostToUrl,
 } from './cardConnection.js';
-import { guardDirectCardMutation, readPersistedCardIdentity } from './cardIdentity.js';
+import { guardDirectCardMutation, persistCardIdentity, readPersistedCardIdentity } from './cardIdentity.js';
 import { readCardStatusEnvelope, requestCardReboot } from './cardPushClient.js';
 
 // A card that has just been written and rebooted is unreachable for a few
@@ -146,6 +146,28 @@ async function postBenchConfigOverBridge({ host, config, flowId, initial, author
 // from the same field), so this waits for the real gate rather than a proxy for
 // it. Reads that throw are the card still restarting and are not counted
 // against anything except the deadline.
+// The card answered with the right id but firmware Studio had not written down
+// — the ordinary state after an official update. Stopping discovery over it,
+// under the words "A different Lightweaver card answered at this address", was
+// the flow's flattest dead end: the physical card was right there, on the
+// newest firmware, and the only thing wrong was Studio's own note. Re-learn
+// the firmware for THIS card id and carry on. A different id still stops.
+function relearnedIdentity(readiness, expectedCard) {
+  const observed = {
+    ...expectedCard,
+    id: expectedCard?.id || readiness.cardId,
+    firmwareVersion: readiness.firmwareVersion,
+    buildId: readiness.buildId,
+    ...(readiness.buildNumber ? { buildNumber: readiness.buildNumber } : {}),
+  };
+  try {
+    persistCardIdentity(observed, { acknowledgedAt: new Date().toISOString() });
+  } catch {
+    // Storage refused; the in-memory expectation below still unblocks this run.
+  }
+  return observed;
+}
+
 export async function waitForBenchPlayback({
   host,
   transport,
@@ -158,6 +180,7 @@ export async function waitForBenchPlayback({
   timeoutMs = BENCH_READY_TIMEOUT_MS,
 } = {}) {
   const deadline = now() + timeoutMs;
+  let expected = expectedCard;
   for (;;) {
     await waitImpl(pollIntervalMs);
     let readiness = null;
@@ -168,15 +191,19 @@ export async function waitForBenchPlayback({
         timeoutMs: BENCH_READY_STATUS_TIMEOUT_MS,
         fetchImpl,
       });
-      readiness = classifyCardReadiness(status || {}, { expectedCard });
+      readiness = classifyCardReadiness(status || {}, { expectedCard: expected });
     } catch {
       /* still rebooting — keep waiting until the deadline */
     }
     if (readiness?.playbackAccess === 'ready') return readiness;
     // A different card answering is never going to resolve by waiting, and
     // lighting it would be lighting a stranger's piece.
-    if (readiness?.state === 'identity-mismatch') {
+    if (isDifferentCardMismatch(readiness)) {
       throw new BenchInstallError('wrong-card', 'A different Lightweaver card answered at this address, so discovery stopped.');
+    }
+    if (isStaleFirmwareMismatch(readiness)) {
+      expected = relearnedIdentity(readiness, expected);
+      continue;
     }
     if (now() >= deadline) {
       throw new BenchInstallError('not-ready', BENCH_INSTALL_TIMEOUT_MESSAGE);
@@ -201,6 +228,7 @@ export async function waitForClearedCard({
   timeoutMs = BENCH_READY_TIMEOUT_MS,
 } = {}) {
   const deadline = now() + timeoutMs;
+  let expected = expectedCard;
   for (;;) {
     await waitImpl(pollIntervalMs);
     let readiness = null;
@@ -211,13 +239,17 @@ export async function waitForClearedCard({
         timeoutMs: BENCH_READY_STATUS_TIMEOUT_MS,
         fetchImpl,
       });
-      readiness = classifyCardReadiness(status || {}, { expectedCard });
+      readiness = classifyCardReadiness(status || {}, { expectedCard: expected });
     } catch {
       /* still rebooting — keep waiting until the deadline */
     }
     if (readiness?.state === 'blank') return readiness;
-    if (readiness?.state === 'identity-mismatch') {
+    if (isDifferentCardMismatch(readiness)) {
       throw new BenchInstallError('wrong-card', 'A different Lightweaver card answered at this address, so discovery stopped.');
+    }
+    if (isStaleFirmwareMismatch(readiness)) {
+      expected = relearnedIdentity(readiness, expected);
+      continue;
     }
     if (now() >= deadline) {
       throw new BenchInstallError('not-cleared', BENCH_INSTALL_CLEARED_TIMEOUT_MESSAGE);

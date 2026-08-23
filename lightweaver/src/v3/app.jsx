@@ -122,6 +122,12 @@ const STUDIO_SCREENS = [
 // phase — the moments the question "which strips does this card even have?"
 // comes up.
 const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery'];
+// Screens that actually render a light preview the short-strip control changes.
+const PREVIEW_SCREENS = new Set(['layout', 'pattern', 'pattern-lab', 'playlist', 'show']);
+// Transports that are on their way to an answer, not out of ideas. A card
+// reboots on purpose during a wiring light test; through all of it the footer
+// used to report its firmware as unknown.
+const CARD_LINK_SETTLING_STATES = new Set(['connecting', 'reconnecting', 'reconnecting-bridge', 'revalidating']);
 const SCREEN_BY_ID = Object.fromEntries(STUDIO_SCREENS.map(screen => [screen.id, screen.Component]));
 const PROTECTED_COMMISSIONING_STAGES = new Set(['install-safely', 'set-up-card', 'check-lights']);
 const SCREEN_RECOVERY_KEY = 'lw_screen_recovery_v1';
@@ -499,22 +505,26 @@ function OfflineStatusControl({ state, onActivate }) {
         className={`sb-firmware sb-offline is-update-available${blocked ? ' is-blocked' : ''}`}
         data-testid="offline-update-status"
         data-blocked-reason={state.reason || ''}
-        title={blocked?.title || 'A verified Studio update is ready. Press to reload Studio into it.'}
+        title={blocked?.title || 'A newer Studio has been downloaded. This reloads the page into it. It does not touch the card.'}
         onClick={onActivate}
       >
-        {blocked?.label || 'Update ready'}
+        {blocked?.label || 'Reload for the newest Studio'}
       </button>
     );
   }
-  const label = state.status === 'ready' ? 'Ready offline'
-    : state.status === 'error' ? 'Offline unavailable'
-      : state.status === 'reloading' ? 'Reopening Studio…'
-        : state.status === 'activating' ? 'Applying update…'
-          : 'Preparing offline…';
+  // Only the states that are actually happening to the owner are shown. "Ready
+  // offline", "Offline unavailable" and "Preparing offline…" are internals of
+  // the browser cache: not questions anyone asked, not actions anyone can take,
+  // and sitting in the footer beside the card's firmware line they read as
+  // something wrong with the card.
+  const label = state.status === 'reloading' ? 'Reopening Studio…'
+    : state.status === 'activating' ? 'Applying update…'
+      : '';
+  if (!label) return null;
   return <span className={`sb-firmware sb-offline is-${state.status}`} data-testid="offline-update-status" role="status">{label}</span>;
 }
 
-function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, runningStudioRelease, freshness }) {
+function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness }) {
   return (
     <footer className="status-bar">
       <div className="sb-card">
@@ -555,16 +565,21 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
         );
       })()}
 
+      {/* Only where it does something. This previews a design on a short bench
+          strip, so on the Card and setup screens — which show no preview at all
+          — pressing it changed nothing anyone could see, next to a label that
+          sounds like it tests the actual strip on the wall. */}
+      {showTestStrip && (
       <div className={`sb-teststrip${testStrip.enabled ? ' is-active' : ''}`} data-testid="test-strip-control">
         <button
           type="button"
           className={"sb-ts-toggle" + (testStrip.enabled ? " on" : "")}
           onClick={() => onToggleTestStrip(!testStrip.enabled)}
           aria-pressed={testStrip.enabled}
-          aria-label={testStrip.enabled ? 'Stop testing strip' : 'Test strip'}
-          title="Bench-test on a short strip without changing your saved design"
+          aria-label={testStrip.enabled ? 'Stop previewing on a short strip' : 'Preview on a short strip'}
+          title="Preview this design as if the strip were short, without changing the saved design"
         >
-          {testStrip.enabled ? `Testing ${testStrip.length} LEDs` : 'Test strip'}
+          {testStrip.enabled ? `Previewing ${testStrip.length} LEDs` : 'Preview short strip'}
         </button>
         {testStrip.enabled && (
           <>
@@ -580,6 +595,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
           </>
         )}
       </div>
+      )}
     </footer>
   );
 }
@@ -1065,6 +1081,7 @@ function Shell({ offlineUpdateController = null }) {
   const firmwareStatus = useMemo(() => classifyFooterFirmwareStatus(
     isCardTransportConnected(cardLink) ? cardLink.card : null,
     firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null,
+    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) },
   ), [cardLink, firmwareReleaseIdentity.manifest, firmwareReleaseIdentity.state]);
   const openSetupTask = useCallback(taskId => {
     if (installActiveRef.current) return;
@@ -1607,6 +1624,7 @@ function Shell({ offlineUpdateController = null }) {
         testStrip={testStrip}
         onToggleTestStrip={onToggleTestStrip}
         onTestStripLengthChange={onTestStripLengthChange}
+        showTestStrip={PREVIEW_SCREENS.has(underlyingView)}
         runningStudioRelease={runningStudioReleaseRef.current}
         freshness={freshness}
       />

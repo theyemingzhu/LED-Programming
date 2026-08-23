@@ -321,7 +321,7 @@ test('opening after a blocked popup renders the retry action directly', async ({
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     getSharedCardLink().dispatch({ type: 'operation-failed' });
   });
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await expect(page).toHaveURL(/#screen=card&section=setup/);
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();

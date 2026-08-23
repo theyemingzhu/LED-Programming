@@ -63,6 +63,7 @@ test('exports the exact approved orchestrator vocabulary', () => {
     'pair-local-card',
     'card-needs-project',
     'needs-card-update',
+    'relearn-current-card',
     'launch-native-bridge',
     'install-native-bridge',
     'handoff-supported-device',
@@ -450,6 +451,46 @@ test('a remembered card whose firmware build changed offers keeping the new firm
     label: 'Keep the new firmware on this card',
   });
   assert.match(action.explanation, /updated or reflashed/i);
+});
+
+// Reported from a real card: the panel printed build 1427 on BOTH the
+// Installed and Current rows while claiming the firmware had changed, and
+// offered to install the build already on the card. Nothing needed updating —
+// Studio's note did. This also pins the action id into the approved vocabulary:
+// emitting one that is not listed there throws, so an owner in this exact state
+// would have hit a crash rather than a screen.
+test('a card matching the signed release is not asked to update, only re-paired', () => {
+  const release = { firmwareVersion: '1.1.29', buildId: 'f'.repeat(40) };
+  const card = { id: 'lw-bench-1', firmwareVersion: '1.1.29', buildId: 'f'.repeat(40) };
+  const action = nextCardConnectionAction({
+    intent: 'working-card',
+    link: { state: 'disconnected', reason: 'wrong-firmware-build', discoveredCard: card },
+    rememberedCard: { id: 'lw-bench-1', firmwareVersion: '1.1.20', buildId: 'a'.repeat(40) },
+    discoveredCard: card,
+    firmwareRelease: release,
+    capabilities: secureBrowserUsb,
+  });
+  assert.equal(action.id, 'relearn-current-card');
+  assert.equal(action.primaryLabel, 'Use this card');
+  assert.equal(action.secondaryAction, null);
+  // It may SAY nothing needs installing; it must not ASK for one.
+  assert.match(action.explanation, /Nothing needs installing/i);
+});
+
+test('firmware that is NOT the signed release still gets the ordinary update question', () => {
+  const action = nextCardConnectionAction({
+    intent: 'working-card',
+    link: {
+      state: 'disconnected',
+      reason: 'wrong-firmware-build',
+      discoveredCard: { id: 'lw-bench-1', firmwareVersion: '1.1.29', buildId: '9'.repeat(40) },
+    },
+    rememberedCard: { id: 'lw-bench-1', buildId: 'a'.repeat(40) },
+    discoveredCard: { id: 'lw-bench-1', firmwareVersion: '1.1.29', buildId: '9'.repeat(40) },
+    firmwareRelease: { firmwareVersion: '1.1.29', buildId: 'f'.repeat(40) },
+    capabilities: secureBrowserUsb,
+  });
+  assert.equal(action.id, 'needs-card-update');
 });
 
 test('the keep-new-firmware offer never appears without an exact id match', () => {

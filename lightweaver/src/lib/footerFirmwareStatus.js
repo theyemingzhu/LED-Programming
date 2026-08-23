@@ -26,9 +26,18 @@ function result(state, installedBuildNumber, releaseBuildNumber, label, actionab
 
 // This only accepts identities that can prove an exact revision. The footer
 // must never turn a loosely formatted card response into a firmware action.
-export function classifyFooterFirmwareStatus(installed, verifiedRelease) {
+export function classifyFooterFirmwareStatus(installed, verifiedRelease, { checking = false } = {}) {
   const release = validRelease(verifiedRelease);
   if (installed === null || installed === undefined) {
+    // A card that is mid-restart has not stopped being known — it is simply not
+    // answering this second. Saying "Card firmware unknown" through every reboot
+    // (which the light test performs on purpose) reads as something going wrong
+    // at exactly the moment the owner is watching their strip.
+    if (checking) {
+      return release
+        ? result('checking', null, release.buildNumber, `Checking card firmware · latest ${release.buildNumber}`, false)
+        : result('checking', null, null, 'Checking card firmware', false);
+    }
     return release
       ? result('disconnected', null, release.buildNumber, `Card firmware unknown · latest ${release.buildNumber}`, false)
       : result('disconnected', null, null, 'Card firmware unknown · latest unknown', false);

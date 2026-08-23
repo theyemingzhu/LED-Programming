@@ -38,7 +38,10 @@ test('one lifecycle orders exact failures ahead of generic connection copy', () 
     [{ update: { phase: 'blocked', reason: 'project-changed' } }, 'project-changed', 'Needs attention', 'load-matching-project'],
     [{ link: { reason: 'firmware-too-old' } }, 'update-required', 'Needs attention', 'update-firmware'],
     [{ link: { ...READY_LINK, cardBlank: true } }, 'setup-required', 'Needs project', 'install-project'],
-    [{ link: READY_LINK, project: { id: 'piece-b', revision: 7, fingerprint: 'b'.repeat(64) } }, 'project-mismatch', 'Needs attention', 'load-matching-project'],
+    // Not "Needs attention": a healthy card holding the same project at an
+    // older revision needs saving, not rescuing, and the alarming label was
+    // what made owners stop trusting an otherwise correct screen.
+    [{ link: READY_LINK, project: { id: 'piece-b', revision: 7, fingerprint: 'b'.repeat(64) } }, 'project-mismatch', 'Save to card', 'load-matching-project'],
     [{ link: READY_LINK, project: { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) } }, 'ready', 'Connected', 'open-patterns'],
     [{ link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, firmwareUpdate: { phase: 'rolled-back', rollbackReason: 'health-check-failed' } } } }, 'update-rolled-back', 'Update rolled back', 'recover-operation'],
   ];

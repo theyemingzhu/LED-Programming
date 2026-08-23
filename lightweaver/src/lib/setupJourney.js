@@ -26,22 +26,26 @@ export function setupTaskRoute(taskId) {
 
 const SETUP_MODE_HOST = '192.168.4.1';
 
+// Four lines a visual artist reads once and understands. They previously
+// described the machinery ("resolve firmware or Wi-Fi only when they block
+// connection", "final-light boundary", "verify exact readback") rather than
+// what the owner is about to do.
 const PHASE_COPY = Object.freeze({
   connect: {
-    title: 'Connect and identify exact card',
-    detail: 'Find the exact Lightweaver card and resolve firmware or Wi-Fi only when they block connection.',
+    title: 'Connect to your card',
+    detail: 'Find your Lightweaver card and make sure Studio is talking to that exact one.',
   },
   lights: {
     title: 'Find and verify the lights',
-    detail: 'Verify each output, color order, count, and final-light boundary.',
+    detail: 'Find which port each strip is on, get its colours right, and count where it ends.',
   },
   layout: {
     title: 'Place lights in the artwork',
-    detail: 'Carry the discovered outputs into the artwork and place the lights where they belong.',
+    detail: 'Draw where the strips run across your piece, and which way round they go.',
   },
   verify: {
     title: 'Test and save to card',
-    detail: 'Send the project, verify exact readback, and confirm what the real lights show.',
+    detail: 'Send your project to the card and watch the real lights before making it permanent.',
   },
 });
 
@@ -166,7 +170,17 @@ function lightProgress(project) {
 }
 
 function lightsComplete(progress, resolution) {
-  if (resolution?.provisionalSetup === true) return false;
+  // The temporary Find-my-strips setup staying on the card is not an unfinished
+  // lights phase — it is what the discovery panel PROMISES will happen: "the
+  // card keeps playing that setup … until your own project replaces it at the
+  // end". Replacing it is phase 4's job. Holding phase 2 open for it pinned the
+  // owner on a step whose four checks were all ticked green, with a button that
+  // only re-opened what was already done, and the only exit — phases 3 and 4 —
+  // refused to become reachable. A loop with no way out.
+  //
+  // `resolution` stays in the signature: the final "setup complete" verdict
+  // still refuses while a temporary setup is on the card, which is where that
+  // fact genuinely belongs.
   return progress.every(item => item.status === 'done');
 }
 

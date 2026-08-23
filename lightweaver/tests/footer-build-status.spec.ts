@@ -133,10 +133,21 @@ test('footer reduces telemetry to card, firmware, Studio and Test strip controls
   await expect(footer).not.toContainText('fps');
 
   await expect(page.getByLabel('Test strip LED count')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Test strip' }).click();
+  await page.getByRole('button', { name: 'Preview on a short strip' }).click();
   await expect(page.getByLabel('Test strip LED count')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Stop testing strip' })).toHaveText('Testing 30 LEDs');
+  await expect(page.getByRole('button', { name: 'Stop previewing on a short strip' })).toHaveText('Previewing 30 LEDs');
   await expect(page.getByTestId('test-strip-control')).not.toContainText('your design is unchanged');
+});
+
+// It previews a design on a short bench strip, so it belongs only where a
+// preview is on screen. On the Card and setup screens it changed nothing
+// anyone could see, under a name that sounds like it tests the real strip.
+test('the short-strip preview control is absent from the card screen', async ({ page }) => {
+  await openStudio(page, { buildNumber: release.buildNumber, buildId: release.buildId });
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('test-strip-control')).toHaveCount(0);
+  // The status the footer is FOR is still there.
+  await expect(page.getByTestId('studio-freshness')).toBeVisible();
 });
 
 test('desktop footer is one row in Card, Firmware, Studio, Test strip order', async ({ page }) => {

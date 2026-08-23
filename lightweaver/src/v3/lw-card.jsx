@@ -16,7 +16,7 @@ import { clearCardProject } from '../lib/cardClearProject.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { normalizeCardHost } from '../lib/cardConnection.js';
-import { BENCH_PROJECT_ID } from '../lib/benchConfig.js';
+import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
 import { STRIP_DISCOVERY_LABEL } from '../lib/cardAction.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 
@@ -136,8 +136,19 @@ function CardHomePanels({
   // (cardLink.readiness is the raw status envelope). Older firmware never
   // sends the field, so the projectId string match stays as the fallback that
   // recognizes bench configs written before the flag existed (finding #5).
-  const benchProject = cardLink?.readiness?.provisionalSetup === true
-    || cardLink?.readiness?.projectId === BENCH_PROJECT_ID;
+  // One authority for "is this the temporary Find-my-strips setup?", reading the
+  // card's own answer in BOTH directions. The `||` here meant a card that had
+  // explicitly said provisionalSetup:false still matched on the bench project
+  // id — which a properly installed discovery-derived project keeps — so the
+  // detected state told the owner their finished card was running a temporary
+  // setup, directly under a banner saying it was already set up.
+  const benchProject = isBenchProjectEvidence(cardLink?.readiness || {});
+  // The card is already holding the project that is open in Studio, so there is
+  // nothing to "load".
+  const cardHoldsOpenProject = Boolean(
+    String(cardLink?.readiness?.projectId || '').trim()
+    && String(cardLink.readiness.projectId).trim() === String(currentProject?.id || '').trim(),
+  );
   let currentProjectInstallable = false;
   try {
     prepareCardStoragePayload(prepareCardDeployment(currentProject).runtimePackage);
@@ -231,12 +242,19 @@ function CardHomePanels({
     }),
     foundUnpaired: () => {
       const foundProjectId = cardLink?.discoveredCard?.projectId || '';
+      // Same one authority: the card's own provisional answer wins over the
+      // bench project id, which a properly installed project keeps forever.
+      const foundIsProvisional = isBenchProjectEvidence({
+        projectId: foundProjectId,
+        ...(typeof cardLink?.readiness?.provisionalSetup === 'boolean'
+          ? { provisionalSetup: cardLink.readiness.provisionalSetup } : {}),
+      });
       return {
         tone: 'disconnected',
-        message: foundProjectId === BENCH_PROJECT_ID
+        message: foundIsProvisional
           ? 'Lightweaver found — it is holding an unfinished Find my strips setup, not one of your projects. Tap Connect to pair, then finish setup or install your project.'
           : foundProjectId
-            ? `Lightweaver found running “${foundProjectId}” — tap Connect to pair.`
+            ? 'Lightweaver found, holding a project — tap Connect to pair.'
             : 'Lightweaver found — tap Connect to pair.',
         primary: { label: 'Connect card', action: 'connect' },
         secondary: openSupport,
@@ -300,10 +318,18 @@ function CardHomePanels({
       presentation = presentations.checkingEvidence();
       break;
     case 'ready':
-    case 'project-mismatch':
-      // Both are a command-ready card; which project it holds is the Setup
-      // ladder's question, not this surface's — exactly as before.
       presentation = benchProject ? presentations.bench() : presentations.readyForLightCheck();
+      break;
+    case 'project-mismatch':
+      // Also a command-ready card, but saying "ready for light check" here put
+      // a fourth, different account on a screen whose other three lines all
+      // said the project still has to be saved. Same fact, same words.
+      presentation = benchProject ? presentations.bench() : {
+        tone: 'connecting',
+        message: `${identity || 'This Lightweaver'} is connected. The project open in Studio has changed since it was installed — save it to the card to bring them back into step.`,
+        primary: { label: 'Install on card', section: 'settings' },
+        secondary: openSupport,
+      };
       break;
     case 'discovery-setup':
       // The temporary Find-my-strips setup, now named by the lifecycle instead
@@ -549,7 +575,10 @@ function CardHomePanels({
           {matchingProjectState.status !== 'ambiguous' && (
             <button
               type="button"
-              className="btn primary"
+              /* Not a second headline button when it would load the project
+                 already open — "Open Patterns" is the action there, and two
+                 orange buttons side by side made the screen ask twice. */
+              className={cardHoldsOpenProject ? 'btn' : 'btn primary'}
               disabled={matchingProjectState.status === 'loading' || matchingProjectState.status === 'saving'}
               onClick={() => void loadMatchingCardProject({ selectionKey: matchingProjectState.selectionKey || '' })}
             >
@@ -585,7 +614,7 @@ function CardHomePanels({
       {ready && (
         <section className="card-support-panel" aria-label="Hardware checks and recovery">
           <h2>Checks &amp; recovery</h2>
-          <p>These actions report card acknowledgements and state readback. Studio never marks a visual LED or color test passed without your confirmation.</p>
+          <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
           <div className="card-overview-actions">
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void verifyHardware()}>Verify hardware</button>
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void recoverLights()}>Recover lights</button>

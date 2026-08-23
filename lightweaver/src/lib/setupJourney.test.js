@@ -43,6 +43,20 @@ const discoveredProject = () => ({
   layout: { starterPending: true, strips: [] },
 });
 
+// Discovery finished AND placed in the artwork with direction verified, so the
+// only phase that can still be outstanding is the final one.
+const verifiedProject = () => ({
+  ...discoveredProject(),
+  layout: {
+    starterPending: false,
+    strips: [{ id: 'strip-1' }],
+    wiring: {
+      verified: true,
+      runs: [{ type: 'strip', id: 'run-1', verified: true, physicalDirection: 'source-forward' }],
+    },
+  },
+});
+
 const phaseMap = journey => Object.fromEntries(journey.phases.map(phase => [phase.id, phase]));
 
 test('automatic diagnosis precedes four numbered outcome phases', () => {
@@ -126,18 +140,38 @@ test('light discovery keeps color ahead of count and last-light boundary work', 
   assert.equal(progress.direction, undefined);
 });
 
-test('temporary bench configuration is not discovery or setup completion', () => {
+// A temporary bench setup is never setup COMPLETION — that half of the old
+// contract stands. What it must not do is hold the lights phase open after
+// every light fact is established: the discovery panel promises the card keeps
+// playing that setup until the owner's project replaces it at the end, so its
+// presence is the expected state between phase 2 and phase 4. Holding phase 2
+// open for it left the owner on a step with four green ticks and no way out.
+test('temporary bench configuration is not setup completion, and does not pin the lights phase', () => {
   const journey = deriveSetupJourney({
     cardLink: connectedCard(READY_STATUS),
-    cardLifecycle: { state: 'attention-required', setupTaskId: 'recover-operation' },
+    cardLifecycle: { state: 'discovery-setup', setupTaskId: 'discover-lights' },
     project: discoveredProject(),
     resolution: { provisionalSetup: true, matchesCurrentProject: true, playbackAccess: 'ready' },
   });
 
-  assert.equal(journey.currentPhaseId, 'lights');
-  assert.equal(phaseMap(journey).lights.status, 'current');
-  assert.equal(phaseMap(journey).verify.status, 'upcoming');
   assert.equal(isSetupComplete(journey), false);
+  assert.equal(phaseMap(journey).lights.status, 'done');
+  assert.equal(journey.currentPhaseId, 'layout');
+});
+
+// Every phase satisfied EXCEPT that the card still holds the temporary setup:
+// the remaining work is the last phase, replacing it with the real project.
+test('a fully progressed project still holding a temporary setup lands on the final phase', () => {
+  const journey = deriveSetupJourney({
+    cardLink: connectedCard(READY_STATUS),
+    cardLifecycle: { state: 'discovery-setup', setupTaskId: 'discover-lights' },
+    project: verifiedProject(),
+    resolution: { provisionalSetup: true, matchesCurrentProject: true, playbackAccess: 'ready' },
+  });
+
+  assert.equal(isSetupComplete(journey), false);
+  assert.equal(journey.currentPhaseId, 'verify');
+  assert.equal(journey.taskId, 'test-and-save');
 });
 
 test('a recovering exact factory card resumes discovery instead of generic recovery', () => {

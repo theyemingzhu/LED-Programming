@@ -102,8 +102,11 @@ test('"Use this card’s project" visibly finishes Setup when another project is
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
 
-  // The unresolved-project task names what the card holds and offers adoption.
-  await expect(page.getByTestId('setup-card-project-note')).toContainText(PROJECT_ID, { timeout: 10000 });
+  // The unresolved-project task says what the situation IS and offers adoption.
+  // It used to print the card's raw project id — internal slug, meaningless to
+  // an owner — so it now states the relationship instead.
+  await expect(page.getByTestId('setup-card-project-note'))
+    .toContainText(/different project|holds the same project/, { timeout: 10000 });
   await page.getByTestId('setup-start-from-card').click();
   await expectSetupComplete(page);
 });

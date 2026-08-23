@@ -347,6 +347,41 @@ test('the wait stops immediately when a different card answers', async () => {
   );
 });
 
+// The reported failure, from a real card: Studio's note said an older firmware
+// than the card was running, and discovery stopped with "A different Lightweaver
+// card answered at this address" — about the card in front of the owner, on the
+// newest firmware there is. `identity-mismatch` covers three findings and only
+// one of them is a different card; the other two are the ordinary state after
+// an update. This card id is the SAME, so the note is what is wrong.
+test('a same-card firmware difference re-learns instead of stopping discovery', async () => {
+  const clock = fakeClock();
+  const readiness = await waitForBenchPlayback({
+    host: HOST,
+    transport: 'direct',
+    expectedCard: { id: 'lw-bench-1', firmwareVersion: '1.3.0', buildId: 'build-300' },
+    statusImpl: async () => readyStatus(),
+    waitImpl: clock.wait,
+    now: clock.now,
+    timeoutMs: 30_000,
+  });
+  assert.equal(readiness.playbackAccess, 'ready');
+  assert.equal(readiness.cardId, 'lw-bench-1');
+});
+
+test('a same-card BUILD difference also re-learns instead of stopping discovery', async () => {
+  const clock = fakeClock();
+  const readiness = await waitForBenchPlayback({
+    host: HOST,
+    transport: 'direct',
+    expectedCard: { id: 'lw-bench-1', firmwareVersion: '1.4.0', buildId: 'build-300' },
+    statusImpl: async () => readyStatus(),
+    waitImpl: clock.wait,
+    now: clock.now,
+    timeoutMs: 30_000,
+  });
+  assert.equal(readiness.playbackAccess, 'ready');
+});
+
 test('a card reporting playback while the command gate is still shut is ready enough for frames', async () => {
   // playbackAccess is exactly what cardBridge.js gates 'frame' messages on, so
   // waiting for the narrower 'connected' state would stall a card that is lit

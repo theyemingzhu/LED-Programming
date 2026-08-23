@@ -8,6 +8,7 @@ export const CARD_CONNECTION_ACTION_IDS = Object.freeze([
   'pair-local-card',
   'card-needs-project',
   'needs-card-update',
+  'relearn-current-card',
   'launch-native-bridge',
   'install-native-bridge',
   'handoff-supported-device',

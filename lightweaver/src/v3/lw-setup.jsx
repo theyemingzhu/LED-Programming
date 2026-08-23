@@ -31,12 +31,18 @@ function exactCardName(cardLink, cardHost) {
     || 'No exact card yet';
 }
 
-function installRelationship(resolution, installedProjectId = '', installationMatch = false, openProjectId = '', provisionalSetup = false) {
+function installRelationship(resolution, installedProjectId = '', installationMatch = false, openProjectId = '', provisionalSetup = false, exactProject = false) {
   // A temporary light-finding setup is not an installation, whatever project
   // id it was written under. Reporting "Installed project matches" for one
   // contradicted the banner beside it.
   if (provisionalSetup || resolution.kind === 'bench') return 'Temporary setup — not installed';
-  if (resolution.kind === 'matches-current' || installationMatch) return 'Installed project matches';
+  // "Installed project matches" is a claim about a VERIFIED installation, so it
+  // needs the same evidence the footer uses (id + fingerprint + revision), not
+  // just agreeing ids. Claiming it on ids alone put "Installed project matches"
+  // in this row while the footer said "Needs attention" about the same card.
+  // The honest answer for ids-only is the one two lines down: same project,
+  // save to card to verify.
+  if (installationMatch || (resolution.kind === 'matches-current' && exactProject)) return 'Installed project matches';
   if (resolution.kind === 'saved-match') return 'Matching saved project found';
   // The card told us what it holds. Reporting "Project not installed" over the
   // top of that is simply false, and it was the line that made a healthy,
@@ -324,7 +330,18 @@ export function SetupScreen({
     const installedProjectId = String(status.projectId || readiness.projectId || '').trim();
     return Boolean(installedProjectId) && installedProjectId === String(currentProject?.id || '').trim();
   }, [cardLink?.card, cardLink?.readiness, cardState.status, currentProject, projectLifecycle]);
-  const matchesOpenProject = resolution.kind === 'matches-current' || installationMatch;
+  // ONE authority for "is the card holding this exact project?".
+  //
+  // `resolution.kind === 'matches-current'` compares project IDs. The card
+  // lifecycle compares id AND fingerprint AND revision — and it is the one the
+  // footer renders. With only the ids agreeing, the two disagreed out loud: the
+  // identity row said "Installed project matches", the ladder said SETUP
+  // COMPLETE and offered Open Patterns, while the footer said "Needs attention"
+  // about the same healthy card, permanently. A weaker match cannot outrank the
+  // stronger one; a recorded installation (installationMatch) still can, since
+  // that IS the verified evidence.
+  const matchesOpenProject = installationMatch
+    || (resolution.kind === 'matches-current' && cardLifecycle?.exactProject === true);
   // The saved-match banner below offers its Load only while the shared
   // adoption machine can actually run it — cardActions comes from
   // CardActionsProvider, mounted at the Shell. Report the offer up so Card
@@ -337,11 +354,6 @@ export function SetupScreen({
   // machine from its own injected props — keeps the one working offer.
   const savedMatchLoadOffer = resolution.kind === 'saved-match' && !installationMatch
     && Boolean(cardActions?.adoptCardProject);
-  useEffect(() => {
-    if (!onLoadOfferChange) return undefined;
-    onLoadOfferChange(savedMatchLoadOffer);
-    return () => onLoadOfferChange(false);
-  }, [onLoadOfferChange, savedMatchLoadOffer]);
 
   // Whether the card is still holding the TEMPORARY light-finding setup is a
   // fact the card reports about itself. It used to be ASSERTED per branch —
@@ -367,6 +379,12 @@ export function SetupScreen({
     project: currentProject,
     resolution: journeyResolution,
   }), [cardLifecycle, cardLink, commissioningFlow, currentProject, installationMatch, provisionalSetup, resolution.kind]);
+
+  useEffect(() => {
+    if (!onLoadOfferChange) return undefined;
+    onLoadOfferChange(savedMatchLoadOffer);
+    return () => onLoadOfferChange(false);
+  }, [onLoadOfferChange, savedMatchLoadOffer]);
 
   // The app shell reads SETUP_SKIP_STORAGE_KEY before React mounts to decide
   // whether a bare URL still lands on the Setup front door. The key was read
@@ -458,6 +476,76 @@ export function SetupScreen({
     });
   };
 
+  // ── Adopt by default ───────────────────────────────────────────────────────
+  //
+  // ADOPTING describes the card. MEASURING describes the hardware. They only
+  // differ when the physical wiring has changed — and pressing "Find my strips"
+  // IS the owner saying it changed. Everywhere else, a card that already holds
+  // a working project should simply open it, with no question asked.
+  //
+  // It used to ask, every time, and the question is one the owner cannot answer
+  // better than Studio can. Worse, the wrong answer is expensive: adopting
+  // scaffolding makes 256 placeholder lights into a real design, and clearing a
+  // finished piece throws away its setup.
+  //
+  // So this runs only where nothing can be lost:
+  //   • the exact card is connected and reports a project of its own,
+  //   • that project is NOT the temporary Find-my-strips setup,
+  //   • it is not already the project open here,
+  //   • and the open project has no unsaved changes to overwrite.
+  // Anything else keeps the explicit buttons, unchanged.
+  const autoAdoptedRef = useRef('');
+  useEffect(() => {
+    if (!exactTransport || !cardState.read) return;
+    if (provisionalSetup) return;
+    const cardProjectId = String(cardState.status?.projectId || cardLink?.readiness?.projectId || '').trim();
+    if (!cardProjectId) return;
+    // Not "is the id the same" — pairing already copies the id across, so that
+    // test skipped every card whose CONTENT Studio was out of step with, which
+    // is the whole case adoption exists for. The question is whether Studio
+    // holds the card's exact project: same id, same fingerprint, same revision.
+    if (cardLifecycle?.exactProject === true) return;
+    if (projectLifecycle?.dirty === true) return;
+    // And never over work the owner already has open. "Adopt by default" means
+    // "do not make me choose when there is nothing to lose" — not "throw away
+    // the piece I am in the middle of". Two cases are safe:
+    //   • the open project IS this card's project, just out of step — the
+    //     common one, and refreshing it from the card is the whole point; or
+    //   • the open project is an untouched starter with no design in it.
+    const openIsSameProject = cardProjectId === String(currentProject?.id || '').trim();
+    const openIsUntouched = currentProject?.layout?.starterPending !== false
+      && !(currentProject?.layout?.strips || []).length;
+    if (!openIsSameProject && !openIsUntouched) return;
+    // Keyed on the CARD and the project it holds — never on the Studio project
+    // generation, which adoption itself bumps. Including it made every adoption
+    // mint a new key, so the effect adopted again, forever, and hung the page.
+    const attempt = `${cardLink?.card?.id || ''}:${cardProjectId}`;
+    if (autoAdoptedRef.current === attempt) return;
+    autoAdoptedRef.current = attempt;
+    // A DIFFERENT saved project that matches the card: load it.
+    if (resolution.kind === 'saved-match' && resolution?.resolved && cardActions?.adoptCardProject) {
+      void loadResolvedProject();
+      return;
+    }
+    // Otherwise Studio already has this project by id but not at the card's
+    // revision — 'matches-current' with exactProject false — so loading the
+    // saved copy would load what is already open and change nothing. Rebuild
+    // from the card's own read-back instead. That IS "Use the card's copy".
+    void startFromCard();
+  }, [
+    cardLink?.card?.id,
+    cardLink?.readiness?.projectId,
+    cardState.read,
+    cardState.status,
+    cardLifecycle?.exactProject,
+    currentProject?.id,
+    exactTransport,
+    projectLifecycle?.dirty,
+    provisionalSetup,
+    resolution.kind,
+    resolution?.resolved,
+  ]);
+
   // A real "try again" for a blocked or uncertain card operation: re-read the
   // card's evidence and re-resolve it. Reopening the connection center only
   // sent the owner back to this screen.
@@ -530,9 +618,9 @@ export function SetupScreen({
           <div className="lw-setup-task" data-testid="setup-active-task">
             <p role="status" data-testid="setup-card-project-note">
               {installedId && installedId === String(currentProject?.id || '').trim()
-                ? `This exact card holds “${installedId}” — the same project open in Studio — but its wiring has changed here since it was installed. Adopt the card’s copy, or save this project to the card.`
+                ? 'This card holds the same project that is open here, but the wiring has changed in Studio since it was installed. Use the card’s copy, or save this one to the card.'
                 : installedId
-                  ? `This exact card is connected and holds “${installedId}”, which is not the project open in Studio.`
+                  ? 'This card is connected and holds a different project from the one open in Studio.'
                   : 'This exact card is connected, but Studio has not matched the project it holds to the project open here.'}
             </p>
             <div className="lw-setup-banner-actions">
@@ -540,7 +628,12 @@ export function SetupScreen({
                   the provider fall back to the self-contained adoption. */}
               {resolution.resolved && cardActions?.adoptCardProject ? (
                 <button type="button" className="btn primary" data-testid="setup-load-matched" onClick={() => void loadResolvedProject()}>
-                  {`Load ${describeResolvedCardProject(resolution.resolved)}`}
+                  {/* Card Home's "Matching card project" panel offers the same
+                      adoption, worded "Load <project> — current Studio project".
+                      Identical words on two buttons in one view read as two
+                      offers and are ambiguous to anyone driving by name. This
+                      one says what the sentence above it says. */}
+                  Use the card&rsquo;s copy
                 </button>
               ) : (
                 <button type="button" className="btn primary" data-testid="setup-start-from-card" onClick={startFromCard}>
@@ -654,7 +747,12 @@ export function SetupScreen({
           <div><dt>Color</dt><dd>{evidence.colorOrder || 'Not confirmed'}</dd></div>
           <div><dt>Power</dt><dd>{currentProject?.devices?.standaloneController?.power?.maxMilliamps ? `${currentProject.devices.standaloneController.power.maxMilliamps} mA limit` : 'Review in Hardware settings'}</dd></div>
         </dl>
-        <p>The existing Test &amp; Install surface sends the candidate, verifies exact readback, and waits for your explicit visible confirmation.</p>
+        {/* The last step, in the owner's words. It used to read "The existing
+            Test & Install surface sends the candidate, verifies exact readback,
+            and waits for your explicit visible confirmation" — four pieces of
+            developer vocabulary on the one screen where a visual artist most
+            needs to know what is about to happen to their piece. */}
+        <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
         <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=layout&mode=wire')}>Test and save to card</button>
       </div>
     );
@@ -670,7 +768,7 @@ export function SetupScreen({
         <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
         <div><span>Connection</span><strong>{identityStatus}</strong></div>
         <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
-        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup)}</strong></div>
+        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
       </section>
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
@@ -688,7 +786,11 @@ export function SetupScreen({
             light-finding setup. It used to print directly above the
             "discovery evidence, not a finished installation" banner and an
             unfinished phase ladder — three verdicts, one screen. */}
-        {matchesOpenProject && !provisionalSetup && (
+        {/* And not before the card is actually paired. This banner offers
+            "Open Patterns" — a live card action — while phase 1 was still
+            asking the owner to pair, so the screen carried two headline
+            buttons and two different accounts of where the owner was. */}
+        {matchesOpenProject && !provisionalSetup && exactTransport && (
           <section className="card-support-panel lw-setup-banner">
             <h2>This exact card is already set up</h2>
             <p>Its installed project matches the project open in Studio. The card&rsquo;s own page stays connected for controls.</p>

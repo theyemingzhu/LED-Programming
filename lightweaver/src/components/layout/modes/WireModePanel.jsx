@@ -53,6 +53,12 @@ export function WireModePanel({ state, connected, cardHost }) {
   // True while the guided LED check owns the primary flow area — the bench
   // wizard runs first, then the color quiz presents itself as the next question.
   const [checkFlowOpen, setCheckFlowOpen] = useState(false);
+  // The wiring check asks the owner to judge by COLOUR ("first blue, last red,
+  // green in between") but the colour order is only verified afterwards. When
+  // the order is wrong that step is unanswerable — the strip shows the wrong
+  // colours and the only trouble option offered was the LED count, which is not
+  // the fault. This lets the colour check jump the queue and hand back.
+  const [colorCheckFirst, setColorCheckFirst] = useState(false);
   const stripsById = useMemo(() => new Map(strips.map(strip => [strip.id, strip])), [strips]);
   const runsById = useMemo(() => new Map(wiring.runs.map(run => [run.id, run])), [wiring.runs]);
   // Strips the guided setup learned about from the real card: one entry per
@@ -500,8 +506,35 @@ export function WireModePanel({ state, connected, cardHost }) {
           </>
         ) : !commissioningVerified ? (
           wiring.locked ? (
-            // Loaded state only — auto-lock never fires before full verification.
-            <p className="lww-flow-message">The wiring is locked but not fully checked — use “Unlock to edit” under Advanced, then run the check.</p>
+            // REACHABLE, despite the note that used to sit here saying it was a
+            // loaded state only: a light test the owner declines to confirm
+            // restores the card and clears the verification, leaving the wiring
+            // locked and unchecked. This is the LAST step of the whole setup,
+            // and it used to hand back a sentence pointing at a control inside a
+            // collapsed "Advanced installation tools" section — the owner is
+            // told where to go hunting instead of being given the thing to press.
+            <>
+              <p className="lww-flow-message">This wiring has not been checked on the real lights yet.</p>
+              <button
+                type="button"
+                className="btn primary lww-cta"
+                data-testid="unlock-and-check"
+                title="Reopen the wiring and start the check that lights the real LEDs."
+                data-tooltip="Reopen the wiring and start the check that lights the real LEDs."
+                onClick={() => { unlockWiring(); setCheckFlowOpen(true); }}
+              >Start LED check</button>
+            </>
+          ) : checkFlowOpen && colorCheckFirst ? (
+            <>
+              <p className="lww-flow-message">The wiring check is judged by colour, so the colour order has to be right first.</p>
+              <StripColorOrderCheck
+                autoStart
+                cardHost={cardHost}
+                controller={standaloneController}
+                setController={setStandaloneController}
+              />
+              <button type="button" className="btn primary lww-cta" data-testid="color-check-done" title="Return to the wiring check with the corrected colour order." data-tooltip="Return to the wiring check with the corrected colour order." onClick={() => setColorCheckFirst(false)}>Back to the light check</button>
+            </>
           ) : checkFlowOpen && !physicallyVerified ? (
             <WiringBenchTest
               wiring={wiring}
@@ -515,6 +548,7 @@ export function WireModePanel({ state, connected, cardHost }) {
               adjustableOutputIds={adjustableOutputIds}
               onAdjustOutput={adjustOutputCount}
               onDefer={() => setCheckFlowOpen(false)}
+              onColorProblem={() => setColorCheckFirst(true)}
             />
           ) : checkFlowOpen ? (
             <>

@@ -157,6 +157,23 @@ function classifiedResult(state, normalized, reason, additions = {}) {
   });
 }
 
+// `identity-mismatch` covers three different findings, and only ONE of them
+// means what callers were saying about it. `unexpected-card` is a genuinely
+// different card id — the thing worth stopping for, because writing to it
+// would be writing to someone else's piece. `unexpected-firmware-version` and
+// `unexpected-firmware-build` are the SAME card id reporting firmware that
+// differs from the note Studio wrote down, which happens every time a card is
+// updated. Callers that treated all three the same told owners "A different
+// Lightweaver card answered at this address" about the card in front of them.
+export function isDifferentCardMismatch(readiness) {
+  return readiness?.state === 'identity-mismatch' && readiness.reason === 'unexpected-card';
+}
+
+export function isStaleFirmwareMismatch(readiness) {
+  return readiness?.state === 'identity-mismatch'
+    && (readiness.reason === 'unexpected-firmware-version' || readiness.reason === 'unexpected-firmware-build');
+}
+
 export function classifyCardReadiness(raw = {}, {
   expectedCardId = '',
   expectedCard = null,

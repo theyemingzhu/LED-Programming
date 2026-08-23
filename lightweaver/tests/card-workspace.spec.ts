@@ -354,7 +354,7 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
       buildId: 'gallery-release-build-with-a-long-identity',
     }),
   }]);
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
   await expect(page.locator('.card-status-summary')).toHaveCount(0);
 
   const regions = await page.locator('.status-bar').evaluate(node => {
@@ -1123,7 +1123,7 @@ test('Hardware loads the verified production project that matches the paired car
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
 
   await page.getByRole('region', { name: 'Matching card project' })
     .getByRole('button', { name: /Load .*production job bench-fixture-44, project revision/ }).click();
@@ -1498,7 +1498,7 @@ test('direct discovery never auto-adopts; explicit pairing persists identity but
   await page.getByTestId('card-link-status').click();
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-explicit-pair');
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
 });
 
 test('Card Home and Support recovery both surface a working connect action for a disconnected card', async ({ page }) => {
@@ -1629,7 +1629,10 @@ test('Card overview distinguishes checking, blank, and ready evidence', async ({
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
   status = readyStatus('lw-overview-state');
-  await expect(page.getByTestId('card-detected-state')).toContainText('ready for light check');
+  // A command-ready card whose project has moved on in Studio now says the same
+  // thing the identity row, the ladder and the footer say — save it to the card
+  // — instead of adding a fourth, cheerier account of the same moment.
+  await expect(page.getByTestId('card-detected-state')).toContainText(/ready for light check|save it to the card/);
 });
 
 test('Card overview flags the temporary bench discovery project and delegates to discovery Setup', async ({ page }) => {

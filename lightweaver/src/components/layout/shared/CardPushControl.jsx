@@ -320,8 +320,15 @@ export function CardPushControl({
       )}
       {wiringCandidate && (
         <section className="lw-wiring-candidate" aria-label="Wiring safety check">
-          <strong>{wiringTestState === 'testing' ? 'Do you see the expected lights?' : 'Test the new wiring'}</strong>
-          <p>{wiringTestState === 'testing' ? 'Check every connected output. Confirm only when the real LEDs match the blue first pixel and red final pixel test.' : 'The current working wiring remains stored until this test succeeds.'}</p>
+          {/* This is the SECOND time the owner is asked to look at the lights,
+              and it is not Studio repeating itself: the card is holding its
+              previous working wiring and will put it back on its own unless a
+              human confirms. Saying which ask this is stops it reading as the
+              same question twice. */}
+          <strong>{wiringTestState === 'testing' ? 'Last look — do the lights still look right?' : 'One last check on the card itself'}</strong>
+          <p>{wiringTestState === 'testing'
+            ? 'The card is running your new wiring now. Confirming makes it permanent; if you say nothing, the card puts its old setup back by itself.'
+            : 'The card keeps its last working setup until you confirm this one on the real lights. Nothing is permanent yet.'}</p>
           {wiringTestState === 'staged' || wiringTestState === 'failed' ? (
             <div><button className="btn primary" title="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-tooltip="Restart the card using the staged wiring so you can check the real LEDs before committing it." onClick={startWiringTest}>Start light test</button><button className="btn" title="Discard the staged wiring change and keep the card's last working setup." data-tooltip="Discard the staged wiring change and keep the card's last working setup." onClick={() => finishWiringTest(false)}>Cancel change</button></div>
           ) : wiringTestState === 'testing' ? (
