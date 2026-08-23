@@ -452,3 +452,28 @@ test('[T6] a card holding exactly this project finishes Setup', async ({ page })
     'finishing Setup must offer the way on to Patterns',
   ).toBeVisible();
 });
+
+test('[T5] a tap that lands while the card is still starting resolves itself', async ({ page }) => {
+  const card = await boot(page, cardState('blackout'), '/#screen=pattern', remembers);
+  await expectConnects(page, 'booting card @ patterns');
+
+  // Exactly what a real card does for a second or two after a boot or a config
+  // write: it answers the reads, and refuses the write. Readiness is polled far
+  // less often than an owner taps, so the tap goes out and gets 423.
+  card.refuse('/api/control', { status: 423, times: 2 });
+
+  const tile = page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]');
+  await expect(tile).toHaveCount(1, { timeout: 15000 });
+  await tile.click();
+
+  // No message, no button, no second tap: the moment passes and the pattern
+  // plays. This is the whole point — an error about a moment must not become
+  // a message to somebody who will still be reading it afterwards.
+  await card.waitForPlaying('aurora', 8000);
+
+  const alerts: string[] = [];
+  for (const alert of await page.getByRole('alert').all()) {
+    if (await alert.isVisible()) alerts.push(((await alert.textContent()) || '').trim().slice(0, 100));
+  }
+  expect(alerts, 'a transient refusal that resolved itself must not leave a message behind').toEqual([]);
+});

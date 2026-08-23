@@ -76,6 +76,7 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
 import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard } from '../lib/cardLiveControl.js';
+import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
 import {
   cardActionReducer,
@@ -1003,7 +1004,16 @@ import { PatternPreview } from './PatternPreview.jsx';
           // wearing a preview's name; ask the card to fall back to the whole
           // strip instead, which `pushLivePreviewToCard` reports back through
           // `previewZoneFallback` rather than doing silently.
-          const response = await pushLivePreviewToCard(
+          // A tap that lands while the card is still starting used to become a
+          // failure message. The card answers 423 for a second or two after a
+          // boot or a config write, and readiness is polled far less often than
+          // an owner taps, so the request goes out and is refused — about a
+          // moment that has passed by the time anyone reads the message.
+          //
+          // Safe to repeat: setting THIS pattern means the same thing twice,
+          // and a newer tap makes the intent check throw a non-transient error,
+          // which stops the retry immediately rather than fighting it.
+          const response = await retryWhileTransient(() => pushLivePreviewToCard(
             { ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true },
             {
               host: cardHost,
@@ -1013,7 +1023,7 @@ import { PatternPreview } from './PatternPreview.jsx';
               revision: sequence,
               ...(expectedControlPatch ? { expectedControlPatch } : {}),
             },
-          );
+          ), { attempts: 3, delayMs: 350 });
           if (sequence === livePreviewSeq.current && hasCurrentAuthority()) {
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
             setPreviewFailure(null);
