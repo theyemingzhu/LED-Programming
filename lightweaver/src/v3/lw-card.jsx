@@ -465,7 +465,17 @@ function CardHomePanels({
         getCardEditIntent: cardEditIntent,
       },
       ui: {
-        report: setMatchingProjectState,
+        // A PROBE is Studio looking around by itself. Finding no matching
+        // project is the ordinary condition of a card whose project this
+        // browser has never held — it is not a failure, and reporting it as
+        // one puts a red alert on the first screen the owner sees, before he
+        // has touched anything. This screen already offers the two real
+        // answers ("Import project file", "Start from card wiring"); let them
+        // speak instead. An owner-initiated load still reports its failure in
+        // full, because then he asked and is owed an answer.
+        report: probeOnly
+          ? state => setMatchingProjectState(state.status === 'error' ? { status: 'idle', message: '' } : state)
+          : setMatchingProjectState,
         openPatterns: () => { window.location.hash = '#screen=pattern'; },
       },
       flight: {

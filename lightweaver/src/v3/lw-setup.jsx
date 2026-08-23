@@ -419,8 +419,19 @@ export function SetupScreen({
     invalid: 'The card described a project Studio could not read. Read this card again.',
     'no-geometry': 'This card did not report any light outputs, so there is no wiring to start from. Read this card again.',
   });
+  // Adoption now runs BY ITSELF when nothing can be lost, and an automatic
+  // attempt that fails must not raise an alert: the owner did nothing, so an
+  // alert is Studio talking to itself, and it lands on the first screen he
+  // sees. A silent fall-back to the explicit buttons is the honest outcome —
+  // they say what to do, and pressing one reports its failure in full.
+  const ownerAskedToAdoptRef = useRef(false);
+  const byOwner = run => () => {
+    ownerAskedToAdoptRef.current = true;
+    void run();
+  };
   const reportAdoptionFailure = (reason, error = null) => {
     if (error) console.warn('Lightweaver card project adoption failed', error);
+    if (!ownerAskedToAdoptRef.current) return;
     setAdoptionError(ADOPTION_FAILURES[String(reason || '')]
       || 'Studio could not adopt this card’s project. Read this card again, then try once more.');
   };
@@ -470,7 +481,7 @@ export function SetupScreen({
       selectionKey: resolvedMatchKey(resolution.resolved),
       flight: setupAdoptionFlightRef.current,
       report: state => {
-        if (state.status === 'error') setAdoptionError(state.message);
+        if (state.status === 'error' && ownerAskedToAdoptRef.current) setAdoptionError(state.message);
       },
       openPatterns: () => {},
     });
@@ -627,7 +638,7 @@ export function SetupScreen({
               {/* Load runs the shared adoption machine (cardActions); without
                   the provider fall back to the self-contained adoption. */}
               {resolution.resolved && cardActions?.adoptCardProject ? (
-                <button type="button" className="btn primary" data-testid="setup-load-matched" onClick={() => void loadResolvedProject()}>
+                <button type="button" className="btn primary" data-testid="setup-load-matched" onClick={byOwner(loadResolvedProject)}>
                   {/* Card Home's "Matching card project" panel offers the same
                       adoption, worded "Load <project> — current Studio project".
                       Identical words on two buttons in one view read as two
@@ -636,7 +647,7 @@ export function SetupScreen({
                   Use the card&rsquo;s copy
                 </button>
               ) : (
-                <button type="button" className="btn primary" data-testid="setup-start-from-card" onClick={startFromCard}>
+                <button type="button" className="btn primary" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>
                   Use this card&rsquo;s project
                 </button>
               )}
@@ -801,7 +812,7 @@ export function SetupScreen({
           <section className="card-support-panel lw-setup-banner">
             <h2>A saved project matches this exact card</h2>
             <p>Load the matching project instead of replaying blank-card setup.</p>
-            <button type="button" className="btn primary" data-testid="setup-load-matched" onClick={() => void loadResolvedProject()}>
+            <button type="button" className="btn primary" data-testid="setup-load-matched" onClick={byOwner(loadResolvedProject)}>
               {resolution.resolved ? `Load ${describeResolvedCardProject(resolution.resolved)}` : 'Load matching project'}
             </button>
           </section>
@@ -814,7 +825,7 @@ export function SetupScreen({
             <h2>Resolve this card&rsquo;s project</h2>
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
-              <button type="button" className="btn" data-testid="setup-start-from-card" onClick={startFromCard}>Start from card wiring</button>
+              <button type="button" className="btn" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>Start from card wiring</button>
             </div>
           </section>
         )}

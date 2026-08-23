@@ -21,10 +21,13 @@ export const MATRIX_FIRMWARE_VERSION = '1.1.29';
 
 export type PatternEntry = { id: string; label: string };
 
+// Real ids from src/lib/cardPatternBank.js. Invented ids look fine in a
+// fixture and then have no tile on the Patterns screen, which reads as a
+// Studio failure when it is a fixture failure.
 export const MATRIX_PATTERNS: PatternEntry[] = [
   { id: 'aurora', label: 'Aurora' },
-  { id: 'drift', label: 'Drift' },
-  { id: 'ember', label: 'Ember' },
+  { id: 'plasma', label: 'Plasma' },
+  { id: 'fire', label: 'Fire' },
 ];
 
 export type CardStateSpec = {

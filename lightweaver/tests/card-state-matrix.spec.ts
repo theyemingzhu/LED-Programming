@@ -87,10 +87,59 @@ async function linkState(page: Page): Promise<string> {
   });
 }
 
-async function expectConnects(page: Page) {
-  // 15s is not arbitrary: CARD_LINK_CONNECT_TIMEOUT_MS in src/lib/cardLink.js.
-  await expect.poll(() => linkState(page), { timeout: 15000, intervals: [250] })
-    .toMatch(/^connected-(direct|bridge)$/);
+const CONNECTED = /^connected-(direct|bridge)$/;
+/** CARD_LINK_CONNECT_TIMEOUT_MS in src/lib/cardLink.js. */
+const CONNECT_BUDGET_MS = 15000;
+
+async function settlesConnected(page: Page, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (CONNECTED.test(await linkState(page))) return true;
+    await page.waitForTimeout(250);
+  }
+  return false;
+}
+
+async function connectionPanelOpen(page: Page): Promise<boolean> {
+  const panel = page.locator('#card-connection-center');
+  return (await panel.count()) > 0 && panel.first().isVisible();
+}
+
+/**
+ * A — "click connect and the card connects".
+ *
+ * ONE click is the whole budget, and it is spent on the connect affordance.
+ * A browser that already knows the card should need none; a browser meeting it
+ * for the first time gets exactly one. Anything beyond that is the chunky
+ * workaround this suite exists to stop, so the click count is returned and the
+ * caller asserts on it.
+ *
+ * Two affordances count, because the owner does not care which screen he is
+ * on: Setup's own connect button, and the footer status chip that every screen
+ * carries. A screen offering neither is a dead end, and says so.
+ */
+async function expectConnects(page: Page, note: string): Promise<{ clicks: number; panelOpenedItself: boolean }> {
+  // The whole 15s, not a tighter "it should feel instant" window. The claim
+  // being made is "no click was needed", not "it was quick" — and on a loaded
+  // host a tighter budget turns that claim into a coin flip, which is how a
+  // suite starts inventing failures and stops being believed.
+  if (await settlesConnected(page, CONNECT_BUDGET_MS)) {
+    return { clicks: 0, panelOpenedItself: await connectionPanelOpen(page) };
+  }
+
+  // Read the panel BEFORE clicking: a panel this test opened is not a panel
+  // that opened itself, and only the second one is a defect.
+  const panelOpenedItself = await connectionPanelOpen(page);
+
+  const setupConnect = page.getByTestId('setup-connect-card');
+  const footerChip = page.getByTestId('card-link-status');
+  const target = (await setupConnect.count()) ? setupConnect : footerChip;
+  if (!(await target.count())) {
+    throw new Error(`${note}: not connected, and this screen offers nothing to click to connect`);
+  }
+  await target.first().click();
+  await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
+  return { clicks: 1, panelOpenedItself };
 }
 
 /**
@@ -98,16 +147,14 @@ async function expectConnects(page: Page) {
  * a raised alert, and a modal that opened itself. Both are "chunky workaround"
  * in his words, and both have shipped before.
  */
-async function expectUnaided(page: Page, note: string) {
+async function expectUnaided(page: Page, note: string, panelOpenedItself = false) {
   const alerts = await page.getByRole('alert').all();
   const raised: string[] = [];
   for (const alert of alerts) {
     if (await alert.isVisible()) raised.push(((await alert.textContent()) || '').trim().slice(0, 120));
   }
-  expect(raised, `${note}: Studio raised an alert before the owner did anything`).toEqual([]);
-  const panel = page.locator('#card-connection-center');
-  const panelOpen = (await panel.count()) > 0 && await panel.first().isVisible();
-  expect(panelOpen, `${note}: the connection panel opened itself`).toBe(false);
+  expect(raised, `${note}: Studio raised an alert before the owner did anything — ${JSON.stringify(raised)}`).toEqual([]);
+  expect(panelOpenedItself, `${note}: the connection panel opened itself`).toBe(false);
 }
 
 /** C — the CARD is playing what was tapped. */
@@ -131,8 +178,10 @@ for (const spec of CARD_STATES) {
       page.on('pageerror', error => crashes.push(String(error.message)));
 
       const card = await boot(page, spec, entry.hash, remembers);
-      await expectConnects(page);
-      await expectUnaided(page, `${spec.id} @ ${entry.id}`);
+      // A browser that already knows this card must need no click at all.
+      const { clicks, panelOpenedItself } = await expectConnects(page, `${spec.id} @ ${entry.id}`);
+      expect(clicks, 'a remembered card should reconnect on its own').toBe(0);
+      await expectUnaided(page, `${spec.id} @ ${entry.id}`, panelOpenedItself);
 
       expect(crashes, 'the screen crashed').toEqual([]);
       expect(card.unhandled, 'Studio called a card endpoint the simulator does not model').toEqual([]);
@@ -148,7 +197,7 @@ for (const spec of CARD_STATES) {
   if (!spec.patterns.length || !spec.projectId || spec.provisionalSetup) continue;
   test(`[T1C] ${spec.id} — tapping a pattern plays it on the card`, async ({ page }) => {
     const card = await boot(page, spec, '/#screen=pattern', remembers);
-    await expectConnects(page);
+    await expectConnects(page, `${spec.id} @ patterns`);
     // Tap something the card is definitely NOT already playing, so a pass
     // cannot be an accident of the starting state.
     const target = MATRIX_PATTERNS.find(pattern => pattern.id !== spec.currentId) || MATRIX_PATTERNS[0];
@@ -168,8 +217,10 @@ for (const browser of BROWSER_STATES) {
     const spec = cardState(stateId);
     test(`[T3] ${stateId} + ${browser.id} — connects with ${browser.describe}`, async ({ page }) => {
       const card = await boot(page, spec, '/', browser);
-      await expectConnects(page);
-      await expectUnaided(page, `${stateId} + ${browser.id}`);
+      const { clicks, panelOpenedItself } = await expectConnects(page, `${stateId} + ${browser.id}`);
+      // Meeting the card for the first time costs one click. Knowing it costs none.
+      expect(clicks).toBeLessThanOrEqual(browser.id === 'fresh' ? 1 : 0);
+      await expectUnaided(page, `${stateId} + ${browser.id}`, panelOpenedItself);
 
       if (browser.id === 'other-project-open') {
         const open = await page.evaluate(() => {
@@ -206,9 +257,8 @@ for (const spec of CARD_STATES) {
     await remembers.seed(page);
     await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
 
-    await expect.poll(() => linkState(page), { timeout: 20000, intervals: [250] })
-      .toMatch(/^connected-(direct|bridge)$/);
-    await expectUnaided(page, `${spec.id} over the bridge`);
+    const { panelOpenedItself } = await expectConnects(page, `${spec.id} over the bridge`);
+    await expectUnaided(page, `${spec.id} over the bridge`, panelOpenedItself);
     expect(crashes, 'the screen crashed').toEqual([]);
   });
 }

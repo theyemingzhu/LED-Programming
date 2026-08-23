@@ -15,6 +15,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Finish the card state matrix and act on what it found _(band: agent-runnable)_ _(effort: deep)_ → Design: [docs/card-state-matrix.md](docs/card-state-matrix.md)
+  Branch `claude/card-panel-blackout` ([PR #185](https://github.com/technicianofthesacred/LED-Programming/pull/185)). Done: the stateful card simulator, the https/bridge lane, the spec, the real-card tier, and `npm run test:matrix`. Remaining: a card whose firmware build differs from the one Studio remembers never connects at all (the "a different Lightweaver card answered" family) — decide whether that is correct and fix if not; and entering at `#screen=pattern` never adopts the card's project, because adoption lives on the Setup screen, so Patterns opens with nothing to play. Resume by running `npm run test:matrix` and reading the JSON `unexpected` count.
 - [ ] Say what to do when an abandoned card update blocks the next one _(band: agent-runnable)_ _(effort: quick)_
   A card update that is started and then abandoned leaves its branch on the shared copy of the project, and every later attempt at that same version number is refused with a raw git message about fast-forwards. It happened on 21 August 2026: a closed, unmerged attempt at 1.1.29 blocked the next one, and the only clue was the git error. The waiting list was untouched and nothing was lost, but there is no way to tell that from what it printed. It should name the abandoned attempt, say the work is safe, and give the one command that clears it.
 - [ ] Give the card a version stamp Studio can find in one read _(band: agent-runnable)_ _(effort: deep)_ → Plan: [card-version-stamp.md](todo/plans/card-version-stamp.md)
