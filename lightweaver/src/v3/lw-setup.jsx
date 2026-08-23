@@ -476,6 +476,76 @@ export function SetupScreen({
     });
   };
 
+  // ── Adopt by default ───────────────────────────────────────────────────────
+  //
+  // ADOPTING describes the card. MEASURING describes the hardware. They only
+  // differ when the physical wiring has changed — and pressing "Find my strips"
+  // IS the owner saying it changed. Everywhere else, a card that already holds
+  // a working project should simply open it, with no question asked.
+  //
+  // It used to ask, every time, and the question is one the owner cannot answer
+  // better than Studio can. Worse, the wrong answer is expensive: adopting
+  // scaffolding makes 256 placeholder lights into a real design, and clearing a
+  // finished piece throws away its setup.
+  //
+  // So this runs only where nothing can be lost:
+  //   • the exact card is connected and reports a project of its own,
+  //   • that project is NOT the temporary Find-my-strips setup,
+  //   • it is not already the project open here,
+  //   • and the open project has no unsaved changes to overwrite.
+  // Anything else keeps the explicit buttons, unchanged.
+  const autoAdoptedRef = useRef('');
+  useEffect(() => {
+    if (!exactTransport || !cardState.read) return;
+    if (provisionalSetup) return;
+    const cardProjectId = String(cardState.status?.projectId || cardLink?.readiness?.projectId || '').trim();
+    if (!cardProjectId) return;
+    // Not "is the id the same" — pairing already copies the id across, so that
+    // test skipped every card whose CONTENT Studio was out of step with, which
+    // is the whole case adoption exists for. The question is whether Studio
+    // holds the card's exact project: same id, same fingerprint, same revision.
+    if (cardLifecycle?.exactProject === true) return;
+    if (projectLifecycle?.dirty === true) return;
+    // And never over work the owner already has open. "Adopt by default" means
+    // "do not make me choose when there is nothing to lose" — not "throw away
+    // the piece I am in the middle of". Two cases are safe:
+    //   • the open project IS this card's project, just out of step — the
+    //     common one, and refreshing it from the card is the whole point; or
+    //   • the open project is an untouched starter with no design in it.
+    const openIsSameProject = cardProjectId === String(currentProject?.id || '').trim();
+    const openIsUntouched = currentProject?.layout?.starterPending !== false
+      && !(currentProject?.layout?.strips || []).length;
+    if (!openIsSameProject && !openIsUntouched) return;
+    // Keyed on the CARD and the project it holds — never on the Studio project
+    // generation, which adoption itself bumps. Including it made every adoption
+    // mint a new key, so the effect adopted again, forever, and hung the page.
+    const attempt = `${cardLink?.card?.id || ''}:${cardProjectId}`;
+    if (autoAdoptedRef.current === attempt) return;
+    autoAdoptedRef.current = attempt;
+    // A DIFFERENT saved project that matches the card: load it.
+    if (resolution.kind === 'saved-match' && resolution?.resolved && cardActions?.adoptCardProject) {
+      void loadResolvedProject();
+      return;
+    }
+    // Otherwise Studio already has this project by id but not at the card's
+    // revision — 'matches-current' with exactProject false — so loading the
+    // saved copy would load what is already open and change nothing. Rebuild
+    // from the card's own read-back instead. That IS "Use the card's copy".
+    void startFromCard();
+  }, [
+    cardLink?.card?.id,
+    cardLink?.readiness?.projectId,
+    cardState.read,
+    cardState.status,
+    cardLifecycle?.exactProject,
+    currentProject?.id,
+    exactTransport,
+    projectLifecycle?.dirty,
+    provisionalSetup,
+    resolution.kind,
+    resolution?.resolved,
+  ]);
+
   // A real "try again" for a blocked or uncertain card operation: re-read the
   // card's evidence and re-resolve it. Reopening the connection center only
   // sent the owner back to this screen.

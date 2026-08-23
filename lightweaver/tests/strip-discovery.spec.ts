@@ -543,9 +543,13 @@ test.describe('a blank card on firmware that still stages the first config', () 
     // `ok: true` on the staged envelope is the trap. Nothing was applied, so
     // there is no honest way to continue — and the owner is told what to do
     // rather than left watching an unlit strip.
-    const failure = page.getByTestId('discovery-failure');
+    // The reason is now stated once, where the action would be, instead of
+    // twice — the same sentence used to appear as the explanation AND again as
+    // a red alert underneath, which reads as two separate problems.
+    const failure = page.getByTestId('discovery-install-error');
     await expect(failure).toBeVisible({ timeout: 15000 });
     await expect(failure).toContainText(/update the card firmware/i);
+    await expect(page.getByTestId('discovery-failure')).toHaveCount(0);
     await expect(page.getByTestId('discovery-failure-size')).toHaveCount(0);
 
     // Never silently treated as success: the probe phase is refused outright,
@@ -566,7 +570,7 @@ test.describe('discovery on a card that already holds a project (ui-repair B0)',
   // bench project from an earlier abandoned run, so its wiring protection
   // staged the new bench config. Studio blamed the firmware and prescribed a
   // reflash, which cannot help. The right diagnosis is "clear the card".
-  test('a staged answer on a project-holding card offers the one-tap clear, then completes', async ({ page }) => {
+  test('a card already holding a setup is cleared automatically and discovery carries on', async ({ page }) => {
     const clears: string[] = [];
     const card: { cleared: boolean; applied: any; booted: boolean; reboots: number; configs: any[] } = {
       cleared: false, applied: null, booted: false, reboots: 0, configs: [],
@@ -635,15 +639,16 @@ test.describe('discovery on a card that already holds a project (ui-repair B0)',
     }, benchStatus());
     await startDiscoveryOnGpio16(page);
 
-    // The failure names the real cause and never blames the firmware.
-    const failure = page.getByTestId('discovery-install-error');
-    await expect(failure).toBeVisible({ timeout: 15000 });
-    await expect(failure).toContainText(/already holding a saved setup/i);
-    await expect(failure).not.toContainText(/firmware/i);
-
-    // One tap: clear (WiFi kept), wait for the blank card, rerun the install.
-    await page.getByTestId('discovery-clear-and-retry').click();
+    // NO tap. A card already holding a saved setup is the ordinary state of
+    // every card that has been used once, clearing it is the only thing the
+    // owner could have done anyway, and the run replaces that project
+    // regardless. Stopping to explain it made the FIRST step of setup a dead
+    // end on any card that was not factory-fresh. Studio clears it (Wi-Fi
+    // kept), says so, and carries straight on to the probe.
     await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('discovery-install-error')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-bench-maxed'))
+      .toContainText(/cleared it/i);
     expect(clears).toHaveLength(1);
     expect(JSON.parse(clears[0])).toEqual({ confirm: 'CLEAR' });
     expect(card.configs.length).toBe(2);
