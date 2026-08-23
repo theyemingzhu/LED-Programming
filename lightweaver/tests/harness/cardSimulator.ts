@@ -40,6 +40,20 @@ export type CardSimulator = {
   waitForPlaying(id: string, timeoutMs?: number): Promise<void>;
   /** Answer one bridge-relayed request from the same state. */
   handleBridge(type: string, payload: unknown): Record<string, unknown>;
+
+  // ── Things real cards do and a happy-path stub never will ────────────────
+  /**
+   * Refuse the next `times` requests to `path` with a real firmware refusal.
+   * A card that only ever says yes cannot tell you what the owner sees when it
+   * says no, which is most of what goes wrong in a room.
+   */
+  refuse(path: string, refusal: { status: number; body?: unknown; times?: number }): void;
+  /** Power-cycle: a new bootId, and whatever was playing stops. */
+  reboot(): void;
+  /** Stop answering entirely — a Wi-Fi drop, a pulled plug, a sleeping router. */
+  goOffline(): void;
+  /** Answer again. Pass a new host to model the card returning on a new address. */
+  goOnline(): void;
 };
 
 const ZONE_ID = 'zone-all';
@@ -54,16 +68,24 @@ function hasProject(state: CardStateSpec) {
  * is 'ready'; a fixture that sets them by hand can describe a card that cannot
  * exist, which is how "ready card with no project" got into this suite.
  */
+function outputReadyOf(state: CardStateSpec) {
+  return state.pixels > 0;
+}
+
 function derivedReadiness(state: CardStateSpec) {
-  const outputReady = state.pixels > 0;
+  const outputReady = outputReadyOf(state);
+  // Explicit only where a real card genuinely varies independently of its
+  // configuration; everything else stays derived so an impossible card cannot
+  // be described.
+  const commandReady = state.commandReady ?? true;
   return {
-    runtimePhase: 'ready',
+    runtimePhase: state.runtimePhase || 'ready',
     knownGoodProject: hasProject(state) && !state.provisionalSetup,
-    commandReady: true,
+    commandReady,
     outputReady,
     projectOutputReady: outputReady,
     outputDriverReady: outputReady,
-    playbackReady: outputReady && state.patterns.length > 0,
+    playbackReady: commandReady && outputReady && state.patterns.length > 0,
     configValid: hasProject(state) ? outputReady : true,
     safeMode: false,
   };
@@ -110,12 +132,12 @@ function statusBody(state: CardSimulator['state']) {
     provisionalSetup: state.provisionalSetup,
     // A card holding nothing reports how it got there — cardReadiness.js only
     // classifies 'blank' when one of these says so.
-    mode: blank ? 'factory-flash' : 'project',
-    source: blank ? 'defaults' : 'nvs',
-    runtimeSource: blank ? 'defaults' : 'nvs',
+    mode: blank ? 'factory-flash' : 'website-flash',
+    source: blank ? 'defaults' : 'internal-flash',
+    runtimeSource: blank ? 'defaults' : 'internal-flash',
     ok: true,
     errorCode: 0,
-    resetReason: 'power-on',
+    resetReason: 3,
     projectId: state.projectId,
     projectRevision: state.projectRevision,
     projectFingerprint: state.projectFingerprint,
@@ -129,23 +151,47 @@ function statusBody(state: CardSimulator['state']) {
     firmwareUpdate: {
       phase: 'idle', receivedBytes: 0, expectedBytes: 0, expectedBuildId: '',
       activeSlot: 'app0', pendingSlot: '', lastError: '', rollbackReason: '',
-      rebootCorrelation: '',
+      rebootCorrelation: '', restoredFirmwareVersion: '', restoredBuildId: '',
+      restoredBuildNumber: 0,
     },
+    pixelCapacity: { schemaLimit: 65535, allocatedBoot: 512 },
+    outputInitialization: outputReadyOf(state)
+      ? { ok: true, code: 'ready', message: 'configured project outputs initialized' }
+      : { ok: false, code: 'no-outputs', message: 'no configured project outputs' },
     wiringProbation: { active: false, remainingMs: 0 },
     limits: { pixels: 65535, outputs: 4, looks: 32, zones: 12, rangesPerZone: 6, configStorageBytes: 3968 },
     kaleidoscopeMappings: [],
-    recipeCapabilities: {},
+    recipeCapabilities: {
+      version: 1,
+      firmwareVersion: state.firmwareVersion,
+      buildId: state.buildId,
+      schemaVersions: [1],
+      supportedNodes: [
+        'solid', 'palette', 'wave', 'fastled-noise', 'hash-sparkle', 'scale',
+        'offset', 'repeat', 'mirror', 'radial-mask', 'linear-mask', 'threshold',
+      ],
+      supportedBlends: ['add', 'max', 'multiply', 'crossfade'],
+      supportedModulators: ['lfo', 'noise-clock'],
+      bakeOnlyNodes: ['particles', 'reaction-diffusion', 'graph', 'shader', 'audio'],
+      maxLayers: 3,
+      maxConfigBytes: 3968,
+      maxOperationsPerFrame: 250000,
+      maxEstimatedStateBytes: 2048,
+      physicalParityVerified: false,
+    },
     ...(project ? { piece: { id: state.projectId, name: state.projectName, hostname: 'lightweaver' } } : {}),
     led: {
       pixels: state.pixels,
-      type: 'ws2812',
+      type: 'WS2812B',
       colorOrder: 'GRB',
       outputGammaEnabled: false,
       outputGammaValue: 2.2,
-      calibration: { red: 255, green: 255, blue: 255 },
-      maxMilliamps: 1500,
+      // A scale factor, not a byte. The real card reports 1, and a simulator
+      // reporting 255 would let a unit-confusion bug pass unseen.
+      calibration: { red: 1, green: 1, blue: 1 },
+      maxMilliamps: 2000,
       estimatedFullWhiteMilliamps: state.pixels * 60,
-      limitedFullWhiteMilliamps: 1500,
+      limitedFullWhiteMilliamps: 2000,
     },
     wiringRevision: state.pixels ? 1 : 0,
     wiringDigest: state.pixels ? 'd'.repeat(64) : '',
@@ -162,7 +208,7 @@ function statusBody(state: CardSimulator['state']) {
       : [],
     lwOutput: {
       contract: 1,
-      sourceClass: 'internal',
+      sourceClass: 'local',
       requestedBrightnessByte: state.currentId === 'blackout' ? 0 : 166,
       brightnessByte: state.currentId === 'blackout' ? 0 : 166,
       brightnessScale: 1,
@@ -183,7 +229,7 @@ function statusBody(state: CardSimulator['state']) {
     },
     streaming: false,
     frameSource: 'internal',
-    maxMilliamps: 1500,
+    maxMilliamps: 2000,
     maxMilliampsSource: 'default',
   };
 }
@@ -216,7 +262,8 @@ function wiringStatusBody(state: CardSimulator['state']) {
     ok: true,
     state: staged ? 'staged' : 'known-good',
     candidateState: staged ? 'staged' : 'none',
-    ...(staged ? { activationId: 'act-matrix-1' } : {}),
+    activationId: staged ? 'act-matrix-1' : '',
+    ledType: 'WS2812B',
     hasKnownGood: state.pixels > 0,
     hasCandidate: staged,
     bootedCandidate: false,
@@ -239,12 +286,21 @@ function wiringStatusBody(state: CardSimulator['state']) {
     currentWiringRevision: state.pixels ? 1 : 0,
     currentWiringDigest: state.pixels ? 'd'.repeat(64) : '',
     colorOrder: 'GRB',
-    maxMilliamps: 1500,
-    currentMaxMilliamps: 1500,
+    maxMilliamps: 2000,
+    currentMaxMilliamps: 2000,
     estimatedFullWhiteMilliamps: state.pixels * 60,
-    limitedFullWhiteMilliamps: 1500,
+    limitedFullWhiteMilliamps: 2000,
     currentOutputs: state.pixels > 0
-      ? [{ id: 'out1', pin: state.pin, pixels: state.pixels, segments: [{ id: 'run-strip-1', count: state.pixels }] }]
+      ? [{
+        id: 'out1', pin: state.pin, pixels: state.pixels,
+        segments: [{ id: 'run-strip-1', count: state.pixels, direction: 'forward' }],
+      }]
+      : [],
+    candidateOutputs: staged
+      ? [{
+        id: 'out1', pin: state.pin, pixels: state.pixels,
+        segments: [{ id: 'run-strip-1', count: state.pixels, direction: 'forward' }],
+      }]
       : [],
   };
 }
@@ -277,7 +333,22 @@ function controlAcknowledgement(state: CardSimulator['state'], body: Record<stri
   return ack;
 }
 
-export function createCardSimulator(spec: CardStateSpec, options: { cardId?: string } = {}): CardSimulator {
+/**
+ * How long the card takes to answer.
+ *
+ * A simulator that replies in zero milliseconds is not a fast card, it is an
+ * impossible one — and it hides every ordering bug that only appears when a
+ * reply lands after the code that expected it. A real ESP32 on a phone's Wi-Fi
+ * answers a status read in tens of milliseconds and a control write in
+ * hundreds; a busy one is slower still.
+ */
+export const CARD_LATENCY_MS = { read: 40, write: 120 };
+
+export function createCardSimulator(
+  spec: CardStateSpec,
+  options: { cardId?: string; latencyMs?: { read: number; write: number } } = {},
+): CardSimulator {
+  const latency = options.latencyMs || CARD_LATENCY_MS;
   const state = {
     ...spec,
     patterns: spec.patterns.map(pattern => ({ ...pattern })),
@@ -288,6 +359,8 @@ export function createCardSimulator(spec: CardStateSpec, options: { cardId?: str
   const requests: CardRequest[] = [];
   const unhandled: string[] = [];
   let dropped = 0;
+  let offline = false;
+  const refusals = new Map<string, { status: number; body: unknown; times: number }>();
 
   function applyControl(body: Record<string, unknown>) {
     state.stateRevision += 1;
@@ -319,6 +392,12 @@ export function createCardSimulator(spec: CardStateSpec, options: { cardId?: str
   function respond(method: string, path: string, body: unknown): { body: unknown; status: number } {
     const ok = (value: unknown) => ({ body: value, status: 200 });
     const payload = (body || {}) as Record<string, unknown>;
+    const refusal = refusals.get(path);
+    if (refusal && refusal.times > 0) {
+      refusal.times -= 1;
+      if (refusal.times === 0) refusals.delete(path);
+      return { body: refusal.body, status: refusal.status };
+    }
     switch (path) {
       case '/api/status':
         return ok(statusBody(state));
@@ -337,6 +416,16 @@ export function createCardSimulator(spec: CardStateSpec, options: { cardId?: str
       case '/api/zones':
         return ok({ syncZones: true, kaleidoscopeMappings: [], zones: zonesFor(state) });
       case '/api/control':
+        if (state.commandReady === false) {
+          return {
+            body: {
+              ok: false, error: 'card is not ready for runtime control',
+              cardId: state.cardId, bootId: state.bootId,
+              runtimePhase: state.runtimePhase || 'starting', commandReady: false,
+            },
+            status: 423,
+          };
+        }
         applyControl(payload);
         return ok(controlAcknowledgement(state, payload));
       case '/api/identify':
@@ -420,6 +509,7 @@ export function createCardSimulator(spec: CardStateSpec, options: { cardId?: str
     const path = new URL(request.url()).pathname;
     const method = request.method();
 
+    if (offline) return route.abort('connectionrefused');
     if (dropped < state.dropFirstRequests) {
       dropped += 1;
       return route.abort('connectionrefused');
@@ -443,6 +533,8 @@ export function createCardSimulator(spec: CardStateSpec, options: { cardId?: str
     }
     requests.push({ method, path, body });
 
+    await new Promise(resolve => setTimeout(resolve, method === 'GET' ? latency.read : latency.write));
+
     const answer = respond(method, path, body);
     return route.fulfill({
       status: answer.status,
@@ -457,12 +549,38 @@ export function createCardSimulator(spec: CardStateSpec, options: { cardId?: str
     requests,
     unhandled,
     playingId: () => state.currentId,
+    refuse(path, refusal) {
+      refusals.set(path, {
+        status: refusal.status,
+        // Default to the firmware's own shape for a not-ready refusal, which is
+        // by far the most common one an owner meets: the card is still booting.
+        body: refusal.body ?? {
+          ok: false,
+          error: 'runtime not ready',
+          cardId: state.cardId,
+          bootId: state.bootId,
+          runtimePhase: 'starting',
+          commandReady: false,
+        },
+        times: refusal.times ?? 1,
+      });
+    },
+    reboot() {
+      state.bootId = `boot-matrix-${Date.now()}`;
+      state.stateRevision = 1;
+      state.currentIndex = -1;
+      state.currentId = 'blackout';
+    },
+    goOffline() { offline = true; },
+    goOnline() { offline = false; },
     async install(page: Page) {
       for (const host of CARD_HOSTS) {
         await page.route(`http://${host}/**`, handle);
         await page.route(`https://${host}/**`, handle);
       }
     },
+    // The bridge relay adds a postMessage hop each way on top of the card's own
+    // reply time. Callers await this, so the delay is honoured there too.
     handleBridge(type: string, payload: unknown) {
       if (type === 'release-bridge') return { ok: true, response: { released: true } };
       if (type === 'frame') return { ok: true, response: { ok: true, relayed: true, wsOpen: true } };

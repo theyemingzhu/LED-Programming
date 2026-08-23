@@ -213,6 +213,18 @@ function applyStatusEnvelope(prev, event, transport, host) {
   const acknowledgedAt = classified.connected || classified.state === 'blank'
     ? (event.acknowledgedAt || new Date().toISOString())
     : '';
+  // A failed operation is a fact about the PAST. Once the card itself reports a
+  // fully healthy runtime, that fact is no longer the current truth — and
+  // leaving it set is a one-way door: `operation-confirmed` is the only event
+  // that clears `activity`, and nothing in the app dispatches it. Setup's very
+  // first blocker is `cardLink.activity === 'failed'`, so an owner whose card
+  // is answering perfectly was held on "recover the last operation" with two
+  // buttons, neither of which could clear it.
+  //
+  // Deliberately narrow: only `failed` is stale-able. `pending` and
+  // `recovering` describe work that may still be in flight, and an incoming
+  // status envelope says nothing about whether it finished.
+  const staleFailure = prev.activity === 'failed' && classified.connected === true;
   const next = {
     ...prev,
     state: nextState,
@@ -223,6 +235,7 @@ function applyStatusEnvelope(prev, event, transport, host) {
     card,
     expectedCard,
     discoveredCard: null,
+    ...(staleFailure ? { activity: 'idle' } : {}),
     readiness,
     cardBlank: blank,
     validatedBootId: completeEnvelope ? incomingBootId : prev.validatedBootId,
@@ -238,6 +251,7 @@ function applyStatusEnvelope(prev, event, transport, host) {
     && prev.card?.id === next.card?.id
     && prev.readiness === next.readiness
     && prev.cardBlank === next.cardBlank
+    && prev.activity === next.activity
     && prev.missedPings === 0
   ) return prev;
   return next;
@@ -590,6 +604,11 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (prev.state === 'disconnected' && prev.reason === reason && prev.host === host) return prev;
       return clearedLiveEvidence(prev, {
         state: 'disconnected', reason, transport: '', host, missedPings: 0, card: null,
+        // 'no-answer' means the CARD went quiet; the page window may well still
+        // be open, so it is worth knocking again. 'card-page-closed' and
+        // 'popup-blocked' mean the window itself is gone, and reopening one
+        // needs a user gesture — nothing to retry.
+        bridgeWindowMayRemain: reason === 'no-answer',
         ...(prev.handoffCorrelation ? {
           handoffCorrelation: prev.handoffCorrelation,
           handoffFlowId: prev.handoffFlowId,
@@ -795,6 +814,12 @@ export function createCardLink({
     connectTimer = null;
   }
 
+  // Revalidation polls faster than the keepalive so its two envelopes both land
+  // inside the deadline that now bounds it. Hardcoding 500 here meant that with
+  // any shorter connect timeout the deadline fired BEFORE the second envelope,
+  // which turned revalidation into an endless disconnect/retry cycle.
+  const revalidatePingMs = Math.min(500, pingIntervalMs);
+
   function schedulePing(delayMs = pingIntervalMs) {
     stopKeepalive();
     if (destroyed) return;
@@ -813,12 +838,17 @@ export function createCardLink({
     }, delayMs);
   }
 
+  // Every state in which knocking on the bridge window is worthwhile —
+  // including the one after we have given up on the card but not on the window.
+  const bridgePingable = (candidate = state) => (
+    candidate.state === 'connected-bridge'
+    || candidate.state === 'reconnecting-bridge'
+    || (candidate.state === 'revalidating' && candidate.transport === 'bridge')
+    || (candidate.state === 'disconnected' && Boolean(candidate.bridgeWindowMayRemain))
+  );
+
   async function runPing() {
-    if (destroyed || pinging || state.handoffCorrelation || (
-      state.state !== 'connected-bridge'
-      && state.state !== 'reconnecting-bridge'
-      && !(state.state === 'revalidating' && state.transport === 'bridge')
-    )) return;
+    if (destroyed || pinging || state.handoffCorrelation || !bridgePingable()) return;
     if (isHidden()) {
       schedulePing();
       return;
@@ -832,13 +862,13 @@ export function createCardLink({
         timeoutMs: pingTimeoutMs,
         retryOnTimeout: false,
       });
-      if (epoch === visibilityEpoch && state.host === pingHost && (
-        state.state === 'connected-bridge'
-        || state.state === 'reconnecting-bridge'
-        || (state.state === 'revalidating' && state.transport === 'bridge')
-      )) {
+      if (epoch === visibilityEpoch && state.host === pingHost && bridgePingable()) {
         dispatch({
-          type: 'bridge-ping-ok', host: pingHost, readiness,
+          // Answering again after we had given up is a fresh verification, not
+          // a keepalive tick — 'bridge-ping-ok' is a no-op from disconnected.
+          type: state.state === 'disconnected' ? 'card-verified' : 'bridge-ping-ok',
+          ...(state.state === 'disconnected' ? { via: 'bridge' } : {}),
+          host: pingHost, readiness,
           card: normalizeCardIdentity(readiness || {}, pingHost),
           expectedCard: state.expectedCard || state.card,
           bridgeLifecycle: state.bridgeLifecycle,
@@ -849,11 +879,7 @@ export function createCardLink({
       // the card — the browser may simply have frozen our timers while the
       // page was hidden. Reschedule instead of demoting the link.
       const spannedVisibilityChange = epoch !== visibilityEpoch;
-      if (!spannedVisibilityChange && state.host === pingHost && (
-        state.state === 'connected-bridge'
-        || state.state === 'reconnecting-bridge'
-        || (state.state === 'revalidating' && state.transport === 'bridge')
-      )) {
+      if (!spannedVisibilityChange && state.host === pingHost && bridgePingable()) {
         if (error?.reason === 'bridge-missing' || error?.reason === 'bridge-post-failed') {
           dispatch({ type: 'bridge-lost', reason: 'card-page-closed', host: pingHost });
         } else {
@@ -863,11 +889,9 @@ export function createCardLink({
     } finally {
       pinging = false;
     }
-    if (!state.handoffCorrelation && (
-      state.state === 'connected-bridge'
-      || state.state === 'reconnecting-bridge'
-      || (state.state === 'revalidating' && state.transport === 'bridge')
-    )) schedulePing(state.state === 'revalidating' ? 500 : pingIntervalMs);
+    if (!state.handoffCorrelation && bridgePingable()) {
+      schedulePing(state.state === 'revalidating' ? revalidatePingMs : pingIntervalMs);
+    }
   }
 
   async function runDirectPing() {
@@ -944,13 +968,37 @@ export function createCardLink({
       stopDirectKeepalive();
     } else if (state.state === 'revalidating') {
       clearConnectTimer();
+      // Revalidation used to be the one state with no way out. A card that
+      // answers /api/status while still booting — no bootId, or commandReady
+      // still null — classifies as 'checking' forever, and this branch cleared
+      // the connect timer without ever re-arming it. The owner sat on
+      // "Checking card" while Studio polled twice a second, with no failure
+      // state and nothing to press.
+      //
+      // A Wi-Fi handoff is the one legitimate long revalidation (the card is
+      // deliberately moving networks and has its own minutes-long deadline),
+      // so it keeps its exemption. Everything else gets the same budget as a
+      // first connection.
+      if (!state.handoffCorrelation && connectTimeoutMs > 0) {
+        connectTimer = setTimeout(() => {
+          connectTimer = null;
+          dispatch(state.transport === 'bridge'
+            ? { type: 'bridge-lost', reason: 'no-answer' }
+            : { type: 'direct-status', connected: false, host: state.host, reason: 'no-answer' });
+        }, connectTimeoutMs);
+      }
       if (state.transport === 'bridge') {
         stopDirectKeepalive();
         if (state.handoffCorrelation) stopKeepalive();
-        else if (!pinging && (prev.state !== 'revalidating' || !pingTimer)) schedulePing(500);
+        else if (!pinging && (prev.state !== 'revalidating' || !pingTimer)) schedulePing(revalidatePingMs);
       } else {
         stopKeepalive();
-        if (!directPinging && (prev.state !== 'revalidating' || !directPingTimer)) scheduleDirectPing(0);
+        // A floor, not zero. scheduleDirectPing(0) is a hot loop bounded only
+        // by network round-trip — on a phone that is a battery drain and a
+        // request storm aimed at an ESP32 that is already struggling.
+        if (!directPinging && (prev.state !== 'revalidating' || !directPingTimer)) {
+          scheduleDirectPing(Math.min(500, directPingIntervalMs));
+        }
       }
     } else if (state.state === 'connected-direct') {
       clearConnectTimer();
@@ -976,6 +1024,25 @@ export function createCardLink({
           dispatch({ type: 'bridge-lost', reason: 'no-answer' });
         }, connectTimeoutMs);
       }
+    } else if (state.state === 'disconnected' && state.bridgeWindowMayRemain) {
+      // NOT terminal any more. The card page window may still be open — the
+      // card simply went quiet (a router hiccup, a reboot, a moment of
+      // congestion). Giving up on an open window meant a 30-second outage
+      // killed Studio until the owner noticed and tapped Connect, which is
+      // exactly what a phone in a room does all evening.
+      //
+      // Reopening a closed window genuinely is impossible without a gesture,
+      // and that case is already reported as 'card-page-closed'. So keep
+      // knocking on a window that still exists: a reply reconnects on its own,
+      // and a window that has really gone answers 'bridge-missing', which
+      // demotes to card-page-closed and stops this loop for good.
+      stopDirectKeepalive();
+      clearConnectTimer();
+      // At the ordinary keepalive cadence — deliberately not a new constant.
+      // The retry IS a keepalive on a window that is still there, and tying it
+      // to the same interval keeps the two in proportion however they are
+      // configured.
+      if (!pingTimer && !pinging) schedulePing();
     } else {
       stopKeepalive();
       stopDirectKeepalive();

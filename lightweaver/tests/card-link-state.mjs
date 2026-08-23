@@ -1499,4 +1499,116 @@ assert.equal(shared.getState().readiness, null,
     'destroying the link removes its visibility listener');
 }
 
+// A failed operation must not become a permanent condition.
+//
+// `operation-confirmed` is the only event that clears `activity`, and nothing
+// in src/ dispatches it. Setup's first blocker is `activity === 'failed'`, so
+// an owner whose card was answering perfectly sat on "recover the last
+// operation" behind two buttons that could not clear it — a one-way door out
+// of the guided setup. A healthy card now speaks for itself.
+{
+  const healthy = {
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: 'lw-activity-clear', firmwareVersion: '1.1.29', buildId: 'a'.repeat(40),
+    bootId: 'boot-activity-1', runtimePhase: 'ready', knownGoodProject: true,
+    commandReady: true, outputReady: true, playbackReady: true,
+    projectId: 'lwproj-activity', projectRevision: 3, projectFingerprint: 'f'.repeat(32),
+  };
+  const verified = {
+    type: 'card-verified', via: 'direct', host: 'lightweaver.local',
+    card: { id: healthy.cardId, firmwareVersion: healthy.firmwareVersion, buildId: healthy.buildId },
+    readiness: healthy,
+  };
+
+  const failed = reduceCardLink(initialCardLinkState(), { type: 'operation-failed' });
+  assert.equal(failed.activity, 'failed');
+
+  // First envelope establishes the boot; the second confirms it is stable.
+  const settled = reduceCardLink(reduceCardLink(failed, verified), verified);
+  assert.match(settled.state, /^connected-/,
+    'a healthy card still connects');
+  assert.equal(settled.activity, 'idle',
+    'a card reporting a fully ready runtime clears a stale operation failure');
+
+  // Narrow on purpose: work that may still be in flight is not cleared by an
+  // incoming status, because the status says nothing about whether it finished.
+  const pending = reduceCardLink(initialCardLinkState(), { type: 'operation-started' });
+  const stillPending = reduceCardLink(reduceCardLink(pending, verified), verified);
+  assert.equal(stillPending.activity, 'pending',
+    'an in-flight operation is not declared finished by a status envelope');
+
+  // And a card that is NOT healthy keeps the failure visible.
+  const unhealthy = { ...verified, readiness: { ...healthy, commandReady: false } };
+  const stillFailed = reduceCardLink(reduceCardLink(failed, unhealthy), unhealthy);
+  assert.equal(stillFailed.activity, 'failed',
+    'a card that is not command-ready does not clear the failure');
+}
+
+// A card that goes quiet must not be a card that is gone.
+//
+// The bridge used to give up permanently: 15s of silence armed bridge-lost,
+// which stopped every timer, and nothing re-armed them. A 30-second router
+// hiccup — an evening in a room with a phone — killed Studio until the owner
+// noticed and tapped Connect. Reopening a CLOSED window really does need a
+// gesture, but knocking on one that is still open does not.
+{
+  let answering = true;
+  let knocks = 0;
+  const quiet = createCardLink({
+    sendRequest: async () => {
+      knocks += 1;
+      if (!answering) {
+        const error = new Error('timeout');
+        error.reason = 'bridge-timeout';
+        throw error;
+      }
+      return readyEnvelope('lw-quiet');
+    },
+    pingIntervalMs: 5,
+    pingTimeoutMs: 5,
+    connectTimeoutMs: 100,
+    missLimit: 2,
+  });
+
+  quiet.dispatch({
+    type: 'card-verified', via: 'bridge', host: '192.168.4.1',
+    card: { id: 'lw-quiet' }, readiness: readyEnvelope('lw-quiet'),
+  });
+  assert.equal(quiet.getState().state, 'connected-bridge');
+
+  answering = false;
+  await waitFor(() => quiet.getState().state === 'disconnected', 2000, 'the card is eventually given up on');
+  assert.equal(quiet.getState().reason, 'no-answer');
+  assert.equal(quiet.getState().bridgeWindowMayRemain, true,
+    'a quiet card leaves the window worth knocking on');
+
+  const knocksWhileDown = knocks;
+  await waitFor(() => knocks > knocksWhileDown, 2000,
+    'Studio keeps knocking on a window that is still open');
+
+  answering = true;
+  await waitFor(() => quiet.getState().state === 'connected-bridge', 3000,
+    'the card reconnects by itself when it answers again');
+  quiet.destroy();
+
+  // The other half: a window that has really gone is not knocked on forever.
+  const closed = createCardLink({
+    sendRequest: async () => {
+      const error = new Error('gone');
+      error.reason = 'bridge-missing';
+      throw error;
+    },
+    pingIntervalMs: 5, pingTimeoutMs: 5, connectTimeoutMs: 100, missLimit: 2,
+  });
+  closed.dispatch({
+    type: 'card-verified', via: 'bridge', host: '192.168.4.1',
+    card: { id: 'lw-gone' }, readiness: readyEnvelope('lw-gone'),
+  });
+  await waitFor(() => closed.getState().state === 'disconnected', 2000, 'a closed page disconnects');
+  assert.equal(closed.getState().reason, 'card-page-closed');
+  assert.notEqual(closed.getState().bridgeWindowMayRemain, true,
+    'a closed window is not retried — reopening one needs a gesture');
+  closed.destroy();
+}
+
 console.log('card-link-state tests passed');

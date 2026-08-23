@@ -33,7 +33,12 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
   },
+  // Both lenses, deliberately. Adrian sets these cards up from a PHONE, and a
+  // matrix that only ever ran at desktop width would prove the journey works
+  // on a screen he does not use. Adding the phone here is safe because this
+  // config is only ever run on purpose (npm run test:matrix), never implicitly.
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'Mobile Chrome', use: { ...devices['Pixel 5'] } },
   ],
 });

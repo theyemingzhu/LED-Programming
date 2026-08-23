@@ -65,6 +65,19 @@ export type CardStateSpec = {
 
   /** Drop this many requests before answering, to model the discovery race. */
   dropFirstRequests: number;
+
+  /**
+   * A card that is answering but NOT well.
+   *
+   * Readiness is normally derived from the rest of the state, so a fixture
+   * cannot describe a card that could not exist. These two are the exception,
+   * because "answering but not ready" is a real card — one still booting, or
+   * one whose output failed to initialise — and it is the state behind every
+   * HTTP 423 the firmware returns. Without a knob for it, the commonest real
+   * refusal in the product was not expressible in a test.
+   */
+  runtimePhase?: 'ready' | 'starting' | 'factory';
+  commandReady?: boolean;
 };
 
 function base(overrides: Partial<CardStateSpec> & Pick<CardStateSpec, 'id' | 'describe'>): CardStateSpec {
@@ -137,6 +150,14 @@ export const CARD_STATES: CardStateSpec[] = [
     describe: 'on a different build from the one Studio remembers',
     buildId: 'c'.repeat(40), buildNumber: MATRIX_BUILD_NUMBER - 40,
     firmwareVersion: '1.1.24',
+  }),
+  base({
+    id: 'not-ready',
+    describe: 'answering, but with a runtime that is still starting',
+    runtimePhase: 'starting',
+    commandReady: false,
+    currentIndex: -1,
+    currentId: 'blackout',
   }),
   base({
     id: 'slow-to-answer',

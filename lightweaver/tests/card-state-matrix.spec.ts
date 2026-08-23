@@ -157,6 +157,51 @@ async function expectUnaided(page: Page, note: string, panelOpenedItself = false
   expect(panelOpenedItself, `${note}: the connection panel opened itself`).toBe(false);
 }
 
+/**
+ * D — the screen is not STUCK.
+ *
+ * The weakest thing about A–C: a screen can be completely broken without
+ * raising an alert or crashing. The fault Adrian actually hit was a disabled
+ * "Verifying project…" that never resolved — connected, no alert, no crash,
+ * and useless. Every assertion above would have passed it.
+ *
+ * This codebase marks in-progress states with a trailing ellipsis ("Looking…",
+ * "Connecting…", "Sending to Lightweaver", "Verifying project…"). A busy label
+ * is fine; a busy label that never goes away is the defect. So: give the screen
+ * the connect budget to settle, then require that nothing is still announcing
+ * work, and that at least one control can actually be pressed.
+ */
+async function expectNotStuck(page: Page, note: string) {
+  const busyText = /(…|\.\.\.)\s*$/;
+  const stillBusy = async () => {
+    const candidates = await page.locator('button, [role="status"], [aria-busy="true"]').all();
+    const busy: string[] = [];
+    for (const candidate of candidates) {
+      if (!(await candidate.isVisible())) continue;
+      const text = ((await candidate.textContent()) || '').trim();
+      if (text && busyText.test(text)) busy.push(text.slice(0, 60));
+    }
+    return busy;
+  };
+
+  const deadline = Date.now() + CONNECT_BUDGET_MS;
+  let lastBusy = await stillBusy();
+  while (lastBusy.length && Date.now() < deadline) {
+    await page.waitForTimeout(500);
+    lastBusy = await stillBusy();
+  }
+  expect(lastBusy, `${note}: still announcing work after ${CONNECT_BUDGET_MS}ms — ${JSON.stringify(lastBusy)}`)
+    .toEqual([]);
+
+  const pressable = await page.locator('button:not([disabled])').all();
+  const visiblePressable: string[] = [];
+  for (const button of pressable) {
+    if (await button.isVisible()) visiblePressable.push(((await button.textContent()) || '').trim().slice(0, 40));
+  }
+  expect(visiblePressable.length, `${note}: every control on this screen is disabled — the owner cannot do anything`)
+    .toBeGreaterThan(0);
+}
+
 /** C — the CARD is playing what was tapped. */
 async function expectTapPlays(page: Page, card: CardSimulator, patternId: string) {
   const tile = page.locator(`.pm-cards .pmcard[data-pattern-id="${patternId}"]`);
@@ -201,6 +246,7 @@ for (const spec of CARD_STATES) {
       const { clicks, panelOpenedItself } = await expectConnects(page, `${spec.id} @ ${entry.id}`);
       expect(clicks, 'a remembered card should reconnect on its own').toBe(0);
       await expectUnaided(page, `${spec.id} @ ${entry.id}`, panelOpenedItself);
+      await expectNotStuck(page, `${spec.id} @ ${entry.id}`);
 
       expect(crashes, 'the screen crashed').toEqual([]);
       expect(card.unhandled, 'Studio called a card endpoint the simulator does not model').toEqual([]);
@@ -278,6 +324,54 @@ for (const spec of CARD_STATES) {
 
     const { panelOpenedItself } = await expectConnects(page, `${spec.id} over the bridge`);
     await expectUnaided(page, `${spec.id} over the bridge`, panelOpenedItself);
+    await expectNotStuck(page, `${spec.id} over the bridge`);
     expect(crashes, 'the screen crashed').toEqual([]);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Tier 5 — a card that is answering but NOT well.
+//
+// This is the state behind every HTTP 423 the firmware returns, and it was not
+// expressible in a fixture until now, so none of Studio's behaviour on refusal
+// was tested. The specific fault: Patterns says "Recover and verify it before
+// sending lights" and its button routes to Card Home, where the Checks &
+// recovery section was hidden for exactly this card. The one stated remedy
+// landed on a screen that did not show it.
+// ---------------------------------------------------------------------------
+test('[T5] a card that is not ready still offers the recovery it was sent for', async ({ page }) => {
+  const spec = cardState('not-ready');
+  const card = await boot(page, spec, '/#screen=card&section=overview', remembers);
+  await expectConnects(page, 'not-ready @ overview');
+
+  // The remedy Patterns names must exist on the screen Patterns sends you to.
+  await expect(
+    page.getByRole('button', { name: /Recover lights/i }),
+    'a card that is answering but not ready must still offer Recover lights',
+  ).toBeVisible({ timeout: 15000 });
+
+  expect(card.unhandled).toEqual([]);
+});
+
+test('[T5] a refused pattern command does not leave the owner with nothing to press', async ({ page }) => {
+  const card = await boot(page, cardState('blackout'), '/#screen=pattern', remembers);
+  await expectConnects(page, 'refused control @ patterns');
+
+  // The card accepts the read, then refuses the write — the commonest real
+  // sequence, because readiness is polled far less often than taps happen.
+  card.refuse('/api/control', { status: 423, times: 3 });
+
+  const tile = page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]');
+  await expect(tile).toHaveCount(1, { timeout: 15000 });
+  await tile.click();
+  await page.waitForTimeout(3000);
+
+  // Whatever Studio says, it must leave a way forward. A message with no
+  // control is where the owner stops.
+  const pressable = await page.locator('button:not([disabled])').all();
+  const visible: string[] = [];
+  for (const button of pressable) {
+    if (await button.isVisible()) visible.push(((await button.textContent()) || '').trim().slice(0, 40));
+  }
+  expect(visible.length, 'a refused command left no enabled control on screen').toBeGreaterThan(0);
+});

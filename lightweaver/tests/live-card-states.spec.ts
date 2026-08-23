@@ -12,6 +12,8 @@
 // and the real firmware — the gap a simulator, by construction, cannot see.
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { createCardSimulator } from './harness/cardSimulator';
+import { cardState } from './harness/cardStates';
 
 const HOST = '192.168.18.70';
 const CARD_ID = 'lw-b0fe81f61b44';
@@ -146,4 +148,60 @@ test('[T4] tapping a pattern plays it on the strip', async ({ page }) => {
   // Asked of the CARD, not the screen. A tile that lights up while the strip
   // stays dark is a fail.
   await expect.poll(playingOnCard, { timeout: 5000, intervals: [250] }).toBe(target);
+});
+
+/**
+ * The one thing a simulator can never prove about itself.
+ *
+ * Everything in tests/card-state-matrix.spec.ts is asserted against a simulated
+ * card, so the whole suite is only worth what that simulation is worth. When
+ * this was first written the simulator was missing 37 fields the real firmware
+ * sends — including the entire recipeCapabilities block — and had `calibration`
+ * at 255 where the card reports 1. Studio features gating on any of those were
+ * being tested against a fiction that always said "unsupported".
+ *
+ * This compares the SHAPE of every endpoint the matrix depends on. Values
+ * legitimately differ card to card; missing fields and wrong types do not.
+ */
+function fieldShape(value: unknown, path = '', out = new Map<string, string>()) {
+  if (value === null || typeof value !== 'object') {
+    out.set(path, typeof value);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    out.set(path, 'array');
+    if (value.length) fieldShape(value[0], `${path}[]`, out);
+    return out;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    fieldShape(child, path ? `${path}.${key}` : key, out);
+  }
+  return out;
+}
+
+test('[T4] the simulator still matches the real firmware', async () => {
+  const wiring = await cardGet('/api/wiring/status');
+  // Model the state this card is actually in, so a legitimately absent block
+  // (an unstaged candidate, say) is not read as simulator drift.
+  const staged = String(wiring.state || '') === 'staged';
+  const card = createCardSimulator(cardState(staged ? 'wiring-open' : 'installed-match'));
+  const simulated = (type: string) => (card.handleBridge(type, null) as { response: unknown }).response;
+
+  const endpoints: [string, unknown, unknown][] = [
+    ['/api/status', await cardGet('/api/status'), simulated('status')],
+    ['/api/patterns', await cardGet('/api/patterns'), simulated('patterns')],
+    ['/api/wiring/status', wiring, simulated('wiring-status')],
+    ['/api/zones', await cardGet('/api/zones'), simulated('zones')],
+  ];
+
+  const drift: string[] = [];
+  for (const [name, real, fake] of endpoints) {
+    const realShape = fieldShape(real);
+    const fakeShape = fieldShape(fake);
+    for (const [key, type] of realShape) {
+      if (!fakeShape.has(key)) drift.push(`${name} MISSING ${key}`);
+      else if (fakeShape.get(key) !== type) drift.push(`${name} ${key}: real ${type}, simulated ${fakeShape.get(key)}`);
+    }
+  }
+  expect(drift, 'the simulator has drifted from the firmware — the matrix is testing a fiction').toEqual([]);
 });
