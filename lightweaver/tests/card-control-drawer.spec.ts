@@ -160,10 +160,13 @@ test('a connected footer opens customer card controls without a popup', async ({
   await expect(drawer.getByRole('checkbox', { name: 'Breathe' })).toHaveCount(0);
   const brightness = drawer.getByRole('slider', { name: 'Brightness' });
   await brightness.fill('40');
-  await expect(drawer.getByRole('button', { name: 'Retry' })).toBeVisible();
-  await expect(brightness).toHaveValue('70');
-  await drawer.getByRole('button', { name: 'Retry' }).click();
+  // The card answers 503 once and then takes it. That is a moment, not a
+  // decision, so Studio waits it out: the change lands, the slider stays where
+  // the owner put it, and no Retry button appears. It used to revert the
+  // slider to 70 and hand back a button — an interruption about something that
+  // had already passed.
   await expect(brightness).toHaveValue('40');
+  await expect(drawer.getByRole('button', { name: 'Retry' })).toHaveCount(0);
   await drawer.getByRole('button', { name: 'Rainbow palette' }).click();
   await expect.poll(() => controlBody?.drift).toBe(true);
   expect(controlBody).toMatchObject({ driftMin: 0, driftMax: 255 });

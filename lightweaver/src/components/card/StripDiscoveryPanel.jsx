@@ -22,6 +22,7 @@ import {
   waitForClearedCard,
 } from '../../lib/benchInstall.js';
 import { clearCardProject } from '../../lib/cardClearProject.js';
+import { isTransientCardFailure, retryWhileTransient } from '../../lib/cardTransientFailure.js';
 import { clearDanglingWiringTransaction } from '../../lib/cardSetupDeploy.js';
 import { getCardBridgeState } from '../../lib/cardBridge.js';
 import { cardHostToUrl, normalizeCardHost, readStoredCardHost } from '../../lib/cardConnection.js';
@@ -388,9 +389,20 @@ export function StripDiscoveryPanel({
     probeStreamRef.current?.stop?.();
     probeStreamRef.current = null;
     try {
+      // A card a few seconds out of a reboot answers 423 to every call below —
+      // the beacon, the status read, the playback stop, the frame stream. This
+      // is the FIRST hardware step of setup, so it is also the likeliest moment
+      // for the card to still be starting, and a single refused attempt used to
+      // become "Could not light GPIO n" with nothing to do but press again.
+      await retryWhileTransient(async () => {
       // Fast path 1: a blank card lights a port instantly through its beacon.
       const beacon = await pinBeaconPort(host, pin, { bridgeVersion: getCardBridgeState().version })
-        .catch(() => ({ ok: false }));
+        .catch(error => {
+          // A card that is still starting must reach the retry above. Only a
+          // settled refusal means "this card cannot beacon that port".
+          if (isTransientCardFailure(error)) throw error;
+          return { ok: false };
+        });
       if (beacon?.ok) {
         setPinnedPort(pin);
         setProbeBusy(null);
@@ -398,7 +410,10 @@ export function StripDiscoveryPanel({
       }
       // Fast path 2: the card is already driving this port, so just send light
       // to it. No rewrite, no reboot, no waiting.
-      const status = await readCardStatusEnvelope({ host }).catch(() => null);
+      const status = await readCardStatusEnvelope({ host }).catch(error => {
+        if (isTransientCardFailure(error)) throw error;
+        return null;
+      });
       const outputs = Array.isArray(status?.outputs) ? status.outputs : [];
       const existing = outputs.find(output => Number(output?.pin) === Number(pin));
       if (existing && Number(existing.pixels) > 0) {
@@ -424,6 +439,7 @@ export function StripDiscoveryPanel({
         `This card is not set up to drive GPIO ${pin} yet, so it cannot light it without changing your setup. `
         + `If you know your strip is there, tick it below and carry on.`,
       );
+      }, { attempts: 4, delayMs: 400 });
       return;
     } catch (error) {
       setProbeBusy(null);
@@ -442,6 +458,9 @@ export function StripDiscoveryPanel({
   // The phases where the card should be showing a Studio frame. Outside them a
   // dark strip means nothing, so no delivery claim is made either.
   const lighting = Boolean(session) && ['probe', 'decade', 'end-marker'].includes(session.phase);
+  // `relight` is declared below this effect; the ref is how the restart watcher
+  // reaches it without reordering the file.
+  const relightRef = useRef(null);
 
   // A changed bootId is the card's own report that it restarted. Only watched
   // while a question is on screen; deliberate restarts (Extend and keep
@@ -461,7 +480,19 @@ export function StripDiscoveryPanel({
     if (cardBootId !== lookBootIdRef.current) {
       lookBootIdRef.current = cardBootId;
       setCardRestartedDuringLook(true);
+      // And then put the light back, without being asked. The notice is right
+      // that a strip which went dark mid-question means nothing — but the fix
+      // for that is to light it again, which is exactly what the button beside
+      // the notice did. Leaving it to the owner paused six answer buttons and
+      // waited for somebody to notice a strip that had simply gone out.
+      //
+      // A card that has just rebooted refuses frames for a moment, so this
+      // waits for it to settle first; if the frame still cannot be pushed, the
+      // notice and its button stay exactly as they were.
+      const settle = setTimeout(() => { relightRef.current?.(); }, 1500);
+      return () => clearTimeout(settle);
     }
+    return undefined;
   }, [lighting, cardBootId]);
 
   // The stream is created once per session and torn down with it. Stopping
@@ -583,6 +614,7 @@ export function StripDiscoveryPanel({
     const frame = outgoingFrame();
     if (frame && streamRef.current) streamRef.current.push(frame);
   }, [outgoingFrame]);
+  relightRef.current = relight;
 
   const setPortRole = (pin, role) => setPortRoles(current => normalizePortRoles(
     current.map(entry => (entry.pin === pin ? { ...entry, role } : entry)),
