@@ -365,11 +365,25 @@ export function WiringBenchTest({
           )}
         </div>
       )}
+      {/* Only controls that can actually do something, right now.
+          This row used to carry four buttons at every step: Back (dead on the
+          first step), Skip (dead on the last), "Do this later", and a Finish
+          that stayed disabled for the entire check until the final answer. Two
+          of the four were inert at any given moment and Finish was inert almost
+          always — the same "press it, nothing happens" the rest of this flow was
+          reported for, in the middle of the one screen that asks the owner to
+          look away from the screen and at their artwork. */}
       <div className="lwb-nav">
-        <button type="button" className="btn btn-ghost" title="Reopen the previous wiring check without marking this step complete." data-tooltip="Reopen the previous wiring check without marking this step complete." disabled={state.stepIndex === 0} onClick={() => dispatch({ type: 'previous' })}>Back</button>
-        <button type="button" className="btn btn-ghost" title="Leave this check unconfirmed and continue to the next step." data-tooltip="Leave this check unconfirmed and continue to the next step." disabled={state.stepIndex === state.steps.length - 1} onClick={() => dispatch({ type: 'next' })}>Skip</button>
+        {state.stepIndex > 0 && (
+          <button type="button" className="btn btn-ghost" title="Reopen the previous wiring check without marking this step complete." data-tooltip="Reopen the previous wiring check without marking this step complete." onClick={() => dispatch({ type: 'previous' })}>Back</button>
+        )}
+        {state.stepIndex < state.steps.length - 1 && (
+          <button type="button" className="btn btn-ghost" title="Leave this check unconfirmed and continue to the next step." data-tooltip="Leave this check unconfirmed and continue to the next step." onClick={() => dispatch({ type: 'next' })}>Skip</button>
+        )}
         <button type="button" className="btn btn-ghost" title="Stop the LED check and return to Wire without completing verification." data-tooltip="Stop the LED check and return to Wire without completing verification." onClick={cancel}>Do this later</button>
-        <button type="button" className="btn primary" title="Save the confirmed wiring checks and mark the wiring verified." data-tooltip="Save the confirmed wiring checks and mark the wiring verified." disabled={!state.canComplete} onClick={complete}>Finish</button>
+        {state.canComplete && (
+          <button type="button" className="btn primary" title="Save the confirmed wiring checks and mark the wiring verified." data-tooltip="Save the confirmed wiring checks and mark the wiring verified." onClick={complete}>Finish</button>
+        )}
       </div>
     </section>
   );
