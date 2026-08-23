@@ -378,7 +378,12 @@ test('Pattern card write is pending, disables conflicts, and exposes retry after
   await expect(save).toBeDisabled();
   await expect(page.getByRole('button', { name: /Card tools/ })).toBeDisabled();
   await expect(save).toHaveText(/Retry install/);
-  await expect(page.getByRole('alert')).toContainText(/could not|not on the lights/i);
+  // "would not take" is the truthful wording when the card ANSWERED and
+  // refused — it used to say "could not reach the card", which was false and
+  // whose suggested remedy (paste the setup on the card page) fails the same
+  // way. What this test is actually about is that a refusal is surfaced and
+  // Retry install is offered, both asserted above.
+  await expect(page.getByRole('alert')).toContainText(/could not|would not take|not on the lights/i);
 });
 
 test('Pattern confirms the exact draft revision installed on the card', async ({ page }) => {

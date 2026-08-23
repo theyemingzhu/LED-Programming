@@ -232,7 +232,15 @@ function applyStatusEnvelope(prev, event, transport, host) {
   // Deliberately narrow: only `failed` is stale-able. `pending` and
   // `recovering` describe work that may still be in flight, and an incoming
   // status envelope says nothing about whether it finished.
-  const staleFailure = prev.activity === 'failed' && classified.connected === true;
+  // Narrower than "the card is healthy now". Clearing on every routine
+  // keepalive made a failed operation almost invisible — the card answers
+  // every 5-20s, so the "needs attention" state the owner is meant to act on
+  // would disappear before they looked. What the one-way door actually needed
+  // was an escape, not amnesia: the failure clears when the link RE-ESTABLISHES
+  // — a fresh verification after a drop, a restart, or a revalidation — which
+  // is the moment the previous operation stops describing the present.
+  const reconnecting = prev.state !== 'connected-direct' && prev.state !== 'connected-bridge';
+  const staleFailure = prev.activity === 'failed' && classified.connected === true && reconnecting;
   const next = {
     ...prev,
     state: nextState,
