@@ -4,7 +4,10 @@ name: Exhaustive launch check
 # Any failure is a release incident and must be green before the next shipment.
 on:
   schedule:
-    - cron: '17 2 * * *'
+    # Weekly, not nightly. (Cost review 2026-08-24: nightly cost ~500 build
+    # minutes a month for a check nothing was waiting on. Run it by hand with
+    # workflow_dispatch before a shipment if a run is needed sooner.)
+    - cron: '17 2 * * 1'
   workflow_dispatch:
 
 permissions:
