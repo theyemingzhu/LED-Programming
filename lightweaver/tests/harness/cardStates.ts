@@ -12,7 +12,8 @@ export const MATRIX_CARD_ID = 'lw-matrix-card';
 export const MATRIX_HOST = 'lightweaver.local';
 export const MATRIX_PROJECT_ID = 'lwproj-matrix-piece';
 export const OTHER_PROJECT_ID = 'lwproj-someone-elses';
-export const BENCH_PROJECT_ID = 'lw-bench-discovery';
+/** The real sentinel, from src/lib/benchConfig.js. */
+export const BENCH_PROJECT_ID = 'lightweaver-bench-discovery-v1';
 
 /** The build the simulated card is running, and the one Studio was flashed against. */
 export const MATRIX_BUILD_ID = 'b'.repeat(40);
@@ -171,3 +172,36 @@ export function cardState(id: string): CardStateSpec {
   if (!found) throw new Error(`unknown card state: ${id}`);
   return found;
 }
+
+/**
+ * Adrian's real card, exactly as it answered on 2026-08-23.
+ *
+ * It matters because it is a shape no fixture had: the card holds the
+ * find-my-strips SCAFFOLDING — the literal bench sentinel project id, the 256
+ * placeholder pixels, a piece still called "Untitled Project" — and yet reports
+ * `provisionalSetup: false`, so every rule that trusts that flag reads it as a
+ * finished installation. It also has an unconfirmed wiring candidate sitting
+ * open. Whatever Studio does here, it does to the only card in the world that
+ * matters to this product right now.
+ */
+export const REAL_CARD_STATE: CardStateSpec = {
+  id: 'real-card-as-found',
+  describe: 'holding discovery scaffolding while claiming it is a finished install',
+  projectId: BENCH_PROJECT_ID,
+  projectName: 'Untitled Project',
+  projectRevision: 1,
+  projectFingerprint: '',
+  provisionalSetup: false,
+  pin: 18,
+  pixels: 256,
+  patterns: MATRIX_PATTERNS,
+  currentIndex: -1,
+  currentId: 'blackout',
+  wiringTransactionOpen: true,
+  buildId: MATRIX_BUILD_ID,
+  buildNumber: 1427,
+  firmwareVersion: '1.1.29',
+  dropFirstRequests: 0,
+};
+
+CARD_STATES.push(REAL_CARD_STATE);
