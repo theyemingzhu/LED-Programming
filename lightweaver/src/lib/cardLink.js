@@ -45,6 +45,14 @@ export const CARD_LINK_DIRECT_PING_INTERVAL_MS = 20000;
 export const CARD_LINK_PING_TIMEOUT_MS = 2500;
 export const CARD_LINK_PING_MISS_LIMIT = 2;
 export const CARD_LINK_CONNECT_TIMEOUT_MS = 15000;
+/**
+ * Revalidation gets three times the first-connection budget: 45s in
+ * production. A card being revalidated has already answered once and is
+ * usually rebooting because Studio asked it to, so it deserves more patience
+ * than one that has never replied — while still being bounded, which it was
+ * not at all before.
+ */
+export const REVALIDATE_TIMEOUT_MULTIPLIER = 3;
 // Set once a bridge session succeeds; on the next app load we try one re-ping
 // before showing the one-click "Connect to card" affordance.
 export const CARD_LINK_BRIDGE_ACTIVE_KEY = 'lw_card_bridge_was_active';
@@ -981,15 +989,22 @@ export function createCardLink({
       //
       // A Wi-Fi handoff is the one legitimate long revalidation (the card is
       // deliberately moving networks and has its own minutes-long deadline),
-      // so it keeps its exemption. Everything else gets the same budget as a
-      // first connection.
+      // so it keeps its exemption.
+      //
+      // Everything else is bounded — but NOT by the first-connection budget.
+      // A card being revalidated has already answered once; usually it is
+      // restarting because Studio just told it to (a config write, a wiring
+      // activation), and a reboot plus two clean envelopes is comfortably
+      // longer than the time allowed to find a card that has never replied.
+      // Using the same 15s here disconnected Studio in the middle of the
+      // deliberate reboot that a wiring activation performs.
       if (!state.handoffCorrelation && connectTimeoutMs > 0) {
         connectTimer = setTimeout(() => {
           connectTimer = null;
           dispatch(state.transport === 'bridge'
             ? { type: 'bridge-lost', reason: 'no-answer' }
             : { type: 'direct-status', connected: false, host: state.host, reason: 'no-answer' });
-        }, connectTimeoutMs);
+        }, connectTimeoutMs * REVALIDATE_TIMEOUT_MULTIPLIER);
       }
       if (state.transport === 'bridge') {
         stopDirectKeepalive();
