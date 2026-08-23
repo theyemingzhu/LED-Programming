@@ -240,6 +240,18 @@ function CardHomePanels({
       primary: { label: 'Checking card', disabled: true },
       secondary: openSupport,
     }),
+    // Distinct from checkingEvidence on purpose. The card HAS answered, with
+    // complete evidence, and that evidence says it is not ready — so telling
+    // the owner Studio is "waiting for complete evidence" is untrue, and it
+    // reads as a screen that will resolve itself if they wait. It will not.
+    // Checks & recovery is rendered for this card now, so there is something
+    // real to point at.
+    answeringNotReady: () => ({
+      tone: 'attention',
+      message: `${identity || 'This card'} is answering, but it is not reporting a ready runtime. Run Recover lights below, then check what the strip does.`,
+      primary: { label: 'Recover lights', section: 'overview' },
+      secondary: openSupport,
+    }),
     foundUnpaired: () => {
       const foundProjectId = cardLink?.discoveredCard?.projectId || '';
       // Same one authority: the card's own provisional answer wins over the
@@ -349,7 +361,7 @@ function CardHomePanels({
     case 'attention-required':
       if (activity === 'failed') presentation = presentations.operationFailed();
       else if (ready) presentation = benchProject ? presentations.bench() : presentations.readyForLightCheck();
-      else if (verifiedTransport) presentation = presentations.checkingEvidence();
+      else if (verifiedTransport) presentation = presentations.answeringNotReady();
       else if (lifecycleReason && lifecycleReason !== 'never-connected') presentation = presentations.reasonFailure(lifecycleReason);
       else presentation = presentations.notConnected();
       break;
