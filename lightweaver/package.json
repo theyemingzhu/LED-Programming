@@ -59,7 +59,9 @@
     "standalone:unpack": "node scripts/unpack-standalone-package.mjs",
     "preview": "vite preview",
     "test:release-ui": "playwright test tests/studio-route.spec.ts tests/card-edit-handoff.spec.ts tests/card-workspace.spec.ts tests/screen-smoke.spec.ts tests/playlist-storage.spec.ts tests/universal-install.spec.ts tests/patterns-v3.spec.ts tests/workflow.spec.ts tests/project-recovery-fixtures.spec.ts tests/connection-center-quality.spec.ts tests/layout-primitives.spec.ts tests/patch-board.spec.ts tests/wiring-workspace.spec.ts tests/layout-hardening.spec.ts tests/layout-kaleidoscope.spec.ts tests/layout-send-to-card.spec.ts tests/layout-selection-visibility.spec.ts tests/strip-discovery.spec.ts tests/install-update-plan.spec.ts --project=chromium --workers=1",
-    "test:mobile": "playwright test --config tests/mobile-playwright.config.ts --reporter=list"
+    "test:mobile": "playwright test --config tests/mobile-playwright.config.ts --reporter=list",
+    "test:matrix": "playwright test --config tests/matrix-playwright.config.ts --reporter=json",
+    "test:matrix:live": "playwright test tests/live-card-states.spec.ts --project=chromium --workers=1 --reporter=list"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
