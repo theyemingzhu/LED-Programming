@@ -1,7 +1,14 @@
 import { createCardFrameStream } from './cardFrameStream.js';
 
 export const CHASE_FPS = 4;
+// The FIRST frame of a session has to open the realtime stream, which on a card
+// that is playing its own project means stopping playback, switching the frame
+// source and answering — reliably more than 1.5s. Owners saw "The lights didn't
+// reach the card" as the opening move of the light check, every time, and
+// "Try again" then worked. Later frames on an open stream come back in
+// milliseconds, so only the first one needs the room.
 export const CHASE_ACK_TIMEOUT_MS = 1500;
+export const CHASE_FIRST_ACK_TIMEOUT_MS = 6000;
 export const CHASE_MAX_CHANNEL = 26;
 
 export function buildWiringChaseSteps(compiled = {}) {
@@ -208,13 +215,21 @@ export function createWiringChaseSession({
     },
   });
   stream.start();
+  let acknowledgedOnce = false;
   return {
     show(frame) {
       if (ended) return Promise.reject(new Error('This chase session has ended.'));
       if (pending) return Promise.reject(new Error('A frame acknowledgement is already pending.'));
       if (timer != null) clearTimeoutImpl(timer);
       const promise = new Promise((resolve, reject) => { pending = { resolve, reject }; });
-      timer = setTimeoutImpl(() => void fail(new Error('No frame acknowledgement within 1.5 seconds.')), CHASE_ACK_TIMEOUT_MS);
+      const first = !acknowledgedOnce;
+      acknowledgedOnce = true;
+      const budgetMs = first ? CHASE_FIRST_ACK_TIMEOUT_MS : CHASE_ACK_TIMEOUT_MS;
+      const spoken = first ? '6 seconds' : '1.5 seconds';
+      timer = setTimeoutImpl(
+        () => void fail(new Error(`No frame acknowledgement within ${spoken}.`)),
+        budgetMs,
+      );
       if (refreshTimer != null) clearIntervalImpl(refreshTimer);
       stream.push(frame);
       refreshTimer = setIntervalImpl(() => stream.push(frame), Math.round(1000 / CHASE_FPS));

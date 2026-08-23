@@ -318,10 +318,18 @@ function CardHomePanels({
       presentation = presentations.checkingEvidence();
       break;
     case 'ready':
-    case 'project-mismatch':
-      // Both are a command-ready card; which project it holds is the Setup
-      // ladder's question, not this surface's — exactly as before.
       presentation = benchProject ? presentations.bench() : presentations.readyForLightCheck();
+      break;
+    case 'project-mismatch':
+      // Also a command-ready card, but saying "ready for light check" here put
+      // a fourth, different account on a screen whose other three lines all
+      // said the project still has to be saved. Same fact, same words.
+      presentation = benchProject ? presentations.bench() : {
+        tone: 'connecting',
+        message: `${identity || 'This Lightweaver'} is connected. The project open in Studio has changed since it was installed — save it to the card to bring them back into step.`,
+        primary: { label: 'Install on card', section: 'settings' },
+        secondary: openSupport,
+      };
       break;
     case 'discovery-setup':
       // The temporary Find-my-strips setup, now named by the lifecycle instead

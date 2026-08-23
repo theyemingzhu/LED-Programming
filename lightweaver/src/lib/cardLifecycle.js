@@ -17,7 +17,11 @@ const LABELS = Object.freeze({
   'update-rolled-back': 'Update rolled back',
   'update-required': 'Needs attention',
   'setup-required': 'Needs project',
-  'project-mismatch': 'Needs attention',
+  // Not "Needs attention": nothing is wrong. The card is healthy and holds this
+  // same project at an older revision, and the whole remedy is to save. The
+  // alarming label sat beside an identity row that said the project matched,
+  // and it is the single line owners said made them stop trusting the screen.
+  'project-mismatch': 'Save to card',
   'attention-required': 'Needs attention',
   'discovery-setup': 'Finding lights',
   confirming: 'Checking card',

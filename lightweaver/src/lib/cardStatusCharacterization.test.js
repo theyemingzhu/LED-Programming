@@ -100,7 +100,10 @@ const ROWS = [
   ['ready card, project mismatch', {
     link: VERIFIED_LINK,
     project: { id: 'piece-b', revision: 3, fingerprint: 'b'.repeat(64) },
-  }, { state: 'project-mismatch', label: 'Needs attention', setupTaskId: 'load-matching-project' }],
+    // Nothing is wrong with this card — it holds the same project at another
+    // revision and the whole remedy is to save. "Needs attention" here was the
+    // line that made owners distrust an otherwise correct screen.
+  }, { state: 'project-mismatch', label: 'Save to card', setupTaskId: 'load-matching-project' }],
   ['ready card, exact project', { link: VERIFIED_LINK, project: MATCHING_PROJECT },
     { state: 'ready', label: 'Connected', setupTaskId: 'open-patterns' }],
   ['update preflight', { link: VERIFIED_LINK, update: { phase: 'preflight' } },
