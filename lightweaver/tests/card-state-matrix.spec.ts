@@ -379,3 +379,76 @@ test('[T5] a refused pattern command does not leave the owner with nothing to pr
   }
   expect(visible.length, 'a refused command left no enabled control on screen').toBeGreaterThan(0);
 });
+
+// ---------------------------------------------------------------------------
+// Tier 6 — Setup must be able to FINISH.
+//
+// Phase 4 ("Test and save to card") completes only when a `verification`
+// object says the send, the exact readback and a visible confirmation all
+// happened — and no production code supplies that object. Its only real exit
+// is the "installed match" shortcut, so if that check misses by one field the
+// install succeeds and the ladder still says phase 4. An owner doing the right
+// thing repeatedly and never finishing is the shape of the last several weeks.
+//
+// This asserts the exit exists for a card and a project that genuinely agree.
+// ---------------------------------------------------------------------------
+test('[T6] a card holding exactly this project finishes Setup', async ({ page }) => {
+  const spec = cardState('installed-match');
+  const card = createCardSimulator(spec);
+  await card.install(page);
+  await seedKnownCard(page);
+  await page.addInitScript((seed) => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify({
+      id: seed.projectId,
+      name: 'Matrix piece',
+      layout: {
+        starterPending: false,
+        strips: [{ id: 'strip-1', pixels: seed.pixels, pin: seed.pin }],
+        wiring: {
+          verified: true,
+          runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
+        },
+      },
+      portRoles: [{ port: 'out1', role: 'strip', pin: seed.pin, pixelCount: seed.pixels }],
+      devices: {
+        standaloneController: {
+          led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' },
+        },
+      },
+    }));
+    // The record an install writes: this card, this revision, this fingerprint.
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      generation: 1,
+      editedRevision: 1,
+      installedRevision: 1,
+      dirty: false,
+      installation: {
+        cardId: seed.cardId,
+        projectRevision: seed.projectRevision,
+        projectFingerprint: seed.projectFingerprint,
+        studioFingerprint: seed.projectFingerprint,
+        verified: true,
+      },
+    }));
+  }, {
+    projectId: spec.projectId,
+    projectRevision: spec.projectRevision,
+    projectFingerprint: spec.projectFingerprint,
+    pixels: spec.pixels,
+    pin: spec.pin,
+    cardId: MATRIX_CARD_ID,
+  });
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expectConnects(page, 'finished setup');
+
+  // The two things an owner reads to know they are done.
+  await expect(
+    page.getByTestId('setup-progress'),
+    'a card holding exactly this project must be able to finish Setup',
+  ).toHaveText(/Setup complete/i, { timeout: 15000 });
+  await expect(
+    page.getByTestId('setup-open-patterns'),
+    'finishing Setup must offer the way on to Patterns',
+  ).toBeVisible();
+});
