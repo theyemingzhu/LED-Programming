@@ -1159,7 +1159,7 @@ export function CardCommissioningPanel({
             </>
           ) : (
             <>
-              <p>The exact installed card and firmware build are verified. Restore the saved Studio revision that contains its GPIO outputs, LED map, zones, patterns, playlist, and controls.</p>
+              <p>This is the right card, on the right firmware. Put your saved project back on it — its outputs, light map, zones, patterns, playlist and controls.</p>
               {!restorePreflight.ok && <p role="status">Checking card. Restore stays locked until the exact installed card and firmware are command-ready.</p>}
               <button type="button" className="btn primary" onClick={restore} disabled={restoreState === 'working' || !restorePreflight.ok}>{restoreState === 'working' ? 'Restoring saved project…' : 'Restore saved project'}</button>
             </>

@@ -654,7 +654,12 @@ export function SetupScreen({
           <div><dt>Color</dt><dd>{evidence.colorOrder || 'Not confirmed'}</dd></div>
           <div><dt>Power</dt><dd>{currentProject?.devices?.standaloneController?.power?.maxMilliamps ? `${currentProject.devices.standaloneController.power.maxMilliamps} mA limit` : 'Review in Hardware settings'}</dd></div>
         </dl>
-        <p>The existing Test &amp; Install surface sends the candidate, verifies exact readback, and waits for your explicit visible confirmation.</p>
+        {/* The last step, in the owner's words. It used to read "The existing
+            Test & Install surface sends the candidate, verifies exact readback,
+            and waits for your explicit visible confirmation" — four pieces of
+            developer vocabulary on the one screen where a visual artist most
+            needs to know what is about to happen to their piece. */}
+        <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
         <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=layout&mode=wire')}>Test and save to card</button>
       </div>
     );

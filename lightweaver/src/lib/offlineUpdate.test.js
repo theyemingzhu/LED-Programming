@@ -68,7 +68,12 @@ test('guards can bind to live Studio state and controllerchange reloads only aft
 test('the Studio shell visibly reports offline readiness and offers controlled updates', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../v3/app.jsx', import.meta.url), 'utf8');
-  assert.match(source, /Ready offline/);
+  // The footer no longer advertises browser-cache internals ("Ready offline",
+  // "Offline unavailable"): they are not questions an owner asked and, sitting
+  // beside the card's firmware line, read as a fault on the card. What it must
+  // still carry is the one actionable state, named as an app action.
+  assert.match(source, /Reload for the newest Studio/);
+  assert.doesNotMatch(source, /Ready offline/);
   assert.match(source, /activateUpdate/);
   assert.match(source, /projectHasUnsavedChanges/);
 });

@@ -106,3 +106,18 @@ test('footer firmware status fails closed for malformed card identity without ec
     });
   }
 });
+
+
+test('a card that is mid-restart is checking, not unknown', () => {
+  // A wiring light test reboots the card on purpose. Reporting "Card firmware
+  // unknown" through every one of those reboots put a fault-shaped line on
+  // screen at the exact moment the owner is watching their strip.
+  const release = { buildNumber: 1427, buildId: 'f'.repeat(40) };
+  const checking = classifyFooterFirmwareStatus(null, release, { checking: true });
+  assert.equal(checking.state, 'checking');
+  assert.equal(checking.label, 'Checking card firmware · latest 1427');
+  assert.equal(checking.actionable, false);
+
+  // With no transport in flight the honest answer is still "unknown".
+  assert.equal(classifyFooterFirmwareStatus(null, release).state, 'disconnected');
+});

@@ -585,7 +585,7 @@ function CardHomePanels({
       {ready && (
         <section className="card-support-panel" aria-label="Hardware checks and recovery">
           <h2>Checks &amp; recovery</h2>
-          <p>These actions report card acknowledgements and state readback. Studio never marks a visual LED or color test passed without your confirmation.</p>
+          <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
           <div className="card-overview-actions">
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void verifyHardware()}>Verify hardware</button>
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void recoverLights()}>Recover lights</button>
