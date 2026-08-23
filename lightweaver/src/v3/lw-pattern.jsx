@@ -1561,6 +1561,13 @@ import { PatternPreview } from './PatternPreview.jsx';
         } else if (error?.reason === 'layout-mismatch' || error?.reason === 'project-mismatch' || error?.reason === 'config-too-large') {
           setStatusKind('err');
           setStatus(error.message);
+        } else if (Number(error?.status) >= 400) {
+          // The card WAS reached — it answered, and said no. Reporting that as
+          // "could not reach the card" is untrue, and the remedy it offered
+          // (paste the setup on the card page) fails in exactly the same way,
+          // so the owner is sent to do work that cannot succeed.
+          setStatusKind('err');
+          setStatus(`The card was reached but would not take this setup: ${error.message}`);
         } else {
           setStatusKind('err');
           setStatus('Saved in the Studio, but could not reach the card. Copy or download the setup JSON and paste it on the card page.');

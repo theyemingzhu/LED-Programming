@@ -126,7 +126,7 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
     });
     if (!r.ok) {
       const text = await r.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`);
+      throw new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
     }
     const json = await r.json().catch(() => ({ ok: true }));
     const shouldReboot = options.reboot === true ||
@@ -306,7 +306,7 @@ export async function requestCardReboot(host, options = {}) {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${response.status}: ${text || 'reboot was rejected'}`);
+      throw new CardPushError('http', `card returned ${response.status}: ${text || 'reboot was rejected'}`, null, response.status);
     }
   } finally {
     clearTimeout(timer);

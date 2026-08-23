@@ -236,6 +236,10 @@ function applyStatusEnvelope(prev, event, transport, host) {
     expectedCard,
     discoveredCard: null,
     ...(staleFailure ? { activity: 'idle' } : {}),
+    // Reaching a card clears the "keep knocking" flag. Left set, it would
+    // outlive the bridge session and make a later DIRECT disconnect schedule a
+    // bridge ping, which self-corrects but reports the wrong reason on the way.
+    bridgeWindowMayRemain: false,
     readiness,
     cardBlank: blank,
     validatedBootId: completeEnvelope ? incomingBootId : prev.validatedBootId,
