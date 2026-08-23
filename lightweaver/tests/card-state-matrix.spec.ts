@@ -260,6 +260,10 @@ for (const spec of CARD_STATES) {
 // ---------------------------------------------------------------------------
 for (const spec of CARD_STATES) {
   if (!spec.patterns.length || !spec.projectId || spec.provisionalSetup) continue;
+  // A card that is not command-ready is SUPPOSED to refuse. Asserting that it
+  // plays would be asserting the firmware's safety gate away. What it owes the
+  // owner instead — a message with something to press — is [T5].
+  if (spec.commandReady === false) continue;
   cell(spec.id)(`[T1C] ${spec.id} — tapping a pattern plays it on the card`, async ({ page }) => {
     const card = await boot(page, spec, '/#screen=pattern', remembers);
     await expectConnects(page, `${spec.id} @ patterns`);

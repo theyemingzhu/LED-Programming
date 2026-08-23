@@ -36,11 +36,39 @@ const CARD_ACTION_FAILURES = Object.freeze({
     actionId: 'recover-lights',
     actionLabel: 'Recover lights',
   }),
+  'not-ready': Object.freeze({
+    message: 'The card is starting up and is not taking light commands yet. This usually clears itself in a few seconds — try again.',
+    actionId: 'retry',
+    actionLabel: 'Try again',
+  }),
+  refused: Object.freeze({
+    message: 'The card would not take that command. Open the card page to see what it reported.',
+    actionId: 'open-card-page',
+    actionLabel: 'Open card page',
+  }),
+  conflict: Object.freeze({
+    message: 'The card was busy with another change. Try again.',
+    actionId: 'retry',
+    actionLabel: 'Try again',
+  }),
+  // Never actionless. An unrecognised failure is still a failure the owner can
+  // retry, and a message with no control is where the journey stops — it was
+  // the single commonest dead end in the product, because every HTTP refusal
+  // landed here.
   unknown: Object.freeze({
     message: 'The preview command could not be verified. Check the card connection and try again.',
-    actionId: '',
-    actionLabel: '',
+    actionId: 'retry',
+    actionLabel: 'Try again',
   }),
+});
+
+/** What the card's own status code means, when nothing more specific is known. */
+const CARD_ACTION_FAILURE_STATUS = Object.freeze({
+  423: 'not-ready',
+  422: 'refused',
+  409: 'conflict',
+  403: 'refused',
+  400: 'refused',
 });
 
 const CARD_ACTION_FAILURE_ALIASES = Object.freeze({
@@ -53,11 +81,14 @@ const CARD_ACTION_FAILURE_ALIASES = Object.freeze({
 });
 
 export function classifyCardActionFailure(error) {
-  const code = [error?.reason, error?.code].reduce((recognized, value) => {
+  const named = [error?.reason, error?.code].reduce((recognized, value) => {
     if (recognized || typeof value !== 'string') return recognized;
     const canonical = CARD_ACTION_FAILURE_ALIASES[value] || value;
     return canonical !== 'unknown' && Object.hasOwn(CARD_ACTION_FAILURES, canonical) ? canonical : '';
-  }, '') || 'unknown';
+  }, '');
+  // A named reason wins; the status is the fallback that stops a refusal the
+  // card explained perfectly well from arriving as "unknown".
+  const code = named || CARD_ACTION_FAILURE_STATUS[Number(error?.status)] || 'unknown';
   return { code, ...CARD_ACTION_FAILURES[code] };
 }
 

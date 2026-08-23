@@ -74,9 +74,14 @@ export function buildCardConfigHandoffUrl(host, runtimePackage = {}, { reboot = 
 }
 
 export class CardPushError extends Error {
-  constructor(reason, message, cause) {
+  constructor(reason, message, cause, status = 0) {
     super(message);
     this.reason = reason; // 'mixed-content' | 'offline' | 'http' | 'unknown'
+    // The card states WHY it refused, in the status code. Throwing that away
+    // is how every refusal — a card still booting, an unknown zone, a pattern
+    // it does not hold — arrived at the UI as one unrecognised failure with no
+    // button on it.
+    if (status) this.status = status;
     if (cause instanceof Error) this.cause = cause;
   }
 }
