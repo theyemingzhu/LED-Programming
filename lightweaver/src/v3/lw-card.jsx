@@ -240,6 +240,18 @@ function CardHomePanels({
       primary: { label: 'Checking card', disabled: true },
       secondary: openSupport,
     }),
+    // Distinct from checkingEvidence on purpose. The card HAS answered, with
+    // complete evidence, and that evidence says it is not ready — so telling
+    // the owner Studio is "waiting for complete evidence" is untrue, and it
+    // reads as a screen that will resolve itself if they wait. It will not.
+    // Checks & recovery is rendered for this card now, so there is something
+    // real to point at.
+    answeringNotReady: () => ({
+      tone: 'attention',
+      message: `${identity || 'This card'} is answering, but it is not reporting a ready runtime. Run Recover lights below, then check what the strip does.`,
+      primary: { label: 'Recover lights', section: 'overview' },
+      secondary: openSupport,
+    }),
     foundUnpaired: () => {
       const foundProjectId = cardLink?.discoveredCard?.projectId || '';
       // Same one authority: the card's own provisional answer wins over the
@@ -349,7 +361,7 @@ function CardHomePanels({
     case 'attention-required':
       if (activity === 'failed') presentation = presentations.operationFailed();
       else if (ready) presentation = benchProject ? presentations.bench() : presentations.readyForLightCheck();
-      else if (verifiedTransport) presentation = presentations.checkingEvidence();
+      else if (verifiedTransport) presentation = presentations.answeringNotReady();
       else if (lifecycleReason && lifecycleReason !== 'never-connected') presentation = presentations.reasonFailure(lifecycleReason);
       else presentation = presentations.notConnected();
       break;
@@ -465,7 +477,17 @@ function CardHomePanels({
         getCardEditIntent: cardEditIntent,
       },
       ui: {
-        report: setMatchingProjectState,
+        // A PROBE is Studio looking around by itself. Finding no matching
+        // project is the ordinary condition of a card whose project this
+        // browser has never held — it is not a failure, and reporting it as
+        // one puts a red alert on the first screen the owner sees, before he
+        // has touched anything. This screen already offers the two real
+        // answers ("Import project file", "Start from card wiring"); let them
+        // speak instead. An owner-initiated load still reports its failure in
+        // full, because then he asked and is owed an answer.
+        report: probeOnly
+          ? state => setMatchingProjectState(state.status === 'error' ? { status: 'idle', message: '' } : state)
+          : setMatchingProjectState,
         openPatterns: () => { window.location.hash = '#screen=pattern'; },
       },
       flight: {
@@ -611,10 +633,26 @@ function CardHomePanels({
         </section>
       )}
 
-      {ready && (
+      {/*
+        Gated on being able to TALK to the card, not on the card being well.
+        It used to require `ready` — a fully healthy runtime — which hid this
+        whole section from exactly the cards that need recovering. Worse, the
+        Patterns screen's gate says "This card is not ready for pattern
+        commands. Recover and verify it before sending lights." and its button
+        routes here, so the one stated remedy landed on a screen where the
+        remedy was invisible. The firmware accepts /api/recover-lights on a
+        not-ready card deliberately; Studio was the only thing refusing.
+      */}
+      {(ready || verifiedTransport) && (
         <section className="card-support-panel" aria-label="Hardware checks and recovery">
           <h2>Checks &amp; recovery</h2>
           <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
+          {!ready && (
+            <p role="status">
+              This card is answering but is not reporting a ready runtime. Recover lights is
+              the check to run first — the card accepts it in this state.
+            </p>
+          )}
           <div className="card-overview-actions">
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void verifyHardware()}>Verify hardware</button>
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void recoverLights()}>Recover lights</button>

@@ -364,7 +364,11 @@ test('complete playlist sync writes and verifies all card sections', async ({ pa
 
   // A bench preview session must not silently replace an authoritative Save
   // with its short-strip runtime package.
-  await page.getByRole('button', { name: 'Test strip', exact: true }).click();
+  // The short-strip preview toggle. Its label changed from "Test strip" to
+  // "Preview on a short strip"; the assertion below is what this test is
+  // actually about — a bench preview must not replace an authoritative Save
+  // with its short-strip runtime package.
+  await page.getByRole('button', { name: 'Preview on a short strip' }).click();
 
   card.operations.length = 0;
   await page.getByRole('button', { name: 'Install playlist on card' }).click();

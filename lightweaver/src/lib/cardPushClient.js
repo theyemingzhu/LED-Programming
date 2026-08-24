@@ -74,9 +74,14 @@ export function buildCardConfigHandoffUrl(host, runtimePackage = {}, { reboot = 
 }
 
 export class CardPushError extends Error {
-  constructor(reason, message, cause) {
+  constructor(reason, message, cause, status = 0) {
     super(message);
     this.reason = reason; // 'mixed-content' | 'offline' | 'http' | 'unknown'
+    // The card states WHY it refused, in the status code. Throwing that away
+    // is how every refusal — a card still booting, an unknown zone, a pattern
+    // it does not hold — arrived at the UI as one unrecognised failure with no
+    // button on it.
+    if (status) this.status = status;
     if (cause instanceof Error) this.cause = cause;
   }
 }
@@ -121,7 +126,7 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
     });
     if (!r.ok) {
       const text = await r.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`);
+      throw new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
     }
     const json = await r.json().catch(() => ({ ok: true }));
     const shouldReboot = options.reboot === true ||
@@ -301,7 +306,7 @@ export async function requestCardReboot(host, options = {}) {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${response.status}: ${text || 'reboot was rejected'}`);
+      throw new CardPushError('http', `card returned ${response.status}: ${text || 'reboot was rejected'}`, null, response.status);
     }
   } finally {
     clearTimeout(timer);

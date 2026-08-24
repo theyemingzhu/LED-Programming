@@ -366,3 +366,31 @@ test('isBenchProjectEvidence honours the card-reported provisionalSetup claim', 
   assert.equal(isBenchProjectEvidence({ provisionalSetup: 'yes', projectId: 'lwproj-real' }), false);
   assert.equal(isBenchProjectEvidence({ provisionalSetup: true }), true);
 });
+
+test('untouched scaffolding is recognised even when the card calls it a finished install', () => {
+  // Adrian's real card, read on 2026-08-23: the sentinel project, the bench
+  // revision, and provisionalSetup: false. Believing that false made Studio
+  // treat its own discovery config as somebody else's project and refuse to
+  // install over it.
+  assert.equal(isBenchProjectEvidence({
+    projectId: BENCH_PROJECT_ID,
+    projectRevision: BENCH_PROJECT_REVISION,
+    provisionalSetup: false,
+  }), true);
+
+  // The earlier fix still holds: a project derived from discovery and then
+  // properly installed keeps the id but has advanced past the bench revision,
+  // and a card that says "this is a permanent install" is believed.
+  assert.equal(isBenchProjectEvidence({
+    projectId: BENCH_PROJECT_ID,
+    projectRevision: BENCH_PROJECT_REVISION + 4,
+    provisionalSetup: false,
+  }), false);
+
+  // And an explicit yes always wins.
+  assert.equal(isBenchProjectEvidence({
+    projectId: 'lwproj-real-piece',
+    projectRevision: 9,
+    provisionalSetup: true,
+  }), true);
+});

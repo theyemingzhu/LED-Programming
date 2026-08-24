@@ -112,6 +112,24 @@ export function isBenchProjectEvidence(evidence) {
   // "Temporary light setup detected" banner, "not installed" in the identity
   // row, and no action at all. The id match is what the comment always said it
   // was — a fallback for firmware that does not report the field.
+  if (evidence.provisionalSetup === true) return true;
+  // A card can be holding the UNTOUCHED scaffolding and still report
+  // `provisionalSetup: false` — Adrian's own card does, read on 2026-08-23:
+  // the sentinel project id, BENCH_DEFAULT_PORT_PIXELS on the probed pin, a
+  // piece still called "Untitled Project", and the bench revision. Believing
+  // that `false` made Studio treat its OWN scaffolding as a stranger's
+  // project, so the install gate refused to write over it as
+  // 'project-mismatch' — a warning about clobbering somebody's work, aimed at
+  // a config Studio wrote itself, and the one thing standing between the owner
+  // and the way out of discovery.
+  //
+  // The discriminator is the revision, not the id. A project derived from
+  // discovery and then properly installed keeps the id but advances past
+  // BENCH_PROJECT_REVISION — that is what the earlier fix was protecting, and
+  // it still holds. Scaffolding that has never been installed over is still
+  // sitting at the revision the bench config was written with.
+  if (evidence.projectId === BENCH_PROJECT_ID
+    && Number(evidence.projectRevision) === BENCH_PROJECT_REVISION) return true;
   if (typeof evidence.provisionalSetup === 'boolean') return evidence.provisionalSetup;
   return evidence.projectId === BENCH_PROJECT_ID;
 }

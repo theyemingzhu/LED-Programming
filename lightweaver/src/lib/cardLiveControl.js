@@ -654,7 +654,7 @@ async function postControlPayloadToHost(host, payload, options = {}) {
     });
     const text = await readBoundedControlResponseText(response);
     if (!response.ok) {
-      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`);
+      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     }
     if (!text) return { ok: true };
     try {
@@ -684,7 +684,7 @@ async function postRecoverLightsToHost(host, payload, options = {}) {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`);
+      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     }
     return await response.json().catch(() => ({ ok: true }));
   } finally {
@@ -708,7 +708,7 @@ async function postIdentifyToHost(host, options = {}) {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`);
+      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     }
     return await response.json().catch(() => ({ ok: true }));
   } finally {
@@ -745,7 +745,7 @@ async function readCardZones(host, input = {}) {
   try {
     const response = await fetch(`${cardHostToUrl(host)}/api/zones`, { signal: ctrl.signal });
     const text = await readBoundedControlResponseText(response);
-    if (!response.ok) throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`);
+    if (!response.ok) throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     try {
       return JSON.parse(text);
     } catch (error) {
@@ -823,7 +823,17 @@ function normalizeCardPatternsPayload(payload) {
   });
   const currentId = boundedPatternText(payload.currentId);
   const currentIndex = Number(payload.currentIndex);
-  if (!patterns.length || !seen.has(currentId) || !Number.isInteger(currentIndex) || currentIndex < -1 || currentIndex >= patterns.length) {
+  // currentIndex -1 is the card saying "nothing from this list is playing" —
+  // blackout, a bare factory beacon, a look the owner stopped. In that state it
+  // reports a runtime id like "blackout" that is NOT a member of the list, and
+  // demanding membership anyway rejected the card's whole pattern list as
+  // invalid. Every screen that reads patterns then failed, on a healthy card,
+  // for the sole reason that its lights were off. Membership is only meaningful
+  // when the card says it IS playing one of them.
+  const playingFromList = Number.isInteger(currentIndex) && currentIndex >= 0;
+  if (!patterns.length
+    || !Number.isInteger(currentIndex) || currentIndex < -1 || currentIndex >= patterns.length
+    || (playingFromList && !seen.has(currentId))) {
     throw new CardPushError('invalid-patterns', 'The card returned an invalid pattern list.');
   }
   return { currentId, currentIndex, patterns };
@@ -855,7 +865,7 @@ async function readCardPatterns(host, options = {}) {
   try {
     const response = await fetch(`${cardHostToUrl(host)}/api/patterns`, { signal: ctrl.signal });
     const text = await readBoundedControlResponseText(response);
-    if (!response.ok) throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`);
+    if (!response.ok) throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     try {
       return normalizeCardPatternsPayload(JSON.parse(text));
     } catch (error) {
@@ -1002,7 +1012,7 @@ async function pushLivePreviewToHost(host, look, options = {}) {
     });
     const text = await readBoundedControlResponseText(response);
     if (!response.ok) {
-      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`);
+      throw new CardPushError('http', `card returned ${response.status}: ${text || 'no body'}`, null, response.status);
     }
     let json;
     try {

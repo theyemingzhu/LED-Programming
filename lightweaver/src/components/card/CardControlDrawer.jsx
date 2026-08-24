@@ -7,6 +7,7 @@ import {
   normalizeCardCustomerControls,
 } from '../../lib/cardCustomerControls.js';
 import { deriveCardLifecycle } from '../../lib/cardLifecycle.js';
+import { retryWhileTransient } from '../../lib/cardTransientFailure.js';
 
 function percent(value) {
   return Math.round(Number(value || 0) * 100);
@@ -26,10 +27,15 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
     window.setTimeout(() => panelRef.current?.focus(), 0);
     setControls(null);
     setLoadError('');
-    Promise.all([
+    // Both are pure reads, so opening the drawer on a card that is still
+    // starting is waited out rather than reported. The Try again button below
+    // did exactly this — but only when the owner pressed it, which meant the
+    // first thing they saw on opening the controls was a failure about a
+    // moment that had already passed.
+    retryWhileTransient(() => Promise.all([
       readCardZonesFromCard({ host, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
       readCardPatternsFromCard({ host, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
-    ]).then(([zones, patterns]) => {
+    ]), { attempts: 3, delayMs: 400 }).then(([zones, patterns]) => {
       if (!active) return;
       setControls(createCardCustomerControls(normalizeCardCustomerControls(zones, patterns)));
     }).catch(error => {
@@ -86,7 +92,11 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
       blackout: optimistic.view.blackout,
       ...(patch.patternId ? { syncZones: true } : {}),
     };
-    pushLivePreviewToCard(look, {
+    // Setting THIS pattern, THIS brightness, means the same thing twice, so a
+    // card that is still starting is waited out rather than reported. The
+    // Retry button below stays for a settled refusal — but the owner should
+    // never be handed it for a moment that was going to pass anyway.
+    retryWhileTransient(() => pushLivePreviewToCard(look, {
       host,
       expectedCardId: link.card?.id || '',
       preferBridge: link.transport === 'bridge',
@@ -95,7 +105,7 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
       revision: optimistic.command.id,
       exactCardPatternId: look.patternId,
       expectedControlPatch: patch,
-    }).then(response => {
+    }), { attempts: 3, delayMs: 350 }).then(response => {
       setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, response) : current);
     }).catch(error => {
       setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, error) : current);

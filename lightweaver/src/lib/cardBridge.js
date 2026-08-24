@@ -2248,6 +2248,9 @@ export function sendCardBridgeRequest(type, payload = {}, {
     dispatchBridgeChange();
   }
 
+  // Named for timeouts, but it now also gates the re-adopt path for a stale or
+  // closed window reference. The one-shot initial config write still opts out
+  // explicitly — it must never be sent twice.
   const shouldRetryTimeout = consumeInitialConfigAuthority
     ? false
     : (retryOnTimeout ?? RETRYABLE_BRIDGE_TYPES.has(type));
@@ -2264,7 +2267,18 @@ export function sendCardBridgeRequest(type, payload = {}, {
         });
       } catch (error) {
         lastError = error;
-        if (error?.reason !== 'bridge-timeout' || attempt >= maxAttempts) throw error;
+        // The two lines below re-attach the listener and re-adopt the opener —
+        // the reconnect this loop exists to perform. They were unreachable for
+        // the exact errors they were written for: 'bridge-closed' and
+        // 'bridge-missing' are both marked retryable where they are thrown, and
+        // both mean "the reference we were holding went stale", which is what
+        // re-adopting the opener fixes. Only 'bridge-timeout' got past the
+        // guard, so a first request after a reconnect failed instead of
+        // reconnecting.
+        const worthReattaching = error?.reason === 'bridge-timeout'
+          || error?.reason === 'bridge-closed'
+          || error?.reason === 'bridge-missing';
+        if (!worthReattaching || attempt >= maxAttempts) throw error;
         attachCardBridgeListener();
         bootstrapCardBridgeFromOpener();
         if (!bridgeWindow || bridgeTargetClosed()) throw error;

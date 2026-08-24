@@ -290,7 +290,7 @@ test('candidate test locks conflicting saves, recovers an ambiguous activation, 
   ]);
 
   await page.getByRole('button', { name: 'Start light test' }).click();
-  await expect(page.getByText('Do you see the expected lights?')).toBeVisible();
+  await expect(page.getByText('Last look — do the lights still look right?')).toBeVisible();
   await expect(page.getByRole('button', { name: 'The lights look correct', exact: true })).toBeVisible();
   expect(card.operations).toContain('status');
   await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();

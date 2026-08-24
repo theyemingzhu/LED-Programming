@@ -88,16 +88,35 @@ test('classifies missing runtime state proof without claiming visible output', (
   });
 });
 
-test('unknown failures remain bounded and never render arbitrary thrown text', () => {
+test('unknown failures remain bounded, never render arbitrary thrown text, and still offer a way on', () => {
   const failure = classifyCardActionFailure(new Error('private host response with <script>markup</script>'));
   assert.deepEqual(failure, {
     code: 'unknown',
     message: 'The preview command could not be verified. Check the card connection and try again.',
-    actionId: '',
-    actionLabel: '',
+    // Deliberately NOT actionless. The bounded message is what protects the
+    // owner from the card's raw text; leaving them with nothing to press is a
+    // different harm, and it was the commonest dead end in the product —
+    // every unclassified HTTP refusal arrived here.
+    actionId: 'retry',
+    actionLabel: 'Try again',
   });
   assert.ok(failure.message.length < 160);
   assert.doesNotMatch(failure.message, /private|script|markup/);
+});
+
+test('the card\u2019s own status code is enough to classify a refusal it explained', () => {
+  const booting = classifyCardActionFailure(Object.assign(new Error('card returned 423'), { reason: 'http', status: 423 }));
+  assert.equal(booting.code, 'not-ready');
+  assert.equal(booting.actionId, 'retry');
+  assert.match(booting.message, /starting up/);
+
+  const refused = classifyCardActionFailure(Object.assign(new Error('card returned 422'), { reason: 'http', status: 422 }));
+  assert.equal(refused.code, 'refused');
+  assert.equal(refused.actionId, 'open-card-page');
+
+  // A named reason still wins over the status.
+  const wrongCard = classifyCardActionFailure(Object.assign(new Error('x'), { reason: 'wrong-card', status: 423 }));
+  assert.equal(wrongCard.code, 'wrong-card');
 });
 
 test('card actions become confirmed only after acknowledgement', () => {

@@ -210,6 +210,20 @@ function layoutComplete(progress) {
   return progress.every(item => item.status === 'done');
 }
 
+// `verification` is supplied by NO production caller — not lw-setup.jsx, not
+// app.jsx, not SetupJourneyChip.jsx (verified 2026-08-23). It was designed as a
+// second, independent way for phase 4 to complete — the card confirmed the
+// send, Studio confirmed the exact readback, and the owner said they saw the
+// lights — and was never wired up. `confirm-visible-lights` in SETUP_TASK_IDS
+// is unreachable for the same reason.
+//
+// The ladder still finishes, through the `installedMatch` early return above,
+// and tests/card-state-matrix.spec.ts [T6] holds that exit open against a card
+// and project that genuinely agree. So this is dead weight rather than a live
+// defect — but it is dead weight that READS like the completion rule, which is
+// worse than either being wired or being gone. Wire it to real evidence or
+// delete it; do not leave the next reader believing phase 4 is gated on a
+// visible confirmation that never happens.
 function exactVerificationComplete(verification) {
   return verification?.sent === true
     && verification?.exactReadback === true

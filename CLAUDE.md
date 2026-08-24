@@ -35,7 +35,7 @@ As of 2026-06 the runtime is **ESP32-S3 only**. The card runs the Lightweaver fi
 ## Public web / GitHub
 - **Parent site**: `mandalacodes.com` is Adrian Rasmussen's site.
 - **Canonical public Lightweaver UI URL**: `led.mandalacodes.com`.
-- **LED repo GitHub**: `git@github-tech:technicianofthesacred/LED-Programming.git`.
+- **LED repo GitHub**: `git@github-tech:adroart/LED-Programming.git`.
 - **Mandala Codes repo GitHub**: `git@github-tech:technicianofthesacred/mandalacodes.git`.
 - **Deployment split**: the Lightweaver browser UI lives at `led.mandalacodes.com`. The active command path stays local through the Lightweaver card page or verified local bridge.
 
