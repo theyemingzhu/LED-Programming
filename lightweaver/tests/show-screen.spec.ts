@@ -283,6 +283,22 @@ async function mutateSavedLayout(page: any, mutate: (layout: any) => void) {
     return project;
   }, mutate.toString());
   await installMatchingShowCardProject(page, project);
+  // Write it again on the way IN, before the app boots.
+  //
+  // The write above happens while the app is live, holding the unmutated
+  // project in memory — and its autosave can land between that write and this
+  // reload, putting the old project straight back. The reload then reads what
+  // the app saved, not what the test asked for, and the screen renders the
+  // pre-mutation layout: 44 pixels instead of 6, or the connected template
+  // where the Mandala fallback was expected. Fast machines win that race and
+  // slow CI runners lose it, which is exactly the shape of a test that fails
+  // only in CI.
+  //
+  // An init script runs before any application code on the next load, so
+  // nothing can overwrite it first.
+  await page.addInitScript((saved) => {
+    localStorage.setItem('lw_autosave_v3', saved);
+  }, JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectMatchingShowCard(page);
   await expect(page.getByTestId('show-stage')).toBeVisible({ timeout: 10_000 });
