@@ -97,6 +97,7 @@ import {
   correlateFirmwareUpdateRecovery,
   readFirmwareUpdateSession,
 } from '../lib/cardFirmwareUpdater.js';
+import { persistCardIdentity, readPersistedCardIdentity } from '../lib/cardIdentity.js';
 
 const PatternScreen = lazy(() => import('./lw-pattern.jsx').then(module => ({ default: module.PatternScreen })));
 const PatternLabScreen = lazy(() => import('../pattern-lab/PatternLabScreen.jsx'));
@@ -972,6 +973,29 @@ function Shell({ offlineUpdateController = null }) {
       readiness,
     );
     if (correlation.ok && correlation.terminal) {
+      // Studio performed this update, and the card has just come back on
+      // exactly the build Studio installed — same card id, a new boot id, the
+      // expected firmware version and build, and an unchanged project. That is
+      // the whole of what the correlation proves, and it is proof, not trust.
+      //
+      // Without recording it, the stored identity keeps the build the card had
+      // BEFORE the update, so the link classifies the card it just updated as
+      // 'unexpected-firmware-build' and refuses it. The owner's only way back
+      // was "Trust updated card", buried in the Connection Center — asked to
+      // vouch for a change Studio made itself.
+      //
+      // Deliberately narrow: this only ever fires from a correlated session
+      // Studio opened. A build change Studio did not perform still has no
+      // session to correlate against, so it still requires the deliberate
+      // click, and nothing here relaxes that.
+      const previous = readPersistedCardIdentity() || {};
+      persistCardIdentity({
+        ...previous,
+        id: readiness.cardId || previous.id,
+        firmwareVersion: readiness.firmwareVersion || previous.firmwareVersion,
+        buildId: readiness.buildId || previous.buildId,
+        buildNumber: readiness.buildNumber || previous.buildNumber,
+      });
       if (clearFirmwareUpdateSessionIfMatches(session)) setFirmwareRecoveryState(null);
       return;
     }
