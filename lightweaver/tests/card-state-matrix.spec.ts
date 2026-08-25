@@ -232,6 +232,11 @@ const remembers = BROWSER_STATES.find(state => state.id === 'remembers-card')!;
  * and they turn green the moment that correlation is wired up. Awaiting the
  * owner's call — see TODO.md.
  */
+// Half of this is now closed: a card Studio UPDATED ITSELF is recognised when
+// it comes back, because app.jsx records the build it installed once the
+// update session correlates. What remains marked is a build change Studio did
+// NOT perform — there is no session to correlate against, so it still needs
+// the owner's deliberate "Trust updated card", and that is intended.
 const AWAITING_FIRMWARE_TRUST_DECISION = 'stale-firmware';
 const cell = (stateId: string) => (stateId === AWAITING_FIRMWARE_TRUST_DECISION ? test.fixme : test);
 
