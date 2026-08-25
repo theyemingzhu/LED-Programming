@@ -34,16 +34,3 @@ export function LedChipsetSelect({ value, onChange, fallback, groupLabel = 'LED 
     </div>
   );
 }
-
-// Changing the chipset changes the wiring digest the card checks, so the card
-// stages the new config and waits for a confirm at the piece instead of
-// installing straight away (LightweaverStorage.cpp runtimeConfigJsonChangesWiring).
-export function LedChipsetHint() {
-  return (
-    <span className="la-physical-rule-hint" data-testid="led-chipset-hint">
-      Match the chipset printed on your reel. Changing it counts as a wiring
-      change — the card stages it and asks you to confirm at the piece before
-      it installs.
-    </span>
-  );
-}

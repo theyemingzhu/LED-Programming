@@ -148,7 +148,7 @@ async function readAutosaveStrips(page: any) {
   });
 }
 
-test('"+ Add strip" offers icon tiles and preserves size during manual LED entry', async ({ page }) => {
+test('"+ Add strip" offers icon tiles and grows size during manual LED entry', async ({ page }) => {
   await gotoFreshLayout(page);
 
   const picker = page.getByTestId('layout-primitive-picker');
@@ -167,12 +167,9 @@ test('"+ Add strip" offers icon tiles and preserves size during manual LED entry
   await expect(chooser.getByRole('button', { name: 'Free draw', exact: true })).toBeVisible();
   await expect(chooser.getByRole('button', { name: 'Import vector', exact: true })).toBeVisible();
 
-  // Manual count is a fine-tune: it preserves the chosen physical size, and
-  // says so on the control so the held Size does not read as a bug.
   await chooser.getByLabel('New strip LEDs').fill('120');
-  await expect(chooser.getByLabel('New strip size in metres')).toHaveValue('1.00');
-  await expect(chooser.locator('.la-physical-rule-hint'))
-    .toHaveText('Size sets the count. Editing LEDs keeps the size.');
+  await expect(chooser.getByLabel('New strip size in metres')).toHaveValue('2.00');
+  await expect(chooser.locator('.la-physical-rule-hint')).toHaveCount(0);
   await chooser.getByRole('button', { name: 'Circle', exact: true }).click();
 
   await expect(page.locator('.la-strip-row')).toHaveCount(2);
@@ -190,7 +187,7 @@ test('"+ Add strip" offers icon tiles and preserves size during manual LED entry
     JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.layout);
   const circle = layout.strips.find((s: any) => s.name === 'Circle');
   expect(circle.pixelCount).toBe(120);
-  const expectedLength = 1000 * layout.pxPerMm;
+  const expectedLength = 2000 * layout.pxPerMm;
   expect(Math.abs(circle.svgLength - expectedLength)).toBeLessThan(1);
 
   // Import vector reuses the existing hidden SVG input (native file chooser).
@@ -293,9 +290,9 @@ test('the Add strip chooser sets density before the new shape is drawn', async (
 
   await page.getByTestId('layout-add-strip').click();
   const chooser = page.getByTestId('layout-add-strip-chooser');
-  await chooser.getByLabel('New strip LEDs').fill('144');
   const density = page.getByTestId('add-strip-density-control');
   await density.getByRole('button', { name: '144 LEDs/m' }).click();
+  await chooser.getByLabel('New strip LEDs').fill('144');
   await chooser.getByRole('button', { name: 'Circle', exact: true }).click();
 
   await expect.poll(async () => {
@@ -348,16 +345,16 @@ test('the Add strip controls match the selected-strip physical controls', async 
   const size = chooser.getByLabel('New strip size in metres');
   await chooser.getByRole('button', { name: 'One new LED more' }).click();
   await expect(chooser.getByLabel('New strip LEDs')).toHaveValue('61');
-  await expect(size).toHaveValue('1.00');
+  await expect(size).toHaveValue('1.02');
 
   await chooser.getByRole('button', { name: 'Make new strip bigger' }).click();
-  await expect(chooser.getByLabel('New strip LEDs')).toHaveValue('67');
-  await expect(size).toHaveValue('1.11');
+  await expect(chooser.getByLabel('New strip LEDs')).toHaveValue('68');
+  await expect(size).toHaveValue('1.13');
 
   await chooser.getByLabel('New strip GPIO output').selectOption('17');
   await chooser.getByTestId('add-strip-density-control').getByRole('button', { name: '30 LEDs/m' }).click();
-  await expect(size).toHaveValue('1.11');
-  await expect(chooser.getByLabel('New strip LEDs')).toHaveValue('33');
+  await expect(size).toHaveValue('1.13');
+  await expect(chooser.getByLabel('New strip LEDs')).toHaveValue('34');
 
   await chooser.getByRole('button', { name: 'Circle', exact: true }).click();
   await expect.poll(async () => page.evaluate(() => {
@@ -369,7 +366,7 @@ test('the Add strip controls match the selected-strip physical controls', async 
   })).toBe(17);
 });
 
-test('size controls recalculate LEDs while manual LED entry preserves size', async ({ page }) => {
+test('size, density, and LED count stay linked', async ({ page }) => {
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
 
@@ -390,24 +387,21 @@ test('size controls recalculate LEDs while manual LED entry preserves size', asy
   const linked = (await readAutosaveStrips(page))?.[0];
   await page.getByRole('button', { name: 'One LED more' }).click();
   await expect.poll(async () => {
-    const strips = await readAutosaveStrips(page);
-    const strip = strips?.[0];
-    return strip ? [strip.pixelCount, strip.svgLength] : null;
-  }).toEqual([linked.pixelCount + 1, linked.svgLength]);
+    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || 'null'));
+    const strip = saved?.layout?.strips?.[0];
+    if (!strip) return null;
+    const meters = strip.svgLength / saved.layout.pxPerMm / 1000;
+    const dens = saved.layout.stripDensities?.[strip.id] ?? saved.layout.density;
+    return [strip.pixelCount, strip.svgLength > linked.svgLength, Math.round(meters * dens)];
+  }).toEqual([linked.pixelCount + 1, true, linked.pixelCount + 1]);
 
-  // The rule is only obvious if it is said next to the control. It now shares
-  // one line with every other label, so it appears while the field is touched
-  // and the line describes the strip the rest of the time.
   const caption = page.locator('.la-strip-caption').first();
-  // The count edits above left the pointer on the field, so step off it first.
   await page.locator('.panel-head').first().hover();
   await expect(caption).toHaveText(/Data in at LED/);
-  await page.getByLabel('Strip LED count', { exact: true }).hover();
-  await expect(caption).toHaveText('Size sets the count. Editing LEDs keeps the size.');
   await expect(page.getByLabel('Strip LED count', { exact: true }))
-    .toHaveAttribute('title', /keeps the size/);
+    .not.toHaveAttribute('title');
   await expect(page.getByLabel('Strip length in metres', { exact: true }))
-    .toHaveAttribute('title', /Sets the LED count/);
+    .not.toHaveAttribute('title');
 
   const actions = page.getByLabel('Strip actions');
   await expect(actions.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
@@ -415,6 +409,68 @@ test('size controls recalculate LEDs while manual LED entry preserves size', asy
   await expect(actions.getByRole('button', { name: 'Remove strip' })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Calibrate scale from LED count' })).toHaveCount(0);
   await expect(page.getByText(/Drag on canvas to move/)).toHaveCount(0);
+});
+
+test('a locked 256-LED Find-my-strips count can be typed to the real length', async ({ page }) => {
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    const pxPerMm = 3.7795;
+    const lengthM = 0.13;
+    const svgLength = lengthM * 1000 * pxPerMm;
+    localStorage.clear();
+    localStorage.setItem('lw_autosave_v3', JSON.stringify({
+      version: 3,
+      id: 'lightweaver-bench-discovery-v1',
+      name: 'Untitled Project',
+      layout: {
+        starterPending: false,
+        strips: [{
+          id: 'bench-strip',
+          name: 'Untitled Project',
+          pathData: `M 100 200 L ${100 + svgLength} 200`,
+          svgLength,
+          closed: false,
+          pixelCount: 256,
+          x: 0, y: 0, emit: 'omni', angle: 0, reversed: false,
+          speed: 1, brightness: 1, hueShift: 0, patternId: null,
+        }],
+        viewBox: '0 0 640 400',
+        svgText: null,
+        layers: [],
+        density: 60,
+        pxPerMm,
+        patchBoard: { physicalLocked: true },
+        wiring: {
+          version: 1,
+          locked: true,
+          verified: true,
+          controllerAnchor: null,
+          outputs: [{ id: 'out1', name: 'GPIO 18', pin: 18, runIds: ['run-bench-strip'] }],
+          runs: [{
+            id: 'run-bench-strip',
+            type: 'strip',
+            source: { stripId: 'bench-strip', from: 0, to: 255 },
+            directionPolicy: 'flexible',
+            physicalDirection: 'source-forward',
+            seamLed: null,
+            verified: true,
+          }],
+        },
+      },
+    }));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-mode-draw').click();
+  const row = page.locator('.la-strip-row').first();
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('256 LEDs');
+  await row.click();
+  const count = page.getByLabel('Strip LED count', { exact: true });
+  await expect(count).toHaveValue('256');
+  await count.fill('41');
+  await count.blur();
+  await expect(count).toHaveValue('41');
+  await expect(row).toContainText('41 LEDs');
 });
 
 test('GPIO picker groups strips by output and assigns the selected strip to that wire', async ({ page }) => {

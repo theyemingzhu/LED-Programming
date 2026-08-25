@@ -129,9 +129,11 @@ test('classifies visual-only changes as short updates and wiring changes as phys
   const base = { led: { outputs: [{ pin: 16, pixels: 8, direction: 'forward' }], maxMilliamps: 1000 }, looks: [{ id: 'aurora' }] };
   const visual = classifyCardChanges(base, { ...base, looks: [{ id: 'ocean' }] });
   const hardware = classifyCardChanges(base, { ...base, led: { ...base.led, outputs: [{ pin: 17, pixels: 8, direction: 'forward' }] } });
+  const length = classifyCardChanges(base, { ...base, led: { ...base.led, outputs: [{ pin: 16, pixels: 41, direction: 'forward' }] } });
 
   assert.deepEqual(visual, { kind: 'visual', requiresPhysicalTest: false, groups: ['Playback'] });
   assert.deepEqual(hardware, { kind: 'hardware', requiresPhysicalTest: true, groups: ['Wiring'] });
+  assert.deepEqual(length, { kind: 'visual', requiresPhysicalTest: false, groups: ['Playback'] });
 });
 
 test('normalizes card status into the same hardware comparison shape', async () => {

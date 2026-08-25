@@ -15,6 +15,7 @@ import {
 } from './portRoles.js';
 import { normalizeUsbLedColorOrder } from './usbLedColorOrder.js';
 import { createDefaultPatchBoard } from './patchBoard.js';
+import { isUncountedDiscoveryHeadroom } from './benchConfig.js';
 
 // One entry per discovered strip port, in the shape standaloneController.led.
 // outputs expects (cardRuntimeProject.js): id, pin, pixels. Ports with no pixel
@@ -115,7 +116,13 @@ export function projectSkeletonFromCardStatus(status = {}) {
     pixelCount: entry?.pixels,
     controlKind: '',
   })));
-  const verified = status?.knownGoodProject === true && status?.outputReady === true;
+  // knownGoodProject means the stored config can play. Find-my-strips writes a
+  // playable 256-pixel ceiling so discovery can light the strip — that is not a
+  // counted, checked install, and must not lock the layout.
+  const verified = status?.knownGoodProject === true
+    && status?.outputReady === true
+    && status?.provisionalSetup !== true
+    && !isUncountedDiscoveryHeadroom(status);
   const strips = [];
   const runs = [];
   const wiringOutputs = [];

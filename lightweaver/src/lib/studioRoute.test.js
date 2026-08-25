@@ -120,6 +120,7 @@ test('a fragment that is not a route does not invent a screen', () => {
   assert.equal(studioViewFromHash('', options), 'layout');
   assert.equal(studioViewFromHash('#screen=nonsense', options), 'layout');
   assert.equal(studioViewFromHash('#screen=nonsense', { ...options, fallbackView: 'card' }), 'card');
+  assert.equal(studioViewFromHash('', { ...options, fallbackView: 'card' }), 'card');
   assert.equal(normalizeStudioView('patterns', options), 'pattern');
 });
 

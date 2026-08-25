@@ -349,6 +349,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       viewBox,
       svgText,
       patchBoard,
+      wiring,
       compiledWiring,
       setPatchBoard,
       standaloneController,
@@ -749,9 +750,9 @@ import { PatternPreview } from './PatternPreview.jsx';
     latestControllerRef.current = standaloneController;
 
     const sectionTargets = useMemo(
-      () => deriveSectionTargets({ strips, patchBoard: board, defaultLook: savedGlobalLook }),
+      () => deriveSectionTargets({ strips, patchBoard: board, wiring, compiledWiring, defaultLook: savedGlobalLook }),
       [
-        strips, board,
+        strips, board, wiring, compiledWiring,
         savedGlobalLook.patternId, savedGlobalLook.brightness, savedGlobalLook.speed,
         savedGlobalLook.hueShift, savedGlobalLook.customHue, savedGlobalLook.customSaturation,
         savedGlobalLook.customBreathe, savedGlobalLook.breatheLowerPct,
@@ -1386,7 +1387,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         if (target.kind !== 'section' || !normalizedDraftLooks[target.id]) continue;
         nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, look: normalizedDraftLooks[target.id] });
       }
-      const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, defaultLook: nextDefaultLook });
+      const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, defaultLook: nextDefaultLook });
       let nextController = { ...(standaloneController || {}), defaultLook: nextDefaultLook };
       if (!saveNamedLook) return { nextLook, nextBoard, nextController, nextTargets };
       const resolvedLabel = label || mixName.trim() || currentComboLabel;

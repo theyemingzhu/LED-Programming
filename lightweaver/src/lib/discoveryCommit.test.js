@@ -134,6 +134,28 @@ test('projectSkeletonFromCardStatus maps a real status blob into a project skele
   assert.equal(skeleton.portRoles.find(entry => entry.pin === 16).pixelCount, 300);
 });
 
+test('Find-my-strips 256 headroom is not a locked install, even when the card says it is known-good', () => {
+  // Live card lw-b0fe81f61b44 on 2026-08-25: sentinel project, revision 4,
+  // provisionalSetup false, GPIO 18 still holding the 256-pixel probe ceiling.
+  // knownGoodProject means "this config can play", not "the owner counted the strip".
+  const skeleton = projectSkeletonFromCardStatus({
+    projectId: 'lightweaver-bench-discovery-v1',
+    projectRevision: 4,
+    provisionalSetup: false,
+    knownGoodProject: true,
+    outputReady: true,
+    outputs: [{
+      id: 'out1', pin: 18, pixels: 256,
+      segments: [{ id: 'bench-18-full', count: 256, direction: 'forward' }],
+    }],
+  });
+  assert.equal(skeleton.strips[0].pixelCount, 256);
+  assert.equal(skeleton.wiring.locked, false);
+  assert.equal(skeleton.wiring.verified, false);
+  assert.equal(skeleton.wiring.runs[0].verified, false);
+  assert.equal(skeleton.patchBoard.physicalLocked, false);
+});
+
 test('projectSkeletonFromCardStatus reconstructs exact installed segment geometry and wiring', () => {
   const skeleton = projectSkeletonFromCardStatus({
     knownGoodProject: true,

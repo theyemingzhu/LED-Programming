@@ -24,7 +24,7 @@ test('the layout starter offers both card chipsets and nothing else', async ({ p
   await expect(chipset).toBeVisible();
   await expect(chipset.getByTestId('led-chipset-select').locator('option'))
     .toHaveText([/^WS2812B — /, /^WS2815 — /]);
-  await expect(picker.getByTestId('led-chipset-hint')).toContainText('stages it and asks you to confirm');
+  await expect(picker.getByTestId('led-chipset-hint')).toHaveCount(0);
 });
 
 test('a chipset picked in the starter persists into the project and reaches the strips list', async ({ page }) => {
@@ -39,8 +39,10 @@ test('a chipset picked in the starter persists into the project and reaches the 
 
   await picker.getByRole('button', { name: 'Create line' }).click();
 
-  // The starter is gone, but the choice stays editable next to the LED total.
+  // The starter is gone. Chipset is card hardware, so it lives on Test & Install.
   await expect(page.getByTestId('layout-primitive-picker')).toHaveCount(0);
+  await expect(page.getByTestId('project-led-chipset')).toHaveCount(0);
+  await page.getByTestId('layout-mode-wire').click();
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset).toBeVisible();
   await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2812B');
@@ -51,6 +53,7 @@ test('a chipset picked in the starter persists into the project and reaches the 
 test('changing the chipset after the layout exists survives a reload', async ({ page }) => {
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  await page.getByTestId('layout-mode-wire').click();
 
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2815');
@@ -58,6 +61,7 @@ test('changing the chipset after the layout exists survives a reload', async ({ 
   await expect.poll(() => savedLedType(page)).toBe('WS2812B');
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-mode-wire').click();
   await expect(page.getByTestId('project-led-chipset').getByTestId('led-chipset-select'))
     .toHaveValue('WS2812B');
 });
@@ -92,6 +96,7 @@ test('a project saved with no chipset loads on a supported one instead of failin
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-mode-wire').click();
 
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset).toBeVisible();

@@ -98,6 +98,7 @@ export function SetupScreen({
   activeCloudProjects = [],
   browserProjects = [],
   replaceProject,
+  firmwareStatus = null,
   onLoadOfferChange,
 }) {
   const {
@@ -386,11 +387,8 @@ export function SetupScreen({
     return () => onLoadOfferChange(false);
   }, [onLoadOfferChange, savedMatchLoadOffer]);
 
-  // The app shell reads SETUP_SKIP_STORAGE_KEY before React mounts to decide
-  // whether a bare URL still lands on the Setup front door. The key was read
-  // forever but written nowhere, so the front door never moved. Record
-  // completion the first time the derived journey reports it; the write is
-  // idempotent, so the ref only spares repeated storage calls.
+  // Record completion so older notes of this key stay truthful. The shell
+  // no longer routes on it — a bare URL always opens Card Home.
   const setupSkipWrittenRef = useRef(false);
   useEffect(() => {
     if (!journey.setupComplete || setupSkipWrittenRef.current) return;
@@ -398,7 +396,7 @@ export function SetupScreen({
     try {
       window.localStorage.setItem(SETUP_SKIP_STORAGE_KEY, '1');
     } catch {
-      // Without storage the bare-URL fallback simply keeps offering Setup.
+      // Without storage there is nothing to record.
     }
   }, [journey.setupComplete]);
 
@@ -608,6 +606,9 @@ export function SetupScreen({
   // One status authority: the lifecycle label (derived locally only when a
   // bare render did not pass the shell's lifecycle down).
   const identityStatus = (cardLifecycle || deriveCardLifecycle({ link: cardLink || {} })).label;
+  const firmwareBehind = firmwareStatus?.actionable === true;
+  const firmwareCurrent = firmwareStatus?.state === 'current'
+    || firmwareStatus?.state === 'development-build';
   const renderActiveTask = phase => {
     if (phase.id === 'connect') {
       const blocker = journey.blockers[0]?.id;
@@ -771,9 +772,11 @@ export function SetupScreen({
 
   return (
     <>
-      <div className="lw-setup-lede">
-        <p className="lw-setup-intro">Four outcomes take this exact card from first connection to a physically checked project. Setup advances from evidence, not a saved checklist.</p>
-      </div>
+      {!journey.setupComplete && (
+        <div className="lw-setup-lede">
+          <p className="lw-setup-intro">Four outcomes take this exact card from first connection to a physically checked project. Setup advances from evidence, not a saved checklist.</p>
+        </div>
+      )}
 
       <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
         <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
@@ -802,10 +805,29 @@ export function SetupScreen({
             asking the owner to pair, so the screen carried two headline
             buttons and two different accounts of where the owner was. */}
         {matchesOpenProject && !provisionalSetup && exactTransport && (
-          <section className="card-support-panel lw-setup-banner">
-            <h2>This exact card is already set up</h2>
-            <p>Its installed project matches the project open in Studio. The card&rsquo;s own page stays connected for controls.</p>
-            <button type="button" className="btn primary" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+          <section className="card-support-panel lw-setup-banner" data-testid="setup-card-ready">
+            <h2>
+              {firmwareBehind
+                ? 'This exact card is already set up'
+                : firmwareCurrent
+                  ? 'Your card is up to date and currently connected'
+                  : 'Your card is currently connected'}
+            </h2>
+            <p>
+              {firmwareBehind
+                ? 'Its installed project matches the project open in Studio. Update the card software before relying on it.'
+                : firmwareCurrent
+                  ? 'Studio is talking to this card and it is running the current Lightweaver software.'
+                  : 'Studio is talking to this card. Layout and the rest of Studio are ready when you are.'}
+            </p>
+            <div className="lw-setup-banner-actions">
+              {firmwareBehind ? (
+                <button type="button" className="btn primary" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
+              ) : (
+                <button type="button" className="btn primary" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
+              )}
+              <button type="button" className="btn" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+            </div>
           </section>
         )}
         {savedMatchLoadOffer && (

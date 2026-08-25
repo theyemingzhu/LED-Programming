@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { STARTER_PRIMITIVES } from '../../../lib/layoutPrimitives.js';
 import { DENSITY_OPTIONS, clampLedCount } from '../../../lib/layoutGeometry.js';
-import { LedChipsetHint, LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
+import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 
 function PrimitiveIcon({ type }) {
   if (type === 'circle') return <circle cx="24" cy="14" r="9"/>;
@@ -55,10 +55,7 @@ export function PrimitiveStarter({ currentPixelCount, defaultDensity, ledType, o
   return (
     <section className="la-primitive-starter" data-testid="layout-primitive-picker" aria-label="Start a layout">
       <div className="la-primitive-heading">
-        <div>
-          <strong>Start with a shape</strong>
-          <span>Choose the closest structure, then refine it in Size.</span>
-        </div>
+        <strong>Start with a shape</strong>
         <button type="button" className="la-primitive-import" onClick={onImport}>Import SVG</button>
       </div>
       <div className="la-primitive-grid" role="group" aria-label="Layout shape">
@@ -111,11 +108,8 @@ export function PrimitiveStarter({ currentPixelCount, defaultDensity, ledType, o
           ))}
         </div>
         {onLedTypeChange && (
-          <>
-            <LedChipsetSelect value={ledType} onChange={onLedTypeChange}
-                              groupLabel="Starting strip LED chipset"/>
-            <LedChipsetHint/>
-          </>
+          <LedChipsetSelect value={ledType} onChange={onLedTypeChange}
+                            groupLabel="Starting strip LED chipset"/>
         )}
       </div>
       <div className="la-primitive-action">

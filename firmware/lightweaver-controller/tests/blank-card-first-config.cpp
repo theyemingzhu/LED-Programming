@@ -118,8 +118,19 @@ int main() {
   assert(!changesWiring(singleOutput(60, 16), installed, ok));
   assert(ok);
 
-  // Every dimension that used to stage must still stage.
-  assert(changesWiring(singleOutput(120, 16), installed, ok));   // pixel count
+  // Pixel count is the strip's length, not a rewire. The owner typed it;
+  // staging would send them through LED-check for a number they already know.
+  // Identity fields that move with that length (revision, digest) follow it.
+  assert(!changesWiring(singleOutput(120, 16), installed, ok));
+  assert(ok);
+  RuntimeConfig longer = singleOutput(120, 16);
+  longer.wiringRevision = 2;
+  longer.wiringDigest = String("digest-b");
+  assert(!changesWiring(longer, installed, ok));
+  assert(ok);
+
+  // Topology still stages: GPIO, direction, added outputs, chipset, current,
+  // and splitting a run into more segments.
   assert(changesWiring(singleOutput(60, 17), installed, ok));    // GPIO
   assert(changesWiring(singleOutput(60, 16, true), installed, ok));  // direction
 
@@ -132,11 +143,13 @@ int main() {
 
   RuntimeConfig revised = singleOutput(60, 16);
   revised.wiringRevision = 2;
-  assert(changesWiring(revised, installed, ok));  // wiring revision
+  assert(!changesWiring(revised, installed, ok));  // revision-only is not a rewire
+  assert(ok);
 
   RuntimeConfig redigested = singleOutput(60, 16);
   redigested.wiringDigest = String("digest-b");
-  assert(changesWiring(redigested, installed, ok));  // wiring digest
+  assert(!changesWiring(redigested, installed, ok));  // digest-only is not a rewire
+  assert(ok);
 
   RuntimeConfig rechipped = singleOutput(60, 16);
   rechipped.ledType = String("WS2815");

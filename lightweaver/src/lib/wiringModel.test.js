@@ -11,6 +11,7 @@ import {
   invalidatesVerifiedWiring,
   wiringFingerprint,
   invalidateWiringVerification,
+  prepareWiringForPhysicalEdit,
   physicalChangeKindForCompatField,
   standaloneControllerPhysicalChangeKind,
 } from './wiringModel.js';
@@ -193,6 +194,14 @@ test('physical reducer boundary maps all compat fields and invalidates precise v
   const locked = invalidateWiringVerification({ ...verified, locked: true }, { kind: 'geometry' });
   assert.equal(locked.ok, false);
   assert.equal(locked.errors[0].code, 'wiring-locked');
+
+  // Draw LED/size/move edits reopen the plan the same way GPIO already does.
+  // The Wire specialist tools still use invalidateWiringVerification and refuse.
+  const reopened = prepareWiringForPhysicalEdit({ ...verified, locked: true }, { kind: 'led-count' });
+  assert.equal(reopened.ok, true);
+  assert.equal(reopened.wiring.locked, false);
+  assert.equal(reopened.wiring.verified, false);
+  assert.ok(reopened.wiring.runs.every(run => run.verified === false));
 });
 
 test('controller boundary compares only output and GPIO pin fields', () => {

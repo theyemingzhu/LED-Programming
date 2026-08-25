@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { getCardLinkState, subscribeCardLink } from '../../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../../lib/cardReadiness.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { normalizePatchBoard } from '../../../lib/patchBoard.js';
 import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js';
+import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
+import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { CardPushControl } from '../shared/CardPushControl.jsx';
+import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { WireHoverDescription } from '../shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../wire/WiringPreflight.jsx';
 import { WiringBenchTest } from '../wire/WiringBenchTest.jsx';
@@ -44,6 +47,14 @@ export function WireModePanel({ state, connected, cardHost }) {
     wiring, updateWiring, compiledWiring, patchBoard,
     projectId, projectName, standaloneController, setStandaloneController, confirmedCardLook, portRoles,
   } = useProject();
+  const ledType = normalizeCardLedType(standaloneController?.led?.type, DEFAULT_STANDALONE_LED.type);
+  const setLedType = useCallback(nextType => {
+    const type = normalizeCardLedType(nextType, DEFAULT_STANDALONE_LED.type);
+    setStandaloneController(current => ({
+      ...current,
+      led: { ...(current?.led || {}), type },
+    }));
+  }, [setStandaloneController]);
   const [mutationError, setMutationError] = useState('');
   const [showAssembly, setShowAssembly] = useState(false);
   const [pinError, setPinError] = useState('');
@@ -401,6 +412,9 @@ export function WireModePanel({ state, connected, cardHost }) {
       <div className="panel-head lww-plan-head">
         <span className="ttl">Test &amp; Install</span>
         <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
+      </div>
+      <div className="la-led-chipset-row" data-testid="project-led-chipset">
+        <LedChipsetSelect value={ledType} onChange={setLedType}/>
       </div>
       <WiringPlanSummary wiring={wiring} strips={strips}/>
       {/* These lines speak in the present tense about the card ("plugged in

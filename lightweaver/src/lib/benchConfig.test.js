@@ -17,6 +17,7 @@ import {
   benchSkipReasonText,
   buildBenchConfig,
   isBenchProjectEvidence,
+  isUncountedDiscoveryHeadroom,
 } from './benchConfig.js';
 import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 import { makeCardRuntimePackage } from './cardRuntimeContract.js';
@@ -56,6 +57,24 @@ test('a card that says it is NOT provisional is believed, whatever the project i
   assert.equal(isBenchProjectEvidence({ projectId: BENCH_PROJECT_ID, provisionalSetup: true }), true);
   // Firmware that does not report the field still falls back to the id.
   assert.equal(isBenchProjectEvidence({ projectId: BENCH_PROJECT_ID }), true);
+});
+
+test('uncounted Find-my-strips headroom is the 256-pixel bench sentinel, not a counted install', () => {
+  assert.equal(isUncountedDiscoveryHeadroom({
+    projectId: BENCH_PROJECT_ID,
+    projectRevision: 4,
+    provisionalSetup: false,
+    outputs: [{ pin: 18, pixels: BENCH_DEFAULT_PORT_PIXELS }],
+  }), true);
+  assert.equal(isUncountedDiscoveryHeadroom({
+    projectId: BENCH_PROJECT_ID,
+    provisionalSetup: false,
+    outputs: [{ pin: 18, pixels: 41 }],
+  }), false);
+  assert.equal(isUncountedDiscoveryHeadroom({
+    projectId: 'lwproj-gallery',
+    outputs: [{ pin: 18, pixels: BENCH_DEFAULT_PORT_PIXELS }],
+  }), false);
 });
 
 test('isBenchProjectEvidence recognizes only the bench sentinel', () => {
@@ -386,6 +405,14 @@ test('untouched scaffolding is recognised even when the card calls it a finished
     projectRevision: BENCH_PROJECT_REVISION + 4,
     provisionalSetup: false,
   }), false);
+
+  // Same card as above, but the outputs still hold the uncounted 256 ceiling.
+  assert.equal(isBenchProjectEvidence({
+    projectId: BENCH_PROJECT_ID,
+    projectRevision: 4,
+    provisionalSetup: false,
+    outputs: [{ pin: 18, pixels: BENCH_DEFAULT_PORT_PIXELS }],
+  }), true);
 
   // And an explicit yes always wins.
   assert.equal(isBenchProjectEvidence({

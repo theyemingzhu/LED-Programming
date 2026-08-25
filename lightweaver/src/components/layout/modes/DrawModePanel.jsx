@@ -29,7 +29,6 @@ import {
   sliderValueToLedCount,
 } from '../../../lib/controlScale.js';
 import { PrimitiveStarter } from './PrimitiveStarter.jsx';
-import { LedChipsetHint, LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js';
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
@@ -113,7 +112,7 @@ export function DrawModePanel({
     expandedStrips, setExpandedStrips,
     stripListRef,
     // size
-    getLedCount, resampleStrip, setStripCount, stripDensity, setStripPhysical,
+    getLedCount, resampleStrip, stripDensity, setStripPhysical,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
     addPrimitiveStrip, scaleStrip,
@@ -176,7 +175,15 @@ export function DrawModePanel({
 
   const setLinkedAddCount = rawValue => {
     const count = clampLedCount(rawValue);
+    const nextLength = addDensity > 0 ? count / addDensity : addLengthM;
     setAddLedCount(count);
+    setAddLengthM(nextLength);
+    setAddLengthDraft(formatMetersValue(nextLength));
+  };
+  const setStripLedCount = (id, raw) => {
+    const dens = stripDensity(id);
+    if (!(dens > 0)) return;
+    setStripPhysical(id, { lengthM: clampLedCount(raw) / dens });
   };
   const setLinkedAddDensity = nextDensity => {
     const nextCount = clampLedCount(Math.round(addLengthM * nextDensity));
@@ -309,7 +316,6 @@ export function DrawModePanel({
     if (strip.kaleidoscope?.pointCount) parts.push(`${strip.kaleidoscope.pointCount} reflection points`);
     return parts.join(' · ');
   };
-  const SIZE_RULE_CAPTION = 'Size sets the count. Editing LEDs keeps the size.';
 
   // Why Split is unavailable, said the way the owner would say it. Empty
   // string means the control is live.
@@ -1110,7 +1116,6 @@ export function DrawModePanel({
                       <input type="number" min="1" max={LED_COUNT_MAX} step="1"
                              value={addLedCount}
                              aria-label="New strip LEDs"
-                             title="Cut-strip correction: changes the count and keeps the size. Edit Size to recount from the reel density."
                              inputMode="numeric"
                              onFocus={e => e.target.select()}
                              onChange={e => setLinkedAddCount(e.target.value)}/>
@@ -1127,7 +1132,6 @@ export function DrawModePanel({
                         <input type="number" min="0.001" step="0.001"
                                value={addLengthDraft}
                                aria-label="New strip size in metres"
-                               title="Physical strip length. Sets the LED count from the reel density."
                                inputMode="decimal"
                                onFocus={e => e.target.select()}
                                onChange={e => setAddLengthDraft(e.target.value)}
@@ -1140,9 +1144,6 @@ export function DrawModePanel({
                     </div>
                   </div>
                 </div>
-                <span className="la-physical-rule-hint">
-                  Size sets the count. Editing LEDs keeps the size.
-                </span>
                 <div className="row la-strip-output-row la-add-strip-output-row">
                   <div className="la-gpio-wrap">
                     <select className="la-gpio-select" aria-label="New strip GPIO output"
@@ -1171,12 +1172,6 @@ export function DrawModePanel({
                 {selectedStrips.length > 1 ? `${selectedStrips.length} sel · ` : ''}
                 {strips.length} · {totalLeds.toLocaleString()} LEDs · wiring order
               </span>
-            </div>
-            {/* Project-wide, next to the LED total: the card drives every
-                output from one chipset, so this is not a per-strip choice. */}
-            <div className="la-led-chipset-row" data-testid="project-led-chipset">
-              <LedChipsetSelect value={ledType} onChange={setLedType}/>
-              <LedChipsetHint/>
             </div>
             {patchBoard?.dataWireCountNeedsReview && (
               <div className="lw-legacy-confirm" role="alert" data-testid="legacy-gpio-confirm">
@@ -1497,29 +1492,27 @@ export function DrawModePanel({
                             </section>
                           );
                         })()}
-                        {/* Size is physical truth and recounts LEDs; LED count is
-                            a direct cut-strip correction that keeps size. */}
+                        {/* Size, density, and LED count are one closed loop. */}
                         <div className="row la-strip-physical-row">
-                          <div className="la-strip-physical-field" data-caption={SIZE_RULE_CAPTION}>
+                          <div className="la-strip-physical-field">
                             <span className="k">LEDs</span>
                             <div className="la-led-count-field" role="group" aria-label="LED count tuning">
-                              <button type="button" className="btn" aria-label="One LED fewer" title="Subtract one LED without changing size"
-                                      onClick={() => setStripCount(s.id, clampLedCount(s.pixelCount - 1))}>−</button>
+                              <button type="button" className="btn" aria-label="One LED fewer"
+                                      onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount - 1))}>−</button>
                               <input type="number" min="1" max={LED_COUNT_MAX} step="1"
                                      value={s.pixelCount}
                                      aria-label="Strip LED count"
-                                     title="Cut-strip correction: changes the count and keeps the size. Edit Size to recount from the reel density."
                                      inputMode="numeric"
                                      onFocus={e => e.target.select()}
                                      onClick={e => e.target.select()}
-                                     onChange={e => setStripCount(s.id, clampLedCount(e.target.value))}
-                                     onBlur={e => setStripCount(s.id, clampLedCount(e.target.value))}
-                                     onKeyDown={e => { if (e.key === 'Enter') setStripCount(s.id, clampLedCount(e.target.value)); }}/>
-                              <button type="button" className="btn" aria-label="One LED more" title="Add one LED without changing size"
-                                      onClick={() => setStripCount(s.id, clampLedCount(s.pixelCount + 1))}>+</button>
+                                     onChange={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
+                                     onBlur={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
+                                     onKeyDown={e => { if (e.key === 'Enter') setStripLedCount(s.id, clampLedCount(e.target.value)); }}/>
+                              <button type="button" className="btn" aria-label="One LED more"
+                                      onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount + 1))}>+</button>
                             </div>
                           </div>
-                          <div className="la-strip-physical-field" data-caption={SIZE_RULE_CAPTION}>
+                          <div className="la-strip-physical-field">
                             <span className="k">Size</span>
                             <div className="la-size-ctrl">
                               <button type="button" className="btn" aria-label="Make strip smaller"
@@ -1534,7 +1527,6 @@ export function DrawModePanel({
                                            : svgPathLength(s.pathData),
                                          pxPerMm))}
                                        aria-label="Strip length in metres"
-                                       title="Physical strip length. Sets the LED count from the reel density."
                                        inputMode="decimal"
                                        onFocus={e => e.target.select()}
                                        onBlur={e => {

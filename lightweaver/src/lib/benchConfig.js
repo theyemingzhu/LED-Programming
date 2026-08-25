@@ -113,6 +113,11 @@ export function isBenchProjectEvidence(evidence) {
   // row, and no action at all. The id match is what the comment always said it
   // was — a fallback for firmware that does not report the field.
   if (evidence.provisionalSetup === true) return true;
+  // The 256-pixel probe ceiling is still uncounted Find-my-strips, even after
+  // revision moved and provisionalSetup dropped. Revision-only matching missed
+  // lw-b0fe81f61b44 (revision 4, GPIO 18 still at 256) and Studio locked it
+  // as a finished install.
+  if (isUncountedDiscoveryHeadroom(evidence)) return true;
   // A card can be holding the UNTOUCHED scaffolding and still report
   // `provisionalSetup: false` — Adrian's own card does, read on 2026-08-23:
   // the sentinel project id, BENCH_DEFAULT_PORT_PIXELS on the probed pin, a
@@ -132,6 +137,19 @@ export function isBenchProjectEvidence(evidence) {
     && Number(evidence.projectRevision) === BENCH_PROJECT_REVISION) return true;
   if (typeof evidence.provisionalSetup === 'boolean') return evidence.provisionalSetup;
   return evidence.projectId === BENCH_PROJECT_ID;
+}
+
+// Find-my-strips writes this many pixels per port so the probe can light an
+// unknown strip. It is not a counted length. A card can keep that ceiling
+// after revision moves and after `provisionalSetup` drops (lw-b0fe81f61b44,
+// 2026-08-25: revision 4, GPIO 18 still at 256). Adopting that as a verified
+// install locked the layout on a number the owner never entered.
+export function isUncountedDiscoveryHeadroom(status = {}) {
+  if (!status || typeof status !== 'object' || Array.isArray(status)) return false;
+  if (status.projectId !== BENCH_PROJECT_ID) return false;
+  const outputs = Array.isArray(status.outputs) ? status.outputs : [];
+  if (!outputs.length) return false;
+  return outputs.every(output => Math.trunc(Number(output?.pixels) || 0) === BENCH_DEFAULT_PORT_PIXELS);
 }
 
 // portRoles: the array from portRoles.js (normalized here, so callers may pass

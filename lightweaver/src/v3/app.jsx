@@ -86,7 +86,7 @@ import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
-import { CONNECTED_CARD_LINK_STATES, SETUP_SKIP_STORAGE_KEY, deriveSetupJourney } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES, deriveSetupJourney } from '../lib/setupJourney.js';
 import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
@@ -273,39 +273,32 @@ class ScreenErrorBoundary extends Component {
   }
 }
 
-// Where a bare URL lands. Setup is the front door for anyone who has not been
-// through it — the old fallback dropped a first-time owner onto Layout with a
-// placeholder circle and no route to their card. Once the owner has said they
-// are done with it, the fallback returns to Layout. Deep links are untouched:
-// only the FALLBACK moves, so #screen=layout still opens Layout for everyone.
-const SETUP_SKIP_KEY = SETUP_SKIP_STORAGE_KEY;
+// Where a bare URL lands. The card is the front door every time Studio opens
+// without a deep link: the owner needs to see that this card is connected and
+// current before they start moving through Layout. Deep links are untouched —
+// #screen=layout still opens Layout. Only the empty-hash fallback moves.
 function defaultView() {
-  try {
-    return window.localStorage.getItem(SETUP_SKIP_KEY) === '1' ? 'layout' : 'card';
-  } catch {
-    return 'layout';
-  }
+  return 'card';
 }
 function viewOptions() {
   return { screenKeys: SCREEN_KEYS, fallbackView: defaultView() };
 }
 
-// A first-time owner typing the bare domain should meet the guided ladder.
-// Writing that into the hash before React mounts keeps every downstream route
-// decision reading from one place — the URL — instead of special-casing an
-// empty hash in the view state, the card route and the hash-sync effect.
+// Writing the card route into the hash before React mounts keeps every
+// downstream route decision reading from one place — the URL — instead of
+// special-casing an empty hash in the view state, the card route and the
+// hash-sync effect.
 function bootstrapFirstRunSetupRoute() {
   try {
     if (window.location.hash) return;
-    if (window.localStorage.getItem(SETUP_SKIP_KEY) === '1') return;
     window.history.replaceState(
       null,
       '',
       `${window.location.pathname}${window.location.search}#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
     );
   } catch {
-    // No hash rewrite is possible without history/storage; the ordinary
-    // fallback route still applies.
+    // No hash rewrite is possible without history; the ordinary fallback
+    // route still applies.
   }
 }
 bootstrapFirstRunSetupRoute();
@@ -1573,6 +1566,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenSection={openCardSection}
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
+              firmwareStatus={firmwareStatus}
               replaceProject={replaceProject}
               currentProject={serializeProject()}
               projectGeneration={projectLifecycle.generation}

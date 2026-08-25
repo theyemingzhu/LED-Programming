@@ -8,6 +8,7 @@ import { LayoutCanvas } from './layout/canvas/LayoutCanvas.jsx';
 import { DrawModePanel } from './layout/modes/DrawModePanel.jsx';
 import { WireModePanel } from './layout/modes/WireModePanel.jsx';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
+import { useApplyLedCountToCard } from './layout/hooks/useApplyLedCountToCard.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import {
   createDefaultKaleidoscope,
@@ -27,6 +28,7 @@ import { useKaleidoscopeCalibration } from './layout/hooks/useKaleidoscopeCalibr
 
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
+  useApplyLedCountToCard({ connected, cardHost });
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [firstLedPicker, setFirstLedPicker] = useState(null);
   const [firstLedError, setFirstLedError] = useState(null);
