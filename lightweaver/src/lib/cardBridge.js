@@ -1878,7 +1878,12 @@ function navigateReservedCardBridgeWindow(target, host, studioUrl) {
 
 export function acquireCardBridgeFromGesture(rawHost = '', {
   studioUrl = '',
-  timeoutMs = 10000,
+  // The card serves its page from an ESP32 over Wi-Fi — tens of kilobytes to a
+  // phone that may also be throttling the new tab because it is in the
+  // background. Ten seconds was optimistic, and the owner's reward for a slow
+  // load was "the card page opened but did not answer", which reads as a
+  // network fault rather than "wait a moment longer".
+  timeoutMs = 30000,
   acceptDiscovered = false,
   reservedWindow = null,
 } = {}) {
@@ -1907,6 +1912,7 @@ export function acquireCardBridgeFromGesture(rawHost = '', {
   if (existing) return existing;
 
   let timer = null;
+  let nudgeTimer = null;
   let settle = null;
   const ready = new Promise((resolve, reject) => {
     settle = { resolve, reject };
@@ -1916,6 +1922,7 @@ export function acquireCardBridgeFromGesture(rawHost = '', {
 
   const cleanup = () => {
     if (timer) clearTimeout(timer);
+    if (nudgeTimer) clearTimeout(nudgeTimer);
     win?.removeEventListener?.(CARD_BRIDGE_CHANGED_EVENT, onBridgeChange);
     if (bridgeAcquisitions.get(acquisitionKey) === attempt) bridgeAcquisitions.delete(acquisitionKey);
   };
@@ -1982,6 +1989,23 @@ export function acquireCardBridgeFromGesture(rawHost = '', {
   }
 
   if (resolveWhenVerified()) return attempt;
+  // A tab reused by name from an earlier session is already loaded and has no
+  // live `window.opener`, so it will never post its ready handshake however
+  // long we wait — silence that looks identical to a slow card. Re-navigating
+  // it re-runs the page with a fresh opener and the studioOrigin fragment,
+  // which is the whole handshake. Once only, and only if it is still open.
+  let renavigated = false;
+  const halfway = Math.max(0, Number(timeoutMs) || 0) / 2;
+  nudgeTimer = setTimeout(() => {
+    if (renavigated || !opened || bridgeTargetClosed(opened)) return;
+    if (getCardBridgeState()?.verified) return;
+    renavigated = true;
+    try {
+      navigateReservedCardBridgeWindow(opened, host, studioUrl);
+    } catch {
+      /* A tab we cannot navigate is one the timeout below will report. */
+    }
+  }, halfway);
   timer = setTimeout(() => {
     cleanup();
     settle.reject(bridgeError(

@@ -1186,14 +1186,25 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     const scheduleBrowseLivePreview = useCallback((nextLook, target) => {
       if (!nextLook) return;
-      if (currentPatternPreviewAccess() !== 'ready') {
+      const needsBridge = Boolean(
+        localCard || (typeof window !== 'undefined' && window.location?.protocol === 'https:')
+      );
+      // On https the card link cannot become ready until the card page is
+      // open, and the card page only opens further down THIS function. Gating
+      // the whole path on readiness therefore closed a loop: every tap was
+      // refused for a lack of readiness that only a tap could establish, so
+      // Patterns previewed in Studio forever and the strip never moved.
+      //
+      // The gate protects SENDING light to a card Studio has not verified.
+      // Opening the card page is not sending — and the send below is still
+      // guarded by `exactFreshAuthority`, which re-reads the card's own status
+      // and checks id, firmware, build and boot before a single frame goes out.
+      const openingTheBridge = needsBridge && !(hasCardBridge() && getCardBridgeState()?.verified);
+      if (currentPatternPreviewAccess() !== 'ready' && !openingTheBridge) {
         blockPatternCardEffect(currentPatternPreviewAccess());
         return;
       }
       setPatternCardGate('');
-      const needsBridge = Boolean(
-        localCard || (typeof window !== 'undefined' && window.location?.protocol === 'https:')
-      );
       if (!needsBridge) {
         scheduleLivePreview(nextLook, target);
         return;
