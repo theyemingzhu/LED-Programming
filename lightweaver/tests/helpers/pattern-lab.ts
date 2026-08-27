@@ -53,9 +53,14 @@ export function drawerCloseButton(page: Page): Locator {
 export async function openControls(page: Page): Promise<void> {
   if (!(await isMobileDrawerViewport(page))) return;
   const drawer = controlsDrawer(page);
-  if ((await drawer.getAttribute('aria-hidden')) !== 'true') return;
-  await drawerTrigger(page).click();
-  await expect(drawer).not.toHaveAttribute('aria-hidden', 'true');
+  // Autoload peeks the sheet. A single click can land while that transition
+  // still owns the trigger, so ask until the drawer is actually live.
+  await expect(async () => {
+    if ((await drawer.getAttribute('aria-hidden')) === 'true') {
+      await drawerTrigger(page).click();
+    }
+    await expect(drawer).not.toHaveAttribute('aria-hidden', 'true', { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
 }
 
 // No-op on desktop (the drawer concept does not exist there). On mobile,
