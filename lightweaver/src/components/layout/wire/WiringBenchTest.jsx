@@ -71,7 +71,15 @@ export function WiringBenchTest({
       skipNextCompiledSyncRef.current = false;
       return;
     }
-    if (state?.status === 'active') dispatch({ type: 'sync-compiled', compiled });
+    if (state?.status !== 'active') return;
+    // Wiring and strip counts update in separate layout dispatches. Syncing
+    // on each one overlaps chase show() calls; the second rejects and the
+    // step's delivery never confirms. Coalesce to the last compiled in the
+    // burst so +/− can resend one frame.
+    const timer = window.setTimeout(() => {
+      dispatch({ type: 'sync-compiled', compiled });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [compiled, state?.status]);
 
   useEffect(() => {

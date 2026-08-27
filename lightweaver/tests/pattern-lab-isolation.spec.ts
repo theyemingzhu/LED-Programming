@@ -35,16 +35,23 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Pattern Lab is an isolated lazy Studio route', async ({ page }) => {
-  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  // Lab is routable like Discovery — not a rail destination. Public entrance
+  // is Patterns → Sculpt in Lab (open-pattern-lab), or a direct hash.
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
 
   const patterns = page.getByRole('button', { name: 'Patterns', exact: true });
   await expect(patterns).toBeVisible();
-  await page.getByRole('button', { name: 'Pattern Lab', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pattern Lab', exact: true })).toHaveCount(0);
 
-  await expect(page).toHaveURL(/#screen=pattern-lab$/);
+  await page.getByTestId('open-pattern-lab').click();
+
+  await expect(page).toHaveURL(/screen=pattern-lab/);
   await expect(page.getByTestId('pattern-lab-screen')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pattern Lab' })).toBeVisible();
   await expect(patterns).toBeVisible();
+  // No rail item owns Lab, so none is aria-current while Lab is open.
+  await expect(page.locator('.rail-item[aria-current="page"]')).toHaveCount(0);
+  await expect(patterns).not.toHaveAttribute('aria-current', 'page');
 });
 
 test('Pattern Lab keeps one lazy route descriptor and owns its stylesheet', () => {
@@ -63,7 +70,8 @@ test('Pattern Lab shell exposes its current step and decorative preview safely',
   expect(LAB_CSS).not.toMatch(/color:\s*var\(--text-faint\)/);
   expect(LAB_CSS).not.toMatch(/(?:^|[;{]\s*)color:\s*var\(--accent\)/m);
 
-  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  // Invalid patternId keeps the empty sculpture (autoload only fills known ids).
+  await page.goto('/#screen=pattern-lab&patternId=not-a-pattern', { waitUntil: 'domcontentloaded' });
   const workflow = page.getByRole('navigation', { name: 'Pattern Lab workflow' });
   await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
   await expect(page.locator('svg.plab-sculpture')).toHaveAttribute('aria-hidden', 'true');
@@ -211,12 +219,12 @@ test('icon-only actions expose immediate styled tooltips on hover and keyboard f
   const privateStatus = page.getByRole('status', { name: /private workspace/i });
   await expect(privateStatus).toHaveAttribute(
     'data-tooltip',
-    'Private workspace: your project and lights stay unchanged',
+    'Private workspace: your project stays unchanged; native looks sample the lights',
   );
   await privateStatus.hover();
   await expect.poll(() => tooltipState(privateStatus)).toMatchObject(
     hoverCapable
-      ? { content: '"Private workspace: your project and lights stay unchanged"', opacity: '1', visibility: 'visible' }
+      ? { content: '"Private workspace: your project stays unchanged; native looks sample the lights"', opacity: '1', visibility: 'visible' }
       : { opacity: '0', visibility: 'hidden' },
   );
 });

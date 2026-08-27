@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deriveCardLifecycle } from './cardLifecycle.js';
+import { cardFooterNeedsSave, deriveCardLifecycle, studioTypedLedCount } from './cardLifecycle.js';
 
 const READY_LINK = Object.freeze({
   state: 'connected-direct',
@@ -43,6 +43,10 @@ test('one lifecycle orders exact failures ahead of generic connection copy', () 
     // what made owners stop trusting an otherwise correct screen.
     [{ link: READY_LINK, project: { id: 'piece-b', revision: 7, fingerprint: 'b'.repeat(64) } }, 'project-mismatch', 'Save to card', 'load-matching-project'],
     [{ link: READY_LINK, project: { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) } }, 'ready', 'Connected', 'open-patterns'],
+    [{
+      link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, requestedPixels: 41 } },
+      project: { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64), totalPixels: 39 },
+    }, 'length-mismatch', 'Save to card', 'save-led-count'],
     [{ link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, firmwareUpdate: { phase: 'rolled-back', rollbackReason: 'health-check-failed' } } } }, 'update-rolled-back', 'Update rolled back', 'recover-operation'],
   ];
 
@@ -225,4 +229,81 @@ test('project ids match across the card sanitizing boundary instead of stranding
   });
   assert.equal(mismatch.exactProject, false);
   assert.equal(mismatch.state, 'project-mismatch');
+});
+
+test('same-project LED count drift is Save to card without opening Setup', () => {
+  const matching = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64), totalPixels: 39 };
+  const drifted = deriveCardLifecycle({
+    link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, requestedPixels: 41 } },
+    project: matching,
+  });
+  assert.equal(drifted.state, 'length-mismatch');
+  assert.equal(drifted.label, 'Save to card');
+  assert.equal(drifted.setupTaskId, 'save-led-count');
+  assert.equal(drifted.exactProject, true);
+
+  const disconnected = deriveCardLifecycle({
+    link: { state: 'disconnected' },
+    project: matching,
+  });
+  assert.notEqual(disconnected.state, 'length-mismatch');
+  assert.equal(disconnected.label, 'Not connected');
+
+  const otherProject = deriveCardLifecycle({
+    link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, requestedPixels: 41 } },
+    project: { id: 'piece-b', revision: 7, fingerprint: 'b'.repeat(64), totalPixels: 39 },
+  });
+  assert.equal(otherProject.state, 'project-mismatch');
+  assert.equal(otherProject.setupTaskId, 'load-matching-project');
+});
+
+test('install-revision pin still flips Save to card from live layout strips', () => {
+  const serialized = {
+    id: 'piece-a',
+    revision: 7,
+    fingerprint: 'a'.repeat(64),
+    layout: { strips: [{ id: 'a', pixelCount: 39, pixels: Array.from({ length: 39 }, () => ({})) }] },
+  };
+  assert.equal(studioTypedLedCount(serialized), 39);
+  const drifted = deriveCardLifecycle({
+    link: {
+      ...READY_LINK,
+      readiness: { ...READY_LINK.readiness, requestedPixels: 41, led: { pixels: 41 } },
+    },
+    project: serialized,
+  });
+  assert.equal(drifted.state, 'length-mismatch');
+  assert.equal(drifted.label, 'Save to card');
+  assert.equal(drifted.exactProject, true);
+});
+
+test('same-project playlist fingerprint drift is Save to card without opening Setup', () => {
+  const matching = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) };
+  const drifted = deriveCardLifecycle({
+    link: READY_LINK,
+    project: { ...matching, liveFingerprint: 'b'.repeat(64) },
+  });
+  assert.equal(drifted.state, 'content-mismatch');
+  assert.equal(drifted.label, 'Save to card');
+  assert.equal(drifted.setupTaskId, 'save-project');
+
+  const disconnected = deriveCardLifecycle({
+    link: { state: 'disconnected' },
+    project: { ...matching, liveFingerprint: 'b'.repeat(64) },
+  });
+  assert.notEqual(disconnected.state, 'content-mismatch');
+  assert.equal(disconnected.label, 'Not connected');
+
+  const otherProject = deriveCardLifecycle({
+    link: READY_LINK,
+    project: { id: 'piece-b', revision: 7, fingerprint: 'c'.repeat(64), liveFingerprint: 'd'.repeat(64) },
+  });
+  assert.equal(otherProject.state, 'project-mismatch');
+  assert.equal(otherProject.setupTaskId, 'load-matching-project');
+});
+
+test('cardFooterNeedsSave is true only for Save to card labels', () => {
+  assert.equal(cardFooterNeedsSave({ label: 'Save to card' }), true);
+  assert.equal(cardFooterNeedsSave({ label: 'Connected' }), false);
+  assert.equal(cardFooterNeedsSave({ label: 'Not connected' }), false);
 });

@@ -4,6 +4,7 @@ import {
   applyLedCountOnCard,
   applyTypedLedCountToCard,
   cardStatusWithPixelCount,
+  projectForTypedLedCount,
   projectFromCountedCardStatus,
 } from './applyLedCountToCard.js';
 
@@ -50,6 +51,7 @@ test('applies a typed LED count when the GPIO is unchanged', async () => {
   assert.equal(result.applied, true);
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].options.reboot, 'if-needed');
+  assert.equal(result.runtimePackage.config.led.outputs[0].pixels, 41);
 });
 
 test('does not write when the card already has that length', async () => {
@@ -129,4 +131,49 @@ test('applyLedCountOnCard writes from the live card without a Studio Layout visi
   assert.equal(result.applied, true);
   assert.equal(pushes[0].runtimePackage.config.led.outputs[0].pin, 18);
   assert.equal(pushes[0].runtimePackage.config.led.outputs[0].pixels, 41);
+});
+
+test('typed count write follows strip pixels even if a run range is stale', async () => {
+  const drifted = {
+    ...project,
+    strips: [{
+      ...project.strips[0],
+      pixelCount: 39,
+      pixels: Array.from({ length: 39 }, (_, index) => ({ x: index, y: 0 })),
+    }],
+  };
+  const prepared = projectForTypedLedCount(drifted);
+  assert.equal(prepared.wiring.runs[0].source.to, 38);
+  assert.equal(prepared.standaloneController.outputs[0].pixels, 39);
+
+  const pushes = [];
+  const result = await applyTypedLedCountToCard({
+    host: '192.168.18.70',
+    project: drifted,
+    readEvidence: async () => ({ outputs: [{ pin: 16, pixels: 41 }] }),
+    pushConfig: async (runtimePackage, options) => {
+      pushes.push({ runtimePackage, options });
+      return { ok: true, saved: true };
+    },
+  });
+  assert.equal(result.applied, true);
+  assert.equal(pushes[0].runtimePackage.config.led.outputs[0].pixels, 39);
+  assert.equal(pushes[0].runtimePackage.config.led.outputs[0].pin, 16);
+});
+
+test('LayoutScreen does not silently auto-push a typed LED count', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const layoutScreen = readFileSync(fileURLToPath(new URL('../components/LayoutScreen.jsx', import.meta.url)), 'utf8');
+  assert.equal(layoutScreen.includes('useApplyLedCountToCard'), false);
+  let hookMissing = false;
+  try {
+    readFileSync(fileURLToPath(new URL('../components/layout/hooks/useApplyLedCountToCard.js', import.meta.url)));
+  } catch (error) {
+    hookMissing = error?.code === 'ENOENT';
+  }
+  assert.equal(hookMissing, true);
+  const drawPanel = readFileSync(fileURLToPath(new URL('../components/layout/modes/DrawModePanel.jsx', import.meta.url)), 'utf8');
+  assert.match(drawPanel, /setStripCount\(id, clampLedCount\(raw\)\)/);
+  assert.equal(drawPanel.includes('setStripPhysical(id, { lengthM: clampLedCount'), false);
 });

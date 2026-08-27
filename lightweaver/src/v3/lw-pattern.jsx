@@ -854,7 +854,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         ? loadCustomPatterns().map(pattern => adaptPattern({
           ...pattern,
           label: pattern.name || pattern.label || pattern.id,
-          description: pattern.description || 'Custom Pattern Lab pattern.',
+          description: pattern.description || 'Custom pattern',
         }))
         : []
     ), [workspaceAssets.generation, workspaceAssets.ready]);
@@ -2230,6 +2230,7 @@ import { PatternPreview } from './PatternPreview.jsx';
 
               {/* ASIDE */}
               <aside className="pm-aside">
+                <div className="pm-instrument" data-testid="pattern-instrument">
                 <div className="card pm-pane pm-preview-pane">
                   <div className="pm-preview-controls" aria-label="Pattern preview controls">
                     <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${sel.label}`}>
@@ -2317,6 +2318,27 @@ import { PatternPreview } from './PatternPreview.jsx';
                   </div>
                 </div>
 
+                <div className="card pm-pane pm-tune-pane">
+                  {/* color picker (drives the live custom hue/sat) */}
+                  <div className="pm-hue">
+                    <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
+                    <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
+                    <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+                  </div>
+                  <Slider k="Saturation" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
+                  <Slider k="Brightness" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
+                  <Slider k="Speed" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
+                  <button
+                    type="button"
+                    className="btn"
+                    data-testid="open-pattern-lab"
+                    onClick={() => { window.location.hash = `#screen=pattern-lab&patternId=${encodeURIComponent(look.patternId || '')}`; }}
+                  >
+                    Sculpt in Lab
+                  </button>
+                </div>
+                </div>
+
                 <div className="card pm-pane">
                   <div className="sec-h"><span className="t">Color</span><button type="button" className="pm-save" data-testid="look-save-preset" onClick={savePreset}>Save look</button><button type="button" className="pm-reset" data-testid="look-reset" onClick={() => updatePreviewLook({ brightness: DEFAULT_CARD_VISUAL_LOOK.brightness, speed: DEFAULT_CARD_VISUAL_LOOK.speed, customHue: DEFAULT_CARD_VISUAL_LOOK.customHue, customSaturation: DEFAULT_CARD_VISUAL_LOOK.customSaturation, hueShift: DEFAULT_CARD_VISUAL_LOOK.hueShift, customBreathe: false, breatheLowerPct: 85, breatheUpperPct: 100, breatheCycleSeconds: 9, customDrift: false })}>Reset</button></div>
                   <div className="pm-palette">
@@ -2329,16 +2351,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                     })}</span>
                     <div className="pm-palmeta"><strong>{sel.label}</strong><span>{sel.sp} · {sel.cat.toUpperCase()}</span></div>
                   </div>
-
-                  {/* color picker (drives the live custom hue/sat) */}
-                  <div className="pm-hue">
-                    <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
-                    <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
-                    <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
-                  </div>
-                  <Slider k="Saturation" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
-                  <Slider k="Brightness" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
-                  <Slider k="Speed" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
 
                   {/* Advanced: Breathe / Drift + Hue-shift, tucked in the mockup idiom */}
                   <details className="pmx-advanced">

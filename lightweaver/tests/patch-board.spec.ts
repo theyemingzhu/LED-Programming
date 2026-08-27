@@ -94,6 +94,7 @@ async function openAdvanced(page: any) {
 
 async function loadVerifiedWiring(page: any, tmp: string) {
   const project = await exportProject(page, tmp, 'verification-source.json');
+  project.layout.starterPending = false;
   project.layout.wiring.verified = true;
   project.layout.wiring.locked = false;
   project.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
@@ -101,7 +102,15 @@ async function loadVerifiedWiring(page: any, tmp: string) {
   led.colorOrder = led.colorOrder || 'RGB';
   led.colorOrderConfirmed = true;
   led.confirmedColorOrder = led.colorOrder;
-  await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
+  const json = JSON.stringify(project);
+  await page.addInitScript(value => {
+    localStorage.setItem('lw_autosave_v3', value);
+    localStorage.setItem('lw_autosave_v3_backup', value);
+  }, json);
+  await page.evaluate(value => {
+    localStorage.setItem('lw_autosave_v3', value);
+    localStorage.setItem('lw_autosave_v3_backup', value);
+  }, json);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
 }
@@ -121,7 +130,6 @@ test('Draw lists strips grouped by GPIO in data-wire order and drag reorder writ
 
   const group = page.getByTestId('gpio-group-16');
   await expect(group).toContainText('GPIO 16');
-  await expect(group).toContainText('first → last');
   const rows = group.locator('.la-strip-row');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator('.la-wire-n')).toContainText('01');

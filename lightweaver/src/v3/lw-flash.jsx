@@ -406,7 +406,7 @@ import {
         <p>{action.explanation}</p>
         <ol>
           <li>{firstStep}</li>
-          <li>Open this project, then choose <strong>Connect card</strong> and <strong>Blank or not responding</strong>.</li>
+          <li>Open this project, then choose <strong>Connect this card</strong>. If the card is new, use <strong>Card is new or needs firmware</strong>.</li>
           <li>Plug the Lightweaver card into that computer by USB.</li>
         </ol>
         {showSecureInstaller && (

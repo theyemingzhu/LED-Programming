@@ -14,7 +14,6 @@ import { WiringBenchTest } from '../wire/WiringBenchTest.jsx';
 import { StripColorOrderCheck } from '../wire/StripColorOrderCheck.jsx';
 import { WiringAssemblyMap } from '../wire/WiringAssemblyMap.jsx';
 import { WireDiscovery } from '../wire/WireDiscovery.jsx';
-import { WiringPlanSummary } from '../wire/WiringPlanSummary.jsx';
 import { planAdjacentStripBoundary, planOutputPixelCountAdjustment } from '../../../lib/wiringChase.js';
 import { activeBoardGpios, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
 import { PORT_ROLE_STRIP } from '../../../lib/portRoles.js';
@@ -406,6 +405,11 @@ export function WireModePanel({ state, connected, cardHost }) {
     setGhostPt(null);
     setMode('draw');
   };
+  const showCapacityFact = capacity.state === 'short' || capacity.state === 'over';
+  const mismatchedOutputs = (wiring.outputs || []).filter(output => {
+    const discovered = discoveredByOutput.get(output.id);
+    return discovered && output.pin !== discovered.pin;
+  });
 
   return (
     <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-panel">
@@ -413,78 +417,37 @@ export function WireModePanel({ state, connected, cardHost }) {
         <span className="ttl">Test &amp; Install</span>
         <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
       </div>
-      <div className="la-led-chipset-row" data-testid="project-led-chipset">
-        <LedChipsetSelect value={ledType} onChange={setLedType}/>
-      </div>
-      <WiringPlanSummary wiring={wiring} strips={strips}/>
-      {/* These lines speak in the present tense about the card ("plugged in
-          right now", "counted on your card") but are read from the OPEN
-          PROJECT's saved discovery. When the card itself currently records no
-          strips, that saved copy is history, not observation — and printing it
-          directly above "This card has no strips recorded yet" put two
-          opposite claims about the same card in one panel. Stay quiet and let
-          the card's own answer stand. */}
-      {discoveredByOutput.size > 0 && !cardNeedsStripDiscovery && (
+      {(showCapacityFact || mismatchedOutputs.length > 0) && !cardNeedsStripDiscovery && (
         <section className="wire-discovered-list" aria-label="What is plugged in right now">
-          {/*
-            The design and the card are different things. A 41-light development
-            card driving a 400-light design is the normal state while a piece is
-            being designed, so a shorter card is stated as a fact, not flagged as
-            a fault. Only a wrong GPIO is a real problem — that one lights nothing
-            at all — so only that one gets a fix button.
-          */}
-          <p className="wire-capacity-line" data-testid="wire-capacity">
-            {capacity.state === 'short' && (
-              <>Plugged in right now: {capacity.cardPixels} light{capacity.cardPixels === 1 ? '' : 's'}. This design uses {capacity.designPixels} — the other {capacity.unattached} are not wired up yet.</>
-            )}
-            {capacity.state === 'matched' && (
-              <>Plugged in right now: {capacity.cardPixels} light{capacity.cardPixels === 1 ? '' : 's'} — everything this design uses.</>
-            )}
-            {capacity.state === 'over' && (
-              <>Plugged in right now: {capacity.cardPixels} lights. This design only uses {capacity.designPixels}, so {capacity.cardPixels - capacity.designPixels} stay dark.</>
-            )}
-          </p>
-          {wiring.outputs.map(output => {
+          {showCapacityFact && (
+            <p className="wire-capacity-line" data-testid="wire-capacity">
+              {capacity.state === 'short' && (
+                <>Plugged in right now: {capacity.cardPixels} light{capacity.cardPixels === 1 ? '' : 's'}. This design uses {capacity.designPixels} — the other {capacity.unattached} are not wired up yet.</>
+              )}
+              {capacity.state === 'over' && (
+                <>Plugged in right now: {capacity.cardPixels} lights. This design only uses {capacity.designPixels}, so {capacity.cardPixels - capacity.designPixels} stay dark.</>
+              )}
+            </p>
+          )}
+          {mismatchedOutputs.map(output => {
             const discovered = discoveredByOutput.get(output.id);
             if (!discovered) return null;
-            const drawingCount = compiledWiring.ok
-              ? (compiledWiring.outputs.find(item => item.id === output.id)?.count ?? 0)
-              : 0;
-            const wrongPin = output.pin !== discovered.pin;
             return (
               <div key={output.id} className="wire-discovered-output">
-                <span className="wire-discovered-chip" data-testid={`wire-discovered-${discovered.pin}`}>
-                  Counted on your card: GPIO {discovered.pin} · {discovered.pixelCount} light{discovered.pixelCount === 1 ? '' : 's'}
-                  {/* Only worth saying when there is more than one port to tell
-                      apart — with a single output it just repeats the line above. */}
-                  {drawingCount > 0 && wiring.outputs.length > 1 && <> · this design draws {drawingCount} here</>}
-                </span>
-                {wrongPin && (
-                  <>
-                    <p className="wire-discovered-mismatch" data-testid={`wire-mismatch-${discovered.pin}`}>
-                      This design sends its lights to GPIO {output.pin}, but your strip is plugged into GPIO {discovered.pin}. Nothing will light until they match.
-                    </p>
-                    <button
-                      type="button"
-                      className="btn wire-discovered-adopt"
-                      data-testid={`wire-adopt-${discovered.pin}`}
-                      title="Point this output at the GPIO the strip is really plugged into."
-                      data-tooltip="Point this output at the GPIO the strip is really plugged into."
-                      onClick={() => changeOutputPin(output.id, discovered.pin)}
-                    >Use GPIO {discovered.pin}</button>
-                  </>
-                )}
+                <p className="wire-discovered-mismatch" data-testid={`wire-mismatch-${discovered.pin}`}>
+                  This design sends its lights to GPIO {output.pin}, but your strip is plugged into GPIO {discovered.pin}. Nothing will light until they match.
+                </p>
+                <button
+                  type="button"
+                  className="btn wire-discovered-adopt"
+                  data-testid={`wire-adopt-${discovered.pin}`}
+                  title="Point this output at the GPIO the strip is really plugged into."
+                  data-tooltip="Point this output at the GPIO the strip is really plugged into."
+                  onClick={() => changeOutputPin(output.id, discovered.pin)}
+                >Use GPIO {discovered.pin}</button>
               </div>
             );
           })}
-          <button
-            type="button"
-            className="btn wire-discovered-recount"
-            data-testid="wire-recount"
-            title="Count the lights on the card that is plugged in now. Your design is not changed."
-            data-tooltip="Count the lights on the card that is plugged in now. Your design is not changed."
-            onClick={openStripDiscovery}
-          >Count what is plugged in</button>
         </section>
       )}
       {powerEstimate.status === 'over' && (
@@ -608,6 +571,19 @@ export function WireModePanel({ state, connected, cardHost }) {
       <details className="lww-advanced-tools" data-testid="advanced-installation-tools">
         <summary>Advanced installation tools</summary>
         <div className="lww-advanced-tools-body">
+          <div className="la-led-chipset-row" data-testid="project-led-chipset">
+            <LedChipsetSelect value={ledType} onChange={setLedType}/>
+          </div>
+          {discoveredStripEntries.length > 0 && (
+            <button
+              type="button"
+              className="btn wire-discovered-recount"
+              data-testid="wire-recount"
+              title="Count the lights on the card that is plugged in now. Your design is not changed."
+              data-tooltip="Count the lights on the card that is plugged in now. Your design is not changed."
+              onClick={openStripDiscovery}
+            >Count what is plugged in</button>
+          )}
           {wiring.locked && (
             <div className="lww-unlock">
               <span>Wiring locked after the check — unlocking clears the verification.</span>

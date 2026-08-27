@@ -54,7 +54,6 @@
   padding: 7px 10px 5px; border-bottom: 1px solid var(--border-hair);
   color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; letter-spacing: .055em;
 }
-.la-gpio-group-head span:last-child { color: var(--text-faint); font-size: 9px; letter-spacing: .03em; }
 .la-strip-output-row { position: relative; min-height: 28px; }
 .la-gpio-wrap { position: relative; display: inline-flex; flex: 0 0 auto; }
 .la-gpio-wrap::after {
@@ -128,8 +127,18 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .la-strip-detail .actions .btn {
-  width: 34px; min-width: 34px; height: 28px; padding: 0; justify-content: center;
+  width: auto; min-width: 34px; height: auto; padding: 4px 3px 3px;
+  flex-direction: column; gap: 2px; justify-content: center;
   color: var(--text-mid);
+}
+.la-strip-action-label {
+  font-size: 8px; line-height: 1.1; letter-spacing: .02em;
+  color: var(--text-faint); font-weight: 600;
+}
+.la-strip-detail .actions .btn:hover .la-strip-action-label,
+.la-strip-detail .actions .btn.active .la-strip-action-label,
+.la-strip-detail .actions .btn[aria-pressed="true"] .la-strip-action-label {
+  color: inherit;
 }
 .la-strip-detail .actions .btn:hover { color: var(--text-hi); }
 .la-strip-detail .actions .btn.active,

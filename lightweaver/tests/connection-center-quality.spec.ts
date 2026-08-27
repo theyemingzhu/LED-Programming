@@ -273,6 +273,7 @@ test('connected outdated firmware routes the update out to the install section w
   await expect(dialog.getByText('Update this card before setup continues.')).toBeVisible();
   await expect(dialog.getByText('Your card firmware is out of date.')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Not now' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Update firmware' }).click();
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   expect(await page.evaluate(() => (window as any).__hardwareOperations)).toBe(0);
@@ -322,15 +323,17 @@ test('connected current firmware does not show an update prompt', async ({ page 
 });
 
 test('direct older firmware routes the update out beneath the right-aligned build values', async ({ page }) => {
-  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: {
+  const status = {
     app: 'Lightweaver', provisioningContractVersion: 1,
     cardId: 'lw-b0fe81f61b44', firmwareVersion: '1.1.3',
     buildNumber: signedRelease.buildNumber - 10, buildId: 'a'.repeat(40),
     bootId: 'boot-direct-older', runtimePhase: 'ready', knownGoodProject: true,
     commandReady: true, playbackReady: true, outputReady: true,
-  } }));
+  };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Connect this card' }).click();
 
   const identity = dialog.getByTestId('direct-card-identity');
@@ -355,15 +358,17 @@ test('direct older firmware routes the update out beneath the right-aligned buil
 });
 
 test('direct current firmware keeps the inline update action hidden', async ({ page }) => {
-  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: {
+  const status = {
     app: 'Lightweaver', provisioningContractVersion: 1,
     cardId: 'lw-b0fe81f61b44', firmwareVersion: signedRelease.firmwareVersion,
     buildNumber: signedRelease.buildNumber, buildId: signedRelease.buildId,
     bootId: 'boot-direct-current', runtimePhase: 'ready', knownGoodProject: true,
     commandReady: true, playbackReady: true, outputReady: true,
-  } }));
+  };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Connect this card' }).click();
 
   const identity = dialog.getByTestId('direct-card-identity');
@@ -372,15 +377,17 @@ test('direct current firmware keeps the inline update action hidden', async ({ p
 });
 
 test('identified incompatible firmware shows the found card, installed versus current release, and the update route', async ({ page }) => {
-  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: {
+  const status = {
     app: 'Lightweaver', provisioningContractVersion: 0,
     cardId: 'lw-b0fe81f61b44', firmwareVersion: '1.1.1',
     buildNumber: 1198, buildId: 'a'.repeat(40),
     bootId: 'boot-old-contract',
     runtimePhase: 'ready', knownGoodProject: true, commandReady: true, outputReady: true,
-  } }));
+  };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
   await dialog.getByRole('button', { name: 'Connect this card' }).click();
 
   const identity = dialog.getByTestId('direct-card-identity');
@@ -398,23 +405,14 @@ test('an unreachable card stays a network or permission failure and does not gue
   await dialog.getByRole('button', { name: 'Connect this card' }).click();
 
   const alert = dialog.getByRole('alert');
-  await expect(alert).toContainText('Studio received no reply from the card');
-  await expect(alert).toContainText('cannot yet tell');
-  await expect(alert).toContainText('Wi-Fi or local-network permission');
-  await expect(alert).toContainText('older firmware');
+  await expect(alert).toContainText('No reply from the card');
   await expect(alert).not.toContainText(/firmware is (?:old|out of date)|firmware needs an update/i);
   await expect(dialog.getByRole('button', { name: 'Install current firmware' })).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: 'Open local Studio' })).toBeVisible();
-  // The offered escape must be a way to REACH the card, not the install
-  // wizard. "Check or update firmware" used to sit here and was the single
-  // worst misdirect in the flow: an owner whose only problem was that an
-  // https page cannot fetch an http address was sent to update firmware that
-  // was already current, and from there into joining a setup network their
-  // card was not broadcasting. The alert itself still refuses to blame
-  // firmware — the button must not either.
+  await expect(dialog.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Open local Studio' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Check or update firmware' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Update card' })).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: 'Open the card’s own page' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Open the card’s own page' })).toHaveCount(0);
 });
 
 test('ready-browser-usb opens the fixed local install screen', async ({ page }) => {
@@ -423,7 +421,8 @@ test('ready-browser-usb opens the fixed local install screen', async ({ page }) 
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
 
   await expect(page).toHaveURL(/#screen=flash&mode=install$/);
   await expect(page.url()).not.toMatch(/callback|target|url=/i);
@@ -441,7 +440,8 @@ test('secure iframe escapes to the fixed canonical installer in a new top-level 
   });
   const studio = page.frameLocator('#embedded-studio');
   await studio.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await studio.getByRole('button', { name: 'Blank or not responding' }).click();
+  await studio.getByRole('button', { name: 'Connect this card' }).click();
+  await studio.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   const escape = studio.getByRole('link', { name: 'Open secure installer' });
   await expect(escape).toHaveAttribute('href', 'https://led.mandalacodes.com/#screen=flash&mode=install');
   await expect(escape).toHaveAttribute('target', 'lightweaver-studio');
@@ -469,7 +469,8 @@ test('desktop Bridge launch persists the project and commissioning flow without 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'launch-native-bridge');
   await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
   await expect(actionRegion(page)).toContainText('Waiting for Lightweaver Bridge');
@@ -571,7 +572,8 @@ test('mobile handoff stays passive', async ({ page }) => {
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'handoff-supported-device');
   await expect(actionRegion(page).locator('.card-connection-actions').getByRole('button')).toHaveCount(0);
 });
@@ -600,7 +602,8 @@ test('Bridge return does not call a successful POST independent restoration proo
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
 
   await deliverBridgeResult(page);
@@ -725,7 +728,8 @@ test('a staged GPIO restoration stops at the Check lights handoff without legacy
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
   await deliverBridgeResult(page);
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-FEB0', exact: true }).click();
@@ -856,7 +860,7 @@ test('the observed eight-pixel double flash bypasses stale LAN addresses for cus
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
 
-  await page.getByRole('button', { name: 'Eight lights flash twice, then pause' }).click();
+  await page.getByRole('button', { name: 'Join the setup network' }).click();
 
   const action = actionRegion(page);
   await expect(action).toContainText('Join the Lightweaver setup network');
@@ -886,7 +890,7 @@ test('setup-network instructions stay in one full-width vertical column', async 
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-    await page.getByRole('button', { name: 'Eight lights flash twice, then pause' }).click();
+    await page.getByRole('button', { name: 'Join the setup network' }).click();
 
     const list = actionRegion(page).getByRole('list');
     const geometry = await list.evaluate(element => {
@@ -973,7 +977,6 @@ test('working setup card restores AP steps and continues through 192.168.4.1', a
   await page.evaluate(() => localStorage.setItem('lw_chip_card_host', '192.168.4.1'));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'My card already lights up' }).click();
 
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'recoverable-failure');
   await expect(actionRegion(page)).not.toContainText('Lightweaver-XXXX');

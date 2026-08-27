@@ -392,8 +392,10 @@ test('size, density, and LED count stay linked', async ({ page }) => {
     if (!strip) return null;
     const meters = strip.svgLength / saved.layout.pxPerMm / 1000;
     const dens = saved.layout.stripDensities?.[strip.id] ?? saved.layout.density;
-    return [strip.pixelCount, strip.svgLength > linked.svgLength, Math.round(meters * dens)];
-  }).toEqual([linked.pixelCount + 1, true, linked.pixelCount + 1]);
+    return [strip.pixelCount, strip.svgLength, strip.pixels?.length ?? 0, Math.round(meters * dens)];
+  }).toEqual([linked.pixelCount + 1, linked.svgLength, linked.pixelCount + 1, linked.pixelCount]);
+
+  await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(linked.pixelCount + 1);
 
   const caption = page.locator('.la-strip-caption').first();
   await page.locator('.panel-head').first().hover();

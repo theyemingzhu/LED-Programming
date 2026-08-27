@@ -110,6 +110,36 @@ test('a stalled URL card hint gets only a bounded head start before mDNS fallbac
   });
 });
 
+test('discovery uses a remembered station IP when mDNS stalls', async () => {
+  const browser = fakeBrowser('', 'lightweaver.local');
+  await withFakeBrowser(browser, async () => {
+    cardConnection.rememberCardHost('192.168.18.70');
+    const requested = [];
+    const found = await cardConnection.discoverCardStatus({
+      preferredHost: 'lightweaver.local',
+      timeoutMs: 200,
+      persist: false,
+      fetchImpl: (url, { signal } = {}) => {
+        const host = new URL(url).hostname;
+        requested.push(host);
+        if (host === 'lightweaver.local' || host === '192.168.4.1') {
+          return new Promise((_, reject) => signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+        }
+        if (host === '192.168.18.70') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ app: 'Lightweaver', cardId: 'lw-b0fe81f61b44' }),
+          });
+        }
+        return Promise.reject(new Error(`unexpected ${host}`));
+      },
+    });
+    assert.equal(found.connected, true);
+    assert.equal(found.host, '192.168.18.70');
+    assert.ok(requested.includes('192.168.18.70'));
+  });
+});
+
 test('URL bootstrap rejects a public card host and preserves the stored local host', async () => {
   const browser = fakeBrowser('?cardHost=card.attacker.example');
   await withFakeBrowser(browser, () => {

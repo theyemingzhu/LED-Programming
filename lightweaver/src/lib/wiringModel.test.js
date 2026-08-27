@@ -202,6 +202,11 @@ test('physical reducer boundary maps all compat fields and invalidates precise v
   assert.equal(reopened.wiring.locked, false);
   assert.equal(reopened.wiring.verified, false);
   assert.ok(reopened.wiring.runs.every(run => run.verified === false));
+
+  const leftLocked = prepareWiringForPhysicalEdit({ ...verified, locked: true }, { kind: null });
+  assert.equal(leftLocked.ok, true);
+  assert.equal(leftLocked.wiring.locked, true);
+  assert.equal(leftLocked.wiring.verified, true);
 });
 
 test('controller boundary compares only output and GPIO pin fields', () => {

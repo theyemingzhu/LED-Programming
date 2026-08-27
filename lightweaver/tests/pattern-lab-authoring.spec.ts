@@ -287,7 +287,10 @@ test('reveals Long Evolution controls with transform and opacity, then removes m
 test('creates, compares, and reopens a long private pattern without changing the project', async ({ page }) => {
   const projectBefore = await projectBytes(page);
 
-  await expect(page.getByText('No source selected')).toBeVisible();
+  // Autoload seeds the project look; the draft name field is the product
+  // signal that Lab opened on a sculptable recipe rather than the empty
+  // sculpture ("No source selected" / "Begin with a pattern").
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue(/.+/);
   await choosePattern(page, 'aurora');
   await expect(page.getByTestId('pattern-lab-mapped-preview').locator('canvas')).toBeVisible();
   await expect(page.getByText('Mapped to current artwork')).toBeVisible();

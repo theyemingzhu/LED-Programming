@@ -5,6 +5,33 @@ import {
   readCardStatusEnvelope,
   shouldDirectApplyLedCountChange,
 } from './cardPushClient.js';
+import { reconcileWiringToStrips } from './wiringModel.js';
+
+export function projectForTypedLedCount(project = {}) {
+  const strips = Array.isArray(project.strips) && project.strips.length
+    ? project.strips
+    : (Array.isArray(project.layout?.strips) ? project.layout.strips : []);
+  const wiring = reconcileWiringToStrips(project.wiring || project.layout?.wiring, strips);
+  const typedPixels = strips.reduce((sum, strip) => {
+    const count = Math.trunc(Number(strip?.pixelCount ?? strip?.pixels?.length) || 0);
+    return sum + (count > 0 ? count : 0);
+  }, 0);
+  const configured = Array.isArray(project.standaloneController?.outputs)
+    ? project.standaloneController.outputs
+    : [];
+  const outputs = typedPixels > 0 && configured.length === 1
+    ? [{ ...configured[0], pixels: typedPixels }]
+    : configured;
+  return {
+    ...project,
+    strips,
+    wiring,
+    standaloneController: {
+      ...(project.standaloneController || {}),
+      outputs,
+    },
+  };
+}
 
 export function cardStatusWithPixelCount(status = {}, { pixels, pin } = {}) {
   const count = Math.trunc(Number(pixels));
@@ -72,7 +99,7 @@ export async function applyTypedLedCountToCard({
   readEvidence = readCardStatusEnvelope,
 } = {}) {
   if (!host) return { applied: false, reason: 'disconnected' };
-  const runtimePackage = buildCardRuntimePackageFromProject(project);
+  const runtimePackage = buildCardRuntimePackageFromProject(projectForTypedLedCount(project));
   let evidence;
   try {
     evidence = await readEvidence({ host });
@@ -87,7 +114,7 @@ export async function applyTypedLedCountToCard({
     reboot: 'if-needed',
     autoDiscover: false,
   });
-  return { applied: true, result };
+  return { applied: true, result, runtimePackage };
 }
 
 export async function applyLedCountOnCard({

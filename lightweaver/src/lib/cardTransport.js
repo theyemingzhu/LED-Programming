@@ -1,7 +1,8 @@
-import { cardHostToUrl, isLocalCardHost, normalizeCardHost } from './cardConnection.js';
-import { normalizeCardIdentity, readPersistedCardIdentity } from './cardIdentity.js';
+import { cardHostToUrl, isLocalCardHost, normalizeCardHost, rememberCardHost, writeStoredCardHost } from './cardConnection.js';
+import { normalizeCardIdentity, persistCardIdentity, readPersistedCardIdentity } from './cardIdentity.js';
 import { classifyCardReadiness } from './cardReadiness.js';
 import { getSharedCardLink } from './cardLink.js';
+import { allowLanProbes } from './usbInspection.js';
 
 export const CARD_TRANSPORTS = Object.freeze({
   DIRECT: 'direct-lna',
@@ -242,24 +243,43 @@ async function connectCardTransportOnce({
   if (!isLocalCardHost(normalizedHost)) throw new TypeError('A valid local Lightweaver card host is required.');
   const baseUrl = transport === CARD_TRANSPORTS.LOCAL ? '' : cardHostToUrl(normalizedHost);
   try {
-    const response = await fetchImpl(`${baseUrl}/api/status`, {
-      method: 'GET', cache: 'no-store', credentials: 'omit',
-      ...(transport === CARD_TRANSPORTS.DIRECT ? { targetAddressSpace: 'local' } : {}),
-      // Keep this read-only probe CORS-safelisted. Released cards accept an
-      // ordinary JSON GET, but did not advertise the former custom header, so
-      // browsers rejected that preflight before identity could be read.
-      headers: { Accept: 'application/json' },
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    let response;
+    try {
+      response = await fetchImpl(`${baseUrl}/api/status`, {
+        method: 'GET', cache: 'no-store', credentials: 'omit',
+        signal: controller.signal,
+        ...(transport === CARD_TRANSPORTS.DIRECT ? { targetAddressSpace: 'local' } : {}),
+        // Keep this read-only probe CORS-safelisted. Released cards accept an
+        // ordinary JSON GET, but did not advertise the former custom header, so
+        // browsers rejected that preflight before identity could be read.
+        headers: { Accept: 'application/json' },
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     const status = await parseJsonResponse(response);
     const exact = exactStatus(status, { expectedCardId, host: normalizedHost });
     if (!exact.ok) return failure(exact.reason, normalizedHost, {
       expectedCardId: String(expectedCardId || ''), observedCardId: exact.observedCardId,
       ...(exact.observedCard ? { observedCard: exact.observedCard, readiness: status } : {}),
     });
+    const acknowledgedAt = new Date().toISOString();
+    // Owner-initiated connect with no remembered card IS the pair. Background
+    // discovery uses reportDirectCardStatus({ allowAdopt: false }) and must
+    // stay unpaired; this path is the one-tap Connect button.
+    if (!expectedCardId && exact.card?.id) {
+      persistCardIdentity(exact.card, { acknowledgedAt });
+      rememberCardHost(normalizedHost);
+      writeStoredCardHost(normalizedHost);
+    }
     link?.dispatch?.({
       type: 'direct-status', connected: true, host: normalizedHost,
-      card: exact.card, expectedCard: expectedCardId ? { id: expectedCardId } : exact.card,
-      readiness: status, acknowledgedAt: new Date().toISOString(),
+      card: exact.card,
+      expectedCard: expectedCardId ? { id: expectedCardId } : exact.card,
+      allowAdopt: !expectedCardId,
+      readiness: status, acknowledgedAt,
     });
     revokeActiveCardTransportAuthority();
     activeTransportAuthority = createTransportAuthority({ transport, host: normalizedHost, status, card: exact.card, link, fetchImpl, ownerCapability });
@@ -275,6 +295,7 @@ function transportAcquisitionKey(host, expectedCardId, transport) {
 }
 
 export function connectCardTransport(options = {}) {
+  allowLanProbes();
   const host = normalizeCardHost(options.host);
   const expectedCardId = options.expectedCardId ?? readPersistedCardIdentity()?.id ?? '';
   const transport = options.transport || CARD_TRANSPORTS.DIRECT;

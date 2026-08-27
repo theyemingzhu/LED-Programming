@@ -21,10 +21,17 @@ async function installStableCardIdentity(page: any) {
 }
 
 // ── Single-flow helpers ──────────────────────────────────────────────────────
-// Test & Install is one page with a Wire-derived plan summary and one next
-// action (LED check → color quiz → install). Specialist tools stay behind
+// Test & Install is one page with a count line and one next action
+// (LED check → color quiz → install). Specialist tools stay behind
 // one closed disclosure; verification auto-locks without a manual lock step.
 const planMeta = (page: any) => page.locator('.lww-plan-head .meta');
+
+async function gpioGroupsOnWire(page: any) {
+  await switchMode(page, 'draw');
+  const count = await page.locator('.la-gpio-group').count();
+  await switchMode(page, 'wire');
+  return count;
+}
 
 async function startLedCheck(page: any) {
   await page.getByTestId('start-led-check').click();
@@ -68,6 +75,18 @@ async function saveProject(page: any) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+async function persistAutosave(page: any, project: object) {
+  const json = JSON.stringify(project);
+  await page.addInitScript(value => {
+    localStorage.setItem('lw_autosave_v3', value);
+    localStorage.setItem('lw_autosave_v3_backup', value);
+  }, json);
+  await page.evaluate(value => {
+    localStorage.setItem('lw_autosave_v3', value);
+    localStorage.setItem('lw_autosave_v3_backup', value);
+  }, json);
+}
+
 // Seeds the current project back with bench-verified (but color-unconfirmed)
 // wiring, so the check flow resumes at the color question. Color stays
 // unconfirmed on purpose: a fully verified project would auto-lock on load.
@@ -77,7 +96,7 @@ async function seedBenchVerified(page: any) {
   project.layout.wiring.verified = true;
   project.layout.wiring.locked = false;
   project.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
-  await page.evaluate(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
+  await persistAutosave(page, project);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
   return project;
@@ -115,9 +134,13 @@ async function seedDefaultCircles(page: any, { needsReview = false, mode = 'draw
         layers: [],
         density: 60,
         pxPerMm: 3.7795,
+        starterPending: false,
         // A patch board without an explicit dataWireCount is the legacy shape
-        // that flags dataWireCountNeedsReview on load.
-        patchBoard: flag ? { physicalLocked: false, chains: [{ id: 'main', name: 'Main', rowIds: [] }], patches: [], groups: [] } : null,
+        // that flags dataWireCountNeedsReview on load. A null board is also
+        // treated as ambiguous, so the ordinary seed must declare the count.
+        patchBoard: flag
+          ? { physicalLocked: false, chains: [{ id: 'main', name: 'Main', rowIds: [] }], patches: [], groups: [] }
+          : { physicalLocked: false, dataWireCount: 1, dataWireCountNeedsReview: false, chains: [{ id: 'main', name: 'Main', rowIds: [] }], patches: [], groups: [] },
         wiring: null,
       },
     }));
@@ -200,13 +223,9 @@ async function installFrameCard(page: any) {
 test('Test & Install is a compiler-derived read-only commissioning surface', async ({ page }) => {
   await gotoWire(page);
   await expect(page.getByRole('button', { name: 'Add skipped LEDs' })).toHaveCount(0);
-  const summary = page.getByTestId('test-install-plan-summary');
-  await expect(summary.locator('.la-gpio-group')).toHaveCount(1);
-  await expect(summary.getByText('GPIO 16')).toBeVisible();
-  await expect(summary.getByTestId('test-install-strip-row')).toHaveCount(2);
+  await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
   await expect(page.getByText('Compiler preflight')).toHaveCount(0);
   await expect(page.getByText('Edit LED range')).toHaveCount(0);
-  await expect(summary.locator('input, select, button, [draggable="true"]')).toHaveCount(0);
 
   // No install surface exists before verification — the LED check is the one
   // next action.
@@ -214,7 +233,7 @@ test('Test & Install is a compiler-derived read-only commissioning surface', asy
   await expect(page.getByTestId('start-led-check')).toBeVisible();
 });
 
-test('Test & Install shows a compact Wire summary and one next-action CTA instead of step chrome', async ({ page }) => {
+test('Test & Install shows a compact count line and one next-action CTA instead of step chrome', async ({ page }) => {
   await gotoWire(page);
   await expect(planMeta(page)).toHaveText('2 strips · 44 LEDs in this design');
   // Deleted chrome: the step rail, stat tiles, card step titles/pills.
@@ -378,8 +397,7 @@ test('narrow inspector uses container-aware stacked controls without clipping', 
   await gotoWire(page);
   const panel = page.getByTestId('layout-wire-panel');
   await panel.evaluate(element => { (element as HTMLElement).style.width = '300px'; });
-  const summary = panel.getByTestId('test-install-plan-summary');
-  for (const target of [panel, panel.getByTestId('commissioning-step'), summary]) {
+  for (const target of [panel, panel.getByTestId('commissioning-step')]) {
     const size = await target.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
     expect(size.scrollWidth).toBeLessThanOrEqual(size.clientWidth);
   }
@@ -595,6 +613,7 @@ test('confirming the color auto-locks verified wiring and a Draw GPIO edit reope
   });
 
   // The checked state survives a reload.
+  await persistAutosave(page, confirmedProject);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
   await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
@@ -638,7 +657,7 @@ test('a locked-but-unchecked project offers the check itself, not a hunt through
   await gotoWire(page);
   const project = await saveProject(page);
   project.layout.wiring.locked = true; // verified stays false
-  await page.evaluate(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
+  await persistAutosave(page, project);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
 
@@ -746,18 +765,13 @@ test('every visible narrow commissioning form control keeps a 44px touch target'
   await assertTargets();
 });
 
-test('Test & Install mirrors the Wire GPIO groups as a read-only summary', async ({ page }) => {
-  await seedDefaultCircles(page, { mode: 'wire' });
-  const summary = page.getByTestId('test-install-plan-summary');
-
-  await expect(summary).toBeVisible();
-  await expect(summary.getByText('GPIO 16')).toBeVisible();
-  await expect(summary.getByText('first → last')).toBeVisible();
-  await expect(summary.locator('[data-testid="test-install-strip-row"]')).toHaveCount(2);
-  await expect(summary).toContainText('Outer circle');
-  await expect(summary).toContainText('27 LEDs');
-  await expect(summary.locator('select, input, [draggable="true"]')).toHaveCount(0);
-  await expect(summary.getByRole('button')).toHaveCount(0);
+test('Test & Install does not reprint the Wire GPIO list', async ({ page }) => {
+  await seedDefaultCircles(page, { mode: 'draw' });
+  await expect(page.getByTestId('gpio-group-16')).toContainText('Outer circle');
+  await expect(page.getByTestId('gpio-group-16')).toContainText('27 LEDs');
+  await switchMode(page, 'wire');
+  await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
+  await expect(page.getByTestId('start-led-check')).toBeVisible();
 });
 
 test('Test & Install keeps normal wiring controls out of its reduced surface', async ({ page }) => {
@@ -785,9 +799,9 @@ test('incomplete Test & Install plans return to the canonical Wire editor', asyn
   await expect(page).toHaveURL(/mode=draw/);
 });
 
-test('assigning a second GPIO in Wire updates the read-only summary and hardware pin conflicts', async ({ page }) => {
+test('assigning a second GPIO in Wire updates hardware pin conflicts', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'wire' });
-  await expect(page.getByTestId('test-install-plan-summary').locator('.la-gpio-group')).toHaveCount(1);
+  expect(await gpioGroupsOnWire(page)).toBe(1);
 
   // The second data wire is born in Wire: assigning a strip to an unused GPIO
   // creates the output.
@@ -795,9 +809,10 @@ test('assigning a second GPIO in Wire updates the read-only summary and hardware
   const inner = await expandDrawStrip(page, 'Inner circle');
   await inner.getByLabel('GPIO output').selectOption('17');
   await switchMode(page, 'wire');
-  const summary = page.getByTestId('test-install-plan-summary');
-  await expect(summary.locator('.la-gpio-group')).toHaveCount(2);
-  await expect(summary.getByText('GPIO 17')).toBeVisible();
+  expect(await gpioGroupsOnWire(page)).toBe(2);
+  await switchMode(page, 'draw');
+  await expect(page.getByTestId('gpio-group-17')).toBeVisible();
+  await switchMode(page, 'wire');
   await expect(page.getByLabel('Output A GPIO')).toHaveCount(0);
 
   await openAdvanced(page);
@@ -816,13 +831,13 @@ test('changing logical sections never changes the derived physical data-wire cou
   await outer.getByRole('spinbutton', { name: 'Strip LED count', exact: true }).blur();
   await outer.getByRole('button', { name: 'Reverse data direction of Outer circle' }).click();
   await switchMode(page, 'wire');
-  await expect(page.getByTestId('test-install-plan-summary').locator('.la-gpio-group')).toHaveCount(1);
+  expect(await gpioGroupsOnWire(page)).toBe(1);
   await expect(planMeta(page)).toContainText('43 LEDs');
   await switchMode(page, 'draw');
   const inner = await expandDrawStrip(page, 'Inner circle');
   await inner.getByLabel('GPIO output').selectOption('17');
   await switchMode(page, 'wire');
-  await expect(page.getByTestId('test-install-plan-summary').locator('.la-gpio-group')).toHaveCount(2);
+  expect(await gpioGroupsOnWire(page)).toBe(2);
 });
 
 test('Find my LED wire maps a visible discovery color to the selected GPIO', async ({ page }) => {
@@ -841,8 +856,9 @@ test('Find my LED wire maps a visible discovery color to the selected GPIO', asy
   const finder = page.getByRole('region', { name: 'Find my LED wire' });
   await expect(finder.getByText('Choose the color you see on the real LEDs.')).toBeVisible();
   await finder.getByRole('button', { name: /Blue GPIO 17/ }).click();
-  await expect(page.getByTestId('test-install-plan-summary').getByText('GPIO 17')).toBeVisible();
   await expect(finder).toContainText('uses GPIO 17');
+  const mapped = await saveProject(page);
+  expect(mapped.layout.wiring.outputs.some((output: any) => output.pin === 17)).toBe(true);
 });
 
 test('Test & Install never scrolls horizontally at phone width', async ({ page }) => {
@@ -851,7 +867,6 @@ test('Test & Install never scrolls horizontally at phone width', async ({ page }
   const panel = page.getByTestId('layout-wire-panel');
   await expect(panel).toBeAttached();
   const step = panel.getByTestId('commissioning-step');
-  const summary = panel.getByTestId('test-install-plan-summary');
   await openAdvanced(page);
   const advanced = panel.getByTestId('advanced-installation-tools');
   const power = panel.getByTestId('wire-power-section');
@@ -862,7 +877,6 @@ test('Test & Install never scrolls horizontally at phone width', async ({ page }
   await page.waitForTimeout(250);
   const overflows = [
     { selector: 'Wire panel', ...(await panel.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))) },
-    { selector: 'Plan summary', ...(await summary.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))) },
     { selector: 'Primary flow', ...(await step.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))) },
     { selector: 'Power', ...(await power.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))) },
     { selector: 'Advanced tools', ...(await advanced.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }))) },
@@ -1002,6 +1016,9 @@ test('bench boundary controls redistribute a fixed physical total and explain th
   expect(shortenedFrame[0]).toBe('00001A');
   expect(shortenedFrame[42]).toBe('1A0000');
   expect(shortenedFrame[43]).toBe('000000');
+  // Count change resends the chase frame; wait for that delivery before
+  // the + control is enabled again.
+  await expect(outputPrimary).toBeEnabled();
   await bench.getByRole('button', { name: /Add one LED to Wire/ }).click();
   await expect(bench.getByTestId('active-output-count')).toHaveText('44 LEDs');
   await expect(planMeta(page)).toContainText('44 LEDs');

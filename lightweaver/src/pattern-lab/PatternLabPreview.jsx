@@ -5,11 +5,16 @@ import {
 } from '../lib/patternLabWorkerProtocol.js';
 import { resolvePatternLabControls } from '../lib/patternLabControls.js';
 import { createPatternLabPreviewSession } from '../lib/patternLabPreviewSession.js';
+import { lookFromRecipe } from '../lib/patternLabHandoff.js';
+import { recipeUsesNativeCardLook } from '../lib/patternLabFromLook.js';
+import { pushLivePreviewToCard } from '../lib/cardLiveControl.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import usePatternLabWorker from './usePatternLabWorker.js';
 import { useCardStatus } from '../hooks/useCardStatus.js';
 
 const INTERACTION_SETTLE_MS = 180;
+// Match Patterns' default live-preview debounce (lw-pattern.jsx scheduleLivePreview).
+const NATIVE_LOOK_DEBOUNCE_MS = 80;
 
 // Fixed look for the mapped preview. These used to be driven by the Shape and
 // Texture macros, which reached nothing else — the sliders are gone and so is
@@ -261,6 +266,8 @@ export default function PatternLabPreview({
   onRenderStatus = null,
 }) {
   const physicalSessionRef = useRef(null);
+  const nativeLookTimerRef = useRef(null);
+  const nativeLookSeqRef = useRef(0);
   const onRenderStatusRef = useRef(onRenderStatus);
   onRenderStatusRef.current = onRenderStatus;
   const [physicalPreview, setPhysicalPreview] = useState({ state: 'idle', active: false, error: null });
@@ -269,6 +276,7 @@ export default function PatternLabPreview({
   // action, so thumbnails (which never render that control) skip the network
   // polling entirely.
   const cardStatus = useCardStatus({ enabled: !thumbnail });
+  const usesNativeLook = recipeUsesNativeCardLook(recipe);
   const patternId = recipe.base.patternId;
   const evolutionRecipe = useMemo(() => seedPreview && !recipe.evolution.enabled
     ? { ...recipe, evolution: { ...recipe.evolution, enabled: true } }
@@ -344,6 +352,42 @@ export default function PatternLabPreview({
     onRenderStatusRef.current?.({ hasFrame: hasRenderedFrame, failure: worker.failure ?? null });
   }, [hasRenderedFrame, worker.failure]);
 
+  // Switching onto a native bank look ends any opt-in frame stream. Native
+  // sampling is a look push, not a stream — do not leave a leftover session.
+  useEffect(() => {
+    if (!usesNativeLook) return;
+    const session = physicalSessionRef.current;
+    if (!session) return;
+    physicalSessionRef.current = null;
+    void session.stop('switched-to-native').catch(() => {});
+  }, [usesNativeLook]);
+
+  // Native CORE_CARD_PATTERN_BANK recipes sample the card the same way Patterns
+  // does: pushLivePreviewToCard(lookFromRecipe(recipe).defaultLook). Never open
+  // createPatternLabPreviewSession for this path.
+  useEffect(() => {
+    if (thumbnail || !usesNativeLook) return undefined;
+    if (!cardStatus.connected) return undefined;
+    if (nativeLookTimerRef.current) clearTimeout(nativeLookTimerRef.current);
+    const sequence = ++nativeLookSeqRef.current;
+    nativeLookTimerRef.current = setTimeout(() => {
+      let defaultLook = null;
+      try {
+        defaultLook = lookFromRecipe(recipe)?.defaultLook || null;
+      } catch {
+        return;
+      }
+      if (!defaultLook || sequence !== nativeLookSeqRef.current) return;
+      void pushLivePreviewToCard(defaultLook, {
+        host: cardStatus.host || '',
+        timeoutMs: 2200,
+      }).catch(() => {});
+    }, NATIVE_LOOK_DEBOUNCE_MS);
+    return () => {
+      if (nativeLookTimerRef.current) clearTimeout(nativeLookTimerRef.current);
+    };
+  }, [cardStatus.connected, cardStatus.host, recipe, thumbnail, usesNativeLook]);
+
   // The pattern gave up while it was live on the piece. Stop the stream and let the
   // session's existing rollback put the card back on the look it had before — see
   // describeLivePreviewState above for why holding the frozen frame in silence is
@@ -358,13 +402,17 @@ export default function PatternLabPreview({
     void session.stop('pattern-gave-up').catch(() => {});
   }, [physicalPreview.active, worker.failure]);
 
+  // Frame-stream path only: native look preview is a look, not a stream, so there
+  // is no session to cancel and no snapshot to restore on leave (Patterns match).
   useEffect(() => () => {
+    if (nativeLookTimerRef.current) clearTimeout(nativeLookTimerRef.current);
     const session = physicalSessionRef.current;
     physicalSessionRef.current = null;
     if (session) void session.stop('unmount').catch(() => {});
   }, []);
 
   async function togglePhysicalPreview() {
+    if (usesNativeLook) return;
     if (physicalPreview.active) {
       await physicalSessionRef.current?.stop('user').catch(() => {});
       physicalSessionRef.current = null;
@@ -476,6 +524,38 @@ export default function PatternLabPreview({
         </div>
       ) : null}
       {!thumbnail && (() => {
+        // Native bank looks already sample via pushLivePreviewToCard — do not
+        // offer Preview on Lights (that would open a pixel frame stream).
+        if (usesNativeLook) {
+          const nativeCaption = cardStatus.connected
+            ? 'This piece already follows this look — same as Patterns.'
+            : (cardStatus.checking
+              ? 'Looking for your Lightweaver card…'
+              : 'No card connected yet — connect your Lightweaver card to this Wi-Fi to sample here.');
+          return (
+            <div
+              className="plab-live-preview plab-live-preview-headline"
+              data-state="native-look"
+              data-live-state="native-look"
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                padding: '16px',
+                background: 'linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0))',
+              }}
+            >
+              <span role="status" aria-live="polite">
+                {nativeCaption}
+              </span>
+            </div>
+          );
+        }
         const live = describeLivePreviewState({
           physicalPreview,
           cardConnected: cardStatus.connected,
@@ -488,7 +568,7 @@ export default function PatternLabPreview({
         // Test fixture note: this component's own copy for the "restored"
         // state must keep the literal substring "Previous card look
         // restored" — tests/pattern-lab-live-preview.spec.ts asserts on it
-        // verbatim and is owned by another agent in this rebuild.
+        // verbatim for the frame-stream path.
         const statusText = live.key === 'restored'
           ? 'Previous card look restored'
           : live.caption;

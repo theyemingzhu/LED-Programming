@@ -160,6 +160,22 @@ const GOLDEN = [
     expected: { actionId: 'lifecycle-attention', surface: 'setup', busy: false, retryable: false },
   },
   {
+    state: 'length-mismatch',
+    input: {
+      link: { ...VERIFIED_LINK, readiness: { ...COMPLETE_READINESS, requestedPixels: 41 } },
+      project: { ...MATCHING_PROJECT, totalPixels: 39 },
+    },
+    expected: { actionId: 'save-led-count', surface: 'length-save', busy: false, retryable: false },
+  },
+  {
+    state: 'content-mismatch',
+    input: {
+      link: VERIFIED_LINK,
+      project: { ...MATCHING_PROJECT, liveFingerprint: 'p'.repeat(64) },
+    },
+    expected: { actionId: 'save-project', surface: 'content-save', busy: false, retryable: false },
+  },
+  {
     state: 'attention-required',
     input: { link: { ...VERIFIED_LINK, readiness: { ...COMPLETE_READINESS, commandReady: false } } },
     expected: { actionId: 'lifecycle-attention', surface: 'setup', busy: false, retryable: false },
@@ -211,7 +227,7 @@ test('golden table: every lifecycle state × platform capability set', () => {
     }
   }
   // Every lifecycle state the diagnosis can produce has a golden row.
-  assert.equal(covered.size, 18, `covered ${covered.size} lifecycle states`);
+  assert.equal(covered.size, 20, `covered ${covered.size} lifecycle states`);
 });
 
 test('loop-breaker pin: a connected exact card asking for load-matching-project resolves in Setup', () => {
@@ -314,6 +330,8 @@ test('the authority reuses the flow verdict and its copy, never a duplicate', ()
 test('surface routing helper mirrors the shell footer routing', () => {
   assert.equal(cardSurfaceForLifecycle(null), 'connection-center');
   assert.equal(cardSurfaceForLifecycle({ state: 'ready' }), 'card-control');
+  assert.equal(cardSurfaceForLifecycle({ state: 'length-mismatch' }), 'length-save');
+  assert.equal(cardSurfaceForLifecycle({ state: 'content-mismatch' }), 'content-save');
   for (const state of ['target-mismatch', 'project-changed', 'update-required', 'setup-required', 'project-mismatch', 'attention-required']) {
     assert.equal(cardSurfaceForLifecycle({ state }), 'setup', state);
   }

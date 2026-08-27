@@ -7,7 +7,9 @@ import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 // Every primary Studio destination must retain the shared shell controls.
 // 'Card' is the single card destination — the old 'Setup' and 'Hardware' rail
 // items merged into it (Card Home), so it stands in for both here.
-const SCREENS = ['Patterns', 'Pattern Lab', 'Playlist', 'Layout', 'Show', 'Card'];
+// Pattern Lab is routable at #screen=pattern-lab but not a rail item (same
+// shape as Discovery). Do not put a fake rail label here.
+const SCREENS = ['Patterns', 'Playlist', 'Layout', 'Show', 'Card'];
 const STUDIO_SOURCE_REVISION = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const STUDIO_BUILD_NUMBER = Number(
   execFileSync('git', ['rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim(),
@@ -261,7 +263,7 @@ test('invalid or cacheable Studio markers show bounded unknown state without rel
   expect(await page.evaluate(() => (window as any).__lwFreshnessReloads)).toBe(0);
 });
 
-test('connection center starts with the two physical card choices', async ({ page }) => {
+test('connection center starts with one Connect button, not an LED quiz', async ({ page }) => {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -269,8 +271,9 @@ test('connection center starts with the two physical card choices', async ({ pag
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'My card already lights up' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Blank or not responding' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'My card already lights up' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Blank or not responding' })).toHaveCount(0);
 });
 
 test('an unreachable paired card without a remembered address opens setup-network recovery', async ({ page }) => {
@@ -403,7 +406,6 @@ test('working setup card shows AP steps before continuing through the setup host
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'My card already lights up' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).not.toContainText('Lightweaver-XXXX');
   await expect(dialog).toContainText('name starts with');
@@ -447,11 +449,13 @@ test('working-card choice opens the card popup path', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   allowDirect = true;
-  await page.getByRole('button', { name: 'My card already lights up' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
   await expect.poll(() => directRequests.length).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls.length)).toBe(0);
-  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toContainText('Pair this Lightweaver card');
-  await page.getByRole('dialog', { name: 'Connect Lightweaver' }).getByRole('button', { name: 'Connect', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog).toContainText('Card verified');
+  await expect(dialog.getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('button', { name: /Direct card.*Connected/i })).toBeVisible();
 });
 
@@ -484,6 +488,7 @@ test('background direct discovery stays unpaired until an explicit one-tap pair'
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).toContainText('Pair this Lightweaver card');
+  await expect(dialog.getByRole('button', { name: 'Use this card instead' })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-passive-card');
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
@@ -630,7 +635,8 @@ test('blank-card choice reaches Flash install when Web Serial is supported', asy
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   await expect(page).toHaveURL(/#screen=flash&mode=install$/);
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
@@ -730,7 +736,8 @@ test('blank-card choice explains the supported-device handoff when install is un
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Blank or not responding' }).click();
+  await page.getByRole('button', { name: 'Connect this card' }).click();
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toContainText(/Chrome or Edge|supported computer/i);
 });
 
@@ -803,8 +810,7 @@ test('mobile connection sheet fits without horizontal overflow', async ({ page }
 
   const interactiveTargets = [
     dialog.getByRole('button', { name: 'Close connection center' }),
-    dialog.getByRole('button', { name: 'My card already lights up' }),
-    dialog.getByRole('button', { name: 'Blank or not responding' }),
+    dialog.getByRole('button', { name: 'Connect this card' }),
     dialog.getByText('Connection details', { exact: true }),
   ];
   for (const target of interactiveTargets) {
@@ -1054,7 +1060,6 @@ test('connection center opens the stored setup host without silently pairing its
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'My card already lights up' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
 
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls[0]?.url || '')).toContain('192.168.4.1');

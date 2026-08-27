@@ -112,7 +112,7 @@ export function DrawModePanel({
     expandedStrips, setExpandedStrips,
     stripListRef,
     // size
-    getLedCount, resampleStrip, stripDensity, setStripPhysical,
+    getLedCount, resampleStrip, stripDensity, setStripPhysical, setStripCount,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
     addPrimitiveStrip, scaleStrip,
@@ -181,9 +181,7 @@ export function DrawModePanel({
     setAddLengthDraft(formatMetersValue(nextLength));
   };
   const setStripLedCount = (id, raw) => {
-    const dens = stripDensity(id);
-    if (!(dens > 0)) return;
-    setStripPhysical(id, { lengthM: clampLedCount(raw) / dens });
+    setStripCount(id, clampLedCount(raw));
   };
   const setLinkedAddDensity = nextDensity => {
     const nextCount = clampLedCount(Math.round(addLengthM * nextDensity));
@@ -1170,7 +1168,7 @@ export function DrawModePanel({
               <span className="ttl">LED strips</span>
               <span className="meta">
                 {selectedStrips.length > 1 ? `${selectedStrips.length} sel · ` : ''}
-                {strips.length} · {totalLeds.toLocaleString()} LEDs · wiring order
+                {strips.length} · {totalLeds.toLocaleString()} LEDs
               </span>
             </div>
             {patchBoard?.dataWireCountNeedsReview && (
@@ -1232,7 +1230,6 @@ export function DrawModePanel({
                 <section key={output.id} className="la-gpio-group" data-testid={`gpio-group-${output.pin}`}>
                   <div className="la-gpio-group-head">
                     <span>GPIO {output.pin}</span>
-                    <span>first → last</span>
                   </div>
                   {groupedStrips.map((s, i) => {
                 const isSel = s.id === selStripId;
@@ -1319,7 +1316,10 @@ export function DrawModePanel({
                             <button className="btn" aria-label="Flip path direction"
                                     data-caption="Flip the drawing path so LED 1 swaps ends"
                                     title="Flip the drawing path so pixel 0 swaps ends"
-                                    onClick={() => reverseStrip(s.id)}>↔</button>
+                                    onClick={() => reverseStrip(s.id)}>
+                              <span aria-hidden="true">↔</span>
+                              <span className="la-strip-action-label">Flip</span>
+                            </button>
                             {run && (
                               <button className="btn" aria-label={`Reverse data direction of ${s.name}`}
                                       data-caption={isSplit
@@ -1330,7 +1330,10 @@ export function DrawModePanel({
                                         : 'Reverse which end of this strip the data cable enters'}
                                       aria-pressed={run.physicalDirection === 'source-reverse'}
                                       disabled={isSplit || run.directionPolicy === 'fixed'}
-                                      onClick={() => toggleRunDirection(run)}>⇄</button>
+                                      onClick={() => toggleRunDirection(run)}>
+                                <span aria-hidden="true">⇄</span>
+                                <span className="la-strip-action-label">Data</span>
+                              </button>
                             )}
                             {stripRuns.get(s.id) && (
                               <button className={`btn${firstLedPicker?.stripId === s.id ? ' active' : ''}`}
@@ -1346,7 +1349,10 @@ export function DrawModePanel({
                                       onClick={() => {
                                         if (firstLedPicker?.stripId !== s.id) onBeginFirstLedPicker(s.id);
                                         else onCancelFirstLedPicker();
-                                      }}>◎</button>
+                                      }}>
+                                <span aria-hidden="true">◎</span>
+                                <span className="la-strip-action-label">First</span>
+                              </button>
                             )}
                           </div>
                           <div className="la-strip-actions-mid">
@@ -1359,7 +1365,10 @@ export function DrawModePanel({
                                     data-caption="Edit Kaleidoscope reflection points"
                                     title="Edit Kaleidoscope reflection points"
                                     disabled={s.pixelCount < 2}
-                                    onClick={() => onToggleKaleidoscope(s.id)}>✦</button>
+                                    onClick={() => onToggleKaleidoscope(s.id)}>
+                              <span aria-hidden="true">✦</span>
+                              <span className="la-strip-action-label">Points</span>
+                            </button>
                           </div>
                           <div className="la-strip-actions-right">
                             {/* Split, Duplicate and Remove all change how many
@@ -1374,17 +1383,22 @@ export function DrawModePanel({
                                     disabled={!!splitBlockedReason(s, isSplit)}
                                     onClick={() => splitStripInTwo(s.id)}>
                               <SplitIcon/>
+                              <span className="la-strip-action-label">Split</span>
                             </button>
                             <button className="btn" aria-label="Duplicate strip"
                                     data-caption="Duplicate this strip"
                                     title="Duplicate strip"
                                     onClick={() => duplicateStrip(s.id)}>
                               <svg aria-hidden="true" viewBox="0 0 16 16"><rect x="5" y="2" width="8" height="9" rx="1"/><path d="M3 5v8a1 1 0 0 0 1 1h6"/></svg>
+                              <span className="la-strip-action-label">Copy</span>
                             </button>
                             <button className="btn danger" aria-label="Remove strip"
                                     data-caption="Remove this strip from the piece"
                                     title="Remove strip"
-                                    onClick={() => removeStrip(s.id)}>×</button>
+                                    onClick={() => removeStrip(s.id)}>
+                              <span aria-hidden="true">×</span>
+                              <span className="la-strip-action-label">Remove</span>
+                            </button>
                           </div>
                         </div>
                         {firstLedError?.stripId === s.id && (

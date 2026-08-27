@@ -299,7 +299,7 @@ test('offers one-tap pairing for a reachable-but-unpaired card', () => {
     discoveredCard: { id: 'lw-found' },
   });
   assert.equal(byReason.id, 'pair-local-card');
-  assert.equal(byReason.secondaryAction?.id, 'adopt-discovered-card');
+  assert.equal(byReason.secondaryAction, undefined);
 
   const byDiscovery = nextCardConnectionAction({
     link: { state: 'disconnected', reason: 'card-unreachable' },

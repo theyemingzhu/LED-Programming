@@ -231,10 +231,35 @@ test('owner capability issuance is explicit, bounded, and bound to the probed pr
   assert.equal(JSON.parse(calls[1].init.body).expectedProjectHead, status.projectHead);
 });
 
+test('owner-initiated connect with no remembered card persists identity', async () => {
+  const status = readyStatus();
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => { store.set(key, String(value)); },
+    removeItem: key => { store.delete(key); },
+  };
+  try {
+    const authority = await connectCardTransport({
+      host: '192.168.18.70',
+      expectedCardId: '',
+      link: linkFor(status),
+      fetchImpl: async () => response(status),
+    });
+    assert.equal(authority.connected, true);
+    const persisted = JSON.parse(store.get('lw_card_identity_v1') || 'null');
+    assert.equal(persisted?.id, 'lw-card-a');
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
 test('Connection Center does not require physical confirmation for ordinary safe controls', async () => {
   const source = await readFile(new URL('../components/card/CardConnectionCenter.jsx', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /Enable live control/);
   assert.doesNotMatch(source, /Touch a physical card control/);
   assert.doesNotMatch(source, /issueOwnerCapability/);
   assert.match(source, /Card verified/);
+  assert.doesNotMatch(source, /Open local Studio/);
+  assert.doesNotMatch(source, /Studio received no reply from the card/);
 });

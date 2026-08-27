@@ -279,7 +279,7 @@ test('wire scaffold is concise and recovery actions stay hidden without a mixed-
   await expect(page.getByRole('region', { name: 'Wire setup guide' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Steps' })).toHaveCount(0);
   await expect(page.locator('.lww-plan-head .meta')).toContainText('in this design');
-  await expect(page.getByTestId('test-install-plan-summary')).toBeVisible();
+  await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
   await expect(page.getByTestId('start-led-check')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Copy payload' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open installer' })).toHaveCount(0);

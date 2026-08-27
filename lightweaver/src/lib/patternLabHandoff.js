@@ -104,7 +104,7 @@ function validBudget(value, storage = false) {
     && value.ok === (value.status === 'fits');
 }
 
-function lookFromRecipe(recipe) {
+export function lookFromRecipe(recipe) {
   const technical = resolvePatternLabMacros(recipe);
   const paletteColor = recipe.palette[Math.min(recipe.palette.length - 1, Math.floor(recipe.palette.length / 2))];
   const color = hexToCardColor(paletteColor);
