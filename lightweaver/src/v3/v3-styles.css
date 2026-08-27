@@ -117,7 +117,8 @@ input[type=number]::-webkit-outer-spin-button {
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
-  .sb-stream .pulse, .led.wave, .pm-led-stage .sheen { animation: none !important; }
+  .sb-stream .pulse, .led.wave, .pm-led-stage .sheen,
+  .card-status-control.needs-save, .card-status-control.needs-save .card-status-dot { animation: none !important; }
 }
 
 .project-replacement-backdrop {
@@ -750,6 +751,34 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .card-status-control.is-connected .card-status-dot { background: var(--ok); }
 .card-status-control.is-connecting .card-status-dot,
 .card-status-control.is-recovering .card-status-dot { background: var(--accent); }
+@keyframes card-save-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 28%, transparent); }
+}
+@keyframes card-save-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.85; }
+}
+.card-status-control.needs-save,
+.card-status-control.is-save-to-card,
+.card-status-control.is-saving-to-card {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text-hi);
+  animation: card-save-pulse 1.6s ease-in-out infinite;
+}
+.card-status-control.needs-save .card-status-dot,
+.card-status-control.is-save-to-card .card-status-dot,
+.card-status-control.is-saving-to-card .card-status-dot {
+  background: var(--accent-hi);
+  animation: card-save-dot 1.6s ease-in-out infinite;
+}
+.card-status-control.needs-save .card-status-state,
+.card-status-control.is-save-to-card .card-status-state,
+.card-status-control.is-saving-to-card .card-status-state {
+  color: var(--text-hi);
+  font-weight: 600;
+}
 /* Paired-but-blank and reachable-but-unpaired are actionable, not "all good" —
    an amber dot keeps them visibly distinct from green Connected. */
 .card-status-control.is-needs-project,

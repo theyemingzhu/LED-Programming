@@ -98,6 +98,7 @@ export function SetupScreen({
   activeCloudProjects = [],
   browserProjects = [],
   replaceProject,
+  firmwareStatus = null,
   onLoadOfferChange,
 }) {
   const {
@@ -386,11 +387,8 @@ export function SetupScreen({
     return () => onLoadOfferChange(false);
   }, [onLoadOfferChange, savedMatchLoadOffer]);
 
-  // The app shell reads SETUP_SKIP_STORAGE_KEY before React mounts to decide
-  // whether a bare URL still lands on the Setup front door. The key was read
-  // forever but written nowhere, so the front door never moved. Record
-  // completion the first time the derived journey reports it; the write is
-  // idempotent, so the ref only spares repeated storage calls.
+  // Record completion so older notes of this key stay truthful. The shell
+  // no longer routes on it — a bare URL always opens Card Home.
   const setupSkipWrittenRef = useRef(false);
   useEffect(() => {
     if (!journey.setupComplete || setupSkipWrittenRef.current) return;
@@ -398,7 +396,7 @@ export function SetupScreen({
     try {
       window.localStorage.setItem(SETUP_SKIP_STORAGE_KEY, '1');
     } catch {
-      // Without storage the bare-URL fallback simply keeps offering Setup.
+      // Without storage there is nothing to record.
     }
   }, [journey.setupComplete]);
 
@@ -608,6 +606,9 @@ export function SetupScreen({
   // One status authority: the lifecycle label (derived locally only when a
   // bare render did not pass the shell's lifecycle down).
   const identityStatus = (cardLifecycle || deriveCardLifecycle({ link: cardLink || {} })).label;
+  const firmwareBehind = firmwareStatus?.actionable === true;
+  const firmwareCurrent = firmwareStatus?.state === 'current'
+    || firmwareStatus?.state === 'development-build';
   const renderActiveTask = phase => {
     if (phase.id === 'connect') {
       const blocker = journey.blockers[0]?.id;
@@ -652,6 +653,7 @@ export function SetupScreen({
                 </button>
               )}
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
+              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=layout&mode=wire')}>Save this project to the card</button>
               <button type="button" className="btn" data-testid="setup-keep-open-project" onClick={() => go('#screen=discovery')}>Keep setting up the open project</button>
             </div>
           </div>
@@ -710,7 +712,12 @@ export function SetupScreen({
                   data-testid="setup-pair-failure"
                 >{pairState.message}</p>
               )}
-              <button type="button" className="btn" data-testid="setup-connect-manual" onClick={() => onOpenConnectionCenter?.()}>Card connection options</button>
+              {/* Search-first already hands off to the panel on failure. A
+                  second "Card connection options" button on the same task
+                  was another connect door beside Find / Pair / Reconnect. */}
+              {!canFindInPlace && (
+                <button type="button" className="btn" data-testid="setup-connect-manual" onClick={() => onOpenConnectionCenter?.()}>Card connection options</button>
+              )}
             </>
           )}
         </div>
@@ -771,9 +778,11 @@ export function SetupScreen({
 
   return (
     <>
-      <div className="lw-setup-lede">
-        <p className="lw-setup-intro">Four outcomes take this exact card from first connection to a physically checked project. Setup advances from evidence, not a saved checklist.</p>
-      </div>
+      {!journey.setupComplete && !exactTransport && (
+        <div className="lw-setup-lede">
+          <p className="lw-setup-intro">Connect to the card, then Studio resumes whatever is still unfinished — lights, layout, or saving. You can open Patterns as soon as the card answers.</p>
+        </div>
+      )}
 
       <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
         <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
@@ -802,10 +811,28 @@ export function SetupScreen({
             asking the owner to pair, so the screen carried two headline
             buttons and two different accounts of where the owner was. */}
         {matchesOpenProject && !provisionalSetup && exactTransport && (
-          <section className="card-support-panel lw-setup-banner">
-            <h2>This exact card is already set up</h2>
-            <p>Its installed project matches the project open in Studio. The card&rsquo;s own page stays connected for controls.</p>
-            <button type="button" className="btn primary" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+          <section className="card-support-panel lw-setup-banner" data-testid="setup-card-ready">
+            <h2>
+              {firmwareBehind
+                ? 'This exact card is already set up'
+                : firmwareCurrent
+                  ? 'Your card is up to date and currently connected'
+                  : 'Your card is currently connected'}
+            </h2>
+            <p>
+              {firmwareBehind
+                ? 'Its installed project matches the project open in Studio. Update the card software before relying on it.'
+                : firmwareCurrent
+                  ? 'Studio is talking to this card and it is running the current Lightweaver software.'
+                  : 'Studio is talking to this card. Layout and the rest of Studio are ready when you are.'}
+            </p>
+            <div className="lw-setup-banner-actions">
+              <button type="button" className="btn primary" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+              <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
+              {firmwareBehind && (
+                <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
+              )}
+            </div>
           </section>
         )}
         {savedMatchLoadOffer && (
@@ -825,7 +852,8 @@ export function SetupScreen({
             <h2>Resolve this card&rsquo;s project</h2>
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
-              <button type="button" className="btn" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>Start from card wiring</button>
+              <button type="button" className="btn" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>Use this card&rsquo;s project</button>
+              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=layout&mode=wire')}>Save this project to the card</button>
             </div>
           </section>
         )}
@@ -835,30 +863,39 @@ export function SetupScreen({
         <p className="lw-setup-progress" data-testid="setup-progress">
           {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
         </p>
-        <ol className="lw-setup-phase-list">
-          {journey.phases.map((phase, index) => {
-            const active = phase.id === journey.currentPhaseId;
-            return (
-              <li
-                key={phase.id}
-                className={`lw-setup-phase is-${phase.status}${active ? ' is-active' : ''}`}
-                data-testid={`setup-phase-${phase.id}`}
-                data-phase-id={phase.id}
-                data-status={phase.status}
-                aria-current={active ? 'step' : undefined}
-              >
-                <div className="lw-setup-phase-head">
-                  <span className="lw-setup-phase-marker" aria-hidden="true">{phase.status === 'done' ? '✓' : index + 1}</span>
-                  <div>
-                    <h2 tabIndex={-1}>{phase.title}</h2>
-                    {!active && <p>{phase.detail}</p>}
+        {!journey.setupComplete && (
+          <ol className="lw-setup-phase-list">
+            {journey.phases.map((phase, index) => {
+              const active = phase.id === journey.currentPhaseId;
+              return (
+                <li
+                  key={phase.id}
+                  className={`lw-setup-phase is-${phase.status}${active ? ' is-active' : ''}`}
+                  data-testid={`setup-phase-${phase.id}`}
+                  data-phase-id={phase.id}
+                  data-status={phase.status}
+                  aria-current={active ? 'step' : undefined}
+                >
+                  <div className="lw-setup-phase-head">
+                    <span className="lw-setup-phase-marker" aria-hidden="true">{phase.status === 'done' ? '✓' : index + 1}</span>
+                    <div>
+                      <h2 tabIndex={-1}>{phase.title}</h2>
+                      {!active && <p>{phase.detail}</p>}
+                    </div>
                   </div>
-                </div>
-                {active && renderActiveTask(phase)}
-              </li>
-            );
-          })}
-        </ol>
+                  {active && renderActiveTask(phase)}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        {exactTransport && !journey.setupComplete && journey.currentPhaseId !== 'connect' && (
+          <p className="lw-setup-run-anyway">
+            <button type="button" className="btn" data-testid="setup-run-patterns" onClick={() => go('#screen=pattern')}>
+              Open Patterns
+            </button>
+          </p>
+        )}
       </section>
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />

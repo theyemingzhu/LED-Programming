@@ -393,9 +393,9 @@ export function nextCardConnectionAction(input = {}) {
   }
 
   if (reason === 'found-unpaired' || (input.discoveredCard && !hasCardIdentity(input.rememberedCard))) {
-    return action('pair-local-card', {
-      secondaryAction: { id: 'adopt-discovered-card', label: 'Use this card instead' },
-    });
+    // Pairing is the one action. "Use this card instead" is the wrong-card
+    // adoption, not a second name for the same pair.
+    return action('pair-local-card');
   }
 
   if (TRANSIENT_REASONS.has(reason)) {

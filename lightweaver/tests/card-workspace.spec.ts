@@ -1523,9 +1523,9 @@ test('Card Home and Support recovery both surface a working connect action for a
     const createRoot = domModule.createRoot ?? domModule.default?.createRoot;
     if (typeof createRoot !== 'function') throw new Error('could not resolve createRoot');
 
-    const result = { homeCenter: 0, recoveryCenter: 0 };
+    const result = { homeFind: false, recoveryCenter: 0 };
     const disconnectedLink = { state: 'disconnected', reason: 'card-unreachable', activity: 'idle' };
-    const renderOnce = async (props, actionLabels) => {
+    const renderOnce = async (props, actionLabels, { click = true } = {}) => {
       const host = document.createElement('div');
       document.body.appendChild(host);
       const root = createRoot(host);
@@ -1533,22 +1533,24 @@ test('Card Home and Support recovery both surface a working connect action for a
       await new Promise(resolve => setTimeout(resolve, 50));
       const button = [...host.querySelectorAll('button')].find(node => actionLabels.includes(node.textContent.trim()));
       if (!button) throw new Error('connection recovery action not rendered');
-      button.click();
+      if (click) button.click();
+      const found = Boolean(button);
       root.unmount();
       host.remove();
+      return found;
     };
 
-    // Card Home's connect task (the ladder's active task) opens the
-    // connection center directly — there is no second "Continue setup" hop.
-    await renderOnce({
+    // Card Home's connect task searches in place. Opening the panel is what
+    // happens after that search fails, not a second door beside Find my card.
+    result.homeFind = await renderOnce({
       connected: false,
       cardHost: 'lightweaver.local',
       cardLink: disconnectedLink,
       onConnectCard: () => {},
-      onOpenConnectionCenter: () => { result.homeCenter += 1; },
+      onOpenConnectionCenter: () => {},
       onOpenSection: () => {},
       route: { section: 'overview', supportTool: '' },
-    }, ['Find my card']);
+    }, ['Find my card'], { click: false });
     // Recovery support connect action with the connection center provided.
     await renderOnce({
       connected: false,
@@ -1562,7 +1564,7 @@ test('Card Home and Support recovery both surface a working connect action for a
     return result;
   });
 
-  expect(calls.homeCenter).toBe(1);
+  expect(calls.homeFind).toBe(true);
   expect(calls.recoveryCenter).toBe(1);
 });
 
@@ -1684,9 +1686,10 @@ test('an unpaired card running the bench discovery project is flagged before pai
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
 
-  const detected = page.getByTestId('card-detected-state');
-  await expect(detected).toContainText('unfinished Find my strips setup', { timeout: 15000 });
-  await expect(detected).toContainText(/connect to pair/i);
+  // Pairing is Setup's connect task. A second "Detected state" that said
+  // "tap Connect to pair" was another connect door on the same page.
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
+  await expect(page.getByTestId('setup-connect-card')).toHaveText('Pair this card', { timeout: 15000 });
 });
 
 test('a bench card offers Clear temporary setup and posts the confirmation token', async ({ page }) => {

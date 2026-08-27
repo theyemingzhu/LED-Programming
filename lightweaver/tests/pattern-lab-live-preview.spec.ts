@@ -78,23 +78,28 @@ async function installCardHarness(page: Page) {
   return controlBodies;
 }
 
-test('physical preview is opt-in and Stop cancels the stream before restoring the snapshot', async ({ page }) => {
+test('native bank aurora samples via look preview, never a frame stream', async ({ page }) => {
+  const controls = await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab&patternId=aurora', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('pattern-lab-draft-name')).toBeVisible();
+  await closeControls(page);
+
+  await expect.poll(() => controls.some(body => body.patternId === 'aurora')).toBe(true);
+  expect(await page.evaluate(() => window.__patternLabFrames.length)).toBe(0);
+  await expect(page.getByRole('button', { name: 'Preview on Lights' })).toHaveCount(0);
+  await expect(page.locator('.plab-live-preview [role="status"]')).toContainText(/already follows this look/i);
+});
+
+test('library-only gradient still uses Preview on Lights frames and Stop restores', async ({ page }) => {
   const controls = await installCardHarness(page);
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
-  await choosePattern(page, 'aurora');
-  await page.getByRole('slider', { name: 'Color', exact: true }).fill('75');
-  // "Preview on Lights" lives in the always-present preview stage
-  // (PatternLabPreview.jsx), not the controls drawer — but on mobile that
-  // stage is the ancestor PatternLabScreen.jsx marks `inert` for as long as
-  // the drawer stays open, so it is unreachable until the drawer closes.
-  // This is a real product behaviour, not a markup detail to route around:
-  // an owner has to close the sheet to reach the physical-preview action.
+  await choosePattern(page, 'gradient');
   await closeControls(page);
 
   const preview = page.getByRole('button', { name: 'Preview on Lights' });
   await expect(preview).toBeVisible();
   await expect(preview).toBeEnabled();
-  expect(controls).toEqual([]);
+  // Autoload / native sampling must not have opened a frame stream for gradient.
   expect(await page.evaluate(() => window.__patternLabFrames.length)).toBe(0);
 
   await preview.click();
@@ -103,19 +108,21 @@ test('physical preview is opt-in and Stop cancels the stream before restoring th
 
   await page.getByRole('button', { name: 'Stop preview' }).click();
   await expect(page.locator('.plab-live-preview [role="status"]')).toContainText('Previous card look restored');
-  expect(controls).toEqual([
-    { cancelStream: true },
-    expect.objectContaining({
-      patternId: 'aurora', brightness: 0.62, zone: 'all', syncZones: false,
-      driftMin: 12, driftMax: 211,
-    }),
-  ]);
+  expect(controls.some(body => body.cancelStream && !body.patternId)).toBe(true);
+  expect(controls.some(body => (
+    body.patternId === 'aurora'
+    && body.brightness === 0.62
+    && body.zone === 'all'
+    && body.syncZones === false
+    && body.driftMin === 12
+    && body.driftMax === 211
+  ))).toBe(true);
 });
 
-test('leaving Pattern Lab rolls back an active physical preview', async ({ page }) => {
+test('leaving Pattern Lab rolls back an active frame-stream preview', async ({ page }) => {
   const controls = await installCardHarness(page);
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
-  await choosePattern(page, 'aurora');
+  await choosePattern(page, 'gradient');
   await closeControls(page);
   await page.getByRole('button', { name: 'Preview on Lights' }).click();
   await expect(page.getByRole('button', { name: 'Stop preview' })).toBeVisible();

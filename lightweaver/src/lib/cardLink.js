@@ -17,6 +17,7 @@ import {
   CARD_BRIDGE_CHANGED_EVENT,
   bootstrapCardBridgeFromOpener,
   getCardBridgeState,
+  isCardBridgeLaunch,
   openCardBridge,
   restoreCardBridgeHandoff,
   sendCardBridgeRequest,
@@ -1709,7 +1710,7 @@ export function cardLinkBootstrapFailureReason(error) {
 export async function bootstrapCardLink() {
   const link = getSharedCardLink();
   const hasOpenerBridge = bootstrapCardBridgeFromOpener();
-  if (!hasOpenerBridge && !readBridgeWasActive()) return link.getState();
+  if (!hasOpenerBridge && !readBridgeWasActive() && !isCardBridgeLaunch()) return link.getState();
   link.dispatch({ type: 'connecting', via: 'bridge', host: getCardBridgeState().host });
   try {
     await sendCardBridgeRequest('ping', {}, { timeoutMs: CARD_LINK_PING_TIMEOUT_MS });

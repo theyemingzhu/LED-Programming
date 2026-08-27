@@ -73,10 +73,9 @@ test('a small card against a large design is stated as a fact, and the design is
   expect(total).toBe(400);
 });
 
-test('a card matching the design says so', async ({ page }) => {
+test('a card matching the design stays quiet on Test & Install', async ({ page }) => {
   await openWire(page, project({ designPixels: 41, outputPin: 18, countedPin: 18, countedPixels: 41 }));
-  await expect(page.getByTestId('wire-capacity'))
-    .toHaveText('Plugged in right now: 41 lights — everything this design uses.');
+  await expect(page.getByTestId('wire-capacity')).toHaveCount(0);
 });
 
 test('a wrong GPIO is still a fault, because nothing lights at all', async ({ page }) => {
@@ -87,7 +86,9 @@ test('a wrong GPIO is still a fault, because nothing lights at all', async ({ pa
   await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
 });
 
-test('counting what is plugged in is reachable from Wire, not only from a blank card', async ({ page }) => {
+test('counting what is plugged in lives with Advanced installation tools', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 18, countedPin: 18, countedPixels: 41 }));
+  await expect(page.getByTestId('wire-recount')).toBeHidden();
+  await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
   await expect(page.getByTestId('wire-recount')).toBeVisible();
 });

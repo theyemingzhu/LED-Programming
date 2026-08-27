@@ -149,6 +149,9 @@ function CardHomePanels({
     String(cardLink?.readiness?.projectId || '').trim()
     && String(cardLink.readiness.projectId).trim() === String(currentProject?.id || '').trim(),
   );
+  const matchingProjectOffer = matchingProjectState.status !== 'idle'
+    || Boolean(cardLink?.readiness?.productionJobId)
+    || Boolean(cardLink?.readiness?.productionJobDigest);
   let currentProjectInstallable = false;
   try {
     prepareCardStoragePayload(prepareCardDeployment(currentProject).runtimePackage);
@@ -563,10 +566,11 @@ function CardHomePanels({
   // pairing — the states whose evidence exists nowhere else on this page.
   // For a card that is not answering, the Setup journey above (identity row
   // + connect task) is the one verdict — repeating "connect the card" here
-  // was the double verdict the merge removes.
+  // was the double verdict the merge removes. found-unpaired is the same
+  // class: Setup's pair task is already the one connect action.
   const answering = verifiedTransport
     || (cardLink?.state === 'revalidating' && Boolean(cardLink?.card?.id));
-  const showPresentation = answering || ready || lifecycleState === 'found-unpaired';
+  const showPresentation = answering || ready;
 
   return (
     <div className="card-overview">
@@ -590,7 +594,10 @@ function CardHomePanels({
           your project — in a second orange primary button, beside the setup
           step's own — put two competing headline actions on one screen for a
           card that is mid-setup. The banner above already names that state. */}
-      {ready && !suppressMatchingProject && !benchProject && (
+      {/* An idle generic Load next to Setup's pull/overwrite is a second door
+          for a card this browser has never held. Keep the idle Load only when
+          the card names a production job — that click is the digest check. */}
+      {ready && !suppressMatchingProject && !benchProject && matchingProjectOffer && (
         <section className="card-support-panel" aria-label="Matching card project">
           <h2>Matching card project</h2>
           <p>Open the exact active Studio project installed on this card before changing patterns, so its LED count, wiring, protocol, and power limit stay aligned.</p>
@@ -736,7 +743,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -777,6 +784,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         browserProjects={browserProjects}
         replaceProject={replaceProject}
         onSaveProject={onSaveProject}
+        firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
       />
       <CardHomePanels

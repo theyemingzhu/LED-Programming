@@ -2,7 +2,7 @@ import { type Route } from '@playwright/test';
 import { test, expect } from './studioTest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { choosePattern, patternSearchInput } from './helpers/pattern-lab.ts';
+import { choosePattern, closeControls, patternSearchInput } from './helpers/pattern-lab.ts';
 
 const AUTOSAVE_KEY = 'lw_autosave_v3';
 const PREVIEW_SOURCE = await readFile(fileURLToPath(new URL('../src/v3/PatternPreview.jsx', import.meta.url)), 'utf8');
@@ -287,7 +287,10 @@ test('reveals Long Evolution controls with transform and opacity, then removes m
 test('creates, compares, and reopens a long private pattern without changing the project', async ({ page }) => {
   const projectBefore = await projectBytes(page);
 
-  await expect(page.getByText('No source selected')).toBeVisible();
+  // Autoload seeds the project look; the draft name field is the product
+  // signal that Lab opened on a sculptable recipe rather than the empty
+  // sculpture ("No source selected" / "Begin with a pattern").
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue(/.+/);
   await choosePattern(page, 'aurora');
   await expect(page.getByTestId('pattern-lab-mapped-preview').locator('canvas')).toBeVisible();
   await expect(page.getByText('Mapped to current artwork')).toBeVisible();
@@ -530,6 +533,9 @@ test('exports canonical recipes and rejects invalid imports without mutating the
 test('uses an accessible lower controls drawer on a phone while keeping preview first', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: 'domcontentloaded' });
+  // Autoload peeks the sheet when a look exists. This spec is about opening
+  // from closed, so close first.
+  await closeControls(page);
   const trigger = page.getByRole('button', { name: 'Pattern controls', exact: true });
   const preview = page.locator('.plab-preview');
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');

@@ -720,6 +720,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .btn.ghost-sm:hover { background: var(--bg-elev-2); color: var(--text-hi); }
 
 .pm-grid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
+.pm-instrument { display: flex; flex-direction: column; gap: 10px; }
 .pm-main { min-width: 0; }
 
 /* checkbox box (shared) */
@@ -788,7 +789,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .pmcard-pl .pm-box { width: 15px; height: 15px; }
 
 /* aside */
-.pm-aside { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
+.pm-aside { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 12px; align-self: start; max-height: calc(100dvh - 96px); overflow: auto; overflow-x: hidden; padding-right: 4px; }
 .pm-save { margin-left: auto; font-size: 11px; font-family: var(--font-mono); letter-spacing: 0.04em; color: var(--on-accent); background: var(--accent); border: 1px solid transparent; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-weight: 600; transition: background .12s; }
 .pm-save:hover { background: var(--accent-hi); }
 .pm-reset { font-size: 11px; font-family: var(--font-mono); letter-spacing: 0.04em; color: var(--text-lo); background: transparent; border: 1px solid var(--border-soft); border-radius: 6px; padding: 3px 9px; cursor: pointer; transition: color .12s, border-color .12s; }
@@ -907,12 +908,21 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
   /* minmax(0,1fr): a bare 1fr track's min size is content-driven, which let
      wide pattern-editor content force ~490px and horizontally scroll phones */
   .pm-grid { grid-template-columns: minmax(0, 1fr); }
-  .pm-aside { min-width: 0; }
-  /* Move the preview + its controls above the pattern list (so they aren't
-     buried) and keep the small preview pinned while you tune — attached to,
-     not detached from, the controls that change it. */
-  .pm-aside { position: static; max-height: none; overflow: visible; padding-right: 0; order: -1; }
-  .pm-preview-pane { position: sticky; top: 0; z-index: 10; }
+  /* Flatten the aside so the instrument strip's sticky parent is the full
+     grid — sliders stay pinned while the pattern list scrolls beneath. */
+  .pm-aside { display: contents; }
+  .pm-instrument {
+    order: -2;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    padding-bottom: 8px;
+  }
+  .pm-aside > .card.pm-pane { order: -1; }
+  .pm-main { order: 0; }
+  .pm-preview-pane { position: static; }
+  .pm-instrument .pm-piece-stage { height: 160px; }
 }
 @media (max-width: 480px) {
   .pm-preview-controls { grid-template-columns: 32px minmax(0, 1fr) 32px auto; }

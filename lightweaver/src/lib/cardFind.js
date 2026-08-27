@@ -38,6 +38,40 @@ function bestKnownHost(link = {}) {
   return normalizeCardHost(link.host || readStoredCardHost() || '') || DEFAULT_CARD_HOST;
 }
 
+/**
+ * Race every known card address (stored host, history, mDNS, setup AP) with
+ * a bounded timeout, then sweep any remembered subnet. This is what Connect
+ * must do: a single fetch to lightweaver.local can stall on .local DNS while
+ * the card is already answering on its station IP.
+ */
+export async function locateReachableCard({
+  preferredHost = '',
+  expectedCard = readPersistedCardIdentity(),
+  timeoutMs = 2000,
+} = {}) {
+  const found = await discoverCardStatus({
+    preferredHost: preferredHost || bestKnownHost(),
+    expectedCard,
+    timeoutMs,
+    persist: true,
+  }).catch(() => null);
+  if (found?.connected) return found;
+  if (found?.reason === 'wrong-card' || found?.reason === 'identity-missing') return found;
+
+  const swept = await sweepKnownSubnetsForCard({
+    expectedCard,
+    knownHosts: [
+      preferredHost,
+      readStoredCardHost(),
+      ...readStoredCardHostHistory(),
+    ],
+  }).catch(() => null);
+  if (swept) {
+    return { connected: true, host: swept.host, status: swept.status };
+  }
+  return found || { connected: false, host: preferredHost || DEFAULT_CARD_HOST };
+}
+
 async function pairReachedCard(found) {
   reportDirectCardStatus({
     connected: true, host: found.host, status: found.status, allowAdopt: true,
@@ -69,27 +103,11 @@ export async function findAndConnectCard({
 
   if (directOnly) {
     onProgress('Looking for your card…');
-    const expectedCard = readPersistedCardIdentity();
-    const found = await discoverCardStatus({
+    const found = await locateReachableCard({
       preferredHost: bestKnownHost(link),
-      expectedCard,
       timeoutMs: 2000,
-      persist: true,
-    }).catch(() => null);
+    });
     if (found?.connected) return pairReachedCard(found);
-
-    // The router moved it. This sweep has existed and been tested since the
-    // address-lease problem was first described, and was wired to nothing —
-    // the one recovery that answers "it worked yesterday" was unreachable.
-    onProgress('Checking every address this card has used…');
-    const swept = await sweepKnownSubnetsForCard({
-      expectedCard,
-      knownHosts: [readStoredCardHost(), ...readStoredCardHostHistory()],
-      onProgress,
-    }).catch(() => null);
-    if (swept) {
-      return pairReachedCard({ host: swept.host, status: swept.status, connected: true });
-    }
 
     return {
       ok: false,

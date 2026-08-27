@@ -27,6 +27,7 @@ import {
 import { classifyCardReadiness } from './cardReadiness.js';
 import { stageCardWiringCandidate } from './cardWiringSafety.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
+import { BENCH_DEFAULT_PORT_PIXELS, BENCH_PROJECT_ID } from './benchConfig.js';
 
 export function getCardHostname() {
   return readStoredCardHost();
@@ -145,10 +146,17 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
 function normalizeOutputsForCompare(outputs = []) {
   return Array.isArray(outputs)
     ? outputs.map(output => ({
-        pin: Number(output?.pin),
-        pixels: Number(output?.pixels ?? output?.pixelCount),
+        pin: Number(output?.pin ?? output?.gpio),
+        pixels: Number(output?.pixels ?? output?.pixelCount ?? output?.count),
       }))
     : [];
+}
+
+function outputPinsMatch(a = [], b = []) {
+  const left = normalizeOutputsForCompare(a);
+  const right = normalizeOutputsForCompare(b);
+  if (left.length !== right.length) return false;
+  return left.every((output, index) => output.pin === right[index]?.pin);
 }
 
 function outputsMatch(a = [], b = []) {
@@ -179,6 +187,17 @@ export function cardConfigNeedsRebootFromInfo(current = {}, runtimePackage = {})
   return !outputsMatch(current?.outputs, targetOutputs);
 }
 
+export function cardConfigPinLayoutChangedFromInfo(current = {}, runtimePackage = {}) {
+  const targetOutputs = targetRuntimeOutputs(runtimePackage);
+  if (!targetOutputs.length) return false;
+  return !outputPinsMatch(current?.outputs, targetOutputs);
+}
+
+export function shouldDirectApplyLedCountChange(current = {}, runtimePackage = {}) {
+  return !cardConfigPinLayoutChangedFromInfo(current, runtimePackage)
+    && cardConfigNeedsRebootFromInfo(current, runtimePackage);
+}
+
 function cardConfigProjectMismatchFromInfo(current = {}, runtimePackage = {}) {
   const currentPieceId = normalizePieceId(current?.piece?.id);
   const targetPieceId = normalizePieceId(targetRuntimePiece(runtimePackage)?.id);
@@ -186,8 +205,13 @@ function cardConfigProjectMismatchFromInfo(current = {}, runtimePackage = {}) {
 }
 
 function isPromotableDiscoveryBench(current = {}) {
-  return current?.provisionalSetup === true
-    && normalizePieceId(current?.piece?.id) === 'lightweaver-bench-discovery-v1';
+  const pieceId = normalizePieceId(current?.piece?.id || current?.projectId);
+  if (pieceId !== BENCH_PROJECT_ID) return false;
+  if (current?.provisionalSetup === true) return true;
+  const outputs = Array.isArray(current?.outputs) ? current.outputs : [];
+  return outputs.length > 0 && outputs.every(output => (
+    Math.trunc(Number(output?.pixels ?? output?.pixelCount ?? output?.count) || 0) === BENCH_DEFAULT_PORT_PIXELS
+  ));
 }
 
 function summarizeOutputs(outputs = []) {
@@ -285,11 +309,12 @@ async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
         retryOnTimeout: true,
       }, options).catch(() => null)
     : await readFirmwareInfoToHost(host, timeoutMs, options.fetchImpl || globalThis.fetch);
-  const layoutChanged = current ? cardConfigNeedsRebootFromInfo(current, runtimePackage) : false;
+  const pinLayoutChanged = current ? cardConfigPinLayoutChangedFromInfo(current, runtimePackage) : false;
+  const outputsChanged = current ? cardConfigNeedsRebootFromInfo(current, runtimePackage) : false;
   const projectChanged = current ? cardConfigProjectMismatchFromInfo(current, runtimePackage) : false;
   const reboot = options.reboot === true ||
-    (options.reboot === 'if-needed' && layoutChanged);
-  return { reboot, current, layoutChanged, projectChanged };
+    (options.reboot === 'if-needed' && outputsChanged);
+  return { reboot, current, layoutChanged: pinLayoutChanged, projectChanged };
 }
 
 export async function requestCardReboot(host, options = {}) {

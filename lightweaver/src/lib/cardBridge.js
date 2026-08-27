@@ -994,25 +994,46 @@ export function attachCardBridgeListener() {
   listenerAttached = true;
 }
 
+function adoptNamedCardBridgeWindow() {
+  const win = browserWindow();
+  if (!win?.open) return null;
+  try {
+    const source = win.open('', CARD_BRIDGE_WINDOW_NAME);
+    if (!source || bridgeTargetClosed(source)) return null;
+    return source;
+  } catch {
+    return null;
+  }
+}
+
 export function bootstrapCardBridgeFromOpener() {
   const win = browserWindow();
   attachCardBridgeListener();
-  const bridgeHostWindow = win?.opener || (win?.parent && win.parent !== win ? win.parent : null);
-  if (!bridgeHostWindow) return false;
   const params = parseBridgeParams();
   if (!params.enabled && bridgeWindow) return true;
   if (!params.enabled) return false;
   const host = normalizeCardHost(params.host || readStoredCardHost());
-  setBridgeState({
-    source: bridgeHostWindow,
-    origin: cardHostToUrl(host),
-    host,
-    // In the card handoff flow Studio often runs inside an iframe hosted by
-    // the card page. That parent page is the bridge, but older firmware does
-    // not always send a ready event down into the iframe, so trust the explicit
-    // cardBridge launch params and verify on the next request.
-    connected: true,
-  });
+  const origin = cardHostToUrl(host);
+  const bridgeHostWindow = win?.opener || (win?.parent && win.parent !== win ? win.parent : null);
+  if (bridgeHostWindow) {
+    setBridgeState({
+      source: bridgeHostWindow,
+      origin,
+      host,
+      // In the card handoff flow Studio often runs inside an iframe hosted by
+      // the card page. That parent page is the bridge, but older firmware does
+      // not always send a ready event down into the iframe, so trust the explicit
+      // cardBridge launch params and verify on the next request.
+      connected: true,
+    });
+    return true;
+  }
+  // A card page opened from Studio lives in the one named bridge tab. When that
+  // page navigates this Studio window back (lwOpenStudio → opener.location),
+  // Studio reloads without window.opener — re-adopt the named tab by handle.
+  const namedWindow = adoptNamedCardBridgeWindow();
+  if (!namedWindow) return false;
+  setBridgeState({ source: namedWindow, origin, host, connected: true });
   return true;
 }
 

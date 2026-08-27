@@ -4,10 +4,10 @@ import { PORT_ROLE_STRIP } from './portRoles.js';
 // blockers inside connection, never durable numbered work of their own.
 export const SETUP_PHASE_IDS = Object.freeze(['connect', 'lights', 'layout', 'verify']);
 
-// Once setup has completed, a bare URL should land on Layout instead of the
-// Setup front door. The app shell reads this localStorage key before React
-// mounts (defaultView / bootstrapFirstRunSetupRoute in v3/app.jsx); the Setup
-// screen writes it the first time the derived journey reports completion.
+// Written when Setup reports completion. A bare URL used to read this and
+// skip the card; it now always lands on Card Home so the owner sees the
+// connection first. The key is still written so existing browsers keep a
+// completion note, but the shell no longer routes on it.
 export const SETUP_SKIP_STORAGE_KEY = 'lw_setup_skip_v1';
 
 export const CONNECTED_CARD_LINK_STATES = Object.freeze(['connected-direct', 'connected-bridge']);

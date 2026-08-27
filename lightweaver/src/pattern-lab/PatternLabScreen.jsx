@@ -15,6 +15,7 @@ import {
   estimatePatternLabGeneratorBudgets,
 } from '../lib/patternLabGenerators.js';
 import { resolvePatternLabControls } from '../lib/patternLabControls.js';
+import { recipeFromLook } from '../lib/patternLabFromLook.js';
 import { recipeFromPattern } from '../lib/patternLabPatternAdapter.js';
 import { normalizePatternLabRecipe, PATTERN_LAB_RECIPE_VERSION } from '../lib/patternLabRecipe.js';
 import {
@@ -434,6 +435,10 @@ export default function PatternLabScreen() {
   const workspaceRef = useRef(null);
   const sheetDragMovedRef = useRef(false);
   const runtimeToolsRef = useRef(null);
+  // Autoload from hash / project look runs once when the workspace is ready.
+  // A ref (not draft in the dependency list) keeps a later owner clear from
+  // re-triggering a project-look load over their empty session.
+  const didAutoloadRef = useRef(false);
   const [sourceRecipe, setSourceRecipe] = useState(null);
   const [draft, setDraft] = useState(null);
   const [previewTime, setPreviewTime] = useState(0);
@@ -521,6 +526,55 @@ export default function PatternLabScreen() {
     setDrafts(state.drafts);
     setDraftState(state.status === 'empty' || state.status === 'restored' ? 'ready' : state.status);
   }, [workspaceAssets.generation, workspaceAssets.ready]);
+
+  // Open Lab on the current look (hash patternId, else project defaultLook)
+  // once the workspace is ready and this session has no working draft yet.
+  // Mirrors choosePattern's source+draft build without undo — there is no
+  // previous Lab work to recover on first open.
+  useEffect(() => {
+    if (!workspaceAssets.ready || didAutoloadRef.current) return;
+    didAutoloadRef.current = true;
+    if (draft) return;
+
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const hashPatternId = String(params.get('patternId') || '').trim();
+    const look = hashPatternId
+      ? { patternId: hashPatternId }
+      : (project.standaloneController?.defaultLook || {});
+    const recipe = recipeFromLook(look, { palette: project.palette });
+    if (!recipe) return;
+
+    const selected = withEvolutionDisabled(recipe);
+    const source = { ...selected, sourcePalette: cloneRecipe(selected.palette) };
+    setPendingPatternId(String(recipe.base?.patternId || hashPatternId || ''));
+    setSourceRecipe(source);
+    setDraft(cloneRecipe(source));
+    setPreviewTime(0);
+    setMessage('');
+    setImportErrors([]);
+    setActiveWorkflowStep(0);
+    setInstrumentResponse(current => ({
+      sequence: current.sequence + 1,
+      kind: 'pattern',
+      step: 0,
+      patternSequence: current.patternSequence + 1,
+    }));
+    if (mobileDrawer) {
+      setSheetDetent('peek');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const heading = document.getElementById('plab-sculpt-heading');
+        const section = heading?.closest('.plab-control-section') || heading;
+        section?.scrollIntoView({ block: 'start' });
+        heading?.focus({ preventScroll: true });
+      }));
+    }
+  }, [
+    workspaceAssets.ready,
+    draft,
+    mobileDrawer,
+    project.palette,
+    project.standaloneController?.defaultLook,
+  ]);
 
   useEffect(() => {
     if (!playing || !previewRecipe) return undefined;
@@ -1327,6 +1381,10 @@ export default function PatternLabScreen() {
     setMessage('Adding to project…');
     try {
       const result = await useInProject();
+      if (result.ok === true) {
+        window.location.hash = '#screen=pattern';
+        return;
+      }
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not add this pattern to the project.');
@@ -1382,9 +1440,9 @@ export default function PatternLabScreen() {
             <span
               className="plab-private-status"
               role="status"
-              aria-label="Private workspace. Your project and lights stay unchanged."
-              title="Private workspace: your project and lights stay unchanged"
-              data-tooltip="Private workspace: your project and lights stay unchanged"
+              aria-label="Private workspace. Your project stays unchanged. Native looks sample the lights."
+              title="Private workspace: your project stays unchanged; native looks sample the lights"
+              data-tooltip="Private workspace: your project stays unchanged; native looks sample the lights"
               data-tooltip-align="start"
             >
               <span aria-hidden="true" />

@@ -7,6 +7,7 @@ import {
   reduceCardConnectionState,
 } from '../lib/cardConnection.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import { lanProbesHeld } from '../lib/usbInspection.js';
 
 export function useCardStatus({
   enabled = true,
@@ -32,6 +33,7 @@ export function useCardStatus({
 
   const refresh = useCallback(async () => {
     if (!enabled) return { connected: false, host: readStoredCardHost(), error: new Error('direct card access disabled') };
+    if (lanProbesHeld()) return { connected: false, host: readStoredCardHost(), error: new Error('LAN probes held') };
     setState(prev => ({ ...prev, checking: true, error: null }));
     const result = await discoverCardStatus({
       preferredHost: readStoredCardHost(),
@@ -73,7 +75,7 @@ export function useCardStatus({
     let running = false;
 
     const guardedRefresh = async () => {
-      if (!active || running) return;
+      if (!active || running || lanProbesHeld()) return;
       running = true;
       try {
         const result = await discoverCardStatus({

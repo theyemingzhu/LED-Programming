@@ -41,15 +41,15 @@ test('a touch names a control and the name stays up afterwards', async ({ page }
   await expect(caption).toHaveText('Duplicate this strip');
 });
 
-test('the size rule appears only while the count or size is touched', async ({ page }) => {
+test('count and size do not lecture on hover', async ({ page }) => {
   await oneStrip(page);
   const caption = page.locator('.la-strip-caption').first();
 
   await page.getByLabel('Strip LED count', { exact: true }).hover();
-  await expect(caption).toHaveText('Size sets the count. Editing LEDs keeps the size.');
+  await expect(caption).toHaveText('Data in at LED 1');
 
   await page.getByLabel('Strip length in metres', { exact: true }).hover();
-  await expect(caption).toHaveText('Size sets the count. Editing LEDs keeps the size.');
+  await expect(caption).toHaveText('Data in at LED 1');
 });
 
 test('the caption reports the data-in end after reversing it', async ({ page }) => {

@@ -23,7 +23,7 @@ import { easeCrossfade } from '../lib/motionSmoothing.js';
 import { PATTERNS } from '../lib/patterns-library.js';
 import { createDefaultPatchBoard, normalizePatchBoard } from '../lib/patchBoard.js';
 import { compileWiring } from '../lib/wiringCompiler.js';
-import { invalidateWiringVerification, makeDefaultWiring, migrateWiring, physicalChangeKindForCompatField, reconcileWiringToStrips, standaloneControllerPhysicalChangeKind, updateWiring as mutateWiring } from '../lib/wiringModel.js';
+import { invalidateWiringVerification, makeDefaultWiring, migrateWiring, physicalChangeKindForCompatField, prepareWiringForPhysicalEdit, reconcileWiringToStrips, standaloneControllerPhysicalChangeKind, updateWiring as mutateWiring } from '../lib/wiringModel.js';
 import {
   createLayoutState,
   createLayoutHistory,
@@ -146,14 +146,18 @@ function layoutRootReducer(state, action) {
   };
   const physicalChangeKind = action.changeKind ||
     (action.type === 'compat/set' ? physicalChangeKindForCompatField(action.field) : physicalChangeKinds[action.type]);
-  const boundary = invalidateWiringVerification(state.wiring, { kind: physicalChangeKind, runIds: action.runIds });
+  const boundary = prepareWiringForPhysicalEdit(state.wiring, { kind: physicalChangeKind, runIds: action.runIds });
   if (!boundary.ok) return state;
   const finishMutation = next => {
-    const boundaryWiring = next.strips !== state.strips
+    const stripsChanged = next.strips !== state.strips;
+    const boundaryWiring = stripsChanged
       ? reconcileWiringToStrips(boundary.wiring, next.strips)
       : boundary.wiring;
     const withWiring = boundaryWiring !== state.wiring ? { ...next, wiring: boundaryWiring } : next;
-    return physicalChangeKind ? { ...withWiring, starterPending: false } : withWiring;
+    const withBoard = stripsChanged
+      ? { ...withWiring, patchBoard: normalizePatchBoard(withWiring.patchBoard, withWiring.strips) }
+      : withWiring;
+    return physicalChangeKind ? { ...withBoard, starterPending: false } : withBoard;
   };
   switch (action.type) {
     // Compat setter — mirrors a single useState field; never records history.

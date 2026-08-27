@@ -332,7 +332,6 @@ function hardwareFacts(config = {}) {
         : output.direction || [...directions][0] || 'forward';
       return {
         pin: output.pin,
-        pixels: output.pixels,
         direction,
         // Boundaries between same-direction runs do not alter electrical
         // output. Preserve the split only when direction changes physically.

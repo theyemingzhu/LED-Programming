@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import { bootstrapCardHostFromLocation } from './lib/cardConnection.js';
 // Exact v3 design: the mockup's own verbatim CSS + its own component files
 // (converted to ES modules, bodies unchanged). This IS the code that renders
 // /v3-mock/, so the look is guaranteed identical. Real-data wiring is layered
@@ -35,6 +36,15 @@ import { createIndexedDbProjectRepository, migrateLocalStorageProjects } from '.
 // to the default bundle.
 const params = new URLSearchParams(window.location.search);
 const wantsV3 = params.get('v') === '3' || window.location.hash === '#v3';
+
+if (import.meta.env.DEV) {
+  const { installDevCardPreview } = await import('./lib/devCardPreview.js');
+  await installDevCardPreview();
+}
+// Preview seeds used to run after app.jsx had already adopted ?cardHost=
+// and then wipe that host. Re-read the URL after any seed so Connect still
+// targets the card on this machine.
+bootstrapCardHostFromLocation();
 
 const root = createRoot(document.getElementById('root'));
 

@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assertCardKaleidoscopeSupport,
+  cardConfigNeedsRebootFromInfo,
+  cardConfigPinLayoutChangedFromInfo,
+  CardPushError,
   pushConfigToCard,
   readCardProjectEvidence,
   readCardStatusEnvelope,
+  shouldDirectApplyLedCountChange,
 } from './cardPushClient.js';
 
 const runtimePackage = {
@@ -451,5 +455,128 @@ test('direct factory commissioning refuses stale or nonblank authority before co
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     globalThis.fetch = originalFetch;
+  }
+});
+
+const countedRuntimePackage = {
+  ...runtimePackage,
+  config: {
+    ...runtimePackage.config,
+    led: {
+      ...runtimePackage.config.led,
+      pixels: 41,
+      outputs: [{ id: 'main', pin: 16, pixels: 41 }],
+    },
+  },
+};
+
+test('pixel count on the same GPIO is a length change, not a pin-layout change', () => {
+  const current = { outputs: [{ pin: 16, pixels: 256 }] };
+  assert.equal(cardConfigPinLayoutChangedFromInfo(current, countedRuntimePackage), false);
+  assert.equal(cardConfigNeedsRebootFromInfo(current, countedRuntimePackage), true);
+  assert.equal(shouldDirectApplyLedCountChange(current, countedRuntimePackage), true);
+  assert.equal(shouldDirectApplyLedCountChange({ outputs: [{ pin: 17, pixels: 256 }] }, countedRuntimePackage), false);
+  assert.equal(shouldDirectApplyLedCountChange({ outputs: [{ pin: 16, pixels: 41 }] }, countedRuntimePackage), false);
+});
+
+test('writes a typed LED count over /api/config without the Test & Install candidate dance', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.window = browserWithIdentity('http:');
+  globalThis.fetch = async () => { throw new Error('push must use the supplied direct transport'); };
+  try {
+    const result = await pushConfigToCard(countedRuntimePackage, {
+      host: '192.168.18.70', transport: 'direct', autoDiscover: false, reboot: 'if-needed',
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), method: init.method || 'GET' });
+        if (String(url).endsWith('/api/firmware-info')) return response({
+          app: 'Lightweaver', cardId: 'lw-aabbccddeeff',
+          firmwareVersion: '1.2.3', buildId: 'build-123',
+          piece: { id: 'commissioned-piece' }, outputs: [{ pin: 16, pixels: 256 }],
+        });
+        if (String(url).endsWith('/api/config')) return response({ ok: true, saved: true, requiresReboot: true });
+        if (String(url).endsWith('/api/reboot')) return response({ ok: true });
+        throw new Error(`unexpected request ${url}`);
+      },
+    });
+    assert.equal(result.saved, true);
+    assert.equal(calls.filter(call => call.url.endsWith('/api/config') && call.method === 'POST').length, 1);
+    assert.equal(calls.filter(call => call.url.endsWith('/api/reboot') && call.method === 'POST').length, 1);
+    assert.equal(calls.some(call => call.url.includes('/api/wiring/')), false);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a GPIO change still needs an intentional layout write and still stages', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  try {
+    await assert.rejects(pushConfigToCard(runtimePackage, {
+      host: '192.168.18.70', transport: 'direct', autoDiscover: false, reboot: 'if-needed',
+      fetchImpl: async (url) => {
+        if (String(url).endsWith('/api/firmware-info')) return response({
+          app: 'Lightweaver', cardId: 'lw-aabbccddeeff',
+          firmwareVersion: '1.2.3', buildId: 'build-123',
+          piece: { id: 'commissioned-piece' }, outputs: [{ pin: 18, pixels: 8 }],
+        });
+        throw new Error(`mutation must not run: ${url}`);
+      },
+    }), error => error instanceof CardPushError && error.reason === 'layout-mismatch');
+
+    const calls = [];
+    const result = await pushConfigToCard(runtimePackage, {
+      host: '192.168.18.70', transport: 'direct', autoDiscover: false, reboot: 'if-needed',
+      allowLayoutChange: true,
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), method: init.method || 'GET' });
+        if (String(url).endsWith('/api/firmware-info')) return response({
+          app: 'Lightweaver', cardId: 'lw-aabbccddeeff',
+          firmwareVersion: '1.2.3', buildId: 'build-123',
+          piece: { id: 'commissioned-piece' }, outputs: [{ pin: 18, pixels: 8 }],
+        });
+        if (String(url).endsWith('/api/wiring/candidate')) {
+          return response({ ok: true, state: 'staged', activationId: 'act-1' });
+        }
+        throw new Error(`unexpected request ${url}`);
+      },
+    });
+    assert.equal(result.state, 'staged');
+    assert.equal(calls.some(call => call.url.endsWith('/api/wiring/candidate') && call.method === 'POST'), true);
+    assert.equal(calls.some(call => call.url.endsWith('/api/config')), false);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('an uncounted Find-my-strips bench can take the typed length without provisionalSetup', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  const calls = [];
+  try {
+    const result = await pushConfigToCard(countedRuntimePackage, {
+      host: '192.168.18.70', transport: 'direct', autoDiscover: false, reboot: 'if-needed',
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), method: init.method || 'GET' });
+        if (String(url).endsWith('/api/firmware-info')) return response({
+          app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '1.2.3', buildId: 'build-123',
+          provisionalSetup: false,
+          piece: { id: 'lightweaver-bench-discovery-v1', name: 'Lightweaver Bench Discovery' },
+          outputs: [{ pin: 16, pixels: 256 }],
+        });
+        if (String(url).endsWith('/api/config')) return response({ ok: true, saved: true, requiresReboot: true });
+        if (String(url).endsWith('/api/reboot')) return response({ ok: true });
+        throw new Error(`unexpected request ${url}`);
+      },
+    });
+    assert.equal(result.saved, true);
+    assert.equal(calls.filter(call => call.url.endsWith('/api/config') && call.method === 'POST').length, 1);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
   }
 });

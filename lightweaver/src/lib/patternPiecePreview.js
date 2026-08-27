@@ -1,6 +1,7 @@
 import { PALETTE_DEFAULT } from '../data.js';
 import { expandPatchBoard, normalizePatchBoard } from './patchBoard.js';
 import { applyLookColorModifiers } from './previewColorModifiers.js';
+import { compileWiring } from './wiringCompiler.js';
 
 export const PATTERN_PREVIEW_UI_STORAGE_PREFIX = 'lw_pattern_piece_preview_v1:';
 
@@ -32,23 +33,41 @@ function formatViewBoxNumber(value) {
 export function buildPatternPreviewSegments({
   strips = [],
   patchBoard = null,
+  wiring = null,
+  compiledWiring = null,
   targets = [],
   resolvePatternId = patternId => patternId,
   paletteForPattern = () => PALETTE_DEFAULT,
 } = {}) {
-  const board = normalizePatchBoard(patchBoard, strips);
-  const expanded = expandPatchBoard(board, strips);
-  const pixelsByPatchId = new Map();
-  for (const pixel of expanded.pixels) {
-    if (!pixel?.patchId || pixel.inactive) continue;
-    if (!pixelsByPatchId.has(pixel.patchId)) pixelsByPatchId.set(pixel.patchId, []);
-    pixelsByPatchId.get(pixel.patchId).push(pixel);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips }) : null);
+  const pixelsByTargetId = new Map();
+  if (compiled?.ok) {
+    for (const zone of compiled.zones || []) {
+      const pixels = [];
+      for (const range of zone.ranges || []) {
+        const start = Math.max(0, Math.trunc(Number(range.start) || 0));
+        const count = Math.max(0, Math.trunc(Number(range.count) || 0));
+        for (let index = 0; index < count; index += 1) {
+          const pixel = compiled.pixels[start + index];
+          if (pixel && !pixel.inactive) pixels.push(pixel);
+        }
+      }
+      if (pixels.length) pixelsByTargetId.set(zone.id, pixels);
+    }
+  } else {
+    const board = normalizePatchBoard(patchBoard, strips);
+    const expanded = expandPatchBoard(board, strips);
+    for (const pixel of expanded.pixels) {
+      if (!pixel?.patchId || pixel.inactive) continue;
+      if (!pixelsByTargetId.has(pixel.patchId)) pixelsByTargetId.set(pixel.patchId, []);
+      pixelsByTargetId.get(pixel.patchId).push(pixel);
+    }
   }
 
   return (targets || [])
     .filter(target => target?.kind === 'section' && target.id)
     .map(target => {
-      const pixels = pixelsByPatchId.get(target.id) || [];
+      const pixels = pixelsByTargetId.get(target.id) || [];
       if (!pixels.length) return null;
       const look = { ...(target.look || {}) };
       const sourcePatternId = String(look.patternId || 'aurora');

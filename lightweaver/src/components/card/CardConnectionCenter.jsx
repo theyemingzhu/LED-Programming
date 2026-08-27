@@ -10,6 +10,7 @@ import {
   writeStoredCardHost,
 } from '../../lib/cardConnection.js';
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
+import { locateReachableCard } from '../../lib/cardFind.js';
 import { openCardFlow } from '../../lib/cardFlowEntry.js';
 import { cardTaskCopy } from '../../lib/cardTaskCopy.js';
 import { connectPanelRouteOut } from '../../lib/connectPanelRouting.js';
@@ -42,7 +43,6 @@ function goToInstall() {
 }
 
 const SETUP_HOST = '192.168.4.1';
-const NEUTRAL_FIRST_RUN_REASONS = new Set(['never-connected', 'card-unreachable']);
 
 export function CardConnectionCenter({
   open,
@@ -133,10 +133,14 @@ export function CardConnectionCenter({
     restoreFocusRef.current = document.activeElement;
     shouldRestoreFocusRef.current = false;
     setFailure('');
-    // A setup-network open lands directly on the join steps: the working-card
-    // flow with setup evidence resolves to the setup-network route, which is
-    // exactly what pressing "It was working before" would have chosen.
-    setIntent(connectIntent === 'setup-network' ? 'working-card' : '');
+    // A setup-network open, or a stored setup-AP host, lands directly on the
+    // join steps. Asking the owner to describe the LEDs first was a second
+    // connect surface on top of "Connect this card".
+    setIntent(
+      connectIntent === 'setup-network' || normalizeCardHost(readStoredCardHost()) === SETUP_HOST
+        ? 'working-card'
+        : '',
+    );
     setBridgeLaunchState('idle');
     const activeAuthority = getActiveCardTransportAuthority();
     setDirectAttempt(activeAuthority);
@@ -243,9 +247,34 @@ export function CardConnectionCenter({
     }
     setDirectBusy(true);
     try {
+      const expectedCardId = rememberedCard?.id || link.expectedCard?.id || '';
+      // An explicit host (setup AP continue, details form) stays exact. The
+      // footer Connect button must race remembered IPs against mDNS — a lone
+      // fetch to lightweaver.local stalls on .local DNS while the card already
+      // answers on its station address.
+      let hostToOpen = targetHost;
+      if (!rawHost) {
+        const found = await locateReachableCard({
+          preferredHost: targetHost,
+          expectedCard: rememberedCard?.id ? rememberedCard : undefined,
+          timeoutMs: 2000,
+        });
+        if (found?.connected && found.host) hostToOpen = found.host;
+        else if (found?.reason === 'wrong-card') {
+          setDirectAttempt({
+            connected: false,
+            reason: 'wrong-card',
+            host: found.host || targetHost,
+            expectedCardId,
+            observedCardId: found.detectedStatus?.cardId || '',
+          });
+          setFailure(`Wrong card: expected ${expectedCardId || 'the paired card'}, but found ${found.detectedStatus?.cardId || 'another Lightweaver'}. Writes remain blocked.`);
+          return found;
+        }
+      }
       const result = await connectCardTransport({
-        host: targetHost,
-        expectedCardId: rememberedCard?.id || link.expectedCard?.id || '',
+        host: hostToOpen,
+        expectedCardId,
       });
       setDirectAttempt(result);
       if (result.connected) {
@@ -259,9 +288,9 @@ export function CardConnectionCenter({
         const build = cardBuildLabel(result.observedCard);
         setFailure(`Found card ${result.observedCard.id} running${version}${build ? ` · ${build}` : ''}, but it cannot provide the exact safety evidence this Studio requires. Update this card to continue.`);
       } else if (result.reason === 'direct-unavailable') {
-        setFailure('Studio received no reply from the card. It cannot yet tell whether the cause is Wi-Fi or local-network permission, or older firmware. Nothing has been changed.');
+        setFailure('No reply from the card.');
       } else {
-        setFailure('Studio could not reach the card directly. Check that this device is on the same Wi-Fi and that local-network access is allowed.');
+        setFailure('No reply from the card.');
       }
       return result;
     } finally {
@@ -386,17 +415,45 @@ export function CardConnectionCenter({
   const showManualReturn = !capabilities.canWebSerialInstall
     && ['launch-native-bridge', 'install-native-bridge', 'needs-card-update'].includes(action.id);
 
-  const initialChoice = !intent
-    && link.state === 'disconnected'
-    && (!link.activity || link.activity === 'idle')
-    && NEUTRAL_FIRST_RUN_REASONS.has(link.reason)
-    && !hasKnownCard;
+  const firstRunConnect = !intent
+    && !['connected-direct', 'connected-bridge'].includes(link.state)
+    && !rememberedCard?.id
+    && !link.expectedCard?.id
+    && !link.discoveredCard?.id
+    && !hasSetupHost
+    && !setupNetworkRequested
+    && !directAttempt
+    && !directBusy;
   const setupSteps = action.id === 'recoverable-failure' && action.route === 'setup-network';
   const stableRecoveryHost = ordinaryCardRecoveryHost(link.host || host, rememberedCard);
   const ordinaryRetry = action.id === 'recoverable-failure' && action.route === 'local-card-recovery';
   const setupRecovery = ordinaryRetry
     && normalizeCardHost(link.host || host) === stableRecoveryHost;
   const showSetupSteps = setupSteps || setupRecovery;
+  // After a failed direct connect, keep THIS panel as the one recovery
+  // surface (retry, local Studio, card page, then AP / USB). Showing the
+  // action-body verdict at the same time repeated "look for the card" with
+  // a second set of buttons. Picking AP or USB sets intent and hands off
+  // to the action body for those dedicated steps.
+  const failedDirectRecovery = Boolean(directAttempt)
+    && directAttempt.connected === false
+    && !intent
+    && !directBusy;
+  // A successful id match is not "Card verified" when the next question is
+  // the remembered firmware note (ui-repair B1). The direct-success panel
+  // was hiding Keep the new firmware / Use this card.
+  const firmwareNoteQuestion = action.id === 'needs-card-update'
+    || action.id === 'relearn-current-card'
+    || action.secondaryAction?.id === 'trust-updated-card';
+  const showDirectConnect = !usbInspection && !firmwareNoteQuestion && (
+    directAttempt?.connected
+    || firstRunConnect
+    || (directBusy && !showSetupSteps)
+    || failedDirectRecovery
+  );
+  const showActionBody = !usbInspection && !bridgeResult && !incompatibleFirmware
+    && (firmwareNoteQuestion
+      || (!firstRunConnect && !directAttempt?.connected && !directBusy && !failedDirectRecovery));
 
   const renderPrimaryAction = () => {
     // Lifecycle-owned verdicts have exactly one rendering: the route-out
@@ -461,9 +518,14 @@ export function CardConnectionCenter({
               </button>
             )}
             {ordinaryRetry && !setupRecovery && (
-              <button type="button" className="btn" onClick={chooseFactoryBeacon}>
-                Eight lights flash twice, then pause
-              </button>
+              <>
+                <button type="button" className="btn" onClick={chooseFactoryBeacon}>
+                  Join the setup network
+                </button>
+                <button type="button" className="btn" onClick={chooseBlankCard}>
+                  Card is new or needs firmware
+                </button>
+              </>
             )}
           </>
         );
@@ -509,7 +571,7 @@ export function CardConnectionCenter({
         </div>
       )}
 
-      {!usbInspection && (!['connected-direct', 'connected-bridge'].includes(link.state) || directAttempt?.connected) && (
+      {showDirectConnect && (
         <div className="card-windowless-connect" data-testid="windowless-card-connect">
           <h3>{directAttempt?.connected ? 'Card verified' : 'Connect this card'}</h3>
           <p>{directAttempt?.connected
@@ -530,29 +592,18 @@ export function CardConnectionCenter({
                 {directBusy ? 'Connecting…' : directAttempt ? 'Try again' : 'Connect this card'}
               </button>
             )}
-            {directAttempt?.connected === false && directAttempt.reason === 'direct-unavailable' && (
-              <button
-                type="button"
-                className="btn"
-                onClick={() => window.location.assign(directAttempt.recovery.localStudioUrl)}
-              >
-                Open local Studio
-              </button>
-            )}
-            {/* "Check or update firmware" used to sit here. The card being
-                unreachable from an https page is not a firmware problem, and
-                that button sent owners of perfectly current cards into the
-                install wizard, which then asked them to join a setup network
-                their card was not broadcasting. The route that actually works
-                from this page is the card's own page. */}
-            {directAttempt?.connected === false && directAttempt.reason === 'direct-unavailable' && (
-              <button type="button" className="btn primary" onClick={() => connect(stableRecoveryHost, { bridge: true })}>
-                Open the card&rsquo;s own page
-              </button>
-            )}
             {incompatibleFirmware && (
               <button type="button" className="btn primary" onClick={onOpenFirmwareUpdate || openInstall}>Install current firmware</button>
             )}
+            {failedDirectRecovery && (capabilities.canWebSerialInstall ? (
+              <button type="button" className="btn" onClick={chooseBlankCard}>
+                Card is new or needs firmware
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={chooseFactoryBeacon}>
+                Join the setup network
+              </button>
+            ))}
           </div>
           {directIdentity?.id && (
             <dl className="card-acknowledged-facts card-direct-firmware-facts" data-testid="direct-card-identity">
@@ -580,7 +631,7 @@ export function CardConnectionCenter({
                   update remedy inside the identity facts. */}
               <p>{cardTaskCopy('update-firmware')}</p>
               <div className="card-connection-actions">
-                <button type="button" className="btn primary" onClick={onOpenFirmwareUpdate || openInstall}>Update firmware</button>
+                <button type="button" className="btn" onClick={onOpenFirmwareUpdate || openInstall}>Update firmware</button>
               </div>
             </div>
           )}
@@ -600,23 +651,7 @@ export function CardConnectionCenter({
           onComplete={() => onClearBridgeResult?.('complete')}
           recoverLights={recoverLights}
         />
-      ) : incompatibleFirmware ? null : initialChoice ? (
-        <div className="card-condition-choices">
-          <p>Look at the card and its LEDs, then choose what you see.</p>
-          <button type="button" className="card-condition-choice" onClick={chooseWorkingCard}>
-            <strong>My card already lights up</strong>
-            <span>The artwork is playing a normal moving or steady light pattern.</span>
-          </button>
-          <button type="button" className="card-condition-choice" onClick={chooseFactoryBeacon}>
-            <strong>Eight lights flash twice, then pause</strong>
-            <span>The card is alive and waiting for setup.</span>
-          </button>
-          <button type="button" className="card-condition-choice" onClick={chooseBlankCard}>
-            <strong>Blank or not responding</strong>
-            <span>The card is new, dark, or does not react after power is connected.</span>
-          </button>
-        </div>
-      ) : (
+      ) : incompatibleFirmware ? null : showActionBody ? (
         <div className="card-connection-action" data-action-id={effectiveActionId} aria-live="polite" aria-busy={(action.busy || bridgeBusy) || undefined}>
           <h3>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Waiting for Lightweaver Bridge' : bridgeLifecycleState === 'return-pending' ? 'Return pending' : bridgeLifecycleState === 'installer-unavailable' ? 'Signed Bridge installer unavailable' : setupRecovery ? 'Join the Lightweaver setup network' : action.title}</h3>
           <p>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Studio sent the launch request but cannot confirm whether Bridge opened. Keep this tab available for the result, or paste the return code below.' : bridgeLifecycleState === 'return-pending' ? 'Studio is validating the one-time return. Bridge will clear its saved result only after this tab accepts it.' : setupRecovery ? `If the card is pulsing amber, join ${setupNetworkLabel}, then continue.` : (routeOut?.line || action.explanation)}</p>
@@ -657,34 +692,31 @@ export function CardConnectionCenter({
 
           {showFirmwareUpdate && (
             <div className="card-firmware-update" role="note">
-              {/* The update itself is Card Home's remedy (section=install);
-                  this panel only names it and routes there — no build
-                  comparison, no deferral offer (closing the panel defers). */}
+              {/* Optional update. Done below stays the connect CTA — closing
+                  the panel defers. Making this the only primary stole Connect. */}
               <p>{cardTaskCopy('update-firmware')}</p>
               <div className="card-connection-actions">
-                <button type="button" className="btn primary" onClick={onOpenFirmwareUpdate}>Update firmware</button>
+                <button type="button" className="btn" onClick={onOpenFirmwareUpdate}>Update firmware</button>
               </div>
             </div>
           )}
 
-          {!showFirmwareUpdate && (
-            <div className="card-connection-actions">
-              {renderPrimaryAction()}
-              {action.secondaryAction?.id === 'adopt-discovered-card' && (
-                <button type="button" className="btn" onClick={useDiscoveredCard}>Use this card instead</button>
-              )}
-              {action.secondaryAction?.id === 'trust-updated-card' && (
-                // Same verified adoption path as "Use this card instead": it
-                // re-reads identity at the host, re-checks full status, and only
-                // then replaces the remembered firmware identity (ui-repair B1).
-                <button type="button" className="btn" data-testid="trust-updated-card" onClick={useDiscoveredCard} disabled={pairingBusy}>
-                  {pairingBusy ? 'Re-pairing…' : action.secondaryAction.label}
-                </button>
-              )}
-            </div>
-          )}
+          <div className="card-connection-actions">
+            {renderPrimaryAction()}
+            {action.secondaryAction?.id === 'adopt-discovered-card' && (
+              <button type="button" className="btn" onClick={useDiscoveredCard}>Use this card instead</button>
+            )}
+            {action.secondaryAction?.id === 'trust-updated-card' && (
+              // Same verified adoption path as "Use this card instead": it
+              // re-reads identity at the host, re-checks full status, and only
+              // then replaces the remembered firmware identity (ui-repair B1).
+              <button type="button" className="btn" data-testid="trust-updated-card" onClick={useDiscoveredCard} disabled={pairingBusy}>
+                {pairingBusy ? 'Re-pairing…' : action.secondaryAction.label}
+              </button>
+            )}
+          </div>
         </div>
-      )}
+      ) : null}
 
       {failure && <p className="card-connection-failure" role="alert">{failure}</p>}
       {takeoverHost && (

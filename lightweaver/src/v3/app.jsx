@@ -63,6 +63,7 @@ import {
 } from '../lib/cardCommissioningFlow.js';
 import {
   readTestStrip,
+  runtimePackageForCardOperation,
   startTestStripSession,
   stopTestStripSession,
   writeTestStrip,
@@ -83,14 +84,19 @@ import {
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { clearScreenFailure, rememberScreenFailure } from '../lib/screenRecoveryDiagnostics.js';
 import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
-import { STUDIO_HARDWARE_OPERATION_EVENT } from '../lib/studioHardwareOperation.js';
+import { STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
-import { CONNECTED_CARD_LINK_STATES, SETUP_SKIP_STORAGE_KEY, deriveSetupJourney } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES, deriveSetupJourney } from '../lib/setupJourney.js';
 import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
+import { applyTypedLedCountToCard } from '../lib/applyLedCountToCard.js';
+import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
+import { syncRuntimePackageToCard } from '../lib/cardSectionSync.js';
+import { readCardProjectEvidence } from '../lib/cardPushClient.js';
 import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import {
   clearFirmwareUpdateSessionIfMatches,
@@ -113,23 +119,26 @@ const STUDIO_SCREENS = [
   { id: 'card', label: 'Card', Component: CardScreen },
   { id: 'layout', label: 'Layout', Component: LayoutScreen },
   { id: 'pattern', label: 'Patterns', Component: PatternScreen },
-  { id: 'pattern-lab', label: 'Pattern Lab', Component: PatternLabScreen },
   { id: 'playlist', label: 'Playlist', Component: PlaylistScreen },
   { id: 'show', label: 'Show', Component: ShowScreen },
 ];
-// Routable, but deliberately not in the rail: strip discovery is where a blank
-// card is SENT, not a place the owner browses to. Its entrances are the
-// connection center, Layout/Wire, the card overview, and the Setup lights
-// phase — the moments the question "which strips does this card even have?"
-// comes up.
-const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery'];
+// Routable, but deliberately not in the rail:
+// - discovery — strip discovery is where a blank card is SENT, not a place
+//   the owner browses to. Entrances: connection center, Layout/Wire, card
+//   overview, Setup lights phase.
+// - pattern-lab — depth door off Patterns (Sculpt in Lab / hash). Same extra-
+//   key shape as discovery; keep SCREEN_BY_ID mapped or the hash blanks out.
+const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery', 'pattern-lab'];
 // Screens that actually render a light preview the short-strip control changes.
 const PREVIEW_SCREENS = new Set(['layout', 'pattern', 'pattern-lab', 'playlist', 'show']);
 // Transports that are on their way to an answer, not out of ideas. A card
 // reboots on purpose during a wiring light test; through all of it the footer
 // used to report its firmware as unknown.
 const CARD_LINK_SETTLING_STATES = new Set(['connecting', 'reconnecting', 'reconnecting-bridge', 'revalidating']);
-const SCREEN_BY_ID = Object.fromEntries(STUDIO_SCREENS.map(screen => [screen.id, screen.Component]));
+const SCREEN_BY_ID = {
+  ...Object.fromEntries(STUDIO_SCREENS.map(screen => [screen.id, screen.Component])),
+  'pattern-lab': PatternLabScreen,
+};
 const PROTECTED_COMMISSIONING_STAGES = new Set(['install-safely', 'set-up-card', 'check-lights']);
 const SCREEN_RECOVERY_KEY = 'lw_screen_recovery_v1';
 
@@ -273,39 +282,32 @@ class ScreenErrorBoundary extends Component {
   }
 }
 
-// Where a bare URL lands. Setup is the front door for anyone who has not been
-// through it — the old fallback dropped a first-time owner onto Layout with a
-// placeholder circle and no route to their card. Once the owner has said they
-// are done with it, the fallback returns to Layout. Deep links are untouched:
-// only the FALLBACK moves, so #screen=layout still opens Layout for everyone.
-const SETUP_SKIP_KEY = SETUP_SKIP_STORAGE_KEY;
+// Where a bare URL lands. The card is the front door every time Studio opens
+// without a deep link: the owner needs to see that this card is connected and
+// current before they start moving through Layout. Deep links are untouched —
+// #screen=layout still opens Layout. Only the empty-hash fallback moves.
 function defaultView() {
-  try {
-    return window.localStorage.getItem(SETUP_SKIP_KEY) === '1' ? 'layout' : 'card';
-  } catch {
-    return 'layout';
-  }
+  return 'card';
 }
 function viewOptions() {
   return { screenKeys: SCREEN_KEYS, fallbackView: defaultView() };
 }
 
-// A first-time owner typing the bare domain should meet the guided ladder.
-// Writing that into the hash before React mounts keeps every downstream route
-// decision reading from one place — the URL — instead of special-casing an
-// empty hash in the view state, the card route and the hash-sync effect.
+// Writing the card route into the hash before React mounts keeps every
+// downstream route decision reading from one place — the URL — instead of
+// special-casing an empty hash in the view state, the card route and the
+// hash-sync effect.
 function bootstrapFirstRunSetupRoute() {
   try {
     if (window.location.hash) return;
-    if (window.localStorage.getItem(SETUP_SKIP_KEY) === '1') return;
     window.history.replaceState(
       null,
       '',
       `${window.location.pathname}${window.location.search}#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
     );
   } catch {
-    // No hash rewrite is possible without history/storage; the ordinary
-    // fallback route still applies.
+    // No hash rewrite is possible without history; the ordinary fallback
+    // route still applies.
   }
 }
 bootstrapFirstRunSetupRoute();
@@ -525,7 +527,7 @@ function OfflineStatusControl({ state, onActivate }) {
   return <span className={`sb-firmware sb-offline is-${state.status}`} data-testid="offline-update-status" role="status">{label}</span>;
 }
 
-function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness }) {
+function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false }) {
   return (
     <footer className="status-bar">
       <div className="sb-card">
@@ -535,6 +537,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
           onOpen={onOpenCardControl}
           open={connectionCenterOpen || cardControlOpen}
           dialogId={cardSurfaceForLifecycle(lifecycle) === 'card-control' ? 'card-control-drawer' : 'card-connection-center'}
+          savePending={cardSavePending}
         />
       </div>
 
@@ -638,6 +641,8 @@ function Shell({ offlineUpdateController = null }) {
   const commissioningActiveRef = useRef(commissioningActive);
   const installRouteRef = useRef('#screen=card&section=install');
   const [connectionCenterOpen, setConnectionCenterOpen] = useState(false);
+  const [cardSavePending, setCardSavePending] = useState(false);
+  const cardSaveRef = useRef(false);
   // The connect intent the panel was opened FOR (openCardFlow's connect-panel
   // event detail). '' for every other way in — footer chip, bridge results —
   // so the panel only pre-selects a flow when a resolver actually asked for it.
@@ -1050,6 +1055,8 @@ function Shell({ offlineUpdateController = null }) {
         ? verified.projectRevision
         : projectLifecycle.editedRevision,
       fingerprint: verified?.projectFingerprint || structureFingerprint,
+      liveFingerprint: structureFingerprint,
+      syncedFingerprint: verified?.studioFingerprint || structureFingerprint,
       // A verified record whose card-side fingerprint is empty was bound to a
       // card flashed before fingerprint reporting. The lifecycle needs to know
       // that, or it reports a permanent mismatch against the card's own
@@ -1173,12 +1180,127 @@ function Shell({ offlineUpdateController = null }) {
       setConnectionCenterOpen(false);
     }
   }, [connectionCenterOpen, cardLinkEstablished]);
+  const saveLedCountToCard = useCallback(async () => {
+    if (cardSaveRef.current) return;
+    const host = cardLink.host || cardStatus.host;
+    if (!host) return;
+    cardSaveRef.current = true;
+    setCardSavePending(true);
+    try {
+      await withStudioHardwareOperation('save-led-count', async () => {
+        const snapshot = serializeProject();
+        const studioFingerprint = cardProjectFingerprint(snapshot);
+        const result = await applyTypedLedCountToCard({
+          host,
+          project: {
+            projectId: snapshot.id,
+            projectName: snapshot.name,
+            projectRevision: projectLifecycle.editedRevision,
+            projectFingerprint: studioFingerprint,
+            strips: snapshot.layout?.strips || [],
+            patchBoard: snapshot.layout?.patchBoard,
+            wiring: snapshot.layout?.wiring,
+            standaloneController: snapshot.devices?.standaloneController,
+          },
+        });
+        if (!result.applied) return;
+        const config = result.runtimePackage?.config || {};
+        markProjectInstalled({
+          generation: projectLifecycle.generation,
+          revision: projectLifecycle.editedRevision,
+          cardId: cardLink.card?.id || cardLink.readiness?.cardId,
+          projectRevision: config.projectRevision,
+          projectFingerprint: config.projectFingerprint,
+          studioFingerprint,
+          verified: true,
+        });
+      });
+    } catch {
+      // Chip stays on Save to card until a later write succeeds.
+    } finally {
+      cardSaveRef.current = false;
+      setCardSavePending(false);
+    }
+  }, [
+    cardLink.card?.id,
+    cardLink.host,
+    cardLink.readiness?.cardId,
+    cardStatus.host,
+    markProjectInstalled,
+    projectLifecycle.editedRevision,
+    projectLifecycle.generation,
+    serializeProject,
+  ]);
+  const saveProjectToCard = useCallback(async () => {
+    if (cardSaveRef.current) return;
+    const host = cardLink.host || cardStatus.host;
+    if (!host) return;
+    cardSaveRef.current = true;
+    setCardSavePending(true);
+    try {
+      await withStudioHardwareOperation('save-project', async () => {
+        const snapshot = serializeProject();
+        const studioFingerprint = cardProjectFingerprint(snapshot);
+        const prepared = prepareCardDeployment({
+          projectId: snapshot.id,
+          projectName: snapshot.name,
+          projectRevision: projectLifecycle.editedRevision,
+          projectFingerprint: studioFingerprint,
+          strips: snapshot.layout?.strips || [],
+          patchBoard: snapshot.layout?.patchBoard,
+          wiring: snapshot.layout?.wiring,
+          standaloneController: snapshot.devices?.standaloneController,
+        });
+        prepareCardStoragePayload(prepared.runtimePackage);
+        const packageForCard = runtimePackageForCardOperation(prepared.runtimePackage, { operation: 'save' });
+        const before = await readCardProjectEvidence({ host });
+        await syncRuntimePackageToCard({
+          host,
+          runtimePackage: packageForCard,
+          allowProjectChange: true,
+        });
+        const exactPrepared = { ...prepared, cardId: before.cardId };
+        const verification = await waitForCardDeploymentVerification(
+          exactPrepared,
+          { readEvidence: () => readCardProjectEvidence({ host }) },
+        );
+        markProjectInstalled({
+          generation: projectLifecycle.generation,
+          revision: projectLifecycle.editedRevision,
+          cardId: verification.cardId || before.cardId,
+          projectRevision: exactPrepared.config.projectRevision,
+          projectFingerprint: exactPrepared.config.projectFingerprint,
+          studioFingerprint,
+          verified: true,
+        });
+      });
+    } catch {
+      // Chip stays on Save to card until a later write succeeds.
+    } finally {
+      cardSaveRef.current = false;
+      setCardSavePending(false);
+    }
+  }, [
+    cardLink.host,
+    cardStatus.host,
+    markProjectInstalled,
+    projectLifecycle.editedRevision,
+    projectLifecycle.generation,
+    serializeProject,
+  ]);
   const openCardControl = useCallback(() => {
-    // The action authority's surface routing: ready → direct card controls,
-    // "Needs attention"/"Needs project" diagnoses → guided Setup, everything
-    // else (including a confirming card still being checked) → Connection
-    // Center.
+    // Ready → direct card controls. Length drift → length-only write.
+    // Needs attention / Needs project → guided Setup. Everything else
+    // (including a confirming card still being checked) → Connection Center.
     const surface = cardSurfaceForLifecycle(cardLifecycle);
+    if (surface === 'length-save') {
+      void saveLedCountToCard();
+      return;
+    }
+    if (surface === 'content-save') {
+      void saveProjectToCard();
+      return;
+    }
     if (surface === 'card-control') setCardControlOpen(true);
     else if (surface === 'setup') {
       setCardControlOpen(false);
@@ -1188,7 +1310,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, openSetupTask]);
+  }, [cardLifecycle, openSetupTask, saveLedCountToCard, saveProjectToCard]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);
@@ -1573,6 +1695,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenSection={openCardSection}
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
+              firmwareStatus={firmwareStatus}
               replaceProject={replaceProject}
               currentProject={serializeProject()}
               projectGeneration={projectLifecycle.generation}
@@ -1651,6 +1774,7 @@ function Shell({ offlineUpdateController = null }) {
         showTestStrip={PREVIEW_SCREENS.has(underlyingView)}
         runningStudioRelease={runningStudioReleaseRef.current}
         freshness={freshness}
+        cardSavePending={cardSavePending}
       />
       <CardConnectionCenter
         open={connectionCenterOpen}

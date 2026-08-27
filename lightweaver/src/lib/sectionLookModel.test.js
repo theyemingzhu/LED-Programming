@@ -14,6 +14,40 @@ import {
   saveCurrentLookToController,
 } from './sectionLookModel.js';
 
+test('deriveSectionTargets follows live wiring when the patch board still has the old length', () => {
+  const strips = [{
+    id: 'a',
+    name: 'Strip',
+    pixelCount: 41,
+    pixels: Array.from({ length: 41 }, (_, index) => ({ x: index, y: 0 })),
+  }];
+  const patchBoard = createDefaultPatchBoard([{ ...strips[0], pixelCount: 256 }]);
+  patchBoard.patches[0].source.endLed = 255;
+  patchBoard.patches[0].source.autoRange = false;
+  const wiring = {
+    version: 1,
+    locked: true,
+    verified: true,
+    outputs: [{ id: 'o1', name: 'One', pin: 18, runIds: ['a'] }],
+    runs: [{
+      id: 'a',
+      type: 'strip',
+      source: { stripId: 'a', from: 0, to: 40 },
+      directionPolicy: 'flexible',
+      physicalDirection: 'source-forward',
+      seamLed: null,
+    }],
+  };
+
+  const stale = deriveSectionTargets({ strips, patchBoard });
+  assert.equal(stale[0].pixelCount, 41);
+  assert.equal(stale[1].pixelCount, 256);
+
+  const live = deriveSectionTargets({ strips, patchBoard, wiring });
+  assert.equal(live[0].pixelCount, 41);
+  assert.equal(live[1].pixelCount, 41);
+});
+
 test('deriveSectionTargets exposes all and each default hardware section', () => {
   const strips = createDefaultCircleLayout({ totalPixels: 60, sectionCount: 3 });
   const patchBoard = createDefaultPatchBoard(strips);

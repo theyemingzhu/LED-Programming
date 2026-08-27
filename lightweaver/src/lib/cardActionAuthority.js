@@ -62,6 +62,9 @@ const SETUP_SURFACE_STATES = new Set([
 
 export function cardSurfaceForLifecycle(lifecycle) {
   if (lifecycle?.state === 'ready') return 'card-control';
+  // Length-only write on the footer chip — not Setup, not Test & Install.
+  if (lifecycle?.state === 'length-mismatch') return 'length-save';
+  if (lifecycle?.state === 'content-mismatch') return 'content-save';
   if (lifecycle && SETUP_SURFACE_STATES.has(lifecycle.state)) return 'setup';
   return 'connection-center';
 }
@@ -85,6 +88,22 @@ const TONES = Object.freeze({
 // case the diagnosis label leads and the only offered exit is Setup.
 function lifecycleConnectionAction(lifecycle, flowAction) {
   if (!lifecycle || lifecycle.state === 'ready') return flowAction;
+  if (lifecycle.state === 'length-mismatch') {
+    return {
+      id: 'save-led-count',
+      title: lifecycle.label,
+      explanation: 'The layout LED count is different from the card. Save writes the new length on the same wiring.',
+      primaryLabel: 'Save to card',
+    };
+  }
+  if (lifecycle.state === 'content-mismatch') {
+    return {
+      id: 'save-project',
+      title: lifecycle.label,
+      explanation: 'Studio has changes that are not on the card yet — playlist, looks, or layout. Save writes them.',
+      primaryLabel: 'Save to card',
+    };
+  }
   if (lifecycle.state === 'wrong-card' && flowAction.id === 'wrong-card') return flowAction;
   if (!LIFECYCLE_OWNED_ACTIONS.has(lifecycle.state) && flowAction.id !== 'ready-local-card') return flowAction;
   return {

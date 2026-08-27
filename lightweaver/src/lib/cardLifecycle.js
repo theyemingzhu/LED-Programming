@@ -22,6 +22,13 @@ const LABELS = Object.freeze({
   // alarming label sat beside an identity row that said the project matched,
   // and it is the single line owners said made them stop trusting the screen.
   'project-mismatch': 'Save to card',
+  // Same chip as project-mismatch: typed layout length drifted from the card.
+  // The physical strip stays at last saved length until the owner clicks.
+  'length-mismatch': 'Save to card',
+  // Same project, newer Studio content (playlist, looks, layout that is not
+  // a length-only tweak). Footer Save writes that content; Setup stays for a
+  // different project id.
+  'content-mismatch': 'Save to card',
   'attention-required': 'Needs attention',
   'discovery-setup': 'Finding lights',
   confirming: 'Checking card',
@@ -44,6 +51,8 @@ const SETUP_TASKS = Object.freeze({
   'update-required': 'update-firmware',
   'setup-required': 'install-project',
   'project-mismatch': 'load-matching-project',
+  'length-mismatch': 'save-led-count',
+  'content-mismatch': 'save-project',
   'attention-required': 'recover-operation',
   'discovery-setup': 'discover-lights',
   confirming: 'reconnect-card',
@@ -64,6 +73,57 @@ function lifecycleLabel(state) {
 
 function lifecycleSetupTask(state) {
   return SETUP_TASKS[state] || SETUP_TASKS.disconnected;
+}
+
+function pixelCountFromStrips(strips = []) {
+  return strips.reduce((sum, strip) => {
+    const count = Math.trunc(Number(strip?.pixelCount ?? strip?.pixels?.length ?? strip?.leds) || 0);
+    return sum + (count > 0 ? count : 0);
+  }, 0);
+}
+
+export function studioTypedLedCount(project = {}) {
+  const explicit = Math.trunc(Number(project?.totalPixels));
+  if (Number.isSafeInteger(explicit) && explicit > 0) return explicit;
+  const fromStrips = Array.isArray(project?.strips) ? pixelCountFromStrips(project.strips) : 0;
+  if (fromStrips > 0) return fromStrips;
+  if (Array.isArray(project?.layout?.strips)) return pixelCountFromStrips(project.layout.strips);
+  return fromStrips;
+}
+
+export function cardReportedLedCount(readiness = {}) {
+  const requested = Math.trunc(Number(readiness?.requestedPixels));
+  if (Number.isSafeInteger(requested) && requested > 0) return requested;
+  const led = Math.trunc(Number(readiness?.led?.pixels));
+  if (Number.isSafeInteger(led) && led > 0) return led;
+  const outputs = Array.isArray(readiness?.outputs) ? readiness.outputs : [];
+  const fromOutputs = outputs.reduce((sum, output) => {
+    const count = Math.trunc(Number(output?.pixels ?? output?.count) || 0);
+    return sum + (count > 0 ? count : 0);
+  }, 0);
+  return fromOutputs > 0 ? fromOutputs : 0;
+}
+
+function sameProjectId(project, readiness) {
+  const studioProjectId = sanitizeProjectId(project?.id || project?.projectId);
+  const cardProjectId = sanitizeProjectId(readiness?.projectId || readiness?.piece?.id);
+  return Boolean(studioProjectId && cardProjectId && studioProjectId === cardProjectId);
+}
+
+function lengthDiffers(project, readiness) {
+  const studio = studioTypedLedCount(project);
+  const card = cardReportedLedCount(readiness);
+  return studio > 0 && card > 0 && studio !== card;
+}
+
+function liveContentDiffers(project) {
+  const live = normalizedFingerprint(project?.liveFingerprint);
+  const synced = normalizedFingerprint(project?.syncedFingerprint);
+  return Boolean(live && synced && live !== synced);
+}
+
+export function cardFooterNeedsSave(lifecycle) {
+  return lifecycle?.label === 'Save to card';
 }
 
 export function deriveCardLifecycle({ link = {}, update = null, project = null } = {}) {
@@ -144,6 +204,12 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
     && readiness.provisionalSetup === true
     && readiness.commandReady === true
     && readiness.runtimePhase === 'ready') state = 'discovery-setup';
+  else if (commandReady && sameProjectId(project, readiness) && lengthDiffers(project, readiness)) {
+    state = 'length-mismatch';
+  }
+  else if (commandReady && sameProjectId(project, readiness) && liveContentDiffers(project)) {
+    state = 'content-mismatch';
+  }
   else if (commandReady && !exactProject) state = 'project-mismatch';
   else if (commandReady && exactProject) state = 'ready';
   // Every failure, update, wrong-card, and blank branch above has already

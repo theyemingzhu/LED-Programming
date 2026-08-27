@@ -654,6 +654,9 @@ test('cancels queued work and rejects forged geometry budgets without trusting r
 });
 
 test('terminates a genuine synchronous export render and replaces the worker cleanly', async ({ page }) => {
+  // Autoload keeps Lab's worker busy; this spec is about one cancelled export
+  // and its replacement, not the live preview.
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   const result = await page.evaluate(async () => {
     const { cancelPatternLabWorker } = await import('/src/pattern-lab/usePatternLabWorker.js');
     const { compactPatternLabWorkerGeometry, clonePatternLabWorkerGeometryForTransfer } = await import('/src/lib/patternLabWorkerProtocol.js');
@@ -684,20 +687,27 @@ test('terminates a genuine synchronous export render and replaces the worker cle
     cancelPatternLabWorker(worker);
     await new Promise(resolve => setTimeout(resolve, 150));
 
-    const replacementReplies: Array<{ type: string; requestId: number }> = [];
     const replacement = new Worker(new URL('/src/pattern-lab/patternLab.worker.js', location.origin), { type: 'module' });
     replacement.onmessage = event => replacementReplies.push(event.data);
     const replacementGeometry = clonePatternLabWorkerGeometryForTransfer(compact);
-    replacement.postMessage({
-      type: 'initialize', requestId: 3, payload: { geometry: replacementGeometry.geometry, generation: 2 },
-    }, replacementGeometry.transfer);
-    await new Promise(resolve => setTimeout(resolve, 150));
+    const replacementReady = await new Promise<boolean>(resolve => {
+      const timeout = window.setTimeout(() => resolve(false), 2000);
+      replacement.addEventListener('message', event => {
+        if (event.data?.type === 'ready' && event.data.requestId === 3) {
+          window.clearTimeout(timeout);
+          resolve(true);
+        }
+      });
+      replacement.postMessage({
+        type: 'initialize', requestId: 3, payload: { geometry: replacementGeometry.geometry, generation: 2 },
+      }, replacementGeometry.transfer);
+    });
     replacement.terminate();
-    return { replies, replacementReplies };
+    return { replies, replacementReady };
   });
 
   expect(result.replies.some(reply => reply.type === 'frame' && reply.requestId === 2)).toBe(false);
-  expect(result.replacementReplies.some(reply => reply.type === 'ready' && reply.requestId === 3)).toBe(true);
+  expect(result.replacementReady).toBe(true);
 });
 
 // UN-SKIPPED 2026-08-21. The skip above was correct while ONE 400 ms deadline drove both
@@ -966,7 +976,10 @@ test('replaces live geometry without mapping an old frame and falls back safely 
     }).__LW_PATTERN_LAB_GEOMETRY_LIFECYCLE__;
     return { created: lifecycle.created, terminated: lifecycle.terminated };
   });
-  expect(validCounts.created - validCounts.terminated).toBe(1);
+  // Autoload keeps Pattern Lab's own worker; this harness is the other live one.
+  const validLive = validCounts.created - validCounts.terminated;
+  expect(validLive).toBeGreaterThanOrEqual(1);
+  expect(validLive).toBeLessThanOrEqual(2);
 
   await page.evaluate(() => {
     (window as typeof window & {
@@ -982,7 +995,9 @@ test('replaces live geometry without mapping an old frame and falls back safely 
     }).__LW_PATTERN_LAB_GEOMETRY_LIFECYCLE__;
     return { created: lifecycle.created, terminated: lifecycle.terminated };
   });
-  expect(invalidCounts.created).toBe(invalidCounts.terminated);
+  // Harness worker must die on invalid geometry; Lab autoload may keep one.
+  expect(invalidCounts.terminated).toBeGreaterThan(validCounts.terminated);
+  expect(invalidCounts.created - invalidCounts.terminated).toBeLessThanOrEqual(1);
 });
 
 test('shows a neutral preparing state instead of an inaccurate base when Worker is unavailable', async ({ page }) => {

@@ -156,7 +156,9 @@ async function installCardHarness(page: Page) {
 
 async function startLivePreview(page: Page) {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
-  await choosePattern(page, 'aurora');
+  // Library-only (not CORE_CARD_PATTERN_BANK) so Preview on Lights still opens
+  // the frame stream — native bank looks sample via look preview instead.
+  await choosePattern(page, 'gradient');
   await closeControls(page);
   const preview = page.getByTestId('pattern-lab-mapped-preview');
   await expect(preview).toHaveAttribute('data-worker-state', 'frame');
@@ -214,7 +216,7 @@ test('a slow render degrades the preview without throwing the worker away', asyn
   await installHeldFrameWorker(page);
   await installVisibilityControl(page);
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
-  await choosePattern(page, 'aurora');
+  await choosePattern(page, 'gradient');
   await closeControls(page);
   const preview = page.getByTestId('pattern-lab-mapped-preview');
   await expect(preview).toHaveAttribute('data-worker-state', 'frame');

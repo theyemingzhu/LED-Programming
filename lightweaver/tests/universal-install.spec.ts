@@ -118,7 +118,6 @@ test('a blocked card-page popup on the install-to-card handoff shows visible pop
   await page.goto('/#screen=flash&mode=install');
 
   await page.getByTestId('card-link-status').click();
-  await page.getByRole('button', { name: /My card already lights up/ }).click();
   await expect(page.getByText(/Join the card’s own Wi-Fi network \(its name starts with “Lightweaver-”\)/)).toBeVisible();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('The browser could not open the legacy card page. Allow popups, then try again.');

@@ -118,6 +118,38 @@ test('bridge-only acquisition requests a compact passive utility window', () => 
   });
 });
 
+test('cardBridge reload re-adopts the named card tab when window.opener is absent', async () => {
+  const tab = fakeCardTab();
+  const messages = [];
+  const { win, opened, emitMessage } = stubWindow({ openResult: tab });
+  tab.postMessage = (message, targetOrigin) => {
+    messages.push({ message, targetOrigin });
+    if (message.type === 'ping') {
+      setTimeout(() => {
+        emitMessage({
+          origin: 'http://192.168.50.51',
+          source: tab,
+          data: { app: 'LightweaverCardBridge', id: message.id, ok: true, response: { ok: true } },
+        });
+      }, 0);
+    }
+  };
+  win.location.search = '?cardBridge=1&cardHost=192.168.50.51';
+  win.opener = null;
+  win.parent = win;
+
+  assert.equal(bootstrapCardBridgeFromOpener(), true);
+  assert.deepEqual(opened, [{ url: '', name: CARD_BRIDGE_WINDOW_NAME, features: undefined }]);
+  const state = getCardBridgeState();
+  assert.equal(state.open, true);
+  assert.equal(state.connected, true);
+  assert.equal(state.host, '192.168.50.51');
+
+  const ping = await sendCardBridgeRequest('ping', {}, { host: '192.168.50.51', timeoutMs: 100 });
+  assert.equal(ping.ok, true);
+  assert.equal(messages[0].targetOrigin, 'http://192.168.50.51');
+});
+
 test('a gesture-reserved card window navigates to a discovered host without a second popup and waits for verification', async () => {
   const host = '192.168.50.83';
   const tab = fakeCardTab();

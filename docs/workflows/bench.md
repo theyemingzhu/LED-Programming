@@ -58,6 +58,11 @@ pass.
    test, select the correlated card/project, reproduce the state, and capture
    visible status or a screenshot when useful. Use one browser surface and one
    stable preview; do not ask Adrian to navigate screens the agent can operate.
+   If the needed write is only an LED count on the same GPIO, do not ask him to
+   type it in Layout. Write it with
+   `node src/lib/applyLedCountToCard.cli.mjs --host <card> --pixels <n>`
+   from `lightweaver/` (or `applyLedCountOnCard` in Studio) and read the count
+   back from `/api/status`.
 5. **Exercise and read back.** Send the smallest safe bounded command needed for
    the behavior, capture its response, and independently reread status/config.
    Compare the card's reported project revision/fingerprint, GPIO, pixel count,

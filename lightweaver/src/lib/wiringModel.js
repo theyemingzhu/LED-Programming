@@ -335,6 +335,22 @@ export function invalidateWiringVerification(wiring, { kind, runIds } = {}) {
   };
 }
 
+// Draw LED/size/move edits reopen a locked plan the same way GPIO already does.
+// Wire specialist tools keep using invalidateWiringVerification, which refuses.
+// Non-physical reducer traffic (patch-board normalize after load, auto-lock,
+// selection) must not unlock: every layout action runs through here.
+export function prepareWiringForPhysicalEdit(wiring, options = {}) {
+  const current = normalizeWiring(wiring);
+  if (!invalidatesVerifiedWiring(options.kind)) return { ok: true, wiring: current, errors: [] };
+  if (!current.locked) return invalidateWiringVerification(current, options);
+  return invalidateWiringVerification({
+    ...current,
+    locked: false,
+    verified: false,
+    runs: current.runs.map(run => ({ ...run, verified: false })),
+  }, options);
+}
+
 export function wiringFingerprint(wiring) {
   const model = normalizeWiring(wiring);
   const runs = model.runs.map(({ verified, ...run }) => run);

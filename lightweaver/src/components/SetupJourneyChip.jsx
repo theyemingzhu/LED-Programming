@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { SETUP_PHASE_IDS, deriveSetupJourney } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES, SETUP_PHASE_IDS, deriveSetupJourney } from '../lib/setupJourney.js';
 import { cardTaskCopy } from '../lib/cardTaskCopy.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
@@ -34,6 +34,12 @@ export function SetupJourneyChip({ cardLink, cardLifecycle, project }) {
     project,
   }), [cardLink, cardLifecycle, commissioningTick, project]);
   if (journey.setupComplete) return null;
+  // Footer already owns "connected or not". Repeating "Setup: phase 1 of 4"
+  // on Patterns while no card is talking sent people back into Connect/Setup
+  // when they were just trying to design. Once the exact card is connected,
+  // unfinished lights/layout/save is a real resume, and this chip is the
+  // one reminder a working screen is allowed to carry.
+  if (!CONNECTED_CARD_LINK_STATES.includes(cardLink?.state)) return null;
   const phaseNumber = Math.max(1, SETUP_PHASE_IDS.indexOf(journey.currentPhaseId) + 1);
   return (
     <button

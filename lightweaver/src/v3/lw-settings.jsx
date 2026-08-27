@@ -162,6 +162,7 @@ const SettingsFieldContext = createContext(null);
       strips,
       patchBoard,
       compiledWiring,
+      wiring,
       standaloneController, setStandaloneController,
       serializeProject,
       markProjectPersisted, markProjectInstalled, markCardLookConfirmed,
@@ -206,8 +207,8 @@ const SettingsFieldContext = createContext(null);
     const activeSavedLook = savedLooks.find(look => look.id === standaloneController?.activeLookId) || savedLooks[0] || null;
     const defaultLook = normalizeSectionVisualLook(standaloneController?.defaultLook);
     const sectionTargets = useMemo(
-      () => deriveSectionTargets({ strips, patchBoard: board, defaultLook }),
-      [strips, board, defaultLook.patternId, defaultLook.brightness, defaultLook.speed, defaultLook.hueShift,
+      () => deriveSectionTargets({ strips, patchBoard: board, wiring, compiledWiring, defaultLook }),
+      [strips, board, wiring, compiledWiring, defaultLook.patternId, defaultLook.brightness, defaultLook.speed, defaultLook.hueShift,
        defaultLook.customHue, defaultLook.customSaturation, defaultLook.customBreathe, defaultLook.customDrift],
     );
 

@@ -2271,19 +2271,21 @@ bool runtimeConfigJsonChangesWiring(const String& json, const RuntimeConfig& cur
     message = "first wiring applied directly";
     return true;
   }
+  // Topology is a rewire: GPIO, output identity, added/removed outputs,
+  // chipset, current ceiling, segment splits, and direction. Pixel count on
+  // the same outputs is the length the owner typed — save and reboot, do not
+  // send them through the LED-check candidate dance. Revision and digest
+  // follow that length, so they are not a staging trigger on their own.
   changes = parsed->outputCount != current.outputCount;
-  changes = changes || parsed->wiringRevision != current.wiringRevision ||
-            parsed->wiringDigest != current.wiringDigest ||
-            parsed->ledType != current.ledType ||
+  changes = changes || parsed->ledType != current.ledType ||
             parsed->maxMilliamps != current.maxMilliamps;
   for (uint8_t i = 0; !changes && i < parsed->outputCount; i++) {
     const OutputConfig& next = parsed->outputs[i];
     const OutputConfig& active = current.outputs[i];
     changes = next.id != active.id || next.pin != active.pin ||
-              next.pixels != active.pixels || next.segmentCount != active.segmentCount;
+              next.segmentCount != active.segmentCount;
     for (uint8_t segment = 0; !changes && segment < next.segmentCount; segment++) {
       changes = next.segments[segment].id != active.segments[segment].id ||
-                next.segments[segment].count != active.segments[segment].count ||
                 next.segments[segment].reversed != active.segments[segment].reversed;
     }
   }

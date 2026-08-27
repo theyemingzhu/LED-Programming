@@ -81,6 +81,10 @@
   text-transform: uppercase;
 }
 
+.lw-setup-run-anyway {
+  margin: 8px 0 0;
+}
+
 .lw-setup-phase-list {
   --phase-gap: 8px;
   display: grid;

@@ -105,3 +105,11 @@ test('a legacy card entrance still resolves and is left in the URL as written', 
   await expect(railItem(page, 'Card')).toHaveAttribute('aria-current', 'page');
   await expect.poll(() => routeHash(page)).toBe('#screen=setup');
 });
+
+test('a bare URL lands on the card even after Setup has been completed once', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('lw_setup_skip_v1', '1'));
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => routeHash(page)).toBe('#screen=card&section=setup');
+  await expect(railItem(page, 'Card')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('heading', { name: /Set up your Lightweaver/i })).toBeVisible();
+});
