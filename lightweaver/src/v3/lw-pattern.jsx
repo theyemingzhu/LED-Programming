@@ -787,13 +787,15 @@ import { PatternPreview } from './PatternPreview.jsx';
       () => buildPatternPreviewSegments({
         strips,
         patchBoard: board,
+        wiring,
+        compiledWiring,
         targets: effectiveSectionTargets,
         resolvePatternId: resolveCodePatternId,
         paletteForPattern: patternId => (
           REAL_PATTERN_BY_ID.get(patternId)?.pal || adaptPattern(patternId)?.pal
         ),
       }),
-      [board, effectiveSectionTargets, strips],
+      [board, compiledWiring, effectiveSectionTargets, strips, wiring],
     );
     const previewTargetIds = useMemo(
       () => patternPreviewSegments.map(segment => segment.id),

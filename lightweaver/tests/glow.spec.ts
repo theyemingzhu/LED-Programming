@@ -26,7 +26,8 @@ test('glow has no dark lines — pixel score < 5%', async ({ page }) => {
   await page.setInputFiles('input[accept=".svg"]', fixture);
   await page.getByRole('button', { name: /\+ All \(1\)/ }).click();
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
-  await page.waitForSelector('canvas', { timeout: 10000 });
+  await page.getByRole('button', { name: /Aurora/, exact: false }).first().click();
+  await expect(page.getByTestId('pattern-piece-preview').locator('canvas')).toBeVisible({ timeout: 10_000 });
   await page.waitForTimeout(3000);
 
   await page.screenshot({ path: 'test-results/glow-full.png' });

@@ -9,6 +9,8 @@ import {
   writePatternPreviewUiState,
 } from './patternPiecePreview.js';
 import { compilePattern, normalizePalette, renderPixelFrame } from './frameEngine.js';
+import { makeDefaultWiring } from './wiringModel.js';
+import { compileWiring } from './wiringCompiler.js';
 
 const strips = [{
   id: 'petal-strip',
@@ -80,6 +82,29 @@ test('preview segments include only real LED ranges in physical wiring order', (
   assert.deepEqual(segments.map(segment => segment.id), targetIds);
   assert.deepEqual(segments.map(segment => segment.pixels.length), [2, 2, 2]);
   assert.deepEqual(segments[1].pixels.map(pixel => [pixel.x, pixel.y]), [[130, 50], [120, 40]]);
+});
+
+test('preview segments follow compiled wiring zones when Patterns uses those targets', () => {
+  const ledStrips = [strips[0]];
+  const wiring = makeDefaultWiring(ledStrips);
+  const compiledWiring = compileWiring({ wiring, strips: ledStrips });
+  assert.equal(compiledWiring.ok, true);
+  const targets = deriveSectionTargets({
+    strips: ledStrips,
+    wiring,
+    compiledWiring,
+    defaultLook: { patternId: 'aurora' },
+  });
+  const segments = buildPatternPreviewSegments({
+    strips: ledStrips,
+    wiring,
+    compiledWiring,
+    targets,
+  });
+  const sectionIds = targets.filter(target => target.kind === 'section').map(target => target.id);
+  assert.ok(sectionIds.length > 0);
+  assert.deepEqual(segments.map(segment => segment.id), sectionIds);
+  assert.equal(segments[0].pixels.length, ledStrips[0].pixels.length);
 });
 
 test('preview segments preserve each target assignment and an unsaved draft override', () => {

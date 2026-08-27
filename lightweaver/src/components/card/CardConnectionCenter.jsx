@@ -439,15 +439,21 @@ export function CardConnectionCenter({
     && directAttempt.connected === false
     && !intent
     && !directBusy;
-  const showDirectConnect = !usbInspection && (
+  // A successful id match is not "Card verified" when the next question is
+  // the remembered firmware note (ui-repair B1). The direct-success panel
+  // was hiding Keep the new firmware / Use this card.
+  const firmwareNoteQuestion = action.id === 'needs-card-update'
+    || action.id === 'relearn-current-card'
+    || action.secondaryAction?.id === 'trust-updated-card';
+  const showDirectConnect = !usbInspection && !firmwareNoteQuestion && (
     directAttempt?.connected
     || firstRunConnect
     || (directBusy && !showSetupSteps)
     || failedDirectRecovery
   );
   const showActionBody = !usbInspection && !bridgeResult && !incompatibleFirmware
-    && !firstRunConnect && !directAttempt?.connected && !directBusy
-    && !failedDirectRecovery;
+    && (firmwareNoteQuestion
+      || (!firstRunConnect && !directAttempt?.connected && !directBusy && !failedDirectRecovery));
 
   const renderPrimaryAction = () => {
     // Lifecycle-owned verdicts have exactly one rendering: the route-out
