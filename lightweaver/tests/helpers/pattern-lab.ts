@@ -37,7 +37,7 @@ export function controlsDrawer(page: Page): Locator {
 }
 
 export function drawerTrigger(page: Page): Locator {
-  return page.getByRole('button', { name: 'Pattern controls' });
+  return page.getByRole('button', { name: 'Pattern controls', exact: true });
 }
 
 export function drawerCloseButton(page: Page): Locator {
