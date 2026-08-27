@@ -112,7 +112,7 @@ const ROWS = [
   }, { state: 'length-mismatch', label: 'Save to card', setupTaskId: 'save-led-count' }],
   ['ready card, same project, live playlist fingerprint drifted', {
     link: VERIFIED_LINK,
-    project: { ...MATCHING_PROJECT, liveFingerprint: 'p'.repeat(64) },
+    project: { ...MATCHING_PROJECT, liveFingerprint: 'p'.repeat(64), syncedFingerprint: FP },
   }, { state: 'content-mismatch', label: 'Save to card', setupTaskId: 'save-project' }],
   ['update preflight', { link: VERIFIED_LINK, update: { phase: 'preflight' } },
     { state: 'updating', label: 'Updating card', setupTaskId: 'recover-operation' }],

@@ -116,10 +116,10 @@ function lengthDiffers(project, readiness) {
   return studio > 0 && card > 0 && studio !== card;
 }
 
-function liveContentDiffers(project, readiness) {
+function liveContentDiffers(project) {
   const live = normalizedFingerprint(project?.liveFingerprint);
-  const card = normalizedFingerprint(readiness?.projectFingerprint);
-  return Boolean(live && card && live !== card);
+  const synced = normalizedFingerprint(project?.syncedFingerprint);
+  return Boolean(live && synced && live !== synced);
 }
 
 export function cardFooterNeedsSave(lifecycle) {
@@ -207,7 +207,7 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
   else if (commandReady && sameProjectId(project, readiness) && lengthDiffers(project, readiness)) {
     state = 'length-mismatch';
   }
-  else if (commandReady && sameProjectId(project, readiness) && liveContentDiffers(project, readiness)) {
+  else if (commandReady && sameProjectId(project, readiness) && liveContentDiffers(project)) {
     state = 'content-mismatch';
   }
   else if (commandReady && !exactProject) state = 'project-mismatch';

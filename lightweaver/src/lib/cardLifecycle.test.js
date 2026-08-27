@@ -277,8 +277,30 @@ test('install-revision pin still flips Save to card from live layout strips', ()
   assert.equal(drifted.exactProject, true);
 });
 
+test('loading a matching project stays Connected even when the card pin is not the live studio hash', () => {
+  // Production jobs pin a short card fingerprint. The live studio hash of the
+  // restored snapshot is a different string. Comparing those two used to keep
+  // the footer on Save to card after loading the project the card already holds.
+  const loaded = {
+    id: 'piece-a',
+    revision: 7,
+    fingerprint: '22b35b359bfa0a4e',
+    liveFingerprint: 'a'.repeat(64),
+    syncedFingerprint: 'a'.repeat(64),
+  };
+  const ready = deriveCardLifecycle({
+    link: {
+      ...READY_LINK,
+      readiness: { ...READY_LINK.readiness, projectFingerprint: loaded.fingerprint },
+    },
+    project: loaded,
+  });
+  assert.equal(ready.state, 'ready');
+  assert.equal(ready.label, 'Connected');
+});
+
 test('same-project playlist fingerprint drift is Save to card without opening Setup', () => {
-  const matching = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) };
+  const matching = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64), syncedFingerprint: 'a'.repeat(64) };
   const drifted = deriveCardLifecycle({
     link: READY_LINK,
     project: { ...matching, liveFingerprint: 'b'.repeat(64) },

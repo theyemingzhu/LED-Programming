@@ -1056,6 +1056,7 @@ function Shell({ offlineUpdateController = null }) {
         : projectLifecycle.editedRevision,
       fingerprint: verified?.projectFingerprint || structureFingerprint,
       liveFingerprint: structureFingerprint,
+      syncedFingerprint: verified?.studioFingerprint || structureFingerprint,
       // A verified record whose card-side fingerprint is empty was bound to a
       // card flashed before fingerprint reporting. The lifecycle needs to know
       // that, or it reports a permanent mismatch against the card's own

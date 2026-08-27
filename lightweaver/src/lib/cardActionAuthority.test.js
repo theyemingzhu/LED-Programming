@@ -171,7 +171,7 @@ const GOLDEN = [
     state: 'content-mismatch',
     input: {
       link: VERIFIED_LINK,
-      project: { ...MATCHING_PROJECT, liveFingerprint: 'p'.repeat(64) },
+      project: { ...MATCHING_PROJECT, liveFingerprint: 'p'.repeat(64), syncedFingerprint: MATCHING_PROJECT.fingerprint },
     },
     expected: { actionId: 'save-project', surface: 'content-save', busy: false, retryable: false },
   },
