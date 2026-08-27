@@ -158,6 +158,9 @@ test('explains when every visible strip has zero brightness', async ({ page }) =
 });
 
 test('explains an observed all-black preview frame without inventing invalid output', async ({ page }) => {
+  // Empty Lab first so autoload's default look cannot keep a non-black frame
+  // in the worker while this recipe is importing.
+  await page.goto('/#screen=pattern-lab&patternId=not-a-pattern', { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Import recipe').setInputFiles({
     name: 'black-frame-source.lwrecipe.json',
     mimeType: 'application/json',
