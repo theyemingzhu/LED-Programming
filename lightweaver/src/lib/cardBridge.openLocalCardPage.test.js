@@ -505,6 +505,16 @@ test('a blocked reconnect navigates the existing card window to the home-network
   );
 });
 
+test('a replaced Studio window cannot navigate a leftover card tab from the prior document', () => {
+  const firstTab = fakeCardTab();
+  stubWindow({ openResult: firstTab });
+  assert.equal(openCardBridge('192.168.4.1'), firstTab);
+
+  stubWindow({ openResult: null });
+  assert.equal(openCardBridge('192.168.18.70'), null);
+  assert.equal(firstTab.navigationCalls.length, 0);
+});
+
 test('a blocked repeat click reuses the tracked card window without revoking its lifecycle', () => {
   const tab = fakeCardTab();
   const { win } = stubWindow({ openResult: null });

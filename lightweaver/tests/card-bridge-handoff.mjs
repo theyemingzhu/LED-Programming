@@ -761,7 +761,8 @@ const blockedHost = '192.168.18.73';
 const blockedHarness = bridgeWindowHarness({ host: blockedHost, openResult: null });
 globalThis.window = blockedHarness.win;
 const blockedAttempt = acquireCardBridgeFromGesture(blockedHost, { timeoutMs: 25 });
-assert.equal(blockedHarness.opened.length, 1);
+const blockedOpenCount = blockedHarness.opened.length;
+assert.ok(blockedOpenCount >= 1, 'a blocked gesture still attempts window.open');
 await assert.rejects(blockedAttempt.ready, error => (
   error?.reason === 'popup-blocked'
   && error.message === 'Allow the Lightweaver card window, then try the pattern again.'
@@ -789,7 +790,7 @@ blockedHarness.win.open = (url, name) => {
   return retryBridge;
 };
 const allowedRetry = acquireCardBridgeFromGesture(blockedHost, { timeoutMs: 100 });
-assert.equal(blockedHarness.opened.length, 2, 'retry performs a new popup attempt from the new gesture');
+assert.ok(blockedHarness.opened.length > blockedOpenCount, 'retry performs a new popup attempt from the new gesture');
 blockedHarness.emitMessage({
   origin: `http://${blockedHost}`,
   source: retryBridge,

@@ -118,6 +118,10 @@ export const LOCAL_CHIP_DEFAULT_KEY = 'lw_local_chip_default';
 const CARD_BRIDGE_RELEASE_REASONS = new Set(['disconnected']);
 
 let bridgeWindow = null;
+// The Studio window that acquired the current WindowProxy. A later test or a
+// replaced top-level document can install a new `window` while this module
+// still holds the previous tab; that proxy is not navigable from the new owner.
+let bridgeOwnerWindow = null;
 let bridgeOrigin = '';
 let bridgeHost = '';
 let bridgeConnected = false;
@@ -308,6 +312,7 @@ function clearBridgeTarget({
   invalidateBridgeHandoffNavigationContext();
   bridgeReservedWindow = null;
   bridgeWindow = null;
+  bridgeOwnerWindow = null;
   bridgeOrigin = origin || '';
   bridgeHost = normalizeCardHost(host || bridgeHost || readStoredCardHost());
   bridgeConnected = false;
@@ -381,8 +386,19 @@ function revokeBridgeForNavigation({
   dispatchBridgeChange();
 }
 
+function rememberBridgeWindow(source) {
+  if (!source) return;
+  bridgeWindow = source;
+  bridgeOwnerWindow = browserWindow();
+}
+
+function ownedCardBridgeWindow() {
+  if (!bridgeWindow || bridgeTargetClosed() || bridgeOwnerWindow !== browserWindow()) return null;
+  return bridgeWindow;
+}
+
 function trackNavigatedBridgeWindow(source, { host, origin, persistHost = true } = {}) {
-  if (source) bridgeWindow = source;
+  if (source) rememberBridgeWindow(source);
   if (origin) bridgeOrigin = origin;
   if (host) {
     bridgeHost = normalizeCardHost(host);
@@ -392,7 +408,7 @@ function trackNavigatedBridgeWindow(source, { host, origin, persistHost = true }
 }
 
 function reuseActiveBridgeWindow(host, origin) {
-  if (!bridgeWindow || !bridgeConnected || bridgeTargetClosed()) return null;
+  if (!ownedCardBridgeWindow() || !bridgeConnected) return null;
   if (normalizeCardHost(bridgeHost) !== normalizeCardHost(host) || bridgeOrigin !== origin) return null;
   try {
     bridgeWindow.focus?.();
@@ -407,7 +423,7 @@ function reuseActiveBridgeWindow(host, origin) {
 // click. Assigning location on that named window is how public Studio can
 // leave 192.168.4.1 for the remembered station address without another click.
 function navigateExistingCardBridgeWindow(host, origin) {
-  const target = (!bridgeTargetClosed() && bridgeWindow) || adoptNamedCardBridgeWindow();
+  const target = ownedCardBridgeWindow() || adoptNamedCardBridgeWindow();
   if (!target || bridgeTargetClosed(target)) return null;
   const url = buildCardBridgeLaunchUrl(host);
   revokeBridgeForNavigation({ host, origin });
@@ -793,7 +809,7 @@ function setBridgeState({
     bridgeRuntimePlaybackReady = false;
     bridgeInitialConfigAvailable = false;
   }
-  if (source) bridgeWindow = source;
+  if (source) rememberBridgeWindow(source);
   if (origin) bridgeOrigin = origin;
   if (host) bridgeHost = normalizedHost;
   bridgeConnected = Boolean(connected);
