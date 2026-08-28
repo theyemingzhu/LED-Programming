@@ -402,6 +402,29 @@ function reuseActiveBridgeWindow(host, origin) {
   return bridgeWindow;
 }
 
+// Gesture-less reconnect: a later window.open to a different host is often
+// blocked, but Studio still holds the WindowProxy from the owner's earlier
+// click. Assigning location on that named window is how public Studio can
+// leave 192.168.4.1 for the remembered station address without another click.
+function navigateExistingCardBridgeWindow(host, origin) {
+  const target = (!bridgeTargetClosed() && bridgeWindow) || adoptNamedCardBridgeWindow();
+  if (!target || bridgeTargetClosed(target)) return null;
+  const url = buildCardBridgeLaunchUrl(host);
+  revokeBridgeForNavigation({ host, origin });
+  trackNavigatedBridgeWindow(target, { host, origin, persistHost: false });
+  try {
+    target.location.href = url;
+  } catch {
+    try {
+      target.location = url;
+    } catch {
+      return null;
+    }
+  }
+  try { target.focus?.(); } catch { /* Browser focus permission is best-effort. */ }
+  return target;
+}
+
 function sameHandoffCorrelation(left, right) {
   return Boolean(left && right)
     && left.host === right.host
@@ -1058,7 +1081,9 @@ export function openCardBridge(rawHost = '', {
   const origin = cardHostToUrl(host);
   const bridgeUrl = buildCardBridgeLaunchUrl(host, studioUrl);
   const opened = win.open(bridgeUrl, CARD_BRIDGE_WINDOW_NAME, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
-  if (!opened) return reuseActiveBridgeWindow(host, origin);
+  if (!opened) {
+    return reuseActiveBridgeWindow(host, origin) || navigateExistingCardBridgeWindow(host, origin);
+  }
   // window.open runs synchronously inside the user gesture. Revoke only after
   // it returns a real target: a blocked popup did not navigate anything and
   // must not destroy the already-working parent/opener bridge.

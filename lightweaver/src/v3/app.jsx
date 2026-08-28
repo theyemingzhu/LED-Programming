@@ -59,6 +59,7 @@ import { formatBrowserProjectSaveLabel } from '../lib/studioActionStatus.js';
 import {
   CARD_COMMISSIONING_CHANGED_EVENT,
   beginCardCommissioning,
+  commissioningShouldSuppressConnectOverlay,
   inspectCardCommissioning,
   writeCardCommissioning,
 } from '../lib/cardCommissioningFlow.js';
@@ -1150,6 +1151,7 @@ function Shell({ offlineUpdateController = null }) {
   // question (ready, or confirming — a verified transport whose remaining
   // evidence is not the Connect panel's job).
   const cardLinkEstablished = connected
+    || (isCardTransportConnected(cardLink) && cardLink?.cardBlank === true)
     || cardLifecycle?.state === 'ready'
     || cardLifecycle?.state === 'confirming';
   const cardLinkEstablishedRef = useRef(cardLinkEstablished);
@@ -1162,6 +1164,11 @@ function Shell({ offlineUpdateController = null }) {
   // card surface showing.
   useEffect(() => {
     const openPanel = event => {
+      if (commissioningShouldSuppressConnectOverlay(inspectCardCommissioning().flow)) {
+        setCardControlOpen(false);
+        setConnectionCenterOpen(false);
+        return;
+      }
       setCardControlOpen(false);
       setConnectPanelIntent(String(event?.detail?.connectIntent || ''));
       setConnectionCenterOpen(true);
@@ -1313,7 +1320,7 @@ function Shell({ offlineUpdateController = null }) {
       return;
     }
     if (surface === 'card-control') setCardControlOpen(true);
-    else if (surface === 'setup') {
+    else if (surface === 'setup' || commissioningShouldSuppressConnectOverlay(inspectCardCommissioning().flow)) {
       setCardControlOpen(false);
       setConnectionCenterOpen(false);
       openSetupTask();

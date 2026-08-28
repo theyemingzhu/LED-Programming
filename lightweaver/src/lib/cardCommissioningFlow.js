@@ -415,6 +415,95 @@ export function acknowledgeCommissionedCardFromStatus(flow, status = {}, { now =
     : { ok: false, reason: 'not-on-home-network' };
 }
 
+const SETUP_AP_HOST = '192.168.4.1';
+
+function transportConnected(link = {}) {
+  return link?.state === 'connected-bridge' || link?.state === 'connected-direct';
+}
+
+function usableReconnectHost(value = '') {
+  const host = String(value || '').trim();
+  if (!host || host === SETUP_AP_HOST) return '';
+  if (usableCardStationIp(host)) return host;
+  return /\.local$/i.test(host) ? host : '';
+}
+
+// After the owner leaves the setup hotspot, "Reconnect installed card" must
+// never open 192.168.4.1. That address only answers while this device is still
+// on Lightweaver-XXXX; once the laptop is back on home Wi-Fi it hangs forever
+// and Studio looks stuck even though the card is already at a station IP.
+export function commissioningReconnectHost(flow, link = {}, {
+  storedHost = '',
+  history = [],
+} = {}) {
+  const candidates = [
+    link?.handoffCorrelation?.host,
+    flow?.stationHost,
+    link?.host,
+    storedHost,
+    ...(Array.isArray(history) ? history : []),
+  ];
+  for (const candidate of candidates) {
+    const host = usableReconnectHost(candidate);
+    if (host) return host;
+  }
+  return 'lightweaver.local';
+}
+
+// HTTPS Studio cannot poll the LAN, so the only evidence that the card is back
+// on home Wi-Fi is the bridge/direct link that already holds a station status
+// envelope. The old gate also demanded command-ready (which a factory-blank
+// card never is) and a fresh AP-join acknowledgement timestamp (which is
+// older than the "I've joined" click). Both blocked the exact next step.
+export function selectCommissioningCardAcknowledgement(flow, link = {}, { now = Date.now() } = {}) {
+  try { requireFlow(flow); } catch { return { ok: false, reason: 'not-awaiting-card' }; }
+  if (flow.stage !== 'set-up-card' || flow.cardAcknowledgedAt) {
+    return { ok: false, reason: 'not-awaiting-card' };
+  }
+  const exactStationAuthority = link?.handoffStationVerified === true
+    && link?.handoffFlowId === flow.flowId;
+  if (!transportConnected(link) && !exactStationAuthority) {
+    return { ok: false, reason: 'card-not-ready' };
+  }
+  return acknowledgeCommissionedCardFromStatus(flow, link?.readiness || {}, { now });
+}
+
+export function commissioningInitialConfigAuthority(flow, link = {}) {
+  if (!flow?.cardAcknowledgedAt || link?.cardBlank !== true) return false;
+  if (link?.handoffStationVerified === true && link?.handoffFlowId === flow.flowId) return true;
+  return link?.state === 'connected-bridge' || link?.state === 'connected-direct';
+}
+
+export function commissioningAutoReconnectHost(flow, {
+  setupReach = '',
+  reconnectHost = '',
+  linkHost = '',
+  linkState = '',
+} = {}) {
+  if (!flow || flow.stage !== 'set-up-card' || flow.cardAcknowledgedAt) return '';
+  if (flow.networkState !== 'setup-joined') return '';
+  if (setupReach !== 'unreachable') return '';
+  const host = String(reconnectHost || '').trim();
+  if (!host || host === SETUP_AP_HOST) return '';
+  if (transportConnected({ state: linkState }) && String(linkHost || '').trim() === host) return '';
+  return host;
+}
+
+export function commissioningShouldSuppressConnectOverlay(flow) {
+  return Boolean(flow?.stage === 'set-up-card' && !flow?.cardAcknowledgedAt);
+}
+
+export function commissioningShouldAutoRestore(flow, {
+  restorePreflightOk = false,
+  restoreState = 'idle',
+  publicStudio = false,
+  alreadyAttempted = false,
+} = {}) {
+  if (!publicStudio || alreadyAttempted) return false;
+  if (!flow || flow.stage !== 'set-up-card' || !flow.cardAcknowledgedAt) return false;
+  return restorePreflightOk === true && restoreState === 'idle';
+}
+
 export function resumeInstalledCardAfterInterruption(flow, card = {}, { now = Date.now() } = {}) {
   requireFlow(flow);
   if (flow.source !== 'web-serial' || flow.stage !== 'install-safely' || !flow.installTarget) {

@@ -8,6 +8,12 @@ import {
   adaptCardRestorationReadback,
   acknowledgeCommissionedCard,
   acknowledgeCommissionedCardFromStatus,
+  commissioningReconnectHost,
+  commissioningAutoReconnectHost,
+  commissioningShouldAutoRestore,
+  commissioningShouldSuppressConnectOverlay,
+  selectCommissioningCardAcknowledgement,
+  commissioningInitialConfigAuthority,
   beginCardCommissioning,
   beginCardRestorationMutation,
   bindCardWiringActivationEvidence,
@@ -985,6 +991,96 @@ test('a station-detected flow survives a persist/reload round trip', async () =>
   const reloaded = readCardCommissioning({ storage, sessionStorage: null, flowId: detected.flowId });
   assert.equal(reloaded.networkState, 'station-detected');
   assert.equal(reloaded.stationHost, '192.168.18.70');
+});
+
+test('a blank card already on home Wi-Fi acknowledges after setup-joined without command-ready or AP freshness', () => {
+  const ready = completeCardInstall(freshInstall('flow-https-blank-station-1'), installed, { now: 20 });
+  const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
+  const blankStation = {
+    ...readyStatus({
+      runtimePhase: 'factory', knownGoodProject: false,
+      commandReady: false, outputReady: true,
+      mode: 'factory-flash', source: 'defaults',
+    }),
+    wifi: {
+      transport: 'station', transition: 'station', transitionPending: false,
+      stationIp: '192.168.18.70', ip: '192.168.18.70', handoffGeneration: 7,
+    },
+  };
+  const link = {
+    state: 'connected-bridge',
+    host: '192.168.18.70',
+    readiness: blankStation,
+    acknowledgedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  const selected = selectCommissioningCardAcknowledgement(joined, link, { now: 40 });
+  assert.equal(selected.ok, true);
+  assert.equal(selected.flow.networkState, 'connected');
+  assert.equal(selected.flow.cardAcknowledgedAt, 40);
+  assert.equal(commissioningInitialConfigAuthority(selected.flow, {
+    ...link,
+    cardBlank: true,
+  }), true);
+});
+
+test('setup-joined never reconnects to the setup AP once the card should be on home Wi-Fi', () => {
+  const ready = completeCardInstall(freshInstall('flow-reconnect-skip-ap-1'), installed, { now: 20 });
+  const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
+  assert.equal(commissioningReconnectHost(joined, {
+    state: 'disconnected',
+    host: '192.168.4.1',
+  }, {
+    storedHost: '192.168.4.1',
+    history: ['192.168.4.1', '192.168.18.70'],
+  }), '192.168.18.70');
+  assert.equal(commissioningReconnectHost(joined, {
+    state: 'disconnected',
+    host: '192.168.4.1',
+  }, { storedHost: '192.168.4.1', history: ['192.168.4.1'] }), 'lightweaver.local');
+});
+
+test('setup-joined auto-reconnects to the remembered station host once 192.168.4.1 is unreachable', () => {
+  const ready = completeCardInstall(freshInstall('flow-auto-reconnect-1'), installed, { now: 20 });
+  const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
+  assert.equal(commissioningAutoReconnectHost(joined, {
+    setupReach: 'unreachable',
+    reconnectHost: '192.168.18.70',
+    linkHost: '192.168.4.1',
+    linkState: 'disconnected',
+  }), '192.168.18.70');
+  assert.equal(commissioningAutoReconnectHost(joined, {
+    setupReach: 'checking',
+    reconnectHost: '192.168.18.70',
+    linkHost: '192.168.4.1',
+    linkState: 'disconnected',
+  }), '', 'must not steal the setup tab while Wi-Fi is still being saved');
+  assert.equal(commissioningAutoReconnectHost(joined, {
+    setupReach: 'unreachable',
+    reconnectHost: '192.168.18.70',
+    linkHost: '192.168.18.70',
+    linkState: 'connected-bridge',
+  }), '');
+  assert.equal(commissioningShouldSuppressConnectOverlay(joined), true);
+  assert.equal(commissioningShouldAutoRestore(joined, {
+    restorePreflightOk: true, restoreState: 'idle', publicStudio: true,
+  }), false, 'restore waits until the card is acknowledged');
+});
+
+test('a public-Studio acknowledged blank card restores the project without a click', () => {
+  const ready = completeCardInstall(freshInstall('flow-auto-restore-1'), installed, { now: 20 });
+  const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
+  const acknowledged = acknowledgeCommissionedCard(joined, installed, { now: 40 }).flow;
+  assert.equal(commissioningShouldAutoRestore(acknowledged, {
+    restorePreflightOk: true, restoreState: 'idle', publicStudio: true,
+  }), true);
+  assert.equal(commissioningShouldAutoRestore(acknowledged, {
+    restorePreflightOk: true, restoreState: 'idle', publicStudio: false,
+  }), false);
+  assert.equal(commissioningShouldAutoRestore(acknowledged, {
+    restorePreflightOk: true, restoreState: 'idle', publicStudio: true, alreadyAttempted: true,
+  }), false);
+  assert.equal(commissioningShouldSuppressConnectOverlay(acknowledged), false);
 });
 
 test('a preserve-in-place install still reports preserved and never a station address', () => {

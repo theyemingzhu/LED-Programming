@@ -485,6 +485,26 @@ test('bridge launch parameters preserve an existing card-installer payload', () 
   assert.equal(fragment.get('studioOrigin'), 'https://led.mandalacodes.com');
 });
 
+test('a blocked reconnect navigates the existing card window to the home-network host', () => {
+  const tab = fakeCardTab();
+  const { win, opened } = stubWindow({ openResult: tab });
+  assert.equal(openCardBridge('192.168.4.1'), tab);
+  assert.equal(opened.length, 1);
+
+  win.open = (url, name, features) => {
+    opened.push({ url, name, features });
+    return null;
+  };
+  const moved = openCardBridge('192.168.18.70');
+  assert.equal(moved, tab);
+  assert.equal(getCardBridgeState().host, '192.168.18.70');
+  assert.ok(
+    tab.navigationCalls.some(url => String(url).includes('192.168.18.70'))
+    || String(tab.location?.href || '').includes('192.168.18.70'),
+    'the already-open card window must move to the station address without a new popup',
+  );
+});
+
 test('a blocked repeat click reuses the tracked card window without revoking its lifecycle', () => {
   const tab = fakeCardTab();
   const { win } = stubWindow({ openResult: null });
