@@ -41,6 +41,10 @@ import {
   resolveInstalledFirmware,
 } from '../lib/firmwareUpdatePlan.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import {
+  clearInstallFirmwareEvidence,
+  reportInstallFirmwareEvidence,
+} from '../lib/installFirmwareEvidence.js';
 import { openInChrome } from '../lib/openInChrome.js';
 import { loadVerifiedFirmwareUpdateRelease } from '../lib/firmwareUpdateRelease.js';
 import {
@@ -896,6 +900,13 @@ import {
       : installedFirmware === cardLink?.card
         ? 'live card connection'
         : installedFirmware ? 'last verified for this exact card' : '';
+    // The footer lives in the shell. Tell it the same identity this panel
+    // already printed, including through the USB write — inspection is cleared
+    // when flashing starts, but the card on the desk has not become unknown.
+    useEffect(() => {
+      reportInstallFirmwareEvidence(cardState.state === 'ready' ? installedFirmware : null);
+    }, [cardState.state, installedFirmware]);
+    useEffect(() => () => clearInstallFirmwareEvidence(), []);
     const updateReadiness = preservingFixture?.readiness || cardLink?.readiness || null;
     const connectedCardCandidate = preservingFixture?.card || cardLink?.card || null;
     // A card already running the published release has nothing to update TO.

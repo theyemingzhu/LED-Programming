@@ -10,9 +10,20 @@ function validRelease(value) {
   return { buildNumber: value.buildNumber, buildId: value.buildId };
 }
 
+function installedName(card) {
+  return card.buildId === 'dev' ? 'dev' : (card.buildNumber === null ? 'legacy' : String(card.buildNumber));
+}
+
 function validInstalledCard(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (typeof value.buildId !== 'string' || !BUILD_ID.test(value.buildId)) return null;
+  if (typeof value.buildId !== 'string') return null;
+  // Bench USB flashes compile buildId "dev" / buildNumber 0 on purpose so they
+  // can never be mistaken for a signed release. That is a known identity, not
+  // a malformed one — Find Connected Card already prints it as "Build dev".
+  if (/^dev$/i.test(value.buildId.trim())) {
+    return { buildNumber: null, buildId: 'dev' };
+  }
+  if (!BUILD_ID.test(value.buildId)) return null;
   if (value.buildNumber === undefined || value.buildNumber === null || value.buildNumber === 0) {
     return { buildNumber: null, buildId: value.buildId };
   }
@@ -49,14 +60,17 @@ export function classifyFooterFirmwareStatus(installed, verifiedRelease, { check
   }
 
   if (!release) {
-    const label = card.buildNumber === null
-      ? 'Card firmware legacy · latest unknown'
-      : `Card firmware ${card.buildNumber} · latest unknown`;
-    return result('release-unknown', card.buildNumber, null, label, false);
+    return result(
+      'release-unknown',
+      card.buildNumber,
+      null,
+      `Card firmware ${installedName(card)} · latest unknown`,
+      false,
+    );
   }
 
   if (card.buildNumber === null) {
-    return result('legacy', null, release.buildNumber, `Card firmware legacy → ${release.buildNumber}`, true);
+    return result('legacy', null, release.buildNumber, `Card firmware ${installedName(card)} → ${release.buildNumber}`, true);
   }
   if (card.buildNumber > release.buildNumber) {
     return result('development-build', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} · latest ${release.buildNumber}`, false);
@@ -65,4 +79,16 @@ export function classifyFooterFirmwareStatus(installed, verifiedRelease, { check
     return result('update-available', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} → ${release.buildNumber}`, true);
   }
   return result('current', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} ✓`, false);
+}
+
+// Wi-Fi transport is the live answer. USB Find Card is the answer when that
+// transport is down — the install panel already knows this identity, and the
+// footer must not call it unknown.
+export function resolveFooterFirmwareInstalled({
+  transportConnected = false,
+  connectedCard = null,
+  usbInspectedFirmware = null,
+} = {}) {
+  if (transportConnected) return connectedCard || null;
+  return usbInspectedFirmware || null;
 }
