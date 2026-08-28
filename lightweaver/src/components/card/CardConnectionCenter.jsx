@@ -7,6 +7,7 @@ import {
   normalizeCardHost,
   ordinaryCardRecoveryHost,
   readStoredCardHost,
+  readStoredCardHostHistory,
   writeStoredCardHost,
 } from '../../lib/cardConnection.js';
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
@@ -19,6 +20,7 @@ import { connectCardLink } from '../../lib/cardLink.js';
 import { pairDiscoveredCard } from '../../lib/cardPairing.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from '../../lib/cardTransport.js';
 import { classifyFooterFirmwareStatus } from '../../lib/footerFirmwareStatus.js';
+import { commissioningReconnectHost, readCardCommissioning } from '../../lib/cardCommissioningFlow.js';
 import {
   SECURE_INSTALLER_URL,
   detectPlatformCapabilities,
@@ -512,9 +514,20 @@ export function CardConnectionCenter({
             >
               {setupRecovery ? 'Continue after joining' : setupSteps ? 'Continue' : ordinaryRetry ? 'Look for the card again' : action.primaryLabel}
             </button>
-            {setupRecovery && (
-              <button type="button" className="btn" onClick={() => connect(stableRecoveryHost, { bridge: true })}>
-                Try local network again
+            {showSetupSteps && (
+              <button
+                type="button"
+                className="btn"
+                data-testid="setup-network-already-on-wifi"
+                onClick={() => connect(
+                  commissioningReconnectHost(readCardCommissioning(), link, {
+                    storedHost: readStoredCardHost(),
+                    history: readStoredCardHostHistory(),
+                  }),
+                  { bridge: true },
+                )}
+              >
+                The card is already on my Wi-Fi
               </button>
             )}
             {ordinaryRetry && !setupRecovery && (

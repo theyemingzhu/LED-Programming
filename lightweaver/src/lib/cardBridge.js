@@ -118,6 +118,10 @@ export const LOCAL_CHIP_DEFAULT_KEY = 'lw_local_chip_default';
 const CARD_BRIDGE_RELEASE_REASONS = new Set(['disconnected']);
 
 let bridgeWindow = null;
+// The Studio window that acquired the current WindowProxy. A later test or a
+// replaced top-level document can install a new `window` while this module
+// still holds the previous tab; that proxy is not navigable from the new owner.
+let bridgeOwnerWindow = null;
 let bridgeOrigin = '';
 let bridgeHost = '';
 let bridgeConnected = false;
@@ -308,6 +312,7 @@ function clearBridgeTarget({
   invalidateBridgeHandoffNavigationContext();
   bridgeReservedWindow = null;
   bridgeWindow = null;
+  bridgeOwnerWindow = null;
   bridgeOrigin = origin || '';
   bridgeHost = normalizeCardHost(host || bridgeHost || readStoredCardHost());
   bridgeConnected = false;
@@ -381,8 +386,19 @@ function revokeBridgeForNavigation({
   dispatchBridgeChange();
 }
 
+function rememberBridgeWindow(source) {
+  if (!source) return;
+  bridgeWindow = source;
+  bridgeOwnerWindow = browserWindow();
+}
+
+function ownedCardBridgeWindow() {
+  if (!bridgeWindow || bridgeTargetClosed() || bridgeOwnerWindow !== browserWindow()) return null;
+  return bridgeWindow;
+}
+
 function trackNavigatedBridgeWindow(source, { host, origin, persistHost = true } = {}) {
-  if (source) bridgeWindow = source;
+  if (source) rememberBridgeWindow(source);
   if (origin) bridgeOrigin = origin;
   if (host) {
     bridgeHost = normalizeCardHost(host);
@@ -392,7 +408,7 @@ function trackNavigatedBridgeWindow(source, { host, origin, persistHost = true }
 }
 
 function reuseActiveBridgeWindow(host, origin) {
-  if (!bridgeWindow || !bridgeConnected || bridgeTargetClosed()) return null;
+  if (!ownedCardBridgeWindow() || !bridgeConnected) return null;
   if (normalizeCardHost(bridgeHost) !== normalizeCardHost(host) || bridgeOrigin !== origin) return null;
   try {
     bridgeWindow.focus?.();
@@ -400,6 +416,29 @@ function reuseActiveBridgeWindow(host, origin) {
     /* Browser focus permission is best-effort. */
   }
   return bridgeWindow;
+}
+
+// Gesture-less reconnect: a later window.open to a different host is often
+// blocked, but Studio still holds the WindowProxy from the owner's earlier
+// click. Assigning location on that named window is how public Studio can
+// leave 192.168.4.1 for the remembered station address without another click.
+function navigateExistingCardBridgeWindow(host, origin) {
+  const target = ownedCardBridgeWindow() || adoptNamedCardBridgeWindow();
+  if (!target || bridgeTargetClosed(target)) return null;
+  const url = buildCardBridgeLaunchUrl(host);
+  revokeBridgeForNavigation({ host, origin });
+  trackNavigatedBridgeWindow(target, { host, origin, persistHost: false });
+  try {
+    target.location.href = url;
+  } catch {
+    try {
+      target.location = url;
+    } catch {
+      return null;
+    }
+  }
+  try { target.focus?.(); } catch { /* Browser focus permission is best-effort. */ }
+  return target;
 }
 
 function sameHandoffCorrelation(left, right) {
@@ -770,7 +809,7 @@ function setBridgeState({
     bridgeRuntimePlaybackReady = false;
     bridgeInitialConfigAvailable = false;
   }
-  if (source) bridgeWindow = source;
+  if (source) rememberBridgeWindow(source);
   if (origin) bridgeOrigin = origin;
   if (host) bridgeHost = normalizedHost;
   bridgeConnected = Boolean(connected);
@@ -1058,7 +1097,9 @@ export function openCardBridge(rawHost = '', {
   const origin = cardHostToUrl(host);
   const bridgeUrl = buildCardBridgeLaunchUrl(host, studioUrl);
   const opened = win.open(bridgeUrl, CARD_BRIDGE_WINDOW_NAME, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
-  if (!opened) return reuseActiveBridgeWindow(host, origin);
+  if (!opened) {
+    return reuseActiveBridgeWindow(host, origin) || navigateExistingCardBridgeWindow(host, origin);
+  }
   // window.open runs synchronously inside the user gesture. Revoke only after
   // it returns a real target: a blocked popup did not navigate anything and
   // must not destroy the already-working parent/opener bridge.

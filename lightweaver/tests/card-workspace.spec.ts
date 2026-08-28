@@ -567,9 +567,43 @@ test('an opened setup tab that never reaches the card explains why instead of sp
   const alert = page.locator('.card-commissioning [role="alert"]').first();
   await expect(alert).toContainText('never answered at 192.168.4.1', { timeout: 15000 });
   await expect(alert).toContainText('Lightweaver-EEFF');
-  await expect(alert).toContainText('Reconnect installed card');
+  await expect(page.getByTestId('setup-joined-station-reconnect')).toBeVisible();
   // The tab the owner opened is theirs; Studio must not close or navigate it.
   await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toBeVisible();
+});
+
+test('once 192.168.4.1 is gone Studio continues on the remembered home-network address by itself', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__LW_SETUP_REACH_TIMEOUT_MS_FOR_TEST__ = 1200;
+    (window as any).__LW_OPENED_URLS__ = [];
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    localStorage.setItem('lw_chip_card_host_history', JSON.stringify(['192.168.4.1', '192.168.18.70']));
+    window.open = ((url?: string | URL) => {
+      (window as any).__LW_OPENED_URLS__.push(String(url || ''));
+      return { closed: false, postMessage() {}, focus() {}, location: { href: String(url || '') } } as unknown as Window;
+    }) as typeof window.open;
+  });
+  let stationRequests = 0;
+  await page.route('**://192.168.4.1/**', route => route.abort());
+  await page.route('**://192.168.18.70/**', route => {
+    stationRequests += 1;
+    return route.abort();
+  });
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'wifi');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+
+  await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
+  await page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i }).click();
+
+  await expect(page.locator('.card-commissioning')).toContainText('connecting to the card on your Wi-Fi', { timeout: 15000 });
+  await expect.poll(async () => {
+    const openedStation = await page.evaluate(() => ((window as any).__LW_OPENED_URLS__ || []).some(
+      (url: string) => url.includes('192.168.18.70'),
+    ));
+    return openedStation || stationRequests > 0;
+  }, { timeout: 15000 }).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Connect Lightweaver' })).toHaveCount(0);
 });
 
 test('commissioning reconnect preserves the verified host instead of falling back to the setup AP', async ({ page }) => {
@@ -613,6 +647,51 @@ test('commissioning reconnect preserves the verified host instead of falling bac
     return received;
   });
   expect(reconnectHost).toBe('192.168.18.90');
+});
+
+test('commissioning reconnect skips the setup AP and uses a remembered home-network address', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    localStorage.setItem('lw_chip_card_host_history', JSON.stringify(['192.168.4.1', '192.168.18.70']));
+  });
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'wifi');
+  const reconnectHost = await page.evaluate(async () => {
+    const mainSource = await (await fetch('/src/main.jsx')).text();
+    const domUrl = mainSource.match(/["']([^"']*react-dom_client[^"']*)["']/)?.[1];
+    const panelSource = await (await fetch('/src/components/card/CardCommissioningPanel.jsx')).text();
+    const reactUrl = panelSource.match(/["']([^"']*\/deps\/react\.js[^"']*)["']/)?.[1];
+    if (!domUrl || !reactUrl) throw new Error('could not resolve React module URLs');
+    const [{ CardCommissioningPanel }, { ProjectProvider }, reactModule, domModule] = await Promise.all([
+      import('/src/components/card/CardCommissioningPanel.jsx'),
+      import('/src/state/ProjectContext.jsx'),
+      import(reactUrl),
+      import(domUrl),
+    ]);
+    const React = reactModule.default ?? reactModule;
+    const createRoot = domModule.createRoot ?? domModule.default?.createRoot;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let received = '';
+    const root = createRoot(host);
+    root.render(React.createElement(ProjectProvider, null,
+      React.createElement(CardCommissioningPanel, {
+        result: null,
+        link: { state: 'disconnected', host: '192.168.4.1', transport: 'bridge' },
+        onReconnect: value => { received = value; },
+      }),
+    ));
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const button = [...host.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Reconnect installed card');
+    if (!button) throw new Error('commissioning reconnect action not rendered');
+    button.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    root.unmount();
+    host.remove();
+    return received;
+  });
+  expect(reconnectHost).toBe('192.168.18.70');
 });
 
 test('reality-driven detection replaces the dead 192.168.4.1 link with the restore path once the card rejoins the LAN', async ({ page }) => {
