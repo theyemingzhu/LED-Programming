@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { classifyFooterFirmwareStatus } from './footerFirmwareStatus.js';
+import { classifyFooterFirmwareStatus, resolveFooterFirmwareInstalled } from './footerFirmwareStatus.js';
 
 const BUILD_ID = 'a'.repeat(40);
 const OTHER_BUILD_ID = 'b'.repeat(40);
@@ -120,4 +120,36 @@ test('a card that is mid-restart is checking, not unknown', () => {
 
   // With no transport in flight the honest answer is still "unknown".
   assert.equal(classifyFooterFirmwareStatus(null, release).state, 'disconnected');
+});
+
+test('a USB-flashed bench card is known firmware, not unknown', () => {
+  // Bench flashes report buildId "dev" and buildNumber 0 so they cannot be
+  // mistaken for a signed release. Find Connected Card already prints
+  // "Build dev". Calling that same identity "unknown" in the footer is the
+  // contradiction this test exists to stop.
+  const installed = { buildNumber: 0, buildId: 'dev', firmwareVersion: '1.1.15' };
+  assert.deepEqual(classifyFooterFirmwareStatus(installed, RELEASE), {
+    state: 'legacy',
+    installedBuildNumber: null,
+    releaseBuildNumber: 1154,
+    label: 'Card firmware dev → 1154',
+    actionable: true,
+  });
+});
+
+test('the footer uses USB-found firmware when the Wi-Fi link is down', () => {
+  const live = { buildNumber: 1100, buildId: BUILD_ID };
+  const usb = { buildNumber: 0, buildId: 'dev' };
+  assert.equal(
+    resolveFooterFirmwareInstalled({ transportConnected: true, connectedCard: live, usbInspectedFirmware: usb }),
+    live,
+  );
+  assert.equal(
+    resolveFooterFirmwareInstalled({ transportConnected: false, connectedCard: live, usbInspectedFirmware: usb }),
+    usb,
+  );
+  assert.equal(
+    resolveFooterFirmwareInstalled({ transportConnected: false, usbInspectedFirmware: null }),
+    null,
+  );
 });

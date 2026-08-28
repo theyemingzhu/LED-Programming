@@ -23,7 +23,8 @@ import {
   launchBridgeOperation,
   readStoredBridgeResult,
 } from '../lib/bridgeLaunch.js';
-import { classifyFooterFirmwareStatus } from '../lib/footerFirmwareStatus.js';
+import { classifyFooterFirmwareStatus, resolveFooterFirmwareInstalled } from '../lib/footerFirmwareStatus.js';
+import { getInstallFirmwareEvidence, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
 import {
   connectCardLink,
   getCardLinkState,
@@ -547,7 +548,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
 
       <FirmwareStatusControl
         status={firmwareStatus}
-        installedBuildId={isCardTransportConnected(link) ? link.card?.buildId : ''}
+        installedBuildId={(isCardTransportConnected(link) ? link.card?.buildId : '') || getInstallFirmwareEvidence()?.buildId || ''}
         releaseBuildId={firmwareRelease?.buildId}
         releaseError={firmwareReleaseError}
         onOpenFirmwareUpdate={onOpenFirmwareUpdate}
@@ -1108,12 +1109,22 @@ function Shell({ offlineUpdateController = null }) {
   // Firmware is a READ of what the card already reported, so it is answered
   // from the transport, not from command readiness — a factory-blank card
   // names its build on the first status and must not be labelled "firmware
-  // unknown" while it does so.
+  // unknown" while it does so. USB Find Card is the same kind of read when
+  // Wi-Fi is down: the install panel already named this firmware.
+  const usbInspectedFirmware = useSyncExternalStore(
+    subscribeInstallFirmwareEvidence,
+    getInstallFirmwareEvidence,
+    getInstallFirmwareEvidence,
+  );
   const firmwareStatus = useMemo(() => classifyFooterFirmwareStatus(
-    isCardTransportConnected(cardLink) ? cardLink.card : null,
+    resolveFooterFirmwareInstalled({
+      transportConnected: isCardTransportConnected(cardLink),
+      connectedCard: cardLink.card,
+      usbInspectedFirmware,
+    }),
     firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null,
     { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) },
-  ), [cardLink, firmwareReleaseIdentity.manifest, firmwareReleaseIdentity.state]);
+  ), [cardLink, firmwareReleaseIdentity.manifest, firmwareReleaseIdentity.state, usbInspectedFirmware]);
   const openSetupTask = useCallback(taskId => {
     if (installActiveRef.current) return;
     markCardSectionNavigation();

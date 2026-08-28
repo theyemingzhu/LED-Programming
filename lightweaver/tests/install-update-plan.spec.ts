@@ -112,6 +112,38 @@ test('USB discovery names the exact card and separates last-verified installed f
   await expect(identity).toContainText(`v${manifest.firmwareVersion} · Build ${manifest.buildNumber}`);
 });
 
+// Find Connected Card already named the bench firmware. The footer used to keep
+// saying "Card firmware unknown" because it only trusted a live Wi-Fi link and
+// treated buildId "dev" as malformed.
+test('after Find Connected Card the footer names the same bench firmware the panel just showed', async ({ page, request }) => {
+  const manifest = await (await request.get('/firmware/release-manifest.json')).json();
+  await page.addInitScript(({ card }) => {
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify(card));
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
+      connection: {
+        loader: {},
+        transport: { disconnect: async () => true },
+      },
+      hardware: {
+        cardId: card.id,
+        chipName: 'ESP32-S3',
+        chipDescription: 'ESP32-S3',
+        flashSize: '16MB',
+        flashBytes: 16 * 1024 * 1024,
+      },
+    });
+  }, { card: remembered(0, 'dev') });
+  await page.goto('/#screen=flash&mode=install', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Find connected card' }).click();
+
+  await expect(page.getByTestId('install-card-installed-firmware')).toContainText('Build dev');
+  await expect(page.getByTestId('footer-firmware-status')).toHaveText(`Card firmware dev → ${manifest.buildNumber}`);
+  await expect(page.getByTestId('footer-firmware-status')).not.toContainText('unknown');
+});
+
 // Once a signed preserving update ticket is published for the current release,
 // a USB-identified card is offered that update instead of the destructive
 // install plan — so the proven-semver recommendation is read off the preserving
