@@ -56,7 +56,11 @@ BRANCHES=(
 
 echo "Remote '$REMOTE' -> $(git remote get-url "$REMOTE")"
 case "$(git remote get-url "$REMOTE")" in
-  *technicianofthesacred/LED-Programming*|*technicianofthesacred/led-programming*) ;;
+  # Match on the repository NAME, not the owner. The owner has churned twice
+  # (technicianofthesacred -> adroart -> theyemingzhu, 2026-08-28) and each move
+  # silently broke this guard, so the script refused to run with a misleading
+  # "not the LED-Programming repository" message. The name is the stable part.
+  */LED-Programming*|*/led-programming*|*/LED-Programming.git*|*/led-programming.git*) ;;
   *) echo "REFUSING: '$REMOTE' is not the LED-Programming repository." >&2; exit 1 ;;
 esac
 

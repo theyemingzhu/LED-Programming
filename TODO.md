@@ -15,12 +15,30 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Decide whether Lightweaver keeps living on the mandalacodes web address _(band: you-required)_ _(effort: deep)_
+  Raised by the 2026-08-28 Cloudflare account split (led to celestialymz@gmail.com, Mandala
+  Codes staying on sccsclothing@gmail.com). A Pages project cannot hold a custom domain whose
+  zone lives in a different Cloudflare account, so Lightweaver cannot serve from
+  `led.mandalacodes.com` once the two are on separate accounts. Either the two stay on one
+  account, or Lightweaver needs an address of its own. No replacement address has been chosen
+  — that is Adrian's call, not an agent's.
+  **What makes the second option expensive:** the studio address is compiled into the ESP32
+  firmware. `firmware/lightweaver-controller/src/LightweaverWeb.cpp:2957` allows exactly two
+  origins and rejects everything else, deliberately (the comment records that suffix matching
+  was removed as a security fix). Cards already in customers' homes carry that allowlist in
+  their own binary. A card never fetches anything itself — the browser pushes updates to it —
+  so a studio on a new address cannot reach an old card at all; the card refuses the
+  cross-origin request. Any address change therefore has to go: add the new origin alongside
+  the old one in firmware, ship that as a signed release, wait for cards in the field to take
+  it, then move. Roughly 295 references across 12 studio source files, the bridge, the
+  installer, the visitor UI and the firmware.
+
 - [ ] Write the real live setup walkthrough _(band: agent-runnable)_ _(effort: deep)_
   `live-setup-loop.spec.ts` and `live-steps-8-to-11.spec.ts` were deleted on 2026-08-23: between them they drove 24 `data-testid`s (`setup-pin-value`, `setup-colour-show`, `setup-count-ruler-lit`, `setup-step-install-action`, …) that exist nowhere in `lightweaver/src/`. They described a pin/colour/count step ladder the Setup screen no longer has, so neither file could pass — and both were presented as the hardware acceptance test the repair plan owed. A file that cannot pass is worse than no file: it implies coverage that is not there. The live tier is now `lightweaver/tests/live-card-states.spec.ts`, which asserts connect / self-recovery / a pattern actually playing against the real card, plus a check that the simulator still matches the firmware. What is still owed is a walk of the four-phase ladder end to end (connect → lights → layout → verify → complete) on real hardware. Writing it needs a card that can be taken through a full setup, so it is bench work, not desk work.
 - [ ] Let Studio recognise the card it just updated _(band: you-required)_ _(effort: moderate)_
   After a Wi-Fi firmware update the card reports a build Studio never recorded, so Studio decides it is a stranger and refuses it. The only way back is "Trust updated card", buried in the Connection Center. `correlateFirmwareUpdateReconnect` in `lightweaver/src/lib/cardFirmwareUpdater.js` already proves the safe case — same card id, new boot, exactly the firmware version and build Studio installed, project unchanged — and its `reconnect()` is called from nowhere in `src/`. Wiring it up is bookkeeping, not a loosening: a build change Studio did not perform still needs the deliberate click. Adrian's call because it touches the firmware-update path. The three `stale-firmware` cells in `lightweaver/tests/card-state-matrix.spec.ts` are marked `test.fixme` and are the specification of the fix — they go green when it lands.
 - [x] Build the card state matrix _(band: agent-runnable)_ _(effort: deep)_ → Design: [docs/card-state-matrix.md](docs/card-state-matrix.md)
-  Branch `claude/card-panel-blackout` ([PR #185](https://github.com/adroart/LED-Programming/pull/185)). Stateful card simulator, https/bridge lane, the spec, the real-card tier, and `npm run test:matrix`. It found and fixed the alert that met the owner on the first screen; the only cells left red are the firmware-trust item above.
+  Branch `claude/card-panel-blackout` ([PR #185](https://github.com/theyemingzhu/LED-Programming/pull/185)). Stateful card simulator, https/bridge lane, the spec, the real-card tier, and `npm run test:matrix`. It found and fixed the alert that met the owner on the first screen; the only cells left red are the firmware-trust item above.
 - [ ] Say what to do when an abandoned card update blocks the next one _(band: agent-runnable)_ _(effort: quick)_
   A card update that is started and then abandoned leaves its branch on the shared copy of the project, and every later attempt at that same version number is refused with a raw git message about fast-forwards. It happened on 21 August 2026: a closed, unmerged attempt at 1.1.29 blocked the next one, and the only clue was the git error. The waiting list was untouched and nothing was lost, but there is no way to tell that from what it printed. It should name the abandoned attempt, say the work is safe, and give the one command that clears it.
 - [ ] Give the card a version stamp Studio can find in one read _(band: agent-runnable)_ _(effort: deep)_ → Plan: [card-version-stamp.md](todo/plans/card-version-stamp.md)

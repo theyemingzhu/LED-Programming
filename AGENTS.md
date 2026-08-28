@@ -95,8 +95,8 @@ Detailed execution rules live in `docs/workflows/sprint.md`,
 ## Public web / GitHub
 - **Parent site**: `mandalacodes.com` is Adrian Rasmussen's site.
 - **Canonical public Lightweaver UI URL**: `led.mandalacodes.com`.
-- **LED repo GitHub**: `git@github-tech:adroart/LED-Programming.git`.
-- **Mandala Codes repo GitHub**: `git@github-tech:technicianofthesacred/mandalacodes.git`.
+- **LED repo GitHub**: `https://github.com/theyemingzhu/LED-Programming.git` (owner changed 2026-08-28; use HTTPS so the `gh` CLI's stored credentials authenticate — the `github-tech` SSH alias is pinned to one key and no longer covers this owner).
+- **Mandala Codes repo GitHub**: `https://github.com/adroart/mandalacodes.git` (owner changed 2026-08-28).
 - **Deployment split**: the Lightweaver browser UI lives at `led.mandalacodes.com`. Keep the actual LED command path local (card page, WLED UI, or local bridge) — public HTTPS pages cannot reliably command local HTTP controllers from every phone/browser.
 
 ## Shipment vocabulary and standing authorization
