@@ -38,6 +38,11 @@ async function startLedCheck(page: any) {
   await expect(page.getByTestId('wiring-bench-test')).toBeVisible();
 }
 
+async function passVisibilityIfShown(page: any) {
+  const start = page.getByTestId('wiring-bench-test').getByRole('button', { name: 'I can see the LED strips' });
+  if (await start.count()) await start.click();
+}
+
 async function gotoWire(page: any) {
   await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
@@ -373,22 +378,12 @@ test('Wire reattaches an orphaned strip run without duplicating it or looping ba
   await expect(page.getByRole('button', { name: 'Edit in Wire' })).toHaveCount(0);
 });
 
-test('physical LED check requires the visibility acknowledgement before the chase starts', async ({ page }) => {
+test('physical LED check lights the strips as soon as the check opens', async ({ page }) => {
   await installFrameCard(page);
   await gotoWire(page);
   await startLedCheck(page);
   const bench = page.getByTestId('wiring-bench-test');
-  // First screen: stand where you can see the strips. No chase question, no
-  // frame is sent until the user acknowledges visibility.
-  await expect(bench.getByRole('heading', { name: 'Stand where you can see the LED strips' })).toBeVisible();
-  await expect(bench.getByText(/LED CHECK · 1 OF \d+/)).toBeVisible();
-  const start = bench.getByRole('button', { name: 'I can see the LED strips' });
-  await expect(start).toBeVisible();
-  await expect(bench.getByRole('button', { name: /^Yes — / })).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).__wiringFrames.length)).toBe(0);
-  await start.click();
-  await expect(bench.getByText(/LED CHECK · 2 OF \d+/)).toBeVisible();
-  await expect(bench.getByRole('button', { name: /Yes — I see Wire A/ })).toBeEnabled();
+  await expect(bench.getByRole('button', { name: /Yes — I see Wire A/ })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__wiringFrames.length)).toBeGreaterThan(0);
 });
 
@@ -753,7 +748,7 @@ test('every visible narrow commissioning form control keeps a 44px touch target'
 
   await panel.getByTestId('start-led-check').click();
   const bench = panel.getByTestId('wiring-bench-test');
-  await bench.getByRole('button', { name: 'I can see the LED strips' }).click();
+  await passVisibilityIfShown(page);
   await expect(bench.getByRole('button', { name: /^Yes — / })).toBeEnabled();
   await assertTargets();
 
@@ -996,7 +991,7 @@ test('bench boundary controls redistribute a fixed physical total and explain th
   await gotoWire(page);
   await startLedCheck(page);
   const bench = page.getByTestId('wiring-bench-test');
-  await bench.getByRole('button', { name: 'I can see the LED strips' }).click();
+  await passVisibilityIfShown(page);
   // The blue-first / red-last convention is explained inline on the output step.
   await expect(bench).toContainText('The first LED should be blue and the last LED red');
   const outputPrimary = bench.getByRole('button', { name: /Yes — I see Wire/ });
@@ -1038,7 +1033,7 @@ test('leaving Wire stops the active physical test and its hidden frame loop', as
   await gotoWire(page);
   await startLedCheck(page);
   const bench = page.getByTestId('wiring-bench-test');
-  await bench.getByRole('button', { name: 'I can see the LED strips' }).click();
+  await passVisibilityIfShown(page);
   await expect(bench.getByRole('button', { name: /Yes — I see Wire/ })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => (window as any).__wiringFrames.length)).toBeGreaterThan(0);
 
@@ -1097,7 +1092,7 @@ test('guided chase verifies every fact, chains into the color quiz, and auto-loc
   await gotoWire(page);
   await startLedCheck(page);
   const bench = page.getByTestId('wiring-bench-test');
-  await bench.getByRole('button', { name: 'I can see the LED strips' }).click();
+  await passVisibilityIfShown(page);
 
   const outputPrimary = bench.getByRole('button', { name: /Yes — I see Wire/ });
   await expect(outputPrimary).toBeEnabled();
@@ -1171,7 +1166,7 @@ test('failed chase stays on the same step, cancels without false verification, a
   await page.evaluate(() => { (window as any).__wiringFail = true; });
   await startLedCheck(page);
   const bench = page.getByTestId('wiring-bench-test');
-  await bench.getByRole('button', { name: 'I can see the LED strips' }).click();
+  await passVisibilityIfShown(page);
   await expect(bench).toContainText('Do you see Wire A lit up?');
   await expect(bench.getByText('The lights didn’t reach the card')).toBeVisible();
   await expect(bench.getByRole('button', { name: /Yes — I see Wire/ })).toBeDisabled();

@@ -279,9 +279,12 @@ test('physical strip values can be typed and density is chosen before creating a
   await ledCount.fill('60');
   await ledCount.press('Enter');
   await expect.poll(async () => {
-    const strips = await readAutosaveStrips(page);
-    return strips?.[0]?.pixelCount;
-  }).toBe(60);
+    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || 'null'));
+    const strip = saved?.layout?.strips?.[0];
+    if (!strip) return null;
+    const meters = strip.svgLength / saved.layout.pxPerMm / 1000;
+    return [strip.pixelCount, Number(meters.toFixed(3))];
+  }).toEqual([60, 0.625]);
 });
 
 test('the Add strip chooser sets density before the new shape is drawn', async ({ page }) => {
@@ -392,8 +395,8 @@ test('size, density, and LED count stay linked', async ({ page }) => {
     if (!strip) return null;
     const meters = strip.svgLength / saved.layout.pxPerMm / 1000;
     const dens = saved.layout.stripDensities?.[strip.id] ?? saved.layout.density;
-    return [strip.pixelCount, strip.svgLength, strip.pixels?.length ?? 0, Math.round(meters * dens)];
-  }).toEqual([linked.pixelCount + 1, linked.svgLength, linked.pixelCount + 1, linked.pixelCount]);
+    return [strip.pixelCount, strip.pixels?.length ?? 0, Math.round(meters * dens), strip.svgLength > linked.svgLength];
+  }).toEqual([linked.pixelCount + 1, linked.pixelCount + 1, linked.pixelCount + 1, true]);
 
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(linked.pixelCount + 1);
 

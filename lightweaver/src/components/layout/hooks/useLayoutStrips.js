@@ -202,10 +202,8 @@ export function useLayoutStrips(ctx) {
   // Uniform resize of a strip's geometry about its own center (Draw panel
   // − / + Size control). Same shape as reverseStrip: history push + setStrips,
   // so undo/redo and autosave pick it up through the normal strip-update path.
-  // Physical-first: resizing changes how many LEDs the strip holds — the count
-  // is re-derived from the new length at the strip's (fixed) density unless
-  // the user hand-pinned it (stripCountOverrides), in which case the pinned
-  // count survives the resize.
+  // Physical-first: resizing changes how many LEDs the strip holds. Density is
+  // the reel, so count is always re-derived from the new length.
   const scaleStrip = useCallback((id, factor) => {
     if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return;
     const s = strips.find(st => st.id === id);
@@ -229,9 +227,7 @@ export function useLayoutStrips(ctx) {
     if (factor > 1 && nextLen > maxLen) return;
     if (factor < 1 && nextLen < MIN_STRIP_SVG_LENGTH) return;
     const scaled = scaleStripGeometry({ ...s, svgLength: currentLen }, factor);
-    const pixelCount = stripCountOverrides?.[id]
-      ? scaled.pixelCount
-      : physicalCountForLength(scaled.svgLength, id);
+    const pixelCount = physicalCountForLength(scaled.svgLength, id);
     pushLayoutHistory();
     const projection = reprojectStripKaleidoscope(scaled, pixelCount);
     if (projection.resetPointIndices.length) {
@@ -245,7 +241,7 @@ export function useLayoutStrips(ctx) {
       ...projected,
       pixels: sampleStripPixels(projected.pathData, pixelCount, projected.reversed, projected.x || 0, projected.y || 0),
     }));
-  }, [strips, viewBox, stripCountOverrides, physicalCountForLength, pushLayoutHistory, setStrips, setKaleidoscopeResetNotices]);
+  }, [strips, viewBox, physicalCountForLength, pushLayoutHistory, setStrips, setKaleidoscopeResetNotices]);
 
   // Divide one strip into two named strips that stay adjacent on the same
   // output — the inverse of "Combine into one strip", for a reel that runs

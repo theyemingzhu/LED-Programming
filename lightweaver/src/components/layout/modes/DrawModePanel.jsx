@@ -29,6 +29,11 @@ import {
   sliderValueToLedCount,
 } from '../../../lib/controlScale.js';
 import { PrimitiveStarter } from './PrimitiveStarter.jsx';
+import {
+  countedStripLengthPx,
+  isUncountedHeadroomCount,
+  starterLedCountFromProject,
+} from '../../../lib/discoveryCommit.js';
 import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js';
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
@@ -143,7 +148,7 @@ export function DrawModePanel({
     kaleidoscopeResetNotices,
     projectWarnings,
   } = state;
-  const { wiring, updateWiring, standaloneController, setStandaloneController, patchBoard, setPatchBoard } = useProject();
+  const { wiring, updateWiring, standaloneController, setStandaloneController, patchBoard, setPatchBoard, portRoles } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
   // setting kept on standaloneController.led.type — the same field the card
@@ -172,6 +177,32 @@ export function DrawModePanel({
   const [pendingAddGpio, setPendingAddGpio] = useState(null);
   const [gpioError, setGpioError] = useState('');
   const [droppedStripIds, setDroppedStripIds] = useState([]);
+  const reconciledHeadroomRef = useRef(false);
+
+  useEffect(() => {
+    if (reconciledHeadroomRef.current) return;
+    const counted = (portRoles || []).filter(entry => (
+      entry?.role === 'strip'
+      && Number(entry.pixelCount) > 0
+      && !isUncountedHeadroomCount(entry.pixelCount)
+    ));
+    if (!counted.length || !strips.length) return;
+    const sketch = strips.some((strip, index) => {
+      const count = Number(counted[index]?.pixelCount || counted[0].pixelCount);
+      const expected = countedStripLengthPx(count, { density: stripDensity(strip.id), pxPerMm });
+      if (!(expected > 0) || !(strip.svgLength > 0)) return false;
+      const oldFixedLine = Math.abs(strip.svgLength - 480) < 1;
+      const oldTwoPxPerLed = Math.abs(strip.svgLength - count * 2) < 1;
+      return oldFixedLine || oldTwoPxPerLed || isUncountedHeadroomCount(strip.pixelCount);
+    });
+    if (!sketch && !strips.every(strip => isUncountedHeadroomCount(strip.pixelCount))) return;
+    reconciledHeadroomRef.current = true;
+    strips.forEach((strip, index) => {
+      const count = Number(counted[index]?.pixelCount || counted[0].pixelCount);
+      const dens = stripDensity(strip.id);
+      if (dens > 0) setStripPhysical(strip.id, { lengthM: count / dens });
+    });
+  }, [strips, portRoles, stripDensity, setStripPhysical]);
 
   const setLinkedAddCount = rawValue => {
     const count = clampLedCount(rawValue);
@@ -181,7 +212,13 @@ export function DrawModePanel({
     setAddLengthDraft(formatMetersValue(nextLength));
   };
   const setStripLedCount = (id, raw) => {
-    setStripCount(id, clampLedCount(raw));
+    const count = clampLedCount(raw);
+    const dens = stripDensity(id);
+    if (dens > 0) {
+      setStripPhysical(id, { lengthM: count / dens });
+      return;
+    }
+    setStripCount(id, count);
   };
   const setLinkedAddDensity = nextDensity => {
     const nextCount = clampLedCount(Math.round(addLengthM * nextDensity));
@@ -513,7 +550,7 @@ export function DrawModePanel({
 
         {starterLayoutActive && !drawMode && !pendingDraw && (
           <PrimitiveStarter
-            currentPixelCount={totalLeds || 37}
+            currentPixelCount={starterLedCountFromProject({ strips, portRoles })}
             defaultDensity={density}
             ledType={ledType}
             onLedTypeChange={setLedType}

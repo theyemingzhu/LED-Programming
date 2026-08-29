@@ -140,7 +140,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('http://192.168.18.70/**', route => route.abort());
 });
 
-test('typed LED count resamples canvas dots on the same path, disconnected footer stays off', async ({ page }) => {
+test('typed LED count resizes the strip at reel density, disconnected footer stays off', async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
   await page.addInitScript(() => localStorage.clear());
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -164,8 +164,11 @@ test('typed LED count resamples canvas dots on the same path, disconnected foote
   await expect.poll(async () => {
     const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || 'null'));
     const item = saved?.layout?.strips?.[0];
-    return item ? [item.pixelCount, item.svgLength, item.pixels?.length ?? 0] : null;
-  }).toEqual([next, starting!.svgLength, next]);
+    if (!item) return null;
+    const dens = saved.layout.stripDensities?.[item.id] ?? saved.layout.density;
+    const meters = item.svgLength / saved.layout.pxPerMm / 1000;
+    return [item.pixelCount, item.pixels?.length ?? 0, Math.round(meters * dens)];
+  }).toEqual([next, next, next]);
 
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(next);
   await expect(page.getByTestId('card-link-status')).not.toHaveAttribute('data-lifecycle-state', 'length-mismatch');
@@ -220,18 +223,17 @@ test('connected length drift shows Save to card and click writes length only', a
 
   const strip = page.locator('[data-strip-id]').first();
   if (!await strip.locator('.la-strip-detail').isVisible()) await strip.locator('.la-strip-row').click();
-  const startingLength = await page.evaluate(() => {
-    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
-    return saved?.layout?.strips?.[0]?.svgLength;
-  });
 
   await page.getByLabel('Strip LED count', { exact: true }).fill(String(NEXT_COUNT));
   await page.getByLabel('Strip LED count', { exact: true }).blur();
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(NEXT_COUNT);
   await expect.poll(async () => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
-    return saved?.layout?.strips?.[0]?.svgLength;
-  })).toBe(startingLength);
+    const item = saved?.layout?.strips?.[0];
+    if (!item) return null;
+    const dens = saved.layout.stripDensities?.[item.id] ?? saved.layout.density;
+    return Math.round((item.svgLength / saved.layout.pxPerMm / 1000) * dens);
+  })).toBe(NEXT_COUNT);
 
   await page.waitForTimeout(1200);
   expect(card.configPosts).toHaveLength(0);

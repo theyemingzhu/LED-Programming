@@ -15,7 +15,46 @@ import {
 } from './portRoles.js';
 import { normalizeUsbLedColorOrder } from './usbLedColorOrder.js';
 import { createDefaultPatchBoard } from './patchBoard.js';
-import { isUncountedDiscoveryHeadroom } from './benchConfig.js';
+import { BENCH_DEFAULT_PORT_PIXELS, isUncountedDiscoveryHeadroom } from './benchConfig.js';
+
+// Same defaults as createDefaultProject(). Counted LEDs are a physical length
+// at the reel density — never a 2px-per-LED sketch or a fixed 480px line.
+export const COUNTED_LAYOUT_DENSITY = 60;
+export const COUNTED_LAYOUT_PX_PER_MM = 3.7795;
+
+export function countedStripLengthPx(count, {
+  density = COUNTED_LAYOUT_DENSITY,
+  pxPerMm = COUNTED_LAYOUT_PX_PER_MM,
+} = {}) {
+  const leds = Math.max(1, Math.trunc(Number(count) || 1));
+  const dens = Number(density) > 0 ? Number(density) : COUNTED_LAYOUT_DENSITY;
+  const scale = Number(pxPerMm) > 0 ? Number(pxPerMm) : COUNTED_LAYOUT_PX_PER_MM;
+  return (leds / dens) * 1000 * scale;
+}
+
+export function isUncountedHeadroomCount(value) {
+  return Math.trunc(Number(value) || 0) === BENCH_DEFAULT_PORT_PIXELS;
+}
+
+export function starterLedCountFromProject({ strips = [], portRoles = [] } = {}) {
+  const countedPorts = (Array.isArray(portRoles) ? portRoles : []).filter(entry => (
+    entry?.role === PORT_ROLE_STRIP
+    && Number(entry.pixelCount) > 0
+    && !isUncountedHeadroomCount(entry.pixelCount)
+  ));
+  const countedSum = countedPorts.reduce((sum, entry) => sum + Number(entry.pixelCount), 0);
+  if (countedSum > 0) return countedSum;
+  const stripSum = (Array.isArray(strips) ? strips : [])
+    .reduce((sum, strip) => sum + Math.max(0, Number(strip.pixelCount) || 0), 0);
+  if (stripSum > 0 && !isUncountedHeadroomCount(stripSum)) return stripSum;
+  return 37;
+}
+
+export function layoutIsUncountedHeadroom(layout = {}) {
+  const strips = Array.isArray(layout.strips) ? layout.strips : [];
+  if (!strips.length) return false;
+  return strips.every(strip => isUncountedHeadroomCount(strip.pixelCount));
+}
 
 // One entry per discovered strip port, in the shape standaloneController.led.
 // outputs expects (cardRuntimeProject.js): id, pin, pixels. Ports with no pixel
@@ -26,12 +65,15 @@ function outputsFromStrips(portRoles) {
     .map(entry => ({ id: `strip-${entry.pin}`, pin: entry.pin, pixels: entry.pixelCount }));
 }
 
-function provisionalLayoutFromOutputs(outputs) {
+function provisionalLayoutFromOutputs(outputs, {
+  density = COUNTED_LAYOUT_DENSITY,
+  pxPerMm = COUNTED_LAYOUT_PX_PER_MM,
+} = {}) {
   const strips = outputs.map((output, index) => {
     const count = Math.max(1, Math.trunc(Number(output.pixels) || 1));
     const startX = 80;
     const y = 100 + index * 90;
-    const span = count * 2;
+    const span = countedStripLengthPx(count, { density, pxPerMm });
     const endX = startX + span;
     const pixels = Array.from({ length: count }, (_, pixelIndex) => ({
       x: count === 1 ? startX : startX + (span * pixelIndex) / (count - 1),
@@ -92,14 +134,14 @@ function provisionalLayoutFromOutputs(outputs) {
  * as portRoles.js would persist them, the named colour order the proof measured
  * (empty when unheard), and one output per confirmed strip port.
  */
-export function discoveryProjectParts(session, channelProof) {
+export function discoveryProjectParts(session, channelProof, geometry = {}) {
   const portRoles = normalizePortRoles(discoveryPortRoleUpdates(session));
   const outputs = outputsFromStrips(portRoles);
   return {
     portRoles,
     colorOrder: namedColorOrderFromChannelMap(channelProof?.channelMap),
     outputs,
-    ...provisionalLayoutFromOutputs(outputs),
+    ...provisionalLayoutFromOutputs(outputs, geometry),
   };
 }
 
@@ -110,25 +152,26 @@ export function discoveryProjectParts(session, channelProof) {
  */
 export function projectSkeletonFromCardStatus(status = {}) {
   const reportedOutputs = Array.isArray(status?.outputs) ? status.outputs : [];
-  const portRoles = normalizePortRoles(reportedOutputs.map(entry => ({
-    pin: entry?.pin,
-    role: entry?.pixels > 0 ? PORT_ROLE_STRIP : PORT_ROLE_UNUSED,
-    pixelCount: entry?.pixels,
-    controlKind: '',
-  })));
   // knownGoodProject means the stored config can play. Find-my-strips writes a
   // playable 256-pixel ceiling so discovery can light the strip — that is not a
   // counted, checked install, and must not lock the layout.
+  const uncountedHeadroom = isUncountedDiscoveryHeadroom(status);
   const verified = status?.knownGoodProject === true
     && status?.outputReady === true
     && status?.provisionalSetup !== true
-    && !isUncountedDiscoveryHeadroom(status);
+    && !uncountedHeadroom;
+  const portRoles = normalizePortRoles(reportedOutputs.map(entry => ({
+    pin: entry?.pin,
+    role: entry?.pixels > 0 ? PORT_ROLE_STRIP : PORT_ROLE_UNUSED,
+    pixelCount: uncountedHeadroom ? 0 : entry?.pixels,
+    controlKind: '',
+  })));
   const strips = [];
   const runs = [];
   const wiringOutputs = [];
   for (const [outputIndex, output] of reportedOutputs.entries()) {
     const outputPixels = Math.max(0, Math.trunc(Number(output?.pixels) || 0));
-    if (!outputPixels) continue;
+    if (!outputPixels || uncountedHeadroom) continue;
     const outputId = /^out\d+$/i.test(String(output?.id || '')) ? String(output.id) : `out${outputIndex + 1}`;
     const reportedSegments = Array.isArray(output?.segments) && output.segments.length
       ? output.segments
@@ -141,8 +184,8 @@ export function projectSkeletonFromCardStatus(status = {}) {
       const stripId = runId.replace(/^run-/, '') || `strip-${strips.length + 1}`;
       const y = 100 + strips.length * 70;
       const startX = 80;
-      const endX = 560;
-      const span = endX - startX;
+      const span = countedStripLengthPx(count);
+      const endX = startX + span;
       const pixels = Array.from({ length: count }, (_, index) => ({
         x: count === 1 ? startX : startX + (span * index) / (count - 1),
         y,
@@ -202,7 +245,7 @@ export function projectSkeletonFromCardStatus(status = {}) {
         ? { maxMilliamps: Number(status?.led?.maxMilliamps ?? status?.maxMilliamps) }
         : {}),
     },
-    outputs: reportedOutputs
+    outputs: uncountedHeadroom ? [] : reportedOutputs
       .filter(output => Number(output?.pixels) > 0)
       .map(output => ({
         id: /^out\d+$/i.test(String(output?.id || '')) ? String(output.id) : `strip-${output.pin}`,
