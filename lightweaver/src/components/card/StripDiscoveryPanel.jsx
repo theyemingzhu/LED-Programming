@@ -30,7 +30,7 @@ import { prepareCardDeployment } from '../../lib/cardDeployment.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
 import { readPersistedCardIdentity } from '../../lib/cardIdentity.js';
 import { buildPackageForPortRoles, deploySetupToCard } from '../../lib/cardSetupDeploy.js';
-import { discoveryProjectParts } from '../../lib/discoveryCommit.js';
+import { discoveryProjectParts, layoutIsUncountedHeadroom } from '../../lib/discoveryCommit.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { CARD_HARDWARE_CONTRACT } from '../../lib/cardHardwareContract.js';
 import { FRAME_CHUNK_MAX_PIXELS, createCardFrameStream } from '../../lib/cardFrameStream.js';
@@ -211,6 +211,7 @@ export function StripDiscoveryPanel({
     setPortRoles: setProjectPortRoles,
     setStandaloneController: setProjectStandaloneController,
     starterPending,
+    strips: layoutStrips,
     replaceLayoutGeometry,
     selectStrips,
     serializeProject,
@@ -776,7 +777,11 @@ export function StripDiscoveryPanel({
     // T3: the discovery answers become the project's own portRoles and
     // standalone controller outputs, so a layout can be wired up and pushed
     // straight to this card from Studio.
-    const parts = discoveryProjectParts(session, channelProof);
+    const savedLayout = serializeProject()?.layout || {};
+    const parts = discoveryProjectParts(session, channelProof, {
+      density: savedLayout.density,
+      pxPerMm: savedLayout.pxPerMm,
+    });
     // Hold on to exactly what was measured. The panel's own portRoles list still
     // carries the bench headroom the probe expanded to, so installing from it puts
     // the temporary length on the card instead of the one the owner counted.
@@ -798,7 +803,7 @@ export function StripDiscoveryPanel({
     // instead of asking the owner to enter the same counts and GPIOs again.
     // starterPending is the safety boundary: an existing artwork is never
     // replaced, even when discovery is repeated for its card.
-    if (starterPending && parts.strips.length) {
+    if (parts.strips.length && (starterPending || layoutIsUncountedHeadroom({ strips: layoutStrips }))) {
       replaceLayoutGeometry(parts.strips, {
         patchBoard: parts.patchBoard,
         wiring: parts.wiring,

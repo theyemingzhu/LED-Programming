@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { canPushDirectlyToCard } from '../../../lib/cardConnection.js';
 import { cardBridgeFeatureGap, openCardBridge } from '../../../lib/cardBridge.js';
 import { pushLivePreviewToCard, recoverCardLights } from '../../../lib/cardLiveControl.js';
@@ -37,7 +37,6 @@ export function WiringBenchTest({
   onDefer,
   onColorProblem,
 }) {
-  const [acknowledged, setAcknowledged] = useState(false);
   const [state, dispatch] = useReducer(wiringChaseReducer, null);
   const [featureGap, setFeatureGap] = useState(null);
   const [troubleOpen, setTroubleOpen] = useState(false);
@@ -61,6 +60,26 @@ export function WiringBenchTest({
       sessionRef.current = null;
       if (session) void session.stop().catch(() => {});
     };
+  }, []);
+
+  // Light the strips as soon as this check opens. The old first screen asked
+  // the owner to confirm they could see markers that had never been sent.
+  useLayoutEffect(() => {
+    if (!compiled.ok) return undefined;
+    if (!canPushDirectlyToCard()) {
+      const gap = cardBridgeFeatureGap('frame');
+      if (gap) {
+        setFeatureGap(gap);
+        return undefined;
+      }
+    }
+    setFeatureGap(null);
+    highWaterPixelsRef.current = compiled.totalPixels;
+    sessionRef.current = makeSession();
+    dispatch({ type: 'begin', compiled });
+    return undefined;
+    // Opening the check is the gesture — do not restart on later compiled ticks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -103,10 +122,6 @@ export function WiringBenchTest({
 
   if (wiring.locked) return null;
 
-  // useReducer cannot lazily initialize on an event without replacing the
-  // reducer state, so keep the inactive shell outside and mount the active
-  // reducer through this small reset action. Starting always requires a fresh
-  // visibility acknowledgement (the "I can see them" screen).
   const startChase = () => {
     if (!compiled.ok) return;
     if (!canPushDirectlyToCard()) {
@@ -117,11 +132,6 @@ export function WiringBenchTest({
     highWaterPixelsRef.current = compiled.totalPixels;
     sessionRef.current = makeSession();
     dispatch({ type: 'begin', compiled });
-  };
-  const acknowledgeAndStart = () => {
-    if (!compiled.ok) return;
-    setAcknowledged(true);
-    startChase();
   };
 
   const activeStep = state?.steps?.[state.stepIndex];
@@ -150,7 +160,6 @@ export function WiringBenchTest({
     sessionRef.current = null;
     await session?.stop().catch(() => {});
     highWaterPixelsRef.current = compiled.totalPixels;
-    setAcknowledged(false);
     dispatch({ type: 'cancel' });
     // With no step rail to land on, deferring exits the check flow entirely.
     onDefer?.();
@@ -164,7 +173,6 @@ export function WiringBenchTest({
       { host: cardHost, timeoutMs: 3200 },
     ).catch(() => {});
     highWaterPixelsRef.current = compiled.totalPixels;
-    setAcknowledged(false);
     dispatch({ type: 'cancel' });
     onDefer?.();
   };
@@ -204,7 +212,6 @@ export function WiringBenchTest({
     sessionRef.current = null;
     await session?.complete().catch(() => {});
     highWaterPixelsRef.current = compiled.totalPixels;
-    setAcknowledged(false);
     dispatch({ type: 'complete' });
   };
 
@@ -216,40 +223,31 @@ export function WiringBenchTest({
         {state?.status === 'complete' && (
           <p className="lwb-complete" role="status">All checked. Review and lock the wiring before installation.</p>
         )}
-        {!acknowledged ? (
-          <>
-            <h4 className="lwb-question">Stand where you can see the LED strips</h4>
-            <p className="lwb-hint">The card lights the first LED blue and the last LED red on each strip. You’ll confirm what you see at each step.</p>
-            <p className="lwb-detail" role="note">Light test warning: LEDs will change color. Testing uses a dim, power-limited frame.</p>
-            <LedIllustration />
-            {!compiled.ok && <p className="lwb-note" role="status">Fix the LED output mapping errors before starting the check.</p>}
+        <>
+          <h4 className="lwb-question">Stand where you can see the LED strips</h4>
+          <p className="lwb-hint">The card lights the first LED blue and the last LED red on each strip. You’ll confirm what you see at each step.</p>
+          <p className="lwb-detail" role="note">Light test warning: LEDs will change color. Testing uses a dim, power-limited frame.</p>
+          <LedIllustration />
+          {!compiled.ok && <p className="lwb-note" role="status">Fix the LED output mapping errors before starting the check.</p>}
+          <button
+            type="button"
+            className="btn primary lwb-btn"
+            aria-label="Start the LED check"
+            title="Light the strips and begin the real-light LED check."
+            data-tooltip="Light the strips and begin the real-light LED check."
+            disabled={!compiled.ok}
+            onClick={startChase}
+          >Start lighting</button>
+          {onDefer && (
             <button
               type="button"
-              className="btn primary lwb-btn"
-              aria-label="I can see the LED strips"
-              title="Begin the real-light LED check after confirming you can watch the strips safely."
-              data-tooltip="Begin the real-light LED check after confirming you can watch the strips safely."
-              disabled={!compiled.ok}
-              onClick={acknowledgeAndStart}
-            >I can see them</button>
-            {onDefer && (
-              <button
-                type="button"
-                className="btn btn-ghost lwb-btn lwb-btn-row"
-                title="Leave the LED check without verifying the wiring; you can return before installation."
-                data-tooltip="Leave the LED check without verifying the wiring; you can return before installation."
-                onClick={onDefer}
-              >Do this later</button>
-            )}
-          </>
-        ) : (
-          <>
-            <h4 className="lwb-question">Ready when you are</h4>
-            <p className="lwb-hint">You said you can see the strips. Start the check whenever you’re ready.</p>
-            <button type="button" className="btn primary lwb-btn" title="Start the real-light wiring check; LEDs will show dim blue, green, and red markers." data-tooltip="Start the real-light wiring check; LEDs will show dim blue, green, and red markers." disabled={!compiled.ok} onClick={() => { if (acknowledged) startChase(); }}>Start the check</button>
-            <button type="button" className="btn btn-ghost lwb-btn lwb-btn-row" title="Return to the visibility step without starting the LED check." data-tooltip="Return to the visibility step without starting the LED check." onClick={() => setAcknowledged(false)}>Do this later</button>
-          </>
-        )}
+              className="btn btn-ghost lwb-btn lwb-btn-row"
+              title="Leave the LED check without verifying the wiring; you can return before installation."
+              data-tooltip="Leave the LED check without verifying the wiring; you can return before installation."
+              onClick={onDefer}
+            >Do this later</button>
+          )}
+        </>
         {featureGap && (
           <UiCard
             tone="warning"
@@ -295,6 +293,16 @@ export function WiringBenchTest({
       <h4 className="lwb-question">{question}</h4>
       <LedIllustration variant={illusVariant} />
       <p className="lwb-hint">{hint}</p>
+      {state.stepIndex === 0 && (
+        <p className="lwb-detail" role="note">Light test warning: LEDs will change color. Testing uses a dim, power-limited frame.</p>
+      )}
+      {featureGap && (
+        <UiCard
+          tone="warning"
+          description={featureGap.message}
+          footer={<button type="button" className="btn lwb-btn-compact" title="Open Flash to update the card so it can run this LED check." data-tooltip="Open Flash to update the card so it can run this LED check." onClick={() => { openCardBridge(); window.location.hash = '#screen=flash'; }}>Open Flash</button>}
+        />
+      )}
       <button type="button" className="btn lwb-btn-compact" title="Turn off the active wiring test and leave the check." data-tooltip="Turn off the active wiring test and leave the check." onClick={stopLights}>Stop lights</button>
       {state.delivery === 'idle' && <p className="lwb-sending" role="status">Lighting up the LEDs…</p>}
       {state.delivery === 'failed' && (

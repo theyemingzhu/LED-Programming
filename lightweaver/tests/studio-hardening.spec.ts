@@ -459,7 +459,7 @@ test('bench chase restores the last Studio-confirmed look after transport failur
   await page.getByTestId('start-led-check').click();
   const bench = page.getByTestId('wiring-bench-test');
   await expect(bench).toBeVisible();
-  await bench.getByRole('button', { name: 'I can see the LED strips' }).click();
+  await expect(bench.getByRole('button', { name: /^Yes — / })).toBeVisible();
   await expect(bench).toContainText(/Frame delivery failed/i);
   await expect.poll(() => controls.some(body => body.cancelStream === true && body.patternId === 'ocean')).toBe(true);
 });

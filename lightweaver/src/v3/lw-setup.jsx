@@ -6,7 +6,7 @@ import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
-import { projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
+import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -741,6 +741,18 @@ export function SetupScreen({
       return (
         <div className="lw-setup-task" data-testid="setup-active-task">
           <p>Place the discovered outputs in the artwork, then confirm their physical direction in Layout.</p>
+          {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount)) && (
+            <p data-testid="setup-counted-lights">
+              {evidence.count} LED{evidence.count === 1 ? '' : 's'} counted
+              {evidence.outputs.length === 1 ? ` on GPIO ${evidence.outputs[0].pin}` : ` across ${evidence.outputs.length} outputs`}
+              . Place the strip at its reel density so the drawing is that real length, not the find-my-strips ceiling.
+            </p>
+          )}
+          {evidence.count > 0 && evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount)) && (
+            <p data-testid="setup-uncounted-headroom">
+              The card still has the 256-light find-my-strips ceiling. Enter the real LED count when you place the strip — it is not 256 unless you counted that.
+            </p>
+          )}
           <ul className="lw-setup-subprogress" aria-label="Artwork placement progress">
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'placement' ? 'Artwork placement' : 'Light direction'}</li>)}
           </ul>

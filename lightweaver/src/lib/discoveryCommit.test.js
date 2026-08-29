@@ -6,8 +6,10 @@ import {
   createStripDiscoverySession,
 } from './stripDiscovery.js';
 import {
+  countedStripLengthPx,
   discoveryProjectParts,
   projectSkeletonFromCardStatus,
+  starterLedCountFromProject,
 } from './discoveryCommit.js';
 
 const benchLayout = [
@@ -149,11 +151,29 @@ test('Find-my-strips 256 headroom is not a locked install, even when the card sa
       segments: [{ id: 'bench-18-full', count: 256, direction: 'forward' }],
     }],
   });
-  assert.equal(skeleton.strips[0].pixelCount, 256);
+  assert.equal(skeleton.strips.length, 0);
+  assert.deepEqual(skeleton.outputs, []);
+  assert.equal(skeleton.portRoles.find(entry => entry.pin === 18).pixelCount, 0);
   assert.equal(skeleton.wiring.locked, false);
   assert.equal(skeleton.wiring.verified, false);
-  assert.equal(skeleton.wiring.runs[0].verified, false);
   assert.equal(skeleton.patchBoard.physicalLocked, false);
+});
+
+test('a counted 41-LED strip is placed at reel density, not a 480px sketch', () => {
+  const skeleton = projectSkeletonFromCardStatus({
+    knownGoodProject: true,
+    outputReady: true,
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+  assert.equal(skeleton.strips[0].pixelCount, 41);
+  assert.equal(skeleton.strips[0].svgLength, countedStripLengthPx(41));
+});
+
+test('starter count prefers a counted port over the 256 find-my-strips ceiling', () => {
+  assert.equal(starterLedCountFromProject({
+    strips: [{ pixelCount: 256 }],
+    portRoles: [{ role: 'strip', pin: 18, pixelCount: 41 }],
+  }), 41);
 });
 
 test('projectSkeletonFromCardStatus reconstructs exact installed segment geometry and wiring', () => {

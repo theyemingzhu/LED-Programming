@@ -189,7 +189,7 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
   expect(box?.height).toBeGreaterThanOrEqual(44);
   // …and the check itself keeps its primary button touch-sized.
   await page.getByTestId('start-led-check').click();
-  box = await page.getByRole('button', { name: 'I can see the LED strips' }).boundingBox();
+  box = await page.getByRole('button', { name: /^Yes — / }).boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   // Specialist tools stay behind the top-level Advanced disclosure.
   const advanced = page.getByTestId('advanced-installation-tools');

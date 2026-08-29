@@ -174,6 +174,6 @@ test('LayoutScreen does not silently auto-push a typed LED count', async () => {
   }
   assert.equal(hookMissing, true);
   const drawPanel = readFileSync(fileURLToPath(new URL('../components/layout/modes/DrawModePanel.jsx', import.meta.url)), 'utf8');
-  assert.match(drawPanel, /setStripCount\(id, clampLedCount\(raw\)\)/);
-  assert.equal(drawPanel.includes('setStripPhysical(id, { lengthM: clampLedCount'), false);
+  assert.match(drawPanel, /setStripPhysical\(id, \{ lengthM: count \/ dens \}\)/);
+  assert.equal(drawPanel.includes('useApplyLedCountToCard'), false);
 });
