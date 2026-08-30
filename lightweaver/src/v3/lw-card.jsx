@@ -225,8 +225,14 @@ function CardHomePanels({
       message: `${identity || 'A Lightweaver card'} is connected, but it is running the temporary Find-my-strips setup — not one of your projects. Install your project to replace it, run Find my strips again, or use Clear temporary setup under Checks & recovery below.`,
       primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
     }),
+    // `redundant` means: the Setup identity row and the phase ladder directly
+    // above already carry this verdict AND its action, so printing it again
+    // here is the third telling of one fact. The presentation is still built
+    // (other code reads its tone and actions); Home just does not render the
+    // Detected-state block for it.
     readyForLightCheck: () => ({
       tone: 'connected',
+      redundant: true,
       message: `${identity || 'A Lightweaver card'} is connected and ready for light check.`,
     }),
     checkingEvidence: () => ({
@@ -333,6 +339,9 @@ function CardHomePanels({
       // said the project still has to be saved. Same fact, same words.
       presentation = benchProject ? presentations.bench() : {
         tone: 'connecting',
+        // Identity row says Connection / Installed; the ladder's active task
+        // says save it to the card. Same fact, same words, third place.
+        redundant: true,
         message: `${identity || 'This Lightweaver'} is connected. The project open in Studio has changed since it was installed — save it to the card to bring them back into step.`,
         secondary: openSupport,
       };
@@ -561,7 +570,9 @@ function CardHomePanels({
   // class: Setup's pair task is already the one connect action.
   const answering = verifiedTransport
     || (cardLink?.state === 'revalidating' && Boolean(cardLink?.card?.id));
-  const showPresentation = answering || ready;
+  // …and a presentation the Setup journey above already states in full is not
+  // rendered at all. One status, not a chorus of it.
+  const showPresentation = (answering || ready) && !presentation.redundant;
 
   return (
     <div className="card-overview">
@@ -591,7 +602,15 @@ function CardHomePanels({
       {ready && !suppressMatchingProject && !benchProject && matchingProjectOffer && (
         <section className="card-support-panel" aria-label="Matching card project">
           <h2>Matching card project</h2>
-          <p>Open the exact active Studio project installed on this card before changing patterns, so its LED count, wiring, protocol, and power limit stay aligned.</p>
+          {/* Two sentences here restated what the identity row above already
+              says about this card and its project. Say only what pressing the
+              button does — and when the card is already holding the project
+              open in Studio, that is a re-check, not an open. */}
+          <p>
+            {cardHoldsOpenProject
+              ? 'Re-read the project installed on this card and confirm it still matches the one open here.'
+              : 'Open the project installed on this card, so its LED count, wiring, protocol, and power limit stay aligned.'}
+          </p>
           {matchingProjectState.status !== 'ambiguous' && (
             <button
               type="button"

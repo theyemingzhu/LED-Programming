@@ -738,8 +738,8 @@ export function SetupScreen({
               {installedId && installedId === String(currentProject?.id || '').trim()
                 ? 'This card holds the same project that is open here, but the wiring has changed in Studio since it was installed. Use the card’s copy, or save this one to the card.'
                 : installedId
-                  ? 'This card is connected and holds a different project from the one open in Studio.'
-                  : 'This exact card is connected, but Studio has not matched the project it holds to the project open here.'}
+                  ? 'This card holds a different project from the one open in Studio.'
+                  : 'Studio has not matched the project this card holds to the project open here.'}
             </p>
             <div className="lw-setup-banner-actions">
               {/* Load runs the shared adoption machine (cardActions); without
@@ -934,21 +934,23 @@ export function SetupScreen({
             asking the owner to pair, so the screen carried two headline
             buttons and two different accounts of where the owner was. */}
         {matchesOpenProject && !provisionalSetup && exactTransport && (
-          <section className="card-support-panel lw-setup-banner" data-testid="setup-card-ready">
-            <h2>
-              {firmwareBehind
-                ? 'This exact card is already set up'
-                : firmwareCurrent
-                  ? 'Your card is up to date and currently connected'
-                  : 'Your card is currently connected'}
-            </h2>
-            <p>
-              {firmwareBehind
-                ? 'Its installed project matches the project open in Studio. Update the card software before relying on it.'
-                : firmwareCurrent
-                  ? 'Studio is talking to this card and it is running the current Lightweaver software.'
-                  : 'Studio is talking to this card. Layout and the rest of Studio are ready when you are.'}
-            </p>
+          <section
+            className="card-support-panel lw-setup-banner"
+            data-testid="setup-card-ready"
+            aria-label="Card ready"
+          >
+            {/* The identity row directly above already states the connection
+                and whether the open project is the installed one. Repeating
+                that here as a heading plus a paragraph was two more tellings
+                of one fact, so the healthy card keeps only its doors. Old
+                firmware is a DIFFERENT fact the row does not carry, so that
+                case keeps its sentence and its Update action. */}
+            {firmwareBehind && (
+              <>
+                <h2>This card&rsquo;s software is behind</h2>
+                <p>Update the card software before relying on it.</p>
+              </>
+            )}
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn primary" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>

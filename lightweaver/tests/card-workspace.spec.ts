@@ -1648,9 +1648,12 @@ test('connected Card Home identifies the card and keeps one active Setup task', 
     readiness: status,
   }]);
 
-  await expect(page.getByTestId('card-detected-state')).toContainText('Gallery card');
-  await expect(page.getByTestId('card-detected-state')).toContainText(/connected/i);
-  await expect(page.getByTestId('card-detected-state')).not.toContainText(/has not changed|nothing changed/i);
+  // The identity row is the ONE status: it names the card and states the
+  // connection. A card that is answering normally gets no Detected-state
+  // block repeating that — the block is reserved for a diagnosis the row and
+  // the ladder do not already carry (checking, blank, bench, failure).
+  await expect(page.getByTestId('setup-identity-row')).toContainText('Gallery card');
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
   // The ladder carries exactly one active task for the connected card.
   await expect(page.getByTestId('setup-active-task')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
@@ -1691,10 +1694,12 @@ test('Card overview distinguishes checking, blank, and ready evidence', async ({
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
   status = readyStatus('lw-overview-state');
-  // A command-ready card whose project has moved on in Studio now says the same
-  // thing the identity row, the ladder and the footer say — save it to the card
-  // — instead of adding a fourth, cheerier account of the same moment.
-  await expect(page.getByTestId('card-detected-state')).toContainText(/ready for light check|save it to the card/);
+  // A command-ready card says nothing extra here at all. The identity row, the
+  // ladder's active task and the footer already carry the verdict AND its
+  // action; a fourth account of the same moment was the chorus this screen was
+  // compressed to remove. The ladder is the proof the state still arrived.
+  await expect(page.getByTestId('setup-progress')).toBeVisible();
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
 });
 
 test('Card overview flags the temporary bench discovery project and delegates to discovery Setup', async ({ page }) => {
