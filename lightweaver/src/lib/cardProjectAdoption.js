@@ -211,7 +211,21 @@ async function runResolvedStrategy(deps, {
   let replacementCommitted = false;
   let associationHandoffFailed = false;
   let replacementCloudSessionLost = false;
-  authorization.clearCardEditAuthorization();
+  // Only a run that is going to REPLACE the open project revokes the existing
+  // card-edit grant. A probe is Studio looking around by itself, on a schedule
+  // the owner never asked for, and it used to clear the grant up front and
+  // re-issue nothing — the probe path returns before the authorize step. So
+  // merely opening Card Home silently revoked card-edit authority, and any
+  // owner whose authority had not yet been written into a verified
+  // installation record could not get it back (Patterns re-derives it only
+  // from `installation.verified === true`).
+  //
+  // Nothing is weakened by keeping it: a grant is bound to the exact card,
+  // project, fingerprint and generation, and `readCurrent` in
+  // cardEditAuthorization.js re-checks that binding exactly on every use and
+  // drops the grant on TTL. A grant that no longer matches is already inert,
+  // so clearing it eagerly bought no safety and cost the owner real authority.
+  if (!probeOnly) authorization.clearCardEditAuthorization();
   try {
     const requestContext = {
       host: normalizeCardHost(cardLink?.host || cardHost),

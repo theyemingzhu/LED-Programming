@@ -154,21 +154,35 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
   // the edit authorization the install controls require. The grant lives in
   // module memory, so it has to be issued after the last reload.
   await page.reload({ waitUntil: 'domcontentloaded' });
-  const authorized = await page.evaluate(async binding => {
-    const { issueCardEditAuthorization } = await import('/src/lib/cardEditAuthorization.js');
-    return issueCardEditAuthorization(binding);
-  }, {
-    cardId,
-    firmwareVersion: HARDENING_FIRMWARE_VERSION,
-    buildId: HARDENING_BUILD_ID,
-    bootId,
-    installedProjectId: installedProject.id,
-    installedProjectFingerprint: installedProject.fingerprint,
-    studioProjectId: installedProject.id,
-    studioProjectFingerprint: installedProject.fingerprint,
-    projectGeneration: 0,
-  });
-  expect(authorized).toBe(true);
+  // Re-issuable on purpose. The grant lives in module memory, and EVERY card
+  // project resolution run clears it up front before trying to re-derive one
+  // (src/lib/cardProjectAdoption.js). Opening the Card workspace — which the
+  // legacy `#screen=installer` hash now does, via studioRoute's
+  // LEGACY_CARD_SCREENS mapping — arms that background probe, and against
+  // these fixtures the probe finds no library project to resolve, so it clears
+  // the grant and issues nothing back. A real Studio re-derives it from the
+  // project's verified installation record; a fixture whose grant was injected
+  // has to re-inject. Tests that visit the Card workspace between the fixture
+  // and an install call this again.
+  const authorize = async () => {
+    const authorized = await page.evaluate(async binding => {
+      const { issueCardEditAuthorization } = await import('/src/lib/cardEditAuthorization.js');
+      return issueCardEditAuthorization(binding);
+    }, {
+      cardId,
+      firmwareVersion: HARDENING_FIRMWARE_VERSION,
+      buildId: HARDENING_BUILD_ID,
+      bootId,
+      installedProjectId: cardProject.id,
+      installedProjectFingerprint: cardProject.fingerprint,
+      studioProjectId: cardProject.id,
+      studioProjectFingerprint: cardProject.fingerprint,
+      projectGeneration: 0,
+    });
+    expect(authorized).toBe(true);
+  };
+  await authorize();
+  return { authorize };
 }
 
 async function seedBrowserProjectLibrary(page: any) {
@@ -670,13 +684,28 @@ test('installer invalidates signoff when the edited revision changes', async ({ 
 });
 
 test('installer invalidates signoff when the installed revision changes', async ({ page }) => {
-  await mockConnectedCard(page, 'lw-signoff-installed');
+  const { authorize } = await mockConnectedCard(page, 'lw-signoff-installed');
   await markInstallerReady(page);
+  // The signoff was taken against a card with NO installed revision, and it is
+  // still valid here — so the invalidation asserted below can only be the
+  // install, never the trip through the Card workspace and Patterns.
+  const signedOff = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_installer_signoff_v2') || 'null'));
+  expect(signedOff?.ready).toBe(true);
+  expect(signedOff?.identity?.installedRevision ?? null).toBeNull();
+  // Reading the guide arms the Card workspace's project probe, which clears
+  // the fixture's injected card-edit grant (see `authorize`). Re-issue it so
+  // the install below is a real card write and not a disabled button.
+  await authorize();
   await page.locator('.rail-item', { hasText: 'Patterns' }).click();
   await page.getByTitle('Install the current look on the card').click();
   await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await openInstallerGuide(page);
+  // The stored signoff must now name a real installed revision that differs
+  // from the one it was taken against, and must no longer read as ready.
+  const afterInstall = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_installer_signoff_v2') || 'null'));
+  expect(Number.isInteger(afterInstall?.identity?.installedRevision)).toBe(true);
+  expect(afterInstall?.ready).not.toBe(true);
   await expect(page.locator('.inst-signoff input[type="checkbox"]:checked')).toHaveCount(0);
   await expect(page.getByText('Ready to ship', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('installer-ready-summary')).toContainText(/Revision \d+/);

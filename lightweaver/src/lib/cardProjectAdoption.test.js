@@ -75,7 +75,7 @@ function makeDeps({
   const reports = [];
   const calls = {
     save: 0, replace: 0, association: 0, verified: 0, openPatterns: 0,
-    requestProbe: 0, issued: [], appliedParts: [],
+    requestProbe: 0, cleared: 0, issued: [], appliedParts: [],
   };
   const flight = {
     inFlight: { current: false },
@@ -142,7 +142,7 @@ function makeDeps({
       },
     },
     authorization: {
-      clearCardEditAuthorization: () => {},
+      clearCardEditAuthorization: () => { calls.cleared += 1; },
       issueCardEditAuthorization: binding => {
         calls.issued.push(binding);
         return { binding };
@@ -382,4 +382,25 @@ test('resolvedMatchKey names each source unambiguously', () => {
   assert.equal(resolvedMatchKey({ source: 'cloud', remoteId: 'rem-1', candidate: { revision: 5 } }), 'cloud:rem-1:5');
   assert.equal(resolvedMatchKey({ source: 'production', candidate: { jobId: 'job-1', digest: 'd'.repeat(64) } }), `production:job-1:${'d'.repeat(64)}`);
   assert.equal(resolvedMatchKey({ source: 'current', project: { id: 'p-1' } }), 'current:p-1');
+});
+
+
+// A probe is Studio looking around by itself, on a schedule the owner never
+// asked for. It used to revoke the card-edit grant up front and re-issue
+// nothing — it returns at the offer, before the authorize step — so merely
+// opening Card Home silently removed card-edit authority, and an owner whose
+// authority was not yet recorded in a VERIFIED installation record could not
+// get it back (Patterns re-derives only from installation.verified === true).
+// Nothing is weakened by keeping the grant: it is bound to the exact card,
+// project, fingerprint and generation, and readCurrent() re-checks that
+// binding on every use, so a grant that no longer matches is already inert.
+test('a probe leaves an existing card-edit grant alone; a replacement still revokes it', async () => {
+  const probe = makeDeps();
+  await guardedResolutionRun(probe.deps, { strategy: 'probe' });
+  assert.equal(probe.calls.cleared, 0);
+  assert.equal(probe.calls.replace, 0);
+
+  const commit = makeDeps();
+  await guardedResolutionRun(commit.deps, { strategy: 'load' });
+  assert.equal(commit.calls.cleared, 1);
 });
