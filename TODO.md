@@ -15,8 +15,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
-- [ ] Compress Card Home so “connected” is not said five times _(band: agent-runnable)_ _(effort: moderate)_ → Plan: [2026-08-30-card-one-action.md](docs/superpowers/plans/2026-08-30-card-one-action.md)
-  Resume on `card-one-action` @ `a5bb834a`. Done: Test & Install gone, check+install on Card, one Card page, footer is status only, not pushed. Left: Home still repeats connected / Untitled Project (header, banner, detected state, matching panel). Resume: read the 2026-08-30 audit deltas at the top of the plan, then compress Home. Do not redo Tasks 1–7.
+- [ ] Make Card Home effortless — one primary action, and a status row that speaks facts _(band: agent-runnable)_ _(effort: moderate)_ → Plan: [2026-08-31-card-home-effortless.md](docs/superpowers/plans/2026-08-31-card-home-effortless.md)
+  On `card-one-action` @ `dad5bc31`, not pushed. Done: Test & Install gone, check+install on Card, one Card page, footer is status only, and Home now says the card's status ONCE (Detected state stands down when the identity row and ladder already carry it; ready banner keeps its doors, loses its prose). Left, in order: retire three specs asserting UI Tasks 1–7 deleted (6 red on this branch, all 6 also red at `a5bb834a`); make the identity row's Connection/Installed fields states not errands; then cut the page from three competing primary buttons to one. Do not redo Tasks 1–7.
 - [ ] Decide whether Lightweaver keeps living on the mandalacodes web address _(band: you-required)_ _(effort: deep)_
   Raised by the 2026-08-28 Cloudflare account split (led to celestialymz@gmail.com, Mandala
   Codes staying on sccsclothing@gmail.com). A Pages project cannot hold a custom domain whose

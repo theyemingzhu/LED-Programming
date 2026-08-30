@@ -33,7 +33,7 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 | Owner | IDs | Exact files / boundary | Started | Latest evidence |
 | --- | --- | --- | --- | --- |
-| None | — | — | — | CARD-IA-001 on `card-one-action` @ `a5bb834a`; not pushed |
+| None | — | — | — | CARD-IA-001 on `card-one-action` @ `dad5bc31`; Home compression landed; not pushed |
 
 The primary assigns at most three sub-agents. Two active owners must never name
 the same file or an inseparable behavior boundary.
@@ -49,7 +49,7 @@ the same file or an inseparable behavior boundary.
 | UPDATE-VIS-002 | USB update after the full application byte count | Status changes to “Upload complete · checking the saved update,” then advances to restart/reconnect | Card `lw-b0fe81f61b44` + live Studio containing UPDATE-002 | needs-eyes |
 | UPDATE-VIS-003 | First preserving Wi-Fi update action and refusal recovery | Compact action appears below build values; first start advances past owner pairing without HTTP 400 | Card `lw-b0fe81f61b44` + Studio containing UPDATE-003 | needs-eyes |
 | FOOTER-VIS-001 | Install or update, after Find Connected Card on a bench USB card | Footer reads `Card firmware dev → 1446`, not `Card firmware unknown` | Branch `cursor/footer-knows-usb-firmware`; card `lw-b0fe8f1f61b44` | needs-eyes |
-| CARD-IA-VIS-001 | Card Home on `card-one-action` at http://127.0.0.1:4173/#screen=card | One Install on card, no tab bar, footer says Connected only — and whether the leftover setup “connected / Untitled Project” story still feels too long | Branch `card-one-action` @ `a5bb834a` | needs-eyes |
+| CARD-IA-VIS-001 | Card Home on `card-one-action` at http://127.0.0.1:4173/#screen=card | One Install on card, no tab bar, footer says Connected only, and the status row is now the only place that says connected / names the project — whether Home reads short enough now | Branch `card-one-action` @ `dad5bc31` | needs-eyes |
 
 Visual feedback does not pause independent automated work. The primary returns to
 this queue when Adrian is available.
