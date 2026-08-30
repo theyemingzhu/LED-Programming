@@ -1,4 +1,5 @@
 import { sanitizeProjectId } from './projectIdentity.js';
+import { isUncountedHeadroomCount } from './discoveryCommit.js';
 
 const CONNECTED_STATES = new Set(['connected-direct', 'connected-bridge']);
 
@@ -116,6 +117,13 @@ function lengthDiffers(project, readiness) {
   return studio > 0 && card > 0 && studio !== card;
 }
 
+function hasCountedLights(project, readiness) {
+  const card = cardReportedLedCount(readiness);
+  if (card > 0) return !isUncountedHeadroomCount(card);
+  const studio = studioTypedLedCount(project);
+  return studio > 0 && !isUncountedHeadroomCount(studio);
+}
+
 function liveContentDiffers(project) {
   const live = normalizedFingerprint(project?.liveFingerprint);
   const synced = normalizedFingerprint(project?.syncedFingerprint);
@@ -229,7 +237,9 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
     exactRevision,
     commandReady,
     safeControlAccess: state === 'ready' ? 'ready' : state,
-    label: lifecycleLabel(state),
+    label: state === 'discovery-setup' && hasCountedLights(project, readiness)
+      ? 'Lights counted'
+      : lifecycleLabel(state),
     setupTaskId: lifecycleSetupTask(state),
     reason: normalized(updateEvidence?.reason || updateEvidence?.rollbackReason || link.reason),
   });

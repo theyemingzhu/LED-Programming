@@ -30,6 +30,7 @@ import {
   beginCardCommissioning,
   completeCardInstall,
   readCardCommissioning,
+  selectCardCommissioningStage,
   writeCardCommissioning,
 } from '../lib/cardCommissioningFlow.js';
 import { observePostFlashNetwork } from '../lib/cardPostFlashNetwork.js';
@@ -880,6 +881,10 @@ import {
     const [installState, setInstallState] = useState('idle');
     const [releaseAttempt, setReleaseAttempt] = useState(0);
     const [commissioning, setCommissioning] = useState(readCardCommissioning);
+    const [selectedStage, setSelectedStage] = useState(() => {
+      const stage = readCardCommissioning()?.stage;
+      return stage === 'set-up-card' || stage === 'check-lights' ? stage : 'connect-card';
+    });
     // Reading the version stored on the card is a slow serial scan that runs
     // after the card is already found, so the connect step never waits on it.
     const [usbFirmwareRead, setUsbFirmwareRead] = useState({ state: 'idle', progress: 0 });
@@ -895,11 +900,6 @@ import {
       installed: installedFirmware,
       available: releaseState.state === 'ready' ? releaseState.release.manifest : null,
     }), [installedFirmware, releaseState]);
-    const installedEvidenceLabel = installedFirmware?.source === 'usb-flash'
-      ? 'read directly from this card over USB'
-      : installedFirmware === cardLink?.card
-        ? 'live card connection'
-        : installedFirmware ? 'last verified for this exact card' : '';
     // The footer lives in the shell. Tell it the same identity this panel
     // already printed, including through the USB write — inspection is cleared
     // when flashing starts, but the card on the desk has not become unknown.
@@ -1144,6 +1144,7 @@ import {
           release: () => releaseHeldInspection(),
         });
         setCardState({ state: 'ready', hardware, error: '' });
+        setSelectedStage(previous => previous === 'connect-card' ? 'install-safely' : previous);
         startFirmwareRead(connection.loader, hardware);
       } catch (error) {
         if (inspectionRef.current) clearActiveUsbInspection(inspectionRef.current);
@@ -1220,6 +1221,7 @@ import {
         });
         await writeCardCommissioning(completed);
         setCommissioning(completed);
+        setSelectedStage('set-up-card');
         setInstallState('complete');
       } catch (error) {
         if (!handedToFlashWorkflow) {
@@ -1233,9 +1235,60 @@ import {
       }
     };
 
-    const hasResumableCommissioning = commissioning
-      && (commissioning.stage === 'set-up-card' || commissioning.stage === 'check-lights');
-    if (installState === 'complete' || hasResumableCommissioning || (commissioning?.source === 'web-serial' && commissioning.stage === 'install-safely' && installState !== 'installing' && installState !== 'observing')) {
+    const openStage = async (stage) => {
+      if (installState === 'installing' || installState === 'observing') return;
+      let flow = readCardCommissioning() || commissioning;
+      const official = releaseState.state === 'ready' ? releaseState.release.manifest : null;
+      const remembered = installedFirmware || cardLink?.card || readPersistedCardIdentity();
+      if (!flow && (stage === 'set-up-card' || stage === 'check-lights')) {
+        const project = serializeProject();
+        flow = beginCardCommissioning({
+          source: 'web-serial',
+          operation: 'install-current-release',
+          projectRecord: {
+            id: project?.id || 'studio-project',
+            updatedAt: Date.now(),
+            project,
+          },
+          projectRevision: projectLifecycle.editedRevision,
+          projectGeneration: Number.isSafeInteger(projectLifecycle.generation) ? projectLifecycle.generation : 0,
+          installTarget: {
+            id: remembered?.id || remembered?.cardId || '',
+            firmwareVersion: official?.firmwareVersion || remembered?.firmwareVersion || '',
+            buildId: remembered?.buildId || official?.buildId || '',
+          },
+        });
+      }
+      if (flow) {
+        const card = remembered && {
+          ...remembered,
+          firmwareVersion: updatePlan.state === 'same' && official?.firmwareVersion
+            ? official.firmwareVersion
+            : remembered.firmwareVersion,
+          buildId: remembered.buildId || official?.buildId,
+        };
+        try {
+          const next = selectCardCommissioningStage(flow, stage, { card });
+          await writeCardCommissioning(next);
+          setCommissioning(next);
+        } catch {
+          try {
+            const fresh = readCardCommissioning();
+            if (fresh) {
+              const next = selectCardCommissioningStage(fresh, stage, { card });
+              await writeCardCommissioning(next);
+              setCommissioning(next);
+            }
+          } catch {
+            // The clicked step still opens. A stale persist must not lock the map.
+          }
+        }
+      }
+      setSelectedStage(stage);
+    };
+
+    const showCommissioningPanel = selectedStage === 'set-up-card' || selectedStage === 'check-lights';
+    if (showCommissioningPanel) {
       return (
         <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
           <CardCommissioningPanel
@@ -1243,6 +1296,8 @@ import {
             link={cardLink}
             onReconnect={(host) => onConnectCard?.(host)}
             onComplete={onCommissioningComplete}
+            onSelectStage={stage => { void openStage(stage); }}
+            viewStage={selectedStage}
             readProjectEvidence={readCardProjectEvidence}
             readCandidateEvidence={readCardWiringCandidateEvidence}
           />
@@ -1254,7 +1309,11 @@ import {
     return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
         <div className="install-task">
-          <CardCommissioningSteps stage={cardState.state === 'ready' || installState === 'installing' || installState === 'observing' ? 'install-safely' : 'connect-card'} />
+          <CardCommissioningSteps
+            stage={selectedStage}
+            disabled={installState === 'installing' || installState === 'observing'}
+            onSelect={stage => { void openStage(stage); }}
+          />
 
           <header className="install-intro">
             <div className="eyebrow">Safe automatic installer</div>
@@ -1317,17 +1376,10 @@ import {
                 <dl>
                   <dt>Card</dt><dd>{cardState.hardware.cardId}</dd>
                   <dt>Hardware</dt><dd>ESP32-S3 · 16 MB</dd>
-                  <dt>Installed firmware</dt>
-                  <dd data-testid="install-card-installed-firmware">{installedFirmware
-                    ? `v${installedFirmware.firmwareVersion || 'unknown'} · ${formatFirmwareBuildLabel(installedFirmware)} (${installedEvidenceLabel})`
-                    : usbFirmwareRead.state === 'reading'
-                      ? `Reading the version stored on this card… ${Math.round(usbFirmwareRead.progress * 100)}% (you can install without waiting)`
-                      : 'Unknown — USB confirms the card hardware, not the firmware stored on it.'}</dd>
-                  <dt>Current firmware</dt>
-                  <dd>{releaseState.state === 'ready'
-                    ? `v${releaseState.release.manifest.firmwareVersion} · ${formatFirmwareBuildLabel(releaseState.release.manifest)}`
-                    : 'Unavailable'}</dd>
                 </dl>
+                {usbFirmwareRead.state === 'reading' && (
+                  <p data-testid="install-card-installed-firmware">Reading firmware on this card… {Math.round(usbFirmwareRead.progress * 100)}%</p>
+                )}
               </div>
             )}
             {cardState.state === 'error' && <div className="install-check-error" role="alert">{cardState.error}</div>}

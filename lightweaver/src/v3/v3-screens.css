@@ -628,6 +628,11 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .install-task > .card-commissioning-steps li.complete span { border-color: var(--ok); color: var(--ok); }
 .install-task > .card-commissioning-steps li.active { color: var(--text-hi); background: transparent; }
 .install-task > .card-commissioning-steps li.active span { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.install-task > .card-commissioning-steps li > button {
+  grid-template-rows: 22px auto;
+  gap: 7px;
+  justify-items: start;
+}
 .install-step-mark { width: fit-content; padding: 7px 10px; border-radius: 99px; color: var(--ok); background: var(--ok-dim); font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .install-handoff { width: min(650px, calc(100% - 32px)); margin: 32px auto 80px; padding: 24px; }
 .install-handoff ol { margin: 18px 0 0; padding-left: 22px; }

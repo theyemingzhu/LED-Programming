@@ -185,6 +185,42 @@ test('a recovering exact factory card resumes discovery instead of generic recov
   assert.deepEqual(journey.blockers, []);
 });
 
+test('the 256 find-my-strips ceiling is not a counted light', () => {
+  const project = discoveredProject();
+  project.portRoles = [{ pin: 18, role: 'strip', pixelCount: 256 }];
+  const journey = deriveSetupJourney({
+    cardLink: connectedCard(READY_STATUS),
+    project,
+    resolution: { provisionalSetup: true },
+  });
+  const progress = Object.fromEntries(phaseMap(journey).lights.progress.map(item => [item.id, item.status]));
+
+  assert.equal(progress.output, 'done');
+  assert.equal(progress.count, 'current');
+  assert.equal(journey.currentPhaseId, 'lights');
+  assert.equal(setupJourney.setupOffersTypedLedCount({
+    status: { outputs: [{ pin: 18, pixels: 256 }] },
+    project,
+  }), true);
+  assert.equal(setupJourney.setupTypedLedCountPin({
+    status: { outputs: [{ pin: 18, pixels: 256 }] },
+    project,
+  }), 18);
+});
+
+test('a starter project count does not hide the Setup LED count field on a 256-headroom card', () => {
+  assert.equal(setupJourney.setupOffersTypedLedCount({
+    status: {
+      projectId: 'lightweaver-bench-discovery-v1',
+      outputs: [{ pin: 18, pixels: 256 }],
+    },
+    project: {
+      portRoles: [{ pin: 18, role: 'strip', pixelCount: 37 }],
+      layout: { strips: [{ pixelCount: 37 }] },
+    },
+  }), true);
+});
+
 test('existing discovery evidence unlocks Layout without a second direction store', () => {
   const journey = deriveSetupJourney({
     cardLink: connectedCard(READY_STATUS),

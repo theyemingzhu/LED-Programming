@@ -58,6 +58,48 @@ test('one lifecycle orders exact failures ahead of generic connection copy', () 
   }
 });
 
+test('a starter project count does not call a 256-headroom card Lights counted', () => {
+  const stillFinding = deriveCardLifecycle({
+    link: {
+      ...READY_LINK,
+      readiness: {
+        ...READY_LINK.readiness,
+        provisionalSetup: true,
+        projectId: 'lightweaver-bench-discovery-v1',
+        led: { pixels: 256 },
+        outputs: [{ pin: 18, pixels: 256 }],
+      },
+    },
+    project: {
+      id: 'untitled',
+      layout: { strips: [{ pixelCount: 37 }] },
+    },
+  });
+  assert.equal(stillFinding.state, 'discovery-setup');
+  assert.equal(stillFinding.label, 'Finding lights');
+});
+
+test('a counted strip on temporary setup is not still Finding lights', () => {
+  const counted = deriveCardLifecycle({
+    link: {
+      ...READY_LINK,
+      readiness: {
+        ...READY_LINK.readiness,
+        provisionalSetup: true,
+        projectId: 'lightweaver-bench-discovery-v1',
+        led: { pixels: 41 },
+        outputs: [{ pin: 18, pixels: 41 }],
+      },
+    },
+    project: {
+      id: 'lightweaver-bench-discovery-v1',
+      layout: { strips: [{ pixelCount: 41 }] },
+    },
+  });
+  assert.equal(counted.state, 'discovery-setup');
+  assert.equal(counted.label, 'Lights counted');
+});
+
 test('a legacy card reporting no fingerprint is ready only through a verified legacy binding', () => {
   const legacyLink = {
     ...READY_LINK,

@@ -1,9 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './lw-setup.css';
-import { CONNECTED_CARD_LINK_STATES, SETUP_SKIP_STORAGE_KEY, deriveSetupJourney } from '../lib/setupJourney.js';
+import {
+  CONNECTED_CARD_LINK_STATES,
+  SETUP_SKIP_STORAGE_KEY,
+  deriveSetupJourney,
+  setupOffersTypedLedCount,
+  setupTypedLedCountPin,
+} from '../lib/setupJourney.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
+import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
+import { recoverCardLights } from '../lib/cardLiveControl.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
@@ -112,6 +120,8 @@ export function SetupScreen({
   const [recheckTick, setRecheckTick] = useState(0);
   const [adoptionError, setAdoptionError] = useState('');
   const [pairState, setPairState] = useState({ busy: false, message: '' });
+  const [ledCountDraft, setLedCountDraft] = useState('');
+  const [ledCountState, setLedCountState] = useState({ busy: false, message: '' });
   const importRef = useRef(null);
   const resolveInputsRef = useRef({ currentProject, activeCloudProjects, browserProjects });
   const previousPhaseRef = useRef('');
@@ -560,6 +570,102 @@ export function SetupScreen({
   // sent the owner back to this screen.
   const recheckCard = () => setRecheckTick(tick => tick + 1);
 
+  const countEvidence = cardState.status || cardLink?.readiness || {};
+  const countPin = setupTypedLedCountPin({
+    status: countEvidence,
+    project: currentProject,
+  });
+  const offerTypedCount = setupOffersTypedLedCount({
+    status: countEvidence,
+    project: currentProject,
+  });
+
+  const applyTypedLedCount = async event => {
+    event?.preventDefault?.();
+    if (ledCountState.busy) return;
+    const pixels = Math.trunc(Number(ledCountDraft));
+    if (!Number.isSafeInteger(pixels) || pixels < 1) {
+      setLedCountState({ busy: false, message: 'Enter how many lights are on this strip.' });
+      return;
+    }
+    const pin = countPin;
+    if (pin == null) {
+      setLedCountState({ busy: false, message: 'Find the strip output first, then enter the count.' });
+      return;
+    }
+    setLedCountState({ busy: true, message: '' });
+    const host = cardLink?.host || cardHost || '';
+    const nextStatus = cardState.status
+      ? cardStatusWithPixelCount(cardState.status, { pixels, pin })
+      : { outputs: [{ pin, pixels, gpio: pin, count: pixels }], led: { pixels } };
+    try {
+      await applyCardParts(projectSkeletonFromCardStatus(nextStatus), nextStatus);
+      if (host) {
+        const written = await applyLedCountOnCard({ host, pixels, pin });
+        if (!written.applied && written.reason !== 'not-a-length-change' && written.reason !== 'disconnected' && written.reason !== 'unreachable') {
+          setLedCountState({
+            busy: false,
+            message: 'Count saved here. The card could not take that length change.',
+          });
+          setRecheckTick(tick => tick + 1);
+          return;
+        }
+        if (written.reason === 'disconnected' || written.reason === 'unreachable') {
+          setLedCountState({
+            busy: false,
+            message: 'Count saved here. The card did not take it yet.',
+          });
+          setRecheckTick(tick => tick + 1);
+          return;
+        }
+        try {
+          await recoverCardLights({ patternId: 'warm-white', brightness: 0.55 }, { host });
+        } catch {
+          setLedCountState({
+            busy: false,
+            message: `${pixels} lights are set. Recover lights if the strip stays dark.`,
+          });
+          setRecheckTick(tick => tick + 1);
+          return;
+        }
+      }
+      setLedCountDraft('');
+      setLedCountState({
+        busy: false,
+        message: `${pixels} lights are set. Look at the strip — those lights should be on.`,
+      });
+      setRecheckTick(tick => tick + 1);
+    } catch (error) {
+      setLedCountState({
+        busy: false,
+        message: error?.message || 'Studio could not use that count.',
+      });
+    }
+  };
+
+  const ledCountEntry = offerTypedCount ? (
+    <form className="lw-setup-led-count" data-testid="setup-led-count-form" onSubmit={applyTypedLedCount}>
+      <label>
+        LED count
+        <input
+          data-testid="setup-led-count"
+          type="number"
+          inputMode="numeric"
+          min="1"
+          step="1"
+          value={ledCountDraft}
+          placeholder="How many lights"
+          aria-label="LED count"
+          disabled={ledCountState.busy}
+          onChange={event => setLedCountDraft(event.target.value)}
+        />
+      </label>
+      <button type="submit" className="btn primary" disabled={ledCountState.busy}>
+        {ledCountState.busy ? 'Saving…' : 'Use this count'}
+      </button>
+    </form>
+  ) : null;
+
   // Phase 1's primary button DOES THE THING IT IS NAMED AFTER — it looks for
   // the card, on whichever route this page can actually use, and pairs what it
   // finds. It used to open the Connection Center, which asked the owner to
@@ -730,8 +836,16 @@ export function SetupScreen({
           <ul className="lw-setup-subprogress" aria-label="Light discovery progress">
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
-          <button type="button" className="btn primary" data-testid="setup-lights-action" onClick={() => go('#screen=discovery')}>
-            {evidence.count > 0 ? 'Review the connected lights' : 'Find and count the lights'}
+          {ledCountEntry}
+          {ledCountState.message && (
+            <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
+          )}
+          <button type="button" className={ledCountEntry ? 'btn' : 'btn primary'} data-testid="setup-lights-action" onClick={() => go('#screen=discovery')}>
+            {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
+              ? 'Review the connected lights'
+              : ledCountEntry
+                ? 'Find the lights'
+                : 'Find and count the lights'}
           </button>
         </div>
       );
@@ -745,13 +859,12 @@ export function SetupScreen({
             <p data-testid="setup-counted-lights">
               {evidence.count} LED{evidence.count === 1 ? '' : 's'} counted
               {evidence.outputs.length === 1 ? ` on GPIO ${evidence.outputs[0].pin}` : ` across ${evidence.outputs.length} outputs`}
-              . Place the strip at its reel density so the drawing is that real length, not the find-my-strips ceiling.
+              . Look at the strip — those lights should be on.
             </p>
           )}
-          {evidence.count > 0 && evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount)) && (
-            <p data-testid="setup-uncounted-headroom">
-              The card still has the 256-light find-my-strips ceiling. Enter the real LED count when you place the strip — it is not 256 unless you counted that.
-            </p>
+          {ledCountEntry}
+          {ledCountState.message && (
+            <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
           )}
           <ul className="lw-setup-subprogress" aria-label="Artwork placement progress">
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'placement' ? 'Artwork placement' : 'Light direction'}</li>)}

@@ -919,6 +919,22 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   font-size: 12px;
   line-height: 1.2;
 }
+.card-commissioning-steps li > button {
+  display: grid;
+  gap: inherit;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.card-commissioning-steps li > button:hover:not(:disabled) { color: var(--text-hi); }
+.card-commissioning-steps li > button:disabled { cursor: default; }
 .card-commissioning-steps li span { font-family: var(--font-mono); }
 .card-commissioning-steps li.complete { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
 .card-commissioning-steps li.active { color: var(--text-hi); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
