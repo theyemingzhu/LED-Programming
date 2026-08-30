@@ -23,8 +23,8 @@ test('install-project shows LED check on Card Home, not firmware flash', async (
   await expect(page.getByText('Lightweaver hardware')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
 
-  // The flow is on Home. Hardware settings exists as a tab (not yet folded)
-  // but is not required to see check + install.
+  // The flow is on Home. Hardware is a fold, not a second install page.
   await expect(page.getByRole('heading', { name: 'Hardware settings' })).toHaveCount(0);
+  await expect(page.getByTestId('card-hardware-fold')).toBeVisible();
   await expect(page.locator('[data-testid="start-led-check"], [data-testid="wire-find-strips"], [data-testid="layout-send-to-card"], [data-testid="unlock-and-check"]')).toBeVisible();
 });

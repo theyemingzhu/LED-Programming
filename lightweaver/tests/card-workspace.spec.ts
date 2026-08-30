@@ -1131,35 +1131,27 @@ test('one Card rail destination owns the card and exposes ordinary section navig
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.locator('.rail').getByRole('button', { name: 'Card', exact: true }).click();
 
-  // The rail lands on Card Home — the merged guided ladder + card status page.
+  // The rail lands on Card Home — one page, Hardware and Advanced folded under it.
   await expect(page).toHaveURL(/#screen=card&section=setup$/);
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
-  const sections = page.getByRole('navigation', { name: 'Hardware sections' });
-  await expect(sections).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
+  await expect(page.locator('.card-section-tabs')).toHaveCount(0);
+  await expect(page.getByTestId('card-hardware-fold').locator('summary')).toHaveText('Hardware');
+  await expect(page.getByTestId('card-advanced-fold').locator('summary')).toHaveText('Advanced');
   for (const label of ['Home', 'Hardware settings', 'Advanced & Support']) {
-    await expect(sections.getByRole('button', { name: label, exact: true })).toBeVisible();
-  }
-  await expect(sections.getByRole('button', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page');
-  // The merged-away and full-body sections are not tabs: Setup and Card
-  // status became Home, Install is a takeover during installs, Preferences
-  // opens from the top bar, Batch production is a manufacturing surface.
-  for (const label of ['Setup', 'Card status', 'Install or update', 'Preferences', 'Workshop setup', 'Batch production']) {
-    await expect(sections.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   }
   // Setup and Hardware were peer rail items asking the same questions. Neither
   // name survives as a second destination — there is one card entry now.
   for (const label of ['Flash', 'Installer', 'Production setup', 'Settings', 'Hardware', 'Setup']) {
     await expect(page.locator('.rail').getByRole('button', { name: label, exact: true })).toHaveCount(0);
   }
-  await expect(sections.getByRole('menu')).toHaveCount(0);
-  await expect(sections.locator('[role="menuitem"]')).toHaveCount(0);
-  await expect(sections.locator('[aria-haspopup]')).toHaveCount(0);
 
   // Both merged section routes render the same Home.
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/#screen=card&section=overview$/);
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
-  await expect(sections.getByRole('button', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('card-hardware-fold')).toBeVisible();
 });
 
 test('Hardware loads the verified production project that matches the paired card in one action', async ({ page }) => {
@@ -1515,30 +1507,18 @@ test('Card section navigation becomes one compact switcher on a 390px viewport',
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
-  const sections = page.getByRole('navigation', { name: 'Hardware sections' });
-  const switcher = sections.getByLabel('Hardware section');
-  await expect(switcher).toBeVisible();
-  // The legacy overview route reads as the Home option.
-  await expect(switcher).toHaveValue('setup');
-  expect(await switcher.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
+  await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
+  await expect(page.getByLabel('Hardware section')).toHaveCount(0);
+  const hardware = page.getByTestId('card-hardware-fold');
+  const summary = hardware.locator('summary');
+  await expect(summary).toBeVisible();
+  expect(await summary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
 
-  for (const label of ['Home', 'Hardware settings', 'Advanced & Support']) {
-    await expect(switcher.getByRole('option', { name: label, exact: true })).toHaveCount(1);
-    await expect(sections.getByRole('button', { name: label, exact: true })).toBeHidden();
-  }
-  for (const label of ['Setup', 'Card status', 'Install or update', 'Preferences']) {
-    await expect(switcher.getByRole('option', { name: label, exact: true })).toHaveCount(0);
-  }
-
-  await switcher.selectOption('settings');
+  await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/#screen=card&section=settings$/);
-  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeFocused();
-
-  const dimensions = await sections.evaluate(node => ({
-    clientWidth: node.clientWidth,
-    scrollWidth: node.scrollWidth,
-  }));
-  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  await expect(hardware).toHaveAttribute('open', '');
+  await expect(page.getByTestId('card-address-summary')).toBeVisible();
 
   const pageWidth = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -2023,27 +2003,24 @@ test('top-bar Preferences opens the canonical Card preferences section', async (
 });
 
 for (const legacy of [
-  // Install, Preferences, and Batch production are full-body views without a
-  // section tab, so no tab is highlighted for them; their legacy hashes still
-  // resolve and stay in the URL as written.
-  { hash: '#screen=flash&mode=install', section: null, heading: 'Install Lightweaver' },
-  { hash: '#screen=flash', section: 'Advanced & Support', heading: 'Manual firmware tools' },
-  { hash: '#screen=installer', section: 'Advanced & Support', heading: 'Worker install' },
-  { hash: '#screen=production&job=moon-batch-7', section: null, heading: 'Batch production' },
-  { hash: '#screen=settings', section: null, heading: 'Preferences' },
+  // Install, Preferences, and Batch production are full-body takeovers.
+  // Flash and installer land on Home with the Advanced fold open.
+  { hash: '#screen=flash&mode=install', fold: null, heading: 'Install Lightweaver' },
+  { hash: '#screen=flash', fold: 'card-advanced-fold', heading: 'Manual firmware tools' },
+  { hash: '#screen=installer', fold: 'card-advanced-fold', heading: 'Worker install' },
+  { hash: '#screen=production&job=moon-batch-7', fold: null, heading: 'Batch production' },
+  { hash: '#screen=settings', fold: null, heading: 'Preferences' },
   // The old Setup rail destination lands on Card Home.
-  { hash: '#screen=setup', section: 'Home', heading: 'Set up your Lightweaver' },
+  { hash: '#screen=setup', fold: null, heading: 'Set up your Lightweaver' },
 ]) {
-  test(`legacy ${legacy.hash} stays intact and opens ${legacy.section || legacy.heading}`, async ({ page }) => {
+  test(`legacy ${legacy.hash} stays intact and opens ${legacy.fold || legacy.heading}`, async ({ page }) => {
     await page.goto(`/${legacy.hash}`, { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(new RegExp(`${legacy.hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
     await expect(page.locator('.rail-item.active')).toHaveAccessibleName('Card');
-    const sections = page.getByRole('navigation', { name: 'Hardware sections' });
-    if (legacy.section) {
-      await expect(sections.getByRole('button', { name: legacy.section, exact: true })).toHaveAttribute('aria-current', 'page');
-    } else {
-      await expect(sections.locator('[aria-current="page"]')).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
+    if (legacy.fold) {
+      await expect(page.getByTestId(legacy.fold)).toHaveAttribute('open', '');
     }
     await expect(page.getByRole('heading', { name: legacy.heading, exact: true }).first()).toBeVisible();
   });
@@ -2051,13 +2028,14 @@ for (const legacy of [
 
 test('new section navigation emits canonical Card hashes and moves focus to the section heading', async ({ page }) => {
   await page.goto('/#screen=flash', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
+  await page.getByTestId('card-hardware-fold').locator('summary').click();
 
   await expect(page).toHaveURL(/#screen=card&section=settings$/);
-  const heading = page.getByRole('heading', { name: 'Hardware settings', level: 1 });
+  const heading = page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 });
   await expect(heading).toBeFocused();
   expect(await heading.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
   expect(await heading.evaluate(element => Number.parseFloat(getComputedStyle(element).outlineWidth))).toBeGreaterThan(0);
+  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
   await expect(page.getByText('Card connection', { exact: true })).toBeVisible();
 });
 
@@ -2084,7 +2062,8 @@ test('legacy technician path uses the Card heading as the only h1', async ({ pag
   await page.goto('/#screen=flash', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: 'Advanced & Support', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('card-advanced-fold')).toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Manual firmware tools', level: 2 })).toBeVisible();
 });
 
@@ -2092,7 +2071,8 @@ test('legacy installer guide path uses the Card heading as the only h1', async (
   await page.goto('/#screen=installer', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: 'Advanced & Support', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('card-advanced-fold')).toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Worker install', level: 2 })).toBeVisible();
 });
 
@@ -2125,11 +2105,12 @@ test('embedded unsupported workshop does not add a nested main landmark', async 
 test('Advanced & Support exposes its tools without a collapsed disclosure', async ({ page }) => {
   await page.goto('/#screen=card&section=support', { waitUntil: 'domcontentloaded' });
 
+  const fold = page.getByTestId('card-advanced-fold');
+  await expect(fold).toHaveAttribute('open', '');
   for (const label of ['Technician firmware & logs', 'GPIO & install guide', 'Designer JSON', 'Recovery', 'Batch production']) {
-    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+    await expect(fold.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
-  await expect(page.locator('details')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Technician firmware & logs' }).click();
+  await fold.getByRole('button', { name: 'Technician firmware & logs' }).click();
   await expect(page.getByRole('heading', { name: 'Manual firmware tools' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Flash firmware' })).toBeVisible();
 });
@@ -2150,7 +2131,7 @@ test('an active firmware install keeps rail navigation locked to install', async
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('lw-install-active', { detail: { active: true } })));
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
+  await expect(page.getByTestId('card-hardware-fold')).toHaveCount(0);
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
   await page.getByRole('button', { name: 'Layout', exact: true }).click();

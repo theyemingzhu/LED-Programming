@@ -868,7 +868,7 @@ test('settings screen prioritizes card setup and keeps raw config advanced', asy
   // "Designer config" JSON is hidden by default and revealed with its own
   // Show/Hide JSON button — the old always-visible "Advanced" click target
   // and .lw-chip-settings-json class are gone.
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Advanced & Support' }).click();
+  await page.getByTestId('card-advanced-fold').locator('summary').click();
   await page.getByRole('button', { name: 'Designer JSON' }).click();
   await expect(page.locator('.set-json')).toHaveCount(0);
   await page.getByRole('button', { name: 'Show JSON' }).click();

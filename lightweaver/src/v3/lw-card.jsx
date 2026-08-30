@@ -34,36 +34,39 @@ import {
   issueSignedProductionCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
 
-// Section bar labels — three tabs. Home is the merged card page: the old
-// "Setup" ladder and the "Card status" overview were two tabs named for the
-// same box and read as two setups; both section routes now render one Card
-// Home (status header, journey action area, 4-phase ladder, evidence panels).
-// The tabs after it are the same hardware, unguided, for anyone who already
-// knows what they want to change. `install`, `preferences` and `workshop`
-// stay fully routable (#screen=card&section=…) but render as full-body views
-// without a tab: Install takes the whole body during an active install,
-// Preferences opens from the top bar, and Batch production is a manufacturing
-// surface reached from the Home link, the support tile, or a deep link
-// (#screen=production / #screen=card&section=workshop) — never a tab.
-const SECTION_LABELS = Object.freeze({
-  setup: 'Home',
-  settings: 'Hardware settings',
-  support: 'Advanced & Support',
-});
-// Both section routes that render Card Home. `overview` is the legacy
-// "Card status" section: every hash naming it still resolves, stays in the
-// URL as written (studioRoute keeps the whole section vocabulary), and lands
-// on the same Home.
-const HOME_SECTIONS = Object.freeze(['setup', 'overview']);
+// Card is one page. Home always shows the setup journey, the install action,
+// evidence panels, then Hardware and Advanced as folds. `settings` and
+// `support` stay in the URL vocabulary and open the matching fold.
+// `install` and `workshop` remain full-body takeovers. Preferences is not a
+// Card page — the top bar owns it; if that hash arrives we still render the
+// existing preferences takeover rather than growing a tab.
+const HOME_SECTIONS = Object.freeze(['setup', 'overview', 'settings', 'support']);
 const SECTION_HEADINGS = Object.freeze({
   setup: 'Set up your Lightweaver',
   overview: 'Set up your Lightweaver',
+  settings: 'Set up your Lightweaver',
+  support: 'Set up your Lightweaver',
   install: 'Install or update',
-  settings: 'Hardware settings',
-  support: 'Advanced & Support',
   preferences: 'Preferences',
   workshop: 'Batch production',
 });
+
+function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
+  return (
+    <details className="card-page-fold" data-testid={testId} open={open}>
+      <summary
+        onClick={event => {
+          event.preventDefault();
+          if (open) onClose();
+          else onOpen();
+        }}
+      >
+        {summary}
+      </summary>
+      <div className="card-page-fold-body">{children}</div>
+    </details>
+  );
+}
 
 function cardEditIntent() {
   return readCardEditIntent(window.location.search);
@@ -754,14 +757,12 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
 
   const cardProps = { connected, cardHost, cardLink, cardLifecycle, onConnectCard };
   // Home is the landing default too: any section this dispatch does not name
-  // renders it, exactly as the old overview fallback did.
+  // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
-    || !['install', 'settings', 'workshop', 'preferences', 'support'].includes(route.section);
+    || !['install', 'workshop', 'preferences'].includes(route.section);
   let content;
-  // Card Home: the guided journey (status header, action area, 4-phase
-  // ladder, resolution banners) followed by the evidence panels the old
-  // "Card status" overview carried. `section=setup` and `section=overview`
-  // are the same page.
+  // Card Home: the guided journey, the one install action, evidence panels,
+  // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
       <SetupScreen
@@ -801,6 +802,24 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onMatchedProjectVerified={onMatchedProjectVerified}
         onStartNewProject={onStartNewProject}
       />
+      <CardPageFold
+        testId="card-hardware-fold"
+        summary="Hardware"
+        open={route.section === 'settings'}
+        onOpen={() => onOpenSection('settings')}
+        onClose={() => onOpenSection('setup')}
+      >
+        <SettingsScreen embedded mode="card" {...cardProps} />
+      </CardPageFold>
+      <CardPageFold
+        testId="card-advanced-fold"
+        summary="Advanced"
+        open={route.section === 'support'}
+        onOpen={() => onOpenSection('support')}
+        onClose={() => onOpenSection('setup')}
+      >
+        <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />
+      </CardPageFold>
     </>
   );
   else if (route.section === 'install') content = (
@@ -814,54 +833,14 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       onCommissioningComplete={() => onOpenSection('overview')}
     />
   );
-  else if (route.section === 'settings') content = <SettingsScreen embedded mode="card" {...cardProps} />;
   else if (route.section === 'workshop') content = <ProductionScreen embedded cardHost={cardHost} cardLink={cardLink} onConnectCard={onConnectCard} />;
-  else if (route.section === 'preferences') content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
-  else content = <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />;
+  else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
-  // Batch production (route.section === 'workshop') renders outside the tab
-  // set: its own heading and kicker, no section tab highlighted.
   const workshop = route.section === 'workshop';
   const heading = SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
-  // The tab (and the mobile option) that speaks for the current section:
-  // `overview` highlights Home; the tab-less full-body sections (install,
-  // preferences, workshop) highlight nothing.
-  const activeTabKey = home ? 'setup' : SECTION_LABELS[route.section] ? route.section : '';
   return (
     <div className="screen card-workspace-screen">
       <div className="card-workspace">
-        <nav className="card-section-nav" aria-label="Hardware sections">
-          <div className="card-section-mobile">
-            <span className="card-section-mobile-label" aria-hidden="true">Hardware</span>
-            <label className="card-section-select-wrap">
-              <select
-                aria-label="Hardware section"
-                value={activeTabKey}
-                onChange={event => event.target.value && onOpenSection(event.target.value)}
-              >
-                <option value="" disabled>Choose a section</option>
-                {Object.entries(SECTION_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
-              <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
-                <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </label>
-          </div>
-          <div className="card-section-tabs">
-            {Object.entries(SECTION_LABELS).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                aria-current={activeTabKey === key ? 'page' : undefined}
-                onClick={() => onOpenSection(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </nav>
         <main className={`card-workspace-body${home ? ' lw-setup-body' : ''}`}>
           <header className="card-workspace-header">
             <span className="card-workspace-kicker">{workshop ? 'Manufacturing mode' : 'Lightweaver hardware'}</span>

@@ -1,26 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Setup is where the owner is ASKED to set the piece up. Hardware settings sat
-// beside it appearing to ask three of the same questions — colour order, card
-// address, and installing on the card.
-//
-// Only one of the three turned out to be a true duplicate. The other two are
-// the same words doing a different job, and deleting them was tried and
-// withdrawn because it removed working capability:
-//
-//   Colour order — the picker pushes an order to the card and refuses to claim
-//     success until the card reports it back. Setup asks the question; this
-//     tries the answer. Guard: screen-smoke "reports success only after exact
-//     state readback".
-//   Card address — Setup puts the card on the WiFi; this is where Studio LOOKS
-//     for it afterwards, including by raw IP when the name will not resolve.
-//     Guard: card-workspace "reachable recovering factory card uses URL IP".
-//   Install on card — a true duplicate. Setup installs the piece; this page
-//     only sends what this page can change, and now says so.
-//
-// This spec pins the distinction so the deletion is not attempted a third time.
+// Card Home is the install. Hardware fold keeps recovery and calibration —
+// card address and colour-order try-on. It must not offer a second
+// "Install on card" primary. Deleting that row used to be withdrawn; this
+// plan deletes it because Home now *is* that install.
 
 const HARDWARE_ROUTE = '/#screen=card&section=settings';
+const CARD_HOME = '/#screen=card';
 
 test.beforeEach(async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
@@ -29,17 +15,24 @@ test.beforeEach(async ({ page }) => {
 
 async function openHardware(page: Page) {
   await page.goto(HARDWARE_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
   await expect(page.getByTestId('card-address-summary')).toBeVisible({ timeout: 20_000 });
 }
 
-test('every control here says which job it is doing, so it does not read as a second Setup', async ({ page }) => {
+test('Hardware fold has no primary Install on card row', async ({ page }) => {
   await openHardware(page);
 
-  // The controls stay — each is also a recovery or calibration path. What
-  // changed is that each now says so, instead of silently repeating a
-  // question Setup already asked.
-  await expect(page.locator('.set-row', { hasText: 'Install on card' }).locator('.hh'))
-    .toContainText('First-time setup lives in Setup');
+  const fold = page.getByTestId('card-hardware-fold');
+  await expect(fold.locator('.set-row', { hasText: 'Install on card' })).toHaveCount(0);
+  await expect(fold.getByRole('button', { name: 'Install on card', exact: true })).toHaveCount(0);
+  await expect(fold.getByRole('button', { name: 'Open card installer' })).toHaveCount(0);
+  await expect(fold.getByRole('button', { name: 'Flash chip' })).toHaveCount(0);
+  await expect(fold.getByRole('button', { name: 'Installer guide' })).toHaveCount(0);
+});
+
+test('Card Home shows the commissioning install', async ({ page }) => {
+  await page.goto(CARD_HOME, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('commissioning-step')).toBeVisible({ timeout: 20_000 });
 });
 
 test('the card address stays editable, because it is also the recovery path', async ({ page }) => {
@@ -67,5 +60,6 @@ test('the colour-order picker stays, because trying an order is not asking for i
 
 test('the colour-order test deep link from the card still lands here', async ({ page }) => {
   await page.goto(`${HARDWARE_ROUTE}&tool=color-order`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
   await expect(page.getByTestId('color-order-summary')).toBeVisible({ timeout: 20_000 });
 });
