@@ -785,15 +785,7 @@ export function SetupScreen({
           {blocker === 'wifi' && <p role="status">The exact card is on its setup network. Finish Wi-Fi, then return here.</p>}
           {taskId === 'update-firmware' ? (
             <button type="button" className="btn primary" onClick={() => go('#screen=card&section=install')}>Install or update firmware</button>
-          ) : taskId === 'install-project' ? (
-            <button
-              type="button"
-              className="btn primary"
-              onClick={() => openCardFlow('install-project', { lifecycle: cardLifecycle, journey })}
-            >
-              Install project on card
-            </button>
-          ) : taskId === 'configure-wifi' ? (
+          ) : taskId === 'install-project' ? null : taskId === 'configure-wifi' ? (
             // The one entry contract decides where Wi-Fi continues: Install's
             // commissioning panel while a stage is resumable, otherwise the
             // Connect panel's setup-network join steps (phase 6). This screen

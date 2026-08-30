@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AutomaticInstallScreen, TechnicianFlashScreen } from './lw-flash.jsx';
 import { InstallerScreen } from './lw-installer.jsx';
+import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.jsx';
 import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
@@ -8,8 +9,6 @@ import { SetupScreen } from './lw-setup.jsx';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
-import { prepareCardDeployment } from '../lib/cardDeployment.js';
-import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { recoverCardLightsVerified, requireExactReadyCardStatus } from '../lib/cardRecoverLights.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
@@ -152,13 +151,6 @@ function CardHomePanels({
   const matchingProjectOffer = matchingProjectState.status !== 'idle'
     || Boolean(cardLink?.readiness?.productionJobId)
     || Boolean(cardLink?.readiness?.productionJobDigest);
-  let currentProjectInstallable = false;
-  try {
-    prepareCardStoragePayload(prepareCardDeployment(currentProject).runtimePackage);
-    currentProjectInstallable = true;
-  } catch {
-    currentProjectInstallable = false;
-  }
 
   // Detected-state presentation, keyed off the ONE diagnosis authority
   // (deriveCardLifecycle) instead of a private raw-link ladder. Each row
@@ -223,19 +215,16 @@ function CardHomePanels({
       tone: 'failure',
       message: 'Blank — load a project, or find this card’s strips first.',
       primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
-      secondary: { label: 'Install current project', section: 'settings', disabled: !currentProjectInstallable },
       tertiary: { label: 'Start a new project', action: 'new-project' },
     }),
     bench: () => ({
       tone: 'connecting',
       message: `${identity || 'A Lightweaver card'} is connected, but it is running the temporary Find-my-strips setup — not one of your projects. Install your project to replace it, run Find my strips again, or use Clear temporary setup under Checks & recovery below.`,
-      primary: { label: 'Install on card', section: 'settings' },
-      secondary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
+      primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
     }),
     readyForLightCheck: () => ({
       tone: 'connected',
       message: `${identity || 'A Lightweaver card'} is connected and ready for light check.`,
-      primary: { label: 'Install on card', section: 'settings' },
     }),
     checkingEvidence: () => ({
       tone: 'connecting',
@@ -342,7 +331,6 @@ function CardHomePanels({
       presentation = benchProject ? presentations.bench() : {
         tone: 'connecting',
         message: `${identity || 'This Lightweaver'} is connected. The project open in Studio has changed since it was installed — save it to the card to bring them back into step.`,
-        primary: { label: 'Install on card', section: 'settings' },
         secondary: openSupport,
       };
       break;
@@ -786,6 +774,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
+      />
+      <CardInstallAction
+        connected={connected}
+        cardHost={cardHost}
+        onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
       />
       <CardHomePanels
         {...cardProps}
