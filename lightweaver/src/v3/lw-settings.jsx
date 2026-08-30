@@ -523,9 +523,21 @@ const SettingsFieldContext = createContext(null);
                   <Row label="Layout & outputs" hint="Read-only — Layout owns structure and routing" stack>
                     <div className="set-outputs">
                       <div className="set-outputs-toolbar">
+                        {/* When the project could not be packaged, `config` is
+                            the empty-project fallback — a real, valid config,
+                            but NOT this project's. Printing its default 44
+                            pixels here would be a confident wrong number
+                            sitting under an alert that says the values are
+                            unavailable, which is worse than no number. */}
                         <div data-testid="output-routing-summary">
-                          <strong>{config.led.pixels} LEDs · {hardwareSections.length || hardwareSectionCount} sections</strong>
-                          <span>{routedOutputs.length || 1} {routedOutputs.length === 1 ? 'output' : 'outputs'} · {config.led.outputs.reduce((sum, output) => sum + (output.pixels || 0), 0)} LEDs routed</span>
+                          {deploymentError ? (
+                            <strong>LED totals unavailable until the wiring is fixed</strong>
+                          ) : (
+                            <>
+                              <strong>{config.led.pixels} LEDs · {hardwareSections.length || hardwareSectionCount} sections</strong>
+                              <span>{routedOutputs.length || 1} {routedOutputs.length === 1 ? 'output' : 'outputs'} · {config.led.outputs.reduce((sum, output) => sum + (output.pixels || 0), 0)} LEDs routed</span>
+                            </>
+                          )}
                         </div>
                         <div className="set-actions">
                           <button className="btn" type="button" onClick={openLayoutWire}>Edit in Layout</button>

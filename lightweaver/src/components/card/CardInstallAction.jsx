@@ -300,6 +300,7 @@ export function CardInstallAction({
           <section className="lw-wire-finish">
             <CardPushControl
               connected={connected}
+              yieldPrimary={yieldPrimary}
               board={cardTransportBoard}
               compiledWiring={compiledWiring}
               strips={strips}

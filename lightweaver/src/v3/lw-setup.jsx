@@ -1014,7 +1014,11 @@ export function SetupScreen({
               </>
             )}
             <div className="lw-setup-banner-actions">
-              <button type="button" className="btn primary" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+              {/* Same one-primary rule as the rest of Card Home. This banner
+                  can render while the ladder still has an active task (an
+                  exact project match during a `confirming` lifecycle, for
+                  one), and two primaries then ask the owner to arbitrate. */}
+              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
               {firmwareBehind && (
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>

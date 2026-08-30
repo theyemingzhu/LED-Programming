@@ -67,6 +67,13 @@ export function CardPushControl({
   projectName,
   standaloneController,
   disabled = false,
+  // True while a Setup ladder above this control already owns the page's
+  // primary action. Applies to the Install button ONLY. The wiring-candidate
+  // confirmations below ("Start light test", "The lights look correct") stay
+  // primary whatever else is on the page: the card is holding its previous
+  // working wiring and will put it back unless a human answers, so at that
+  // moment they ARE the page's next step and nothing outranks them.
+  yieldPrimary = false,
   children,
 }) {
   const { projectLifecycle, markProjectInstalled, markCardLookConfirmed } = useProject();
@@ -291,7 +298,7 @@ export function CardPushControl({
     <div className="la-card-push">
       <div className="la-card-push-row">
         <button
-          className="btn primary la-card-push-btn"
+          className={yieldPrimary ? 'btn la-card-push-btn' : 'btn primary la-card-push-btn'}
           data-testid="layout-send-to-card"
           disabled={disabled || pushing || wiringTransactionActive}
           onClick={() => pushToCard()}
