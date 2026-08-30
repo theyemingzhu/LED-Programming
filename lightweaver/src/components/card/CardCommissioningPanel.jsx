@@ -179,14 +179,22 @@ function commissioningMarkerFrame(snapshot = {}) {
   return frame;
 }
 
-export function CardCommissioningSteps({ stage = 'connect-card' }) {
+export function CardCommissioningSteps({ stage = 'connect-card', onSelect, disabled = false }) {
   const activeIndex = Math.max(0, CARD_COMMISSIONING_STAGES.indexOf(stage));
   return (
     <ol className="card-commissioning-steps" aria-label="Card setup progress">
       {CARD_COMMISSIONING_STAGES.map((id, index) => (
-        <li key={id} className={index < activeIndex ? 'complete' : index === activeIndex ? 'active' : ''} aria-current={index === activeIndex ? 'step' : undefined}>
-          <span aria-hidden="true">{index < activeIndex ? '✓' : index + 1}</span>
-          {STAGE_LABELS[id]}
+        <li key={id} className={index < activeIndex ? 'complete' : index === activeIndex ? 'active' : ''}>
+          <button
+            type="button"
+            aria-label={STAGE_LABELS[id]}
+            aria-current={index === activeIndex ? 'step' : undefined}
+            disabled={disabled}
+            onClick={() => onSelect?.(id)}
+          >
+            <span aria-hidden="true">{index < activeIndex ? '✓' : index + 1}</span>
+            {STAGE_LABELS[id]}
+          </button>
         </li>
       ))}
     </ol>
@@ -228,6 +236,8 @@ export function CardCommissioningPanel({
   link = {},
   onReconnect,
   onComplete,
+  onSelectStage,
+  viewStage = '',
   openSetupCard = connectCardLink,
   pushProject = pushConfigToCard,
   readProjectEvidence = readCardProjectEvidence,
@@ -657,13 +667,13 @@ export function CardCommissioningPanel({
 
   if (!flow && lightCheckState === 'complete') return (
     <div className="card-commissioning" aria-live="polite">
-      <CardCommissioningSteps stage="check-lights" />
+      <CardCommissioningSteps stage="check-lights" onSelect={onSelectStage} />
       <h3>Light check complete</h3>
       <p>The exact temporary wiring was confirmed on the card and is now its working setup.</p>
       {onComplete && <button type="button" className="btn primary" onClick={onComplete}>Done</button>}
     </div>
   );
-  if (!flow) return <div className="card-commissioning" aria-live="polite"><CardCommissioningSteps stage="connect-card" />{failure && <p className="card-connection-failure" role="alert">{failure}</p>}</div>;
+  if (!flow) return <div className="card-commissioning" aria-live="polite"><CardCommissioningSteps stage="connect-card" onSelect={onSelectStage} />{failure && <p className="card-connection-failure" role="alert">{failure}</p>}</div>;
 
   // Restore is deliberately NOT routed through cardProjectAdoption: adoption
   // is a card→Studio read (rebuild the open project from the card's own
@@ -1086,10 +1096,12 @@ export function CardCommissioningPanel({
     }
   };
 
+  const displayStage = CARD_COMMISSIONING_STAGES.includes(viewStage) ? viewStage : flow.stage;
+
   return (
-    <div className="card-commissioning" data-stage={flow.stage} aria-live="polite">
-      <CardCommissioningSteps stage={flow.stage} />
-      {flow.stage === 'install-safely' && (
+    <div className="card-commissioning" data-stage={displayStage} aria-live="polite">
+      <CardCommissioningSteps stage={displayStage} onSelect={onSelectStage} />
+      {displayStage === 'install-safely' && (
         <>
           <h3>Install safely</h3>
           <p>{flow.source === 'web-serial'
@@ -1099,7 +1111,7 @@ export function CardCommissioningPanel({
           {interruptedInstallEvidence && !interruptedInstallEvidence.ok && link?.card?.id && <p className="card-connection-failure" role="alert">{identityMessage(interruptedInstallEvidence.reason, flow.installTarget, link.card)} Nothing was changed.</p>}
         </>
       )}
-      {flow.stage === 'set-up-card' && (
+      {displayStage === 'set-up-card' && (
         <>
           <h3>Set up card</h3>
           {!flow.cardAcknowledgedAt && detection.state === 'return-to-gallery' && (
@@ -1205,7 +1217,7 @@ export function CardCommissioningPanel({
           )}
         </>
       )}
-      {flow.stage === 'check-lights' && (
+      {displayStage === 'check-lights' && (
         <>
           <h3>Check lights</h3>
           {!lightCheckPreflight.ok && <p role="status">Checking card. Light-check controls stay locked until the exact card is stable and command-ready.</p>}

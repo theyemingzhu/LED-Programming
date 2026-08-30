@@ -94,20 +94,21 @@ export function firmwareLabel(source) {
 export function describeFirmwareUpdate({ installed = null, available = null } = {}) {
   const availableLabel = firmwareLabel(available);
   const installedLabel = firmwareLabel(installed);
-  const availableVersion = versionOf(available);
   const caution = 'Either way this erases the card\'s Wi-Fi, its piece and its settings.';
 
   if (!availableLabel) {
     return { state: 'unknown', installedLabel: '', availableLabel: '', headline: '', caution };
   }
-  const target = availableVersion ? `${availableVersion} · ${availableLabel}` : availableLabel;
+  // The official line already names the release. Headlines here use Build only
+  // so a stale remembered VERSION cannot contradict it.
+  const target = availableLabel;
 
   if (!installedLabel) {
     return {
       state: 'unknown',
       installedLabel: '',
       availableLabel,
-      headline: `This card has not been connected to Studio before, so what it is running now is unknown. This installs ${target}.`,
+      headline: `Studio does not know what firmware is on this card yet. This installs ${target}.`,
       caution,
     };
   }
@@ -121,7 +122,7 @@ export function describeFirmwareUpdate({ installed = null, available = null } = 
       state: 'same',
       installedLabel,
       availableLabel,
-      headline: `This card is already on ${target}. Installing again changes nothing about the firmware.`,
+      headline: 'This card is already on the official firmware. Installing again changes nothing about the firmware.',
       caution,
     };
   }

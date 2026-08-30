@@ -258,6 +258,34 @@ export function commissioningFlowMatchesProject(flow, {
   }
 }
 
+export function selectCardCommissioningStage(flow, stage, { card = null, now = Date.now() } = {}) {
+  requireFlow(flow);
+  if (!CARD_COMMISSIONING_STAGES.includes(stage)) throw new Error('Unknown card setup stage');
+  const next = {
+    ...clone(flow),
+    updatedAt: Math.max(Number(now), Number(flow.updatedAt)),
+  };
+  if (!next.expectedCard && card) {
+    const expectedCard = {
+      id: text(card.id || card.cardId, 64),
+      firmwareVersion: text(card.firmwareVersion, 48),
+      buildId: text(card.buildId, 96),
+    };
+    if (expectedCard.id && expectedCard.firmwareVersion && expectedCard.buildId) {
+      next.expectedCard = expectedCard;
+    }
+  }
+  const candidate = { ...next, stage };
+  try {
+    requireFlow(candidate);
+    return candidate;
+  } catch {
+    // Lights cannot be saved before the project is on the card. The screen can
+    // still open that step; the persisted flow stays on a legal stage.
+    return next;
+  }
+}
+
 export function completeCardInstall(flow, result = {}, { now = Date.now() } = {}) {
   requireFlow(flow);
   if (flow.stage !== 'install-safely' && flow.stage !== 'set-up-card') throw new Error('Card installation is not awaiting a verified result');

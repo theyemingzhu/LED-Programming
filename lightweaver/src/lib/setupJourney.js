@@ -1,4 +1,5 @@
 import { PORT_ROLE_STRIP } from './portRoles.js';
+import { isUncountedHeadroomCount } from './discoveryCommit.js';
 
 // Setup is expressed as four owner outcomes. Firmware and Wi-Fi are evidence
 // blockers inside connection, never durable numbered work of their own.
@@ -143,6 +144,33 @@ function stripOutputs(project) {
   ));
 }
 
+function isCountedLight(value) {
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 && !isUncountedHeadroomCount(count);
+}
+
+export function setupTypedLedCountPin({ status, project } = {}) {
+  const live = (Array.isArray(status?.outputs) ? status.outputs : [])
+    .filter(output => Math.trunc(Number(output?.pixels) || 0) > 0);
+  if (live.length === 1) {
+    const pin = Number(live[0].pin ?? live[0].gpio);
+    return Number.isFinite(pin) ? pin : null;
+  }
+  const ports = stripOutputs(project);
+  if (ports.length === 1) return Number(ports[0].pin);
+  return null;
+}
+
+export function setupOffersTypedLedCount({ status, project } = {}) {
+  if (setupTypedLedCountPin({ status, project }) == null) return false;
+  const live = (Array.isArray(status?.outputs) ? status.outputs : [])
+    .filter(output => Math.trunc(Number(output?.pixels) || 0) > 0);
+  if (live.length && live.every(output => isUncountedHeadroomCount(output.pixels))) return true;
+  const ports = stripOutputs(project);
+  if (!ports.length) return true;
+  return !ports.every(entry => isCountedLight(entry.pixelCount));
+}
+
 function confirmedColor(project) {
   const led = project?.devices?.standaloneController?.led;
   return led?.colorOrderConfirmed === true && Boolean(String(led?.colorOrder || '').trim());
@@ -152,7 +180,7 @@ function lightProgress(project) {
   const outputs = stripOutputs(project);
   const outputDone = outputs.length > 0;
   const colorDone = outputDone && confirmedColor(project);
-  const countDone = colorDone && outputs.every(output => Number(output.pixelCount) > 0);
+  const countDone = colorDone && outputs.length > 0 && outputs.every(output => isCountedLight(output.pixelCount));
   // StripDiscovery persists a count only after its final/next-dark marker has
   // been accepted, so the saved count is also the durable boundary evidence.
   const boundaryDone = countDone;

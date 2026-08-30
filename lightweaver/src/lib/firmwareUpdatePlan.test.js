@@ -57,7 +57,7 @@ test('an update states both ends and the direction', () => {
   assert.equal(plan.state, 'update');
   assert.equal(plan.installedLabel, 'Build 1084');
   assert.equal(plan.availableLabel, 'Build 1092');
-  assert.match(plan.headline, /on Build 1084\. This updates it to 1\.0\.0 · Build 1092\./);
+  assert.match(plan.headline, /on Build 1084\. This updates it to Build 1092\./);
 });
 
 // Installing the build already on the card is a real thing owners do by accident.
@@ -65,8 +65,21 @@ test('an update states both ends and the direction', () => {
 test('the same build says so plainly instead of implying an upgrade', () => {
   const plan = describeFirmwareUpdate({ installed: card(1092), available: card(1092) });
   assert.equal(plan.state, 'same');
-  assert.match(plan.headline, /already on 1\.0\.0 · Build 1092/);
+  assert.match(plan.headline, /already on the official firmware/);
   assert.doesNotMatch(plan.headline, /updates/);
+});
+
+// A remembered VERSION can lag the official label for the same build. Printing
+// both makes the screen contradict itself (1.1.15 vs 1.1.30) instead of saying
+// the one fact that matters: this is already the official firmware.
+test('the same build with a stale version string names official firmware once', () => {
+  const plan = describeFirmwareUpdate({
+    installed: card(1446, 'a'.repeat(40), '1.1.15'),
+    available: card(1446, 'a'.repeat(40), '1.1.30'),
+  });
+  assert.equal(plan.state, 'same');
+  assert.match(plan.headline, /already on the official firmware/);
+  assert.doesNotMatch(plan.headline, /1\.1\.15|1\.1\.30/);
 });
 
 test('the same build id counts as the same even without numbers', () => {
@@ -92,8 +105,8 @@ test('a card this browser has never met is reported as unknown, not as a target'
   const plan = describeFirmwareUpdate({ installed: null, available: card(1092) });
   assert.equal(plan.state, 'unknown');
   assert.equal(plan.installedLabel, '');
-  assert.match(plan.headline, /not been connected to Studio before/);
-  assert.match(plan.headline, /This installs 1\.0\.0 · Build 1092\./);
+  assert.match(plan.headline, /does not know what firmware is on this card yet/);
+  assert.match(plan.headline, /This installs Build 1092\./);
 });
 
 test('an unnumbered card is replaced, not "updated" — the direction is unprovable', () => {
@@ -115,7 +128,7 @@ test('direct USB stable semver proves an update when build numbers are unavailab
     },
   });
   assert.equal(plan.state, 'update');
-  assert.match(plan.headline, /updates it to 1\.1\.3 · Build 1223/);
+  assert.match(plan.headline, /updates it to Build 1223/);
   assert.doesNotMatch(plan.headline, /replaces/);
 });
 

@@ -13,6 +13,7 @@ import {
   commissioningShouldAutoRestore,
   commissioningShouldSuppressConnectOverlay,
   selectCommissioningCardAcknowledgement,
+  selectCardCommissioningStage,
   commissioningInitialConfigAuthority,
   beginCardCommissioning,
   beginCardRestorationMutation,
@@ -123,6 +124,29 @@ test('uses one exact four-stage commissioning vocabulary', () => {
     'check-lights',
   ]);
   assert.equal(Object.isFrozen(CARD_COMMISSIONING_STAGES), true);
+});
+
+// The stepper is a map, not a lock. An already-installed card must be able to
+// open setup or lights without flashing, and to walk back to install.
+test('any commissioning stage can be opened from any other', () => {
+  const flow = beginCardCommissioning({
+    source: 'web-serial',
+    operation: 'install-current-release',
+    projectRecord,
+    projectRevision: 7,
+    projectGeneration: 4,
+  });
+  assert.equal(flow.stage, 'install-safely');
+  const setup = selectCardCommissioningStage(flow, 'set-up-card', {
+    card: { id: 'lw-aabbccddeeff', firmwareVersion: '1.1.30', buildId: 'a'.repeat(40) },
+  });
+  assert.equal(setup.stage, 'set-up-card');
+  assert.equal(setup.expectedCard.id, 'lw-aabbccddeeff');
+  const lights = selectCardCommissioningStage(setup, 'check-lights');
+  assert.equal(lights.stage, 'set-up-card');
+  const back = selectCardCommissioningStage(setup, 'connect-card');
+  assert.equal(back.stage, 'connect-card');
+  assert.equal(selectCardCommissioningStage(back, 'install-safely').stage, 'install-safely');
 });
 
 test('derives the firmware card identity from the ESP USB MAC byte order', () => {
