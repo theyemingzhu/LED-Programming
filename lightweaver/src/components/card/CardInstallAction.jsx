@@ -23,7 +23,15 @@ export function CardInstallAction({
   onAdjustBoundary,
   onAdjustOutput,
   mutationError = '',
+  // True while the Setup ladder above is already offering the page's primary
+  // action. Card Home renders three surfaces that each believe they own the
+  // next step; only one may wear the primary style at a time, and the ladder
+  // wins because it is the only one that knows which phase the owner is in.
+  yieldPrimary = false,
 }) {
+  // `cta` is the class every headline button in this component uses. Kept as
+  // one binding so a future branch cannot forget the rule.
+  const cta = yieldPrimary ? 'btn lww-cta' : 'btn primary lww-cta';
   const {
     wiring, updateWiring, compiledWiring, patchBoard,
     projectId, projectName, standaloneController, setStandaloneController, confirmedCardLook,
@@ -189,14 +197,18 @@ export function CardInstallAction({
   };
 
   return (
-    <WireHoverDescription className="lww-flow" data-testid="commissioning-step">
+    <WireHoverDescription className="lww-flow" data-testid="commissioning-step" aria-label="Check and install on this card">
+      {/* This surface used to begin with a bare button sitting directly under
+          the ladder's last phase description, so "Start LED check" read as
+          that phase's button and was not. It is its own thing and says so. */}
+      <h2 className="lww-flow-heading">Check and install on this card</h2>
       {cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>
           <p className="lww-flow-message" data-testid="wire-blank-card-message">{STRIP_DISCOVERY_BLANK_MESSAGE}</p>
           <button
             type="button"
-            className="btn primary lww-cta"
+            className={cta}
             data-testid="wire-find-strips"
             title="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
             data-tooltip="Open strip discovery, which sets the card up once and then counts each strip with its own LEDs."
@@ -212,7 +224,7 @@ export function CardInstallAction({
               : 'Every strip needs a GPIO and a place in the first-to-last wiring order.'}
           </p>
           <WiringPreflight compiled={compiledWiring} mutationError={mutationError} />
-          <button type="button" className="btn primary lww-cta" title="Open the Wire workspace to assign GPIOs and arrange the physical LED order." data-tooltip="Open the Wire workspace to assign GPIOs and arrange the physical LED order." onClick={onEditInWire}>Edit in Wire</button>
+          <button type="button" className={cta} title="Open the Wire workspace to assign GPIOs and arrange the physical LED order." data-tooltip="Open the Wire workspace to assign GPIOs and arrange the physical LED order." onClick={onEditInWire}>Edit in Wire</button>
         </>
       ) : !commissioningVerified ? (
         wiring.locked ? (
@@ -227,7 +239,7 @@ export function CardInstallAction({
             <p className="lww-flow-message">This wiring has not been checked on the real lights yet.</p>
             <button
               type="button"
-              className="btn primary lww-cta"
+              className={cta}
               data-testid="unlock-and-check"
               title="Reopen the wiring and start the check that lights the real LEDs."
               data-tooltip="Reopen the wiring and start the check that lights the real LEDs."
@@ -243,7 +255,7 @@ export function CardInstallAction({
               controller={standaloneController}
               setController={setStandaloneController}
             />
-            <button type="button" className="btn primary lww-cta" data-testid="color-check-done" title="Return to the wiring check with the corrected colour order." data-tooltip="Return to the wiring check with the corrected colour order." onClick={() => setColorCheckFirst(false)}>Back to the light check</button>
+            <button type="button" className={cta} data-testid="color-check-done" title="Return to the wiring check with the corrected colour order." data-tooltip="Return to the wiring check with the corrected colour order." onClick={() => setColorCheckFirst(false)}>Back to the light check</button>
           </>
         ) : checkFlowOpen && !physicallyVerified ? (
           <WiringBenchTest
@@ -277,7 +289,7 @@ export function CardInstallAction({
                 This check lights the real LEDs — use <b>Connect Lightweaver</b> in the footer first.
               </p>
             )}
-            <button type="button" className="btn primary lww-cta" data-testid="start-led-check" title="Begin or resume the guided check that lights the real LEDs to verify each run." data-tooltip="Begin or resume the guided check that lights the real LEDs to verify each run." onClick={() => setCheckFlowOpen(true)}>
+            <button type="button" className={cta} data-testid="start-led-check" title="Begin or resume the guided check that lights the real LEDs to verify each run." data-tooltip="Begin or resume the guided check that lights the real LEDs to verify each run." onClick={() => setCheckFlowOpen(true)}>
               {physicallyVerified ? 'Finish the LED check' : 'Start LED check'}
             </button>
           </>

@@ -371,3 +371,29 @@ test('cardFooterNeedsSave is true only for Save to card labels', () => {
   assert.equal(cardFooterNeedsSave({ label: 'Connected' }), false);
   assert.equal(cardFooterNeedsSave({ label: 'Not connected' }), false);
 });
+
+// `label` is the FOOTER chip's text and is an errand you press ("Save to
+// card"). `connectionLabel` is Setup's identity row, whose Connection field
+// answers one question only: is Studio talking to this card? A drifted or
+// blank card IS connected — the drift is the Installed field's job — and
+// printing the errand in both put "Save to card" twice in a four-field row.
+test('connectionLabel states the link, never the errand', () => {
+  const cases = [
+    // [input, expected label (footer chip), expected connectionLabel (row)]
+    [{ link: READY_LINK, project: { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) } }, 'Connected', 'Connected'],
+    [{ link: READY_LINK, project: { id: 'piece-b', revision: 7, fingerprint: 'b'.repeat(64) } }, 'Save to card', 'Connected'],
+    [{
+      link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, requestedPixels: 41 } },
+      project: { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64), totalPixels: 39 },
+    }, 'Save to card', 'Connected'],
+    [{ link: { ...READY_LINK, cardBlank: true } }, 'Needs project', 'Connected'],
+    // Everything that is genuinely a link-level verdict is unchanged.
+    [{ link: { reason: 'firmware-too-old' } }, 'Needs attention', 'Needs attention'],
+    [{ link: {} }, 'Not connected', 'Not connected'],
+  ];
+  for (const [input, label, connectionLabel] of cases) {
+    const lifecycle = deriveCardLifecycle(input);
+    assert.deepEqual({ label: lifecycle.label, connectionLabel: lifecycle.connectionLabel },
+      { label, connectionLabel });
+  }
+});

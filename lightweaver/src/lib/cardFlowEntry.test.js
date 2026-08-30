@@ -229,3 +229,29 @@ test('openCardFlow executes the resolution and always returns it', () => {
     globalThis.CustomEvent = originalCustomEvent;
   }
 });
+
+// A card that was just flashed and holds a saved project waiting to go back on
+// it: the Install screen's commissioning panel is already mid-conversation with
+// this exact card, so `install-project` keeps the owner there instead of
+// routing to a Setup task whose button would be the one it is standing on.
+// Without a resumable stage it stays an ordinary Setup install — and it is
+// never the firmware flasher, which is what `update-firmware` is for.
+test('install-project resumes commissioning only while a stage is resumable', () => {
+  assert.deepEqual(
+    resolveCardIntent('install-project', { ...NEEDS_PROJECT, resumableCommissioning: true }),
+    { action: 'route', hash: '#screen=card&section=install' },
+  );
+  assert.deepEqual(
+    resolveCardIntent('install-project', { ...NEEDS_PROJECT, resumableCommissioning: false }),
+    { action: 'route', hash: SETUP_TASK('install-project') },
+  );
+  assert.deepEqual(
+    resolveCardIntent('install-project', NEEDS_PROJECT),
+    { action: 'route', hash: SETUP_TASK('install-project') },
+  );
+  // update-firmware is unmoved by commissioning state: it is the flasher.
+  assert.deepEqual(
+    resolveCardIntent('update-firmware', { ...NEEDS_PROJECT, resumableCommissioning: true }),
+    { action: 'route', hash: '#screen=card&section=install' },
+  );
+});

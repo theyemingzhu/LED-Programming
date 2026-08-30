@@ -85,7 +85,16 @@ export function resolveCardIntent(intent, context = {}) {
     case 'update-firmware':
       return route('#screen=card&section=install');
     case 'install-project':
-      return route(setupTaskRoute('install-project'));
+      // Same rule as configure-wifi below: a resumable commissioning stage
+      // means the Install screen's commissioning panel is already
+      // mid-conversation with this exact card and holds the saved project
+      // waiting to go back on it. Routing past that to the ordinary setup
+      // task left the owner on a task with nothing to press. Without a
+      // resumable stage this is an ordinary project install and stays on
+      // Setup — it is never the firmware flasher.
+      return context.resumableCommissioning === true
+        ? route('#screen=card&section=install')
+        : route(setupTaskRoute('install-project'));
     case 'configure-wifi':
       // Wi-Fi is a JOIN problem unless an in-flight commissioning stage owns
       // the owner's next step. With a resumable stage, the Install screen's
@@ -126,7 +135,8 @@ export function hasResumableCommissioning(flow = readCardCommissioning()) {
 export function openCardFlow(intent, context = {}) {
   // The resolver stays pure: commissioning state is an input. Callers that
   // already know it pass it; everyone else gets it read here, at call time.
-  const enriched = intent === 'configure-wifi' && context.resumableCommissioning === undefined
+  const enriched = (intent === 'configure-wifi' || intent === 'install-project')
+    && context.resumableCommissioning === undefined
     ? { ...context, resumableCommissioning: hasResumableCommissioning() }
     : context;
   const resolution = resolveCardIntent(intent, enriched);

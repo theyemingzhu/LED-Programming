@@ -373,3 +373,16 @@ function stableJson(value) {
   }
   return JSON.stringify(value);
 }
+
+// What a caller renders while `prepareCardDeployment` cannot run at all.
+// It exists so a project Studio is unable to package is a REPORTED state
+// rather than a render-time throw: an unpackageable project used to take down
+// every screen that derived a deployment during render, which since Card Home
+// absorbed the Hardware settings meant taking down Card Home itself.
+//
+// Built from an EMPTY project rather than hand-written, so it is a real,
+// correctly shaped deployment by construction. A hand-written `{}` config was
+// the first attempt and it simply moved the crash one line down, to the next
+// screen that read `config.led`. An empty project has no runs and no strips,
+// so there is nothing for the packager to find inconsistent.
+export const EMPTY_CARD_DEPLOYMENT = prepareCardDeployment({});

@@ -274,3 +274,13 @@
 .wire-discovered-recount {
   align-self: flex-start;
 }
+
+/* The check-and-install surface names itself, so its first button can never
+   be mistaken for the button of the setup phase rendered directly above it. */
+.lww-flow-heading {
+  margin: 0;
+  color: var(--text-hi);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}

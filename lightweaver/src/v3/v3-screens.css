@@ -1354,3 +1354,53 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .strip-discovery-skipped,
 .strip-discovery-warnings { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 4px; color: var(--warn); font-size: 12.5px; }
 .strip-discovery-stream { margin: 8px 0; }
+
+/* Checks & recovery: a disclosure that opens itself for the cards that need
+   it (see the comment at its render site in lw-card.jsx). Styled as the panel
+   it already was, so folding it changed no visual language. */
+.card-checks-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.card-checks-panel > summary::-webkit-details-marker { display: none; }
+.card-checks-panel > summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: var(--accent);
+}
+.card-checks-panel[open] > summary::before { content: '▾'; }
+.card-checks-panel > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.card-checks-panel > summary > h2 { margin: 0; }
+
+/* "Other ways to resolve this" — the three alternatives to adopting the
+   card's project, one click from the recommendation rather than beside it. */
+.lw-setup-alternatives > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--text-mid);
+  font-size: 13px;
+}
+.lw-setup-alternatives > summary::-webkit-details-marker { display: none; }
+.lw-setup-alternatives > summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: var(--accent);
+}
+.lw-setup-alternatives[open] > summary::before { content: '▾'; }
+.lw-setup-alternatives > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}

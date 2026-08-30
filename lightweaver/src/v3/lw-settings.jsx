@@ -24,7 +24,7 @@ import {
   normalizeSavedLooks,
   normalizeSectionVisualLook,
 } from '../lib/sectionLookModel.js';
-import { prepareCardDeployment } from '../lib/cardDeployment.js';
+import { EMPTY_CARD_DEPLOYMENT, prepareCardDeployment } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { DEFAULT_CIRCLE_SECTION_COUNT } from '../lib/defaultCircleLayout.js';
 import {
@@ -181,18 +181,43 @@ const SettingsFieldContext = createContext(null);
     // ── Derived card / hardware data (mirrors the old ChipScreen) ──────
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const zones = useMemo(() => patchBoardToZones(board, strips), [board, strips]);
-    const preparedDeployment = useMemo(
-      () => prepareCardDeployment({
-        projectId,
-        projectName,
-        projectRevision: projectLifecycle.editedRevision,
-        strips,
-        patchBoard: board,
-        compiledWiring,
-        standaloneController,
-      }),
+    // prepareCardDeployment THROWS on an inconsistent project (a wiring run
+    // that references a strip the project no longer has, for instance). It ran
+    // bare in this memo, so the throw happened during render.
+    //
+    // That was survivable while Settings was its own Card tab — the owner lost
+    // one tab. It is not survivable now: this screen is mounted inside Card
+    // Home's Hardware fold, and a <details> renders its children whether or
+    // not it is open, so one drifted project took down the whole of Card Home
+    // to the workspace-recovery boundary. The owner's main screen, gone,
+    // because of a stale run id.
+    //
+    // A project Studio cannot package is a fact to report, not a crash: the
+    // deployment-shaped parts of this screen stand down and say why, and
+    // everything else on Card Home keeps working.
+    const preparedDeploymentAttempt = useMemo(
+      () => {
+        try {
+          return {
+            deployment: prepareCardDeployment({
+              projectId,
+              projectName,
+              projectRevision: projectLifecycle.editedRevision,
+              strips,
+              patchBoard: board,
+              compiledWiring,
+              standaloneController,
+            }),
+            error: '',
+          };
+        } catch (error) {
+          return { deployment: null, error: error?.message || 'This project cannot be packaged for the card yet.' };
+        }
+      },
       [projectId, projectName, projectLifecycle.editedRevision, strips, board, compiledWiring, standaloneController],
     );
+    const deploymentError = preparedDeploymentAttempt.error;
+    const preparedDeployment = preparedDeploymentAttempt.deployment || EMPTY_CARD_DEPLOYMENT;
     const runtimePackage = preparedDeployment.runtimePackage;
     const config = runtimePackage.config;
     const configJson = useMemo(() => JSON.stringify(config, null, 2), [config]);
@@ -393,6 +418,15 @@ const SettingsFieldContext = createContext(null);
               <div className="set-col">
                 <section className="card set-card">
                   <div className="sec-h"><span className="t">Card connection</span><span className="m">{directPushAvailable ? 'local card write' : 'copy or download'}</span></div>
+                  {/* Studio could not package this project for the card. Said
+                      here, plainly, instead of thrown during render — see the
+                      comment on preparedDeploymentAttempt above. */}
+                  {deploymentError && (
+                    <p role="alert" data-testid="card-deployment-error">
+                      This project cannot be packaged for the card yet, so the values below are
+                      unavailable. {deploymentError} Open Layout and fix the wiring, then come back.
+                    </p>
+                  )}
                   {/* Setup gets the card onto the WiFi. This is where Studio
                       LOOKS for it afterwards — the escape hatch when the name
                       will not resolve and only a raw IP will do, which is the

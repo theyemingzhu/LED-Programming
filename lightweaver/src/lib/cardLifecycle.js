@@ -68,8 +68,27 @@ function normalizedFingerprint(value) {
   return normalized(value).toLowerCase();
 }
 
+// LABELS is the FOOTER chip's vocabulary: a chip is a thing you press, so its
+// text is an errand ("Save to card"). Setup's identity row is not a chip — it
+// is the one status on Card Home, and its Connection field answers exactly one
+// question: is Studio talking to this card? A card whose project has drifted
+// IS connected; the drift is what the Installed field is for. Printing the
+// errand in both fields put "Save to card" twice in a four-field row, which is
+// the same chorus the Home compression removed from the prose.
+const CONNECTION_LABELS = Object.freeze({
+  'project-mismatch': 'Connected',
+  'length-mismatch': 'Connected',
+  'content-mismatch': 'Connected',
+  'setup-required': 'Connected',
+  'discovery-setup': 'Connected',
+});
+
 function lifecycleLabel(state) {
   return LABELS[state] || LABELS.disconnected;
+}
+
+function lifecycleConnectionLabel(state) {
+  return CONNECTION_LABELS[state] || LABELS[state] || LABELS.disconnected;
 }
 
 function lifecycleSetupTask(state) {
@@ -240,6 +259,7 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
     label: state === 'discovery-setup' && hasCountedLights(project, readiness)
       ? 'Lights counted'
       : lifecycleLabel(state),
+    connectionLabel: lifecycleConnectionLabel(state),
     setupTaskId: lifecycleSetupTask(state),
     reason: normalized(updateEvidence?.reason || updateEvidence?.rollbackReason || link.reason),
   });

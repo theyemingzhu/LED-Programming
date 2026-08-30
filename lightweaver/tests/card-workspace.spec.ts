@@ -366,7 +366,6 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
       test: rect('.sb-teststrip'),
       control: rect('.card-status-control'),
       copy: rect('.card-status-copy'),
-      name: rect('.card-status-name'),
       state: rect('.card-status-state'),
     };
   });
@@ -374,7 +373,9 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
   expect(regions.firmware.right).toBeLessThanOrEqual(regions.studio.left);
   expect(regions.studio.right).toBeLessThanOrEqual(regions.test.left);
   expect(regions.control.right).toBeLessThanOrEqual(regions.card.right);
-  expect(regions.name.right).toBeLessThanOrEqual(regions.state.left);
+  // The footer shows the status word only — the card/project name region it
+  // used to order against was removed deliberately, so there is nothing left
+  // to sit to the left of the state.
   expect(regions.copy.right).toBeLessThanOrEqual(regions.control.right);
 });
 
@@ -808,6 +809,15 @@ test('Card overview delegates resumable install and test work to exact Setup tas
   // Card Home renders check + install in place (the old "Install project on
   // card" jump is gone).
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  // "delegates to exact Setup tasks" is what this test is named for: the card
+  // was flashed and its saved project is waiting to go back on it, so the
+  // ladder's active task carries that door. It used to assert the commissioning
+  // panel's own 'Restore saved project' button — an artifact of the old jump
+  // straight to the firmware screen. The task rendered NOTHING for a while
+  // after that jump was removed, which is the hole this now guards.
+  await expect(page.getByTestId('setup-resume-commissioning')).toBeVisible();
+  await page.getByTestId('setup-resume-commissioning').click();
+  await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible();
 
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
@@ -1427,8 +1437,10 @@ test('Hardware offers an exact current project without intent and auto-opens onl
     expectedCard: { id: cardStatus.cardId, firmwareVersion: cardStatus.firmwareVersion, buildId: cardStatus.buildId },
     readiness: cardStatus,
   }]);
+  // The project name belongs to the Load button (asserted just below), not to
+  // this status line as well — one panel said it three times.
   await expect(page.getByRole('region', { name: 'Matching card project' })).toContainText(
-    'Exact match found: “Ordinary gallery piece — current Studio project”',
+    'Exact match found:',
     { timeout: 15_000 },
   );
   await expect(page).toHaveURL(/#screen=card&section=overview$/);

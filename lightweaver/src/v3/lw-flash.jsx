@@ -28,6 +28,7 @@ import { readCardProjectEvidence } from '../lib/cardPushClient.js';
 import { readCardWiringCandidateEvidence } from '../lib/cardWiringSafety.js';
 import {
   beginCardCommissioning,
+  CARD_COMMISSIONING_CHANGED_EVENT,
   completeCardInstall,
   readCardCommissioning,
   selectCardCommissioningStage,
@@ -885,6 +886,26 @@ import {
       const stage = readCardCommissioning()?.stage;
       return stage === 'set-up-card' || stage === 'check-lights' ? stage : 'connect-card';
     });
+    // `selectedStage` was read from the stored flow ONCE, at mount, and then
+    // never again — a second store of the flow's own stage, reconciled never.
+    // Declining the light check ("No, restore working setup") rolls the flow
+    // back to `set-up-card`, but the shell kept showing `check-lights`, so the
+    // owner was left standing on the step they had just refused, with a stale
+    // restore-lease error as the only feedback and no way back to the restore.
+    // The flow already announces every write; the shell just was not listening.
+    const observedFlowStageRef = useRef(readCardCommissioning()?.stage || '');
+    useEffect(() => {
+      const follow = () => {
+        const stage = readCardCommissioning()?.stage || '';
+        if (stage === observedFlowStageRef.current) return;
+        observedFlowStageRef.current = stage;
+        // A deliberate stage selection still wins for as long as the flow
+        // stays put; this only moves the view when the FLOW moved.
+        if (stage === 'set-up-card' || stage === 'check-lights') setSelectedStage(stage);
+      };
+      window.addEventListener(CARD_COMMISSIONING_CHANGED_EVENT, follow);
+      return () => window.removeEventListener(CARD_COMMISSIONING_CHANGED_EVENT, follow);
+    }, []);
     // Reading the version stored on the card is a slow serial scan that runs
     // after the card is already found, so the connect step never waits on it.
     const [usbFirmwareRead, setUsbFirmwareRead] = useState({ state: 'idle', progress: 0 });

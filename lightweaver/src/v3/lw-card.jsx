@@ -102,6 +102,7 @@ function CardHomePanels({
   onMatchedProjectVerified,
   onStartNewProject,
   suppressMatchingProject = false,
+  yieldPrimary = false,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
@@ -617,7 +618,7 @@ function CardHomePanels({
               /* Not a second headline button when it would load the project
                  already open — "Open Patterns" is the action there, and two
                  orange buttons side by side made the screen ask twice. */
-              className={cardHoldsOpenProject ? 'btn' : 'btn primary'}
+              className={cardHoldsOpenProject || yieldPrimary ? 'btn' : 'btn primary'}
               disabled={matchingProjectState.status === 'loading' || matchingProjectState.status === 'saving'}
               onClick={() => void loadMatchingCardProject({ selectionKey: matchingProjectState.selectionKey || '' })}
             >
@@ -660,9 +661,20 @@ function CardHomePanels({
         remedy was invisible. The firmware accepts /api/recover-lights on a
         not-ready card deliberately; Studio was the only thing refusing.
       */}
+      {/* Open when it is the answer, folded when it is not. A healthy card
+          does not need three diagnostic buttons and a paragraph competing with
+          its next step — but the Patterns gate routes an unwell card here and
+          names Recover lights as the remedy, so a card that is answering
+          without a ready runtime, or is holding the temporary setup, still
+          finds this section open with no click. */}
       {(ready || verifiedTransport) && (
-        <section className="card-support-panel" aria-label="Hardware checks and recovery">
-          <h2>Checks &amp; recovery</h2>
+        <details
+          className="card-support-panel card-checks-panel"
+          aria-label="Hardware checks and recovery"
+          data-testid="card-checks-recovery"
+          open={!ready || benchProject}
+        >
+          <summary><h2>Checks &amp; recovery</h2></summary>
           <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
           {!ready && (
             <p role="status">
@@ -681,7 +693,7 @@ function CardHomePanels({
           {hardwareActionState.message && (
             <p role={hardwareActionState.status === 'error' ? 'alert' : 'status'}>{hardwareActionState.message}</p>
           )}
-        </section>
+        </details>
       )}
 
       <p className="card-overview-batch" data-testid="card-batch-link">
@@ -760,6 +772,10 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // Load for this card's project — the Matching-card-project panel below
   // suppresses its duplicate offer while it is (one project, one Load).
   const [setupLoadOffer, setSetupLoadOffer] = useState(false);
+  // Whether the Setup ladder is currently offering the page's primary action.
+  // While it is, every surface below it renders secondary controls — one
+  // primary per page. See the comment on `ladderOwnsPrimary` in lw-setup.jsx.
+  const [ladderOwnsPrimary, setLadderOwnsPrimary] = useState(false);
 
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
@@ -794,15 +810,18 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
+        onPrimaryActionChange={setLadderOwnsPrimary}
       />
       <CardInstallAction
         connected={connected}
         cardHost={cardHost}
+        yieldPrimary={ladderOwnsPrimary}
         onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
       />
       <CardHomePanels
         {...cardProps}
         suppressMatchingProject={setupLoadOffer}
+        yieldPrimary={ladderOwnsPrimary}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onOpenSection={onOpenSection}
         go={go}

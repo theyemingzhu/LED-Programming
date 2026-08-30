@@ -123,8 +123,12 @@ test('Setup identity row names the exact card project and installed match', asyn
   // wrong answer here and is asserted against explicitly, because it contains
   // the word 'connected' and would otherwise satisfy a looser pattern.
   await expect(identity).not.toContainText('Not connected');
-  await expect(identity).toContainText(/needs project/i);
-  await expect(identity).toContainText(/project/i);
+  // Connection answers ONE question — is Studio talking to this card — and a
+  // reached factory card IS connected. That it holds nothing is the Installed
+  // field's answer, on the line below. The row used to print "Needs project"
+  // as its connection state, which mixed an errand into a status field.
+  await expect(identity).toContainText('Connected');
+  await expect(identity).toContainText(/project not installed/i);
   await expect(identity).toContainText(/not installed|temporary setup|match/i);
 });
 

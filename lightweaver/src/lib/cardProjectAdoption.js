@@ -368,7 +368,7 @@ async function runResolvedStrategy(deps, {
     if (probeOnly) {
       ui.report({
         status: 'offer',
-        message: `Exact match found: “${describeResolvedCardProject(resolved)}”. Load it to save the current workspace and continue to Patterns.`,
+        message: 'Exact match found: loading it saves the current workspace, then continues to Patterns.',
         selectionKey: resolvedMatchKey(resolved),
         matchLabel: describeResolvedCardProject(resolved),
       });
@@ -377,7 +377,7 @@ async function runResolvedStrategy(deps, {
     if (autoIntent && resolved.source !== 'current') {
       ui.report({
         status: 'offer',
-        message: `Exact match found: “${describeResolvedCardProject(resolved)}”. Load it to save the current workspace before Studio opens the card project.`,
+        message: 'Exact match found: loading it saves the current workspace before Studio opens the card project.',
         selectionKey: resolvedMatchKey(resolved),
         matchLabel: describeResolvedCardProject(resolved),
       });
