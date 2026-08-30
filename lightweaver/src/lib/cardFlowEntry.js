@@ -83,8 +83,9 @@ export function resolveCardIntent(intent, context = {}) {
       if (lifecycle?.commandReady === true && !journeyBlocked(journey)) return proceed();
       return resolveFix({ lifecycle, journey });
     case 'update-firmware':
-    case 'install-project':
       return route('#screen=card&section=install');
+    case 'install-project':
+      return route(setupTaskRoute('install-project'));
     case 'configure-wifi':
       // Wi-Fi is a JOIN problem unless an in-flight commissioning stage owns
       // the owner's next step. With a resumable stage, the Install screen's

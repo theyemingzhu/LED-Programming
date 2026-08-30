@@ -786,7 +786,13 @@ export function SetupScreen({
           {taskId === 'update-firmware' ? (
             <button type="button" className="btn primary" onClick={() => go('#screen=card&section=install')}>Install or update firmware</button>
           ) : taskId === 'install-project' ? (
-            <button type="button" className="btn primary" onClick={() => go('#screen=card&section=install')}>Install project on card</button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => openCardFlow('install-project', { lifecycle: cardLifecycle, journey })}
+            >
+              Install project on card
+            </button>
           ) : taskId === 'configure-wifi' ? (
             // The one entry contract decides where Wi-Fi continues: Install's
             // commissioning panel while a stage is resumable, otherwise the

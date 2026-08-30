@@ -54,9 +54,9 @@ const GOLDEN = {
     needsProject: { action: 'route', hash: '#screen=card&section=install' },
   },
   'install-project': {
-    ready: { action: 'route', hash: '#screen=card&section=install' },
-    disconnected: { action: 'route', hash: '#screen=card&section=install' },
-    needsProject: { action: 'route', hash: '#screen=card&section=install' },
+    ready: { action: 'route', hash: SETUP_TASK('install-project') },
+    disconnected: { action: 'route', hash: SETUP_TASK('install-project') },
+    needsProject: { action: 'route', hash: SETUP_TASK('install-project') },
   },
   // Without a resumable commissioning stage (none of the representative
   // contexts carry one), Wi-Fi is a join problem: the Connect panel's
