@@ -34,7 +34,9 @@ export function CardStatusControl({ link, lifecycle, onOpen, open = false, dialo
       >
         <span className="card-status-dot" aria-hidden="true" />
         <span className="card-status-copy">
-          <span className="card-status-name">{connected ? (link.card?.name || 'Lightweaver') : 'Lightweaver'}</span>
+          {!connected && !saveToCard ? (
+            <span className="card-status-name">Lightweaver</span>
+          ) : null}
           <span className="card-status-state">{status}</span>
         </span>
       </button>

@@ -228,6 +228,34 @@ async function openPreferences(page: any) {
   await expect(page.getByRole('textbox', { name: 'Project name' })).toBeVisible();
 }
 
+async function ensureVerifiedWiring(page: any) {
+  await page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    if (!project.layout?.wiring) return;
+    project.layout.wiring.verified = true;
+    project.layout.wiring.locked = true;
+    project.layout.wiring.runs?.forEach((run: any) => { run.verified = true; });
+    const led = project.devices?.standaloneController?.led || {};
+    led.colorOrder = led.colorOrder || 'RGB';
+    led.colorOrderConfirmed = true;
+    led.confirmedColorOrder = led.colorOrder;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+}
+
+async function openCardInstall(page: any) {
+  await ensureVerifiedWiring(page);
+  await page.evaluate(() => { window.location.hash = '#screen=card'; });
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
+}
+
+async function clickInstallOnCard(page: any) {
+  await openCardInstall(page);
+  await page.getByTestId('layout-send-to-card').click();
+}
+
 async function openInstallerGuide(page: any) {
   await page.evaluate(() => { window.location.hash = '#screen=installer'; });
   await expect(page.locator('.inst-signoff input[type="checkbox"]').first()).toBeVisible();
@@ -317,17 +345,25 @@ test('Settings installs the exact requested revision when an edit happens during
   const name = page.locator('.set-row', { hasText: 'Project name' }).locator('input');
   await name.fill('Revision one');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
-  const save = page.locator('.set-row', { hasText: 'Install on card' }).getByRole('button', { name: 'Install on card' });
-  await save.click();
+  await clickInstallOnCard(page);
   await expect.poll(() => configRequested).toBe(true);
-  // Preferences left the Hardware section tabs in the Card Home merge; it now
-  // opens from the top bar (still the same full-body view).
-  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
-  await name.fill('Revision two');
+  // Stay on Card Home so CardPushControl keeps the in-flight write alive.
+  await page.evaluate(async () => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    project.name = 'Revision two';
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    const { readProjectLifecycleRecord, writeProjectLifecycleRecord } = await import('/src/lib/projectStorage.js');
+    const record = readProjectLifecycleRecord();
+    if (record) {
+      writeProjectLifecycleRecord({
+        ...record,
+        dirty: true,
+        editedRevision: (record.editedRevision ?? 0) + 1,
+      });
+    }
+  });
   releaseConfig?.();
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
-  await expect(page.getByTestId('settings-card-status')).toContainText('Installed on card');
+  await expect(page.locator('.la-card-push-banner')).toContainText(/Installed revision \d+ on card/, { timeout: 20_000 });
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
 });
 
@@ -336,10 +372,9 @@ test('Settings records a current install only after exact card read-back', async
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   const name = page.locator('.set-row', { hasText: 'Project name' }).locator('input');
   await name.fill('Exact settings install');
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
-  await page.locator('.set-row', { hasText: 'Install on card' }).getByRole('button', { name: 'Install on card' }).click();
+  await clickInstallOnCard(page);
 
-  await expect(page.getByTestId('settings-card-status')).toContainText('Installed on card');
+  await expect(page.locator('.la-card-push-banner')).toContainText(/Installed revision \d+ on card/);
   await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
 });
@@ -353,8 +388,7 @@ test('a stale revision-zero install acknowledgement cannot label a replacement p
     configGate: () => configGate,
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
-  await page.locator('.set-row', { hasText: 'Install on card' }).getByRole('button', { name: 'Install on card' }).click();
+  await clickInstallOnCard(page);
   await expect.poll(() => configRequested).toBe(true);
 
   await page.getByRole('button', { name: 'New project' }).click();
@@ -362,7 +396,7 @@ test('a stale revision-zero install acknowledgement cannot label a replacement p
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   releaseConfig?.();
 
-  await expect(page.getByTestId('settings-card-status')).toContainText('Installed on card');
+  await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(false);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(false);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
 });

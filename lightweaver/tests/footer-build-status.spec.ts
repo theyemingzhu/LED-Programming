@@ -120,7 +120,8 @@ test('footer reduces telemetry to card, firmware, Studio and Test strip controls
   await openStudio(page, { buildNumber: release.buildNumber - 1, buildId: 'a'.repeat(40) });
 
   const footer = page.locator('.status-bar');
-  await expect(page.getByTestId('card-link-status')).toContainText('Gallery card');
+  await expect(page.getByTestId('card-link-status')).toContainText('Connected');
+  await expect(page.getByTestId('card-link-status')).not.toContainText('Gallery card');
   await expect(page.getByTestId('footer-firmware-status')).toHaveText(
     `Card firmware ${release.buildNumber - 1} → ${release.buildNumber}`,
   );
