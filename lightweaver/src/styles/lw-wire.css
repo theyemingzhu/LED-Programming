@@ -2,7 +2,7 @@
    lw-wire.css — Wire-mode single-next-action panel.
    Consumes the v3 token set (src/v3/v3-styles.css). No new
    palette tokens, no hex; class prefix lww-.
-   Imported by src/components/layout/modes/WireModePanel.jsx.
+   Imported by src/components/layout/modes/WirePlanTools.jsx.
    ============================================================ */
 
 /* ---------- top: Wire-derived plan summary ---------- */

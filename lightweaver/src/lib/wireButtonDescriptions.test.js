@@ -97,7 +97,7 @@ test('rejects mismatched title and data-tooltip values', () => {
 
 test('main Wire buttons provide hover descriptions', () => {
   assertDescriptions([
-    join(layoutRoot, 'modes', 'WireModePanel.jsx'),
+    join(layoutRoot, 'modes', 'WirePlanTools.jsx'),
     join(layoutRoot, 'shared', 'CardPushControl.jsx'),
   ]);
 });

@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { TbIcon } from './layout/shared/InspectorPrimitives.jsx';
-import { ModeSwitch } from './layout/shared/ModeSwitch.jsx';
 import { GLOW_MODES, svgPt, sampleStripPixels } from '../lib/layoutGeometry.js';
 import { createPrimitiveStripDefinition } from '../lib/layoutPrimitives.js';
 import { scaleStripGeometry } from '../lib/stripScale.js';
 import { LayoutCanvas } from './layout/canvas/LayoutCanvas.jsx';
 import { DrawModePanel } from './layout/modes/DrawModePanel.jsx';
-import { WireModePanel } from './layout/modes/WireModePanel.jsx';
+import { WirePlanTools } from './layout/modes/WirePlanTools.jsx';
+import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import {
@@ -423,33 +423,40 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           <strong>Inspector</strong>
         </button>
         <div className="la-mode-nav">
-          <ModeSwitch mode={mode} setMode={setMode}/>
+          <button
+            type="button"
+            className="btn primary"
+            data-testid="layout-check-and-install"
+            title="Check the lights and install this project on the connected card."
+            data-tooltip="Check the lights and install this project on the connected card."
+            onClick={() => openCardFlow('install-project')}
+          >
+            Check and install on the card
+          </button>
         </div>
-        <div className={`la-mode-content is-${mode}`}>
-          {mode === 'draw' && (
-            <DrawModePanel state={state}
-                           firstLedPicker={firstLedPicker}
-                           firstLedError={firstLedError}
-                           onBeginFirstLedPicker={beginFirstLedPicker}
-                           onCancelFirstLedPicker={cancelFirstLedPicker}
-                           kaleidoscopeEditor={kaleidoscopeEditor}
-                           onToggleKaleidoscope={openKaleidoscope}
-                           onCloseKaleidoscope={() => setKaleidoscopeEditor(null)}
-                           onChangeKaleidoscopeCount={changeKaleidoscopeCount}
-                           onNudgeKaleidoscopeSet={nudgeKaleidoscopeSet}
-                           onPickKaleidoscopeStart={stripId => setKaleidoscopeEditor(current => ({ ...current, stripId, mode: 'pick', error: null }))}
-                           onSelectKaleidoscopePoint={(stripId, pointIndex) => setKaleidoscopeEditor({ stripId, mode: 'fine', selectedPointIndex: pointIndex, error: null })}
-                           onNudgeKaleidoscopePoint={(stripId, pointIndex, delta) => {
-                             const strip = strips.find(item => item.id === stripId);
-                             const led = deriveReflectionPointIndices(strip?.kaleidoscope, strip?.pixelCount || 0)[pointIndex];
-                             if (Number.isInteger(led)) moveKaleidoscopePoint(stripId, pointIndex, led + delta);
-                           }}
-                           kaleidoscopeCalibration={kaleidoscopeCalibration}
-                           onConnectCard={onConnectCard}
-                           onOpenConnectionCenter={onOpenConnectionCenter}
-                           onStarterPreviewChange={setStarterPreview}/>
-          )}
-          {mode === 'wire' && <WireModePanel state={state} connected={connected} cardHost={cardHost}/>} 
+        <div className="la-mode-content is-draw">
+          <DrawModePanel state={state}
+                         firstLedPicker={firstLedPicker}
+                         firstLedError={firstLedError}
+                         onBeginFirstLedPicker={beginFirstLedPicker}
+                         onCancelFirstLedPicker={cancelFirstLedPicker}
+                         kaleidoscopeEditor={kaleidoscopeEditor}
+                         onToggleKaleidoscope={openKaleidoscope}
+                         onCloseKaleidoscope={() => setKaleidoscopeEditor(null)}
+                         onChangeKaleidoscopeCount={changeKaleidoscopeCount}
+                         onNudgeKaleidoscopeSet={nudgeKaleidoscopeSet}
+                         onPickKaleidoscopeStart={stripId => setKaleidoscopeEditor(current => ({ ...current, stripId, mode: 'pick', error: null }))}
+                         onSelectKaleidoscopePoint={(stripId, pointIndex) => setKaleidoscopeEditor({ stripId, mode: 'fine', selectedPointIndex: pointIndex, error: null })}
+                         onNudgeKaleidoscopePoint={(stripId, pointIndex, delta) => {
+                           const strip = strips.find(item => item.id === stripId);
+                           const led = deriveReflectionPointIndices(strip?.kaleidoscope, strip?.pixelCount || 0)[pointIndex];
+                           if (Number.isInteger(led)) moveKaleidoscopePoint(stripId, pointIndex, led + delta);
+                         }}
+                         kaleidoscopeCalibration={kaleidoscopeCalibration}
+                         onConnectCard={onConnectCard}
+                         onOpenConnectionCenter={onOpenConnectionCenter}
+                         onStarterPreviewChange={setStarterPreview}/>
+          <WirePlanTools state={state} connected={connected} cardHost={cardHost}/>
         </div>
       </aside>
       </div>{/* .la */}

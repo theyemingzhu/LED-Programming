@@ -598,7 +598,7 @@ function realPatternShape(patternId) {
     // "Adjust" on the wiring-mismatch banner: jump straight to the Layout
     // panel that owns the per-strip LED counts, so the user can change the
     // number instead of accepting the card's current wiring. That panel is the
-    // internal 'draw' mode, labelled "Wire" in the UI (see ModeSwitch.jsx);
+    // internal 'draw' mode — the Wire drawing workspace;
     // the old 'size' mode this used to point at no longer exists, so the link
     // silently fell back to the default mode.
     const adjustLedCounts = () => { window.location.hash = 'screen=layout&mode=draw'; };
@@ -732,7 +732,7 @@ function realPatternShape(patternId) {
               <div className="pmx-status is-err" role="alert" data-testid="playlist-hardware-warning">
                 <strong>Hardware setup needs attention.</strong> {hardwareConfigurationIssue} You can still add, remove, copy, and reorder every look. Only card setup actions are paused.
                 <div className="pmx-status-actions">
-                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=wire'; }}>Fix wiring</button>
+                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Fix wiring</button>
                 </div>
               </div>
             }

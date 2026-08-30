@@ -262,7 +262,7 @@ const SettingsFieldContext = createContext(null);
     };
 
     const persistHost = (value) => { setCardHost(value); writeStoredCardHost(value); };
-    const openLayoutWire = () => { window.location.hash = '#screen=layout&mode=wire'; };
+    const openLayoutWire = () => { window.location.hash = '#screen=layout&mode=draw'; };
     // Setup owns every question this panel only reports on.
     const openSetupLadder = () => { window.location.hash = '#screen=card&section=setup'; };
 

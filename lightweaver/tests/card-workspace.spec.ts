@@ -805,8 +805,9 @@ test('Card overview delegates resumable install and test work to exact Setup tas
   await connectCommissioningCard(page);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  // Card Home renders the exact install task inline on the ladder.
-  await page.getByRole('button', { name: 'Install project on card', exact: true }).click();
+  // Card Home renders check + install in place (the old "Install project on
+  // card" jump is gone).
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible();
 
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });

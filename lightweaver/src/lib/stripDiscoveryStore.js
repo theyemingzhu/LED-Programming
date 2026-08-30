@@ -7,7 +7,7 @@ import { normalizePortRoles } from './portRoles.js';
 // missing is a React state slot for it in ProjectContext, so a value written
 // through replaceProject() would be dropped on the next serializeProject().
 // Rather than pretend the round trip works, discovery persists its result here
-// and reads it back here, and the panel/WireModePanel both read this store.
+// and reads it back here, and the panel/WirePlanTools both read this store.
 //
 // When ProjectContext grows a `portRoles` slot, this becomes a one-line
 // forwarder (or disappears): the shape stored here is exactly the shape

@@ -45,15 +45,24 @@ async function openLayout(page: any, hash = '#screen=layout') {
   await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
-async function openWirePanel(page: any, fixture: object) {
-  await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
+async function openCardInstall(page: any, fixture: object) {
+  await page.goto('/#screen=card&section=setup&task=install-project', { waitUntil: 'domcontentloaded' });
   await page.evaluate((data) => {
     localStorage.clear();
     localStorage.setItem('lw_autosave_v3', JSON.stringify(data));
   }, fixture);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+}
+
+async function openLayoutTools(page: any, fixture: object) {
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await page.evaluate((data) => {
+    localStorage.clear();
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(data));
+  }, fixture);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
 }
 
 test('Wire keeps strip tools visible and drops the always-true first-to-last label', async ({ page }) => {
@@ -82,24 +91,25 @@ test('Wire keeps strip tools visible and drops the always-true first-to-last lab
   await expect(page.locator('.panel-head', { hasText: 'LED strips' })).not.toContainText('wiring order');
 });
 
-test('Test & Install is a checklist, not a second strip editor', async ({ page }) => {
-  await openWirePanel(page, project({
+test('old Test & Install URL is a Card checklist, not a second strip editor', async ({ page }) => {
+  await openCardInstall(page, project({
     designPixels: 44, outputPin: 16, countedPin: 16, countedPixels: 44,
   }));
 
-  const panel = page.getByTestId('layout-wire-panel');
-  await expect(panel.locator('.lww-plan-head .meta')).toContainText('2 strips · 44 LEDs');
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
   await expect(page.getByTestId('start-led-check')).toBeVisible();
-  await expect(page.getByTestId('project-led-chipset')).toBeHidden();
+  await expect(page.getByTestId('project-led-chipset')).toHaveCount(0);
 
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  await expect(page.locator('.lww-plan-head .meta')).toContainText('2 strips · 44 LEDs');
   const advanced = page.getByTestId('advanced-installation-tools');
   await advanced.locator('summary').first().click();
   await expect(page.getByTestId('project-led-chipset')).toBeVisible();
 });
 
 test('a matching card does not reprint the plan; a wrong GPIO still offers the fix', async ({ page }) => {
-  await openWirePanel(page, project({
+  await openLayoutTools(page, project({
     designPixels: 41, outputPin: 18, countedPin: 18, countedPixels: 41,
   }));
   await expect(page.getByTestId('wire-capacity')).toHaveCount(0);
@@ -109,7 +119,7 @@ test('a matching card does not reprint the plan; a wrong GPIO still offers the f
   await advanced.locator('summary').first().click();
   await expect(page.getByTestId('wire-recount')).toBeVisible();
 
-  await openWirePanel(page, project({
+  await openLayoutTools(page, project({
     designPixels: 400, outputPin: 16, countedPin: 18, countedPixels: 41,
   }));
   await expect(page.getByTestId('wire-mismatch-18')).toBeVisible();

@@ -813,7 +813,7 @@ test('a genuine GPIO conflict still points back to wiring', async ({ page }) => 
   await expect(warning).toContainText('GPIO 5');
   await expect(warning.getByRole('button', { name: 'Fix automatically' })).toHaveCount(0);
   await warning.getByRole('button', { name: 'Fix wiring' }).click();
-  await expect(page).toHaveURL(/#screen=layout&mode=wire$/);
+  await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
 });
 
 test('first load reads warm (Lava Lamp) on a fresh, untitled project', async ({ page }) => {

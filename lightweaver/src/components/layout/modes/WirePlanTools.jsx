@@ -5,12 +5,10 @@ import { useProject } from '../../../state/ProjectContext.jsx';
 import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js';
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
-import { CardInstallAction } from '../../card/CardInstallAction.jsx';
 import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { WireHoverDescription } from '../shared/WireHoverDescription.jsx';
 import { WiringAssemblyMap } from '../wire/WiringAssemblyMap.jsx';
 import { WireDiscovery } from '../wire/WireDiscovery.jsx';
-import { planAdjacentStripBoundary, planOutputPixelCountAdjustment } from '../../../lib/wiringChase.js';
 import { activeBoardGpios, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
 import { PORT_ROLE_STRIP } from '../../../lib/portRoles.js';
 import { describeCardCapacity } from '../../../lib/designCapacity.js';
@@ -30,12 +28,12 @@ const parsePositive = (raw, fallback) => {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
 
-export function WireModePanel({ state, connected, cardHost }) {
+export function WirePlanTools({ state, cardHost }) {
   const {
     strips, selStripId, pxPerMm,
-    selectedWireCut, nudgeSelectedWireCut, deleteSelectedWireCut, setStripCounts,
+    selectedWireCut, nudgeSelectedWireCut, deleteSelectedWireCut,
     wireOverlayMode, setWireOverlayMode,
-    setDrawMode, setGhostPt, setMode,
+    setDrawMode, setGhostPt,
   } = state;
   const {
     wiring, updateWiring, compiledWiring,
@@ -213,57 +211,6 @@ export function WireModePanel({ state, connected, cardHost }) {
     if (run?.type === 'strip') run.source[field] = Math.max(0, Math.trunc(Number(value) || 0));
   }, { changeKind: 'seam', runIds: selectedRun ? [selectedRun.id] : [] });
 
-  const applyStripCountUpdates = updates => {
-    const validationStrips = strips.map(strip => {
-      const update = updates.find(item => item.stripId === strip.id);
-      return update ? { ...strip, pixelCount: update.count } : strip;
-    });
-    const result = mutate(draft => {
-      for (const update of updates) {
-        const run = draft.runs.find(item => item.id === update.runId);
-        if (!run || run.type !== 'strip') continue;
-        run.source.from = 0;
-        run.source.to = update.count - 1;
-        if (run.seamLed != null && run.seamLed > run.source.to) run.seamLed = run.source.to;
-      }
-    }, { changeKind: 'seam', runIds: updates.map(item => item.runId), strips: validationStrips });
-    if (!result.ok) return result;
-    setStripCounts(updates.map(item => ({ id: item.stripId, count: item.count })), { recordHistory: false });
-    return result;
-  };
-
-  const adjustRunBoundary = (runId, delta) => {
-    const output = wiring.outputs.find(item => item.runIds.includes(runId));
-    if (!output) return { ok: false, error: 'Run is not assigned to an output.' };
-    let updates;
-    try {
-      updates = planAdjacentStripBoundary(
-        wiring,
-        Object.fromEntries(strips.map(strip => [strip.id, strip.pixelCount])),
-        { outputId: output.id, runId, delta },
-      );
-    } catch (error) {
-      setMutationError(error.message);
-      return { ok: false, error: error.message };
-    }
-    return applyStripCountUpdates(updates);
-  };
-
-  const adjustOutputCount = (outputId, delta) => {
-    let update;
-    try {
-      update = planOutputPixelCountAdjustment(
-        wiring,
-        Object.fromEntries(strips.map(strip => [strip.id, strip.pixelCount])),
-        { outputId, delta },
-      );
-    } catch (error) {
-      setMutationError(error.message);
-      return { ok: false, error: error.message };
-    }
-    return applyStripCountUpdates([update]);
-  };
-
   const stripIds = new Set(strips.map(strip => strip.id));
   const mappedStripIds = new Set(wiring.runs.filter(run => run.type === 'strip' && stripIds.has(run.source.stripId)).map(run => run.source.stripId));
   const physicalStripCount = mappedStripIds.size;
@@ -315,11 +262,6 @@ export function WireModePanel({ state, connected, cardHost }) {
   // discovery has and loop the owner between the two screens forever.
   const cardNeedsStripDiscovery = needsStripDiscovery({ readinessState: cardReadinessState });
   const openStripDiscovery = () => { window.location.hash = STRIP_DISCOVERY_ROUTE; };
-  const editInWire = () => {
-    setDrawMode(false);
-    setGhostPt(null);
-    setMode('draw');
-  };
   const showCapacityFact = capacity.state === 'short' || capacity.state === 'over';
   const mismatchedOutputs = (wiring.outputs || []).filter(output => {
     const discovered = discoveredByOutput.get(output.id);
@@ -327,9 +269,9 @@ export function WireModePanel({ state, connected, cardHost }) {
   });
 
   return (
-    <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-panel">
+    <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-tools">
       <div className="panel-head lww-plan-head">
-        <span className="ttl">Test &amp; Install</span>
+        <span className="ttl">Wire plan</span>
         <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
       </div>
       {(showCapacityFact || mismatchedOutputs.length > 0) && !cardNeedsStripDiscovery && (
@@ -371,17 +313,8 @@ export function WireModePanel({ state, connected, cardHost }) {
         </p>
       )}
 
-      <CardInstallAction
-        connected={connected}
-        cardHost={cardHost}
-        onEditInWire={editInWire}
-        onAdjustBoundary={adjustRunBoundary}
-        onAdjustOutput={adjustOutputCount}
-        mutationError={mutationError}
-      />
-
       <details className="lww-advanced-tools" data-testid="advanced-installation-tools">
-        <summary>Advanced installation tools</summary>
+        <summary>Wire tools</summary>
         <div className="lww-advanced-tools-body">
           <div className="la-led-chipset-row" data-testid="project-led-chipset">
             <LedChipsetSelect value={ledType} onChange={setLedType}/>

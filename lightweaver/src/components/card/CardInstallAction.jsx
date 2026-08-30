@@ -4,11 +4,13 @@ import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { normalizePatchBoard } from '../../lib/patchBoard.js';
 import { CardPushControl } from '../layout/shared/CardPushControl.jsx';
+import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
 import { WiringBenchTest } from '../layout/wire/WiringBenchTest.jsx';
 import { StripColorOrderCheck } from '../layout/wire/StripColorOrderCheck.jsx';
 import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
 import { STRIP_DISCOVERY_BLANK_MESSAGE, STRIP_DISCOVERY_LABEL, STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../lib/cardAction.js';
+import { planAdjacentStripBoundary, planOutputPixelCountAdjustment } from '../../lib/wiringChase.js';
 import '../../styles/lw-wire.css';
 
 // Guided find-strips / finish-wire / LED check / color-order / install flow.
@@ -25,7 +27,7 @@ export function CardInstallAction({
   const {
     wiring, updateWiring, compiledWiring, patchBoard,
     projectId, projectName, standaloneController, setStandaloneController, confirmedCardLook,
-    strips,
+    strips, setStrips,
   } = useProject();
   // True while the guided LED check owns the primary flow area — the bench
   // wizard runs first, then the color quiz presents itself as the next question.
@@ -75,6 +77,54 @@ export function CardInstallAction({
   const adjustableOutputIds = useMemo(() => wiring.outputs
     .filter(output => output.runIds.some(runId => runsById.get(runId)?.type === 'strip'))
     .map(output => output.id), [wiring.outputs, runsById]);
+
+  const applyStripCountUpdates = updates => {
+    const validationStrips = strips.map(strip => {
+      const update = updates.find(item => item.stripId === strip.id);
+      return update ? { ...strip, pixelCount: update.count } : strip;
+    });
+    const result = updateWiring(draft => {
+      for (const update of updates) {
+        const run = draft.runs.find(item => item.id === update.runId);
+        if (!run || run.type !== 'strip') continue;
+        run.source.from = 0;
+        run.source.to = update.count - 1;
+        if (run.seamLed != null && run.seamLed > run.source.to) run.seamLed = run.source.to;
+      }
+    }, { changeKind: 'seam', runIds: updates.map(item => item.runId), strips: validationStrips });
+    if (!result.ok) return result;
+    setStrips(current => current.map(strip => {
+      const update = updates.find(item => item.stripId === strip.id);
+      return update ? { ...strip, pixelCount: update.count } : strip;
+    }), { recordHistory: false });
+    return result;
+  };
+  const adjustRunBoundary = (runId, delta) => {
+    if (onAdjustBoundary) return onAdjustBoundary(runId, delta);
+    const output = wiring.outputs.find(item => item.runIds.includes(runId));
+    if (!output) return { ok: false, error: 'Run is not assigned to an output.' };
+    try {
+      return applyStripCountUpdates(planAdjacentStripBoundary(
+        wiring,
+        Object.fromEntries(strips.map(strip => [strip.id, strip.pixelCount])),
+        { outputId: output.id, runId, delta },
+      ));
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  };
+  const adjustOutputCount = (outputId, delta) => {
+    if (onAdjustOutput) return onAdjustOutput(outputId, delta);
+    try {
+      return applyStripCountUpdates([planOutputPixelCountAdjustment(
+        wiring,
+        Object.fromEntries(strips.map(strip => [strip.id, strip.pixelCount])),
+        { outputId, delta },
+      )]);
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  };
 
   const stripIds = new Set(strips.map(strip => strip.id));
   const mappedStripIds = new Set(wiring.runs.filter(run => run.type === 'strip' && stripIds.has(run.source.stripId)).map(run => run.source.stripId));
@@ -139,7 +189,7 @@ export function CardInstallAction({
   };
 
   return (
-    <section className="lww-flow" data-testid="commissioning-step">
+    <WireHoverDescription className="lww-flow" data-testid="commissioning-step">
       {cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>
@@ -204,9 +254,9 @@ export function CardInstallAction({
             cardHost={cardHost}
             strips={strips}
             adjustableRunIds={adjustableRunIds}
-            onAdjustBoundary={onAdjustBoundary}
+            onAdjustBoundary={adjustRunBoundary}
             adjustableOutputIds={adjustableOutputIds}
-            onAdjustOutput={onAdjustOutput}
+            onAdjustOutput={adjustOutputCount}
             onDefer={() => setCheckFlowOpen(false)}
             onColorProblem={() => setColorCheckFirst(true)}
           />
@@ -249,6 +299,6 @@ export function CardInstallAction({
           </section>
         </>
       )}
-    </section>
+    </WireHoverDescription>
   );
 }

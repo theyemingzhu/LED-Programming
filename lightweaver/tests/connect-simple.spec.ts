@@ -107,7 +107,7 @@ test('a connected card with a different project offers pull and overwrite, not a
   await expect(page.getByTestId('setup-connect-card')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
   await page.getByTestId('setup-overwrite-card').click();
-  await expect(page).toHaveURL(/#screen=layout&mode=wire/);
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
 });
 
 test('an already-set-up card hides the four-phase ladder and keeps Patterns as the way forward', async ({ page }) => {

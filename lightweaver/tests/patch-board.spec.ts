@@ -26,14 +26,13 @@ async function importLine(page: any) {
 }
 
 async function enterWire(page: any) {
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 async function gotoDefaultWire(page: any) {
   await page.addInitScript(() => localStorage.clear());
-  await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 // Seeds the two default circles through the legacy-autosave path so the Draw
@@ -86,6 +85,10 @@ async function exportProject(page: any, tmp: string, name = 'saved.json') {
 }
 
 async function openAdvanced(page: any) {
+  if (await page.getByTestId('advanced-installation-tools').count() === 0) {
+    await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
+    await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  }
   const details = page.getByTestId('advanced-installation-tools');
   if (!await details.evaluate((element: HTMLDetailsElement) => element.open)) {
     await details.locator('summary').first().click();
@@ -112,7 +115,8 @@ async function loadVerifiedWiring(page: any, tmp: string) {
     localStorage.setItem('lw_autosave_v3_backup', value);
   }, json);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project'; });
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
 }
 
 async function clickStripPathAt(page: any, fraction: number) {

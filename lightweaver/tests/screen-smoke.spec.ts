@@ -862,7 +862,7 @@ test('settings screen prioritizes card setup and keeps raw config advanced', asy
   await expect(page.getByRole('button', { name: 'Split by sections' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit in Layout' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit in Layout' }).click();
-  await expect(page).toHaveURL(/screen=layout&mode=wire/);
+  await expect(page).toHaveURL(/screen=layout&mode=draw/);
   await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
 
   // "Designer config" JSON is hidden by default and revealed with its own

@@ -759,7 +759,7 @@ export function SetupScreen({
                 </button>
               )}
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
-              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=layout&mode=wire')}>Save this project to the card</button>
+              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
               <button type="button" className="btn" data-testid="setup-keep-open-project" onClick={() => go('#screen=discovery')}>Keep setting up the open project</button>
             </div>
           </div>
@@ -871,7 +871,7 @@ export function SetupScreen({
             type="button"
             className="btn primary"
             data-testid="setup-layout-action"
-            onClick={() => go(placementDone ? '#screen=layout&mode=wire' : '#screen=layout&mode=draw')}
+            onClick={() => go(placementDone ? '#screen=card&section=setup&task=install-project' : '#screen=layout&mode=draw')}
           >
             {placementDone ? 'Verify light direction' : 'Place lights in the artwork'}
           </button>
@@ -894,7 +894,7 @@ export function SetupScreen({
             developer vocabulary on the one screen where a visual artist most
             needs to know what is about to happen to their piece. */}
         <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=layout&mode=wire')}>Test and save to card</button>
+        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=card&section=setup&task=install-project')}>Test and save to card</button>
       </div>
     );
   };
@@ -976,7 +976,7 @@ export function SetupScreen({
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
               <button type="button" className="btn" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>Use this card&rsquo;s project</button>
-              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=layout&mode=wire')}>Save this project to the card</button>
+              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
             </div>
           </section>
         )}

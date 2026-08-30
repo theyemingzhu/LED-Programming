@@ -13,9 +13,6 @@ test('pending drawing survives a mode visit until explicitly cancelled', async (
   if (!box) throw new Error('canvas unavailable');
   await page.mouse.click(box.x + 30, box.y + 30);
   await page.mouse.click(box.x + 80, box.y + 60);
-  await page.getByTestId('layout-mode-wire').click();
-  await page.getByTestId('layout-mode-draw').click();
-  await page.getByTitle('Draw a new LED strip path on the artwork.').click();
   // Live physical readout (points · metres · LEDs at the fixed density) plus
   // the plain-language termination hint.
   await expect(page.locator('.la-draw-hint')).toContainText('2 points');
@@ -92,8 +89,6 @@ test('Finish path is touch-visible and the completed pending path survives mode 
   await finish.click();
   await expect(page.getByText('Name your new strip')).toBeVisible();
 
-  await page.getByTestId('layout-mode-wire').click();
-  await page.getByTestId('layout-mode-draw').click();
   await expect(page.getByText('Name your new strip')).toBeVisible();
 });
 
@@ -183,14 +178,18 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
     expect(box?.height).toBeGreaterThanOrEqual(44);
   }
 
-  await page.getByTestId('layout-mode-wire').click();
+  const install = page.getByTestId('layout-check-and-install');
+  let box = await install.boundingBox();
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+  await install.click();
   // The single next action is the guided LED check CTA…
-  let box = await page.getByTestId('start-led-check').boundingBox();
+  box = await page.getByTestId('start-led-check').boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   // …and the check itself keeps its primary button touch-sized.
   await page.getByTestId('start-led-check').click();
   box = await page.getByRole('button', { name: /^Yes — / }).boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
+  await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
   // Specialist tools stay behind the top-level Advanced disclosure.
   const advanced = page.getByTestId('advanced-installation-tools');
   box = await advanced.locator('summary').first().boundingBox();
@@ -222,7 +221,6 @@ test('mobile Layout keeps a useful canvas and presents the inspector as a bottom
   expect(nonOverlappedCanvasHeight).toBeGreaterThan(300);
   await page.getByRole('button', { name: 'Expand inspector' }).click();
   await expect(page.getByRole('button', { name: 'Collapse inspector' })).toHaveAttribute('aria-expanded', 'true');
-  await page.getByTestId('layout-mode-wire').click();
   const wireSheetBox = await sheet.boundingBox();
   expect(wireSheetBox?.height).toBeGreaterThanOrEqual(300);
   expect(wireSheetBox?.height).toBeLessThanOrEqual(480);
@@ -238,19 +236,14 @@ test('mode toolbar only presents tools that apply while keeping secondary groups
   await expect(page.getByTitle('Split one physical strip where the wire jumps to a new spot.')).toHaveCount(0);
   await expect(page.getByTitle('Join two strips into one continuous run.')).toHaveCount(0);
 
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page.getByTitle('Import an SVG to map LED strips')).toHaveCount(0);
-  await expect(page.getByTitle('Draw a new LED strip path on the artwork.')).toHaveCount(0);
-
-  await page.getByTestId('layout-mode-wire').click();
   await expect(page.getByTitle('Split one physical strip where the wire jumps to a new spot.')).toHaveCount(0);
   await expect(page.getByTitle('Join two strips into one continuous run.')).toHaveCount(0);
-  await page.getByText('Advanced installation tools', { exact: true }).click();
+  await page.getByText('Wire tools', { exact: true }).click();
   await page.getByText('Custom mapping', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Split a strip mid-wire' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeVisible();
-  await expect(page.getByTitle('Import an SVG to map LED strips')).toHaveCount(0);
-  await expect(page.getByTitle('Draw a new LED strip path on the artwork.')).toHaveCount(0);
+  await expect(page.getByTitle('Import an SVG to map LED strips')).toBeVisible();
+  await expect(page.getByTitle('Draw a new LED strip path on the artwork.')).toBeVisible();
 });
 
 test('focusable SVG strip supports Select, arrow nudge, and Delete', async ({ page }) => {
@@ -274,11 +267,10 @@ test('focusable SVG strip supports Select, arrow nudge, and Delete', async ({ pa
 
 test('wire scaffold is concise and recovery actions stay hidden without a mixed-content failure', async ({ page }) => {
   await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
-  // The intro guide and step rail are gone. A compact Wire-derived summary
-  // plus one primary CTA is the whole scaffold.
+  // Old Test & Install bookmarks open Card install.
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
   await expect(page.getByRole('region', { name: 'Wire setup guide' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Steps' })).toHaveCount(0);
-  await expect(page.locator('.lww-plan-head .meta')).toContainText('in this design');
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
   await expect(page.getByTestId('start-led-check')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Copy payload' })).toHaveCount(0);

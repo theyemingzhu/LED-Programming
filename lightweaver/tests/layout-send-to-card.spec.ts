@@ -167,13 +167,13 @@ async function mockLocalCard(page: any, options: any = {}) {
   return card;
 }
 
-async function gotoWire(page: any, { verified = false, transformProject = null as null | ((project: any) => void), url = '/#screen=layout&mode=wire' } = {}) {
+async function gotoWire(page: any, { verified = false, transformProject = null as null | ((project: any) => void), url = '/#screen=card&section=setup&task=install-project' } = {}) {
   await page.addInitScript(cardId => {
     localStorage.clear();
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId }));
   }, TEST_CARD_ID);
   await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
   if (!verified) {
     // Unverified wiring exposes no install control — only the LED-check CTA.
     await expect(page.getByTestId('start-led-check')).toBeVisible();
@@ -181,12 +181,7 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lightweaver-send-ready-'));
   await page.waitForTimeout(600);
-  const pending = page.waitForEvent('download');
-  await page.locator('.la .toolbar').getByRole('button', { name: 'Export', exact: true }).click();
-  const download = await pending;
-  const source = path.join(tmp, 'source.json');
-  await download.saveAs(source);
-  const project = JSON.parse(fs.readFileSync(source, 'utf8'));
+  const project = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   project.layout.wiring.verified = true;
   project.layout.wiring.locked = true;
   project.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
@@ -199,7 +194,7 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   fs.writeFileSync(ready, JSON.stringify(project));
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
   // The seeded project is fully verified, so the primary flow area settles on
   // the install control. Wait for the enabled state instead of sampling early.
   await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
@@ -239,7 +234,6 @@ test('unverified wiring exposes no install control and makes no request', async 
   // The install surface only exists after the LED check verifies the wiring.
   // No install control or alternate export path is available yet.
   await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
-  await expect(page.getByTestId('advanced-installation-tools')).toHaveJSProperty('open', false);
   await expect(page.getByTestId('layout-export-ledmap')).toHaveCount(0);
   await expect(page.getByTestId('start-led-check')).toBeVisible();
   expect(card.operations).toEqual([]);
@@ -291,7 +285,7 @@ test('candidate test locks conflicting saves, recovers an ambiguous activation, 
 
   await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByText('Last look — do the lights still look right?')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'The lights look correct', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /The lights look correct/ })).toBeVisible();
   expect(card.operations).toContain('status');
   await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();
 
@@ -334,7 +328,7 @@ test('mixed-content recovery copies JSON, opens the installer, and retries the s
   await proxyStudioOverHttps(page);
   await gotoWire(page, {
     verified: true,
-    url: 'https://led.mandalacodes.com/#screen=layout&mode=wire',
+    url: 'https://led.mandalacodes.com/#screen=card&section=setup&task=install-project',
   });
 
   await page.getByTestId('layout-send-to-card').click();
