@@ -418,7 +418,12 @@ export function CardConnectionCenter({
     && ['launch-native-bridge', 'install-native-bridge', 'needs-card-update'].includes(action.id);
 
   const firstRunConnect = !intent
-    && !['connected-direct', 'connected-bridge'].includes(link.state)
+    // A link that is already talking to a card is never a first run. Excluding
+    // only the two connected states left 'connecting' (and the reconnecting /
+    // revalidating states) rendering the first-run "Connect this card" panel
+    // OVER a live attempt: an enabled button, no busy copy, and a second
+    // connect one click away. Studio owes the busy verdict there instead.
+    && link.state === 'disconnected'
     && !rememberedCard?.id
     && !link.expectedCard?.id
     && !link.discoveredCard?.id
