@@ -1,0 +1,251 @@
+/* ============================================================
+   Light Weaver v3 — Card page, "Console" treatment
+   ------------------------------------------------------------
+   The Settings panel got the console look first, which left the
+   page it lives on speaking a different language above it: flat
+   panels and thin outlines on top, machined modules below. This
+   carries the same vocabulary across the rest of the Card page —
+   the identity strip, the phase ladder, the evidence panels, the
+   support tiles and the section folds — so the whole screen reads
+   as one instrument.
+
+   Scoped to .card-workspace-screen. Tokens only, so Daylight
+   keeps working; the one fixed value is the dark ink that sits on
+   the amber "live" accent, which is light in both themes.
+   ============================================================ */
+
+.card-workspace-screen {
+  --lw-live: var(--layer-1);
+  --lw-live-ink: var(--layer-1);
+  --lw-on-live: oklch(0.185 0.030 68);
+  --lw-well: var(--bg-canvas);
+  --lw-inset: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
+  --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.07);
+  --lw-lift: 0 3px 8px oklch(0.05 0.005 60 / 0.38);
+  --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 12px 26px oklch(0.05 0.005 60 / 0.32);
+}
+
+:root[data-theme="daylight"] .card-workspace-screen {
+  --lw-live-ink: oklch(0.520 0.120 62);
+  --lw-inset: inset 0 1px 3px oklch(0.30 0.010 75 / 0.20);
+  --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.55);
+  --lw-lift: 0 2px 5px oklch(0.40 0.010 75 / 0.14);
+  --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.6), 0 8px 20px oklch(0.40 0.010 75 / 0.10);
+}
+
+/* ── page masthead ───────────────────────────────────────── */
+
+.card-workspace-screen .card-workspace-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--text-lo);
+}
+.card-workspace-screen .card-workspace-header h1 {
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.032em;
+}
+
+/* ── identity strip: four readouts in one machined bar ───── */
+
+.card-workspace-screen .lw-setup-identity {
+  border-radius: var(--r-lg);
+  border-color: var(--border-soft);
+  background: var(--bg-panel);
+  box-shadow: var(--lw-mod);
+  overflow: hidden;
+}
+.card-workspace-screen .lw-setup-identity > div { padding: 14px 18px; border-right-color: var(--border-soft); }
+.card-workspace-screen .lw-setup-identity span {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--text-lo);
+}
+.card-workspace-screen .lw-setup-identity strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ── the phase ladder as a module ────────────────────────── */
+
+.card-workspace-screen .lw-setup-progress {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--text-lo);
+}
+.card-workspace-screen .lw-setup-phase {
+  border-radius: var(--r-lg);
+  border-color: transparent;
+  background: transparent;
+}
+.card-workspace-screen .lw-setup-phase.is-current {
+  border-color: var(--border-soft);
+  background: var(--bg-panel);
+  box-shadow: var(--lw-mod);
+}
+/* the marker reads as a machined disc; the live one lights */
+.card-workspace-screen .lw-setup-phase-marker {
+  border-radius: 50%;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.card-workspace-screen .lw-setup-phase.is-current .lw-setup-phase-marker {
+  background: var(--lw-live);
+  border-color: transparent;
+  color: var(--lw-on-live);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--lw-live) 34%, transparent), inset 0 1px 0 oklch(1 0 0 / 0.3);
+}
+.card-workspace-screen .lw-setup-phase.is-done .lw-setup-phase-marker {
+  background: var(--bg-elev-2);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.card-workspace-screen .lw-setup-phase-head h2 { letter-spacing: -0.012em; }
+.card-workspace-screen .lw-setup-phase-head p { font-size: 12.5px; color: var(--text-lo); }
+
+/* ── section folds: a module header bar with a status light ─ */
+
+.card-workspace-screen .card-page-fold {
+  border-radius: var(--r-lg);
+  border-color: var(--border-soft);
+  box-shadow: var(--lw-mod);
+  overflow: hidden;
+}
+.card-workspace-screen .card-page-fold > summary {
+  min-height: 48px;
+  padding: 0 18px;
+  gap: 11px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.card-workspace-screen .card-page-fold[open] > summary { border-bottom-color: var(--border-soft); }
+/* the caret becomes a status light, so a fold reads like every other module */
+.card-workspace-screen .card-page-fold > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--idle);
+  transition: background .12s, box-shadow .12s;
+}
+.card-workspace-screen .card-page-fold[open] > summary::before {
+  content: "";
+  background: var(--lw-live-ink);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live-ink) 80%, transparent);
+}
+.card-workspace-screen .card-page-fold > summary:hover { background: var(--bg-elev-2); }
+.card-workspace-screen .card-page-fold-body { padding: 16px 18px 20px; }
+
+/* ── check & install: its own module, not loose text ─────── */
+/* .lww-flow is shared with the Wire screen, so this stays scoped to the Card
+   page — Wire keeps its own presentation. */
+
+.card-workspace-screen .lww-flow {
+  gap: 12px;
+  margin: 22px auto 0;
+  padding: 0 18px 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  box-shadow: var(--lw-mod);
+}
+.card-workspace-screen .lww-flow > .lww-flow-heading {
+  justify-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 -18px 4px;
+  padding: 13px 18px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.card-workspace-screen .lww-flow > .lww-flow-heading::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.card-workspace-screen .lww-flow-message { font-size: 12.5px; color: var(--text-lo); }
+
+/* ── the folds get room to be a control panel ────────────── */
+/* The setup journey is held to a 720px reading column on purpose — it is a
+   sequence of prose steps. The Hardware and Advanced folds are not prose;
+   they hold the instrument. Capped at 720 the Settings modules can only ever
+   stack in one column, which is why the panel read as a narrow strip. Give
+   the folds the page's full column so they can lay out in two. */
+.card-workspace-screen .card-workspace-body.lw-setup-body > .card-page-fold {
+  width: min(1180px, 100%);
+}
+
+/* ── evidence panels + support tiles ─────────────────────── */
+
+.card-workspace-screen .card-overview-state,
+.card-workspace-screen .card-support-panel,
+.card-workspace-screen .card-support-grid > button {
+  border-radius: var(--r-lg);
+  border-color: var(--border-soft);
+  box-shadow: var(--lw-mod);
+}
+.card-workspace-screen .card-support-grid > button:hover,
+.card-workspace-screen .card-support-grid > button.selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.card-workspace-screen .card-overview-signal.connected,
+.card-workspace-screen .card-overview-signal.connecting { box-shadow: 0 0 12px currentColor; }
+
+/* ── controls: the same physical language as the panel ───── */
+
+.card-workspace-screen .btn {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.card-workspace-screen .btn:hover { background: var(--bg-sel); border-color: var(--accent-line); }
+.card-workspace-screen .btn.primary,
+.card-workspace-screen .btn-lg {
+  color: var(--on-accent);
+  background: linear-gradient(var(--accent-hi), var(--accent));
+  border: 1px solid var(--accent-hi);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25), 0 4px 14px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.card-workspace-screen .btn-lg { min-height: 44px; height: auto; border-radius: 8px; }
+.card-workspace-screen .btn-lg.ghost {
+  color: var(--text-hi);
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.card-workspace-screen .btn.ghost-sm {
+  min-height: 38px;
+  background: transparent;
+  border-color: var(--border-soft);
+  color: var(--text-mid);
+  box-shadow: none;
+}
+.card-workspace-screen .btn:disabled { opacity: 0.45; box-shadow: none; }
+
+/* The Settings panel already carries this language and defines its own
+   tokens; it must not inherit the page's button sizing on top of its own. */
+.card-workspace-screen .set .btn { box-shadow: var(--lw-raise), var(--lw-lift); }

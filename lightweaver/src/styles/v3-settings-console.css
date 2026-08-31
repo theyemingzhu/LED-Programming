@@ -1,0 +1,658 @@
+/* ============================================================
+   Light Weaver v3 — Settings, "Console" treatment
+   ------------------------------------------------------------
+   A visual layer over the existing .set-* markup. Every rule is
+   scoped under .set so no other screen is touched, and every
+   colour comes from the tokens in v3-styles.css so the Daylight
+   theme keeps working — the one fixed value is --lw-on-live,
+   the dark ink that sits on the amber "live" accent (amber is
+   light in both themes, so it needs dark ink in both).
+
+   The idea: each section reads as a machined module — a header
+   bar with a status LED, controls that feel physical (inset
+   wells, raised segmented keys, faders with real grips), amber
+   for anything the card is actually doing right now, and clay
+   for the one action that writes to hardware.
+   ============================================================ */
+
+.set {
+  /* A container, not a media query: this screen is embedded in a fold that is
+     far narrower than the viewport, so "is there room for two columns" has to
+     be asked of the screen itself. */
+  container-type: inline-size;
+  /* .set answers "how many columns fit". It is the WRONG thing to ask about a
+     ROW, because a row lives inside one of those columns and is half as wide.
+     Asking .set meant the stacking rules never fired for a two-up module: the
+     control kept a 300px track inside a 494px module, overflowed it, and was
+     drawn back over the label text on its left. Each column is its own
+     container so a row is measured against the space it actually has. */
+  /* --lw-live is the LIT FILL: a block of amber with dark ink on it. It works
+     on either theme because amber stays light in both.
+     --lw-live-ink is the same idea used as TEXT or a thin stroke, which is a
+     different problem: light amber on the Daylight panel is unreadable, so
+     there it drops to a bronze of the same hue. Never use --lw-live for text. */
+  --lw-live: var(--layer-1);
+  --lw-live-ink: var(--layer-1);
+  --lw-on-live: oklch(0.185 0.030 68);
+  --lw-well: var(--bg-canvas);
+  --lw-inset: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
+  --lw-inset-deep: inset 0 1px 4px oklch(0.03 0 0 / 0.7);
+  --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.07);
+  --lw-lift: 0 3px 8px oklch(0.05 0.005 60 / 0.38);
+}
+
+:root[data-theme="daylight"] .set {
+  --lw-live-ink: oklch(0.520 0.120 62);
+  --lw-inset: inset 0 1px 3px oklch(0.30 0.010 75 / 0.20);
+  --lw-inset-deep: inset 0 1px 4px oklch(0.30 0.010 75 / 0.26);
+  --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.55);
+  --lw-lift: 0 2px 5px oklch(0.40 0.010 75 / 0.14);
+}
+
+.set .set-col { container-type: inline-size; }
+
+/* v3-screens.css asks for `.set-embedded { padding: 0 }` and then, 887 lines
+   later, sets `.set { padding: 28px 32px 48px }`. Same specificity, later wins,
+   so the embedded reset has never applied: the screen has been carrying 64px of
+   side padding inside a fold that already has its own. On a phone that fold is
+   ~250px wide, so a quarter of the screen was gone before a single control was
+   drawn. Restore what the earlier rule intended. */
+.set.set-embedded { padding: 0; }
+
+/* ── modules ─────────────────────────────────────────────── */
+
+.set .card.set-card {
+  padding: 0 18px 14px;
+  border-radius: var(--r-lg);
+  border-color: var(--border-soft);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 12px 26px oklch(0.05 0.005 60 / 0.32);
+  overflow: hidden;
+}
+
+/* header bar: breaks out of the module's padding, carries the LED */
+.set .card.set-card > .sec-h {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 -18px 4px;
+  padding: 13px 18px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-soft);
+}
+.set .card.set-card > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.set .card.set-card > .sec-h .t {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-hi);
+}
+.set .card.set-card > .sec-h .m {
+  margin-left: auto;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+
+/* the two modules that describe live hardware get a lit LED */
+.set .set-card.is-live > .sec-h::before {
+  background: var(--lw-live-ink);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live-ink) 80%, transparent);
+}
+
+/* ── rows ────────────────────────────────────────────────── */
+
+/* A fixed control column is what lets the faders be long enough to aim with;
+   left to `auto` they collapse to their min-width and the module reads as a
+   list of stubs. Segmented groups stay right-aligned inside it. */
+.set .set-row {
+  grid-template-columns: minmax(0, 1fr) clamp(150px, 42%, 300px);
+  padding: 14px 0;
+  gap: 12px 20px;
+  border-bottom-color: var(--border-hair);
+}
+/* stacked rows own the full width — the fixed control column above must not
+   reach them, or the outputs summary and the save action get crushed into it */
+.set .set-row.stack { grid-template-columns: minmax(0, 1fr); }
+.set .set-k .kk { font-size: 13.5px; font-weight: 500; }
+.set .set-k .hh {
+  margin-top: 3px;
+  max-width: 46ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-lo);
+}
+.set .set-row.stack .hh { max-width: 62ch; }
+
+/* ── segmented keys: inset well, raised keys, lit selection ── */
+
+/* A grid track does not clip, so a control wider than its column spills out —
+   to the right past the module edge, and (because .set-v is right-aligned) to
+   the left across the label. Wrapping and a zero min-width keep every control
+   inside the space it was given. */
+.set .set-v { min-width: 0; }
+.set .mini-seg {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  gap: 4px;
+  padding: 4px;
+  border: none;
+  border-radius: 8px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .mini-seg button {
+  min-height: 34px;
+  height: auto;
+  padding: 0 15px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-mid);
+  background: var(--bg-elev-2);
+  box-shadow: var(--lw-raise);
+}
+.set .mini-seg button:hover { color: var(--text-hi); background: var(--bg-sel); }
+.set .mini-seg button.on {
+  color: var(--lw-on-live);
+  background: var(--lw-live);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--lw-live) 34%, transparent), inset 0 1px 0 oklch(1 0 0 / 0.3);
+}
+
+/* ── faders ──────────────────────────────────────────────── */
+
+.set .set-range { gap: 14px; width: 100%; min-width: 0; flex-wrap: wrap; }
+.set .set-range input[type=range].lw {
+  flex: 1;
+  width: auto;
+  min-width: 90px;
+  height: 8px;
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, var(--accent), var(--lw-live-ink)) left / var(--lw-fill, 0%) 100% no-repeat,
+    var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .set-range input[type=range].lw::-webkit-slider-thumb {
+  width: 16px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.2), 0 3px 8px oklch(0.03 0 0 / 0.5);
+}
+.set .set-range input[type=range].lw::-moz-range-thumb {
+  width: 16px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.2), 0 3px 8px oklch(0.03 0 0 / 0.5);
+}
+
+/* readout chip — the lit number beside every fader */
+.set .set-rv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 74px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 6px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--lw-live-ink);
+}
+
+/* ── switch ──────────────────────────────────────────────── */
+
+.set .ex-toggle {
+  width: 56px;
+  height: 32px;
+  border-radius: 16px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .ex-toggle::after {
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  background: var(--text-mid);
+}
+.set .ex-toggle.on {
+  background: var(--lw-live);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--lw-live) 34%, transparent), inset 0 1px 0 oklch(1 0 0 / 0.25);
+}
+.set .ex-toggle.on::after { transform: translateX(24px); background: var(--lw-on-live); }
+
+/* ── fields ──────────────────────────────────────────────── */
+
+.set .pm-input,
+.set .num-input {
+  height: 44px;
+  border: none;
+  border-radius: 7px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+  font-size: 13.5px;
+}
+/* Machine values are set in the mono face; a project name is a name, so it
+   stays in the UI face. */
+.set .num-input,
+.set [data-testid="card-address-summary"] .pm-input {
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+}
+.set .pm-input:focus,
+.set .num-input:focus { box-shadow: var(--lw-inset), 0 0 0 1px var(--accent); }
+.set .set-v > [data-testid="card-address-summary"] { width: 100%; }
+.set .set-row.stack .set-v > [data-testid="card-address-summary"] { max-width: 420px; }
+
+/* ── buttons ─────────────────────────────────────────────── */
+
+.set .btn {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.set .btn:hover { background: var(--bg-sel); border-color: var(--accent-line); }
+.set .btn.primary {
+  color: var(--on-accent);
+  background: linear-gradient(var(--accent-hi), var(--accent));
+  border-color: var(--accent-hi);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.25), 0 4px 14px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+/* Secondary buttons ("Hide JSON", "Reset") kept a transparent border and read
+   as plain text on the module surface. A hairline is enough to say pressable
+   without competing with the primary action. */
+.set .btn.ghost-sm {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  background: transparent;
+  border-color: var(--border-soft);
+  color: var(--text-mid);
+  box-shadow: none;
+}
+.set .btn.ghost-sm:hover { background: var(--bg-elev); border-color: var(--border); color: var(--text-hi); }
+.set .btn:disabled { opacity: 0.45; box-shadow: none; }
+/* the note under an action is a consequence of it, not a caption glued to it */
+.set .set-actions + .hh,
+.set .set-actions + p { margin-top: 11px; }
+
+/* ── palette ─────────────────────────────────────────────── */
+
+.set .set-pal { gap: 10px; padding: 12px 0 16px; }
+.set .set-palsw {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22), 0 0 18px oklch(0 0 0 / 0);
+}
+.set .set-paladd {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .set-palx { width: 18px; height: 18px; background: var(--bg-elev-2); }
+
+/* ── status banners ──────────────────────────────────────── */
+
+.set .set-status {
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.set .set-status.is-ok { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: var(--ok-dim); }
+
+.set [data-testid="card-deployment-error"] {
+  margin: 12px 0 4px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-mid);
+}
+
+/* ── layout & outputs: three stat tiles + inset routing rows ─ */
+
+.set .set-outputs { gap: 12px; }
+.set .set-outputs-toolbar { align-items: flex-start; gap: 14px; }
+.set .set-outputs-toolbar [data-testid="output-routing-summary"] {
+  flex: 1;
+  flex-direction: row;
+  gap: 10px;
+  min-width: 0;
+}
+.set .set-stat {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .set-stat b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-hi);
+}
+.set .set-stat.is-live b { color: var(--lw-live-ink); }
+.set .set-stat i {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+/* the unavailable-wiring fallback keeps the plain sentence */
+.set .set-outputs-toolbar [data-testid="output-routing-summary"] > strong {
+  font-size: 12.5px;
+  color: var(--text-mid);
+}
+
+/* name | GPIO | pixels — a real three-column readout rather than a wrapping
+   flex run, so the numbers line up down the list. */
+.set .set-output-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 110px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .set-output-row .set-outfield { justify-content: flex-end; gap: 7px; }
+.set .set-output-row .set-outfield span { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+.set .set-output-row .set-output-ro.pm-input {
+  height: auto;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-hi);
+}
+.set .set-output-row .num-input.set-output-ro {
+  height: auto;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 12.5px;
+  color: var(--text-mid);
+}
+
+/* ── the colour-order check reads as a bench instrument ──── */
+
+.set .lw-color-order-check {
+  margin: 4px 0 6px;
+  padding: 15px 16px;
+  border-radius: 9px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.set .lw-color-order-check .lwb-quiz-head-text strong { font-size: 13.5px; font-weight: 600; }
+.set .lw-color-order-check .lwb-quiz-head-text .lwb-detail { font-size: 12px; color: var(--text-lo); }
+.set .lw-color-order-check .btn { box-shadow: var(--lw-raise), var(--lw-lift); }
+
+/* ── visual setup: the ring becomes the hero ─────────────── */
+
+.set .set-ring {
+  margin: 14px -18px 0;
+  padding: 0 18px 4px;
+  border-top: 1px solid var(--border-soft);
+}
+.set .set-ring > .sec-h {
+  margin: 0 -18px 14px;
+  padding: 13px 18px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-soft);
+}
+.set .set-ring > .sec-h .t { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; color: var(--text-hi); }
+.set .set-ring > .sec-h .m { margin-left: auto; }
+
+.set .set-ring-stage {
+  width: 186px;
+  height: 186px;
+  margin: 0;
+  flex: 0 0 auto;
+  background: radial-gradient(circle, color-mix(in srgb, var(--lw-live) 16%, transparent), transparent 68%);
+  border-radius: 50%;
+}
+.set .set-ring-orbit { border-width: 5px; }
+.set .set-ring-orbit.outer {
+  width: 166px;
+  height: 166px;
+  border-color: var(--lw-live-ink);
+  opacity: 1;
+  box-shadow: 0 0 22px color-mix(in srgb, var(--lw-live) 28%, transparent);
+}
+.set .set-ring-orbit.inner {
+  width: 112px;
+  height: 112px;
+  border-color: var(--accent);
+  opacity: 1;
+}
+.set .set-ring-orbit.center {
+  width: 58px;
+  height: 58px;
+  border-width: 1.5px;
+  border-color: var(--border);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--lw-live-ink);
+}
+/* stage and readout sit side by side, not stacked */
+.set .set-ring-body {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding-bottom: 12px;
+}
+.set .set-ring-copy { flex: 1; min-width: 0; gap: 0; }
+.set .set-ring-copy > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-hair);
+}
+.set .set-ring-copy > div:last-child { border-bottom: none; }
+.set .set-ring-copy strong {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  min-width: 0;
+}
+.set .set-ring-copy strong::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--bg-elev-2);
+}
+.set .set-ring-copy > div:nth-child(1) strong::before { background: var(--lw-live-ink); }
+.set .set-ring-copy > div:nth-child(2) strong::before { background: var(--accent); }
+.set .set-ring-copy span { font-size: 11.5px; color: var(--text-mid); }
+
+/* ── advanced ────────────────────────────────────────────── */
+
+.set .set-json {
+  border: none;
+  border-radius: 8px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset-deep);
+  font-size: 12px;
+  line-height: 1.65;
+  padding: 15px;
+}
+.set .set-json:focus { box-shadow: var(--lw-inset-deep), 0 0 0 1px var(--accent); }
+
+/* Units and inline suffixes sat at --text-faint, which on a well is close to
+   invisible — "600" with no readable "sec" beside it is a number without a
+   meaning. */
+.set .set-u {
+  font-size: 10.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.set .set-v-inline { gap: 12px; }
+
+/* When a row of modules has only one column left (the other held nothing to
+   show in this mode), it kept the whole width and a single small button was
+   left floating in it. Hold it to one column's width, but only where two
+   columns actually fit. */
+/* The empty column is still a child (hidden, not removed), so the test is
+   "my next sibling column is empty", not :only-child. */
+@container (min-width: 760px) {
+  .set-cols:not(.set-cols-1) > .set-col:has(+ .set-col:empty) { max-width: calc(50% - 10px); }
+}
+
+/* ── the connection rail splits in two when there is room ── */
+/* Full width with one row per line, the address field ends up marooned at the
+   far right of a 1000px module. Side by side it reads as one status rail:
+   where the card is on the left, what you can send it on the right. */
+@container (min-width: 900px) {
+  .set .set-cols-1 > .set-col > .card.set-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 30px;
+    align-items: start;
+  }
+  .set .set-cols-1 > .set-col > .card.set-card > .sec-h,
+  .set .set-cols-1 > .set-col > .card.set-card > .set-status,
+  .set .set-cols-1 > .set-col > .card.set-card > [data-testid="card-deployment-error"] {
+    grid-column: 1 / -1;
+  }
+  /* rules between rows read as a broken table once they sit side by side */
+  .set .set-cols-1 .set-row { border-bottom: none; }
+}
+
+/* ── narrow ──────────────────────────────────────────────── */
+
+/* Container, not viewport: this screen lives inside a fold that is ~250px
+   wide on a phone while the viewport says 375px, so a media query here fires
+   at the wrong moment and leaves the label column two words wide with the
+   field hanging out of the module. Below 560px of ACTUAL width the rows stop
+   trying to be two columns and stack, and every control takes the full line. */
+/* Mid width — a two-up module is about 500px. There is still room for the
+   label and its control on one line; what there is NOT room for is a control
+   column pinned near 300px. Let the control take exactly the width it needs
+   and give the rest to the label. */
+@container (max-width: 640px) {
+  .set .set-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .set .set-range { min-width: 210px; }
+  .set .lw-color-order-check .lwb-quiz-head { flex-direction: row; align-items: center; }
+  .set .lw-color-order-check .lwb-quiz-open { width: auto; }
+}
+
+/* Genuinely narrow — a phone, or the panel inside a collapsed fold. Now the
+   label and control stop fitting on one line at all, so every row stacks and
+   each control takes the full line. */
+@container (max-width: 430px) {
+  .set .set-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .set .set-v { justify-content: flex-start; width: 100%; }
+  .set .set-v-inline { width: 100%; }
+  .set .set-range { width: 100%; }
+  .set .set-range input[type=range].lw { min-width: 0; }
+  /* Stacked, a segmented control keeps its natural width and sits under its
+     label. Stretching it edge to edge turns a small switch into a banner. */
+  .set .mini-seg { width: auto; justify-content: flex-start; }
+  .set .pm-input,
+  .set .num-input { width: 100%; }
+  .set .set-row.stack .set-v > [data-testid="card-address-summary"] { max-width: none; }
+  .set .set-actions { width: 100%; }
+  /* v3-settings-extra pins .set-actions .btn to nowrap. At this width the
+     longest label ("Save project to this card") is wider than the module, and
+     a nowrap flex item cannot shrink below its own text — so the row grew past
+     the module and the module's overflow:hidden sliced the button in half.
+     Let the label wrap instead. */
+  .set .set-actions .btn { flex: 1 1 100%; white-space: normal; text-align: center; line-height: 1.3; padding: 8px 14px; }
+
+  .set .card.set-card { padding: 0 14px 12px; }
+  .set .card.set-card > .sec-h { margin: 0 -14px 4px; padding: 12px 14px; flex-wrap: wrap; }
+  .set .card.set-card > .sec-h .m { margin-left: 0; flex-basis: 100%; }
+
+  .set .set-outputs-toolbar { flex-direction: column; align-items: stretch; }
+  .set .set-outputs-toolbar [data-testid="output-routing-summary"] { flex-wrap: wrap; }
+  .set .set-stat { flex-basis: calc(50% - 5px); }
+  /* Three columns stop fitting: the output name takes its own line and the two
+     readings sit side by side under it. (An earlier attempt hid `.set-outfield
+     span`, which also hid the NUMBERS — they are spans too. Never hide these.) */
+  .set .set-output-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; padding: 10px 12px; }
+  .set .set-output-row > .set-output-ro.pm-input { grid-column: 1 / -1; }
+  .set .set-output-row .set-outfield { justify-content: flex-start; gap: 6px; }
+  /* keep each value welded to its own unit — with the number free to grow, the
+     row reads as "16   GPIO 44   PIXELS" and the label pairs with the wrong
+     number */
+  .set .set-output-row .set-outfield > * { flex: 0 0 auto; }
+  /* .num-input carries a fixed width from the base sheet; inside a half-width
+     output cell that is wider than the cell, so the value and its unit were
+     pushed out through the module edge. */
+  .set .set-output-row .num-input.set-output-ro { width: auto; min-width: 0; }
+
+  /* the colour check stacks its question above its button */
+  .set .lw-color-order-check .lwb-quiz-head { flex-direction: column; align-items: stretch; gap: 12px; }
+  .set .lw-color-order-check .lwb-quiz-open { width: 100%; }
+
+  .set .set-ring { margin-inline: -14px; padding-inline: 14px; }
+  .set .set-ring > .sec-h { margin-inline: -14px; padding-inline: 14px; }
+  .set .set-ring-body { flex-direction: column; align-items: stretch; gap: 16px; }
+  .set .set-ring-stage { align-self: center; }
+}
+
+/* Narrower still: two stat tiles per line stop fitting, and the ring stage
+   has to shrink to stay inside the module. */
+@container (max-width: 360px) {
+  /* Thumb width now matters more than shape: the switch fills the line so
+     each key is a real 44px target. */
+  .set .mini-seg { width: 100%; }
+  /* flex:1 sets a zero basis, so three keys squeeze below their own labels and
+     "Sequence" gets cut in half. Hold each key to its text and let the group
+     wrap onto a second line instead. */
+  .set .mini-seg button { flex: 1 1 auto; min-width: max-content; justify-content: center; padding: 0 10px; }
+  .set .set-stat { flex-basis: 100%; }
+  .set .set-ring-stage { width: 150px; height: 150px; }
+  .set .set-ring-orbit.outer { width: 134px; height: 134px; }
+  .set .set-ring-orbit.inner { width: 90px; height: 90px; }
+  .set .set-ring-orbit.center { width: 48px; height: 48px; font-size: 17px; }
+  .set .set-ring-copy > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}

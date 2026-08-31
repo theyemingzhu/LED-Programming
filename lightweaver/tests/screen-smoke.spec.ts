@@ -877,9 +877,14 @@ test('settings screen prioritizes card setup and keeps raw config advanced', asy
   // shows totals plus per-output GPIO/pixels as text, offers Edit in Layout,
   // and exposes no routing inputs or re-routing actions (Layout owns
   // structure and routing for every layout type).
+  // The four totals now read as stat tiles rather than one sentence, so the
+  // assertion follows the same four facts into their new shape: a number
+  // beside "LEDs", a number beside "sections", and the output count beside
+  // the routed total. Presentation moved; nothing reported got dropped.
   const routingSummary = page.getByTestId('output-routing-summary');
-  await expect(routingSummary).toContainText(/\d+ LEDs · \d+ sections/);
-  await expect(routingSummary).toContainText(/\d+ outputs? · \d+ LEDs routed/);
+  await expect(routingSummary).toContainText(/\d+\s*LEDs/);
+  await expect(routingSummary).toContainText(/\d+\s*sections/);
+  await expect(routingSummary).toContainText(/\d+\s*outputs? · \d+ LEDs routed/);
   await expect(page.locator('[data-testid="output-summary-row"] input')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Single output' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Split by sections' })).toHaveCount(0);

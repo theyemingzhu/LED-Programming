@@ -52,8 +52,23 @@ const SECTION_HEADINGS = Object.freeze({
 });
 
 function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
+  const foldRef = useRef(null);
+  // Opening a section should put you ON it. These folds sit below the whole
+  // setup journey — about 800px down — so arriving at #section=settings used
+  // to land on the ladder with the thing you asked for entirely below the
+  // fold of the window. Bring it to the top of the scroll surface instead.
+  // Scroll position only: nothing about what is rendered or open changes.
+  useEffect(() => {
+    if (!open) return;
+    const node = foldRef.current;
+    if (!node || typeof node.scrollIntoView !== 'function') return;
+    const frame = requestAnimationFrame(() => {
+      node.scrollIntoView({ block: 'start', behavior: 'auto' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   return (
-    <details className="card-page-fold" data-testid={testId} open={open}>
+    <details ref={foldRef} className="card-page-fold" data-testid={testId} open={open}>
       <summary
         onClick={event => {
           event.preventDefault();

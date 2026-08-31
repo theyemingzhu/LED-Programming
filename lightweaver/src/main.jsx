@@ -18,6 +18,15 @@ import './styles/v3-layout-modes.css';
 // advanced JSON disclosure) in the v3 token idiom. The six mockup cards still
 // use the mockup's own .set-* classes; these only style genuinely live-only UI.
 import './styles/v3-settings-extra.css';
+// The "Console" visual treatment for Settings: machined modules with a status
+// LED, physical-feeling controls, amber for what the card is doing right now.
+// Scoped entirely under .set, tokens only, so no other screen and neither
+// theme is affected. Loads after the extras so it can override them.
+import './styles/v3-settings-console.css';
+// The same treatment across the rest of the Card page — identity strip, phase
+// ladder, evidence panels, support tiles, folds — so the screen reads as one
+// instrument instead of two designs meeting halfway down.
+import './styles/v3-card-console.css';
 // Live-only Patterns controls (connection/repair status strip, multi-section
 // target tabs, Advanced disclosure, live card summary, load-more / empty state)
 // — the .pmx-*/.tc-* classes lw-pattern.jsx emits that the static mockup has no
