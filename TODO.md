@@ -15,8 +15,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
-- [ ] Make Card Home effortless — one primary action, and a status row that speaks facts _(band: agent-runnable)_ _(effort: moderate)_ → Plan: [2026-08-31-card-home-effortless.md](docs/superpowers/plans/2026-08-31-card-home-effortless.md)
-  On `card-one-action` @ `dad5bc31`, not pushed. Done: Test & Install gone, check+install on Card, one Card page, footer is status only, and Home now says the card's status ONCE (Detected state stands down when the identity row and ladder already carry it; ready banner keeps its doors, loses its prose). Left, in order: retire three specs asserting UI Tasks 1–7 deleted (6 red on this branch, all 6 also red at `a5bb834a`); make the identity row's Connection/Installed fields states not errands; then cut the page from three competing primary buttons to one. Do not redo Tasks 1–7.
+- [x] Make Card Home effortless — one status, one primary action _(band: agent-runnable)_ _(effort: moderate)_ → Plan: [2026-08-31-card-home-effortless.md](docs/superpowers/plans/2026-08-31-card-home-effortless.md)
+  Done 2026-08-31 and shipped. Card Home has one status row and one primary action; six defects fixed along the way (Card Home crashing on drifted wiring, the light-check dead end, the revoked card-edit grant, the Connect dialog covering every diagnosis, a duplicate probe from a page with no opener, and the empty install task). Per-section patterns and the connect-recovery panel were separately broken and are fixed. `patterns-v3`, `connection-center-quality` and `patch-board` joined `ci:browser-smoke` so the lane that hid them cannot hide the next one.
 - [ ] Decide whether Lightweaver keeps living on the mandalacodes web address _(band: you-required)_ _(effort: deep)_
   Raised by the 2026-08-28 Cloudflare account split (led to celestialymz@gmail.com, Mandala
   Codes staying on sccsclothing@gmail.com). A Pages project cannot hold a custom domain whose
