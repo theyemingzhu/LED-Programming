@@ -858,7 +858,18 @@ test('top-bar file import Escape preserves the active browser-library record', a
   await page.getByRole('textbox', { name: 'Project name' }).fill('Current Mandala edited');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
   await importSeededProjectFileThroughTopBar(page, 'incoming-record');
+  // The import helper returns as soon as the file is handed over; the app then
+  // reads it and raises the replacement dialog a tick later. The sibling test
+  // above never races because a locator click auto-waits for the dialog — this
+  // one pressed a raw key with nothing to wait on. Escape arriving early does
+  // nothing, the dialog opens afterwards and stays, and it holds the app inert,
+  // so the project-name field disappears from the accessibility tree and the
+  // assertion below fails with "element(s) not found". Wait for the dialog, and
+  // assert it actually closed.
+  const replacement = page.getByRole('dialog', { name: 'Replace current project?' });
+  await expect(replacement).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(replacement).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Project name' })).toHaveValue('Current Mandala edited');
   await expect(page.locator('.crumb .proj')).toHaveText('Current Mandala edited');
   expect(await readBrowserFallbackStorage(page)).toEqual(browserFallbackBefore);
