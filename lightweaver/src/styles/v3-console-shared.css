@@ -37,11 +37,16 @@
   --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.07);
   --lw-lift: 0 3px 8px oklch(0.05 0.005 60 / 0.38);
   --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 12px 26px oklch(0.05 0.005 60 / 0.32);
-  /* The schematic layer: a faint measured field behind a panel body, and
-     the hairline that separates a module's header from what it controls. */
+  /* The schematic layer: a faint measured field behind a panel body. */
   --lw-graph: oklch(1 0 0 / 0.014);
   --lw-graph-step: 26px;
 }
+
+/* --lw-on-live and --lw-mod are declared but unused by the four layers that
+   load this file, and that is on purpose: the block declares the COMPLETE
+   console vocabulary, the same set .set and .card-workspace-screen carry, so
+   a rule can be moved between console scopes without silently losing its
+   shadow or its ink. Pruning to current usage would make that move a bug. */
 
 :root[data-theme="daylight"] .pm,
 :root[data-theme="daylight"] .sh,

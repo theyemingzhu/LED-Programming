@@ -9,7 +9,13 @@
    written here, so the chips' selected-state vocabulary lives
    there, not in this file. What is left for CSS is the chrome:
    the transport bar, the inspector's section heads, the panel
-   field, the faders and the stage well.
+   field and the faders.
+
+   Rules here were checked against lw-show.jsx, not against the
+   class list in v3-screens.css. That file defines .tp-btn,
+   .tp-field, .sh-tab and .sh-insp-head; this screen renders none
+   of them, and an earlier draft styled all four. A rule for
+   markup that does not exist reads as coverage and is not.
 
    Tokens only; Daylight keeps working.
    ============================================================ */
@@ -42,8 +48,6 @@
     linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
   background-size: var(--lw-graph-step) var(--lw-graph-step);
 }
-.sh .sh-insp-head .nm { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
-.sh .sh-insp-head .dot { border-radius: 2px; }
 
 /* ── faders: sunken track, blade grip ────────────────────── */
 /* Same control as Patterns; it must not be a different object here. */
