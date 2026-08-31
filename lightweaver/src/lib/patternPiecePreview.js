@@ -67,7 +67,12 @@ export function buildPatternPreviewSegments({
   return (targets || [])
     .filter(target => target?.kind === 'section' && target.id)
     .map(target => {
-      const pixels = pixelsByTargetId.get(target.id) || [];
+      // Compiled wiring keys pixels by ZONE id; the uncompiled patch board keys
+      // them by PATCH id. A target carries both, so try its Studio identity
+      // first and fall back to the card identity rather than assuming one.
+      const pixels = pixelsByTargetId.get(target.id)
+        || (target.zoneId ? pixelsByTargetId.get(target.zoneId) : null)
+        || [];
       if (!pixels.length) return null;
       const look = { ...(target.look || {}) };
       const sourcePatternId = String(look.patternId || 'aurora');

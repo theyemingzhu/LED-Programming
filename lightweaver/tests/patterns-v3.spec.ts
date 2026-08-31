@@ -24,16 +24,23 @@ async function setRangeValue(locator, value: string) {
   }, value);
 }
 
+// A card reports the zone ids it was actually flashed with, which come from the
+// COMPILED wiring (`default-outer-circle`), never Studio's patch ids
+// (`patch-default-outer-circle`). Derive them from the compiler so the fixture
+// cannot drift into modelling a card that could not exist: a zone list in the
+// wrong namespace makes every targeted preview silently fall back to the whole
+// strip, which is a pass that proves nothing.
+const DEFAULT_CARD_ZONE_IDS = (({ layout }) => compileWiring({
+  wiring: layout.wiring,
+  strips: layout.strips,
+  groups: layout.layerGroups,
+}).zones.map(zone => zone.id))(createDefaultProject());
+
 async function mockDefaultCardZones(page) {
   await page.route('**/api/zones', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({
-      zones: [
-        { id: 'patch-default-outer-circle' },
-        { id: 'patch-default-inner-circle' },
-      ],
-    }),
+    body: JSON.stringify({ zones: DEFAULT_CARD_ZONE_IDS.map(id => ({ id })) }),
   }));
 }
 
@@ -1858,13 +1865,22 @@ test('a slider changes its readout and sends a tuned color modifier', async ({ p
   await setRangeValue(page.getByTestId('look-hue-slider'), '160');
   await expect(page.getByTestId('look-hue-readout')).toContainText('°');
 
-  // The tuned look is pushed to the card.
+  // A section has two ids and they are deliberately different. Studio's own
+  // identity is the PATCH id; the card addresses zones by the COMPILED ZONE id
+  // (`buildCardRuntimePackageFromProject` writes `default-outer-circle` into the
+  // runtime package, never `patch-…`). Assert both here: a runtime command that
+  // carried the patch id would name a zone the firmware does not have, and
+  // collapsing the two namespaces is exactly the regression that made every
+  // per-section look silently stop saving.
+  await expect(page.getByLabel('Preview target')).toHaveValue('patch-default-outer-circle');
+
+  // The tuned look is pushed to the card, addressed by its card zone id.
   await expect.poll(() => controlRequests.some(r => (
     r.patternId === 'ocean'
       && r.brightness === 0.42
       && r.speed === 1.75
       && r.hue === 160
-      && r.zone === 'patch-default-outer-circle'
+      && r.zone === 'default-outer-circle'
   ))).toBe(true);
 });
 
