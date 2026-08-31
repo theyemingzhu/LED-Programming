@@ -39,8 +39,14 @@ test('a chipset picked in the starter persists into the project and reaches the 
 
   await picker.getByRole('button', { name: 'Create line' }).click();
 
+  // The chipset is an advanced control and must not be surfaced until Wire
+  // tools is opened. It used to be absent from the DOM because reaching the
+  // Wire panel took a mode click; the Wire plan tools now render with Layout,
+  // so the control is present-but-hidden inside the closed <details>. Hidden
+  // is the guarantee — a closed <details> renders its children, which is the
+  // same fact that let a drifted project crash Card Home from inside a fold.
   const projectChipset = page.getByTestId('project-led-chipset');
-  await expect(projectChipset).toHaveCount(0);
+  await expect(projectChipset).toBeHidden();
   await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
   const advancedChipset = page.getByTestId('project-led-chipset');
   await expect(advancedChipset).toBeVisible();
