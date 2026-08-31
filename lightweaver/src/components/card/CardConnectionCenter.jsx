@@ -417,6 +417,14 @@ export function CardConnectionCenter({
   const showManualReturn = !capabilities.canWebSerialInstall
     && ['launch-native-bridge', 'install-native-bridge', 'needs-card-update'].includes(action.id);
 
+  // The first-run "Connect this card" panel can only stand in for the GENERIC
+  // "nothing has answered yet" verdict. `recoverable-failure` is that verdict —
+  // including the `card-unreachable` a background probe of the default host
+  // produces on a genuinely fresh load, which is still a first run. Every other
+  // verdict is a specific diagnosis that carries its own explanation and its
+  // own escape hatch, and must not be replaced by a generic connect prompt.
+  const genericFirstRunVerdict = action.id === 'recoverable-failure';
+
   const firstRunConnect = !intent
     // A link that is already talking to a card is never a first run. Excluding
     // only the two connected states left 'connecting' (and the reconnecting /
@@ -424,6 +432,13 @@ export function CardConnectionCenter({
     // OVER a live attempt: an enabled button, no busy copy, and a second
     // connect one click away. Studio owes the busy verdict there instead.
     && link.state === 'disconnected'
+    // The same failure one step later: a link carrying a specific DIAGNOSIS
+    // fell through to the first-run panel, which replaced the verdict AND its
+    // escape hatch with a generic "Connect this card". An owner whose card was
+    // left mid-write saw no route to safe recovery — only the retry that
+    // needs-safe-recovery exists to prevent. firmwareNoteQuestion below was
+    // this same patch applied to three action ids; this covers every verdict.
+    && genericFirstRunVerdict
     && !rememberedCard?.id
     && !link.expectedCard?.id
     && !link.discoveredCard?.id

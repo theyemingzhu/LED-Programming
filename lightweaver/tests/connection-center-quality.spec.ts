@@ -81,6 +81,62 @@ function actionRegion(page) {
   return page.locator('.card-connection-action');
 }
 
+// The installation door ("Card is new or needs firmware", which sets the
+// blank-card intent and hands off to installationRoute).
+//
+// It used to hang off the LED-condition quiz that opened the panel. 40c08165
+// retired the quiz for a single "Connect this card", and the first-run panel
+// that replaced it deliberately offers exactly ONE next action after a failed
+// connect, chosen by capability — see connect-simple.spec.ts, 'a failed
+// first-run connect keeps retry and one next action, not five doors'. On a
+// browser without Web Serial that one door is the setup-network door, so the
+// installation door is not reachable from a first run there any more.
+//
+// It is still reachable, uncapped by capability, on the ordinary local-card
+// recovery verdict — the owner whose known card stopped answering saying "this
+// card is new or needs firmware". That is the route these installation
+// journeys take now, so it is the route the fixtures take.
+async function seedRememberedCard(page) {
+  await page.evaluate(() => {
+    localStorage.setItem('lw_chip_card_host', '192.168.18.70');
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1,
+      id: 'lw-441bf681feb0',
+      name: 'Gallery card',
+      hostname: 'gallery-card.local',
+      address: '192.168.18.70',
+    }));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+}
+
+async function openInstallationDoor(page) {
+  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
+  // Fail at the DEFAULT card host, not the remembered address. cardLink drops
+  // any later card-verified whose host differs from the one pinned here
+  // ('card-verified' returns prev when prev.host !== event.host), so a door
+  // opened at 192.168.18.70 would silently swallow every commissioning
+  // verification that follows at lightweaver.local. The remembered card still
+  // resolves to gallery-card.local, so this stays the ordinary local-card
+  // recovery verdict rather than the setup-network one.
+  await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'lightweaver.local' });
+  await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'recoverable-failure');
+  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
+}
+
+// The remembered card is scaffolding to reach the installation door, nothing
+// more: the door sets the blank-card intent, and an intent alone keeps the
+// panel off the first-run path. An install journey whose whole subject is
+// which card comes back must not carry a pinned identity into that check —
+// the link would reject a foreign card before the commissioning panel could
+// report which one answered, silently skipping the assertion.
+async function forgetRememberedCard(page) {
+  await page.evaluate(() => {
+    localStorage.removeItem('lw_card_identity_v1');
+    localStorage.removeItem('lw_chip_card_host');
+  });
+}
+
 async function activeCommissioning(page) {
   return page.evaluate(() => {
     const registry = JSON.parse(localStorage.getItem('lw_card_commissioning_registry_v2') || '{"flows":{}}');
@@ -432,7 +488,16 @@ test('secure iframe escapes to the fixed canonical installer in a new top-level 
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
   });
+  // Same origin as the embedded Studio, so seeding here seeds the frame.
   await page.evaluate(() => {
+    localStorage.setItem('lw_chip_card_host', '192.168.18.70');
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1,
+      id: 'lw-441bf681feb0',
+      name: 'Gallery card',
+      hostname: 'gallery-card.local',
+      address: '192.168.18.70',
+    }));
     const frame = document.createElement('iframe');
     frame.id = 'embedded-studio';
     frame.src = `${location.origin}/#screen=layout`;
@@ -440,7 +505,15 @@ test('secure iframe escapes to the fixed canonical installer in a new top-level 
   });
   const studio = page.frameLocator('#embedded-studio');
   await studio.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await studio.getByRole('button', { name: 'Connect this card' }).click();
+  // The installation door, reached the way it is reachable now — see
+  // openInstallationDoor. The frame has its own card link, so the recovery
+  // verdict has to be dispatched inside it.
+  const studioFrame = page.frames().find(frame => frame !== page.mainFrame() && frame.url().includes('screen=layout'));
+  await studioFrame!.evaluate(async linkEvent => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    getSharedCardLink().dispatch(linkEvent);
+  }, { type: 'bridge-lost', reason: 'no-answer', host: '192.168.18.70' });
+  await studio.locator('.card-connection-action').waitFor();
   await studio.getByRole('button', { name: 'Card is new or needs firmware' }).click();
   const escape = studio.getByRole('link', { name: 'Open secure installer' });
   await expect(escape).toHaveAttribute('href', 'https://led.mandalacodes.com/#screen=flash&mode=install');
@@ -466,11 +539,9 @@ test('desktop Bridge launch persists the project and commissioning flow without 
     (window as any).__lwBridgeUrls = [];
     (window as any).__LW_BRIDGE_NAVIGATE_FOR_TEST__ = (url: string) => (window as any).__lwBridgeUrls.push(url);
   });
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await seedRememberedCard(page);
   await page.getByRole('button', { name: 'New project' }).click();
-  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Connect this card' }).click();
-  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
+  await openInstallationDoor(page);
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'launch-native-bridge');
   await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
   await expect(actionRegion(page)).toContainText('Waiting for Lightweaver Bridge');
@@ -570,10 +641,8 @@ test('mobile handoff stays passive', async ({ page }) => {
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (Linux; Android 14) Mobile' });
     Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Linux armv8l' });
   });
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Connect this card' }).click();
-  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
+  await seedRememberedCard(page);
+  await openInstallationDoor(page);
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'handoff-supported-device');
   await expect(actionRegion(page).locator('.card-connection-actions').getByRole('button')).toHaveCount(0);
 });
@@ -600,10 +669,9 @@ test('Bridge return does not call a successful POST independent restoration proo
       return { ok: true, saved: true };
     };
   });
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Connect this card' }).click();
-  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
+  await seedRememberedCard(page);
+  await openInstallationDoor(page);
+  await forgetRememberedCard(page);
   await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
 
   await deliverBridgeResult(page);
@@ -615,6 +683,11 @@ test('Bridge return does not call a successful POST independent restoration proo
   await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-FEB0', exact: true }).click();
 
+  // The join click persists networkState 'setup-joined' asynchronously, and the
+  // commissioning panel only computes its identity check once that has landed.
+  // Dispatching a card into the gap loses the verification silently, which is a
+  // flake under host load rather than a failure. Wait for the write.
+  await expect.poll(async () => (await activeCommissioning(page))?.networkState).toBe('setup-joined');
   await dispatchCardLinkEvent(page, {
     type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
     card: { id: 'lw-222222222222', firmwareVersion: '1.2.3', buildId: 'a'.repeat(40) },
@@ -726,10 +799,9 @@ test('a staged GPIO restoration stops at the Check lights handoff without legacy
       throw new Error('The fresh card returned an invalid project fingerprint');
     };
   });
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Connect this card' }).click();
-  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
+  await seedRememberedCard(page);
+  await openInstallationDoor(page);
+  await forgetRememberedCard(page);
   await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
   await deliverBridgeResult(page);
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-FEB0', exact: true }).click();
@@ -800,12 +872,18 @@ test('wrong-card and ordinary no-answer recovery use the stable LAN name before 
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });
   await expect(actionRegion(page)).toContainText('pulsing amber');
   await expect(page.getByRole('button', { name: 'Continue after joining' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Try local network again' })).toBeVisible();
+  // The "I am not on the setup hotspot, look on the home network" escape. It
+  // was labelled 'Try local network again' until 67ebba23, which renamed it and
+  // taught it to aim at the commissioning / remembered host instead of one
+  // fixed guess. Same affordance, better target — assert the testid too so a
+  // future copy pass cannot quietly delete the escape and stay green.
+  await expect(page.getByTestId('setup-network-already-on-wifi')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'The card is already on my Wi-Fi' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (
     (window as any).__openedUrls.some((url: string) => url.includes('192.168.4.1'))
   ))).toBe(false);
 
-  await page.getByRole('button', { name: 'Try local network again' }).click();
+  await page.getByTestId('setup-network-already-on-wifi').click();
   await expect.poll(() => page.evaluate(() => (window as any).__openedWindows.at(-1))).toMatchObject({
     url: expect.stringContaining('http://gallery-card.local/'),
     target: 'lightweaver-card-bridge',
