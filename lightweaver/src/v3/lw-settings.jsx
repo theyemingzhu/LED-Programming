@@ -62,9 +62,14 @@ const SettingsFieldContext = createContext(null);
   }
   function Range({ value, set, min, max, step, fmt }) {
     const field = useContext(SettingsFieldContext);
+    // A native range cannot paint the travelled part of its own track, so the
+    // filled fader is a background gradient sized from the value. Purely
+    // decorative — the input still owns the value, and with the var missing
+    // the track simply renders unfilled.
+    const filled = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
     return (
       <div className="set-range">
-        <input id={field?.controlId} aria-labelledby={field?.labelId} className="lw" type="range" min={min} max={max} step={step} value={value} onChange={(e) => set(parseFloat(e.target.value))} />
+        <input id={field?.controlId} aria-labelledby={field?.labelId} className="lw" type="range" min={min} max={max} step={step} value={value} style={{ '--lw-fill': `${filled}%` }} onChange={(e) => set(parseFloat(e.target.value))} />
         <span className="set-rv">{fmt(value)}</span>
       </div>
     );
@@ -125,17 +130,22 @@ const SettingsFieldContext = createContext(null);
     return (
       <div className="set-ring" data-testid="settings-ring-summary">
         <div className="sec-h"><span className="t">Visual setup</span><span className="m">{sections.length} sections</span></div>
-        <div className="set-ring-stage" aria-hidden="true">
-          <span className="set-ring-orbit outer" />
-          <span className="set-ring-orbit inner" />
-          {sections.length > 2 && <span className="set-ring-orbit center">{sections.length}</span>}
-        </div>
-        <div className="set-ring-copy">
-          {outer && (<div><strong>Outer circle</strong><span>{outer.pixels} LEDs · {outer.patternLabel}</span></div>)}
-          {inner && (<div><strong>Inner circle</strong><span>{inner.pixels} LEDs · {inner.patternLabel}</span></div>)}
-          {sectionRows.slice(2).map(section => (
-            <div key={section.id}><strong>{section.name}</strong><span>{section.pixels} LEDs · {section.patternLabel}</span></div>
-          ))}
+        {/* Stage and readout sit side by side so the ring is the thing you
+            look at first; the wrapper is what gives the flex row something to
+            hold. Below 720px it stacks again. */}
+        <div className="set-ring-body">
+          <div className="set-ring-stage" aria-hidden="true">
+            <span className="set-ring-orbit outer" />
+            <span className="set-ring-orbit inner" />
+            {sections.length > 2 && <span className="set-ring-orbit center">{sections.length}</span>}
+          </div>
+          <div className="set-ring-copy">
+            {outer && (<div><strong>Outer circle</strong><span>{outer.pixels} LEDs · {outer.patternLabel}</span></div>)}
+            {inner && (<div><strong>Inner circle</strong><span>{inner.pixels} LEDs · {inner.patternLabel}</span></div>)}
+            {sectionRows.slice(2).map(section => (
+              <div key={section.id}><strong>{section.name}</strong><span>{section.pixels} LEDs · {section.patternLabel}</span></div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -416,7 +426,7 @@ const SettingsFieldContext = createContext(null);
             {/* ── Live-only: Card connection (top section, mockup idiom) ── */}
             {showCard && <div className="set-cols set-cols-1">
               <div className="set-col">
-                <section className="card set-card">
+                <section className="card set-card is-live">
                   <div className="sec-h"><span className="t">Card connection</span><span className="m">{directPushAvailable ? 'local card write' : 'copy or download'}</span></div>
                   {/* Studio could not package this project for the card. Said
                       here, plainly, instead of thrown during render — see the
@@ -442,7 +452,7 @@ const SettingsFieldContext = createContext(null);
                     <div>
                       <div className="set-actions">
                         <button
-                          className="btn"
+                          className="btn primary"
                           type="button"
                           onClick={saveProjectToCard}
                           disabled={cardProjectSave.status === 'pending'}
@@ -497,6 +507,18 @@ const SettingsFieldContext = createContext(null);
                     <div className="set-v-inline"><Range value={Math.round(masterHueShift * 256)} set={(v) => setMasterHueShift(v / 256)} min={-128} max={128} step={1} fmt={(v) => `${v}`} /><button className="btn ghost-sm" onClick={() => setMasterHueShift(0)}>Reset</button></div>
                   </Row>
                 </section>}
+
+                {/* Dial / encoder — relocated here from Patterns.
+                    It sits in this column, beside Card & hardware, because in
+                    card mode the preferences sections above are hidden and
+                    this column would otherwise be empty — leaving one very
+                    wide module with its controls marooned at the far right
+                    instead of two readable columns. */}
+                {showCard && <section className="card set-card">
+                  <div className="sec-h"><span className="t">Dial / encoder</span><span className="m">physical knob</span></div>
+                  <Row label="Rotate direction" hint="Which way turns the brightness up"><Seg opts={["CW brighter", "CW dimmer"]} val={encoderDir === 'clockwise-dimmer' ? 'CW dimmer' : 'CW brighter'} set={(o) => updateController({ controls: { encoder: { rotateDirection: o === 'CW dimmer' ? 'clockwise-dimmer' : 'clockwise-brighter' } } })} /></Row>
+                  <Row label="Brightness step" hint="How much each click changes brightness"><Range value={encoderStep} set={(v) => updateController({ controls: { encoder: { brightnessStep: Math.max(1, Math.min(64, Math.round(v))) } } })} min={1} max={64} step={1} fmt={(v) => `${v}`} /></Row>
+                </section>}
               </div>
 
               <div className="set-col">
@@ -507,8 +529,8 @@ const SettingsFieldContext = createContext(null);
                   <Row label="Card push fps" hint="Max frames per second sent to the card"><Seg opts={FPS_LABELS} val={fpsLabel} set={(o) => setTweak('wledFps', +o)} /></Row>
                 </section>}
 
-                {showCard && <section className="card set-card">
-                  <div className="sec-h"><span className="t">Card &amp; hardware</span></div>
+                {showCard && <section className="card set-card is-live">
+                  <div className="sec-h"><span className="t">Card &amp; hardware</span><span className="m">esp32-s3</span></div>
                   <Row label="Runtime mode" hint="What the card plays from on boot"><Seg opts={RUNTIME_LABELS} val={runtimeLabel} set={(o) => updateController({ runtimeMode: RUNTIME_VALUE[o] })} /></Row>
                   <Row label="Color order" hint="Setup asks this. Change it here to try an order on the strip right now.">
                     <div data-testid="color-order-summary"><Seg opts={COLOR_ORDER_LABELS} val={colorOrderLabel} set={updateColorOrder} /></div>
@@ -529,13 +551,20 @@ const SettingsFieldContext = createContext(null);
                             pixels here would be a confident wrong number
                             sitting under an alert that says the values are
                             unavailable, which is worse than no number. */}
+                        {/* The same four numbers the sentence used to carry —
+                            LEDs, sections, outputs, routed — read as three
+                            tiles now so the totals are legible at a glance
+                            from the far side of the room. The wording of each
+                            label is unchanged, and screen-smoke still asserts
+                            all four. */}
                         <div data-testid="output-routing-summary">
                           {deploymentError ? (
                             <strong>LED totals unavailable until the wiring is fixed</strong>
                           ) : (
                             <>
-                              <strong>{config.led.pixels} LEDs · {hardwareSections.length || hardwareSectionCount} sections</strong>
-                              <span>{routedOutputs.length || 1} {routedOutputs.length === 1 ? 'output' : 'outputs'} · {config.led.outputs.reduce((sum, output) => sum + (output.pixels || 0), 0)} LEDs routed</span>
+                              <span className="set-stat is-live"><b>{config.led.pixels}</b><i>LEDs</i></span>
+                              <span className="set-stat"><b>{hardwareSections.length || hardwareSectionCount}</b><i>sections</i></span>
+                              <span className="set-stat"><b>{routedOutputs.length || 1}</b><i>{routedOutputs.length === 1 ? 'output' : 'outputs'} · {config.led.outputs.reduce((sum, output) => sum + (output.pixels || 0), 0)} LEDs routed</i></span>
                             </>
                           )}
                         </div>
@@ -563,13 +592,6 @@ const SettingsFieldContext = createContext(null);
             {/* ── Live-only extra cards (mockup idiom) ── */}
             <div className="set-cols">
               <div className="set-col">
-                {/* Dial / encoder — relocated here from Patterns */}
-                {showCard && <section className="card set-card">
-                  <div className="sec-h"><span className="t">Dial / encoder</span><span className="m">physical knob</span></div>
-                  <Row label="Rotate direction" hint="Which way turns the brightness up"><Seg opts={["CW brighter", "CW dimmer"]} val={encoderDir === 'clockwise-dimmer' ? 'CW dimmer' : 'CW brighter'} set={(o) => updateController({ controls: { encoder: { rotateDirection: o === 'CW dimmer' ? 'clockwise-dimmer' : 'clockwise-brighter' } } })} /></Row>
-                  <Row label="Brightness step" hint="How much each click changes brightness"><Range value={encoderStep} set={(v) => updateController({ controls: { encoder: { brightnessStep: Math.max(1, Math.min(64, Math.round(v))) } } })} min={1} max={64} step={1} fmt={(v) => `${v}`} /></Row>
-                </section>}
-
                 {/* Projects — management moved to the one Projects panel
                     (top bar → Projects): browser library, online library,
                     import/export, and the recovery copy live there now.
