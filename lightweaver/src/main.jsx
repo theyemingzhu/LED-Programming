@@ -34,6 +34,22 @@ import './styles/v3-card-console.css';
 import './styles/v3-patterns-extra.css';
 // Live-only Playlist controls (.pl-* status / row extras) in the v3 token idiom.
 import './styles/v3-playlist-extra.css';
+// ── The console vocabulary, carried past the Card page ──────────────
+// Card and Settings got the "console" treatment first, which left every
+// other screen speaking a different language. These four layers finish
+// the job: one shared token block, then one dressing layer per screen.
+// All of them are CSS over the existing markup, scoped to that screen's
+// root class, tokens only, so both themes keep working.
+import './styles/v3-console-shared.css';
+// Patterns and Playlist both render under .pm and share their parts, so
+// one layer dresses both and they cannot drift apart again.
+import './styles/v3-pm-console.css';
+// Show: chrome only — its selectable chips are drawn by an inline
+// chipStyle() in lw-show.jsx, which no stylesheet can reach.
+import './styles/v3-show-console.css';
+// Layout: physical chrome from the Console candidate, measured register
+// from the Blueprint one. The canvas renderer is deliberately untouched.
+import './styles/v3-layout-console.css';
 import App from './v3/app.jsx';
 import { createOfflineUpdateController } from './lib/offlineUpdate.js';
 import { detectRuntimeMode } from './lib/runtimeMode.js';

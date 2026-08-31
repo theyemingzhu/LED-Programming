@@ -1,0 +1,321 @@
+/* ============================================================
+   Light Weaver v3 — Patterns + Playlist, "Schematic" treatment
+   ------------------------------------------------------------
+   Both screens render under .pm and share the same parts (hero,
+   .sec-h section heads, .pm-pane panels, .btn), so one layer
+   dresses both and they cannot drift apart again.
+
+   The idiom is the Card page's console vocabulary drawn in the
+   drawing-office register rather than the machined-panel one:
+   mono labels with wide tracking, hairline rules instead of
+   filled bars, a faint measured field behind each panel body,
+   square geometry, and amber reserved for what the card is
+   doing right now. Clay stays on the single action per screen
+   that writes to hardware.
+
+   The bead strand itself (.ledrow, .led) is untouched on purpose.
+   Drawing a palette as lit beads rather than a smeared gradient
+   is the most informative thing on this screen — it shows what
+   the pattern will look like ON A STRIP — and it is the reason
+   Playlist was changed to draw one too, rather than the reverse.
+   What this file DOES declare is the window those beads sit in,
+   once, for all four places one now appears.
+
+   Tokens only; scoped under .pm; Daylight keeps working.
+   ============================================================ */
+
+/* ── masthead ────────────────────────────────────────────── */
+
+.pm .pm-title h1 {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+.pm .pm-title p { color: var(--text-lo); }
+
+/* ── section heads: a mono label on a hairline rule ──────── */
+/* .sec-h already lays out as label + meta + rule. The schematic
+   register only changes the register of the label, and adds the
+   status light the console vocabulary uses everywhere else. */
+
+.pm .sec-h .t {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--text-lo);
+}
+.pm .sec-h .m {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+.pm .sec-h .line { background: var(--border-hair); }
+
+/* the head of a panel carries a light; a bare section head does not,
+   because there is no module for it to report on */
+.pm .pm-pane > .sec-h::before,
+.pm .pm-target > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+
+/* ── panels: hairline modules over a measured field ──────── */
+
+.pm .pm-pane,
+.pm .pm-target,
+.pm .pm-livebar,
+.pm .pl-hostrow {
+  border-radius: 2px;
+  border-color: var(--border-hair);
+  box-shadow: none;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+/* the head sits ON the panel, so the field starts below it */
+.pm .pm-pane > .sec-h,
+.pm .pm-target > .sec-h {
+  margin: -2px -12px 10px;
+  padding: 0 12px 9px;
+  border-bottom: 1px solid var(--border-hair);
+}
+
+/* ── the pattern bank: schematic cells ───────────────────── */
+
+.pm .pm-cards { gap: 8px; }
+.pm .pmcard {
+  gap: 7px;
+  border-radius: 2px;
+  border-color: var(--border-hair);
+  background: var(--bg-panel);
+  transition: border-color .12s, background .12s;
+}
+.pm .pmcard:hover { border-color: var(--border-soft); }
+.pm .pmcard-nm {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+.pm .pmcard-sp { letter-spacing: 0.1em; }
+/* selection is amber — this pattern is what the card is playing.
+   in-playlist stays clay, because that is a stored decision, not a
+   live state. */
+.pm .pmcard.on {
+  border-color: var(--lw-live-ink);
+  background: color-mix(in srgb, var(--lw-live) 7%, var(--bg-panel));
+  box-shadow: none;
+}
+.pm .pmcard.on .pmcard-nm { color: var(--lw-live-ink); }
+.pm .pmcard.in-playlist:not(.on) {
+  background: var(--bg-panel);
+  border-color: var(--accent-line);
+  box-shadow: none;
+}
+
+
+
+/* ── Playlist: the same cells, and beads instead of smears ── */
+
+.pm .pl-row {
+  border-radius: 2px;
+  border-color: var(--border-hair);
+}
+.pm .pl-row.is-live {
+  border-color: var(--lw-live-ink);
+  background: color-mix(in srgb, var(--lw-live) 6%, var(--bg-panel));
+  box-shadow: none;
+}
+.pm .pl-row.is-live .pl-index strong { color: var(--lw-live-ink); }
+.pm .pl-copy strong { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+
+/* ── LED windows ─────────────────────────────────────────── */
+/* .pl-art / .pl-src-art / .pl-chip-art were fixed-size blocks painted with
+   a gradient. They now hold a bead strand, so each becomes a window for
+   those beads to sit in — and it is the SAME window .pmcard-led already is,
+   declared once here for all four.
+
+   The stage is a fixed dark, not a token, and that is deliberate: a lit LED
+   only reads as lit against something darker than itself, so this surface
+   must stay dark in Daylight too. That is the same reasoning as --lw-on-live.
+   The inset is fixed for the same reason — a theme-flipped inset would paint
+   a pale halo inside a dark window on Daylight. */
+.pm .pmcard-led,
+.pm .pl-art,
+.pm .pl-src-art,
+.pm .pl-chip-art {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 2px;
+  background: radial-gradient(110% 130% at 50% 135%, oklch(0.2 0.018 50), oklch(0.095 0.006 45));
+  box-shadow: inset 0 1px 4px oklch(0.03 0 0 / 0.7);
+}
+/* Bead size is not a taste decision here — these windows are fixed
+   (42 / 38 / 24 px of usable width) and .ledrow does not wrap, so a
+   strand wider than its window is simply clipped at both ends and the
+   pattern reads as starting and finishing mid-colour. Measured, not
+   guessed: 7 x 4 + 6 x 2 = 40 <= 42, 6 x 4 + 5 x 2 = 34 <= 38,
+   5 x 3 + 4 x 1.5 = 21 <= 24. */
+.pm .pl-art .ledrow { gap: 2px; }
+.pm .pl-art .led { width: 4px; height: 4px; }
+.pm .pl-src-art .ledrow { gap: 2px; }
+.pm .pl-src-art .led { width: 4px; height: 4px; }
+.pm .pl-chip-art .ledrow { gap: 1.5px; }
+.pm .pl-chip-art .led { width: 3px; height: 3px; }
+.pm .pl-src-nm,
+.pm .pl-chip-nm { font-family: var(--font-mono); font-size: 12px; }
+.pm .pl-count,
+.pm .pl-empty { letter-spacing: 0.04em; }
+
+/* ── controls ────────────────────────────────────────────── */
+
+/* faders: a sunken track with a square grip. Round grips read as a
+   toy; the flat blade is what a value control looks like on a desk. */
+.pm input[type=range].lw {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset-deep);
+}
+.pm input[type=range].lw::-webkit-slider-thumb {
+  width: 11px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(var(--bg-elev-2), var(--bg-elev));
+  border: 1px solid var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.pm input[type=range].lw::-moz-range-thumb {
+  width: 11px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(var(--bg-elev-2), var(--bg-elev));
+  border: 1px solid var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.pm .slider-row .lab .k { font-size: 12px; }
+.pm .slider-row .lab .v { font-size: 11.5px; color: var(--text-mid); }
+
+/* segmented keys: outlined, not filled. The chosen key is named by an
+   amber stroke, which leaves the clay fill free to mean "writes". */
+.pm .geo-seg {
+  border-radius: 2px;
+  background: var(--lw-well);
+  border-color: var(--border-hair);
+  box-shadow: var(--lw-inset-deep);
+}
+.pm .geo-seg button {
+  height: 28px;
+  border-radius: 1px;
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+.pm .geo-seg button.on {
+  background: transparent;
+  border-color: var(--lw-live-ink);
+  color: var(--lw-live-ink);
+  font-weight: 500;
+}
+.pm .chip {
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.pm .chip.on {
+  background: transparent;
+  border-color: var(--lw-live-ink);
+  color: var(--lw-live-ink);
+}
+
+/* fields */
+.pm .pm-input {
+  border-radius: 2px;
+  background: var(--lw-well);
+  border-color: var(--border-hair);
+  box-shadow: var(--lw-inset);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+/* ── buttons ─────────────────────────────────────────────── */
+/* v3-screens.css compacts .pm .btn to 4px/11.5px, which is below the
+   project's own 12px type floor and under the 44px touch target on a
+   phone. Restore both without making the row taller than the hero. */
+
+.pm .btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 3px;
+  font-size: 12px;
+  border-color: var(--border-soft);
+}
+@media (pointer: coarse) {
+  .pm .btn { min-height: 44px; }
+}
+.pm .btn.primary {
+  color: var(--on-accent);
+  background: linear-gradient(var(--accent-hi), var(--accent));
+  border-color: var(--accent-hi);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
+    0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+/* "Save look" stores a look in the browser; it does not touch the card.
+   Wearing clay it read as a second primary action on a screen whose actual
+   hardware write is "Install on card", and the two sat 400px apart doing
+   very different things in the same colour. Neutral raised key. */
+.pm .pm-save {
+  border-radius: 3px;
+  color: var(--text-hi);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+}
+.pm .pm-save:hover { background: var(--bg-sel); border-color: var(--border); }
+.pm .pm-reset { border-radius: 3px; border-color: var(--border-hair); }
+
+/* the "previewing in Studio" strip reports what is happening now */
+.pm .pm-saved { color: var(--lw-live-ink); }
+
+/* ── design target: a readout, not an action ─────────────── */
+/* It arrived wearing accent-soft fills and an accent border, which put a
+   large clay slab directly above the clay "Install on card" button and
+   made the page look like it had two primary actions. Clay means "this
+   writes to the card"; nothing in here does. Neutral surfaces, and the
+   live selection named in amber like every other current state. */
+
+.pm .pm-targetcard {
+  border-radius: 2px;
+  border-color: var(--border-hair);
+}
+.pm .tc-head {
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.pm .tc-layer { border-top-color: var(--border-hair); }
+.pm .tc-all {
+  border-radius: 2px;
+  color: var(--lw-live-ink);
+  background: transparent;
+  border: 1px solid var(--lw-live-ink);
+}
+.pm .tc-num {
+  border-radius: 2px;
+  border-color: var(--border-hair);
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.pm .tc-name strong,
+.pm .tc-total strong,
+.pm .tc-patval { font-family: var(--font-mono); font-weight: 400; }

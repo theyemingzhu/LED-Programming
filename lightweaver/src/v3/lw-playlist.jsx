@@ -4,7 +4,7 @@
    from the SAMPLE arrays to the live app's real playlist, real pattern bank,
    and real card handlers. No visual structure was altered. */
 import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
-import { I } from './lw-shared.jsx';
+import { I, LedRow } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { openLocalCardPage } from '../lib/cardBridge.js';
 import { deriveCardAccess } from '../lib/cardAccess.js';
@@ -842,7 +842,7 @@ function realPatternShape(patternId) {
                           <strong>{String(i + 1).padStart(2, "0")}</strong>
                           <span>{i === 0 ? "startup" : "press"}</span>
                         </div>
-                        <span className="pl-art" style={{ background: p.grad }} />
+                        <span className="pl-art"><LedRow pal={p.pal} n={7} /></span>
                         <div className="pl-copy">
                           <strong>{item.label}{item.type === 'combo' && <span className="mixtag">look</span>}</strong>
                           <span>{item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
@@ -872,7 +872,7 @@ function realPatternShape(patternId) {
                     const added = playlistContainsCombo(playlist, m.id);
                     return (
                       <button key={m.id} className="pl-source" onClick={() => addCombo(savedLookById.get(m.id))} disabled={added || recoveryPending}>
-                        <span className="pl-src-art" style={{ background: m.grad }} />
+                        <span className="pl-src-art"><LedRow pal={m.pal} n={6} /></span>
                         <span className="pl-src-nm">{m.label}<span className="mixtag">look</span></span>
                         <span className="pl-src-add">{added ? I.check : I.plus}</span>
                       </button>
@@ -887,7 +887,7 @@ function realPatternShape(patternId) {
                   <div className="pl-pool">
                     {pool.map((p) => (
                       <button key={p.id} className="pl-chip" disabled={recoveryPending} onClick={() => addPattern(p.id)} title={`Add ${p.label}`}>
-                        <span className="pl-chip-art" style={{ background: p.grad }} />
+                        <span className="pl-chip-art"><LedRow pal={p.pal} n={5} /></span>
                         <span className="pl-chip-nm">{p.label}</span>
                         <span className="pl-chip-add">{I.plus}</span>
                       </button>

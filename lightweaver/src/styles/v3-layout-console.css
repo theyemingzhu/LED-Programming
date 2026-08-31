@@ -1,0 +1,221 @@
+/* ============================================================
+   Light Weaver v3 — Layout, "Console / Blueprint" treatment
+   ------------------------------------------------------------
+   Layout was shown as three candidates. The answer was neither
+   alone, so this is the merge, and the split is deliberate:
+
+     PHYSICAL CHROME comes from Console. The toolbar's groups
+     become sunken key wells with raised keys, the side panel
+     gets a module's depth, and the panel heads become header
+     bars with a status light. This is the part of Layout you
+     operate, and it should feel like hardware.
+
+     MEASURED REGISTER comes from Blueprint. Labels are mono
+     with wide tracking, rules are hairlines, values sit in
+     small sunken wells, and the panel carries a faint measured
+     field. This is the part of Layout you READ, and it should
+     feel like a drawing, not an app.
+
+   Nothing here touches the canvas renderer. The LED dots, the
+   strand, the glow modes and the selection frame are drawn by
+   LayoutCanvas.jsx with their own tests; how big a pixel is at
+   a given zoom is a rendering decision, not a styling one.
+
+   Scoped under .la; tokens only; Daylight keeps working.
+   ============================================================ */
+
+/* ── toolbar: sunken key wells, raised keys ──────────────── */
+
+.la .toolbar {
+  gap: 10px;
+  background: var(--bg-panel);
+  border-bottom-color: var(--border-soft);
+  box-shadow: 0 6px 18px oklch(0.05 0.005 60 / 0.22);
+}
+/* A group with nothing in it would otherwise draw an empty well: the mode
+   actions group is populated per mode, so it is genuinely empty in some. */
+.la .toolbar .tb-group:empty { display: none; }
+.la .toolbar .tb-group {
+  gap: 3px;
+  padding: 3px;
+  background: var(--lw-well);
+  border: 1px solid var(--border-hair);
+  border-radius: var(--r-md);
+  box-shadow: var(--lw-inset-deep);
+}
+.la .toolbar .tb-btn {
+  height: 28px;
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
+  border-color: var(--border-soft);
+  box-shadow: var(--lw-raise);
+  font-size: 12px;
+}
+.la .toolbar .tb-btn:hover { background: var(--bg-sel); border-color: var(--border); }
+.la .toolbar .tb-btn:disabled { opacity: 0.4; box-shadow: none; }
+/* A pressed key names a live state, so it lights rather than filling with
+   clay — clay is the one control that writes to the card. */
+.la .toolbar .tb-btn.active {
+  background: transparent;
+  border-color: var(--lw-live-ink);
+  color: var(--lw-live-ink);
+}
+/* the dividers were separating groups that now separate themselves */
+.la .toolbar .tb-div { display: none; }
+.la .la-zoom {
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--lw-well);
+  border-color: var(--border-hair);
+  box-shadow: var(--lw-inset-deep);
+}
+.la .la-zoom button {
+  height: 26px;
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+}
+.la .la-zoom .zv {
+  height: 26px;
+  color: var(--text-mid);
+  letter-spacing: 0.04em;
+}
+
+/* ── the side panel is the instrument, over a measured field ─ */
+
+.la .side {
+  border-left-color: var(--border-soft);
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+
+/* ── panel heads: a header bar with a status light ───────── */
+/* They are position:sticky, so the background must stay opaque or the rows
+   scroll through them. Keep the fill, add the rule and the light. */
+
+/* NOT every .panel-head is a panel header. Two are sub-heads embedded
+   inside a panel — the wire plan's and strip discovery's — and the wire
+   plan's turns into a COLUMN below a 320px container, which the side panel
+   always is. Given a header bar and a leading dot, it stacked them into a
+   centred three-line block. Style only the real headers, and leave the two
+   embedded ones exactly as their own files set them. */
+.la .panel-head:not(.lww-plan-head) {
+  align-items: center;
+  /* space-between with three children puts the dot, the title and the meta
+     at thirds, which floats the title in the middle of the bar. The dot
+     belongs against the title; only the meta goes right. */
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-hair);
+  background: var(--bg-elev);
+}
+.la .strip-discovery.is-embedded > .panel-head {
+  padding: 14px 16px 10px;
+  background: var(--bg-panel);
+  border-bottom: 0;
+}
+.la .strip-discovery.is-embedded > .panel-head::before { content: none; }
+.la .panel-head:not(.lww-plan-head)::before {
+  content: "";
+  flex: 0 0 auto;
+  order: -1;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.la .panel-head:not(.lww-plan-head) .ttl {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--text-lo);
+}
+.la .panel-head:not(.lww-plan-head) .meta { margin-left: auto; }
+.la .panel-head .meta { letter-spacing: 0.06em; }
+
+/* ── strips: a schedule, not a list of cards ─────────────── */
+
+.la .la-strip-row .layer-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+.la .la-strip-row .layer-len,
+.la .la-strip-row .la-wire-n {
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  color: var(--text-lo);
+}
+.la .la-strip-row.sel {
+  background: color-mix(in srgb, var(--lw-live) 7%, var(--bg-panel));
+  box-shadow: inset 2px 0 0 var(--lw-live-ink);
+}
+.la .la-strip-row.sel .layer-name,
+.la .la-strip-row.sel .la-wire-n { color: var(--lw-live-ink); }
+.la .layer-swatch { border-radius: 2px; }
+.la .la-strip-rev {
+  border-radius: 2px;
+  color: var(--lw-live-ink);
+  border-color: color-mix(in srgb, var(--lw-live-ink) 45%, transparent);
+}
+
+/* ── the selected strip's controls ───────────────────────── */
+/* The complaint was that this reads as spread out, and it does: three
+   field groups at a 10px gap, each with 10px of its own left padding and a
+   rule between, inside a 300px column. That is 20px of air at every seam
+   and the controls end up further from their own labels than from each
+   other's. Tighten the seams and sink the row, so it reads as one block of
+   instrument rather than three floating pairs. */
+
+.la .la-strip-physical-row {
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: var(--r-md);
+  background: var(--lw-well);
+  border-color: var(--border-hair);
+  box-shadow: var(--lw-inset);
+}
+.la .la-strip-physical-field + .la-strip-physical-field {
+  padding-left: 6px;
+  border-left-color: var(--border-hair);
+}
+.la .la-strip-physical-field > .k {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.la .la-size-readout input[type=number] {
+  border-radius: 2px;
+  background: var(--bg-panel);
+  border-color: var(--border-hair);
+  box-shadow: var(--lw-inset);
+  font-family: var(--font-mono);
+}
+.la .la-strip-physical-field .la-size-ctrl .btn,
+.la .la-strip-physical-field .lw-led-nudge .btn {
+  border-radius: 2px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+}
+
+/* ── read-out fields ─────────────────────────────────────── */
+
+.la .field > .k { font-size: 12px; }
+.la .inspector-value { font-weight: 400; }
+
+/* ── the one control that writes to the card ─────────────── */
+
+.la .la-mode-nav .btn.primary {
+  border-radius: 3px;
+  color: var(--on-accent);
+  background: linear-gradient(var(--accent-hi), var(--accent));
+  border-color: var(--accent-hi);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
+    0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
+}

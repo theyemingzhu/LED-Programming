@@ -6,7 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
-import { I, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
+import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -204,26 +204,8 @@ import { PatternPreview } from './PatternPreview.jsx';
 
   }
 
-  // colors interpolated across a palette → glowing LED beads
-  function ledColors(pal, n) {
-    const rgb = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const p = (i / (n - 1)) * (pal.length - 1), s = Math.floor(p), t = p - s;
-      const a = rgb(pal[s]), b = rgb(pal[Math.min(s + 1, pal.length - 1)]);
-      const c = a.map((v, k) => Math.round(v + (b[k] - v) * t));
-      out.push(`rgb(${c[0]},${c[1]},${c[2]})`);
-    }
-    return out;
-  }
-  function LedRow({ pal, n = 9, big = false, wave = false }) {
-    return (
-      <div className={"ledrow" + (big ? " big" : "")}>
-        {ledColors(pal, n).map((c, i) =>
-          <span key={i} className={"led" + (wave ? " wave" : "")} style={{ background: c, boxShadow: `0 0 ${big ? 9 : 5}px ${c}, 0 0 ${big ? 20 : 11}px ${c}`, animationDelay: wave ? `${i * 0.11}s` : undefined }} />
-        )}
-      </div>);
-  }
+  // ledColors + LedRow moved to lw-shared.jsx so Playlist can draw the same
+  // bead strand for the same pattern instead of a flat gradient block.
   // Resolve a card-bank pattern id to the real library pattern that actually
   // has runnable per-pixel code. Card ids either match a library pattern
   // directly (sparkle, aurora…) or point at one via previewPatternId/preset.

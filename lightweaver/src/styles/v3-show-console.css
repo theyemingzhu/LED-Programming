@@ -1,0 +1,82 @@
+/* ============================================================
+   Light Weaver v3 — Show, "Schematic" treatment
+   ------------------------------------------------------------
+   Same register as Patterns and Playlist, scoped under .sh.
+
+   Show is mostly a stage with an inspector down the right, and
+   most of its selectable controls are drawn by ONE inline
+   chipStyle() in lw-show.jsx — inline styles beat any rule
+   written here, so the chips' selected-state vocabulary lives
+   there, not in this file. What is left for CSS is the chrome:
+   the transport bar, the inspector's section heads, the panel
+   field, the faders and the stage well.
+
+   Tokens only; Daylight keeps working.
+   ============================================================ */
+
+/* ── the transport reports what the piece is doing ───────── */
+
+.sh .transport {
+  border-bottom-color: var(--border-soft);
+  background: var(--bg-panel);
+}
+
+/* ── section heads: mono label on a hairline rule ────────── */
+
+.sh .sec-h .t {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--text-lo);
+}
+.sh .sec-h .line { background: var(--border-hair); }
+
+/* ── the inspector is the instrument, over a measured field ─ */
+
+.sh .sh-insp {
+  border-left-color: var(--border-soft);
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+.sh .sh-insp-head .nm { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
+.sh .sh-insp-head .dot { border-radius: 2px; }
+
+/* ── faders: sunken track, blade grip ────────────────────── */
+/* Same control as Patterns; it must not be a different object here. */
+
+.sh input[type=range].lw {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset-deep);
+}
+.sh input[type=range].lw::-webkit-slider-thumb {
+  width: 11px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(var(--bg-elev-2), var(--bg-elev));
+  border: 1px solid var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.sh input[type=range].lw::-moz-range-thumb {
+  width: 11px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(var(--bg-elev-2), var(--bg-elev));
+  border: 1px solid var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.sh .slider-row .lab .k { font-size: 12px; }
+.sh .slider-row .lab .v { font-size: 11.5px; color: var(--text-mid); }
+
+/* ── transport ───────────────────────────────────────────── */
+/* No .tp-btn / .tp-field rules here on purpose: v3-screens.css defines both,
+   but lw-show.jsx renders neither — its transport is a title, a mono readout
+   and one .btn. Rules for markup that does not exist read as coverage and
+   are not. */
+
+.sh .btn { border-radius: 3px; }

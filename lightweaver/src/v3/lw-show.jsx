@@ -170,15 +170,33 @@ const STREAM_ENCODE_GAP_MS = 1000 / DEFAULT_FRAME_FPS - 8;
 const PAINT_GAP_MS = 1000 / 48 - 4;
 
 // ── small UI pieces (v3 token styling, inline where no class fits) ─────────
+// Every selectable thing on this screen is drawn by this one function —
+// sound source, template, bench strip, engine mode, the demo tracks — so it
+// is the only place the screen's selected-state vocabulary is decided.
+//
+// It used to fill the chosen chip with clay. Clay means one thing across the
+// Studio now: THIS CONTROL WRITES TO THE CARD. None of these do; they choose
+// what the piece listens to and how it answers. So a chosen chip is named in
+// amber, the colour reserved for what is happening right now, and the clay
+// fill is left to "Play on the lights" alone.
+//
+// --lw-live-ink, not --layer-1: amber as TEXT is unreadable on the Daylight
+// panel, and the token drops to a bronze of the same hue there. The fallback
+// keeps the chip legible if this ever renders outside a console scope.
 const chipStyle = (on) => ({
-  padding: '6px 12px',
-  borderRadius: 999,
+  // 10px, not 12: mono is wider than the UI face at the same size, and at
+  // 12px of side padding the three Sound chips needed 262.8px inside a 257px
+  // column — six pixels over, so "Quiet" wrapped to its own line where it
+  // never had before. Measured, not guessed.
+  padding: '7px 10px',
+  borderRadius: 2,
+  fontFamily: 'var(--font-mono)',
   fontSize: 12,
-  fontWeight: 500,
+  fontWeight: on ? 500 : 400,
   cursor: 'pointer',
-  border: `1px solid ${on ? 'var(--accent)' : 'var(--border-soft)'}`,
-  background: on ? 'var(--accent)' : 'var(--bg-elev)',
-  color: on ? 'var(--on-accent)' : 'var(--text-mid)',
+  border: `1px solid ${on ? 'var(--lw-live-ink, var(--accent))' : 'var(--border-hair)'}`,
+  background: on ? 'color-mix(in srgb, var(--lw-live-ink, var(--accent)) 8%, transparent)' : 'var(--bg-elev)',
+  color: on ? 'var(--lw-live-ink, var(--accent))' : 'var(--text-mid)',
 });
 
 function Chip({ on, onClick, children, title }) {
