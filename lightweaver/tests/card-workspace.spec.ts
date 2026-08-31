@@ -2481,12 +2481,14 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     handoffFlowId: 'flow-browser-wifi-123456789',
   });
   // Confirming the Wi-Fi join is the LAST click an owner makes here. Public
-  // Studio continues on its own from that point, so the saved project reaches
-  // the card through the automatic restore rather than a second button press.
-  // Everything the deliberate click used to prove still has to be true: one
-  // config, on the production push path, carrying the fresh status envelope.
+  // Studio finds the card again by itself, but WRITING the project to it is the
+  // owner's call and waits for this button — the write spends the one-shot
+  // blank-card authority, so it is not something Studio may decide alone.
+  // What the click proves is unchanged: one config, on the production push
+  // path, carrying the fresh status envelope.
   const beforeWizardPush = await page.evaluate(() => (window as any).__blankProductionPath.messageTypes.length);
   await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
+  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toBeVisible();
   const productionPath = await page.evaluate(async (start) => {
     const bridge = await import('/src/lib/cardBridge.js');
@@ -2679,11 +2681,11 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
-  // The reload re-proves the handoff from status alone and then continues on
-  // its own — public Studio no longer waits for a second click here. What that
-  // continuation may do is unchanged: the ambiguous acknowledgement is never
-  // replayed, and the one-shot blank-card authority pays for exactly one
-  // config before closing.
+  // The reload re-proves the handoff from status alone, then waits: the write
+  // is the owner's, so it takes this click. What the click may do is unchanged
+  // — the ambiguous acknowledgement is never replayed, and the one-shot
+  // blank-card authority pays for exactly one config before closing.
+  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
   await expect.poll(() => page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
     const link = await import('/src/lib/cardLink.js');
