@@ -924,6 +924,17 @@ test('replaces live geometry without mapping an old frame and falls back safely 
       masterHueShift: 0,
       motionWeights: { drift: 0, flow: 1, pulse: 0, surge: 0 },
     };
+    // Every (generation, frame) pair the hook produces is recorded, because the
+    // thing under test is a TRANSITION, not a resting state: on a geometry
+    // change the hook clears the frame and bumps the generation in one update,
+    // and a fresh frame lands ~120ms later. Reading the attributes after the
+    // fact races that gap — under load the new frame has already arrived and
+    // the intermediate render is unobservable. The log makes the sequence
+    // inspectable afterwards, so the assertion no longer depends on sampling
+    // at the right instant. Recorded during render (not in an effect) so no
+    // committed value can be coalesced away.
+    const renders: Array<{ generation: string; frame: string; status: string }> = [];
+    Object.defineProperty(window, '__LW_PATTERN_LAB_GEOMETRY_RENDERS__', { value: renders });
     function Harness({ geometry }: { geometry: Record<string, unknown> }) {
       const result = usePatternLabWorker({
         recipe,
@@ -932,11 +943,18 @@ test('replaces live geometry without mapping an old frame and falls back safely 
         mode: 'final',
         renderOptions: stableRenderOptions,
       });
+      const generation = String(result.geometryGeneration ?? '');
+      const frame = String(result.frameRequestId ?? '');
+      const previous = renders[renders.length - 1];
+      if (!previous || previous.generation !== generation || previous.frame !== frame
+        || previous.status !== result.status) {
+        renders.push({ generation, frame, status: result.status });
+      }
       return React.createElement('div', {
         id: 'pattern-lab-worker-harness',
         'data-status': result.status,
-        'data-frame': result.frameRequestId ?? '',
-        'data-generation': result.geometryGeneration ?? '',
+        'data-frame': frame,
+        'data-generation': generation,
         'data-error': result.error?.message ?? '',
       });
     }
@@ -967,9 +985,23 @@ test('replaces live geometry without mapping an old frame and falls back safely 
     });
   });
   await expect.poll(async () => harness.getAttribute('data-generation')).not.toBe(firstGeneration);
-  expect(await harness.getAttribute('data-frame')).toBe('');
   await expect(harness).toHaveAttribute('data-status', 'frame');
   expect(await harness.getAttribute('data-frame')).not.toBe(firstFrame);
+
+  // The promise in this test's name, checked against every render rather than
+  // against whatever the attributes happened to say when we looked: the new
+  // geometry never carried the old frame, and its first render had no frame at
+  // all. Both are read from the recorded sequence, so a fast machine and a
+  // loaded one assert exactly the same thing.
+  const newGenerationRenders = await page.evaluate(previousGeneration => {
+    const log = (window as typeof window & {
+      __LW_PATTERN_LAB_GEOMETRY_RENDERS__: Array<{ generation: string; frame: string; status: string }>;
+    }).__LW_PATTERN_LAB_GEOMETRY_RENDERS__;
+    return log.filter(entry => entry.generation && entry.generation !== previousGeneration);
+  }, firstGeneration ?? '');
+  expect(newGenerationRenders.length).toBeGreaterThan(0);
+  expect(newGenerationRenders[0].frame).toBe('');
+  expect(newGenerationRenders.map(entry => entry.frame)).not.toContain(firstFrame);
   const validCounts = await page.evaluate(() => {
     const lifecycle = (window as typeof window & {
       __LW_PATTERN_LAB_GEOMETRY_LIFECYCLE__: { created: number; terminated: number };
