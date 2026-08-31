@@ -218,15 +218,25 @@ test('auto-locked verified wiring blocks physical mutations until Unlock to edit
   expect(project.layout.wiring.locked).toBe(true);
   expect(project.layout.wiring.runs.every((run: any) => run.verified)).toBe(true);
 
-  // "Unlock to edit" inside Advanced reopens the plan and clears verification,
-  // returning the primary flow to the LED-check CTA.
+  // "Unlock to edit" reopens the plan and clears verification. Note WHERE each
+  // half of that lives now: unlocking is a plan edit and belongs to Layout,
+  // while the LED check talks to the hardware and belongs to the Card page.
+  // openAdvanced() above has already moved this test onto Layout to reach the
+  // unlock, so the check is asserted where it actually lives — which is the
+  // stronger claim anyway: unlocking the plan on Layout returns the CARD's
+  // flow to the check.
   await page.getByTestId('unlock-wiring').click();
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add skipped LEDs' })).toBeEnabled();
+
+  // Export while still on Layout — that is where the Export control lives.
   const reopened = await exportProject(page, tmp, 'reopened.json');
   expect(reopened.layout.wiring.locked).toBe(false);
   expect(reopened.layout.wiring.verified).toBe(false);
   expect(reopened.layout.wiring.runs.every((run: any) => run.verified === false)).toBe(true);
+
+  // Then the other half of the guarantee, on the page that owns it.
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project'; });
+  await expect(page.getByTestId('start-led-check')).toBeVisible();
 });
 
 test('numeric strip count replaces the full value with an exact accessible selector', async ({ page }) => {
