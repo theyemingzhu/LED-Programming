@@ -2480,27 +2480,24 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     initialConfigAuthority: true,
     handoffFlowId: 'flow-browser-wifi-123456789',
   });
-  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
-  await expect.poll(() => page.evaluate(async () => {
-    const bridge = await import('/src/lib/cardBridge.js');
-    const link = await import('/src/lib/cardLink.js');
-    return {
-      bridge: bridge.getCardBridgeState(),
-      link: link.getCardLinkState(),
-    };
-  })).toMatchObject({
-    bridge: { initialConfigAuthority: true, handoffFlowId: 'flow-browser-wifi-123456789' },
-    link: { handoffStationVerified: true, cardBlank: true },
-  });
-  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
+  // Confirming the Wi-Fi join is the LAST click an owner makes here. Public
+  // Studio continues on its own from that point, so the saved project reaches
+  // the card through the automatic restore rather than a second button press.
+  // Everything the deliberate click used to prove still has to be true: one
+  // config, on the production push path, carrying the fresh status envelope.
   const beforeWizardPush = await page.evaluate(() => (window as any).__blankProductionPath.messageTypes.length);
-  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toBeVisible();
   const productionPath = await page.evaluate(async (start) => {
     const bridge = await import('/src/lib/cardBridge.js');
     const cardLink = await import('/src/lib/cardLink.js');
     const fixture = (window as any).__blankProductionPath;
     const types = fixture.messageTypes.slice(start);
+    // The blank-card authority is one-shot: it was granted for this handoff,
+    // spent by the single restore, and must be closed before anything else can
+    // reach the card.
+    const configsSent = fixture.messageTypes.filter((type: string) => type === 'config').length;
+    const authorityAfterRestore = bridge.getCardBridgeState().initialConfigAuthority;
     const recoveryCleared = sessionStorage.getItem('lw_wifi_handoff_recovery_v1') == null;
     const replacementCorrelation = {
       ...fixture.correlation,
@@ -2518,6 +2515,8 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     });
     return {
       types,
+      configsSent,
+      authorityAfterRestore,
       capturedPush: fixture.capturedPush,
       expectedFreshEvidence: fixture.expectedFreshEvidence,
       recoveryCleared,
@@ -2527,6 +2526,8 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     };
   }, beforeWizardPush);
   expect(productionPath.types.filter(type => type === 'config')).toHaveLength(1);
+  expect(productionPath.configsSent).toBe(1);
+  expect(productionPath.authorityAfterRestore).toBe(false);
   expect(productionPath.capturedPush.runtimePackage.config.kaleidoscopeMappings).toHaveLength(1);
   expect(productionPath.capturedPush.options.cardEvidence).toEqual(productionPath.expectedFreshEvidence);
   expect(productionPath.types).not.toContain('wiring-candidate');
@@ -2543,6 +2544,10 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     handoffStationVerified: false,
   });
   expect(productionPath.staleEnvelopeIgnored).toBe(true);
+  // The automatic restore leaves module fetches in flight behind the HTTPS
+  // origin route. Drop the route before teardown so a request that outlives the
+  // last assertion cannot fail the test it is no longer testing.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
 test('HTTPS Studio reload proves an ambiguous initial config without replaying either mutation', async ({ page }) => {
@@ -2674,13 +2679,25 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  // The reload re-proves the handoff from status alone and then continues on
+  // its own — public Studio no longer waits for a second click here. What that
+  // continuation may do is unchanged: the ambiguous acknowledgement is never
+  // replayed, and the one-shot blank-card authority pays for exactly one
+  // config before closing.
   await expect.poll(() => page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
     const link = await import('/src/lib/cardLink.js');
-    return { bridge: bridge.getCardBridgeState(), link: link.getCardLinkState() };
+    const types = JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]');
+    const recovery = JSON.parse(sessionStorage.getItem('lw_wifi_handoff_recovery_v1') || 'null');
+    return {
+      bridge: bridge.getCardBridgeState(),
+      link: link.getCardLinkState(),
+      configCount: types.filter((type: string) => type === 'config').length,
+      configAttempted: recovery?.configAttempted === true,
+    };
   })).toMatchObject({
     bridge: {
-      initialConfigAuthority: true,
+      initialConfigAuthority: false,
       handoffFlowId: seeded.flowId,
       handoffReloadRecovery: false,
       handoffReloadEnvelopeCount: 2,
@@ -2689,28 +2706,20 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
       handoffFlowId: seeded.flowId,
       handoffStationVerified: true,
       handoffAckAttempted: true,
-      cardBlank: true,
     },
+    configCount: 1,
+    configAttempted: true,
   });
   const afterReload = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]'));
   expect(afterReload.filter((type: string) => type === 'wifi-handoff-ack')).toHaveLength(0);
   expect(afterReload.filter((type: string) => type === 'status').length).toBeGreaterThanOrEqual(2);
 
-  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
-  const beforePush = afterReload.length;
-  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => {
-    const types = JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]');
-    const recovery = JSON.parse(sessionStorage.getItem('lw_wifi_handoff_recovery_v1') || 'null');
-    return {
-      configCount: types.filter((type: string) => type === 'config').length,
-      configAttempted: recovery?.configAttempted,
-    };
-  })).toEqual({ configCount: 1, configAttempted: true });
-
   // The card applied config but its response was lost. A real Studio reload
   // may only reacquire the named popup and prove the outcome through status;
   // it must never post config or the WiFi acknowledgement a second time.
+  const beforeSecondReload = await page.evaluate(
+    () => JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]').length,
+  );
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
@@ -2720,17 +2729,22 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
     bridge: { runtimeCommandReady: true, initialConfigAuthority: false },
     link: { handoffStationVerified: true, cardBlank: false },
   });
-  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toBeVisible();
-  const pushed = await page.evaluate((start) => ({
-    types: JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]').slice(start),
-    recovery: sessionStorage.getItem('lw_wifi_handoff_recovery_v1'),
-  }), beforePush);
-  expect(pushed.types.filter((type: string) => type === 'config')).toHaveLength(1);
+  const pushed = await page.evaluate((start) => {
+    const all = JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]');
+    return {
+      all,
+      types: all.slice(start),
+      recovery: sessionStorage.getItem('lw_wifi_handoff_recovery_v1'),
+    };
+  }, beforeSecondReload);
+  expect(pushed.types).not.toContain('config');
   expect(pushed.types).not.toContain('wifi-handoff-ack');
   expect(pushed.types).not.toContain('wiring-candidate');
-  expect(pushed.types.indexOf('config')).toBeLessThan(pushed.types.indexOf('firmware-info'));
+  // Independent evidence, read back AFTER the write it is proving.
+  expect(pushed.types).toContain('firmware-info');
+  expect(pushed.all.filter((type: string) => type === 'config')).toHaveLength(1);
+  expect(pushed.all.lastIndexOf('config')).toBeLessThan(pushed.all.lastIndexOf('firmware-info'));
   expect(pushed.recovery).toBeNull();
 
   const identityHandoff = await page.evaluate(async (host) => {
@@ -2748,4 +2762,5 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
   expect(identityHandoff.handoffFlowId).toBe('');
   expect(identityHandoff.accepted.id).toBe('lw-cccccccccccc');
   expect(identityHandoff.priorReason).toBe('wrong-card');
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });

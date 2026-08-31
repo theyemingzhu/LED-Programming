@@ -1049,11 +1049,17 @@ export function bootstrapCardBridgeFromOpener() {
   const win = browserWindow();
   attachCardBridgeListener();
   const params = parseBridgeParams();
-  if (!params.enabled && bridgeWindow) return true;
-  if (!params.enabled) return false;
+  const bridgeHostWindow = win?.opener || (win?.parent && win.parent !== win ? win.parent : null);
+  // An opener/parent, or explicit cardBridge launch params, is what makes this
+  // a BOOTSTRAP at all. With neither, this Studio page was not opened by a card
+  // page: a live `bridgeWindow` belongs to a flow this same page lifecycle is
+  // already driving, and answering "yes, an opener bridge was adopted" makes
+  // bootstrapCardLink pay a second ping + firmware-info + status probe against
+  // a card that another caller is already verifying. During a WiFi handoff that
+  // duplicate lands on a card mid-transition, so it is not merely wasted work.
+  if (!params.enabled) return Boolean(bridgeHostWindow && bridgeWindow);
   const host = normalizeCardHost(params.host || readStoredCardHost());
   const origin = cardHostToUrl(host);
-  const bridgeHostWindow = win?.opener || (win?.parent && win.parent !== win ? win.parent : null);
   if (bridgeHostWindow) {
     setBridgeState({
       source: bridgeHostWindow,
