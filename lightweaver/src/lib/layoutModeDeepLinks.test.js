@@ -35,13 +35,8 @@ function declaredLayoutModes() {
   return match[1].split(',').map(part => part.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
-test('the Layout mode switch offers exactly the modes the hash parser accepts', () => {
-  const modes = declaredLayoutModes();
-  const switchSource = readFileSync(join(SRC, 'components/layout/shared/ModeSwitch.jsx'), 'utf8');
-  const keys = [...switchSource.matchAll(/\{ key: '([^']+)', label: '[^']*' \}/g)].map(m => m[1]);
-
-  assert.deepEqual([...keys].sort(), [...modes].sort());
-  assert.ok(modes.length > 0);
+test('Layout has one mode: draw (the Wire drawing workspace)', () => {
+  assert.deepEqual(declaredLayoutModes(), ['draw']);
 });
 
 test('every layout mode deep link in the app points at a mode that exists', () => {
@@ -51,6 +46,8 @@ test('every layout mode deep link in the app points at a mode that exists', () =
   for (const file of sourceFiles(SRC)) {
     const source = readFileSync(file, 'utf8');
     for (const [, mode] of source.matchAll(/screen=layout&mode=([A-Za-z0-9-]+)/g)) {
+      // Retired Test & Install tab: `mode=wire` is a Card install redirect.
+      if (mode === 'wire') continue;
       if (!modes.includes(mode)) offenders.push(`${file.slice(SRC.length + 1)} -> mode=${mode}`);
     }
   }
@@ -66,8 +63,8 @@ test('the Playlist "Adjust LED count" jump lands on the panel that owns LED coun
   const mode = new URLSearchParams(match[1]).get('mode');
   assert.ok(declaredLayoutModes().includes(mode), `mode=${mode} is not a real layout mode`);
 
-  // 'draw' is the panel labelled "Wire": it carries the per-strip LED count
-  // inputs. 'wire' is "Test & Install" and has no per-strip count field.
+  // 'draw' is the Wire drawing workspace: it carries the per-strip LED count
+  // inputs. Old `mode=wire` is Card install, not a Layout mode.
   assert.equal(mode, 'draw');
   const drawPanel = readFileSync(join(SRC, 'components/layout/modes/DrawModePanel.jsx'), 'utf8');
   assert.match(drawPanel, /aria-label="New strip LEDs"/);

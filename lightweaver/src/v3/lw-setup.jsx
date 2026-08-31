@@ -58,10 +58,16 @@ function installRelationship(resolution, installedProjectId = '', installationMa
   const installed = String(installedProjectId || '').trim();
   // Same id but no verified binding: calling that "differs from open project"
   // is false and reads as a failure. Name what is actually missing.
+  // Both of these used to be errands ("save to card to verify") or raw slugs
+  // ("gallery-piece-2 — differs from open project"). This field answers ONE
+  // question — is what the card holds the thing open here? — and the errand
+  // that follows from the answer is the ladder's active task, which renders
+  // the button that performs it. An owner does not know their project by its
+  // internal id, so the id is never the answer either.
   if (installed && installed === String(openProjectId || '').trim()) {
-    return 'Same project — save to card to verify';
+    return 'Same project, not yet verified';
   }
-  if (installed) return `${installed} — differs from open project`;
+  if (installed) return 'A different project';
   return 'Project not installed';
 }
 
@@ -108,6 +114,7 @@ export function SetupScreen({
   replaceProject,
   firmwareStatus = null,
   onLoadOfferChange,
+  onPrimaryActionChange,
 }) {
   const {
     setProjectId, setPortRoles, setStandaloneController, replaceLayoutGeometry,
@@ -396,6 +403,24 @@ export function SetupScreen({
     onLoadOfferChange(savedMatchLoadOffer);
     return () => onLoadOfferChange(false);
   }, [onLoadOfferChange, savedMatchLoadOffer]);
+
+  // ONE primary action per page. While the ladder's active task is offering
+  // the next step, everything below it on Card Home renders its controls as
+  // secondary. Card Home used to show three buttons styled as the primary
+  // action at once — the ladder's, the install action's, and the matching
+  // project panel's — so the owner had to work out which one the screen meant.
+  // The single exception is the install-project task with no resumable
+  // commissioning: it deliberately renders no button because the install
+  // action below IS its button, so the floor passes down.
+  const ladderOwnsPrimary = !journey.setupComplete
+    && !(journey.currentPhaseId === 'connect'
+      && journey.taskId === 'install-project'
+      && !hasResumableCommissioning(commissioningFlow));
+  useEffect(() => {
+    if (!onPrimaryActionChange) return undefined;
+    onPrimaryActionChange(ladderOwnsPrimary);
+    return () => onPrimaryActionChange(false);
+  }, [onPrimaryActionChange, ladderOwnsPrimary]);
 
   // Record completion so older notes of this key stay truthful. The shell
   // no longer routes on it — a bare URL always opens Card Home.
@@ -711,7 +736,10 @@ export function SetupScreen({
   const evidence = discoveryEvidence(currentProject);
   // One status authority: the lifecycle label (derived locally only when a
   // bare render did not pass the shell's lifecycle down).
-  const identityStatus = (cardLifecycle || deriveCardLifecycle({ link: cardLink || {} })).label;
+  // connectionLabel, not label: `label` is the footer chip's errand text. See
+  // CONNECTION_LABELS in cardLifecycle.js.
+  const identityLifecycle = cardLifecycle || deriveCardLifecycle({ link: cardLink || {} });
+  const identityStatus = identityLifecycle.connectionLabel || identityLifecycle.label;
   const firmwareBehind = firmwareStatus?.actionable === true;
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
@@ -738,9 +766,15 @@ export function SetupScreen({
               {installedId && installedId === String(currentProject?.id || '').trim()
                 ? 'This card holds the same project that is open here, but the wiring has changed in Studio since it was installed. Use the card’s copy, or save this one to the card.'
                 : installedId
-                  ? 'This card is connected and holds a different project from the one open in Studio.'
-                  : 'This exact card is connected, but Studio has not matched the project it holds to the project open here.'}
+                  ? 'This card holds a different project from the one open in Studio.'
+                  : 'Studio has not matched the project this card holds to the project open here.'}
             </p>
+            {/* One recommendation, three alternatives folded. This was four
+                buttons abreast at the FIRST decision point of the product,
+                three of which an owner reads as irreversible (adopt, import,
+                overwrite). Adopting what the card holds is the only one that
+                destroys nothing, so it is the one on the surface; the other
+                three stay one click away rather than competing with it. */}
             <div className="lw-setup-banner-actions">
               {/* Load runs the shared adoption machine (cardActions); without
                   the provider fall back to the self-contained adoption. */}
@@ -758,10 +792,15 @@ export function SetupScreen({
                   Use this card&rsquo;s project
                 </button>
               )}
-              <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
-              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=layout&mode=wire')}>Save this project to the card</button>
-              <button type="button" className="btn" data-testid="setup-keep-open-project" onClick={() => go('#screen=discovery')}>Keep setting up the open project</button>
             </div>
+            <details className="lw-setup-alternatives" data-testid="setup-project-alternatives">
+              <summary>Other ways to resolve this</summary>
+              <div className="lw-setup-banner-actions">
+                <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
+                <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
+                <button type="button" className="btn" data-testid="setup-keep-open-project" onClick={() => go('#screen=discovery')}>Keep setting up the open project</button>
+              </div>
+            </details>
           </div>
         );
       }
@@ -786,7 +825,30 @@ export function SetupScreen({
           {taskId === 'update-firmware' ? (
             <button type="button" className="btn primary" onClick={() => go('#screen=card&section=install')}>Install or update firmware</button>
           ) : taskId === 'install-project' ? (
-            <button type="button" className="btn primary" onClick={() => go('#screen=card&section=install')}>Install project on card</button>
+            // NOT null. This branch used to render nothing, which left the one
+            // active task on Card Home as an empty bordered box — the owner's
+            // next step, with no way to take it. Two real cases live here:
+            // a card that was just flashed and has a saved project waiting to
+            // go back on it (the commissioning panel owns that conversation),
+            // and an ordinary install, whose check-and-install surface is
+            // rendered directly below this ladder.
+            hasResumableCommissioning(commissioningFlow) ? (
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="setup-resume-commissioning"
+                onClick={() => openCardFlow('install-project', {
+                  lifecycle: cardLifecycle,
+                  journey,
+                  resumableCommissioning: true,
+                })}
+              >Put your project back on the card</button>
+            ) : (
+              <p role="status" data-testid="setup-install-inline">
+                Your project is ready to go on the card. The check and install for it is
+                just below.
+              </p>
+            )
           ) : taskId === 'configure-wifi' ? (
             // The one entry contract decides where Wi-Fi continues: Install's
             // commissioning panel while a stage is resumable, otherwise the
@@ -873,7 +935,7 @@ export function SetupScreen({
             type="button"
             className="btn primary"
             data-testid="setup-layout-action"
-            onClick={() => go(placementDone ? '#screen=layout&mode=wire' : '#screen=layout&mode=draw')}
+            onClick={() => go(placementDone ? '#screen=card&section=setup&task=install-project' : '#screen=layout&mode=draw')}
           >
             {placementDone ? 'Verify light direction' : 'Place lights in the artwork'}
           </button>
@@ -896,19 +958,17 @@ export function SetupScreen({
             developer vocabulary on the one screen where a visual artist most
             needs to know what is about to happen to their piece. */}
         <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=layout&mode=wire')}>Test and save to card</button>
+        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=card&section=setup&task=install-project')}>Test and save to card</button>
       </div>
     );
   };
 
   return (
     <>
-      {!journey.setupComplete && !exactTransport && (
-        <div className="lw-setup-lede">
-          <p className="lw-setup-intro">Connect to the card, then Studio resumes whatever is still unfinished — lights, layout, or saving. You can open Patterns as soon as the card answers.</p>
-        </div>
-      )}
-
+      {/* The lede used to explain the ladder here ("Connect to the card, then
+          Studio resumes whatever is still unfinished…"). Phase 1 is that
+          sentence, with the button attached. Explaining a step directly above
+          the step is the same repetition this screen was compressed to end. */}
       <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
         <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
         <div><span>Connection</span><strong>{identityStatus}</strong></div>
@@ -936,23 +996,29 @@ export function SetupScreen({
             asking the owner to pair, so the screen carried two headline
             buttons and two different accounts of where the owner was. */}
         {matchesOpenProject && !provisionalSetup && exactTransport && (
-          <section className="card-support-panel lw-setup-banner" data-testid="setup-card-ready">
-            <h2>
-              {firmwareBehind
-                ? 'This exact card is already set up'
-                : firmwareCurrent
-                  ? 'Your card is up to date and currently connected'
-                  : 'Your card is currently connected'}
-            </h2>
-            <p>
-              {firmwareBehind
-                ? 'Its installed project matches the project open in Studio. Update the card software before relying on it.'
-                : firmwareCurrent
-                  ? 'Studio is talking to this card and it is running the current Lightweaver software.'
-                  : 'Studio is talking to this card. Layout and the rest of Studio are ready when you are.'}
-            </p>
+          <section
+            className="card-support-panel lw-setup-banner"
+            data-testid="setup-card-ready"
+            aria-label="Card ready"
+          >
+            {/* The identity row directly above already states the connection
+                and whether the open project is the installed one. Repeating
+                that here as a heading plus a paragraph was two more tellings
+                of one fact, so the healthy card keeps only its doors. Old
+                firmware is a DIFFERENT fact the row does not carry, so that
+                case keeps its sentence and its Update action. */}
+            {firmwareBehind && (
+              <>
+                <h2>This card&rsquo;s software is behind</h2>
+                <p>Update the card software before relying on it.</p>
+              </>
+            )}
             <div className="lw-setup-banner-actions">
-              <button type="button" className="btn primary" data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+              {/* Same one-primary rule as the rest of Card Home. This banner
+                  can render while the ladder still has an active task (an
+                  exact project match during a `confirming` lifecycle, for
+                  one), and two primaries then ask the owner to arbitrate. */}
+              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
               {firmwareBehind && (
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
@@ -978,7 +1044,7 @@ export function SetupScreen({
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
               <button type="button" className="btn" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>Use this card&rsquo;s project</button>
-              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=layout&mode=wire')}>Save this project to the card</button>
+              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
             </div>
           </section>
         )}

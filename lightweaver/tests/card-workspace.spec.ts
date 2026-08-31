@@ -366,7 +366,6 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
       test: rect('.sb-teststrip'),
       control: rect('.card-status-control'),
       copy: rect('.card-status-copy'),
-      name: rect('.card-status-name'),
       state: rect('.card-status-state'),
     };
   });
@@ -374,7 +373,9 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
   expect(regions.firmware.right).toBeLessThanOrEqual(regions.studio.left);
   expect(regions.studio.right).toBeLessThanOrEqual(regions.test.left);
   expect(regions.control.right).toBeLessThanOrEqual(regions.card.right);
-  expect(regions.name.right).toBeLessThanOrEqual(regions.state.left);
+  // The footer shows the status word only — the card/project name region it
+  // used to order against was removed deliberately, so there is nothing left
+  // to sit to the left of the state.
   expect(regions.copy.right).toBeLessThanOrEqual(regions.control.right);
 });
 
@@ -805,8 +806,18 @@ test('Card overview delegates resumable install and test work to exact Setup tas
   await connectCommissioningCard(page);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  // Card Home renders the exact install task inline on the ladder.
-  await page.getByRole('button', { name: 'Install project on card', exact: true }).click();
+  // Card Home renders check + install in place (the old "Install project on
+  // card" jump is gone).
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  // "delegates to exact Setup tasks" is what this test is named for: the card
+  // was flashed and its saved project is waiting to go back on it, so the
+  // ladder's active task carries that door. It used to assert the commissioning
+  // panel's own 'Restore saved project' button — an artifact of the old jump
+  // straight to the firmware screen. The task rendered NOTHING for a while
+  // after that jump was removed, which is the hole this now guards.
+  await expect(page.getByTestId('setup-resume-commissioning')).toBeVisible();
+  await page.getByTestId('setup-resume-commissioning').click();
+  await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible();
 
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
@@ -1130,35 +1141,27 @@ test('one Card rail destination owns the card and exposes ordinary section navig
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.locator('.rail').getByRole('button', { name: 'Card', exact: true }).click();
 
-  // The rail lands on Card Home — the merged guided ladder + card status page.
+  // The rail lands on Card Home — one page, Hardware and Advanced folded under it.
   await expect(page).toHaveURL(/#screen=card&section=setup$/);
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
-  const sections = page.getByRole('navigation', { name: 'Hardware sections' });
-  await expect(sections).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
+  await expect(page.locator('.card-section-tabs')).toHaveCount(0);
+  await expect(page.getByTestId('card-hardware-fold').locator('summary')).toHaveText('Hardware');
+  await expect(page.getByTestId('card-advanced-fold').locator('summary')).toHaveText('Advanced');
   for (const label of ['Home', 'Hardware settings', 'Advanced & Support']) {
-    await expect(sections.getByRole('button', { name: label, exact: true })).toBeVisible();
-  }
-  await expect(sections.getByRole('button', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page');
-  // The merged-away and full-body sections are not tabs: Setup and Card
-  // status became Home, Install is a takeover during installs, Preferences
-  // opens from the top bar, Batch production is a manufacturing surface.
-  for (const label of ['Setup', 'Card status', 'Install or update', 'Preferences', 'Workshop setup', 'Batch production']) {
-    await expect(sections.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   }
   // Setup and Hardware were peer rail items asking the same questions. Neither
   // name survives as a second destination — there is one card entry now.
   for (const label of ['Flash', 'Installer', 'Production setup', 'Settings', 'Hardware', 'Setup']) {
     await expect(page.locator('.rail').getByRole('button', { name: label, exact: true })).toHaveCount(0);
   }
-  await expect(sections.getByRole('menu')).toHaveCount(0);
-  await expect(sections.locator('[role="menuitem"]')).toHaveCount(0);
-  await expect(sections.locator('[aria-haspopup]')).toHaveCount(0);
 
   // Both merged section routes render the same Home.
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/#screen=card&section=overview$/);
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
-  await expect(sections.getByRole('button', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('card-hardware-fold')).toBeVisible();
 });
 
 test('Hardware loads the verified production project that matches the paired card in one action', async ({ page }) => {
@@ -1434,8 +1437,10 @@ test('Hardware offers an exact current project without intent and auto-opens onl
     expectedCard: { id: cardStatus.cardId, firmwareVersion: cardStatus.firmwareVersion, buildId: cardStatus.buildId },
     readiness: cardStatus,
   }]);
+  // The project name belongs to the Load button (asserted just below), not to
+  // this status line as well — one panel said it three times.
   await expect(page.getByRole('region', { name: 'Matching card project' })).toContainText(
-    'Exact match found: “Ordinary gallery piece — current Studio project”',
+    'Exact match found:',
     { timeout: 15_000 },
   );
   await expect(page).toHaveURL(/#screen=card&section=overview$/);
@@ -1514,30 +1519,18 @@ test('Card section navigation becomes one compact switcher on a 390px viewport',
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
-  const sections = page.getByRole('navigation', { name: 'Hardware sections' });
-  const switcher = sections.getByLabel('Hardware section');
-  await expect(switcher).toBeVisible();
-  // The legacy overview route reads as the Home option.
-  await expect(switcher).toHaveValue('setup');
-  expect(await switcher.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
+  await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
+  await expect(page.getByLabel('Hardware section')).toHaveCount(0);
+  const hardware = page.getByTestId('card-hardware-fold');
+  const summary = hardware.locator('summary');
+  await expect(summary).toBeVisible();
+  expect(await summary.evaluate(element => Number.parseFloat(getComputedStyle(element).height))).toBeGreaterThanOrEqual(44);
 
-  for (const label of ['Home', 'Hardware settings', 'Advanced & Support']) {
-    await expect(switcher.getByRole('option', { name: label, exact: true })).toHaveCount(1);
-    await expect(sections.getByRole('button', { name: label, exact: true })).toBeHidden();
-  }
-  for (const label of ['Setup', 'Card status', 'Install or update', 'Preferences']) {
-    await expect(switcher.getByRole('option', { name: label, exact: true })).toHaveCount(0);
-  }
-
-  await switcher.selectOption('settings');
+  await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/#screen=card&section=settings$/);
-  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeFocused();
-
-  const dimensions = await sections.evaluate(node => ({
-    clientWidth: node.clientWidth,
-    scrollWidth: node.scrollWidth,
-  }));
-  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  await expect(hardware).toHaveAttribute('open', '');
+  await expect(page.getByTestId('card-address-summary')).toBeVisible();
 
   const pageWidth = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -1667,9 +1660,12 @@ test('connected Card Home identifies the card and keeps one active Setup task', 
     readiness: status,
   }]);
 
-  await expect(page.getByTestId('card-detected-state')).toContainText('Gallery card');
-  await expect(page.getByTestId('card-detected-state')).toContainText(/connected/i);
-  await expect(page.getByTestId('card-detected-state')).not.toContainText(/has not changed|nothing changed/i);
+  // The identity row is the ONE status: it names the card and states the
+  // connection. A card that is answering normally gets no Detected-state
+  // block repeating that — the block is reserved for a diagnosis the row and
+  // the ladder do not already carry (checking, blank, bench, failure).
+  await expect(page.getByTestId('setup-identity-row')).toContainText('Gallery card');
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
   // The ladder carries exactly one active task for the connected card.
   await expect(page.getByTestId('setup-active-task')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
@@ -1710,10 +1706,12 @@ test('Card overview distinguishes checking, blank, and ready evidence', async ({
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
   status = readyStatus('lw-overview-state');
-  // A command-ready card whose project has moved on in Studio now says the same
-  // thing the identity row, the ladder and the footer say — save it to the card
-  // — instead of adding a fourth, cheerier account of the same moment.
-  await expect(page.getByTestId('card-detected-state')).toContainText(/ready for light check|save it to the card/);
+  // A command-ready card says nothing extra here at all. The identity row, the
+  // ladder's active task and the footer already carry the verdict AND its
+  // action; a fourth account of the same moment was the chorus this screen was
+  // compressed to remove. The ladder is the proof the state still arrived.
+  await expect(page.getByTestId('setup-progress')).toBeVisible();
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
 });
 
 test('Card overview flags the temporary bench discovery project and delegates to discovery Setup', async ({ page }) => {
@@ -2022,27 +2020,24 @@ test('top-bar Preferences opens the canonical Card preferences section', async (
 });
 
 for (const legacy of [
-  // Install, Preferences, and Batch production are full-body views without a
-  // section tab, so no tab is highlighted for them; their legacy hashes still
-  // resolve and stay in the URL as written.
-  { hash: '#screen=flash&mode=install', section: null, heading: 'Install Lightweaver' },
-  { hash: '#screen=flash', section: 'Advanced & Support', heading: 'Manual firmware tools' },
-  { hash: '#screen=installer', section: 'Advanced & Support', heading: 'Worker install' },
-  { hash: '#screen=production&job=moon-batch-7', section: null, heading: 'Batch production' },
-  { hash: '#screen=settings', section: null, heading: 'Preferences' },
+  // Install, Preferences, and Batch production are full-body takeovers.
+  // Flash and installer land on Home with the Advanced fold open.
+  { hash: '#screen=flash&mode=install', fold: null, heading: 'Install Lightweaver' },
+  { hash: '#screen=flash', fold: 'card-advanced-fold', heading: 'Manual firmware tools' },
+  { hash: '#screen=installer', fold: 'card-advanced-fold', heading: 'Worker install' },
+  { hash: '#screen=production&job=moon-batch-7', fold: null, heading: 'Batch production' },
+  { hash: '#screen=settings', fold: null, heading: 'Preferences' },
   // The old Setup rail destination lands on Card Home.
-  { hash: '#screen=setup', section: 'Home', heading: 'Set up your Lightweaver' },
+  { hash: '#screen=setup', fold: null, heading: 'Set up your Lightweaver' },
 ]) {
-  test(`legacy ${legacy.hash} stays intact and opens ${legacy.section || legacy.heading}`, async ({ page }) => {
+  test(`legacy ${legacy.hash} stays intact and opens ${legacy.fold || legacy.heading}`, async ({ page }) => {
     await page.goto(`/${legacy.hash}`, { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(new RegExp(`${legacy.hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
     await expect(page.locator('.rail-item.active')).toHaveAccessibleName('Card');
-    const sections = page.getByRole('navigation', { name: 'Hardware sections' });
-    if (legacy.section) {
-      await expect(sections.getByRole('button', { name: legacy.section, exact: true })).toHaveAttribute('aria-current', 'page');
-    } else {
-      await expect(sections.locator('[aria-current="page"]')).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Hardware sections' })).toHaveCount(0);
+    if (legacy.fold) {
+      await expect(page.getByTestId(legacy.fold)).toHaveAttribute('open', '');
     }
     await expect(page.getByRole('heading', { name: legacy.heading, exact: true }).first()).toBeVisible();
   });
@@ -2050,13 +2045,14 @@ for (const legacy of [
 
 test('new section navigation emits canonical Card hashes and moves focus to the section heading', async ({ page }) => {
   await page.goto('/#screen=flash', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
+  await page.getByTestId('card-hardware-fold').locator('summary').click();
 
   await expect(page).toHaveURL(/#screen=card&section=settings$/);
-  const heading = page.getByRole('heading', { name: 'Hardware settings', level: 1 });
+  const heading = page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 });
   await expect(heading).toBeFocused();
   expect(await heading.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
   expect(await heading.evaluate(element => Number.parseFloat(getComputedStyle(element).outlineWidth))).toBeGreaterThan(0);
+  await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
   await expect(page.getByText('Card connection', { exact: true })).toBeVisible();
 });
 
@@ -2083,7 +2079,8 @@ test('legacy technician path uses the Card heading as the only h1', async ({ pag
   await page.goto('/#screen=flash', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: 'Advanced & Support', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('card-advanced-fold')).toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Manual firmware tools', level: 2 })).toBeVisible();
 });
 
@@ -2091,7 +2088,8 @@ test('legacy installer guide path uses the Card heading as the only h1', async (
   await page.goto('/#screen=installer', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: 'Advanced & Support', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('card-advanced-fold')).toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Worker install', level: 2 })).toBeVisible();
 });
 
@@ -2124,11 +2122,12 @@ test('embedded unsupported workshop does not add a nested main landmark', async 
 test('Advanced & Support exposes its tools without a collapsed disclosure', async ({ page }) => {
   await page.goto('/#screen=card&section=support', { waitUntil: 'domcontentloaded' });
 
+  const fold = page.getByTestId('card-advanced-fold');
+  await expect(fold).toHaveAttribute('open', '');
   for (const label of ['Technician firmware & logs', 'GPIO & install guide', 'Designer JSON', 'Recovery', 'Batch production']) {
-    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+    await expect(fold.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
-  await expect(page.locator('details')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Technician firmware & logs' }).click();
+  await fold.getByRole('button', { name: 'Technician firmware & logs' }).click();
   await expect(page.getByRole('heading', { name: 'Manual firmware tools' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Flash firmware' })).toBeVisible();
 });
@@ -2149,7 +2148,7 @@ test('an active firmware install keeps rail navigation locked to install', async
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('lw-install-active', { detail: { active: true } })));
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Hardware settings' }).click();
+  await expect(page.getByTestId('card-hardware-fold')).toHaveCount(0);
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
   await page.getByRole('button', { name: 'Layout', exact: true }).click();
@@ -2481,20 +2480,14 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     initialConfigAuthority: true,
     handoffFlowId: 'flow-browser-wifi-123456789',
   });
-  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
-  await expect.poll(() => page.evaluate(async () => {
-    const bridge = await import('/src/lib/cardBridge.js');
-    const link = await import('/src/lib/cardLink.js');
-    return {
-      bridge: bridge.getCardBridgeState(),
-      link: link.getCardLinkState(),
-    };
-  })).toMatchObject({
-    bridge: { initialConfigAuthority: true, handoffFlowId: 'flow-browser-wifi-123456789' },
-    link: { handoffStationVerified: true, cardBlank: true },
-  });
-  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
+  // Confirming the Wi-Fi join is the LAST click an owner makes here. Public
+  // Studio finds the card again by itself, but WRITING the project to it is the
+  // owner's call and waits for this button — the write spends the one-shot
+  // blank-card authority, so it is not something Studio may decide alone.
+  // What the click proves is unchanged: one config, on the production push
+  // path, carrying the fresh status envelope.
   const beforeWizardPush = await page.evaluate(() => (window as any).__blankProductionPath.messageTypes.length);
+  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
   await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toBeVisible();
   const productionPath = await page.evaluate(async (start) => {
@@ -2502,6 +2495,11 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     const cardLink = await import('/src/lib/cardLink.js');
     const fixture = (window as any).__blankProductionPath;
     const types = fixture.messageTypes.slice(start);
+    // The blank-card authority is one-shot: it was granted for this handoff,
+    // spent by the single restore, and must be closed before anything else can
+    // reach the card.
+    const configsSent = fixture.messageTypes.filter((type: string) => type === 'config').length;
+    const authorityAfterRestore = bridge.getCardBridgeState().initialConfigAuthority;
     const recoveryCleared = sessionStorage.getItem('lw_wifi_handoff_recovery_v1') == null;
     const replacementCorrelation = {
       ...fixture.correlation,
@@ -2519,6 +2517,8 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     });
     return {
       types,
+      configsSent,
+      authorityAfterRestore,
       capturedPush: fixture.capturedPush,
       expectedFreshEvidence: fixture.expectedFreshEvidence,
       recoveryCleared,
@@ -2528,6 +2528,8 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     };
   }, beforeWizardPush);
   expect(productionPath.types.filter(type => type === 'config')).toHaveLength(1);
+  expect(productionPath.configsSent).toBe(1);
+  expect(productionPath.authorityAfterRestore).toBe(false);
   expect(productionPath.capturedPush.runtimePackage.config.kaleidoscopeMappings).toHaveLength(1);
   expect(productionPath.capturedPush.options.cardEvidence).toEqual(productionPath.expectedFreshEvidence);
   expect(productionPath.types).not.toContain('wiring-candidate');
@@ -2544,6 +2546,10 @@ test('HTTPS Studio keeps a blank replacement card config-only across an ambiguou
     handoffStationVerified: false,
   });
   expect(productionPath.staleEnvelopeIgnored).toBe(true);
+  // The automatic restore leaves module fetches in flight behind the HTTPS
+  // origin route. Drop the route before teardown so a request that outlives the
+  // last assertion cannot fail the test it is no longer testing.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
 test('HTTPS Studio reload proves an ambiguous initial config without replaying either mutation', async ({ page }) => {
@@ -2675,13 +2681,25 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  // The reload re-proves the handoff from status alone, then waits: the write
+  // is the owner's, so it takes this click. What the click may do is unchanged
+  // — the ambiguous acknowledgement is never replayed, and the one-shot
+  // blank-card authority pays for exactly one config before closing.
+  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
   await expect.poll(() => page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
     const link = await import('/src/lib/cardLink.js');
-    return { bridge: bridge.getCardBridgeState(), link: link.getCardLinkState() };
+    const types = JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]');
+    const recovery = JSON.parse(sessionStorage.getItem('lw_wifi_handoff_recovery_v1') || 'null');
+    return {
+      bridge: bridge.getCardBridgeState(),
+      link: link.getCardLinkState(),
+      configCount: types.filter((type: string) => type === 'config').length,
+      configAttempted: recovery?.configAttempted === true,
+    };
   })).toMatchObject({
     bridge: {
-      initialConfigAuthority: true,
+      initialConfigAuthority: false,
       handoffFlowId: seeded.flowId,
       handoffReloadRecovery: false,
       handoffReloadEnvelopeCount: 2,
@@ -2690,28 +2708,20 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
       handoffFlowId: seeded.flowId,
       handoffStationVerified: true,
       handoffAckAttempted: true,
-      cardBlank: true,
     },
+    configCount: 1,
+    configAttempted: true,
   });
   const afterReload = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]'));
   expect(afterReload.filter((type: string) => type === 'wifi-handoff-ack')).toHaveLength(0);
   expect(afterReload.filter((type: string) => type === 'status').length).toBeGreaterThanOrEqual(2);
 
-  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
-  const beforePush = afterReload.length;
-  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => {
-    const types = JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]');
-    const recovery = JSON.parse(sessionStorage.getItem('lw_wifi_handoff_recovery_v1') || 'null');
-    return {
-      configCount: types.filter((type: string) => type === 'config').length,
-      configAttempted: recovery?.configAttempted,
-    };
-  })).toEqual({ configCount: 1, configAttempted: true });
-
   // The card applied config but its response was lost. A real Studio reload
   // may only reacquire the named popup and prove the outcome through status;
   // it must never post config or the WiFi acknowledgement a second time.
+  const beforeSecondReload = await page.evaluate(
+    () => JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]').length,
+  );
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect.poll(() => page.evaluate(async () => {
     const bridge = await import('/src/lib/cardBridge.js');
@@ -2721,17 +2731,22 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
     bridge: { runtimeCommandReady: true, initialConfigAuthority: false },
     link: { handoffStationVerified: true, cardBlank: false },
   });
-  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toBeVisible();
-  const pushed = await page.evaluate((start) => ({
-    types: JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]').slice(start),
-    recovery: sessionStorage.getItem('lw_wifi_handoff_recovery_v1'),
-  }), beforePush);
-  expect(pushed.types.filter((type: string) => type === 'config')).toHaveLength(1);
+  const pushed = await page.evaluate((start) => {
+    const all = JSON.parse(sessionStorage.getItem('__reload_bridge_types') || '[]');
+    return {
+      all,
+      types: all.slice(start),
+      recovery: sessionStorage.getItem('lw_wifi_handoff_recovery_v1'),
+    };
+  }, beforeSecondReload);
+  expect(pushed.types).not.toContain('config');
   expect(pushed.types).not.toContain('wifi-handoff-ack');
   expect(pushed.types).not.toContain('wiring-candidate');
-  expect(pushed.types.indexOf('config')).toBeLessThan(pushed.types.indexOf('firmware-info'));
+  // Independent evidence, read back AFTER the write it is proving.
+  expect(pushed.types).toContain('firmware-info');
+  expect(pushed.all.filter((type: string) => type === 'config')).toHaveLength(1);
+  expect(pushed.all.lastIndexOf('config')).toBeLessThan(pushed.all.lastIndexOf('firmware-info'));
   expect(pushed.recovery).toBeNull();
 
   const identityHandoff = await page.evaluate(async (host) => {
@@ -2749,4 +2764,5 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
   expect(identityHandoff.handoffFlowId).toBe('');
   expect(identityHandoff.accepted.id).toBe('lw-cccccccccccc');
   expect(identityHandoff.priorReason).toBe('wrong-card');
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });

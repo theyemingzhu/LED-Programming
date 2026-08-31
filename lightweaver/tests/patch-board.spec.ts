@@ -26,14 +26,13 @@ async function importLine(page: any) {
 }
 
 async function enterWire(page: any) {
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 async function gotoDefaultWire(page: any) {
   await page.addInitScript(() => localStorage.clear());
-  await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 // Seeds the two default circles through the legacy-autosave path so the Draw
@@ -86,6 +85,10 @@ async function exportProject(page: any, tmp: string, name = 'saved.json') {
 }
 
 async function openAdvanced(page: any) {
+  if (await page.getByTestId('advanced-installation-tools').count() === 0) {
+    await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
+    await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  }
   const details = page.getByTestId('advanced-installation-tools');
   if (!await details.evaluate((element: HTMLDetailsElement) => element.open)) {
     await details.locator('summary').first().click();
@@ -112,7 +115,8 @@ async function loadVerifiedWiring(page: any, tmp: string) {
     localStorage.setItem('lw_autosave_v3_backup', value);
   }, json);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project'; });
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
 }
 
 async function clickStripPathAt(page: any, fraction: number) {
@@ -214,15 +218,25 @@ test('auto-locked verified wiring blocks physical mutations until Unlock to edit
   expect(project.layout.wiring.locked).toBe(true);
   expect(project.layout.wiring.runs.every((run: any) => run.verified)).toBe(true);
 
-  // "Unlock to edit" inside Advanced reopens the plan and clears verification,
-  // returning the primary flow to the LED-check CTA.
+  // "Unlock to edit" reopens the plan and clears verification. Note WHERE each
+  // half of that lives now: unlocking is a plan edit and belongs to Layout,
+  // while the LED check talks to the hardware and belongs to the Card page.
+  // openAdvanced() above has already moved this test onto Layout to reach the
+  // unlock, so the check is asserted where it actually lives — which is the
+  // stronger claim anyway: unlocking the plan on Layout returns the CARD's
+  // flow to the check.
   await page.getByTestId('unlock-wiring').click();
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add skipped LEDs' })).toBeEnabled();
+
+  // Export while still on Layout — that is where the Export control lives.
   const reopened = await exportProject(page, tmp, 'reopened.json');
   expect(reopened.layout.wiring.locked).toBe(false);
   expect(reopened.layout.wiring.verified).toBe(false);
   expect(reopened.layout.wiring.runs.every((run: any) => run.verified === false)).toBe(true);
+
+  // Then the other half of the guarantee, on the page that owns it.
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project'; });
+  await expect(page.getByTestId('start-led-check')).toBeVisible();
 });
 
 test('numeric strip count replaces the full value with an exact accessible selector', async ({ page }) => {

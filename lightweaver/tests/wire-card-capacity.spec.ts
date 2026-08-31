@@ -48,14 +48,13 @@ function project({ designPixels, outputPin, countedPin, countedPixels }: {
 }
 
 async function openWire(page: any, fixture: object) {
-  await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
   await page.evaluate((data) => {
     localStorage.clear();
     localStorage.setItem('lw_autosave_v3', JSON.stringify(data));
   }, fixture);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
+  await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 test('a small card against a large design is stated as a fact, and the design is untouched', async ({ page }) => {
@@ -73,7 +72,7 @@ test('a small card against a large design is stated as a fact, and the design is
   expect(total).toBe(400);
 });
 
-test('a card matching the design stays quiet on Test & Install', async ({ page }) => {
+test('a card matching the design stays quiet on the Wire plan', async ({ page }) => {
   await openWire(page, project({ designPixels: 41, outputPin: 18, countedPin: 18, countedPixels: 41 }));
   await expect(page.getByTestId('wire-capacity')).toHaveCount(0);
 });

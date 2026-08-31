@@ -459,7 +459,7 @@ export function LayoutCanvas({
               </g>
             )}
 
-            {mode === 'wire' && selectedSeamPoint && (selectedPhysicalStrip?.closed || selectedPhysicalStrip?.isClosed || selectedPhysicalRun?.seamLed != null) && (
+            {selectedSeamPoint && (selectedPhysicalStrip?.closed || selectedPhysicalStrip?.isClosed || selectedPhysicalRun?.seamLed != null) && (
               <g
                 data-testid="connector-seam-handle"
                 role="slider"

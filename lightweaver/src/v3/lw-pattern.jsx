@@ -2085,7 +2085,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                 }
                 {recoveryConfirmation === 'dark' &&
                   <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={() => { window.location.hash = '#screen=layout&mode=wire'; }}>Find my LED wire</button>
+                    <button type="button" className="btn primary" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Find my LED wire</button>
                   </div>
                 }
               </div>
@@ -2098,7 +2098,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                   {canRemoveDuplicateAlternatePress &&
                     <button type="button" className="btn primary" onClick={removeDuplicateAlternatePress}>Fix automatically</button>
                   }
-                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=wire'; }}>Fix wiring</button>
+                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Fix wiring</button>
                 </div>
               </div>
             }

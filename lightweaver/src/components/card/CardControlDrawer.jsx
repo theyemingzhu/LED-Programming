@@ -75,7 +75,13 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
   const view = controls?.view;
   // The lifecycle is the one status authority; the app shell always passes
   // it, and a bare render derives the same diagnosis from the link.
-  const connectionStatus = (lifecycle || deriveCardLifecycle({ link: link || {} })).label;
+  // connectionLabel, not label: this line answers "Card connection", and
+  // `label` is the footer chip's errand text, so a drifted card's drawer used
+  // to answer that question with "Save to card". See CONNECTION_LABELS in
+  // cardLifecycle.js. `connected` is now true for every command-ready card
+  // rather than only an exactly-matching one, which is what the word means.
+  const cardLifecycle = lifecycle || deriveCardLifecycle({ link: link || {} });
+  const connectionStatus = cardLifecycle.connectionLabel || cardLifecycle.label;
   const connected = connectionStatus === 'Connected';
   const safeControlsReady = lifecycle?.safeControlAccess === 'ready';
   const mutationDisabled = !safeControlsReady || Boolean(controls?.pending);

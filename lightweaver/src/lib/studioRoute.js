@@ -84,7 +84,12 @@ export function studioViewFromHash(hash, options = {}) {
   // A bridge callback lands mid-handoff on a hash that names no screen. It
   // resolves to Layout, where the connection center opens over the piece.
   if (isBridgeCallbackHash(hash)) return 'layout';
-  const screen = routeParams(hash).get('screen');
+  const params = routeParams(hash);
+  const screen = params.get('screen');
+  // Retired Test & Install tab: old bookmarks open Card install, not Layout.
+  if (String(screen || '').toLowerCase() === 'layout' && params.get('mode') === 'wire') {
+    return 'card';
+  }
   return normalizeStudioView(screen || options.fallbackView, options);
 }
 
@@ -94,19 +99,25 @@ export function studioViewFromHash(hash, options = {}) {
 export function canonicalStudioHash(hash, view) {
   const params = routeParams(hash);
   const screen = String(params.get('screen') || '').toLowerCase();
+  const incomingWireInstall = screen === 'layout' && params.get('mode') === 'wire';
   // Leave a legacy card entrance exactly as the owner arrived on it.
   if (view === 'card' && LEGACY_CARD_SCREENS.has(screen)) return String(hash || '');
   params.set('screen', view);
   if (view === 'card') {
-    if (!isCardSection(params.get('section'))) params.set('section', DEFAULT_CARD_SECTION);
+    if (incomingWireInstall) {
+      params.set('section', 'setup');
+      params.set('task', 'install-project');
+    } else if (!isCardSection(params.get('section'))) {
+      params.set('section', DEFAULT_CARD_SECTION);
+    }
     params.delete('mode');
     if (params.get('section') !== 'setup' || !SETUP_TASK_KEYS.has(params.get('task'))) params.delete('task');
   } else {
     params.delete('section');
     params.delete('task');
   }
-  // `mode` is the Layout screen's deep link (#screen=layout&mode=draw|wire) and
-  // means nothing anywhere else. `install` is not one of the two modes.
+  // `mode` is the Layout screen's Wire-drawing deep link (#screen=layout&mode=draw).
+  // Old `mode=wire` is handled above as a Card install entrance.
   if (view !== 'layout' || params.get('mode') === 'install') params.delete('mode');
   return `#${params.toString()}`;
 }

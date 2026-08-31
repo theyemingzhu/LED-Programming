@@ -30,8 +30,9 @@ import { isClosedPathData } from '../../../lib/pathClosure.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { normalizeProjectRenderStrips } from '../../../lib/renderGeometry.js';
 
-// Draw | Wire — deep-linked via `#screen=layout&mode=<x>`.
-const LAYOUT_MODES = ['draw', 'wire'];
+// Wire drawing — deep-linked via `#screen=layout&mode=draw`.
+// Old `mode=wire` is a Card install entrance, not a Layout mode.
+const LAYOUT_MODES = ['draw'];
 
 function parseModeFromHash() {
   if (typeof window === 'undefined') return 'draw';
@@ -567,10 +568,10 @@ export function useLayoutCanvasInteraction(ctx, deps) {
         return;
       }
 
-      // Global shortcuts (all modes): mode switch, reset view.
+      // Global shortcuts: stay on Wire drawing; keyboard 2 must not open a
+      // second Layout mode. Reset view is unchanged.
       switch (e.key) {
         case '1': setMode('draw'); return;
-        case '2': setMode('wire'); return;
         case 'f': resetView(); return;
         default: break;
       }

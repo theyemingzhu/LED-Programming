@@ -102,12 +102,18 @@ test('a connected card with a different project offers pull and overwrite, not a
 
   await expect(page.getByTestId('setup-card-project-note'))
     .toContainText(/different project|has not matched/, { timeout: 10000 });
+  // Adopting the card's project is the recommendation and is on the surface;
+  // it is the only one of the four that destroys nothing. Overwriting the card
+  // is real and reachable, but it sits one click inside "Other ways to resolve
+  // this" rather than standing beside the safe option as an equal.
   await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
-  await expect(page.getByTestId('setup-overwrite-card')).toBeVisible();
   await expect(page.getByTestId('setup-connect-card')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
+  await expect(page.getByTestId('setup-overwrite-card')).toBeHidden();
+  await page.getByTestId('setup-project-alternatives').locator('summary').click();
+  await expect(page.getByTestId('setup-overwrite-card')).toBeVisible();
   await page.getByTestId('setup-overwrite-card').click();
-  await expect(page).toHaveURL(/#screen=layout&mode=wire/);
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
 });
 
 test('an already-set-up card hides the four-phase ladder and keeps Patterns as the way forward', async ({ page }) => {

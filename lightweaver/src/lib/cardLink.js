@@ -517,7 +517,20 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
     }
     case 'card-verified': {
       if (!event.card?.id) return clearedLiveEvidence(prev, { state: 'disconnected', reason: 'identity-missing', transport: '', missedPings: 0, card: null });
-      if (prev.host && event.host && prev.host !== event.host) return prev;
+      // A verification for a DIFFERENT host than the one this link is bound to
+      // is correctly ignored — it belongs to another card. Dropping it in
+      // silence is what is not correct: nothing anywhere records that an event
+      // arrived and vanished, and two separate investigations this week lost
+      // real time to a fixture whose dispatch simply disappeared. Ignore it as
+      // before, but say so once.
+      if (prev.host && event.host && prev.host !== event.host) {
+        if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+          console.debug(
+            `[cardLink] ignored card-verified for ${event.host}: this link is bound to ${prev.host}`,
+          );
+        }
+        return prev;
+      }
       if (event.expectedCard?.id) {
         const comparison = compareCardIdentity(event.expectedCard, event.card);
         if (!comparison.ok) return clearedLiveEvidence(prev, { state: 'disconnected', reason: comparison.reason, transport: '', missedPings: 0, card: null });

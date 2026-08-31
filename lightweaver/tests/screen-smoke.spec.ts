@@ -294,7 +294,13 @@ test('an unreachable paired card without a remembered address opens setup-networ
   await expect(dialog).not.toContainText('Lightweaver-XXXX');
   await expect(dialog).toContainText('name starts with');
   await expect(dialog.getByRole('button', { name: 'Continue after joining' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Try local network again' })).toBeVisible();
+  // The "I am not on the setup hotspot, look on the home network" escape. It
+  // was labelled 'Try local network again' until 67ebba23, which renamed it and
+  // taught it to aim at the commissioning / remembered host instead of one
+  // fixed guess. Same affordance, better target — assert the testid too so a
+  // future copy pass cannot quietly delete the escape and stay green.
+  await expect(dialog.getByTestId('setup-network-already-on-wifi')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'The card is already on my Wi-Fi' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'My card already lights up' })).toHaveCount(0);
   await expect(dialog).not.toContainText('lw-remembered-card');
 });
@@ -727,7 +733,14 @@ for (const width of [641, 768, 900]) {
   });
 }
 
-test('blank-card choice explains the supported-device handoff when install is unsupported', async ({ page }) => {
+// Was 'blank-card choice explains the supported-device handoff when install is
+// unsupported', written against the LED-condition quiz that always offered
+// "Blank or not responding". 40c08165 retired the quiz and gated the USB door
+// on Web Serial, so on a device that cannot flash, the blank-card choice is no
+// longer offered at all — connect-simple.spec.ts holds the rule that exactly
+// ONE next action appears here. What that test was really protecting is that
+// such an owner is not dead-ended, so that is what this asserts now.
+test('a device that cannot install firmware is routed to the setup network, not a dead end', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'serial', { configurable: true, value: undefined });
   });
@@ -736,9 +749,19 @@ test('blank-card choice explains the supported-device handoff when install is un
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Connect this card' }).click();
-  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
-  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toContainText(/Chrome or Edge|supported computer/i);
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('No reply from the card', { timeout: 20000 });
+
+  // No USB install door on a browser that cannot drive USB.
+  await expect(dialog.getByRole('button', { name: 'Card is new or needs firmware' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Join the setup network' }).click();
+
+  // The one offered door has to actually open onto steps the owner can follow.
+  await expect(dialog.getByRole('heading', { name: 'Join the Lightweaver setup network' })).toBeVisible();
+  await expect(dialog).toContainText('name starts with');
+  await expect(dialog.getByRole('button', { name: 'Continue' })).toBeVisible();
+  await expect(dialog.getByTestId('setup-network-already-on-wifi')).toBeVisible();
 });
 
 test('Escape closes the connection center and restores focus', async ({ page }) => {
@@ -862,13 +885,13 @@ test('settings screen prioritizes card setup and keeps raw config advanced', asy
   await expect(page.getByRole('button', { name: 'Split by sections' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Edit in Layout' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit in Layout' }).click();
-  await expect(page).toHaveURL(/screen=layout&mode=wire/);
+  await expect(page).toHaveURL(/screen=layout&mode=draw/);
   await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
 
   // "Designer config" JSON is hidden by default and revealed with its own
   // Show/Hide JSON button — the old always-visible "Advanced" click target
   // and .lw-chip-settings-json class are gone.
-  await page.getByRole('navigation', { name: 'Hardware sections' }).getByRole('button', { name: 'Advanced & Support' }).click();
+  await page.getByTestId('card-advanced-fold').locator('summary').click();
   await page.getByRole('button', { name: 'Designer JSON' }).click();
   await expect(page.locator('.set-json')).toHaveCount(0);
   await page.getByRole('button', { name: 'Show JSON' }).click();

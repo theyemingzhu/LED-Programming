@@ -10,7 +10,7 @@
    advanced JSON, autosave, and the relocated encoder controls) is appended as
    additional .card.set-card sections in the same mockup idiom so it reads as
    native, not bolted on. */
-import React, { createContext, useContext, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { I, SWATCHES } from './lw-shared.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import { requestProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
@@ -24,7 +24,7 @@ import {
   normalizeSavedLooks,
   normalizeSectionVisualLook,
 } from '../lib/sectionLookModel.js';
-import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { EMPTY_CARD_DEPLOYMENT, prepareCardDeployment } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { DEFAULT_CIRCLE_SECTION_COUNT } from '../lib/defaultCircleLayout.js';
 import {
@@ -33,12 +33,8 @@ import {
   readStoredCardHost,
   writeStoredCardHost,
 } from '../lib/cardConnection.js';
-import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
-import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
+import { readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { pushLiveHardwareToCard } from '../lib/cardLiveControl.js';
-import { STAGED_WIRING_CONFLICT_MESSAGE } from '../lib/cardInstallGate.js';
-import { cardActionReducer, createCardActionState } from '../lib/cardAction.js';
-import { openLocalCardPage } from '../lib/cardBridge.js';
 import { getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { saveProjectToCardFromGesture } from '../lib/cardProjectSave.js';
 import { createProjectEnvelope } from '../lib/projectRepository.js';
@@ -165,7 +161,7 @@ const SettingsFieldContext = createContext(null);
       wiring,
       standaloneController, setStandaloneController,
       serializeProject,
-      markProjectPersisted, markProjectInstalled, markCardLookConfirmed,
+      markProjectPersisted,
       projectRepositorySource,
     } = useProject();
     const { tweaks, set: setTweak } = useTweaks();
@@ -176,7 +172,6 @@ const SettingsFieldContext = createContext(null);
     const [cardHost, setCardHost] = useState(readStoredCardHost);
     const [status, setStatus] = useState('');
     const [statusKind, setStatusKind] = useState('');
-    const [cardWrite, dispatchCardWrite] = useReducer(cardActionReducer, undefined, createCardActionState);
     const [advancedOpen, setAdvancedOpen] = useState(false);
     const [projectCopySource, setProjectCopySource] = useState(projectRepositorySource?.label || 'This browser');
     const [cardProjectSave, setCardProjectSave] = useState({ status: 'idle', progress: '' });
@@ -186,18 +181,43 @@ const SettingsFieldContext = createContext(null);
     // ── Derived card / hardware data (mirrors the old ChipScreen) ──────
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const zones = useMemo(() => patchBoardToZones(board, strips), [board, strips]);
-    const preparedDeployment = useMemo(
-      () => prepareCardDeployment({
-        projectId,
-        projectName,
-        projectRevision: projectLifecycle.editedRevision,
-        strips,
-        patchBoard: board,
-        compiledWiring,
-        standaloneController,
-      }),
+    // prepareCardDeployment THROWS on an inconsistent project (a wiring run
+    // that references a strip the project no longer has, for instance). It ran
+    // bare in this memo, so the throw happened during render.
+    //
+    // That was survivable while Settings was its own Card tab — the owner lost
+    // one tab. It is not survivable now: this screen is mounted inside Card
+    // Home's Hardware fold, and a <details> renders its children whether or
+    // not it is open, so one drifted project took down the whole of Card Home
+    // to the workspace-recovery boundary. The owner's main screen, gone,
+    // because of a stale run id.
+    //
+    // A project Studio cannot package is a fact to report, not a crash: the
+    // deployment-shaped parts of this screen stand down and say why, and
+    // everything else on Card Home keeps working.
+    const preparedDeploymentAttempt = useMemo(
+      () => {
+        try {
+          return {
+            deployment: prepareCardDeployment({
+              projectId,
+              projectName,
+              projectRevision: projectLifecycle.editedRevision,
+              strips,
+              patchBoard: board,
+              compiledWiring,
+              standaloneController,
+            }),
+            error: '',
+          };
+        } catch (error) {
+          return { deployment: null, error: error?.message || 'This project cannot be packaged for the card yet.' };
+        }
+      },
       [projectId, projectName, projectLifecycle.editedRevision, strips, board, compiledWiring, standaloneController],
     );
+    const deploymentError = preparedDeploymentAttempt.error;
+    const preparedDeployment = preparedDeploymentAttempt.deployment || EMPTY_CARD_DEPLOYMENT;
     const runtimePackage = preparedDeployment.runtimePackage;
     const config = runtimePackage.config;
     const configJson = useMemo(() => JSON.stringify(config, null, 2), [config]);
@@ -262,7 +282,7 @@ const SettingsFieldContext = createContext(null);
     };
 
     const persistHost = (value) => { setCardHost(value); writeStoredCardHost(value); };
-    const openLayoutWire = () => { window.location.hash = '#screen=layout&mode=wire'; };
+    const openLayoutWire = () => { window.location.hash = '#screen=layout&mode=draw'; };
     // Setup owns every question this panel only reports on.
     const openSetupLadder = () => { window.location.hash = '#screen=card&section=setup'; };
 
@@ -304,80 +324,6 @@ const SettingsFieldContext = createContext(null);
 
     const loadMethod = cardLoadMethodForProtocol(typeof window !== 'undefined' ? window.location.protocol : 'https:');
     const directPushAvailable = loadMethod.directPush;
-
-    const pushDirect = async () => {
-      const requestedRevision = projectLifecycle.editedRevision;
-      const requestedGeneration = projectLifecycle.generation;
-      dispatchCardWrite({ type: 'start', revision: requestedRevision });
-      setStatusKind('');
-      setStatus(`Sending to ${cardHostToUrl(cardHost)}...`);
-      try {
-        prepareCardStoragePayload(runtimePackage);
-        const before = await readCardProjectEvidence({ host: cardHost });
-        const response = await pushConfigToCard(runtimePackage, {
-          host: cardHost,
-          timeoutMs: 6000,
-          reboot: 'if-needed',
-          allowLayoutChange: true,
-          factoryBlank: cardLink.cardBlank === true,
-        });
-        if (response?.state === 'staged') {
-          throw new Error(STAGED_WIRING_CONFLICT_MESSAGE);
-        }
-        setStatus('Verifying the exact project on the card…');
-        const exactPrepared = { ...preparedDeployment, cardId: before.cardId };
-        const verification = await waitForCardDeploymentVerification(exactPrepared, {
-          readEvidence: () => readCardProjectEvidence({ host: cardHost }),
-        });
-        markProjectInstalled({
-          revision: requestedRevision,
-          generation: requestedGeneration,
-          cardId: verification.cardId,
-          projectRevision: exactPrepared.config.projectRevision,
-          projectFingerprint: exactPrepared.config.projectFingerprint,
-        });
-        markCardLookConfirmed({ ...defaultLook, syncZones: true });
-        dispatchCardWrite({ type: 'confirm' });
-        setStatusKind('ok');
-        setStatus(response.rebooting
-          ? 'Installed on card. Rebooting now so the LED output layout takes effect.'
-          : 'Installed on card.');
-      } catch (error) {
-        dispatchCardWrite({ type: 'fail', error: error?.message });
-        setStatusKind('err');
-        setStatus(error?.message
-          || 'Could not reach the card. Copy or download the card settings and paste them on the card page.');
-      }
-    };
-
-    const openCardInstaller = () => {
-      try {
-        const url = new URL(buildCardConfigHandoffUrl(cardHost, runtimePackage));
-        const result = openLocalCardPage(cardHost, { path: `${url.pathname}${url.search}${url.hash}`, reason: 'card-installer' });
-        if (!result.ok && result.reason === 'popup-blocked') {
-          setStatusKind('err');
-          setStatus('The browser blocked the card window. Allow popups for Studio, then try again.');
-        }
-      } catch (error) {
-        setStatusKind('err');
-        setStatus(error?.reason === 'config-too-large'
-          ? error.message
-          : 'Could not prepare the card installer. Try again.');
-      }
-    };
-
-    const copyConfig = async () => {
-      try {
-        await navigator.clipboard.writeText(cardStorageJson(runtimePackage));
-        setStatusKind('ok');
-        setStatus('Card settings copied. Paste them into the card page on the same WiFi.');
-      } catch (error) {
-        setStatusKind('err');
-        setStatus(error?.reason === 'config-too-large'
-          ? error.message
-          : 'Clipboard was blocked. Use Download card settings instead.');
-      }
-    };
 
     const saveProjectToCard = async () => {
       const authority = getActiveCardTransportAuthority(cardHost);
@@ -472,6 +418,15 @@ const SettingsFieldContext = createContext(null);
               <div className="set-col">
                 <section className="card set-card">
                   <div className="sec-h"><span className="t">Card connection</span><span className="m">{directPushAvailable ? 'local card write' : 'copy or download'}</span></div>
+                  {/* Studio could not package this project for the card. Said
+                      here, plainly, instead of thrown during render — see the
+                      comment on preparedDeploymentAttempt above. */}
+                  {deploymentError && (
+                    <p role="alert" data-testid="card-deployment-error">
+                      This project cannot be packaged for the card yet, so the values below are
+                      unavailable. {deploymentError} Open Layout and fix the wiring, then come back.
+                    </p>
+                  )}
                   {/* Setup gets the card onto the WiFi. This is where Studio
                       LOOKS for it afterwards — the escape hatch when the name
                       will not resolve and only a raw IP will do, which is the
@@ -481,22 +436,6 @@ const SettingsFieldContext = createContext(null);
                   <Row label="Card address" hint="The card's name on your WiFi — where Studio looks for it">
                     <div data-testid="card-address-summary">
                       <FieldInput className="pm-input" value={cardHost} onChange={(e) => persistHost(e.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" placeholder="lightweaver.local" />
-                    </div>
-                  </Row>
-                  {/* Setup installs a piece for the first time. The same verb
-                      earns its place here because this is also the recovery
-                      surface — see card-workspace's "reachable recovering
-                      factory card uses URL IP", which reaches a card by raw IP
-                      and installs from this page. The hint is what stops the
-                      two reading as two setups. */}
-                  <Row label="Install on card" hint="Sends what this page changed. First-time setup lives in Setup." stack>
-                    <div className="set-actions">
-                      {directPushAvailable && <button className="btn" onClick={pushDirect} disabled={cardWrite.conflictsDisabled}>{cardWrite.status === 'pending' ? 'Sending…' : cardWrite.status === 'failed' ? 'Retry install' : 'Install on card'}</button>}
-                      {!directPushAvailable && <button className="btn" onClick={openCardInstaller}>{I.open}Open card installer</button>}
-                      <button className="btn ghost-sm" onClick={copyConfig}>{I.copy}Copy settings</button>
-                      <button className="btn ghost-sm" onClick={() => { const result = openLocalCardPage(cardHost); if (!result.ok && result.reason === 'popup-blocked') { setStatusKind('err'); setStatus('The browser blocked the card window. Allow popups for Studio, then try again.'); } }}>{I.open}Open card page</button>
-                      <button className="btn ghost-sm" onClick={() => { window.location.hash = '#screen=card&section=install'; }}>{I.bolt}Flash chip</button>
-                      <button className="btn ghost-sm" onClick={() => { window.location.hash = '#screen=card&section=support'; }}>{I.info}Installer guide</button>
                     </div>
                   </Row>
                   <Row label="Editable project" hint="A full project copy; separate from the installed configuration" stack>
@@ -584,9 +523,21 @@ const SettingsFieldContext = createContext(null);
                   <Row label="Layout & outputs" hint="Read-only — Layout owns structure and routing" stack>
                     <div className="set-outputs">
                       <div className="set-outputs-toolbar">
+                        {/* When the project could not be packaged, `config` is
+                            the empty-project fallback — a real, valid config,
+                            but NOT this project's. Printing its default 44
+                            pixels here would be a confident wrong number
+                            sitting under an alert that says the values are
+                            unavailable, which is worse than no number. */}
                         <div data-testid="output-routing-summary">
-                          <strong>{config.led.pixels} LEDs · {hardwareSections.length || hardwareSectionCount} sections</strong>
-                          <span>{routedOutputs.length || 1} {routedOutputs.length === 1 ? 'output' : 'outputs'} · {config.led.outputs.reduce((sum, output) => sum + (output.pixels || 0), 0)} LEDs routed</span>
+                          {deploymentError ? (
+                            <strong>LED totals unavailable until the wiring is fixed</strong>
+                          ) : (
+                            <>
+                              <strong>{config.led.pixels} LEDs · {hardwareSections.length || hardwareSectionCount} sections</strong>
+                              <span>{routedOutputs.length || 1} {routedOutputs.length === 1 ? 'output' : 'outputs'} · {config.led.outputs.reduce((sum, output) => sum + (output.pixels || 0), 0)} LEDs routed</span>
+                            </>
+                          )}
                         </div>
                         <div className="set-actions">
                           <button className="btn" type="button" onClick={openLayoutWire}>Edit in Layout</button>

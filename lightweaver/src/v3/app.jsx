@@ -918,9 +918,9 @@ function Shell({ offlineUpdateController = null }) {
   // `view`, which is a snapshot of the route as it was when this render began
   // and may already be a navigation behind. Reading both ends from one place
   // is what makes this idempotent and unable to resurrect a screen the owner
-  // has left. Layout's `mode` deep link (#screen=layout&mode=draw | &mode=wire,
-  // the only two modes — see ModeSwitch.jsx) survives it, so jumps like the
-  // Playlist "Adjust LED count" button still land on the right Layout mode.
+  // has left. Layout's `mode` deep link (#screen=layout&mode=draw) survives it,
+  // so jumps like the Playlist "Adjust LED count" button still land on Wire.
+  // Old `#screen=layout&mode=wire` is a Card install entrance, not a Layout mode.
   useEffect(() => {
     if (bridgeBooting) return;
     // An install owns the route until it finishes: a route change mid-write

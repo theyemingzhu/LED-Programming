@@ -20,6 +20,37 @@ export function deriveSectionTargets({
   const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips }) : null);
   if (compiled?.ok) {
     const fallbackLook = normalizeSectionVisualLook(defaultLook);
+    // A target carries TWO identities and they are not interchangeable:
+    //   `id`     — the patch id. Studio's own identity for a section. Every
+    //              write path keys off it (applyLookToPatchBoard matches
+    //              patch.id, saved mixes store sectionLooks under it).
+    //   `zoneId` — the compiled zone id. The card's identity, what runtime
+    //              commands address.
+    // Compiled wiring supplies the authoritative pixel geometry, but it must
+    // NOT supply the Studio identity: setting `id` to the zone id makes every
+    // per-section write miss its patch, and reading the look off `defaultLook`
+    // instead of the patch throws away the pattern each section has saved.
+    const compiledBoard = normalizePatchBoard(patchBoard, strips);
+    const patchesByStripId = new Map();
+    for (const rowId of mainChain(compiledBoard).rowIds) {
+      const patch = (compiledBoard.patches || []).find(candidate => candidate.id === rowId);
+      if (patch?.source?.type !== 'strip' || patch.output?.mode === 'off') continue;
+      if (!patchesByStripId.has(patch.source.stripId)) patchesByStripId.set(patch.source.stripId, patch);
+    }
+    // A zone may span several strips (a layer group compiles to one zone), so
+    // recover its strips from the pixels its ranges cover.
+    const zonePatch = (zone) => {
+      for (const range of zone.ranges || []) {
+        const start = Math.max(0, Math.trunc(Number(range.start) || 0));
+        const count = Math.max(0, Math.trunc(Number(range.count) || 0));
+        for (let index = 0; index < count; index += 1) {
+          const pixel = compiled.pixels?.[start + index];
+          const patch = pixel?.stripId ? patchesByStripId.get(pixel.stripId) : null;
+          if (patch) return patch;
+        }
+      }
+      return patchesByStripId.get(zone.id) || null;
+    };
     return [{
       id: ALL_SECTIONS_TARGET_ID,
       zoneId: '',
@@ -27,18 +58,22 @@ export function deriveSectionTargets({
       label: 'All sections',
       pixelCount: compiled.totalPixels,
       look: fallbackLook,
-    }, ...compiled.zones.map(zone => ({
-      id: zone.id,
-      zoneId: zone.id,
-      stripId: zone.id,
-      kind: 'section',
-      label: zone.label,
-      pixelCount: zone.ranges.reduce((sum, range) => sum + range.count, 0),
-      start: zone.ranges[0]?.start || 0,
-      end: (zone.ranges.at(-1)?.start || 0) + Math.max(0, (zone.ranges.at(-1)?.count || 0) - 1),
-      ranges: zone.ranges,
-      look: fallbackLook,
-    }))];
+    }, ...compiled.zones.map(zone => {
+      const patch = zonePatch(zone);
+      return {
+        id: patch?.id || zone.id,
+        zoneId: zone.id,
+        patchId: patch?.id || '',
+        stripId: patch?.source?.stripId || zone.id,
+        kind: 'section',
+        label: zone.label,
+        pixelCount: zone.ranges.reduce((sum, range) => sum + range.count, 0),
+        start: zone.ranges[0]?.start || 0,
+        end: (zone.ranges.at(-1)?.start || 0) + Math.max(0, (zone.ranges.at(-1)?.count || 0) - 1),
+        ranges: zone.ranges,
+        look: patch ? lookFromPatchPlayback(patch.playback, fallbackLook) : fallbackLook,
+      };
+    })];
   }
   const board = normalizePatchBoard(patchBoard, strips);
   const totalPixels = totalStripPixels(strips);

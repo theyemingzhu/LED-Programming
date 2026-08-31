@@ -75,11 +75,11 @@ test('arriving at the screen you are already on leaves the route naming it', asy
   // Re-selecting the current rail item is a no-op navigation. The previous fix
   // armed a one-shot permission here that nothing consumed, so it stayed armed
   // and authorized a later overwrite of somebody else's navigation.
-  await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
   await expect(railItem(page, 'Layout')).toHaveAttribute('aria-current', 'page');
 
   await railItem(page, 'Layout').click();
-  await expect.poll(() => routeHash(page)).toBe('#screen=layout&mode=wire');
+  await expect.poll(() => routeHash(page)).toBe('#screen=layout&mode=draw');
 
   // …and the next real navigation, from a screen rather than the rail, still wins.
   await page.evaluate(() => { window.location.hash = '#screen=pattern'; });

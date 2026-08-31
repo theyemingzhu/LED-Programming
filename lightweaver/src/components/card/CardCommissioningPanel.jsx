@@ -49,7 +49,6 @@ import {
   commissioningReconnectHost,
   commissioningAutoReconnectHost,
   commissioningInitialConfigAuthority,
-  commissioningShouldAutoRestore,
   confirmCardSetupNetworkJoined,
   markCardProjectRestored,
   preflightCardCommissioningMutation,
@@ -282,7 +281,7 @@ export function CardCommissioningPanel({
   const markerTimeoutRef = useRef(null);
   const acknowledgementPersistenceRef = useRef('');
   const autoReconnectAttemptRef = useRef('');
-  const autoRestoreAttemptRef = useRef('');
+  const autoReconcileRef = useRef('');
   const restoreFnRef = useRef(async () => {});
   const activeFlowIdRef = useRef(initialState.flow?.flowId || '');
   const handoffFlowIdRef = useRef('');
@@ -461,12 +460,22 @@ export function CardCommissioningPanel({
     linkState: link?.state,
   });
   const publicStudio = !canPushDirectlyToCard();
-  const shouldAutoRestore = commissioningShouldAutoRestore(flow, {
-    restorePreflightOk: restorePreflight.ok,
-    restoreState,
-    publicStudio,
-    alreadyAttempted: autoRestoreAttemptRef.current === flow?.flowId,
-  });
+  // The one thing Studio may still finish by itself. A restoration ATTEMPT is
+  // recorded durably before the config is posted, so when one exists the card
+  // has already been written to and the only work left is reading back what
+  // landed — restore() takes its prior-attempt path, which posts nothing. That
+  // is the recovery for a response lost to a reload, and leaving it to a
+  // button would strand an owner whose card already holds the project on a
+  // screen whose only action would write it a second time.
+  //
+  // The FIRST write is not this. It spends the one-shot blank-card authority,
+  // so it waits for the owner (Adrian's call, 2026-08-31: better to confirm).
+  const reconcileRestoreOnly = Boolean(
+    flow?.cardAcknowledgedAt
+    && restorePreflight.ok
+    && restoreState === 'idle'
+    && readCardRestorationAttempt(flow),
+  );
 
   const lightCheckPreflight = useMemo(() => {
     if (flow?.stage !== 'check-lights' || !flow.cardAcknowledgedAt) return { ok: false, reason: 'checking-card' };
@@ -508,11 +517,14 @@ export function CardCommissioningPanel({
     onReconnect?.(autoReconnectHost);
   }, [autoReconnectHost, flow?.flowId, onReconnect]);
 
+  // Read back a write that already happened; never start a new one. See
+  // reconcileRestoreOnly above.
   useEffect(() => {
-    if (!shouldAutoRestore || !flow?.flowId) return;
-    autoRestoreAttemptRef.current = flow.flowId;
+    if (!reconcileRestoreOnly || !flow?.flowId) return;
+    if (autoReconcileRef.current === flow.flowId) return;
+    autoReconcileRef.current = flow.flowId;
     void restoreFnRef.current();
-  }, [shouldAutoRestore, flow?.flowId]);
+  }, [reconcileRestoreOnly, flow?.flowId]);
 
   useEffect(() => {
     if (
@@ -811,7 +823,6 @@ export function CardCommissioningPanel({
     }
   };
 
-  restoreFnRef.current = restore;
 
   const reconnecting = link?.state === 'connecting' || link?.state === 'reconnecting-bridge';
   const currentCard = link?.card || link?.discoveredCard || {};
@@ -1095,6 +1106,8 @@ export function CardCommissioningPanel({
       }
     }
   };
+
+  restoreFnRef.current = restore;
 
   const displayStage = CARD_COMMISSIONING_STAGES.includes(viewStage) ? viewStage : flow.stage;
 

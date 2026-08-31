@@ -2,7 +2,7 @@
    lw-wire.css — Wire-mode single-next-action panel.
    Consumes the v3 token set (src/v3/v3-styles.css). No new
    palette tokens, no hex; class prefix lww-.
-   Imported by src/components/layout/modes/WireModePanel.jsx.
+   Imported by src/components/layout/modes/WirePlanTools.jsx.
    ============================================================ */
 
 /* ---------- top: Wire-derived plan summary ---------- */
@@ -273,4 +273,14 @@
 .wire-discovered-adopt,
 .wire-discovered-recount {
   align-self: flex-start;
+}
+
+/* The check-and-install surface names itself, so its first button can never
+   be mistaken for the button of the setup phase rendered directly above it. */
+.lww-flow-heading {
+  margin: 0;
+  color: var(--text-hi);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
 }

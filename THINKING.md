@@ -434,3 +434,88 @@ disagreeing again, GitHub's number is the arbiter — check
 `gh api "repos/<owner>/<repo>/commits?sha=main&per_page=1" -i` and read the
 `rel="last"` page number. Do not "fix" the generator to first-parent; the
 increment is supposed to be lumpy, because GitHub's is.
+
+---
+
+## 2026-08-31 — Compressing a screen found six defects; the CI blind spot is why they lived
+
+**Topic:** A bounded UI pass — compress Card Home so "connected" and the
+project name are not repeated across four surfaces — turned into six real
+defects and two multi-week outages. The compression itself was an hour. The
+rest of the session was what the compression uncovered, and the reason it had
+gone uncovered is the finding worth keeping.
+
+**What the pass actually was.** Card Home said "connected" in three places and
+named the project in four, and rendered three buttons styled as the primary
+action. It now has one status (the identity row) and one primary action (the
+ladder's active task, with everything below it yielding). Detected state stands
+down for any verdict the row and ladder already carry; the ready banner keeps
+its doors and loses its prose; the four-way choice at the first decision point
+is one recommendation plus a fold. `lifecycle.connectionLabel` splits the
+identity row's vocabulary from the footer chip's, because "Save to card" is an
+errand and Connection is a state — printing the errand in both put the same
+sentence twice inside the row that had just been made the single authority.
+
+**The six defects, and what they have in common.** Five of them were invisible
+before this pass, and four were created by an earlier, structurally correct
+decision — collapsing Card's tabs into one page:
+
+1. Card Home crashed to the recovery boundary for any project with drifted
+   wiring. `prepareCardDeployment` throws on an inconsistent project and ran
+   bare in a render memo. Survivable while Settings was its own tab; fatal once
+   Card Home mounts it inside a `<details>`, which renders children whether or
+   not it is open.
+2. Declining the light check stranded the owner on the step they had refused.
+   `selectedStage` was a second store of the commissioning flow's stage, read
+   once at mount. This is the SAME class as the 2026-08-07 routing entry, in a
+   different file, twelve days later.
+3. Opening Card Home silently revoked card-edit authority — a background probe
+   cleared the grant and returned before re-issuing.
+4. The Connect dialog offered a second connect over a live one, and (a
+   generalisation found later) replaced every specific diagnosis with a generic
+   "Connect this card", hiding the route to safe recovery from exactly the
+   cards that needed it.
+5. A Studio page with no opener claimed an adopted card bridge, firing a
+   duplicate probe at a card mid-WiFi-handoff.
+6. The `install-project` task rendered `null` — an active task with an empty
+   box and nothing to press.
+
+**The systemic finding.** Two of these had been live for weeks and nothing
+caught them, because the specs that covered them are in `test:release-ui`,
+which runs in `launch:check` and NOT on any pull request. Nineteen spec files
+sit in that lane. The per-section pattern defect (`8b1fe864`, 2026-07-13) broke
+the screen an owner touches most — per-section looks did not save, and Install
+discarded them silently — and lived seven weeks while `test:unit` reported 2204
+green, because only the fallback branch of `deriveSectionTargets` had unit
+coverage. `patterns-v3`, `connection-center-quality` and `patch-board` are now
+in `ci:browser-smoke`. Cost about three minutes per PR.
+
+**The rule this session earns:** a green unit suite says nothing about a branch
+no unit test enters. When a defect is found in a lane that PRs do not run, the
+fix is not only the defect — it is moving that lane's spec into the gate, or
+the next one takes another seven weeks to surface.
+
+**Two things deliberately NOT done:**
+
+- **Public Studio no longer writes a project to a blank card by itself.**
+  `67ebba23` made Wi-Fi recovery clickless and, as a side effect, spent the
+  one-shot blank-card authority unattended. Adrian's call: better to confirm.
+  The split that survived is exact — a restoration ATTEMPT is recorded before
+  any config is posted, so with no prior attempt the write waits for the owner,
+  and with one the read-back reconciliation still runs on its own (it posts
+  nothing, and leaving it to a button would strand an owner whose card already
+  holds the project). Future Claude: do not "simplify" this back into one
+  branch; the two cases differ by whether the card has already been written to.
+- **No firmware release.** Studio source is embedded in the card bundle, so
+  every visual change is technically firmware-sensitive; this shipped through
+  the `firmwareBundleOnly` path with no VERSION bump, as the bundle-drift rule
+  in CLAUDE.md intends.
+
+**Method note worth keeping.** Three parallel agents worked disjoint file sets
+and all three found real defects rather than retargeting specs — because the
+brief in each case forbade making a red spec green by deleting what it
+protected, and required a machine-readable pass count rather than a summary.
+Two agents' claims did not survive checking and were corrected; one agent's
+"this is pre-existing" was right and worth trusting only because it had
+baselined it. Host contention invented failures twice, exactly as the
+2026-08-20 entry warns; both times an isolated re-run was green.

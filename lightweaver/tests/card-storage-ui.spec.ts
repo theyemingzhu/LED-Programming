@@ -51,6 +51,59 @@ async function gotoSavedProject(page, project, screen) {
   await page.goto(route, { waitUntil: 'domcontentloaded' });
 }
 
+async function prepareCardHomeInstall(page, cardId: string) {
+  await page.addInitScript(() => {
+    const saved = localStorage.getItem('lw_autosave_v3');
+    if (!saved) return;
+    const project = JSON.parse(saved);
+    if (!project.layout?.wiring) return;
+    project.layout.wiring.verified = true;
+    project.layout.wiring.locked = true;
+    project.layout.wiring.runs?.forEach((run: { verified?: boolean }) => { run.verified = true; });
+    const led = project.devices?.standaloneController?.led || {};
+    led.colorOrder = led.colorOrder || 'RGB';
+    led.colorOrderConfirmed = true;
+    led.confirmedColorOrder = led.colorOrder;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  const bindCardToOpenProject = await pairReadyCard(page, cardId);
+  await bindCardToOpenProject();
+  await page.evaluate(async ({ id }) => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    const fingerprint = cardProjectFingerprint(project);
+    const event = {
+      type: 'card-verified',
+      via: 'direct',
+      host: 'lightweaver.local',
+      card: { id, name: 'Test card', firmwareVersion: '1.0.0', buildId: `${id}-build` },
+      readiness: {
+        app: 'Lightweaver',
+        provisioningContractVersion: 1,
+        cardId: id,
+        firmwareVersion: '1.0.0',
+        buildId: `${id}-build`,
+        bootId: `${id}-boot`,
+        runtimePhase: 'ready',
+        knownGoodProject: true,
+        commandReady: true,
+        outputReady: true,
+        playbackReady: true,
+        projectId: project.id,
+        projectRevision: 0,
+        projectFingerprint: fingerprint,
+      },
+    };
+    const link = getSharedCardLink();
+    link.dispatch(event);
+    link.dispatch(event);
+  }, { id: cardId });
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
+}
+
 test('Settings renders an oversized project and reports exact capacity on save', async ({ page }) => {
   const project = makeOversizedProject();
   capacityErrorForProject(project);
@@ -58,13 +111,15 @@ test('Settings renders an oversized project and reports exact capacity on save',
   page.on('request', request => requests.push(request.url()));
 
   await gotoSavedProject(page, project, 'settings');
+  await prepareCardHomeInstall(page, 'lw-card-storage-ui-settings');
 
-  await expect(page.getByRole('heading', { name: 'Hardware settings', level: 1 })).toBeVisible();
-  await page.getByRole('button', { name: 'Install on card', exact: true }).click();
-  await expect(page.getByTestId('settings-card-status')).toHaveText(
+  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver', level: 1 })).toBeVisible();
+  const requestsBefore = requests.length;
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(page.locator('.la-card-push-banner')).toHaveText(
     /Card configuration is \d+ bytes, exceeding the 3968-byte flash storage limit\./,
   );
-  expect(requests.filter(url => url.includes('/api/config') || url.includes('/api/firmware-info'))).toHaveLength(0);
+  expect(requests.slice(requestsBefore).filter(url => url.includes('/api/config') || url.includes('/api/firmware-info'))).toHaveLength(0);
 });
 
 // Patterns gates its Install button on a card that classifies as ready and on

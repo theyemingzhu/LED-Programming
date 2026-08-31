@@ -344,7 +344,7 @@ test('existing Studio routes remain available beside Pattern Lab', async ({ page
   // consolidation (PR #156, card-consolidation architecture) — the screen
   // itself (.card-workspace-screen, src/v3/lw-card.jsx) is unchanged.
   const routes = [
-    { label: 'Layout', mounted: '[data-testid="layout-mode-switch"]' },
+    { label: 'Layout', mounted: '[data-testid="layout-check-and-install"]' },
     { label: 'Patterns', mounted: '[data-testid="pattern-project-preview"]' },
     { label: 'Playlist', mounted: '[data-testid="playlist-physical-preview-status"]' },
     { label: 'Show', mounted: '[data-testid="show-stage"]' },

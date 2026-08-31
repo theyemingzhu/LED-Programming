@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AutomaticInstallScreen, TechnicianFlashScreen } from './lw-flash.jsx';
 import { InstallerScreen } from './lw-installer.jsx';
+import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.jsx';
 import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
@@ -8,8 +9,6 @@ import { SetupScreen } from './lw-setup.jsx';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
-import { prepareCardDeployment } from '../lib/cardDeployment.js';
-import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { recoverCardLightsVerified, requireExactReadyCardStatus } from '../lib/cardRecoverLights.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
@@ -35,36 +34,39 @@ import {
   issueSignedProductionCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
 
-// Section bar labels — three tabs. Home is the merged card page: the old
-// "Setup" ladder and the "Card status" overview were two tabs named for the
-// same box and read as two setups; both section routes now render one Card
-// Home (status header, journey action area, 4-phase ladder, evidence panels).
-// The tabs after it are the same hardware, unguided, for anyone who already
-// knows what they want to change. `install`, `preferences` and `workshop`
-// stay fully routable (#screen=card&section=…) but render as full-body views
-// without a tab: Install takes the whole body during an active install,
-// Preferences opens from the top bar, and Batch production is a manufacturing
-// surface reached from the Home link, the support tile, or a deep link
-// (#screen=production / #screen=card&section=workshop) — never a tab.
-const SECTION_LABELS = Object.freeze({
-  setup: 'Home',
-  settings: 'Hardware settings',
-  support: 'Advanced & Support',
-});
-// Both section routes that render Card Home. `overview` is the legacy
-// "Card status" section: every hash naming it still resolves, stays in the
-// URL as written (studioRoute keeps the whole section vocabulary), and lands
-// on the same Home.
-const HOME_SECTIONS = Object.freeze(['setup', 'overview']);
+// Card is one page. Home always shows the setup journey, the install action,
+// evidence panels, then Hardware and Advanced as folds. `settings` and
+// `support` stay in the URL vocabulary and open the matching fold.
+// `install` and `workshop` remain full-body takeovers. Preferences is not a
+// Card page — the top bar owns it; if that hash arrives we still render the
+// existing preferences takeover rather than growing a tab.
+const HOME_SECTIONS = Object.freeze(['setup', 'overview', 'settings', 'support']);
 const SECTION_HEADINGS = Object.freeze({
   setup: 'Set up your Lightweaver',
   overview: 'Set up your Lightweaver',
+  settings: 'Set up your Lightweaver',
+  support: 'Set up your Lightweaver',
   install: 'Install or update',
-  settings: 'Hardware settings',
-  support: 'Advanced & Support',
   preferences: 'Preferences',
   workshop: 'Batch production',
 });
+
+function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
+  return (
+    <details className="card-page-fold" data-testid={testId} open={open}>
+      <summary
+        onClick={event => {
+          event.preventDefault();
+          if (open) onClose();
+          else onOpen();
+        }}
+      >
+        {summary}
+      </summary>
+      <div className="card-page-fold-body">{children}</div>
+    </details>
+  );
+}
 
 function cardEditIntent() {
   return readCardEditIntent(window.location.search);
@@ -100,6 +102,7 @@ function CardHomePanels({
   onMatchedProjectVerified,
   onStartNewProject,
   suppressMatchingProject = false,
+  yieldPrimary = false,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
@@ -152,13 +155,6 @@ function CardHomePanels({
   const matchingProjectOffer = matchingProjectState.status !== 'idle'
     || Boolean(cardLink?.readiness?.productionJobId)
     || Boolean(cardLink?.readiness?.productionJobDigest);
-  let currentProjectInstallable = false;
-  try {
-    prepareCardStoragePayload(prepareCardDeployment(currentProject).runtimePackage);
-    currentProjectInstallable = true;
-  } catch {
-    currentProjectInstallable = false;
-  }
 
   // Detected-state presentation, keyed off the ONE diagnosis authority
   // (deriveCardLifecycle) instead of a private raw-link ladder. Each row
@@ -223,19 +219,22 @@ function CardHomePanels({
       tone: 'failure',
       message: 'Blank — load a project, or find this card’s strips first.',
       primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
-      secondary: { label: 'Install current project', section: 'settings', disabled: !currentProjectInstallable },
       tertiary: { label: 'Start a new project', action: 'new-project' },
     }),
     bench: () => ({
       tone: 'connecting',
       message: `${identity || 'A Lightweaver card'} is connected, but it is running the temporary Find-my-strips setup — not one of your projects. Install your project to replace it, run Find my strips again, or use Clear temporary setup under Checks & recovery below.`,
-      primary: { label: 'Install on card', section: 'settings' },
-      secondary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
+      primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
     }),
+    // `redundant` means: the Setup identity row and the phase ladder directly
+    // above already carry this verdict AND its action, so printing it again
+    // here is the third telling of one fact. The presentation is still built
+    // (other code reads its tone and actions); Home just does not render the
+    // Detected-state block for it.
     readyForLightCheck: () => ({
       tone: 'connected',
+      redundant: true,
       message: `${identity || 'A Lightweaver card'} is connected and ready for light check.`,
-      primary: { label: 'Install on card', section: 'settings' },
     }),
     checkingEvidence: () => ({
       tone: 'connecting',
@@ -341,8 +340,10 @@ function CardHomePanels({
       // said the project still has to be saved. Same fact, same words.
       presentation = benchProject ? presentations.bench() : {
         tone: 'connecting',
+        // Identity row says Connection / Installed; the ladder's active task
+        // says save it to the card. Same fact, same words, third place.
+        redundant: true,
         message: `${identity || 'This Lightweaver'} is connected. The project open in Studio has changed since it was installed — save it to the card to bring them back into step.`,
-        primary: { label: 'Install on card', section: 'settings' },
         secondary: openSupport,
       };
       break;
@@ -570,7 +571,9 @@ function CardHomePanels({
   // class: Setup's pair task is already the one connect action.
   const answering = verifiedTransport
     || (cardLink?.state === 'revalidating' && Boolean(cardLink?.card?.id));
-  const showPresentation = answering || ready;
+  // …and a presentation the Setup journey above already states in full is not
+  // rendered at all. One status, not a chorus of it.
+  const showPresentation = (answering || ready) && !presentation.redundant;
 
   return (
     <div className="card-overview">
@@ -600,14 +603,22 @@ function CardHomePanels({
       {ready && !suppressMatchingProject && !benchProject && matchingProjectOffer && (
         <section className="card-support-panel" aria-label="Matching card project">
           <h2>Matching card project</h2>
-          <p>Open the exact active Studio project installed on this card before changing patterns, so its LED count, wiring, protocol, and power limit stay aligned.</p>
+          {/* Two sentences here restated what the identity row above already
+              says about this card and its project. Say only what pressing the
+              button does — and when the card is already holding the project
+              open in Studio, that is a re-check, not an open. */}
+          <p>
+            {cardHoldsOpenProject
+              ? 'Re-read the project installed on this card and confirm it still matches the one open here.'
+              : 'Open the project installed on this card, so its LED count, wiring, protocol, and power limit stay aligned.'}
+          </p>
           {matchingProjectState.status !== 'ambiguous' && (
             <button
               type="button"
               /* Not a second headline button when it would load the project
                  already open — "Open Patterns" is the action there, and two
                  orange buttons side by side made the screen ask twice. */
-              className={cardHoldsOpenProject ? 'btn' : 'btn primary'}
+              className={cardHoldsOpenProject || yieldPrimary ? 'btn' : 'btn primary'}
               disabled={matchingProjectState.status === 'loading' || matchingProjectState.status === 'saving'}
               onClick={() => void loadMatchingCardProject({ selectionKey: matchingProjectState.selectionKey || '' })}
             >
@@ -650,9 +661,20 @@ function CardHomePanels({
         remedy was invisible. The firmware accepts /api/recover-lights on a
         not-ready card deliberately; Studio was the only thing refusing.
       */}
+      {/* Open when it is the answer, folded when it is not. A healthy card
+          does not need three diagnostic buttons and a paragraph competing with
+          its next step — but the Patterns gate routes an unwell card here and
+          names Recover lights as the remedy, so a card that is answering
+          without a ready runtime, or is holding the temporary setup, still
+          finds this section open with no click. */}
       {(ready || verifiedTransport) && (
-        <section className="card-support-panel" aria-label="Hardware checks and recovery">
-          <h2>Checks &amp; recovery</h2>
+        <details
+          className="card-support-panel card-checks-panel"
+          aria-label="Hardware checks and recovery"
+          data-testid="card-checks-recovery"
+          open={!ready || benchProject}
+        >
+          <summary><h2>Checks &amp; recovery</h2></summary>
           <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
           {!ready && (
             <p role="status">
@@ -671,7 +693,7 @@ function CardHomePanels({
           {hardwareActionState.message && (
             <p role={hardwareActionState.status === 'error' ? 'alert' : 'status'}>{hardwareActionState.message}</p>
           )}
-        </section>
+        </details>
       )}
 
       <p className="card-overview-batch" data-testid="card-batch-link">
@@ -750,6 +772,10 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // Load for this card's project — the Matching-card-project panel below
   // suppresses its duplicate offer while it is (one project, one Load).
   const [setupLoadOffer, setSetupLoadOffer] = useState(false);
+  // Whether the Setup ladder is currently offering the page's primary action.
+  // While it is, every surface below it renders secondary controls — one
+  // primary per page. See the comment on `ladderOwnsPrimary` in lw-setup.jsx.
+  const [ladderOwnsPrimary, setLadderOwnsPrimary] = useState(false);
 
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
@@ -766,14 +792,12 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
 
   const cardProps = { connected, cardHost, cardLink, cardLifecycle, onConnectCard };
   // Home is the landing default too: any section this dispatch does not name
-  // renders it, exactly as the old overview fallback did.
+  // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
-    || !['install', 'settings', 'workshop', 'preferences', 'support'].includes(route.section);
+    || !['install', 'workshop', 'preferences'].includes(route.section);
   let content;
-  // Card Home: the guided journey (status header, action area, 4-phase
-  // ladder, resolution banners) followed by the evidence panels the old
-  // "Card status" overview carried. `section=setup` and `section=overview`
-  // are the same page.
+  // Card Home: the guided journey, the one install action, evidence panels,
+  // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
       <SetupScreen
@@ -786,10 +810,18 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
+        onPrimaryActionChange={setLadderOwnsPrimary}
+      />
+      <CardInstallAction
+        connected={connected}
+        cardHost={cardHost}
+        yieldPrimary={ladderOwnsPrimary}
+        onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
       />
       <CardHomePanels
         {...cardProps}
         suppressMatchingProject={setupLoadOffer}
+        yieldPrimary={ladderOwnsPrimary}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onOpenSection={onOpenSection}
         go={go}
@@ -808,6 +840,24 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onMatchedProjectVerified={onMatchedProjectVerified}
         onStartNewProject={onStartNewProject}
       />
+      <CardPageFold
+        testId="card-hardware-fold"
+        summary="Hardware"
+        open={route.section === 'settings'}
+        onOpen={() => onOpenSection('settings')}
+        onClose={() => onOpenSection('setup')}
+      >
+        <SettingsScreen embedded mode="card" {...cardProps} />
+      </CardPageFold>
+      <CardPageFold
+        testId="card-advanced-fold"
+        summary="Advanced"
+        open={route.section === 'support'}
+        onOpen={() => onOpenSection('support')}
+        onClose={() => onOpenSection('setup')}
+      >
+        <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />
+      </CardPageFold>
     </>
   );
   else if (route.section === 'install') content = (
@@ -821,54 +871,14 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       onCommissioningComplete={() => onOpenSection('overview')}
     />
   );
-  else if (route.section === 'settings') content = <SettingsScreen embedded mode="card" {...cardProps} />;
   else if (route.section === 'workshop') content = <ProductionScreen embedded cardHost={cardHost} cardLink={cardLink} onConnectCard={onConnectCard} />;
-  else if (route.section === 'preferences') content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
-  else content = <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />;
+  else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
-  // Batch production (route.section === 'workshop') renders outside the tab
-  // set: its own heading and kicker, no section tab highlighted.
   const workshop = route.section === 'workshop';
   const heading = SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
-  // The tab (and the mobile option) that speaks for the current section:
-  // `overview` highlights Home; the tab-less full-body sections (install,
-  // preferences, workshop) highlight nothing.
-  const activeTabKey = home ? 'setup' : SECTION_LABELS[route.section] ? route.section : '';
   return (
     <div className="screen card-workspace-screen">
       <div className="card-workspace">
-        <nav className="card-section-nav" aria-label="Hardware sections">
-          <div className="card-section-mobile">
-            <span className="card-section-mobile-label" aria-hidden="true">Hardware</span>
-            <label className="card-section-select-wrap">
-              <select
-                aria-label="Hardware section"
-                value={activeTabKey}
-                onChange={event => event.target.value && onOpenSection(event.target.value)}
-              >
-                <option value="" disabled>Choose a section</option>
-                {Object.entries(SECTION_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
-              <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
-                <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </label>
-          </div>
-          <div className="card-section-tabs">
-            {Object.entries(SECTION_LABELS).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                aria-current={activeTabKey === key ? 'page' : undefined}
-                onClick={() => onOpenSection(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </nav>
         <main className={`card-workspace-body${home ? ' lw-setup-body' : ''}`}>
           <header className="card-workspace-header">
             <span className="card-workspace-kicker">{workshop ? 'Manufacturing mode' : 'Lightweaver hardware'}</span>

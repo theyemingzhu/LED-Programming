@@ -521,16 +521,12 @@ export function commissioningShouldSuppressConnectOverlay(flow) {
   return Boolean(flow?.stage === 'set-up-card' && !flow?.cardAcknowledgedAt);
 }
 
-export function commissioningShouldAutoRestore(flow, {
-  restorePreflightOk = false,
-  restoreState = 'idle',
-  publicStudio = false,
-  alreadyAttempted = false,
-} = {}) {
-  if (!publicStudio || alreadyAttempted) return false;
-  if (!flow || flow.stage !== 'set-up-card' || !flow.cardAcknowledgedAt) return false;
-  return restorePreflightOk === true && restoreState === 'idle';
-}
+// commissioningShouldAutoRestore lived here and decided when public Studio
+// would write the saved project to a blank card BY ITSELF. Removed 2026-08-31
+// on Adrian's call: that write spends the one-shot blank-card authority, and
+// spending it is the owner's decision, so it waits for the Restore button.
+// Finding the card again once it rejoins home Wi-Fi stays automatic — see
+// commissioningAutoReconnectHost above, which is the friction that mattered.
 
 export function resumeInstalledCardAfterInterruption(flow, card = {}, { now = Date.now() } = {}) {
   requireFlow(flow);

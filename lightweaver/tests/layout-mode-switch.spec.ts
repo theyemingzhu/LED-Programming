@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Draw | Wire mode switch + hash sync + cancelActiveTool.
+// Layout is Wire drawing only. Old Test & Install bookmarks open Card install.
 
 async function gotoLayout(page: any, hash = '#screen=layout') {
   await page.goto(`/${hash}`, { waitUntil: 'domcontentloaded' });
@@ -8,37 +8,30 @@ async function gotoLayout(page: any, hash = '#screen=layout') {
   await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
-test('keyboard 1/2 update the hash mode param and the active segment', async ({ page }) => {
+test('Layout has no Test & Install tab and keyboard 2 does not open a second mode', async ({ page }) => {
   await gotoLayout(page);
 
-  await expect(page.getByTestId('layout-mode-switch')).toBeVisible();
-  await expect(page.getByTestId('layout-mode-draw')).toHaveText('Wire');
-  await expect(page.getByTestId('layout-mode-wire')).toHaveText('Test & Install');
-  await expect(page.getByTestId('layout-mode-draw')).toHaveClass(/on/);
-  await expect(page.getByTestId('layout-mode-draw')).toHaveAttribute('aria-pressed', 'true');
-  await page.keyboard.press('2');
-  await expect(page).toHaveURL(/mode=wire/);
-  await expect(page.getByTestId('layout-mode-wire')).toHaveClass(/on/);
-  await expect(page.getByTestId('layout-mode-draw')).not.toHaveClass(/on/);
-  await expect(page.getByTestId('layout-mode-wire')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('layout-mode-draw')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
-
-  await page.keyboard.press('1');
-  await expect(page).toHaveURL(/mode=draw/);
-  await expect(page.getByTestId('layout-mode-draw')).toHaveClass(/on/);
+  await expect(page.getByTestId('layout-mode-switch')).toHaveCount(0);
+  await expect(page.getByTestId('layout-mode-wire')).toHaveCount(0);
+  await expect(page.getByTestId('layout-mode-draw')).toHaveCount(0);
+  await expect(page.getByTestId('layout-mode-size')).toHaveCount(0);
   await expect(page.getByTestId('layout-wire-panel')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Check and install on the card' })).toBeVisible();
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+
+  await page.keyboard.press('2');
+  await expect(page).not.toHaveURL(/mode=wire/);
+  await expect(page).toHaveURL(/screen=layout/);
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
 });
 
-test('Test & Install keeps card hardware advanced and Size is not a layout mode', async ({ page }) => {
+test('Wire tools stay on Layout behind a disclosure, not a second mode', async ({ page }) => {
   await gotoLayout(page);
-  await expect(page.getByTestId('layout-mode-size')).toHaveCount(0);
 
-  await page.getByTestId('layout-mode-wire').click();
   const advanced = page.getByTestId('advanced-installation-tools');
   await expect(advanced).toHaveJSProperty('open', false);
   await advanced.locator('summary').first().click();
-  // The supply inputs live behind the nested Card hardware disclosure.
   const power = page.getByTestId('wire-power-section');
   await expect(power).toBeVisible();
   await expect(power).toHaveJSProperty('open', false);
@@ -47,57 +40,43 @@ test('Test & Install keeps card hardware advanced and Size is not a layout mode'
   await expect(page.getByLabel('Milliamps per LED')).toBeVisible();
 });
 
-test('the two equal mode tabs live at the top of the inspector', async ({ page }) => {
+test('the Check and install CTA opens Card install', async ({ page }) => {
   await gotoLayout(page);
-
-  const inspector = page.locator('.la > .side');
-  const modeSwitch = page.getByTestId('layout-mode-switch');
-  await expect(inspector.locator('[data-testid="layout-mode-switch"]')).toHaveCount(1);
-  await expect(page.locator('.toolbar [data-testid="layout-mode-switch"]')).toHaveCount(0);
-
-  const widths = await modeSwitch.getByRole('button').evaluateAll(buttons =>
-    buttons.map(button => Math.round(button.getBoundingClientRect().width)));
-  expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
-
-  const tintFor = async (mode: 'draw' | 'wire') => {
-    await page.getByTestId(`layout-mode-${mode}`).click();
-    return inspector.locator('.la-mode-content').evaluate(element => getComputedStyle(element).backgroundImage);
-  };
-  const drawTint = await tintFor('draw');
-  const wireTint = await tintFor('wire');
-  expect(wireTint).toBe(drawTint);
-});
-
-test('both active mode tabs use the existing orange accent', async ({ page }) => {
-  await gotoLayout(page);
-
-  const activeBackground = (mode: 'draw' | 'wire') =>
-    page.getByTestId(`layout-mode-${mode}`).evaluate(element => getComputedStyle(element).backgroundColor);
-
-  const wireSetupAccent = await activeBackground('draw');
-  await page.getByTestId('layout-mode-wire').click();
-  await expect.poll(() => activeBackground('wire')).toBe(wireSetupAccent);
-});
-
-test('reloading with #screen=layout&mode=wire opens directly in Wire mode', async ({ page }) => {
-  await gotoLayout(page, '#screen=layout&mode=wire');
-
-  await expect(page.getByTestId('layout-mode-wire')).toHaveClass(/on/);
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
-  // Unverified wiring lands on the single LED-check CTA.
+  await page.getByTestId('layout-check-and-install').click();
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
   await expect(page.getByTestId('start-led-check')).toBeVisible();
 });
 
-test('switching modes and activating the split tool suspend the in-progress strip until Wire resumes or Cancel clears it', async ({ page }) => {
+test('#screen=layout&mode=wire opens Card install, not a Layout tab', async ({ page }) => {
+  await gotoLayout(page, '#screen=layout&mode=wire');
+
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
+  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByTestId('layout-mode-switch')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /Find your connected card/i })).toHaveCount(0);
+});
+
+test('#screen=layout and mode=draw stay on the Wire drawing workspace', async ({ page }) => {
+  await gotoLayout(page);
+  await expect(page).toHaveURL(/screen=layout/);
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  await expect(page.getByTestId('layout-primitive-picker')).toBeVisible();
+
+  await gotoLayout(page, '#screen=layout&mode=draw');
+  await expect(page).toHaveURL(/screen=layout&mode=draw/);
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
+});
+
+test('drawing a strip stays on Layout; other screens are unaffected', async ({ page }) => {
   await gotoLayout(page);
 
   const drawBtn = page.getByTitle('Draw a new LED strip path on the artwork.');
   await drawBtn.click();
   await expect(drawBtn).toHaveClass(/active/);
 
-  // Click twice in the empty top-left corner of the canvas — the default
-  // two-circle hardware layout (viewBox 0 0 640 400, circles centered at
-  // 320,200 with radius <=144) never reaches this corner.
   const svg = page.locator('.lw-viewport svg');
   const box = await svg.boundingBox();
   if (!box) throw new Error('canvas svg not found');
@@ -106,48 +85,12 @@ test('switching modes and activating the split tool suspend the in-progress stri
   await expect(page.locator('.la-draw-hint')).toContainText('2 points');
 
   await page.keyboard.press('2');
-  await expect(page.getByTestId('layout-mode-wire')).toHaveClass(/on/);
-  await expect(page.locator('.la-draw-hint')).toHaveCount(0);
-
-  await page.keyboard.press('1');
-  await expect(page.getByTestId('layout-mode-draw')).toHaveClass(/on/);
-  await expect(drawBtn).not.toHaveClass(/active/);
-  await drawBtn.click();
-  await expect(drawBtn).toHaveClass(/active/);
   await expect(page.locator('.la-draw-hint')).toContainText('2 points');
-
-  await page.getByTestId('layout-mode-wire').click();
-  await page.getByText('Advanced installation tools', { exact: true }).click();
-  await page.getByText('Custom mapping', { exact: true }).click();
-  await page.getByRole('button', { name: 'Split a strip mid-wire' }).click();
-  await page.getByTestId('layout-mode-draw').click();
-  await drawBtn.click();
-  await expect(page.locator('.la-draw-hint')).toContainText('2 points');
+  await expect(page).toHaveURL(/screen=layout/);
 
   await page.getByRole('button', { name: /Cancel \(Esc\)/ }).click();
   await expect(page.locator('.la-draw-hint')).toHaveCount(0);
-  await expect(drawBtn).not.toHaveClass(/active/);
-  await expect(drawBtn).toHaveText('Draw');
-});
 
-test('clicking the segments switches mode; other screens are unaffected', async ({ page }) => {
-  await gotoLayout(page);
-
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page).toHaveURL(/mode=wire/);
-  await expect(page.getByTestId('layout-wire-panel')).toBeVisible();
-
-  await page.getByTestId('layout-mode-draw').click();
-  await expect(page).toHaveURL(/mode=draw/);
-  await expect(page.getByTestId('layout-wire-panel')).toHaveCount(0);
-
-  // The canvas persists across modes, while Draw-only import stays out of Wire.
-  await page.getByTestId('layout-mode-wire').click();
-  await expect(page.getByRole('button', { name: 'Import SVG' })).toHaveCount(0);
-  await expect(page.locator('.lw-viewport svg')).toBeVisible();
-
-  // A totally different screen still loads fine — the mode hash-merge never
-  // fights Shell's `#screen=` writes (src/v3/app.jsx).
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.chips[aria-label="Target sections"]')).toBeVisible();
   await expect(page.locator('.rail-item.active')).toContainText('Patterns');

@@ -10,7 +10,6 @@ import {
   acknowledgeCommissionedCardFromStatus,
   commissioningReconnectHost,
   commissioningAutoReconnectHost,
-  commissioningShouldAutoRestore,
   commissioningShouldSuppressConnectOverlay,
   selectCommissioningCardAcknowledgement,
   selectCardCommissioningStage,
@@ -1086,24 +1085,18 @@ test('setup-joined auto-reconnects to the remembered station host once 192.168.4
     linkState: 'connected-bridge',
   }), '');
   assert.equal(commissioningShouldSuppressConnectOverlay(joined), true);
-  assert.equal(commissioningShouldAutoRestore(joined, {
-    restorePreflightOk: true, restoreState: 'idle', publicStudio: true,
-  }), false, 'restore waits until the card is acknowledged');
 });
 
-test('a public-Studio acknowledged blank card restores the project without a click', () => {
+// Was 'a public-Studio acknowledged blank card restores the project without a
+// click'. That behaviour was removed on 2026-08-31: writing the project spends
+// the one-shot blank-card authority and is the owner's call, so it waits for
+// the Restore button. What an acknowledged card still does automatically is
+// stop suppressing the connect overlay, which is what this now pins.
+test('an acknowledged blank card stops hiding the connect overlay and waits for the owner', () => {
   const ready = completeCardInstall(freshInstall('flow-auto-restore-1'), installed, { now: 20 });
   const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
   const acknowledged = acknowledgeCommissionedCard(joined, installed, { now: 40 }).flow;
-  assert.equal(commissioningShouldAutoRestore(acknowledged, {
-    restorePreflightOk: true, restoreState: 'idle', publicStudio: true,
-  }), true);
-  assert.equal(commissioningShouldAutoRestore(acknowledged, {
-    restorePreflightOk: true, restoreState: 'idle', publicStudio: false,
-  }), false);
-  assert.equal(commissioningShouldAutoRestore(acknowledged, {
-    restorePreflightOk: true, restoreState: 'idle', publicStudio: true, alreadyAttempted: true,
-  }), false);
+  assert.equal(commissioningShouldSuppressConnectOverlay(joined), true);
   assert.equal(commissioningShouldSuppressConnectOverlay(acknowledged), false);
 });
 

@@ -103,7 +103,6 @@ test('a fresh layout offers primitive choices and creates a centered selected ci
     return saved ? [saved.layout?.starterPending, saved.layout?.strips?.length] : null;
   })).toEqual([false, 1]);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('layout-mode-draw').click();
   await expect(page.getByTestId('layout-primitive-picker')).toHaveCount(0);
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 });
@@ -465,7 +464,6 @@ test('a locked 256-LED Find-my-strips count can be typed to the real length', as
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('layout-mode-draw').click();
   const row = page.locator('.la-strip-row').first();
   await expect(row).toBeVisible();
   await expect(row).toContainText('256 LEDs');

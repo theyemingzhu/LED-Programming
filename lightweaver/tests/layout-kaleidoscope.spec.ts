@@ -229,7 +229,7 @@ test('calibration is active only for the selected strip in Draw mode and reports
   await firstStrip.click();
   await firstStrip.click();
   await expect(unavailable).toBeVisible();
-  await page.getByTestId('layout-mode-wire').click();
+  await page.getByTestId('layout-check-and-install').click();
   await expect(unavailable).toHaveCount(0);
 });
 

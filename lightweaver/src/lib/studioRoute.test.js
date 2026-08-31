@@ -51,7 +51,7 @@ test('a screen that navigates by writing the hash keeps the destination it asked
   // URL, not overwrite it — whatever was showing a moment ago.
   assert.equal(reconcile('#screen=pattern'), '#screen=pattern');
   assert.equal(studioViewFromHash('#screen=pattern', options), 'pattern');
-  assert.equal(reconcile('#screen=layout&mode=wire'), '#screen=layout&mode=wire');
+  assert.equal(reconcile('#screen=layout&mode=wire'), '#screen=card&section=setup&task=install-project');
   assert.equal(reconcile('#screen=discovery'), '#screen=discovery');
 });
 
@@ -62,6 +62,7 @@ test('reconciling a route is idempotent, so repeating it can never move the owne
     '#screen=pattern',
     '#screen=card&section=setup',
     '#screen=layout&mode=draw',
+    '#screen=layout&mode=wire',
     '#screen=flash&mode=install',
     '#screen=card&section=nonsense',
     '#screen=pattern&section=install&mode=wire',
@@ -95,10 +96,14 @@ test('Setup preserves a validated journey task and discards task parameters ever
   assert.equal(reconcile('#screen=pattern&task=reconnect-card'), '#screen=pattern');
 });
 
-test('layout keeps its mode deep link and no other screen does', () => {
-  assert.equal(reconcile('#screen=layout&mode=wire'), '#screen=layout&mode=wire');
+test('layout keeps draw as its only mode; old mode=wire opens Card install', () => {
+  assert.equal(studioViewFromHash('#screen=layout&mode=wire', options), 'card');
+  assert.equal(reconcile('#screen=layout&mode=wire'), '#screen=card&section=setup&task=install-project');
+  assert.equal(studioViewFromHash('#screen=layout', options), 'layout');
+  assert.equal(studioViewFromHash('#screen=layout&mode=draw', options), 'layout');
+  assert.equal(reconcile('#screen=layout'), '#screen=layout');
   assert.equal(reconcile('#screen=layout&mode=draw'), '#screen=layout&mode=draw');
-  // `install` is not one of the two Layout modes.
+  // `install` is not a Layout mode.
   assert.equal(reconcile('#screen=layout&mode=install'), '#screen=layout');
   assert.equal(reconcile('#screen=pattern&mode=wire'), '#screen=pattern');
 });

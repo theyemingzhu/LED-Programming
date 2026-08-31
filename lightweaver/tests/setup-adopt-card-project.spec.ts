@@ -66,7 +66,11 @@ async function connectLegacyCard(page) {
 }
 
 async function expectSetupComplete(page) {
-  await expect(page.getByText('This exact card is already set up')).toBeVisible({ timeout: 10000 });
+  // "Setup complete" + "Installed project matches" + the Patterns door ARE the
+  // finished verdict. The ready banner used to repeat it in a heading and a
+  // paragraph of its own; Card Home was compressed to one status, so this
+  // asserts the banner is present and lets the row and the ladder say it once.
+  await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
   await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
   await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
   await expect(page.getByTestId('setup-adoption-error')).toHaveCount(0);
