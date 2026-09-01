@@ -650,6 +650,11 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (hasCurrentProjectAuthorization()) refreshPatternAuthorization();
     }, [currentInstallation, hasCurrentProjectAuthorization, liveCardEvidence, patternCardAccess, projectAuthorizationCurrent]);
 
+    // Read inside async callbacks, where the closed-over value is whatever it
+    // was when the request was ISSUED — which is exactly the thing a stale
+    // response must not act on.
+    const projectAuthorizationRef = useRef(projectAuthorizationCurrent);
+    projectAuthorizationRef.current = projectAuthorizationCurrent;
     const previousProjectAuthorizationRef = useRef(projectAuthorizationCurrent);
     useEffect(() => {
       const previous = previousProjectAuthorizationRef.current;
@@ -1001,6 +1006,10 @@ import { PatternPreview } from './PatternPreview.jsx';
       setHandoffUrl('');
       if (livePreviewTimer.current) clearTimeout(livePreviewTimer.current);
       const sequence = ++livePreviewSeq.current;
+      // The world this request was issued into. If the project authorization
+      // changes before it lands, the response describes a world that no longer
+      // exists and must not speak for the present — see the status write below.
+      const authorizationAtRequest = projectAuthorizationRef.current;
       latestPreviewIntent.current = { look: nextLook, target, expectedControlPatch };
       dispatchPreviewAction({ type: 'start', revision: sequence });
       setPreviewFailure(null);
@@ -1053,10 +1062,22 @@ import { PatternPreview } from './PatternPreview.jsx';
             // failure — but the owner is looking at a section tab and the whole
             // piece just changed, so say which one actually happened.
             const usedFallback = previewResponseUsedZoneFallback(response);
-            setStatusKind(usedFallback ? 'ok' : '');
-            setStatus(usedFallback
-              ? `The card has no “${targetLabel(target)}” section yet, so this played on the whole piece. Install to give the card your sections.`
-              : '');
+            // Only speak if the authorization has not moved under us. Losing it
+            // raises "verify that this exact Studio project is still installed
+            // before sending lights" — and this branch used to overwrite that,
+            // with the section note or with an empty string, because a preview
+            // issued BEFORE the loss can land up to a second after it (the send
+            // retries three times, 350ms apart). Measured, the warning appeared
+            // at 22ms and was gone at 61ms, roughly one run in forty: the owner
+            // was then told nothing and would send lights believing the card
+            // still matched. A routine note is not worth a safety warning, so
+            // when the world has changed this response says nothing at all.
+            if (projectAuthorizationRef.current === authorizationAtRequest) {
+              setStatusKind(usedFallback ? 'ok' : '');
+              setStatus(usedFallback
+                ? `The card has no “${targetLabel(target)}” section yet, so this played on the whole piece. Install to give the card your sections.`
+                : '');
+            }
           }
         } catch (error) {
           if (error?.reason === 'superseded') {
@@ -1502,6 +1523,11 @@ import { PatternPreview } from './PatternPreview.jsx';
         return;
       }
       if (installIntentRef.current) return;
+      // The world this save was started in. Everything below is a long chain of
+      // awaits — a deployment verification, an evidence read, and a live
+      // preview push with a 2.2s timeout — so by the time it finishes, the
+      // authorization it began under may be gone. See the clear at the end.
+      const authorizationAtSave = projectAuthorizationRef.current;
       const installIntent = {};
       installIntentRef.current = installIntent;
       let packageForCard = null;
@@ -1594,8 +1620,18 @@ import { PatternPreview } from './PatternPreview.jsx';
             ).catch(() => null);
           }
         }
-        setStatusKind('');
-        setStatus('');
+        // "Finished, so nothing to report" is only true if nothing happened
+        // while we were working. Losing the project authorization mid-save
+        // raises "Open Hardware and verify that this exact Studio project is
+        // still installed before sending lights", and this clear used to wipe
+        // it about 12ms after it appeared — leaving the owner with no warning
+        // at all and a card that may no longer hold their project. A finished
+        // save may report its own success; it may not erase someone else's
+        // warning.
+        if (projectAuthorizationRef.current === authorizationAtSave) {
+          setStatusKind('');
+          setStatus('');
+        }
       } catch (error) {
         dispatchCardSave({ type: 'fail', error: error?.message });
         if (error?.reason === 'mixed-content') {
