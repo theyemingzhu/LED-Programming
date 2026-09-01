@@ -33,6 +33,7 @@ import {
 } from './cardIdentity.js';
 import { isCardLinkConnected as isFreshCardLinkConnected, isCardTransportConnected } from './cardConnectionFlow.js';
 import { classifyCardReadiness } from './cardReadiness.js';
+import { recordCardLinkTransition } from './cardLinkJournal.js';
 import {
   acceptWifiHandoff,
   clearWifiHandoffRecovery,
@@ -1022,6 +1023,10 @@ export function createCardLink({
     if (next === state) return state;
     const prev = state;
     state = next;
+    // Every state change in the link passes through here, so this is the one
+    // place a record of them can be complete. Best-effort by construction and
+    // it never throws — see cardLinkJournal.js.
+    recordCardLinkTransition(prev, next);
     if (state.state === 'connected-bridge') {
       clearConnectTimer();
       if (prev.state !== 'connected-bridge') writeBridgeWasActive(true);

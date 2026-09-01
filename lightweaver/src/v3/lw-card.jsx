@@ -18,6 +18,13 @@ import { normalizeCardHost } from '../lib/cardConnection.js';
 import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
 import { STRIP_DISCOVERY_LABEL } from '../lib/cardAction.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
+import {
+  CARD_LINK_JOURNAL_LIMIT,
+  clearCardLinkJournal,
+  formatCardLinkJournal,
+  readCardLinkJournal,
+  summarizeCardLinkJournal,
+} from '../lib/cardLinkJournal.js';
 
 // navigateStudio (the `go` prop) takes a bare screen key, not the `screen=…`
 // hash fragment that STRIP_DISCOVERY_ROUTE holds — passing the fragment fell
@@ -719,6 +726,59 @@ function CardHomePanels({
   );
 }
 
+// The answer to "it keeps disconnecting" arriving hours after it happened.
+// Studio records every connection change as it goes; this is where an owner
+// reads them back and copies them into a message without opening a console.
+function ConnectionLogPanel() {
+  const [entries, setEntries] = useState(() => readCardLinkJournal());
+  const [copied, setCopied] = useState('');
+  const refresh = () => { setEntries(readCardLinkJournal()); setCopied(''); };
+  const summary = summarizeCardLinkJournal(entries);
+  const text = formatCardLinkJournal(entries);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied('Copied. Paste it into a message.');
+    } catch {
+      // Clipboard access is not guaranteed; the text is on screen either way.
+      setCopied('Could not copy — select the log below and copy it by hand.');
+    }
+  };
+  return (
+    <div className="card-support-panel" data-testid="connection-log-panel">
+      <h2>Connection log</h2>
+      <p>
+        Every time Studio&rsquo;s connection to the card changed, with the reason and how long
+        it lasted. It survives a reload, keeps the most recent {CARD_LINK_JOURNAL_LIMIT} changes, and
+        never leaves this browser.
+      </p>
+      <p data-testid="connection-log-summary">
+        {entries.length === 0
+          ? 'Nothing recorded yet — the connection has not changed since this browser last cleared its data.'
+          : `${summary.drops} drop${summary.drops === 1 ? '' : 's'} across ${entries.length} change${entries.length === 1 ? '' : 's'}${summary.spanHours >= 0.05 ? ` over ${summary.spanHours.toFixed(1)} hours` : ''}${summary.lastReason ? ` · most recent reason: ${summary.lastReason}` : ''}`}
+      </p>
+      <div className="set-actions">
+        <button type="button" className="btn primary" onClick={copy} disabled={!entries.length}>Copy log</button>
+        <button type="button" className="btn" onClick={refresh}>Refresh</button>
+        <button
+          type="button"
+          className="btn ghost-sm"
+          disabled={!entries.length}
+          onClick={() => { clearCardLinkJournal(); refresh(); }}
+        >Clear</button>
+      </div>
+      {copied && <p data-testid="connection-log-copied">{copied}</p>}
+      <textarea
+        className="set-json"
+        data-testid="connection-log-text"
+        aria-label="Connection log"
+        readOnly
+        value={text}
+      />
+    </div>
+  );
+}
+
 function RecoverySupport({ onConnectCard, onOpenConnectionCenter }) {
   return (
     <section className="card-support-panel">
@@ -762,6 +822,9 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
         <button type="button" aria-label="Deployment check" className={tool === 'deployment' ? 'selected' : ''} aria-pressed={tool === 'deployment'} onClick={() => setTool('deployment')}>
           <strong>Deployment check</strong><span>Verify this site's signed release from the browser — no install needed.</span>
         </button>
+        <button type="button" aria-label="Connection log" className={tool === 'connection-log' ? 'selected' : ''} aria-pressed={tool === 'connection-log'} onClick={() => setTool('connection-log')}>
+          <strong>Connection log</strong><span>Every connection change, with its reason — for reporting a drop after it happened.</span>
+        </button>
         <button type="button" aria-label="Batch production" onClick={() => onOpenSection('workshop')}>
           <strong>Batch production</strong><span>Signed-job manufacturing flow with identity binding and pass records.</span>
         </button>
@@ -774,6 +837,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
           {tool === 'json' && <SettingsScreen embedded mode="advanced" {...cardProps} />}
           {tool === 'recovery' && <RecoverySupport onConnectCard={cardProps.onConnectCard} onOpenConnectionCenter={onOpenConnectionCenter} />}
           {tool === 'deployment' && <DeploymentCheckPanel />}
+          {tool === 'connection-log' && <ConnectionLogPanel />}
         </div>
       )}
     </div>
