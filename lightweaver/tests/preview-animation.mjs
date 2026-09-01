@@ -68,10 +68,27 @@ assert.match(
   /sequence === livePreviewSeq\.current/,
   'Patterns live preview should guard against stale async responses with a sequence counter',
 );
+// LedRow is DEFINED in lw-shared.jsx and USED here. It moved there so the
+// Playlist could draw the same bead strand for the same pattern instead of a
+// flat gradient block; before that, only Patterns could draw one. The contract
+// this guards is unchanged — a bounded DOM row of beads, not one node per
+// hardware pixel — so it is now asserted at both ends rather than by looking
+// for the definition in the file that merely renders it.
 assert.match(
   patternsSource,
-  /function LedRow\(/,
+  /<LedRow\b/,
   'Patterns screen should render a bounded DOM LedRow preview rather than one node per hardware pixel',
+);
+const sharedSource = readFileSync(resolve(import.meta.dirname, '../src/v3/lw-shared.jsx'), 'utf8');
+assert.match(
+  sharedSource,
+  /function LedRow\(/,
+  'LedRow should be defined once in lw-shared.jsx so every screen draws the same bead strand',
+);
+assert.match(
+  sharedSource,
+  /const stops = Array\.isArray\(pal\)/,
+  'LedRow should fall back to a default palette rather than throw inside a row render',
 );
 
 // ── Speed is a rate, not a multiplier on elapsed time ───────────────────────
