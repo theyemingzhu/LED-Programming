@@ -241,3 +241,80 @@
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
     0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
 }
+
+/* ═══ the wire plan is a module, not a caption ═════════════
+   It carried the run's facts as loose text under a bare label,
+   below a panel that had already become a module — so the one
+   block describing what will actually be wired read as the
+   least important thing in the column.
+
+   Its head is a sub-head, not a panel header (see the exclusion
+   above), and below a 320px container it stacks into a column —
+   which the side panel always is. So the status light is placed
+   rather than flowed: a leading dot in a column layout becomes a
+   line of its own.
+   ═══════════════════════════════════════════════════════════ */
+
+.la .lw-wire-path.is-embedded {
+  margin: 14px 16px 16px;
+  padding: 0 13px 13px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+.la .lw-wire-path.is-embedded > .lww-plan-head {
+  position: relative;
+  margin: 0 -13px 11px;
+  padding: 11px 13px 11px 30px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.la .lw-wire-path.is-embedded > .lww-plan-head::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 16px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.la .lww-plan-head .ttl {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--text-lo);
+}
+/* the run itself reads as a sheet: mono, measured, one fact per line */
+.la .lww-plan-summary {
+  padding: 9px 11px;
+  border-radius: 2px;
+  background: var(--lw-well);
+  border: 1px solid var(--border-hair);
+  box-shadow: var(--lw-inset);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: var(--text-mid);
+}
+
+/* The run's facts live in the head's .meta, which is set to one clipped line
+   for the wide layout it was written for. In this 300px column that column
+   layout stacks, and the sentence lost its last two words to an ellipsis —
+   "44 LEDs in this de…". Let it wrap; it is the only line on this panel that
+   says what will actually be wired. */
+.la .lw-wire-path.is-embedded > .lww-plan-head .meta {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-mid);
+}

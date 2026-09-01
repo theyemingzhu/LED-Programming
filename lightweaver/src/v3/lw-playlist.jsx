@@ -791,11 +791,18 @@ function realPatternShape(patternId) {
                 <div className="pl-hostrow">
                   <span className="sf-l">Card address</span>
                   <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
-                  <span className="pl-count">{playlist.length} looks · dial press to advance</span>
                   <span className="pl-count" data-testid="playlist-physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
                 </div>
 
                 <div className="pl-list">
+                  {/* The list is a module, so it says what it is and how many, in
+                      its own bar. The count used to float in the card-address row
+                      above, where it described something two elements away. */}
+                  <div className="sec-h">
+                    <span className="t">Playlist order</span>
+                    <span className="m">{playlist.length} looks · dial press advances</span>
+                    <span className="line" />
+                  </div>
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>

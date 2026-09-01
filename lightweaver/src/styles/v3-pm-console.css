@@ -462,3 +462,82 @@
   border: 0;
   border-radius: 0;
 }
+
+/* ═══ Playlist: the order is a module, the boot look is lit ═══ */
+
+.pm .pl-list {
+  gap: 8px;
+  padding: 0 14px 14px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+.pm .pl-list > .sec-h {
+  margin: 0 -14px 4px;
+  padding: 12px 14px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.pm .pl-list > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.pm .pl-list > .sec-h .line { display: none; }
+.pm .pl-list > .sec-h .m { margin-left: auto; }
+
+/* The card address is a field, not a panel. It sat in a full-width well that
+   read as the most important thing on the screen; it is a setting you touch
+   once. */
+.pm .pl-hostrow {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 2px;
+  border-color: var(--border-hair);
+  background: var(--bg-panel);
+}
+.pm .pl-hostrow .sf-l {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+
+/* The index is a machined disc, and the look the card boots into is the one
+   that lights — it is the only row describing what the card does at power-on. */
+.pm .pl-index strong {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--text-mid);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+}
+.pm .pl-row.is-live .pl-index strong {
+  color: var(--lw-on-live);
+  background: var(--lw-live);
+  border-color: transparent;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--lw-live) 34%, transparent),
+    inset 0 1px 0 oklch(1 0 0 / 0.3);
+}
+.pm .pl-index span {
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+/* The row's second grid track is 48px, so the window stays inside it: a wider
+   .pl-art would simply overflow its own column. Five 5px beads at a 3px gap is
+   37px of strand in 42px of usable width. */
+.pm .pl-art { width: 44px; height: 32px; }
