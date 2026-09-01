@@ -33,6 +33,7 @@ import {
   buildSavedLookPlaylistPreviewTargets,
 } from '../lib/playlistLivePreview.js';
 import {
+  CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isImplicitDefaultPatternPlaylist,
   makeComboPlaylistItem,
@@ -41,6 +42,7 @@ import {
   playlistContainsCombo,
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
+import { currentInstallation } from '../lib/projectLifecycle.js';
 import {
   cardHostToUrl,
   readStoredCardHost,
@@ -700,12 +702,40 @@ function realPatternShape(patternId) {
       .map((p) => realPatternShape(p.id));
     const mixesRemaining = savedLooks.some((look) => !playlistContainsCombo(playlist, look.id));
 
+    // ── "On the card now": three figures, each from state already here ────
+    // Nothing on this panel is inferred. The card's readiness envelope does
+    // NOT report a playlist length or a playing look (see normalizeCardReadiness
+    // — it carries identity, capacity and readiness flags and nothing about the
+    // playlist), so the only truthful sources are Studio's own install record
+    // and its own confirmed live push.
+    //
+    // installedRecord is the install record ONLY while the open project is
+    // still the one that was installed (currentInstallation). One edit since
+    // the install and the card holds a different playlist whose length this
+    // screen cannot know — so the tile says so with an em-dash rather than
+    // printing the edited count as if it were on the card.
+    const installedRecord = currentInstallation(projectLifecycle);
+    const installedLooks = installedRecord ? playlist.length : null;
+    const installedLooksNote = installedRecord
+      ? (installedRecord.verified === true ? 'read back from card' : 'sent, not read back')
+      : (projectLifecycle.installation ? 'edited since install' : 'not installed yet');
+    // `live` is set only after pushLivePreviewToCard resolved, so it is the one
+    // look this screen can honestly say the card is showing right now.
+    const playingItem = live ? playlist.find((item) => item.id === live) || null : null;
+    const slotsLeft = Math.max(0, CARD_PLAYLIST_LIMIT - playlist.length);
+    // The card's own id, and deliberately NOT the address: the address is a
+    // field 300px above this bar, and printing it twice would make this panel
+    // repeat the screen instead of adding to it. Empty when no card has ever
+    // identified itself, which is a truthful blank rather than a stand-in.
+    const cardNowMeta = installedRecord?.cardId || cardLink?.readiness?.cardId || '';
+
     return (
       <div className="screen">
         <div className="screen-scroll">
           <div className="pm">
             <header className="pm-hero">
               <div className="pm-title">
+                <span className="pm-kicker">Studio · Playlist</span>
                 <h1>Playlist</h1>
                 <p>The order the dial press cycles through on the card. The first look starts on boot.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
@@ -869,6 +899,40 @@ function realPatternShape(patternId) {
                       </article>
                     );
                   })}
+                </div>
+
+                {/* What the card is carrying, under the order that produced it.
+                    Same idiom as the order above: filled head bar, status
+                    light, name, right-aligned meta — body is three figures. */}
+                <div className="pl-cardnow" data-testid="playlist-card-now">
+                  <div className={"sec-h" + (playingItem ? " is-live" : "")}>
+                    <span className="t">On the card now</span>
+                    <span className="m">{cardNowMeta}</span>
+                    <span className="line" />
+                  </div>
+                  <div className="pl-stats">
+                    <div
+                      className={"pl-stat" + (installedRecord?.verified === true ? " is-ok" : "")}
+                      data-testid="playlist-stat-installed"
+                    >
+                      <span className="k">Looks installed</span>
+                      <strong className="v">{installedLooks === null ? '—' : installedLooks}</strong>
+                      <span className="n">{installedLooksNote}</span>
+                    </div>
+                    <div
+                      className={"pl-stat" + (playingItem ? " is-live" : "")}
+                      data-testid="playlist-stat-playing"
+                    >
+                      <span className="k">Playing</span>
+                      <strong className="v">{playingItem ? playingItem.label : '—'}</strong>
+                      <span className="n">{playingItem ? 'live preview confirmed' : 'no live look sent'}</span>
+                    </div>
+                    <div className="pl-stat" data-testid="playlist-stat-slots">
+                      <span className="k">Card slots left</span>
+                      <strong className="v">{slotsLeft}</strong>
+                      <span className="n">of {CARD_PLAYLIST_LIMIT}</span>
+                    </div>
+                  </div>
                 </div>
               </section>
 

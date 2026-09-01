@@ -430,3 +430,170 @@
 /* a supply that cannot carry the run at full white is the one thing on this
    panel that is a problem rather than a measurement */
 .la .lwbs-facts dd.is-over { color: var(--danger); }
+
+/* ═══ the selected strip is a module, not a loose cluster ══
+   It used to appear only inside an expanded row: three
+   floating pairs of controls with no name on them. Nothing
+   said WHICH strip they belonged to except the row above,
+   and nothing said what the strip actually measures — you
+   could set a reel and a length and never be told the pitch
+   they produce.
+
+   It is now one module in the same idiom as every other
+   panel in this column: a filled header bar with a status
+   light and the strip's name as its meta, a dense two-up
+   register beneath it, and the actions last, because they
+   are what you do to a strip once you have read it.
+
+   The register is deliberately mixed. LEDs, Size, Reel and
+   the data pin are the controls that set the strip; Pitch,
+   Emit and First light are what follow from them and are
+   read-only. A control and its consequence sitting in the
+   same grid is the whole point — change the reel, watch the
+   pitch move.
+   ═══════════════════════════════════════════════════════════ */
+
+.la .la-strip-detail .lw-sel-head {
+  position: static;
+  gap: 9px;
+  padding: 8px 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft);
+  border-bottom: 0;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+.la .la-strip-detail .lw-sel-head .ttl { font-size: 10px; letter-spacing: 0.18em; }
+/* The name is the meta, so a long one clips rather than pushing the bar wide;
+   the whole string stays reachable through the title attribute. */
+.la .la-strip-detail .lw-sel-head .meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-hi);
+}
+
+.la .la-strip-detail .lw-sel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  /* the hairlines between cells are the grid's own background showing through
+     a 1px gap, so every seam is one rule rather than two borders meeting */
+  gap: 1px;
+  padding: 1px;
+  background: var(--border-hair);
+  border: 1px solid var(--border-soft);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+}
+.la .la-strip-detail .lw-sel-grid > .la-strip-physical-field {
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 7px;
+  border-left: 0;
+  background: color-mix(in oklab, var(--bg-elev) 88%, var(--bg-panel));
+}
+.la .la-strip-detail .lw-sel-grid > .lw-sel-wide { grid-column: 1 / -1; }
+.la .la-strip-detail .lw-sel-grid > .la-strip-physical-field > .k {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+/* a measured value, sat against its cell's own right edge */
+.la .lw-sel-v {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-hi);
+  white-space: nowrap;
+}
+.la .lw-sel-pair {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.la .lw-sel-pair .lw-sel-v { margin-left: 0; }
+.la .lw-sel-pair .la-gpio-wrap { flex: 0 0 auto; }
+
+/* A cell holding a multi-part control puts its label ON TOP. Label-left,
+   control-right leaves about 88px of a 135px cell, which is less room than the
+   size stepper, the count stepper or four reel keys have ever fitted into —
+   the only way to make them fit inline was to shrink their type to 9px, and a
+   register you cannot read is not denser, it is just smaller. Stacked, each
+   control gets the cell's full width at its own size. The read-outs stay
+   label-left / value-right, which IS denser and is what the build sheet
+   underneath already does. */
+.la .la-strip-detail .lw-sel-grid > .lw-sel-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl { gap: 3px; }
+.la .la-strip-detail .lw-sel-grid .la-size-readout { flex: 1 1 auto; gap: 3px; }
+.la .la-strip-detail .lw-sel-grid .la-size-readout input[type=number] {
+  width: 100%;
+  min-width: 0;
+}
+.la .la-strip-detail .lw-sel-grid .la-led-count-field { flex: 1 1 auto; min-width: 0; }
+.la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number] {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* four reels divide the cell rather than wrapping onto a second line */
+.la .la-strip-detail .lw-sel-grid .la-strip-density {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+.la .la-strip-detail .lw-sel-grid .la-strip-density .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+}
+.la .la-strip-detail .lw-sel-grid .la-gpio-select { height: 26px; }
+
+/* The actions now close the module rather than open it, so they carry a whole
+   border again instead of joining the block that used to sit beneath them. */
+.la .la-strip-detail .actions {
+  margin-top: 6px;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+}
+
+/* ── the schedule gained an ANGLE column ─────────────────── */
+/* Six columns of nowrap mono in a ~280px panel. Cell padding is the only slack
+   there is, so the table trims it rather than dropping a column or letting the
+   page scroll sideways — at 8px the six headers measured 279px against a 280px
+   column, which is not a margin, it is a coincidence. */
+.la .lwbs-table th,
+.la .lwbs-table td { padding-left: 6px; padding-right: 6px; }
+.la .lwbs-table th:first-child,
+.la .lwbs-table td:first-child { padding-left: 11px; }
+.la .lwbs-table th:last-child,
+.la .lwbs-table td:last-child { padding-right: 11px; }
+
+/* On a finger every key in the register is a target. Height only, and last in
+   the file so it wins: the two columns are fixed by the panel width, so
+   growing a key sideways would push the register past the panel edge — the
+   failure the comments above this one keep recording. */
+@media (pointer: coarse) {
+  .la .la-strip-detail .lw-sel-grid .la-led-count-field .btn,
+  .la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number],
+  .la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn,
+  .la .la-strip-detail .lw-sel-grid .la-size-readout input[type=number],
+  .la .la-strip-detail .lw-sel-grid .la-strip-density .btn,
+  .la .la-strip-detail .lw-sel-grid .la-gpio-select { min-height: 44px; height: 44px; }
+  .la .la-strip-detail .actions .btn { min-height: 44px; }
+}

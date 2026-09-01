@@ -1152,6 +1152,14 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
           {/* controls */}
           <aside className="sh-insp">
             <div className="sh-insp-body">
+              {/*
+                Each inspector section is its own element, so it can be drawn
+                as a bordered module instead of a CSS band. Two of them are the
+                arms of the engineMode ternary below, so the wrapper has to be
+                opened and closed INSIDE each arm — a single wrapper around the
+                ternary would put Voices and Mode in one box with What plays.
+              */}
+              <section className="sh-mod" data-testid="show-section-sound">
               <div className="sec-h"><span className="t">Sound</span><span className="line" /></div>
               <ChipRow>
                 <Chip on={source === 'mic'} onClick={startMic} title="Listen through your device's microphone">Microphone</Chip>
@@ -1216,8 +1224,8 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                 <BandMeter label="sparkle" value={levels.high} />
               </div>
               <Slider k="Sensitivity" v={`${sensitivity.toFixed(1)}×`} value={sensitivity} min={0.3} max={3} step={0.05} onChange={changeSensitivity} />
+              </section>
 
-              <div className="field-sep" />
               {/*
                 The A/B. Both sides read the same live audio and feed the same
                 canvas and the same card stream, so the owner can stand in
@@ -1225,6 +1233,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                 nine whole-piece modes and his own named motifs reacting one by
                 one. Switching costs one engine call and nothing else.
               */}
+              <section className="sh-mod" data-testid="show-section-what-plays">
               <div className="sec-h"><span className="t">What plays</span><span className="line" /></div>
               <div role="group" aria-label="What plays" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <button
@@ -1248,9 +1257,10 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   Voices
                 </button>
               </div>
+              </section>
 
-              <div className="field-sep" />
               {engineMode === 'voices' ? (
+                <section className="sh-mod" data-testid="show-section-voices">
                 <ShowVoices
                   voices={voiceCards}
                   ground={composition?.ground || null}
@@ -1264,8 +1274,9 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   onGround={changeGround}
                   onRebuild={rebuildComposition}
                 />
+                </section>
               ) : (
-              <>
+              <section className="sh-mod" data-testid="show-section-mode">
               <div className="sec-h"><span className="t">Mode</span><span className="line" /></div>
               <div className="mono" style={{ fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '2px 0 6px' }}>Slow &amp; meditative</div>
               <ChipRow>
@@ -1326,10 +1337,10 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   </div>
                 </div>
               )}
-              </>
+              </section>
               )}
 
-              <div className="field-sep" />
+              <section className="sh-mod" data-testid="show-section-feel">
               <div className="sec-h"><span className="t">Feel</span><span className="line" /></div>
               <ChipRow>
                 <Chip on={preset === 'Calm'} onClick={() => choosePreset('Calm')} title="The piece's true self — gentle, warm">Calm</Chip>
@@ -1339,6 +1350,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
               <div style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-faint)', marginTop: 8 }}>
                 Warm, never harsh. Nothing spins fast or snaps — mostly-dark is allowed, which makes the gold precious.
               </div>
+              </section>
             </div>
           </aside>
         </div>

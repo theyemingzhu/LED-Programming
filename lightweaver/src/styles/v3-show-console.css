@@ -85,25 +85,47 @@
 
 .sh .btn { border-radius: 3px; }
 
-/* ═══ the inspector reads as stacked modules ═══════════════
-   Sound / What plays / Mode / Feel are flat siblings in one
-   scrolling body, and two of them live inside a ternary on
-   engineMode — so each cannot be given its own wrapper without
-   editing across the arms of a conditional. Banding gets the
-   same read in a 300px column: every section opens with a
-   filled bar carrying a status light and its name, and the bar's
-   own top rule replaces the separator that used to sit above it.
+/* ═══ the inspector is a stack of modules ══════════════════
+   Sound / What plays / Mode / Feel each have their own
+   <section class="sh-mod"> in lw-show.jsx now — including the
+   two that are the arms of the engineMode ternary, which open
+   and close the wrapper inside each arm. So these are real
+   bordered modules in the same idiom as Playlist's panels, not
+   the CSS bands that stood in for them: a hairline frame over a
+   measured field, opened by a filled bar carrying a status
+   light and the section's name.
+
+   The old .field-sep separators are gone from the markup; each
+   module's own frame is the separation.
    ═══════════════════════════════════════════════════════════ */
 
-.sh .sh-insp-body > .sec-h {
-  margin: 0 -16px 12px;
-  padding: 12px 16px;
+.sh .sh-insp-body { gap: 12px; }
+
+.sh .sh-mod {
+  padding: 0 14px 14px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+
+/* The head is a direct child in three of the four modules. In the Voices
+   module it sits one level down, because ShowVoices.jsx owns its own
+   wrapper and its own head — that component belongs to another screen's
+   file, so this reaches it rather than editing it. ShowVoices renders
+   exactly one .sec-h (its "Voices" head); the cards below it render none. */
+.sh .sh-mod > .sec-h,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h {
+  margin: 0 -14px 12px;
+  padding: 12px 14px;
   background: var(--bg-elev);
-  border-top: 1px solid var(--border-hair);
   border-bottom: 1px solid var(--border-hair);
 }
-.sh .sh-insp-body > .sec-h:first-child { border-top: 0; margin-top: -14px; }
-.sh .sh-insp-body > .sec-h::before {
+.sh .sh-mod > .sec-h::before,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h::before {
   content: "";
   flex: 0 0 auto;
   align-self: center;
@@ -112,14 +134,16 @@
   border-radius: 50%;
   background: var(--idle);
 }
-.sh .sh-insp-body > .sec-h .line { display: none; }
-.sh .sh-insp-body > .sec-h .m { margin-left: auto; }
-/* the rules these separators drew are now the bars' own */
-.sh .sh-insp-body > .field-sep { display: none; }
+.sh .sh-mod > .sec-h .line,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h .line { display: none; }
+.sh .sh-mod > .sec-h .m,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h .m { margin-left: auto; }
+/* the head's own button ("Start over" on Voices) sits at the far end of the bar */
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h .btn { margin-left: auto; }
 
 /* the small mono captions inside a section ("SLOW & MEDITATIVE") are
    sub-heads, so they line up with the bar's label rather than floating */
-.sh .sh-insp-body > .mono { letter-spacing: 0.12em; color: var(--text-faint); }
+.sh .sh-mod > .mono { letter-spacing: 0.12em; color: var(--text-faint); }
 
 /* the stage keeps its own frame; the transport above it is the page's live bar */
 .sh .transport { padding: 12px 20px; }

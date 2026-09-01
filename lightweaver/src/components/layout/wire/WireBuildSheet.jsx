@@ -23,6 +23,10 @@ function ScheduleRow({ row }) {
       <td className="lwbs-n">{row.leds}</td>
       <td className="lwbs-n">{row.from}–{row.to}</td>
       <td className="lwbs-n">{row.pitchMm === null ? '—' : row.pitchMm.toFixed(1)}</td>
+      {/* Which way the strip emits. Rounded to a whole degree because that is
+          the resolution somebody can actually mount a strip to; null means the
+          strip has never been given a direction, which is not the same as 0°. */}
+      <td className="lwbs-n">{row.angleDeg === null ? '—' : `${Math.round(row.angleDeg)}°`}</td>
     </tr>
   );
 }
@@ -63,6 +67,7 @@ export function WireBuildSheet({ state }) {
               <th scope="col" className="lwbs-n">LEDs</th>
               <th scope="col" className="lwbs-n">Range</th>
               <th scope="col" className="lwbs-n" title="Centre-to-centre spacing in millimetres">Pitch</th>
+              <th scope="col" className="lwbs-n" title="Direction the strip emits, in degrees">Angle</th>
             </tr>
           </thead>
           <tbody>

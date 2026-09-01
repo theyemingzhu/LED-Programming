@@ -119,11 +119,18 @@ import { PatternPreview } from './PatternPreview.jsx';
     return 'none';
   }
 
-  function Slider({ k, v, value, min, max, step, onChange, testId }) {
+  // Label left, bar right. The name and its one-line hint explain the control
+  // on the left of the row; the fader and the number it is currently reading
+  // sit together on the right, because the value belongs to the bar and not to
+  // the word. The readout keeps its `-readout` test id where it moved to.
+  function Slider({ k, hint, v, value, min, max, step, onChange, testId }) {
     return (
       <div className="slider-row">
-        <div className="lab"><span className="k">{k}</span><span className="v" data-testid={testId ? `${testId}-readout` : undefined}>{v}</span></div>
-        <input className="lw" type="range" min={min} max={max} step={step} value={value} data-testid={testId ? `${testId}-slider` : undefined} onChange={(e) => onChange(parseFloat(e.target.value))} />
+        <div className="lab"><span className="k">{k}</span>{hint ? <span className="hint">{hint}</span> : null}</div>
+        <div className="sl-bar">
+          <input className="lw" type="range" min={min} max={max} step={step} value={value} data-testid={testId ? `${testId}-slider` : undefined} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          <span className="v" data-testid={testId ? `${testId}-readout` : undefined}>{v}</span>
+        </div>
       </div>);
 
   }
@@ -1976,6 +1983,7 @@ import { PatternPreview } from './PatternPreview.jsx';
             {/* hero */}
             <header className="pm-hero">
               <div className="pm-title">
+                <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
                 <p>Choose chip-ready patterns, tune the colors, then install the finished look on the card.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
@@ -2119,7 +2127,11 @@ import { PatternPreview } from './PatternPreview.jsx';
               <section className="pm-main">
                 {/* browse */}
                 <div className="pm-browse" style={{ margin: "5px 0px 0px" }}>
-                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready + {realMixes.length} mixes / {playlistSize} in playlist</span><span className="line" /></div>
+                  {/* One header bar for the whole module: the light, the name,
+                      and the counts pushed right. The counts are read with a
+                      single separator so the bar scans as one sentence rather
+                      than a sum and a fraction. */}
+                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready · {realMixes.length} mixes · {playlistSize} in playlist</span><span className="line" /></div>
 
                   {/* Was: a "Preview taps on the LED card" checkbox. There is no
                       moment in this screen's job where a tap should not reach the
@@ -2223,24 +2235,44 @@ import { PatternPreview } from './PatternPreview.jsx';
                       )}
                     </div>
                   }
+                  {/* Three facts on one line, not two rows that said the same
+                      thing twice. The old card printed Target above Layer and
+                      Pattern above Pattern — the same section name and the same
+                      pattern name, one under the other, with a decorative "ALL"
+                      key and a layer number that did nothing. What is left is
+                      what the target actually IS: which section, how many
+                      pixels it drives, and what is on the card.
+
+                      The pixel tile keeps its `tc-layer` / `tc-total` element
+                      and its label-then-value DOM order, because that is the
+                      readout card-workspace.spec reads back after a project
+                      switch. Only the painting order is flipped, so a reader
+                      sees "27 LEDs" and a machine still reads "LEDs27". */}
+                  <div className="pm-targetcard">
+                    <div className="tc-stat">
+                      <span className="tc-stat-k">Section</span>
+                      <strong className="tc-stat-v">{selectedTargetName}</strong>
+                    </div>
+                    <div className="tc-stat tc-layer">
+                      <span className="tc-stat-k">Pixels driven</span>
+                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
+                    </div>
+                    {/* Amber is reserved for what the card is doing right now,
+                        so it lights only once the runtime has confirmed the
+                        send. Until then this names the pattern being driven,
+                        in the neutral ink, and the bank's status line above
+                        says whether it has landed. */}
+                    <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
+                      <span className="tc-stat-k">On the card now</span>
+                      <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
+                    </div>
+                  </div>
+                  {/* Naming and storing the mix has nowhere to go inside a row
+                      of readouts, so it keeps its own row directly beneath. */}
                   <div className="pm-mixbar">
                     <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
                     <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
                     <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
-                  </div>
-                  <div className="pm-targetcard">
-                    <div className="tc-head">
-                      <button className="tc-all on">ALL</button>
-                      <div className="tc-name"><span className="lab">Target</span><strong>{selectedTargetName}</strong></div>
-                      <div className="tc-total"><span className="lab">Total</span><strong>{targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                    <div className="tc-layer">
-                      <span className="tc-num">1</span>
-                      <div className="tc-name"><span className="lab">Layer</span><strong>{selectedTarget?.kind === 'section' ? targetLabel(selectedTarget) : 'Strip 1'}</strong></div>
-                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
                   </div>
                 </div>
 
@@ -2343,9 +2375,9 @@ import { PatternPreview } from './PatternPreview.jsx';
                     <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
                     <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   </div>
-                  <Slider k="Saturation" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
-                  <Slider k="Brightness" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
-                  <Slider k="Speed" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
+                  <Slider k="Saturation" hint="How much colour" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
+                  <Slider k="Brightness" hint="Overall output level" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
+                  <Slider k="Speed" hint="How fast it moves" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
                   <button
                     type="button"
                     className="btn"
@@ -2379,11 +2411,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                         <label><input type="checkbox" checked={look.customDrift} onChange={(e) => updatePreviewLook({ customDrift: e.target.checked })} /> Drift</label>
                       </div>
                       {look.customBreathe && <div className="pmx-breathe-controls">
-                        <Slider k="Lower brightness" v={`${look.breatheLowerPct}%`} value={look.breatheLowerPct} min={0} max={look.breatheUpperPct} step={1} testId="breathe-lower" onChange={(breatheLowerPct) => updatePreviewLook({ breatheLowerPct })} />
-                        <Slider k="Upper brightness" v={`${look.breatheUpperPct}%`} value={look.breatheUpperPct} min={look.breatheLowerPct} max={100} step={1} testId="breathe-upper" onChange={(breatheUpperPct) => updatePreviewLook({ breatheUpperPct })} />
-                        <Slider k="Cycle" v={`${look.breatheCycleSeconds}s`} value={look.breatheCycleSeconds} min={4} max={30} step={1} testId="breathe-cycle" onChange={(breatheCycleSeconds) => updatePreviewLook({ breatheCycleSeconds })} />
+                        <Slider k="Lower brightness" hint="Dimmest point" v={`${look.breatheLowerPct}%`} value={look.breatheLowerPct} min={0} max={look.breatheUpperPct} step={1} testId="breathe-lower" onChange={(breatheLowerPct) => updatePreviewLook({ breatheLowerPct })} />
+                        <Slider k="Upper brightness" hint="Brightest point" v={`${look.breatheUpperPct}%`} value={look.breatheUpperPct} min={look.breatheLowerPct} max={100} step={1} testId="breathe-upper" onChange={(breatheUpperPct) => updatePreviewLook({ breatheUpperPct })} />
+                        <Slider k="Cycle" hint="Seconds per breath" v={`${look.breatheCycleSeconds}s`} value={look.breatheCycleSeconds} min={4} max={30} step={1} testId="breathe-cycle" onChange={(breatheCycleSeconds) => updatePreviewLook({ breatheCycleSeconds })} />
                       </div>}
-                      <Slider k="Hue shift" v={String(look.hueShift)} value={look.hueShift} min={-128} max={128} step={1} testId="look-hue-shift" onChange={(hueShift) => updatePreviewLook({ hueShift })} />
+                      <Slider k="Hue shift" hint="Rotates the palette" v={String(look.hueShift)} value={look.hueShift} min={-128} max={128} step={1} testId="look-hue-shift" onChange={(hueShift) => updatePreviewLook({ hueShift })} />
                     </div>
                   </details>
                 </div>
@@ -2430,13 +2462,13 @@ import { PatternPreview } from './PatternPreview.jsx';
                               <button key={c} className={(symSettings.count || 8) === c ? "on" : ""} data-testid={`geo-petals-${c}`} onClick={() => patchGeo({ type: "radial", count: c })}>{c}</button>
                             ))}
                           </div>
-                          <Slider k="Rotate" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "radial", phase: pct / 100 })} />
+                          <Slider k="Rotate" hint="Turns the symmetry" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "radial", phase: pct / 100 })} />
                         </>
                       )}
                       {geo === "kaleido" && (
                         <>
-                          <Slider k="Petals" v={String(symSettings.slices || 6)} value={symSettings.slices || 6} min={2} max={16} step={1} testId="geo-slices" onChange={(s) => patchGeo({ type: "kaleido", slices: Math.round(s) })} />
-                          <Slider k="Rotate" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "kaleido", phase: pct / 100 })} />
+                          <Slider k="Petals" hint="Mirrored slices" v={String(symSettings.slices || 6)} value={symSettings.slices || 6} min={2} max={16} step={1} testId="geo-slices" onChange={(s) => patchGeo({ type: "kaleido", slices: Math.round(s) })} />
+                          <Slider k="Rotate" hint="Turns the symmetry" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "kaleido", phase: pct / 100 })} />
                         </>
                       )}
                       <div className="geo-fit">
