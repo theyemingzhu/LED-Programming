@@ -6,7 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
-import { I, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
+import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -119,11 +119,18 @@ import { PatternPreview } from './PatternPreview.jsx';
     return 'none';
   }
 
-  function Slider({ k, v, value, min, max, step, onChange, testId }) {
+  // Label left, bar right. The name and its one-line hint explain the control
+  // on the left of the row; the fader and the number it is currently reading
+  // sit together on the right, because the value belongs to the bar and not to
+  // the word. The readout keeps its `-readout` test id where it moved to.
+  function Slider({ k, hint, v, value, min, max, step, onChange, testId }) {
     return (
       <div className="slider-row">
-        <div className="lab"><span className="k">{k}</span><span className="v" data-testid={testId ? `${testId}-readout` : undefined}>{v}</span></div>
-        <input className="lw" type="range" min={min} max={max} step={step} value={value} data-testid={testId ? `${testId}-slider` : undefined} onChange={(e) => onChange(parseFloat(e.target.value))} />
+        <div className="lab"><span className="k">{k}</span>{hint ? <span className="hint">{hint}</span> : null}</div>
+        <div className="sl-bar">
+          <input className="lw" type="range" min={min} max={max} step={step} value={value} data-testid={testId ? `${testId}-slider` : undefined} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          <span className="v" data-testid={testId ? `${testId}-readout` : undefined}>{v}</span>
+        </div>
       </div>);
 
   }
@@ -204,26 +211,8 @@ import { PatternPreview } from './PatternPreview.jsx';
 
   }
 
-  // colors interpolated across a palette → glowing LED beads
-  function ledColors(pal, n) {
-    const rgb = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const p = (i / (n - 1)) * (pal.length - 1), s = Math.floor(p), t = p - s;
-      const a = rgb(pal[s]), b = rgb(pal[Math.min(s + 1, pal.length - 1)]);
-      const c = a.map((v, k) => Math.round(v + (b[k] - v) * t));
-      out.push(`rgb(${c[0]},${c[1]},${c[2]})`);
-    }
-    return out;
-  }
-  function LedRow({ pal, n = 9, big = false, wave = false }) {
-    return (
-      <div className={"ledrow" + (big ? " big" : "")}>
-        {ledColors(pal, n).map((c, i) =>
-          <span key={i} className={"led" + (wave ? " wave" : "")} style={{ background: c, boxShadow: `0 0 ${big ? 9 : 5}px ${c}, 0 0 ${big ? 20 : 11}px ${c}`, animationDelay: wave ? `${i * 0.11}s` : undefined }} />
-        )}
-      </div>);
-  }
+  // ledColors + LedRow moved to lw-shared.jsx so Playlist can draw the same
+  // bead strand for the same pattern instead of a flat gradient block.
   // Resolve a card-bank pattern id to the real library pattern that actually
   // has runnable per-pixel code. Card ids either match a library pattern
   // directly (sparkle, aurora…) or point at one via previewPatternId/preset.
@@ -893,11 +882,40 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (q && !p.label.toLowerCase().includes(q.toLowerCase())) return false;
       return true;
     });
+    // Page in the next block when the reader ARRIVES at the end of the list —
+    // not merely whenever we happen to be observing while already there.
+    //
+    // IntersectionObserver reports the current state the moment you observe, and
+    // this effect re-observes on every change to `filtered.length`. Saving a look
+    // changes that length, so the re-observe reported "still intersecting" and
+    // paged in another 24 for an action that has nothing to do with scrolling.
+    // The sentinel only came within the 600px margin at rest once the design
+    // target moved below the bank and the grid rose up the page; before that the
+    // bug was simply out of reach.
+    //
+    // So: fire on the EDGE, not the level. A first report is remembered, never
+    // acted on; paging happens when the sentinel goes from out of range to in.
+    // The "Show more" and "Show all" buttons remain for anyone already at the
+    // end, so nothing is unreachable without scrolling.
     useEffect(() => {
       const node = patternSentinelRef.current;
       if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+      // An observer reports the current state the instant you observe, and this
+      // effect re-observes on every change to `filtered.length`. Saving a look
+      // changes that length, so the re-observe answered "you are at the end" and
+      // paged in another 24 for an action that involved no scrolling at all.
+      // That only became reachable once the design target moved below the bank
+      // and the grid rose into the 600px margin; the bug predates the move.
+      //
+      // The opening report describes where the reader already is, not somewhere
+      // they have arrived, so it is recorded and never acted on. Every later
+      // report is a real scroll. "Show more" and "Show all" stay for anyone
+      // sitting at the end already, so nothing needs scrolling to be reached.
+      let primed = false;
       const observer = new IntersectionObserver(entries => {
-        if (entries.some(entry => entry.isIntersecting)) {
+        const atEnd = entries.some(entry => entry.isIntersecting);
+        if (!primed) { primed = true; return; }
+        if (atEnd) {
           setVisibleCount(count => Math.min(filtered.length, count + PATTERN_PAGE));
         }
       }, { rootMargin: '600px 0px' });
@@ -1965,6 +1983,7 @@ import { PatternPreview } from './PatternPreview.jsx';
             {/* hero */}
             <header className="pm-hero">
               <div className="pm-title">
+                <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
                 <p>Choose chip-ready patterns, tune the colors, then install the finished look on the card.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
@@ -2106,51 +2125,22 @@ import { PatternPreview } from './PatternPreview.jsx';
             <div className="pm-grid">
               {/* MAIN */}
               <section className="pm-main">
-                <div className="sec-h"><span className="t">Tap a pattern to preview</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready + {realMixes.length} mixes / {playlistSize} in playlist</span><span className="line" /></div>
-
-                {/* Was: a "Preview taps on the LED card" checkbox. There is no
-                    moment in this screen's job where a tap should not reach the
-                    card — it is the scratchpad for trying patterns on the real
-                    strip — and an off checkbox only produced taps that looked
-                    broken. Every tap sends. */}
-                <div className="pm-livebar">
-                  <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
-                </div>
-
-                {/* design target */}
-                <div className="pm-target">
-                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
-                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
-                  {sectionTargets.length > 1 &&
-                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
-                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
-                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
-                      )}
-                    </div>
-                  }
-                  <div className="pm-mixbar">
-                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
-                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
-                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
-                  </div>
-                  <div className="pm-targetcard">
-                    <div className="tc-head">
-                      <button className="tc-all on">ALL</button>
-                      <div className="tc-name"><span className="lab">Target</span><strong>{selectedTargetName}</strong></div>
-                      <div className="tc-total"><span className="lab">Total</span><strong>{targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                    <div className="tc-layer">
-                      <span className="tc-num">1</span>
-                      <div className="tc-name"><span className="lab">Layer</span><strong>{selectedTarget?.kind === 'section' ? targetLabel(selectedTarget) : 'Strip 1'}</strong></div>
-                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* browse */}
                 <div className="pm-browse" style={{ margin: "5px 0px 0px" }}>
+                  {/* One header bar for the whole module: the light, the name,
+                      and the counts pushed right. The counts are read with a
+                      single separator so the bar scans as one sentence rather
+                      than a sum and a fraction. */}
+                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready · {realMixes.length} mixes · {playlistSize} in playlist</span><span className="line" /></div>
+
+                  {/* Was: a "Preview taps on the LED card" checkbox. There is no
+                      moment in this screen's job where a tap should not reach the
+                      card — it is the scratchpad for trying patterns on the real
+                      strip — and an off checkbox only produced taps that looked
+                      broken. Every tap sends. */}
+                  <div className="pm-livebar">
+                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
+                  </div>
                   <div className="search" style={{ maxWidth: "none", marginBottom: 10 }}>{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
                   <div className="pt-tools" style={{ padding: "0px", margin: "0px 0px 10px" }}>
                     <div className="chips">
@@ -2188,11 +2178,16 @@ import { PatternPreview } from './PatternPreview.jsx';
                             Speed is a property of the preview you are looking
                             at, the star is the action — each now sits where it
                             belongs. */}
-                        <div className="pmcard-led"><LedRow pal={p.pal} n={9} /><span className="pmcard-sp">{p.sp}</span></div>
+                        {/* The tempo used to ride the tile's top-right corner. It reads
+                            as a caption on the pattern, not a label on the picture, so it
+                            sits with the name alongside the mood the pattern is filed
+                            under — the two facts you sort by. */}
+                        <div className="pmcard-led"><LedRow pal={p.pal} n={11} /></div>
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
                           {p.mix && <span className="mixtag">mix</span>}
                         </div>
+                        <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
                       </button>
                         {/* Rides the top-right corner of the card's LED window
                             instead of a full-width row underneath it. Same tap
@@ -2228,6 +2223,59 @@ import { PatternPreview } from './PatternPreview.jsx';
                     </div>
                   }
                 </div>
+
+                {/* design target */}
+                <div className="pm-target">
+                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
+                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
+                  {sectionTargets.length > 1 &&
+                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
+                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
+                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
+                      )}
+                    </div>
+                  }
+                  {/* Three facts on one line, not two rows that said the same
+                      thing twice. The old card printed Target above Layer and
+                      Pattern above Pattern — the same section name and the same
+                      pattern name, one under the other, with a decorative "ALL"
+                      key and a layer number that did nothing. What is left is
+                      what the target actually IS: which section, how many
+                      pixels it drives, and what is on the card.
+
+                      The pixel tile keeps its `tc-layer` / `tc-total` element
+                      and its label-then-value DOM order, because that is the
+                      readout card-workspace.spec reads back after a project
+                      switch. Only the painting order is flipped, so a reader
+                      sees "27 LEDs" and a machine still reads "LEDs27". */}
+                  <div className="pm-targetcard">
+                    <div className="tc-stat">
+                      <span className="tc-stat-k">Section</span>
+                      <strong className="tc-stat-v">{selectedTargetName}</strong>
+                    </div>
+                    <div className="tc-stat tc-layer">
+                      <span className="tc-stat-k">Pixels driven</span>
+                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
+                    </div>
+                    {/* Amber is reserved for what the card is doing right now,
+                        so it lights only once the runtime has confirmed the
+                        send. Until then this names the pattern being driven,
+                        in the neutral ink, and the bank's status line above
+                        says whether it has landed. */}
+                    <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
+                      <span className="tc-stat-k">On the card now</span>
+                      <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
+                    </div>
+                  </div>
+                  {/* Naming and storing the mix has nowhere to go inside a row
+                      of readouts, so it keeps its own row directly beneath. */}
+                  <div className="pm-mixbar">
+                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
+                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
+                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
+                  </div>
+                </div>
+
               </section>
 
               {/* ASIDE */}
@@ -2327,9 +2375,9 @@ import { PatternPreview } from './PatternPreview.jsx';
                     <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
                     <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   </div>
-                  <Slider k="Saturation" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
-                  <Slider k="Brightness" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
-                  <Slider k="Speed" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
+                  <Slider k="Saturation" hint="How much colour" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
+                  <Slider k="Brightness" hint="Overall output level" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
+                  <Slider k="Speed" hint="How fast it moves" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
                   <button
                     type="button"
                     className="btn"
@@ -2363,11 +2411,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                         <label><input type="checkbox" checked={look.customDrift} onChange={(e) => updatePreviewLook({ customDrift: e.target.checked })} /> Drift</label>
                       </div>
                       {look.customBreathe && <div className="pmx-breathe-controls">
-                        <Slider k="Lower brightness" v={`${look.breatheLowerPct}%`} value={look.breatheLowerPct} min={0} max={look.breatheUpperPct} step={1} testId="breathe-lower" onChange={(breatheLowerPct) => updatePreviewLook({ breatheLowerPct })} />
-                        <Slider k="Upper brightness" v={`${look.breatheUpperPct}%`} value={look.breatheUpperPct} min={look.breatheLowerPct} max={100} step={1} testId="breathe-upper" onChange={(breatheUpperPct) => updatePreviewLook({ breatheUpperPct })} />
-                        <Slider k="Cycle" v={`${look.breatheCycleSeconds}s`} value={look.breatheCycleSeconds} min={4} max={30} step={1} testId="breathe-cycle" onChange={(breatheCycleSeconds) => updatePreviewLook({ breatheCycleSeconds })} />
+                        <Slider k="Lower brightness" hint="Dimmest point" v={`${look.breatheLowerPct}%`} value={look.breatheLowerPct} min={0} max={look.breatheUpperPct} step={1} testId="breathe-lower" onChange={(breatheLowerPct) => updatePreviewLook({ breatheLowerPct })} />
+                        <Slider k="Upper brightness" hint="Brightest point" v={`${look.breatheUpperPct}%`} value={look.breatheUpperPct} min={look.breatheLowerPct} max={100} step={1} testId="breathe-upper" onChange={(breatheUpperPct) => updatePreviewLook({ breatheUpperPct })} />
+                        <Slider k="Cycle" hint="Seconds per breath" v={`${look.breatheCycleSeconds}s`} value={look.breatheCycleSeconds} min={4} max={30} step={1} testId="breathe-cycle" onChange={(breatheCycleSeconds) => updatePreviewLook({ breatheCycleSeconds })} />
                       </div>}
-                      <Slider k="Hue shift" v={String(look.hueShift)} value={look.hueShift} min={-128} max={128} step={1} testId="look-hue-shift" onChange={(hueShift) => updatePreviewLook({ hueShift })} />
+                      <Slider k="Hue shift" hint="Rotates the palette" v={String(look.hueShift)} value={look.hueShift} min={-128} max={128} step={1} testId="look-hue-shift" onChange={(hueShift) => updatePreviewLook({ hueShift })} />
                     </div>
                   </details>
                 </div>
@@ -2414,13 +2462,13 @@ import { PatternPreview } from './PatternPreview.jsx';
                               <button key={c} className={(symSettings.count || 8) === c ? "on" : ""} data-testid={`geo-petals-${c}`} onClick={() => patchGeo({ type: "radial", count: c })}>{c}</button>
                             ))}
                           </div>
-                          <Slider k="Rotate" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "radial", phase: pct / 100 })} />
+                          <Slider k="Rotate" hint="Turns the symmetry" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "radial", phase: pct / 100 })} />
                         </>
                       )}
                       {geo === "kaleido" && (
                         <>
-                          <Slider k="Petals" v={String(symSettings.slices || 6)} value={symSettings.slices || 6} min={2} max={16} step={1} testId="geo-slices" onChange={(s) => patchGeo({ type: "kaleido", slices: Math.round(s) })} />
-                          <Slider k="Rotate" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "kaleido", phase: pct / 100 })} />
+                          <Slider k="Petals" hint="Mirrored slices" v={String(symSettings.slices || 6)} value={symSettings.slices || 6} min={2} max={16} step={1} testId="geo-slices" onChange={(s) => patchGeo({ type: "kaleido", slices: Math.round(s) })} />
+                          <Slider k="Rotate" hint="Turns the symmetry" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "kaleido", phase: pct / 100 })} />
                         </>
                       )}
                       <div className="geo-fit">

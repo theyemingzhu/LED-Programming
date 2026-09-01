@@ -6,6 +6,7 @@ import { scaleStripGeometry } from '../lib/stripScale.js';
 import { LayoutCanvas } from './layout/canvas/LayoutCanvas.jsx';
 import { DrawModePanel } from './layout/modes/DrawModePanel.jsx';
 import { WirePlanTools } from './layout/modes/WirePlanTools.jsx';
+import { WireBuildSheet } from './layout/wire/WireBuildSheet.jsx';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -457,6 +458,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
                          onOpenConnectionCenter={onOpenConnectionCenter}
                          onStarterPreviewChange={setStarterPreview}/>
           <WirePlanTools state={state} connected={connected} cardHost={cardHost}/>
+          {/* The schedule and the sheet read from the compiled wire order, so
+              they sit after the plan that produces it. */}
+          <WireBuildSheet state={state}/>
         </div>
       </aside>
       </div>{/* .la */}

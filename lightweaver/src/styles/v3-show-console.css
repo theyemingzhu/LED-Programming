@@ -1,0 +1,162 @@
+/* ============================================================
+   Light Weaver v3 — Show, "Schematic" treatment
+   ------------------------------------------------------------
+   Same register as Patterns and Playlist, scoped under .sh.
+
+   Show is mostly a stage with an inspector down the right, and
+   most of its selectable controls are drawn by ONE inline
+   chipStyle() in lw-show.jsx — inline styles beat any rule
+   written here, so the chips' selected-state vocabulary lives
+   there, not in this file. What is left for CSS is the chrome:
+   the transport bar, the inspector's section heads, the panel
+   field and the faders.
+
+   Rules here were checked against lw-show.jsx, not against the
+   class list in v3-screens.css. That file defines .tp-btn,
+   .tp-field, .sh-tab and .sh-insp-head; this screen renders none
+   of them, and an earlier draft styled all four. A rule for
+   markup that does not exist reads as coverage and is not.
+
+   Tokens only; Daylight keeps working.
+   ============================================================ */
+
+/* ── the transport reports what the piece is doing ───────── */
+
+.sh .transport {
+  border-bottom-color: var(--border-soft);
+  background: var(--bg-panel);
+}
+
+/* ── section heads: mono label on a hairline rule ────────── */
+
+.sh .sec-h .t {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--text-lo);
+}
+.sh .sec-h .line { background: var(--border-hair); }
+
+/* ── the inspector is the instrument, over a measured field ─ */
+
+.sh .sh-insp {
+  border-left-color: var(--border-soft);
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+
+/* ── faders: sunken track, blade grip ────────────────────── */
+/* Same control as Patterns; it must not be a different object here. */
+
+.sh input[type=range].lw {
+  height: 6px;
+  border-radius: 2px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset-deep);
+}
+.sh input[type=range].lw::-webkit-slider-thumb {
+  width: 11px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(var(--bg-elev-2), var(--bg-elev));
+  border: 1px solid var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.sh input[type=range].lw::-moz-range-thumb {
+  width: 11px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(var(--bg-elev-2), var(--bg-elev));
+  border: 1px solid var(--border);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.sh .slider-row .lab .k { font-size: 12px; }
+.sh .slider-row .lab .v { font-size: 11.5px; color: var(--text-mid); }
+
+/* ── transport ───────────────────────────────────────────── */
+/* No .tp-btn / .tp-field rules here on purpose: v3-screens.css defines both,
+   but lw-show.jsx renders neither — its transport is a title, a mono readout
+   and one .btn. Rules for markup that does not exist read as coverage and
+   are not. */
+
+.sh .btn { border-radius: 3px; }
+
+/* ═══ the inspector is a stack of modules ══════════════════
+   Sound / What plays / Mode / Feel each have their own
+   <section class="sh-mod"> in lw-show.jsx now — including the
+   two that are the arms of the engineMode ternary, which open
+   and close the wrapper inside each arm. So these are real
+   bordered modules in the same idiom as Playlist's panels, not
+   the CSS bands that stood in for them: a hairline frame over a
+   measured field, opened by a filled bar carrying a status
+   light and the section's name.
+
+   The old .field-sep separators are gone from the markup; each
+   module's own frame is the separation.
+   ═══════════════════════════════════════════════════════════ */
+
+.sh .sh-insp-body { gap: 12px; }
+
+.sh .sh-mod {
+  padding: 0 14px 14px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+
+/* The head is a direct child in three of the four modules. In the Voices
+   module it sits one level down, because ShowVoices.jsx owns its own
+   wrapper and its own head — that component belongs to another screen's
+   file, so this reaches it rather than editing it. ShowVoices renders
+   exactly one .sec-h (its "Voices" head); the cards below it render none. */
+.sh .sh-mod > .sec-h,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h {
+  margin: 0 -14px 12px;
+  padding: 12px 14px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.sh .sh-mod > .sec-h::before,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.sh .sh-mod > .sec-h .line,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h .line { display: none; }
+.sh .sh-mod > .sec-h .m,
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h .m { margin-left: auto; }
+/* the head's own button ("Start over" on Voices) sits at the far end of the bar */
+.sh .sh-mod > [data-testid="show-voices"] > .sec-h .btn { margin-left: auto; }
+
+/* the small mono captions inside a section ("SLOW & MEDITATIVE") are
+   sub-heads, so they line up with the bar's label rather than floating */
+.sh .sh-mod > .mono { letter-spacing: 0.12em; color: var(--text-faint); }
+
+/* the stage keeps its own frame; the transport above it is the page's live bar */
+.sh .transport { padding: 12px 20px; }
+
+/* The transport's button is the one control on this screen that drives the
+   hardware, so it wears clay whether it is starting or stopping. It only
+   carried it while already playing, which meant the colour appeared after the
+   decision instead of marking it. */
+.sh .transport .btn {
+  color: var(--on-accent);
+  background: linear-gradient(var(--accent-hi), var(--accent));
+  border-color: var(--accent-hi);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
+    0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.sh .transport .btn:disabled { opacity: 0.5; }

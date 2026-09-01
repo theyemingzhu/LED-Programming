@@ -1,0 +1,226 @@
+/* ============================================================
+   Light Weaver v3 — Playlist, "Schematic" treatment
+   ------------------------------------------------------------
+   The playlist order, its rows and index discs, the saved
+   looks and the pattern pool.
+
+   Split out of v3-pm-console.css so Patterns and Playlist can be
+   worked on at the same time without two people editing one file.
+   Anything BOTH screens use stays in v3-pm-console.css; changing
+   that file changes both, so it is edited deliberately and not as
+   a side effect of a change to one screen.
+   ============================================================ */
+
+/* ── Playlist: the same cells, and beads instead of smears ── */
+
+.pm .pl-row {
+  border-radius: 2px;
+  border-color: var(--border-hair);
+}
+.pm .pl-row.is-live {
+  border-color: var(--lw-live-ink);
+  background: color-mix(in srgb, var(--lw-live) 6%, var(--bg-panel));
+  box-shadow: none;
+}
+.pm .pl-row.is-live .pl-index strong { color: var(--lw-live-ink); }
+.pm .pl-copy strong { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+/* Bead size is not a taste decision here — these windows are fixed
+   (44 / 40 / 26 px wide, borderless) and .ledrow does not wrap, so a
+   strand wider than its window is clipped at both ends and the pattern
+   reads as starting and finishing mid-colour.
+
+   Fewer, larger beads beat more, smaller ones: a strand is a sample of a
+   palette, and five 5px beads say as much about it as seven 4px ones while
+   staying legible at a glance in a list. Bead counts are set on <LedRow>
+   in lw-playlist.jsx; these widths are measured against them:
+     5 x 5   + 4 x 3   = 37 <= 44   (.pl-art)
+     5 x 5   + 4 x 2.5 = 35 <= 40   (.pl-src-art)
+     4 x 4   + 3 x 2   = 22 <= 26   (.pl-chip-art)
+   Change one without the other and the strand clips again, silently. */
+.pm .pl-art .ledrow { gap: 3px; }
+.pm .pl-art .led { width: 5px; height: 5px; }
+.pm .pl-src-art .ledrow { gap: 2.5px; }
+.pm .pl-src-art .led { width: 5px; height: 5px; }
+.pm .pl-chip-art .ledrow { gap: 2px; }
+.pm .pl-chip-art .led { width: 4px; height: 4px; }
+.pm .pl-src-nm,
+.pm .pl-chip-nm { font-family: var(--font-mono); font-size: 12px; }
+.pm .pl-count,
+.pm .pl-empty { letter-spacing: 0.04em; }
+
+/* ═══ Playlist: the order is a module, the boot look is lit ═══ */
+
+.pm .pl-list {
+  gap: 8px;
+  padding: 0 14px 14px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+.pm .pl-list > .sec-h {
+  margin: 0 -14px 4px;
+  padding: 12px 14px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.pm .pl-list > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.pm .pl-list > .sec-h .line { display: none; }
+.pm .pl-list > .sec-h .m { margin-left: auto; }
+
+/* The card address is a field, not a panel. It sat in a full-width well that
+   read as the most important thing on the screen; it is a setting you touch
+   once. */
+.pm .pl-hostrow {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 2px;
+  border-color: var(--border-hair);
+  background: var(--bg-panel);
+}
+.pm .pl-hostrow .sf-l {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+
+/* The index is a machined disc, and the look the card boots into is the one
+   that lights — it is the only row describing what the card does at power-on. */
+.pm .pl-index strong {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--text-mid);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+}
+.pm .pl-row.is-live .pl-index strong {
+  color: var(--lw-on-live);
+  background: var(--lw-live);
+  border-color: transparent;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--lw-live) 34%, transparent),
+    inset 0 1px 0 oklch(1 0 0 / 0.3);
+}
+.pm .pl-index span {
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+/* The row's second grid track is 48px, so the window stays inside it: a wider
+   .pl-art would simply overflow its own column. Five 5px beads at a 3px gap is
+   37px of strand in 42px of usable width. */
+.pm .pl-art { width: 44px; height: 32px; }
+
+/* ═══ "On the card now": the order's consequence, in three figures ═══
+   Same module as .pl-list directly above it — hairline frame, measured
+   field, a filled head bar carrying a status light — so the two read as
+   one column of panels rather than a panel and a loose row.
+
+   Colour follows the console's fixed meanings. The head light and the
+   Playing tile go amber only when this screen has a CONFIRMED live push,
+   because amber is reserved for what the card is doing right now; the
+   Installed tile goes green only when the install was read back off the
+   card, because green is a check that passed. A tile whose figure is not
+   knowable prints an em-dash and says why underneath — never a number
+   this screen cannot stand behind. */
+
+.pm .pl-cardnow {
+  margin-top: 14px;
+  padding: 0 14px 14px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+.pm .pl-cardnow > .sec-h {
+  margin: 0 -14px 12px;
+  padding: 12px 14px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.pm .pl-cardnow > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.pm .pl-cardnow > .sec-h.is-live::before {
+  background: var(--lw-live);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live) 45%, transparent);
+}
+.pm .pl-cardnow > .sec-h .line { display: none; }
+.pm .pl-cardnow > .sec-h .m {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  max-width: 55%;
+}
+
+/* Three tiles, equal weight. They collapse to one column on a phone rather
+   than squeezing a look name into a third of 390px. */
+.pm .pl-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .pm .pl-stats { grid-template-columns: minmax(0, 1fr); }
+}
+.pm .pl-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background: var(--lw-well);
+  box-shadow: var(--lw-inset);
+}
+.pm .pl-stat .k {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.pm .pl-stat .v {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--text-hi);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pm .pl-stat .n {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+.pm .pl-stat.is-live { border-color: var(--lw-live-ink); }
+.pm .pl-stat.is-live .v { color: var(--lw-live-ink); }
+.pm .pl-stat.is-ok .v { color: var(--ok); }

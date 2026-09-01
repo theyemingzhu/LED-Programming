@@ -4,7 +4,7 @@
    from the SAMPLE arrays to the live app's real playlist, real pattern bank,
    and real card handlers. No visual structure was altered. */
 import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
-import { I } from './lw-shared.jsx';
+import { I, LedRow } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { openLocalCardPage } from '../lib/cardBridge.js';
 import { deriveCardAccess } from '../lib/cardAccess.js';
@@ -33,6 +33,7 @@ import {
   buildSavedLookPlaylistPreviewTargets,
 } from '../lib/playlistLivePreview.js';
 import {
+  CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isImplicitDefaultPatternPlaylist,
   makeComboPlaylistItem,
@@ -41,6 +42,7 @@ import {
   playlistContainsCombo,
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
+import { currentInstallation } from '../lib/projectLifecycle.js';
 import {
   cardHostToUrl,
   readStoredCardHost,
@@ -700,12 +702,40 @@ function realPatternShape(patternId) {
       .map((p) => realPatternShape(p.id));
     const mixesRemaining = savedLooks.some((look) => !playlistContainsCombo(playlist, look.id));
 
+    // ── "On the card now": three figures, each from state already here ────
+    // Nothing on this panel is inferred. The card's readiness envelope does
+    // NOT report a playlist length or a playing look (see normalizeCardReadiness
+    // — it carries identity, capacity and readiness flags and nothing about the
+    // playlist), so the only truthful sources are Studio's own install record
+    // and its own confirmed live push.
+    //
+    // installedRecord is the install record ONLY while the open project is
+    // still the one that was installed (currentInstallation). One edit since
+    // the install and the card holds a different playlist whose length this
+    // screen cannot know — so the tile says so with an em-dash rather than
+    // printing the edited count as if it were on the card.
+    const installedRecord = currentInstallation(projectLifecycle);
+    const installedLooks = installedRecord ? playlist.length : null;
+    const installedLooksNote = installedRecord
+      ? (installedRecord.verified === true ? 'read back from card' : 'sent, not read back')
+      : (projectLifecycle.installation ? 'edited since install' : 'not installed yet');
+    // `live` is set only after pushLivePreviewToCard resolved, so it is the one
+    // look this screen can honestly say the card is showing right now.
+    const playingItem = live ? playlist.find((item) => item.id === live) || null : null;
+    const slotsLeft = Math.max(0, CARD_PLAYLIST_LIMIT - playlist.length);
+    // The card's own id, and deliberately NOT the address: the address is a
+    // field 300px above this bar, and printing it twice would make this panel
+    // repeat the screen instead of adding to it. Empty when no card has ever
+    // identified itself, which is a truthful blank rather than a stand-in.
+    const cardNowMeta = installedRecord?.cardId || cardLink?.readiness?.cardId || '';
+
     return (
       <div className="screen">
         <div className="screen-scroll">
           <div className="pm">
             <header className="pm-hero">
               <div className="pm-title">
+                <span className="pm-kicker">Studio · Playlist</span>
                 <h1>Playlist</h1>
                 <p>The order the dial press cycles through on the card. The first look starts on boot.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
@@ -791,11 +821,18 @@ function realPatternShape(patternId) {
                 <div className="pl-hostrow">
                   <span className="sf-l">Card address</span>
                   <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
-                  <span className="pl-count">{playlist.length} looks · dial press to advance</span>
                   <span className="pl-count" data-testid="playlist-physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
                 </div>
 
                 <div className="pl-list">
+                  {/* The list is a module, so it says what it is and how many, in
+                      its own bar. The count used to float in the card-address row
+                      above, where it described something two elements away. */}
+                  <div className="sec-h">
+                    <span className="t">Playlist order</span>
+                    <span className="m">{playlist.length} looks · dial press advances</span>
+                    <span className="line" />
+                  </div>
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>
@@ -842,7 +879,7 @@ function realPatternShape(patternId) {
                           <strong>{String(i + 1).padStart(2, "0")}</strong>
                           <span>{i === 0 ? "startup" : "press"}</span>
                         </div>
-                        <span className="pl-art" style={{ background: p.grad }} />
+                        <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>
                         <div className="pl-copy">
                           <strong>{item.label}{item.type === 'combo' && <span className="mixtag">look</span>}</strong>
                           <span>{item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
@@ -863,6 +900,40 @@ function realPatternShape(patternId) {
                     );
                   })}
                 </div>
+
+                {/* What the card is carrying, under the order that produced it.
+                    Same idiom as the order above: filled head bar, status
+                    light, name, right-aligned meta — body is three figures. */}
+                <div className="pl-cardnow" data-testid="playlist-card-now">
+                  <div className={"sec-h" + (playingItem ? " is-live" : "")}>
+                    <span className="t">On the card now</span>
+                    <span className="m">{cardNowMeta}</span>
+                    <span className="line" />
+                  </div>
+                  <div className="pl-stats">
+                    <div
+                      className={"pl-stat" + (installedRecord?.verified === true ? " is-ok" : "")}
+                      data-testid="playlist-stat-installed"
+                    >
+                      <span className="k">Looks installed</span>
+                      <strong className="v">{installedLooks === null ? '—' : installedLooks}</strong>
+                      <span className="n">{installedLooksNote}</span>
+                    </div>
+                    <div
+                      className={"pl-stat" + (playingItem ? " is-live" : "")}
+                      data-testid="playlist-stat-playing"
+                    >
+                      <span className="k">Playing</span>
+                      <strong className="v">{playingItem ? playingItem.label : '—'}</strong>
+                      <span className="n">{playingItem ? 'live preview confirmed' : 'no live look sent'}</span>
+                    </div>
+                    <div className="pl-stat" data-testid="playlist-stat-slots">
+                      <span className="k">Card slots left</span>
+                      <strong className="v">{slotsLeft}</strong>
+                      <span className="n">of {CARD_PLAYLIST_LIMIT}</span>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               <aside className="pm-aside">
@@ -872,7 +943,7 @@ function realPatternShape(patternId) {
                     const added = playlistContainsCombo(playlist, m.id);
                     return (
                       <button key={m.id} className="pl-source" onClick={() => addCombo(savedLookById.get(m.id))} disabled={added || recoveryPending}>
-                        <span className="pl-src-art" style={{ background: m.grad }} />
+                        <span className="pl-src-art"><LedRow pal={m.pal} n={5} /></span>
                         <span className="pl-src-nm">{m.label}<span className="mixtag">look</span></span>
                         <span className="pl-src-add">{added ? I.check : I.plus}</span>
                       </button>
@@ -887,7 +958,7 @@ function realPatternShape(patternId) {
                   <div className="pl-pool">
                     {pool.map((p) => (
                       <button key={p.id} className="pl-chip" disabled={recoveryPending} onClick={() => addPattern(p.id)} title={`Add ${p.label}`}>
-                        <span className="pl-chip-art" style={{ background: p.grad }} />
+                        <span className="pl-chip-art"><LedRow pal={p.pal} n={4} /></span>
                         <span className="pl-chip-nm">{p.label}</span>
                         <span className="pl-chip-add">{I.plus}</span>
                       </button>

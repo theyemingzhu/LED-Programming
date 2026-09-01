@@ -170,15 +170,33 @@ const STREAM_ENCODE_GAP_MS = 1000 / DEFAULT_FRAME_FPS - 8;
 const PAINT_GAP_MS = 1000 / 48 - 4;
 
 // ── small UI pieces (v3 token styling, inline where no class fits) ─────────
+// Every selectable thing on this screen is drawn by this one function —
+// sound source, template, bench strip, engine mode, the demo tracks — so it
+// is the only place the screen's selected-state vocabulary is decided.
+//
+// It used to fill the chosen chip with clay. Clay means one thing across the
+// Studio now: THIS CONTROL WRITES TO THE CARD. None of these do; they choose
+// what the piece listens to and how it answers. So a chosen chip is named in
+// amber, the colour reserved for what is happening right now, and the clay
+// fill is left to "Play on the lights" alone.
+//
+// --lw-live-ink, not --layer-1: amber as TEXT is unreadable on the Daylight
+// panel, and the token drops to a bronze of the same hue there. The fallback
+// keeps the chip legible if this ever renders outside a console scope.
 const chipStyle = (on) => ({
-  padding: '6px 12px',
-  borderRadius: 999,
+  // 10px, not 12: mono is wider than the UI face at the same size, and at
+  // 12px of side padding the three Sound chips needed 262.8px inside a 257px
+  // column — six pixels over, so "Quiet" wrapped to its own line where it
+  // never had before. Measured, not guessed.
+  padding: '7px 10px',
+  borderRadius: 2,
+  fontFamily: 'var(--font-mono)',
   fontSize: 12,
-  fontWeight: 500,
+  fontWeight: on ? 500 : 400,
   cursor: 'pointer',
-  border: `1px solid ${on ? 'var(--accent)' : 'var(--border-soft)'}`,
-  background: on ? 'var(--accent)' : 'var(--bg-elev)',
-  color: on ? 'var(--on-accent)' : 'var(--text-mid)',
+  border: `1px solid ${on ? 'var(--lw-live-ink, var(--accent))' : 'var(--border-hair)'}`,
+  background: on ? 'color-mix(in srgb, var(--lw-live-ink, var(--accent)) 8%, transparent)' : 'var(--bg-elev)',
+  color: on ? 'var(--lw-live-ink, var(--accent))' : 'var(--text-mid)',
 });
 
 function Chip({ on, onClick, children, title }) {
@@ -1134,6 +1152,14 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
           {/* controls */}
           <aside className="sh-insp">
             <div className="sh-insp-body">
+              {/*
+                Each inspector section is its own element, so it can be drawn
+                as a bordered module instead of a CSS band. Two of them are the
+                arms of the engineMode ternary below, so the wrapper has to be
+                opened and closed INSIDE each arm — a single wrapper around the
+                ternary would put Voices and Mode in one box with What plays.
+              */}
+              <section className="sh-mod" data-testid="show-section-sound">
               <div className="sec-h"><span className="t">Sound</span><span className="line" /></div>
               <ChipRow>
                 <Chip on={source === 'mic'} onClick={startMic} title="Listen through your device's microphone">Microphone</Chip>
@@ -1198,8 +1224,8 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                 <BandMeter label="sparkle" value={levels.high} />
               </div>
               <Slider k="Sensitivity" v={`${sensitivity.toFixed(1)}×`} value={sensitivity} min={0.3} max={3} step={0.05} onChange={changeSensitivity} />
+              </section>
 
-              <div className="field-sep" />
               {/*
                 The A/B. Both sides read the same live audio and feed the same
                 canvas and the same card stream, so the owner can stand in
@@ -1207,6 +1233,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                 nine whole-piece modes and his own named motifs reacting one by
                 one. Switching costs one engine call and nothing else.
               */}
+              <section className="sh-mod" data-testid="show-section-what-plays">
               <div className="sec-h"><span className="t">What plays</span><span className="line" /></div>
               <div role="group" aria-label="What plays" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <button
@@ -1230,9 +1257,10 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   Voices
                 </button>
               </div>
+              </section>
 
-              <div className="field-sep" />
               {engineMode === 'voices' ? (
+                <section className="sh-mod" data-testid="show-section-voices">
                 <ShowVoices
                   voices={voiceCards}
                   ground={composition?.ground || null}
@@ -1246,8 +1274,9 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   onGround={changeGround}
                   onRebuild={rebuildComposition}
                 />
+                </section>
               ) : (
-              <>
+              <section className="sh-mod" data-testid="show-section-mode">
               <div className="sec-h"><span className="t">Mode</span><span className="line" /></div>
               <div className="mono" style={{ fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '2px 0 6px' }}>Slow &amp; meditative</div>
               <ChipRow>
@@ -1308,10 +1337,10 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   </div>
                 </div>
               )}
-              </>
+              </section>
               )}
 
-              <div className="field-sep" />
+              <section className="sh-mod" data-testid="show-section-feel">
               <div className="sec-h"><span className="t">Feel</span><span className="line" /></div>
               <ChipRow>
                 <Chip on={preset === 'Calm'} onClick={() => choosePreset('Calm')} title="The piece's true self — gentle, warm">Calm</Chip>
@@ -1321,6 +1350,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
               <div style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-faint)', marginTop: 8 }}>
                 Warm, never harsh. Nothing spins fast or snaps — mostly-dark is allowed, which makes the gold precious.
               </div>
+              </section>
             </div>
           </aside>
         </div>

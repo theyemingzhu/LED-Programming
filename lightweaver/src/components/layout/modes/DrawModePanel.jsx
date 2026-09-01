@@ -39,6 +39,9 @@ import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { activeBoardGpios } from '../../../lib/gpioAssignments.js';
 import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../../lib/kaleidoscope.js';
+// The schedule below the list already measures pitch this way; the selected
+// strip must not measure it a second, slightly different way.
+import { stripPitchMm } from '../../../lib/wireBuildSheet.js';
 import '../../../styles/lw-draw.css';
 
 // Metres formatter for the physical readouts: 2 decimals under 10 m, 1 above.
@@ -1271,6 +1274,17 @@ export function DrawModePanel({
                   {groupedStrips.map((s, i) => {
                 const isSel = s.id === selStripId;
                 const isBatchSel = selectedStripIds.includes(s.id);
+                // The Selected strip module stays gated on this row's expander.
+                // The approved design shows it as a module that is simply
+                // present for the selected strip, and both ways of getting
+                // there were tried and backed out:
+                //   `expanded || selected` lets two details sit open at once,
+                //   and each carries its own GPIO picker and size field — two
+                //   controls with the same label and no way to tell which
+                //   strip you are about to change.
+                //   `selected` alone removes the independent expander, which
+                //   first-LED arming and the count-save flow both rely on.
+                // Neither is worth destabilising this panel for a click.
                 const isOpen = !!expandedStrips[s.id];
                 const selectedDensity = stripDensity(s.id);
                 const densityChoices = DENSITY_OPTIONS.includes(selectedDensity)
@@ -1278,6 +1292,21 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
+                // Read-outs for the Selected strip module. Each is derived from
+                // state the project already holds; where a fact is not knowable
+                // the field shows an em-dash rather than a confident guess.
+                const pitchMm = stripPitchMm(s, s.pixelCount, pxPerMm);
+                const emitLabel = s.emit === 'omni'
+                  ? 'Omni'
+                  : Number.isFinite(Number(s.angle)) ? `${Math.round(Number(s.angle))}°` : '—';
+                // Which physical light the data reaches first: the picked seam
+                // when one has been set, otherwise the end the cable enters —
+                // the same fact the caption states in words.
+                const firstLedLabel = !run
+                  ? '—'
+                  : run.seamLed != null
+                    ? String(run.seamLed + 1)
+                    : run.physicalDirection === 'source-reverse' ? String(s.pixelCount) : '1';
                 return (
                   <div key={s.id} data-strip-id={s.id} {...captionHandlers(s.id)}>
                   <div
@@ -1345,6 +1374,123 @@ export function DrawModePanel({
                     </div>
                     {isOpen && (
                       <div className="la-strip-detail" onClick={e => e.stopPropagation()}>
+                        {/* One module, one header. The row above names the strip;
+                            this bar says which strip the controls below belong
+                            to, so nothing between them has to repeat it. */}
+                        <div className="panel-head lw-sel-head">
+                          <span className="ttl">Selected strip</span>
+                          <span className="meta" title={s.name}>{s.name}</span>
+                        </div>
+                        {/* A dense two-up register: the two controls that size
+                            the strip, the three facts that follow from them, the
+                            reel it is cut from, and the card-wide chipset beside
+                            the pin this strip's data leaves on. */}
+                        <div className="row lw-sel-grid">
+                          <div className="la-strip-physical-field lw-sel-stack">
+                            <span className="k">LEDs</span>
+                            <div className="la-led-count-field" role="group" aria-label="LED count tuning">
+                              <button type="button" className="btn" aria-label="One LED fewer"
+                                      onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount - 1))}>−</button>
+                              <input type="number" min="1" max={LED_COUNT_MAX} step="1"
+                                     value={s.pixelCount}
+                                     aria-label="Strip LED count"
+                                     inputMode="numeric"
+                                     onFocus={e => e.target.select()}
+                                     onClick={e => e.target.select()}
+                                     onChange={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
+                                     onBlur={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
+                                     onKeyDown={e => { if (e.key === 'Enter') setStripLedCount(s.id, clampLedCount(e.target.value)); }}/>
+                              <button type="button" className="btn" aria-label="One LED more"
+                                      onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount + 1))}>+</button>
+                            </div>
+                          </div>
+                          <div className="la-strip-physical-field lw-sel-stack">
+                            <span className="k">Size</span>
+                            <div className="la-size-ctrl">
+                              <button type="button" className="btn" aria-label="Make strip smaller"
+                                      title="Shrink 10%"
+                                      onClick={() => scaleStrip(s.id, 0.9)}>−</button>
+                              <label className="la-size-readout" data-testid="strip-size-readout">
+                                <input type="number" min="0.001" step="0.001"
+                                       key={`${s.id}:${s.svgLength}:${pxPerMm}`}
+                                       defaultValue={formatMetersValue(stripMeters(
+                                         (Number.isFinite(s.svgLength) && s.svgLength > 0)
+                                           ? s.svgLength
+                                           : svgPathLength(s.pathData),
+                                         pxPerMm))}
+                                       aria-label="Strip length in metres"
+                                       inputMode="decimal"
+                                       onFocus={e => e.target.select()}
+                                       onBlur={e => {
+                                         const value = Number(e.target.value);
+                                         if (Number.isFinite(value) && value > 0) setStripPhysical(s.id, { lengthM: value });
+                                       }}
+                                       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/>
+                                <span>m</span>
+                              </label>
+                              <button type="button" className="btn" aria-label="Make strip bigger"
+                                      title="Grow 10%"
+                                      onClick={() => scaleStrip(s.id, 1 / 0.9)}>+</button>
+                            </div>
+                          </div>
+                          <div className="la-strip-physical-field">
+                            <span className="k">Pitch</span>
+                            <span className="lw-sel-v" data-testid={`strip-pitch-${s.id}`}>
+                              {pitchMm === null ? '—' : `${pitchMm.toFixed(1)} mm`}
+                            </span>
+                          </div>
+                          <div className="la-strip-physical-field">
+                            <span className="k">Emit</span>
+                            <span className="lw-sel-v" data-testid={`strip-emit-${s.id}`}>{emitLabel}</span>
+                          </div>
+                          <div className="la-strip-physical-field">
+                            {/* Named "first light", not "first LED": Draw owns
+                                no first-LED POSITIONING control — that is the
+                                canvas picker, behind the Set first LED key —
+                                and this register must not read as one. */}
+                            <span className="k">First light</span>
+                            <span className="lw-sel-v" data-testid={`strip-first-led-${s.id}`}>{firstLedLabel}</span>
+                          </div>
+                          <div className="la-strip-physical-field lw-sel-stack">
+                            <span className="k">Reel</span>
+                            {/* Four reels have to share half a row, so the unit
+                                comes off the keys and onto the caption line —
+                                the panel's own way of labelling without
+                                printing the same three characters four times. */}
+                            <div className="la-strip-density" data-testid="strip-density-control"
+                                 role="group" aria-label={`${s.name} reel density`}>
+                              {densityChoices.map(d => (
+                                <button key={d} type="button"
+                                        className={`btn${selectedDensity === d ? ' is-selected' : ''}`}
+                                        aria-label={`${d} LEDs/m`}
+                                        aria-pressed={selectedDensity === d}
+                                        data-caption={`Cut from a ${d} LEDs per metre reel`}
+                                        title={`${d} LEDs per metre`}
+                                        onClick={() => setStripPhysical(s.id, { ledsPerM: d })}>
+                                  {d}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="la-strip-physical-field lw-sel-wide">
+                            <span className="k">Chipset · data pin</span>
+                            <div className="lw-sel-pair">
+                              {/* One chipset drives every output, so this is the
+                                  project's value read back, not a per-strip
+                                  choice — it is changed in Wire tools. */}
+                              <span className="lw-sel-v">{ledType}</span>
+                              <div className="la-gpio-wrap">
+                                <select className="la-gpio-select" aria-label="GPIO output"
+                                        value={outputForStrip(s.id)?.pin ?? 16}
+                                        onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
+                                  {gpioChoicesForStrip(s.id).map(({ pin, disabled }) => (
+                                    <option key={pin} value={pin} disabled={disabled}>GPIO {pin}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                         <div className="actions" role="group" aria-label="Strip actions">
                           {/* Three families, separated by space rather than by
                               labels: which way it runs, the specialist mapping,
@@ -1438,6 +1584,10 @@ export function DrawModePanel({
                             </button>
                           </div>
                         </div>
+                        <span className="la-physical-rule-hint la-strip-caption"
+                              data-testid={`strip-caption-${s.id}`}>
+                          {caption?.stripId === s.id ? caption.text : describeStrip(s, run)}
+                        </span>
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}
@@ -1543,84 +1693,6 @@ export function DrawModePanel({
                             </section>
                           );
                         })()}
-                        {/* Size, density, and LED count are one closed loop. */}
-                        <div className="row la-strip-physical-row">
-                          <div className="la-strip-physical-field">
-                            <span className="k">LEDs</span>
-                            <div className="la-led-count-field" role="group" aria-label="LED count tuning">
-                              <button type="button" className="btn" aria-label="One LED fewer"
-                                      onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount - 1))}>−</button>
-                              <input type="number" min="1" max={LED_COUNT_MAX} step="1"
-                                     value={s.pixelCount}
-                                     aria-label="Strip LED count"
-                                     inputMode="numeric"
-                                     onFocus={e => e.target.select()}
-                                     onClick={e => e.target.select()}
-                                     onChange={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
-                                     onBlur={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
-                                     onKeyDown={e => { if (e.key === 'Enter') setStripLedCount(s.id, clampLedCount(e.target.value)); }}/>
-                              <button type="button" className="btn" aria-label="One LED more"
-                                      onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount + 1))}>+</button>
-                            </div>
-                          </div>
-                          <div className="la-strip-physical-field">
-                            <span className="k">Size</span>
-                            <div className="la-size-ctrl">
-                              <button type="button" className="btn" aria-label="Make strip smaller"
-                                      title="Shrink 10%"
-                                      onClick={() => scaleStrip(s.id, 0.9)}>−</button>
-                              <label className="la-size-readout" data-testid="strip-size-readout">
-                                <input type="number" min="0.001" step="0.001"
-                                       key={`${s.id}:${s.svgLength}:${pxPerMm}`}
-                                       defaultValue={formatMetersValue(stripMeters(
-                                         (Number.isFinite(s.svgLength) && s.svgLength > 0)
-                                           ? s.svgLength
-                                           : svgPathLength(s.pathData),
-                                         pxPerMm))}
-                                       aria-label="Strip length in metres"
-                                       inputMode="decimal"
-                                       onFocus={e => e.target.select()}
-                                       onBlur={e => {
-                                         const value = Number(e.target.value);
-                                         if (Number.isFinite(value) && value > 0) setStripPhysical(s.id, { lengthM: value });
-                                       }}
-                                       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}/>
-                                <span>m</span>
-                              </label>
-                              <button type="button" className="btn" aria-label="Make strip bigger"
-                                      title="Grow 10%"
-                                      onClick={() => scaleStrip(s.id, 1 / 0.9)}>+</button>
-                            </div>
-                          </div>
-                        </div>
-                        <span className="la-physical-rule-hint la-strip-caption"
-                              data-testid={`strip-caption-${s.id}`}>
-                          {caption?.stripId === s.id ? caption.text : describeStrip(s, run)}
-                        </span>
-                        <div className="row la-strip-output-row">
-                          <div className="la-gpio-wrap">
-                            <select className="la-gpio-select" aria-label="GPIO output"
-                                    value={outputForStrip(s.id)?.pin ?? 16}
-                                    onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
-                              {gpioChoicesForStrip(s.id).map(({ pin, disabled }) => (
-                                <option key={pin} value={pin} disabled={disabled}>GPIO {pin}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="la-strip-density" data-testid="strip-density-control"
-                               role="group" aria-label={`${s.name} reel density`}>
-                            {densityChoices.map(d => (
-                              <button key={d} type="button"
-                                      className={`btn${selectedDensity === d ? ' is-selected' : ''}`}
-                                      aria-label={`${d} LEDs/m`}
-                                      aria-pressed={selectedDensity === d}
-                                      title={`${d} LEDs per metre`}
-                                      onClick={() => setStripPhysical(s.id, { ledsPerM: d })}>
-                                {d}/m
-                              </button>
-                            ))}
-                          </div>
-                        </div>
                         {gpioError && <div className="la-gpio-error" role="alert">{gpioError}</div>}
                         {usbLedConnected && (
                           <div className="hint" style={{ color: s.pixelCount > usbLedMaxPixels ? 'var(--accent)' : 'var(--text-faint)' }}>
