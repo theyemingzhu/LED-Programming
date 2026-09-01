@@ -684,6 +684,18 @@ test('an edit made during verification remains a draft above the installed snaps
   releaseVerification?.();
   await expect(install).toBeDisabled();
   await expect(page.getByRole('alert')).toContainText('verify that this exact Studio project is still installed');
+  // ...and it is still there once everything in flight has landed. The install
+  // started before the authorization was lost and finishes about a second
+  // later, after a deployment verification, an evidence read and a preview
+  // push; it used to end with "clear the status", which wiped this warning
+  // roughly 12ms after it appeared. The owner was then told nothing at all and
+  // would send lights believing the card still held their project. A finished
+  // save may report its own success; it may not erase someone else's warning.
+  // Matched by text, not by role: the element's role flips between alert and
+  // status as other state settles, which is not what this is about.
+  await page.waitForTimeout(1200);
+  await expect(page.getByText(/verify that this exact Studio project is still installed/))
+    .toBeVisible();
   await page.waitForTimeout(300);
 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
