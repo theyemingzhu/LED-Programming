@@ -117,7 +117,6 @@ export function DrawModePanel({
     pathSel, pathSelName, stripSelectionName,
     orderedStrips, selectedStrips,
     totalLeds, starterLayoutActive, usbLedMaxPixels,
-    expandedStrips, setExpandedStrips,
     stripListRef,
     // size
     getLedCount, resampleStrip, stripDensity, setStripPhysical, setStripCount,
@@ -169,12 +168,30 @@ export function DrawModePanel({
   // draw / Import vector) plus one LEDs input. The count is the strip the
   // user is physically adding, and the shape arrives sized to hold it at the
   // strip's fixed density. Ephemeral view state.
+  // Which strip the Selected strip panel belongs to.
+  //
+  // Not `selStripId` directly: selection clears on gestures that are not a
+  // choice — panning the canvas with space held, clicking empty artwork — and
+  // binding the panel to it unmounted the whole panel mid-gesture, taking an
+  // open Kaleidoscope editor with it. So the panel follows the last strip
+  // actually chosen, and moves only when a different one is chosen.
+  const [panelStripId, setPanelStripId] = useState(null);
+
   const [addChooserOpen, setAddChooserOpen] = useState(false);
   const [addLedCount, setAddLedCount] = useState(60);
   const [addDensity, setAddDensity] = useState(density);
   const [fineTuneOpenByStrip, setFineTuneOpenByStrip] = useState({});
   const kaleidoscopeTriggerRefs = useRef(new Map());
   const [addLengthM, setAddLengthM] = useState(1);
+  useEffect(() => {
+    if (selStripId) setPanelStripId(selStripId);
+  }, [selStripId]);
+  useEffect(() => {
+    // A deleted strip cannot keep the panel; fall back to one that still exists.
+    if (panelStripId && !strips.some(strip => strip.id === panelStripId)) {
+      setPanelStripId(strips.length ? strips[strips.length - 1].id : null);
+    }
+  }, [strips, panelStripId]);
   const [addLengthDraft, setAddLengthDraft] = useState('1.00');
   const [addGpio, setAddGpio] = useState(16);
   const [pendingAddGpio, setPendingAddGpio] = useState(null);
@@ -1227,7 +1244,9 @@ export function DrawModePanel({
                   <span>{warning.message || `${affected?.name || warning.stripId}: Kaleidoscope mapping needs recovery.`}</span>
                   {affected?.pixelCount >= 2 && (
                     <button type="button" className="btn" onClick={() => {
-                      setExpandedStrips(current => ({ ...current, [affected.id]: true }));
+                      // Selecting is what opens the strip's panel now, and the
+                      // kaleidoscope editor lives inside it.
+                      selectStrip(affected.id);
                       onToggleKaleidoscope(affected.id, createDefaultKaleidoscope(affected.pixelCount));
                     }}>Reset and edit</button>
                   )}
@@ -1274,18 +1293,20 @@ export function DrawModePanel({
                   {groupedStrips.map((s, i) => {
                 const isSel = s.id === selStripId;
                 const isBatchSel = selectedStripIds.includes(s.id);
-                // The Selected strip module stays gated on this row's expander.
-                // The approved design shows it as a module that is simply
-                // present for the selected strip, and both ways of getting
-                // there were tried and backed out:
-                //   `expanded || selected` lets two details sit open at once,
-                //   and each carries its own GPIO picker and size field — two
-                //   controls with the same label and no way to tell which
-                //   strip you are about to change.
-                //   `selected` alone removes the independent expander, which
-                //   first-LED arming and the count-save flow both rely on.
-                // Neither is worth destabilising this panel for a click.
-                const isOpen = !!expandedStrips[s.id];
+                // The Selected strip module belongs to the selected strip, and
+                // to nothing else. It used to be driven by a per-row expander
+                // that drifted out of step with the selection: adding a second
+                // strip left the FIRST strip's panel open — the one no longer
+                // selected — while the newly selected strip showed no panel at
+                // all. Measured, not guessed.
+                //
+                // Following the selection rather than an expander also means it
+                // follows a strip picked on the artwork, not just one clicked in
+                // this list, and it guarantees exactly one panel. Two open at
+                // once put two "GPIO output" pickers and two size fields on
+                // screen with identical labels and no way to tell which strip
+                // was about to change.
+                const isOpen = s.id === panelStripId;
                 const selectedDensity = stripDensity(s.id);
                 const densityChoices = DENSITY_OPTIONS.includes(selectedDensity)
                   ? DENSITY_OPTIONS
@@ -1348,8 +1369,11 @@ export function DrawModePanel({
                                 outlineOffset: -1 }}
                        onClick={e => {
                          if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleStripSel(s.id); return; }
+                         // Selecting is the whole gesture now: the panel follows
+                         // the selection, so there is nothing left to toggle. It
+                         // used to toggle, which meant clicking the strip you
+                         // were working on closed its own readout.
                          selectStrip(s.id);
-                         setExpandedStrips(ex => ({ ...ex, [s.id]: !ex[s.id] }));
                        }}>
                       <span className="la-wire-n" title="Click and drag to change wiring order" style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
                         {String(i + 1).padStart(2, '0')}<DragHandleIcon/>
