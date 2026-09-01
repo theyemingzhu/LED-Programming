@@ -890,12 +890,36 @@ export function createCardLink({
     const pingHost = state.host;
     const epoch = visibilityEpoch;
     pinging = true;
+    const askOnce = () => sendRequest('status', { cache: 'no-store', nonce: Date.now() }, {
+      host: pingHost,
+      timeoutMs: pingTimeoutMs,
+      retryOnTimeout: false,
+    });
     try {
-      const readiness = await sendRequest('status', { cache: 'no-store', nonce: Date.now() }, {
-        host: pingHost,
-        timeoutMs: pingTimeoutMs,
-        retryOnTimeout: false,
-      });
+      let readiness;
+      try {
+        readiness = await askOnce();
+      } catch (firstError) {
+        // A keepalive asks 720 times an hour over WiFi, and one lost packet or
+        // one reply slower than the timeout is not evidence that the card went
+        // away — but it used to end the connection and discard the readiness
+        // envelope with it, which is what made Studio disconnect and reconnect
+        // while sitting still.
+        //
+        // So a MISS now means "asked twice, answered neither time". The state
+        // machine is untouched: a miss is still acted on the instant it is
+        // reported, so "connected" never claims more than was actually proven.
+        // The cost of the second ask is bounded by the same timeout, so a card
+        // that has genuinely gone is reported one timeout later than before.
+        //
+        // Two failures are NOT retried: a closed card page (bridge-missing /
+        // bridge-post-failed) is a fact, not a slow answer, and a probe that
+        // spanned a visibility change is already discarded below because the
+        // browser may simply have frozen our timers.
+        if (firstError?.reason === 'bridge-missing' || firstError?.reason === 'bridge-post-failed') throw firstError;
+        if (epoch !== visibilityEpoch || state.host !== pingHost || !bridgePingable()) throw firstError;
+        readiness = await askOnce();
+      }
       if (epoch === visibilityEpoch && state.host === pingHost && bridgePingable()) {
         dispatch({
           // Answering again after we had given up is a fresh verification, not
@@ -941,7 +965,10 @@ export function createCardLink({
     const pingHost = state.host;
     const epoch = visibilityEpoch;
     directPinging = true;
-    try {
+    const directPingable = () => state.state === 'connected-direct'
+      || state.state === 'reconnecting'
+      || (state.state === 'revalidating' && state.transport === 'direct');
+    const askDirectOnce = async () => {
       const fetcher = fetchImpl || (typeof globalThis !== 'undefined' ? globalThis.fetch : null);
       if (typeof fetcher !== 'function') throw new Error('fetch unavailable');
       const response = await Promise.race([
@@ -949,8 +976,20 @@ export function createCardLink({
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), pingTimeoutMs)),
       ]);
       if (!response?.ok) throw new Error('not ok');
-      const readiness = await response.json().catch(() => null);
-      if (!readiness) throw new Error('invalid status');
+      const body = await response.json().catch(() => null);
+      if (!body) throw new Error('invalid status');
+      return body;
+    };
+    try {
+      let readiness;
+      try {
+        readiness = await askDirectOnce();
+      } catch (firstError) {
+        // Same rule as the bridge: a miss means asked twice, answered neither
+        // time. See the comment there.
+        if (epoch !== visibilityEpoch || state.host !== pingHost || !directPingable()) throw firstError;
+        readiness = await askDirectOnce();
+      }
       if (epoch === visibilityEpoch && state.host === pingHost && (
         state.state === 'connected-direct'
         || state.state === 'reconnecting'

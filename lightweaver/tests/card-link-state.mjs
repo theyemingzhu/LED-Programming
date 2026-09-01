@@ -1611,4 +1611,56 @@ assert.equal(shared.getState().readiness, null,
   closed.destroy();
 }
 
+// ── keepalive: a miss means ASKED TWICE, answered neither time ──────────────
+// Studio pings a bridged card every 5s with a 2.5s timeout — 720 asks an hour
+// over WiFi. Scoring a miss on the first unanswered ask meant one lost packet
+// or one slow reply ended the connection and discarded the readiness envelope,
+// so Studio disconnected and reconnected while sitting still. The state
+// machine deliberately acts on a miss immediately (see "a miss is visible
+// immediately" above, which still stands); the tolerance belongs in the
+// transport, which now asks a second time before reporting one.
+{
+  const oneLostReply = (failAt) => {
+    let asks = 0;
+    const seen = [];
+    const link = createCardLink({
+      host: '192.168.4.1', pingIntervalMs: 5, pingTimeoutMs: 5, connectTimeoutMs: 100,
+      visibilityTarget: { hidden: false },
+      sendRequest: async () => {
+        const n = asks++;
+        if (failAt(n)) throw new Error('no answer');
+        return readyEnvelope('lw-keepalive');
+      },
+    });
+    // Snapshots cannot see this: after a drop the link re-verifies within a
+    // couple of ping intervals, so "still connected a moment later" is true
+    // with or without the retry. What must be asserted is that it never LEFT.
+    link.subscribe(next => { if (seen[seen.length - 1] !== next.state) seen.push(next.state); });
+    link.dispatch({
+      type: 'card-verified', via: 'bridge', host: '192.168.4.1',
+      card: { id: 'lw-keepalive' }, readiness: readyEnvelope('lw-keepalive'),
+    });
+    return { link, asks: () => asks, seen };
+  };
+
+  // One unanswered ask is absorbed by the retry: the link never drops, so the
+  // readiness envelope the rest of Studio depends on is never discarded.
+  const flaky = oneLostReply(n => n === 1);
+  await sleep(150);
+  assert.ok(flaky.asks() > 2, 'the keepalive actually ran');
+  assert.ok(!flaky.seen.includes('reconnecting-bridge'),
+    `a single lost reply must never drop an established link (saw: ${flaky.seen.join(' -> ')})`);
+  assert.equal(flaky.link.getState().state, 'connected-bridge');
+  assert.ok(flaky.link.getState().readiness, 'a tolerated miss keeps the readiness envelope');
+  flaky.link.destroy();
+
+  // A card that has genuinely stopped answering still lands in reconnecting —
+  // one timeout later than before, not never.
+  const gone = oneLostReply(n => n >= 1);
+  await waitFor(() => gone.link.getState().state === 'reconnecting-bridge', 2000,
+    'a card that answers neither ask still drops');
+  assert.ok(gone.asks() >= 2, 'the second ask is actually made before a miss is reported');
+  gone.link.destroy();
+}
+
 console.log('card-link-state tests passed');
