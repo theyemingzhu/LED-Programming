@@ -41,9 +41,14 @@ import './styles/v3-playlist-extra.css';
 // All of them are CSS over the existing markup, scoped to that screen's
 // root class, tokens only, so both themes keep working.
 import './styles/v3-console-shared.css';
-// Patterns and Playlist both render under .pm and share their parts, so
-// one layer dresses both and they cannot drift apart again.
+// Patterns and Playlist both render under .pm and share their parts. The
+// chrome they genuinely share lives in one file; each screen's own furniture
+// lives in its own, so the two can be worked on at the same time without two
+// people editing the same stylesheet. Load shared first — the per-screen
+// layers are written to override it.
 import './styles/v3-pm-console.css';
+import './styles/v3-patterns-console.css';
+import './styles/v3-playlist-console.css';
 // Show: chrome only — its selectable chips are drawn by an inline
 // chipStyle() in lw-show.jsx, which no stylesheet can reach.
 import './styles/v3-show-console.css';
