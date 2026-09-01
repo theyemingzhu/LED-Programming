@@ -705,11 +705,11 @@ export function LayoutCanvas({
               const len = Math.hypot(dx, dy) || 1;
               const nx = -dy / len;
               const ny = dx / len;
-              const reach = vbScale * 46;
+              const reach = selectionVbScale * 46;
               const tipX = mid.x + nx * reach;
               const tipY = mid.y + ny * reach;
               const toRight = nx >= 0;
-              const anchorX = tipX + (toRight ? vbScale * 6 : -vbScale * 6);
+              const anchorX = tipX + (toRight ? selectionVbScale * 6 : -selectionVbScale * 6);
 
               // Spacing is the drawn length shared between the gaps. A strip
               // with no drawn length has none to state, so it says nothing
@@ -732,20 +732,20 @@ export function LayoutCanvas({
                    opacity={s.id === selStripId ? 1 : 0.66}>
                   <line x1={mid.x} y1={mid.y} x2={tipX} y2={tipY}
                         stroke={s.id === selStripId ? s.color : 'oklch(0.52 0.012 75)'}
-                        strokeWidth={vbScale * 0.9}/>
-                  <circle cx={tipX} cy={tipY} r={vbScale * 1.8}
+                        strokeWidth={selectionVbScale * 0.9}/>
+                  <circle cx={tipX} cy={tipY} r={selectionVbScale * 1.8}
                           fill={s.id === selStripId ? s.color : 'oklch(0.60 0.012 75)'}/>
-                  <text x={anchorX} y={tipY - vbScale * 1}
+                  <text x={anchorX} y={tipY - selectionVbScale * 1}
                         textAnchor={toRight ? 'start' : 'end'}
                         fontFamily="var(--font-mono, monospace)"
-                        fontSize={vbScale * 9}
+                        fontSize={selectionVbScale * 9}
                         fill={s.id === selStripId ? 'oklch(0.945 0.006 80)' : 'oklch(0.72 0.009 78)'}>
                     {s.name}
                   </text>
-                  <text x={anchorX} y={tipY + vbScale * 10}
+                  <text x={anchorX} y={tipY + selectionVbScale * 10}
                         textAnchor={toRight ? 'start' : 'end'}
                         fontFamily="var(--font-mono, monospace)"
-                        fontSize={vbScale * 7.5}
+                        fontSize={selectionVbScale * 7.5}
                         fill="oklch(0.56 0.009 75)">
                     {detail}
                   </text>
