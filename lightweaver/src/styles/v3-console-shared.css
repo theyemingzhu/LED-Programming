@@ -38,7 +38,7 @@
   --lw-lift: 0 3px 8px oklch(0.05 0.005 60 / 0.38);
   --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 12px 26px oklch(0.05 0.005 60 / 0.32);
   /* The schematic layer: a faint measured field behind a panel body. */
-  --lw-graph: oklch(1 0 0 / 0.014);
+  --lw-graph: oklch(1 0 0 / 0.030);
   --lw-graph-step: 26px;
 }
 
@@ -57,7 +57,7 @@
   --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.55);
   --lw-lift: 0 2px 5px oklch(0.40 0.010 75 / 0.14);
   --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.6), 0 8px 20px oklch(0.40 0.010 75 / 0.10);
-  --lw-graph: oklch(0.30 0.010 75 / 0.035);
+  --lw-graph: oklch(0.30 0.010 75 / 0.055);
 }
 
 /* The status light is a ::before on whichever head carries it — .sec-h on

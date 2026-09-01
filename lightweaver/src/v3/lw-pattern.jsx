@@ -875,11 +875,40 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (q && !p.label.toLowerCase().includes(q.toLowerCase())) return false;
       return true;
     });
+    // Page in the next block when the reader ARRIVES at the end of the list —
+    // not merely whenever we happen to be observing while already there.
+    //
+    // IntersectionObserver reports the current state the moment you observe, and
+    // this effect re-observes on every change to `filtered.length`. Saving a look
+    // changes that length, so the re-observe reported "still intersecting" and
+    // paged in another 24 for an action that has nothing to do with scrolling.
+    // The sentinel only came within the 600px margin at rest once the design
+    // target moved below the bank and the grid rose up the page; before that the
+    // bug was simply out of reach.
+    //
+    // So: fire on the EDGE, not the level. A first report is remembered, never
+    // acted on; paging happens when the sentinel goes from out of range to in.
+    // The "Show more" and "Show all" buttons remain for anyone already at the
+    // end, so nothing is unreachable without scrolling.
     useEffect(() => {
       const node = patternSentinelRef.current;
       if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+      // An observer reports the current state the instant you observe, and this
+      // effect re-observes on every change to `filtered.length`. Saving a look
+      // changes that length, so the re-observe answered "you are at the end" and
+      // paged in another 24 for an action that involved no scrolling at all.
+      // That only became reachable once the design target moved below the bank
+      // and the grid rose into the 600px margin; the bug predates the move.
+      //
+      // The opening report describes where the reader already is, not somewhere
+      // they have arrived, so it is recorded and never acted on. Every later
+      // report is a real scroll. "Show more" and "Show all" stay for anyone
+      // sitting at the end already, so nothing needs scrolling to be reached.
+      let primed = false;
       const observer = new IntersectionObserver(entries => {
-        if (entries.some(entry => entry.isIntersecting)) {
+        const atEnd = entries.some(entry => entry.isIntersecting);
+        if (!primed) { primed = true; return; }
+        if (atEnd) {
           setVisibleCount(count => Math.min(filtered.length, count + PATTERN_PAGE));
         }
       }, { rootMargin: '600px 0px' });
@@ -2088,51 +2117,18 @@ import { PatternPreview } from './PatternPreview.jsx';
             <div className="pm-grid">
               {/* MAIN */}
               <section className="pm-main">
-                <div className="sec-h"><span className="t">Tap a pattern to preview</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready + {realMixes.length} mixes / {playlistSize} in playlist</span><span className="line" /></div>
-
-                {/* Was: a "Preview taps on the LED card" checkbox. There is no
-                    moment in this screen's job where a tap should not reach the
-                    card — it is the scratchpad for trying patterns on the real
-                    strip — and an off checkbox only produced taps that looked
-                    broken. Every tap sends. */}
-                <div className="pm-livebar">
-                  <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
-                </div>
-
-                {/* design target */}
-                <div className="pm-target">
-                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
-                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
-                  {sectionTargets.length > 1 &&
-                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
-                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
-                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
-                      )}
-                    </div>
-                  }
-                  <div className="pm-mixbar">
-                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
-                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
-                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
-                  </div>
-                  <div className="pm-targetcard">
-                    <div className="tc-head">
-                      <button className="tc-all on">ALL</button>
-                      <div className="tc-name"><span className="lab">Target</span><strong>{selectedTargetName}</strong></div>
-                      <div className="tc-total"><span className="lab">Total</span><strong>{targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                    <div className="tc-layer">
-                      <span className="tc-num">1</span>
-                      <div className="tc-name"><span className="lab">Layer</span><strong>{selectedTarget?.kind === 'section' ? targetLabel(selectedTarget) : 'Strip 1'}</strong></div>
-                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* browse */}
                 <div className="pm-browse" style={{ margin: "5px 0px 0px" }}>
+                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready + {realMixes.length} mixes / {playlistSize} in playlist</span><span className="line" /></div>
+
+                  {/* Was: a "Preview taps on the LED card" checkbox. There is no
+                      moment in this screen's job where a tap should not reach the
+                      card — it is the scratchpad for trying patterns on the real
+                      strip — and an off checkbox only produced taps that looked
+                      broken. Every tap sends. */}
+                  <div className="pm-livebar">
+                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
+                  </div>
                   <div className="search" style={{ maxWidth: "none", marginBottom: 10 }}>{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
                   <div className="pt-tools" style={{ padding: "0px", margin: "0px 0px 10px" }}>
                     <div className="chips">
@@ -2170,11 +2166,16 @@ import { PatternPreview } from './PatternPreview.jsx';
                             Speed is a property of the preview you are looking
                             at, the star is the action — each now sits where it
                             belongs. */}
-                        <div className="pmcard-led"><LedRow pal={p.pal} n={9} /><span className="pmcard-sp">{p.sp}</span></div>
+                        {/* The tempo used to ride the tile's top-right corner. It reads
+                            as a caption on the pattern, not a label on the picture, so it
+                            sits with the name alongside the mood the pattern is filed
+                            under — the two facts you sort by. */}
+                        <div className="pmcard-led"><LedRow pal={p.pal} n={11} /></div>
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
                           {p.mix && <span className="mixtag">mix</span>}
                         </div>
+                        <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
                       </button>
                         {/* Rides the top-right corner of the card's LED window
                             instead of a full-width row underneath it. Same tap
@@ -2210,6 +2211,39 @@ import { PatternPreview } from './PatternPreview.jsx';
                     </div>
                   }
                 </div>
+
+                {/* design target */}
+                <div className="pm-target">
+                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
+                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
+                  {sectionTargets.length > 1 &&
+                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
+                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
+                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
+                      )}
+                    </div>
+                  }
+                  <div className="pm-mixbar">
+                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
+                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
+                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
+                  </div>
+                  <div className="pm-targetcard">
+                    <div className="tc-head">
+                      <button className="tc-all on">ALL</button>
+                      <div className="tc-name"><span className="lab">Target</span><strong>{selectedTargetName}</strong></div>
+                      <div className="tc-total"><span className="lab">Total</span><strong>{targetTotal}</strong></div>
+                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
+                    </div>
+                    <div className="tc-layer">
+                      <span className="tc-num">1</span>
+                      <div className="tc-name"><span className="lab">Layer</span><strong>{selectedTarget?.kind === 'section' ? targetLabel(selectedTarget) : 'Strip 1'}</strong></div>
+                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
+                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
+                    </div>
+                  </div>
+                </div>
+
               </section>
 
               {/* ASIDE */}
