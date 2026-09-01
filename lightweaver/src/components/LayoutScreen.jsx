@@ -232,6 +232,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   const canvasProps = {
     refs: { svgRef, artworkRef, vpRef, spaceRef, stripDragSuppressClickRef },
     strips: state.starterLayoutActive && mode === 'draw' ? [] : strips, layers, hidden,
+    // The canvas labels each strip with its pitch, which is its drawn length
+    // divided by the gaps between its lights — so it needs the drawing scale.
+    pxPerMm: state.pxPerMm,
     starterGhost,
     viewBox, computedViewBox, vbScale, svgText, artworkHTML, totalLeds,
     selection: { selStripId, selLayer, pathSel, selectedPathDecorations, existingStrip },
