@@ -597,3 +597,225 @@
   .la .la-strip-detail .lw-sel-grid .la-gpio-select { min-height: 44px; height: 44px; }
   .la .la-strip-detail .actions .btn { min-height: 44px; }
 }
+
+/* ── Read-outs fold; tools do not ─────────────────────────────────────────
+   The side column mixes two kinds of panel. Wire plan, Strip schedule and
+   Build sheet are things to LOOK AT — there is nothing on them to press — so
+   each is a <details> whose head carries its summary when shut. Wire tools is
+   the opposite: every row changes the design, so it is a plain panel that is
+   always open, and it now sits on its own instead of being a disclosure
+   buried between two read-outs. */
+.la .lwbs > summary.panel-head,
+.la .lww-plan > summary.panel-head {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.la .lwbs > summary.panel-head::-webkit-details-marker,
+.la .lww-plan > summary.panel-head::-webkit-details-marker { display: none; }
+
+/* One chevron, rotated when open — the only thing added to the head, so the
+   title and its meta keep the exact position they had as a static bar. */
+.la .lwbs > summary.panel-head::after,
+.la .lww-plan > summary.panel-head::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: 10px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--lw-text-lo, currentColor);
+  border-bottom: 1.5px solid var(--lw-text-lo, currentColor);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 140ms ease;
+}
+.la .lwbs[open] > summary.panel-head::after,
+.la .lww-plan[open] > summary.panel-head::after {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+.la .lwbs > summary.panel-head:hover,
+.la .lww-plan > summary.panel-head:hover { color: var(--lw-text-hi, inherit); }
+.la .lwbs > summary.panel-head:focus-visible,
+.la .lww-plan > summary.panel-head:focus-visible {
+  outline: 2px solid var(--lw-live, currentColor);
+  outline-offset: -2px;
+}
+
+/* Wire tools reads as a panel in its own right now. */
+.la .lww-tools-panel { margin-top: 12px; }
+
+/* The wire-plan head flips to a column under 320px (lw-wire.css container
+   query) so its long meta line can wrap. That put the fold chevron on a row
+   of its own, centred under the text. Pinning it to the head's top-right
+   keeps one arrow in one place at every width — and the head is the click
+   target either way, so nothing moves for the reader. */
+.la .lww-plan > summary.panel-head { position: relative; padding-right: 26px; }
+.la .lww-plan > summary.panel-head::after {
+  position: absolute;
+  right: 12px;
+  top: 14px;
+  margin-left: 0;
+}
+
+/* ── Wire tools: the panel you operate ────────────────────────────────────
+   This was a disclosure that had grown a chipset row, three buttons, a
+   discovery block and two more nested disclosures, none of them styled — bare
+   summaries floating in 44px of empty space, a select clipped mid-word, and
+   full-width slabs where the rest of Studio uses buttons. It reads as a panel
+   now, in the same vocabulary as everything beside it: framed, one head, a
+   single fold idiom, one vertical rhythm. */
+.la .lww-tools-panel {
+  margin: 0 16px 16px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+  overflow: hidden;
+}
+.la .lww-tools-panel > .panel-head::before { background: var(--lw-clay, var(--accent)); }
+
+.la .lww-tools-panel .lww-advanced-tools-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+/* Chipset: label above control. Side by side in a 227px column left the
+   select about 130px wide, clipping the part chosen ("WS2815 — 12V st…"),
+   which is the only part of it worth reading. */
+.la .lww-tools-panel .la-led-chipset-row { display: block; min-width: 0; }
+.la .lww-tools-panel .la-led-chipset {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.la .lww-tools-panel .la-led-chipset .k {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.la .lww-tools-panel .la-gpio-wrap { min-width: 0; }
+
+/* The column is ~300px. A head meta that does not fit is worse than none:
+   "changes the d…" says nothing the title has not already said. */
+@container (max-width: 340px) {
+  .la .lww-tools-panel > .panel-head .meta { display: none; }
+}
+.la .lww-tools-panel select,
+.la .lww-tools-panel input[type="number"],
+.la .lww-tools-panel input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background: var(--bg-canvas);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+/* Buttons sit on a row and take their own width, as they do everywhere else
+   in Studio. Full-bleed slabs read as primary actions, and none of these are. */
+.la .lww-tools-panel .btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.la .lww-tools-panel .lww-specialist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-template-columns: none;
+}
+
+/* One fold idiom for the whole screen: hairline above, mono label, chevron
+   right. These used to be unmarked text with no hint they opened at all. */
+.la .lww-tools-panel details { min-width: 0; border-top: 1px solid var(--border-hair); }
+.la .lww-tools-panel details > summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 22px 0 0;
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.la .lww-tools-panel details > summary::-webkit-details-marker { display: none; }
+.la .lww-tools-panel details > summary::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 15px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 140ms ease;
+}
+.la .lww-tools-panel details[open] > summary::after { transform: rotate(225deg); }
+.la .lww-tools-panel details > summary:hover { color: var(--text-hi); }
+.la .lww-tools-panel details > summary:focus-visible {
+  outline: 2px solid var(--lw-live, currentColor);
+  outline-offset: -2px;
+}
+.la .lww-tools-panel details > :not(summary) {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0 12px;
+}
+
+/* Field stacks inside the folds — label above control, never side by side in
+   a 300px column where the control ends up 60px wide. */
+.la .lww-tools-panel details label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.la .lww-tools-panel .lww-power-fields,
+.la .lww-tools-panel .lww-wiring-fields { display: grid; gap: 8px; }
+
+/* Alignment. The wire panel carries 13px of side padding, so anything inside
+   it starts indented from the Strip schedule and Build sheet, which are its
+   siblings in the column. Wire plan was inset 14px and Wire tools 30px — three
+   panels doing the same job, none of their left edges agreeing. Both are
+   pulled back out to the column's own edge. */
+/* Wire plan and Wire tools sit inside a wrapper that carries 13px of side
+   padding, so their edges land at 1151/1410 while the Strip schedule and
+   Build sheet — siblings of that wrapper — sit at 1137/1424. Rather than
+   fight the wrapper's padding (it also spaces the two loose paragraphs
+   inside it), the outer two are inset to meet the inner two. Four panels,
+   one left edge. */
+.la .la-wire-panel > .lww-tools-panel { margin: 0; }
+.la .lwbs { margin-left: 30px; margin-right: 30px; }
+
+/* The plan's summary is its whole content when shut — "2 strips · 44 LEDs in
+   this design" clipped to "…in this desi…" is the one line that had to fit. */
+.la .lww-plan > summary.panel-head .meta {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}

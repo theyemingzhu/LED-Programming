@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { choosePattern, openControls } from './helpers/pattern-lab.ts';
+import { choosePattern, openControls, openStep } from './helpers/pattern-lab.ts';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
@@ -70,6 +70,8 @@ test('chooses and sculpts a living simulation through the simple Pattern Lab con
   // before reaching in, same as the initial choosePattern() call does.
   await openControls(page);
   await page.getByRole('button', { name: /Open Particle Drift/ }).click();
+  // Reopening a draft lands on Choose; its sliders are read back from Sculpt.
+  await openStep(page, 'sculpt');
   await expect(page.getByRole('slider', { name: 'Particle count' })).toHaveValue('48');
   const sourceSnapshot = JSON.parse(
     await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot') || '{}',

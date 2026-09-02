@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { choosePattern } from './helpers/pattern-lab.ts';
+import { choosePattern, openStep } from './helpers/pattern-lab.ts';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
@@ -741,6 +741,9 @@ test('terminates a timed-out worker while retaining the last valid frame and res
     (window as typeof window & { __LW_PATTERN_LAB_WORKER_TEST_MODE__?: unknown })
       .__LW_PATTERN_LAB_WORKER_TEST_MODE__ = { kind: 'loop' };
   });
+  // Beginning/Middle/End are Evolve's, and the ladder only renders the open
+  // step's controls — choosePattern leaves you in Sculpt.
+  await openStep(page, 'evolve');
   await page.getByRole('button', { name: 'Middle', exact: true }).click();
   // 'timeout' is a TRANSIENT state on the way to a replacement, and it is reached only
   // after three missed 400ms deadlines. A 3000ms exact-match therefore raced twice over:
@@ -753,6 +756,10 @@ test('terminates a timed-out worker while retaining the last valid frame and res
     .toMatch(/timeout|worker-error|failure/);
   await expect(preview).toHaveAttribute('data-worker-frame-id', frameId || '');
 
+  // Back to Sculpt for the colour slider — the point of this line is that the
+  // controls still respond after a worker was killed, and reaching them is the
+  // same two clicks it is for an owner.
+  await openStep(page, 'sculpt');
   await page.getByRole('slider', { name: 'Color', exact: true }).fill('71');
   await expect(page.getByLabel('Color value', { exact: true })).toHaveText('71%');
   const retainedCanvas = await preview.locator('canvas').evaluate(canvas => canvas.toDataURL());
@@ -1211,6 +1218,9 @@ test('gives up on a pattern that never finishes a frame instead of respawning fo
     (window as typeof window & { __LW_PATTERN_LAB_WORKER_TEST_MODE__?: unknown })
       .__LW_PATTERN_LAB_WORKER_TEST_MODE__ = { kind: 'loop' };
   });
+  // Beginning/Middle/End are Evolve's, and the ladder only renders the open
+  // step's controls — choosePattern leaves you in Sculpt.
+  await openStep(page, 'evolve');
   await page.getByRole('button', { name: 'Middle', exact: true }).click();
 
   await expect(preview).toHaveAttribute('data-worker-failure', 'pattern-too-heavy', { timeout: 20_000 });

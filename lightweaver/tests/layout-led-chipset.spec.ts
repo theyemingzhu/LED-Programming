@@ -39,18 +39,16 @@ test('a chipset picked in the starter persists into the project and reaches the 
 
   await picker.getByRole('button', { name: 'Create line' }).click();
 
-  // The chipset is an advanced control and must not be surfaced until Wire
-  // tools is opened. It used to be absent from the DOM because reaching the
-  // Wire panel took a mode click; the Wire plan tools now render with Layout,
-  // so the control is present-but-hidden inside the closed <details>. Hidden
-  // is the guarantee — a closed <details> renders its children, which is the
-  // same fact that let a drifted project crash Card Home from inside a fold.
+  // The chipset used to be hidden until a "Wire tools" disclosure was opened,
+  // on the reading that it is an advanced control. Wire tools is now a panel
+  // in its own right rather than a fold, because everything in it CHANGES the
+  // design — it was the one interactive thing on this column and it sat
+  // collapsed between two read-outs you cannot operate at all. So the chipset
+  // is simply on screen, and what this test guards is unchanged: the starter's
+  // choice reaches the project's control and is what gets saved.
   const projectChipset = page.getByTestId('project-led-chipset');
-  await expect(projectChipset).toBeHidden();
-  await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
-  const advancedChipset = page.getByTestId('project-led-chipset');
-  await expect(advancedChipset).toBeVisible();
-  await expect(advancedChipset.getByTestId('led-chipset-select')).toHaveValue('WS2812B');
+  await expect(projectChipset).toBeVisible();
+  await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2812B');
 
   await expect.poll(() => savedLedType(page)).toBe('WS2812B');
 });
@@ -58,7 +56,6 @@ test('a chipset picked in the starter persists into the project and reaches the 
 test('changing the chipset after the layout exists survives a reload', async ({ page }) => {
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
-  await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
 
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2815');
@@ -66,7 +63,6 @@ test('changing the chipset after the layout exists survives a reload', async ({ 
   await expect.poll(() => savedLedType(page)).toBe('WS2812B');
 
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
   await expect(page.getByTestId('project-led-chipset').getByTestId('led-chipset-select'))
     .toHaveValue('WS2812B');
 });

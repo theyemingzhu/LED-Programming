@@ -2,7 +2,7 @@ import { type Route } from '@playwright/test';
 import { test, expect } from './studioTest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { choosePattern, closeControls, patternSearchInput } from './helpers/pattern-lab.ts';
+import { choosePattern, closeControls, openStep, patternSearchInput, pickPatternTile } from './helpers/pattern-lab.ts';
 
 const AUTOSAVE_KEY = 'lw_autosave_v3';
 const PREVIEW_SOURCE = await readFile(fileURLToPath(new URL('../src/v3/PatternPreview.jsx', import.meta.url)), 'utf8');
@@ -191,21 +191,35 @@ test('keeps the active Inspector band synchronized with direct focus and workflo
   await expect(choose).toHaveAttribute('data-active', 'true');
   await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
 
-  await choosePattern(page, 'aurora');
+  // The raw pick, because the point of this line is that picking a pattern
+  // does NOT move the band — choosePattern deliberately opens Sculpt after.
+  await pickPatternTile(page, 'aurora');
   await expect(choose).toHaveAttribute('data-active', 'true');
   await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
 
-  await page.getByRole('slider', { name: 'Color', exact: true }).focus();
+  // The inspector is a ladder now: one step shows its controls and the rest
+  // are headings carrying their value. So a control in a CLOSED step cannot
+  // be focused into — it is not rendered — and this used to reach the Color
+  // slider while Choose was open. Opening the step is the act that moves the
+  // band; focus within the open step keeps it there. Both halves still get
+  // asserted, which is what this test is for.
+  await sculpt.locator('.plab-step-open').click();
   await expect(sculpt).toHaveAttribute('data-active', 'true');
   await expect(workflow.getByRole('button', { name: 'Sculpt' })).toHaveAttribute('aria-current', 'step');
+  await page.getByRole('slider', { name: 'Color', exact: true }).focus();
+  await expect(sculpt).toHaveAttribute('data-active', 'true');
 
   await workflow.getByRole('button', { name: 'Evolve' }).click();
   await expect(evolve).toHaveAttribute('data-active', 'true');
   await expect(workflow.getByRole('button', { name: 'Evolve' })).toHaveAttribute('aria-current', 'step');
+  // Sculpt's controls stood down when Evolve took the floor.
+  await expect(sculpt.locator('.plab-compact-step-body')).toBeHidden();
 
-  await patternSearchInput(page).focus();
+  await workflow.getByRole('button', { name: 'Choose' }).click();
   await expect(choose).toHaveAttribute('data-active', 'true');
   await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
+  await patternSearchInput(page).focus();
+  await expect(choose).toHaveAttribute('data-active', 'true');
 });
 
 test('gives pattern and control changes one bounded preview response with local acknowledgment', async ({ page }) => {
@@ -243,6 +257,11 @@ test('gives pattern and control changes one bounded preview response with local 
 
 test('reveals Long Evolution controls with transform and opacity, then removes motion when requested', async ({ page }) => {
   await choosePattern(page, 'aurora');
+  // Evolve's controls only exist while Evolve is the open step — the reveal
+  // being measured here is a real transition on a rendered element, and a
+  // collapsed step reports `transform: none` because it is not laid out at
+  // all. Opening it is a precondition of the measurement, not a weakening.
+  await page.getByTestId('pattern-lab-step-evolve').locator('.plab-step-open').click();
   const evolutionFields = page.getByTestId('pattern-lab-evolution-fields');
   const evolutionToggle = page.getByRole('checkbox', { name: /Long Evolution/ });
 
@@ -267,6 +286,7 @@ test('reveals Long Evolution controls with transform and opacity, then removes m
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await choosePattern(page, 'aurora');
+  await page.getByTestId('pattern-lab-step-evolve').locator('.plab-step-open').click();
   const reducedFields = page.getByTestId('pattern-lab-evolution-fields');
   const reducedResponse = page.getByTestId('pattern-lab-preview-response');
   const reducedStyles = await reducedFields.evaluate(element => {
@@ -305,6 +325,7 @@ test('creates, compares, and reopens a long private pattern without changing the
   await expect(page.getByLabel('Color value', { exact: true })).toHaveText('72%');
 
   await page.getByRole('checkbox', { name: /Long Evolution/ }).check();
+  await openStep(page, 'evolve');
   await page.getByLabel('Evolution character').selectOption('tidal');
   await page.getByLabel('Duration (minutes)').fill('10');
   await page.getByLabel('Change amount').fill('48');
@@ -321,8 +342,12 @@ test('creates, compares, and reopens a long private pattern without changing the
   await expect(page.getByTestId('pattern-lab-save-status')).toContainText('Saved privately');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: /Open Aurora/ }).click();
+  // Reopening a draft lands on Choose, so each step is opened to read back
+  // what it kept — the same two clicks an owner makes to check their work.
+  await openStep(page, 'evolve');
   await expect(page.getByLabel('Evolution character')).toHaveValue('tidal');
   await expect(page.getByLabel('Duration (minutes)')).toHaveValue('10');
+  await openStep(page, 'sculpt');
   await expect(page.getByRole('slider', { name: 'Color', exact: true })).toHaveValue('72');
 
   await expect.poll(() => page.evaluate(key => localStorage.getItem(key), AUTOSAVE_KEY)).toBe(projectBefore);
@@ -331,6 +356,7 @@ test('creates, compares, and reopens a long private pattern without changing the
 
 test('derives offline audio lanes locally and marks the recipe as bake-only', async ({ page }) => {
   await choosePattern(page, 'aurora');
+  await openStep(page, 'evolve');
   await page.getByText('Offline audio lanes').click();
   await page.getByLabel('WAV audio file').setInputFiles({
     name: 'private-song.wav',
@@ -374,6 +400,7 @@ test('derives offline audio lanes locally and marks the recipe as bake-only', as
 
 test('Play advances one bounded journey clock and Pause preserves it', async ({ page }) => {
   await choosePattern(page, 'aurora');
+  await openStep(page, 'evolve');
   await page.getByRole('checkbox', { name: /Long Evolution/ }).check();
   await page.getByLabel('Duration (minutes)').fill('5');
   await page.getByRole('button', { name: 'Middle', exact: true }).click();

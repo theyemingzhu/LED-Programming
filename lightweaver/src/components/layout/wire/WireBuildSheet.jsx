@@ -51,14 +51,18 @@ export function WireBuildSheet({ state }) {
 
   return (
     <>
-      <section className="lwbs lwbs-schedule" aria-label="Strip schedule" data-testid="strip-schedule">
-        <div className="panel-head">
+      {/* Both read-outs fold. Neither is a control — you cannot click a row
+          into doing anything — so leaving them permanently open spent the
+          whole side column on reference while Wire tools, the one panel here
+          you actually operate, sat collapsed between them. */}
+      <details className="lwbs lwbs-schedule" aria-label="Strip schedule" data-testid="strip-schedule">
+        <summary className="panel-head">
           <span className="ttl">Strip schedule</span>
           {/* The count lives on the sheet's Total line; repeating it here only
               made the bar too long for a 300px column and clipped the words
               that say which order these are in. */}
           <span className="meta">{sheet.planned ? 'wire order' : 'drawing order'}</span>
-        </div>
+        </summary>
         <table className="lwbs-table">
           <thead>
             <tr>
@@ -80,15 +84,15 @@ export function WireBuildSheet({ state }) {
             addresses will follow whatever order you solder in.
           </p>
         )}
-      </section>
+      </details>
 
-      <section className="lwbs lwbs-sheet" aria-label="Build sheet" data-testid="build-sheet">
-        <div className="panel-head">
+      <details className="lwbs lwbs-sheet" aria-label="Build sheet" data-testid="build-sheet">
+        <summary className="panel-head">
           <span className="ttl">Build sheet</span>
           <span className="meta">
             {sheet.continuous ? 'continuous run' : `${sheet.outputs.length} data lines`}
           </span>
-        </div>
+        </summary>
         <dl className="lwbs-facts">
           <dt>Run</dt>
           <dd data-testid="sheet-run">
@@ -122,7 +126,7 @@ export function WireBuildSheet({ state }) {
             )}
           </dd>
         </dl>
-      </section>
+      </details>
     </>
   );
 }
