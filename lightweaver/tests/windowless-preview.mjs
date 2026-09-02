@@ -1,9 +1,15 @@
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const port = Number(process.argv[2]);
-const root = resolve(new URL('../dist', import.meta.url).pathname);
+// fileURLToPath, not .pathname: a URL's pathname keeps percent-encoding, so a
+// checkout under a directory with a space in it ("…/2 Areas/…") resolved to a
+// root containing a literal %20, every request 404'd, and the server answered
+// with nothing — the offline test failed with ERR_EMPTY_RESPONSE on the very
+// first page load. CI paths have no spaces, so it only ever broke locally.
+const root = resolve(fileURLToPath(new URL('../dist', import.meta.url)));
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
