@@ -85,9 +85,12 @@ test('a wrong GPIO is still a fault, because nothing lights at all', async ({ pa
   await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
 });
 
-test('counting what is plugged in lives with Advanced installation tools', async ({ page }) => {
+test('counting what is plugged in lives with the Wire tools', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 18, countedPin: 18, countedPixels: 41 }));
-  await expect(page.getByTestId('wire-recount')).toBeHidden();
-  await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
-  await expect(page.getByTestId('wire-recount')).toBeVisible();
+  // It no longer waits behind a disclosure — Wire tools is a panel of its own
+  // — but WHERE it lives is still the point: with the controls that change the
+  // design, not among the read-outs.
+  const tools = page.getByTestId('advanced-installation-tools');
+  await expect(tools).toBeVisible();
+  await expect(tools.getByTestId('wire-recount')).toBeVisible();
 });

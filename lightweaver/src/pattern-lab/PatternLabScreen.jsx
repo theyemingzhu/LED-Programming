@@ -41,6 +41,7 @@ import PatternLabControls from './PatternLabControls.jsx';
 import PatternLabDiagnostics from './PatternLabDiagnostics.jsx';
 import PatternLabEvolution from './PatternLabEvolution.jsx';
 import PatternLabExport from './PatternLabExport.jsx';
+import PatternLabJourney from './PatternLabJourney.jsx';
 import PatternLabPreview from './PatternLabPreview.jsx';
 import './pattern-lab.css';
 
@@ -486,6 +487,17 @@ export default function PatternLabScreen() {
   //            anyway and a focus trap is then the honest behaviour.
   const [sheetDetent, setSheetDetent] = useState('closed');
   const [activeWorkflowStep, setActiveWorkflowStep] = useState(0);
+  // Which step the ladder holds OPEN, which is not always the step the toolbar
+  // is highlighting. Saving a draft moves the band to Save (step 3), and Save
+  // is a library plus an action bar rather than a step with a body — so
+  // following the band there would collapse Choose, Sculpt AND Evolve and
+  // leave the inspector showing three headings and nothing else. It keeps the
+  // last content step instead, so saving does not take away what you were
+  // working on.
+  const [openInspectorStep, setOpenInspectorStep] = useState(0);
+  useEffect(() => {
+    if (activeWorkflowStep >= 0 && activeWorkflowStep <= 2) setOpenInspectorStep(activeWorkflowStep);
+  }, [activeWorkflowStep]);
   const [instrumentResponse, setInstrumentResponse] = useState({
     sequence: 0,
     kind: null,
@@ -821,6 +833,15 @@ export default function PatternLabScreen() {
   }
 
   function activateInspectorStep(event) {
+    // Headings are exempt, on both the pointer and the focus path. Once only
+    // the open step shows its body, changing the step from a heading re-flows
+    // the column while the press is still in progress — pressing the Long
+    // Evolution checkbox in Evolve's heading opened Evolve, which moved the
+    // checkbox out from under the pointer, so the toggle never flipped.
+    // Opening a step is what the heading's own button is for; this handler is
+    // for the controls INSIDE a body, where working in them genuinely does
+    // mean that step is the one in hand.
+    if (event.target.closest?.('.plab-compact-step-heading')) return;
     const section = event.target.closest?.('[data-workflow-step]');
     const step = Number(section?.dataset.workflowStep);
     if (Number.isInteger(step) && step >= 0 && step <= 2) setActiveWorkflowStep(step);
@@ -1571,6 +1592,21 @@ export default function PatternLabScreen() {
             </div>
           </div>
 
+          {/* The journey appears under the artwork only while Evolve is the
+              open step. It is the one control in the Lab that genuinely needs
+              width, and a permanent strip would have cost the artwork a third
+              of its height for the three quarters of the time you are not
+              building a journey. On a phone the sheet already owns the bottom
+              of the screen, so there is nowhere for this to go and Evolve
+              keeps its own scrub. */}
+          {!mobileDrawer && openInspectorStep === 2 && draft && (
+            <PatternLabJourney
+              recipe={draft}
+              previewTime={previewTime}
+              onPreviewTime={changePreviewTime}
+            />
+          )}
+
           {sheetModal && (
             <button className="plab-drawer-backdrop" type="button" aria-label="Dismiss pattern controls" onClick={closeDrawer} />
           )}
@@ -1631,8 +1667,9 @@ export default function PatternLabScreen() {
                 pieceColorHue={draft ? paletteBaseHue(draft.palette) : 30}
                 onAdvancedChange={changeAdvanced}
                 onParamChange={changeParam}
-                activeWorkflowStep={activeWorkflowStep}
+                activeWorkflowStep={openInspectorStep}
                 instrumentResponse={instrumentResponse}
+                onOpenStep={openWorkflowStep}
               />
             </div>
             <PatternLabEvolution
@@ -1641,8 +1678,9 @@ export default function PatternLabScreen() {
               onEvolutionChange={changeEvolution}
               onPreviewTime={changePreviewTime}
               onAudioAnalysis={changeAudioAnalysis}
-              activeWorkflowStep={activeWorkflowStep}
+              activeWorkflowStep={openInspectorStep}
               instrumentResponse={instrumentResponse}
+              onOpenStep={openWorkflowStep}
             />
 
             {draft && (

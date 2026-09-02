@@ -378,6 +378,19 @@ import { PatternPreview } from './PatternPreview.jsx';
     // preview on narrow screens). Resets whenever the filter or search changes.
     const PATTERN_PAGE = 24;
     const [visibleCount, setVisibleCount] = useState(PATTERN_PAGE);
+    // Beads or gradient for the bank's swatches. Same colours either way —
+    // ledColors interpolates each pattern's own palette — so this is a
+    // rendering choice, not two sets of artwork. Remembered per browser
+    // because it is a preference about how you read the bank, not a property
+    // of the project.
+    const [ledMode, setLedMode] = useState(() => {
+      try { return localStorage.getItem('lw_led_mode') === 'gradient' ? 'gradient' : 'beads'; }
+      catch { return 'beads'; }
+    });
+    const chooseLedMode = mode => {
+      setLedMode(mode);
+      try { localStorage.setItem('lw_led_mode', mode); } catch { /* private mode */ }
+    };
     const patternSentinelRef = useRef(null);
     useEffect(() => { setVisibleCount(PATTERN_PAGE); }, [cat, q]);
     useEffect(() => {
@@ -2167,7 +2180,15 @@ import { PatternPreview } from './PatternPreview.jsx';
                       and the counts pushed right. The counts are read with a
                       single separator so the bar scans as one sentence rather
                       than a sum and a fraction. */}
-                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready · {realMixes.length} mixes · {playlistSize} in playlist</span><span className="line" /></div>
+                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready · {realMixes.length} mixes · {playlistSize} in playlist</span>
+                    <div className="pm-ledmode" role="group" aria-label="Swatch style">
+                      <button type="button" aria-pressed={ledMode === 'beads'}
+                              className={ledMode === 'beads' ? 'on' : undefined}
+                              onClick={() => chooseLedMode('beads')}>Beads</button>
+                      <button type="button" aria-pressed={ledMode === 'gradient'}
+                              className={ledMode === 'gradient' ? 'on' : undefined}
+                              onClick={() => chooseLedMode('gradient')}>Gradient</button>
+                    </div><span className="line" /></div>
 
                   {/* Was: a "Preview taps on the LED card" checkbox. There is no
                       moment in this screen's job where a tap should not reach the
@@ -2218,7 +2239,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                             as a caption on the pattern, not a label on the picture, so it
                             sits with the name alongside the mood the pattern is filed
                             under — the two facts you sort by. */}
-                        <div className="pmcard-led"><LedRow pal={p.pal} n={11} /></div>
+                        <div className="pmcard-led"><LedRow pal={p.pal} n={11} mode={ledMode} /></div>
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
                           {p.mix && <span className="mixtag">mix</span>}

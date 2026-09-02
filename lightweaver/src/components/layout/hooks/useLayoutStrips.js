@@ -227,7 +227,18 @@ export function useLayoutStrips(ctx) {
     if (factor > 1 && nextLen > maxLen) return;
     if (factor < 1 && nextLen < MIN_STRIP_SVG_LENGTH) return;
     const scaled = scaleStripGeometry({ ...s, svgLength: currentLen }, factor);
-    const pixelCount = physicalCountForLength(scaled.svgLength, id);
+    // A count the owner typed is a fact about the strip they own — 60 lights
+    // stay 60 lights however the drawing is resized; what changes is how far
+    // apart they sit. Only a strip whose count is still derived recounts from
+    // the new length at its density. Without this the ± control silently
+    // rewrote a hand-entered 60 to 67, and the card would have been addressed
+    // for lights that are not on the reel.
+    const pinnedCount = stripCountOverrides?.[id]
+      ? Math.round(Number(s.pixelCount))
+      : null;
+    const pixelCount = Number.isFinite(pinnedCount) && pinnedCount > 0
+      ? pinnedCount
+      : physicalCountForLength(scaled.svgLength, id);
     pushLayoutHistory();
     const projection = reprojectStripKaleidoscope(scaled, pixelCount);
     if (projection.resetPointIndices.length) {
@@ -241,7 +252,7 @@ export function useLayoutStrips(ctx) {
       ...projected,
       pixels: sampleStripPixels(projected.pathData, pixelCount, projected.reversed, projected.x || 0, projected.y || 0),
     }));
-  }, [strips, viewBox, physicalCountForLength, pushLayoutHistory, setStrips, setKaleidoscopeResetNotices]);
+  }, [strips, viewBox, physicalCountForLength, stripCountOverrides, pushLayoutHistory, setStrips, setKaleidoscopeResetNotices]);
 
   // Divide one strip into two named strips that stay adjacent on the same
   // output — the inverse of "Combine into one strip", for a reel that runs

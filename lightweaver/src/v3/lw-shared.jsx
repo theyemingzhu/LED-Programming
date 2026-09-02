@@ -167,16 +167,27 @@ function ledColors(pal, n) {
   }
   return out;
 }
-function LedRow({ pal, n = 9, big = false, wave = false }) {
+// The same colours, drawn two ways. `ledColors` interpolates a pattern's own
+// palette into n steps; beads paint those steps as discrete lights (what the
+// piece physically is, and it shows the count), a gradient paints them as one
+// continuous ramp (easier to scan across a bank of 132). Neither is authored
+// per pattern — anything with a palette gets both, including looks made in the
+// Lab.
+function LedRow({ pal, n = 9, big = false, wave = false, mode = 'beads' }) {
   // Callers outside Patterns hand us whatever shape their list carries; a
   // look saved before palettes were stored has none. Fall back rather than
   // throw inside a row render.
   const stops = Array.isArray(pal) && pal.length ? pal : ['#1c2230', '#4e9ec9', '#8ce2d3'];
   return (
-    <div className={"ledrow" + (big ? " big" : "")}>
-      {ledColors(stops, n).map((c, i) =>
-        <span key={i} className={"led" + (wave ? " wave" : "")} style={{ background: c, boxShadow: `0 0 ${big ? 9 : 5}px ${c}, 0 0 ${big ? 20 : 11}px ${c}`, animationDelay: wave ? `${i * 0.11}s` : undefined }} />
-      )}
+    <div className={"ledrow" + (big ? " big" : "") + (mode === 'gradient' ? " is-gradient" : "")}>
+      {mode === 'gradient'
+        ? <span
+            className="ledgrad"
+            style={{ background: `linear-gradient(90deg, ${ledColors(stops, n).join(', ')})` }}
+          />
+        : ledColors(stops, n).map((c, i) =>
+          <span key={i} className={"led" + (wave ? " wave" : "")} style={{ background: c, boxShadow: `0 0 ${big ? 9 : 5}px ${c}, 0 0 ${big ? 20 : 11}px ${c}`, animationDelay: wave ? `${i * 0.11}s` : undefined }} />
+        )}
     </div>);
 }
 

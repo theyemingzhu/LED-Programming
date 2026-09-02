@@ -24,6 +24,14 @@ const NATIVE_LOOK_DEBOUNCE_MS = 80;
 //   dotSize = 3.25 - shapeScale * 0.5 + texture * 0.18 = 2.59
 const PREVIEW_GLOW = 1.04;
 const PREVIEW_DOT_SIZE = 2.59;
+// The Lab's stage is the biggest canvas in Studio — roughly 950x720 against
+// the ~360px preview panel these dot sizes were tuned for. Every ceiling in
+// PatternPreview is in absolute pixels, so at this size they all saturate and
+// the piece renders as 4px specks scattered on black: the one thing the Lab
+// exists to show, and you cannot read a pattern off it. This lifts the
+// ceilings for the big stage only. Thumbnails keep the default, because they
+// really are small.
+const PREVIEW_DOT_CEILING = 2.4;
 
 const PREVIEW_FAILURES = {
   'no-lights': {
@@ -476,6 +484,7 @@ export default function PatternLabPreview({
           motionSmoothing={thumbnail ? 'off' : geometry.motionSmoothing}
           glow={PREVIEW_GLOW}
           dotSize={PREVIEW_DOT_SIZE}
+          dotCeiling={thumbnail ? 1 : PREVIEW_DOT_CEILING}
           targetFps={thumbnail ? 8 : PATTERN_LAB_WORKER_BUDGETS.previewFps}
         />
       ) : null}

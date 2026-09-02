@@ -414,3 +414,130 @@
   border: 0;
   border-radius: 0;
 }
+
+/* ── Design target belongs under the bank, not below the fold ─────────────
+   The board put the pattern bank and Design target on screen together: the
+   bank a bounded module with its own scroll, the three tiles fixed beneath
+   it. What shipped let the bank grow to its content — 1000px of cells — so
+   the tiles sat 267px past the bottom of a 900px window and nobody ever saw
+   which section they were designing for, how many pixels it drives, or what
+   is on the card right now.
+
+   Desktop only, AND only when the window is tall enough to hold both. At
+   720px the bank collapsed to 62px — a single row of cards — and a card
+   scrolled into view inside that stub landed under the search box, where it
+   could not be clicked at all. Below either threshold the page scroll is the
+   right model: Design target sits under a full-height bank and you reach it
+   by scrolling, which is worse than seeing it but far better than a bank you
+   cannot use. */
+@media (min-width: 901px) and (min-height: 820px) {
+  /* .pm is a column: whatever sits above the grid (the masthead, the live
+     bar) takes its natural height and the grid takes the rest. Giving the
+     grid `height: 100%` instead measured it against the whole scroller and
+     overshot by exactly the height of those two. */
+  .pm {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pm .pm-grid { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+  .pm .pm-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* The bank takes what is left and scrolls its own cells. min-height:0 is
+     load-bearing: without it a flex child refuses to shrink below its content
+     and the overflow never engages. */
+  .pm .pm-main > .pm-browse {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pm .pm-main > .pm-browse > .pm-cards {
+    flex: 1 1 auto;
+    /* Three rows or it does not bound at all — a floor the flex parent cannot
+       squeeze past, so the column overflows to the page scroll instead of
+       crushing the bank into a letterbox. */
+    min-height: 260px;
+    overflow-y: auto;
+    align-content: start;
+  }
+  .pm .pm-main > .pm-target { flex: 0 0 auto; }
+}
+
+/* ── The preview well ─────────────────────────────────────────────────────
+   Checked against the F board: there the piece sits in a sunken well on
+   measured graph paper, warm-toned and square-cornered, so it reads as a
+   drawing of the piece. What shipped was a plain cool-black box with 7px
+   corners — the same dark rectangle any app would draw, and the one panel
+   on this screen that is supposed to look like a schematic. */
+.pm .pm-piece-stage {
+  border-radius: 2px;
+  border-color: var(--lw-border-hair, var(--border-hair));
+  background-color: var(--lw-bg-canvas, var(--bg-canvas));
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+  box-shadow: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
+}
+
+/* The preview header squeezed the pattern name to "L…" — and that name is the
+   answer to "what am I looking at", asserted by four specs. Splitting it onto
+   two rows was the obvious fix and the WRONG one: `preview toolbar is one
+   compact desktop row` exists to keep this a single 44px row, deliberately.
+   So the row is rebalanced instead. The name gets a real floor; the target
+   select gives up the width, because the section it names is now also spelled
+   out in Design target directly below — the one place it was unreadable was
+   the only place it had to be. */
+.pm .pm-preview-controls {
+  grid-template-columns: minmax(112px, 1fr) 28px minmax(48px, .7fr) 28px auto;
+  gap: 5px;
+}
+
+/* Beads / Gradient — a rendering switch on the same interpolated palette. */
+.pm .pm-ledmode {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-left: 10px;
+  padding: 2px;
+  border: 1px solid var(--lw-border-hair, var(--border-hair));
+  border-radius: 2px;
+  background: var(--lw-bg-canvas, var(--bg-canvas));
+}
+.pm .pm-ledmode button {
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 1px;
+  background: transparent;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pm .pm-ledmode button.on {
+  border-color: var(--lw-live, var(--accent));
+  color: var(--lw-live, var(--accent));
+}
+/* .ledrow shrink-wraps its beads, so with a single child it collapsed to zero
+   width and painted nothing — the gradient was correct and invisible. */
+.pm .ledrow.is-gradient {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.pm .ledrow.is-gradient .ledgrad {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 34px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14);
+}

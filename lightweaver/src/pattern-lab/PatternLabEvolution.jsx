@@ -24,9 +24,17 @@ export default function PatternLabEvolution({
   onAudioAnalysis,
   activeWorkflowStep,
   instrumentResponse,
+  onOpenStep,
 }) {
   const evolution = recipe?.evolution;
   const duration = evolution?.durationSeconds ?? 600;
+  // Shown on the heading while Evolve is closed, so the column says whether a
+  // journey exists without opening the step to find out.
+  const evolutionSummary = !recipe
+    ? ''
+    : (evolution?.enabled
+      ? `${Math.round(duration / 60)} min · ${String(evolution.character ?? 'slow-bloom').replaceAll('-', ' ')}`
+      : 'off');
   const analysisController = useRef(null);
   const [audioStatus, setAudioStatus] = useState({ state: 'idle', message: '' });
 
@@ -73,10 +81,18 @@ export default function PatternLabEvolution({
             aria-hidden="true"
           />
         )}
+        <button
+          type="button"
+          className="plab-step-open"
+          aria-label="Open Evolve"
+          aria-expanded={activeWorkflowStep === 2}
+          onClick={() => onOpenStep?.(2)}
+        />
         <div className="plab-compact-step-title">
           <span className="plab-section-index">03</span>
           <h2 id="plab-evolution-heading" tabIndex="-1">Evolve</h2>
           <span className="plab-step-meta">5–15 min</span>
+          <span className="plab-step-summary" data-testid="pattern-lab-step-summary-evolve">{evolutionSummary}</span>
         </div>
         <label className="plab-evolution-toggle">
           <span>Long Evolution</span>

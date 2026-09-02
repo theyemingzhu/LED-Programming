@@ -91,8 +91,25 @@ export function patternTile(page: Page, patternId: string): Locator {
 // nested in `#plab-controls-drawer`), so choosing a pattern is drawer-gated
 // content on mobile exactly like every slider next to it. openControls()
 // makes this call identical on both Playwright projects.
+// Pick a pattern AND get to work on it. Since the inspector became a ladder,
+// only the open step renders its controls, and choosing a pattern deliberately
+// leaves the band on Choose — so every flow that goes on to move a slider has
+// to open Sculpt, which is the click an owner makes too. Doing it here rather
+// than in ten specs keeps the intent ("start sculpting Aurora") in one place.
+// A spec that cares about where the band sits immediately after picking should
+// call pickPatternTile instead.
 export async function choosePattern(page: Page, patternId: string): Promise<void> {
+  await pickPatternTile(page, patternId);
+  await openStep(page, 'sculpt');
+}
+
+// Just the pick, with no opinion about which step is open afterwards. Choose
+// is opened first because the tile grid IS Choose's body — once you are in
+// Sculpt it is collapsed, so switching to another pattern mid-flow means
+// going back to Choose, exactly as an owner does.
+export async function pickPatternTile(page: Page, patternId: string): Promise<void> {
   await openControls(page);
+  await openStep(page, 'choose');
   await patternTile(page, patternId).click();
 }
 
@@ -188,4 +205,14 @@ export async function touchTargetShortfalls(
     }
   }
   return shortfalls;
+}
+
+// The inspector is a ladder: only the open step renders its controls, so a
+// flow that goes on to touch Sculpt's sliders or Evolve's fields has to open
+// that step first — the same click an owner makes. Before the ladder every
+// step was open at once and this was unnecessary; a spec that skips it now
+// waits sixty seconds for a control that is deliberately not on screen.
+export async function openStep(page: Page, name: 'choose' | 'sculpt' | 'evolve'): Promise<void> {
+  await page.getByTestId(`pattern-lab-step-${name}`).locator('.plab-step-open').click();
+  await expect(page.getByTestId(`pattern-lab-step-${name}`)).toHaveAttribute('data-active', 'true');
 }

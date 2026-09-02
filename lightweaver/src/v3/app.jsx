@@ -121,6 +121,7 @@ const STUDIO_SCREENS = [
   { id: 'card', label: 'Card', Component: CardScreen },
   { id: 'layout', label: 'Layout', Component: LayoutScreen },
   { id: 'pattern', label: 'Patterns', Component: PatternScreen },
+  { id: 'pattern-lab', label: 'Lab', Component: PatternLabScreen },
   { id: 'playlist', label: 'Playlist', Component: PlaylistScreen },
   { id: 'show', label: 'Show', Component: ShowScreen },
 ];
@@ -128,8 +129,9 @@ const STUDIO_SCREENS = [
 // - discovery — strip discovery is where a blank card is SENT, not a place
 //   the owner browses to. Entrances: connection center, Layout/Wire, card
 //   overview, Setup lights phase.
-// - pattern-lab — depth door off Patterns (Sculpt in Lab / hash). Same extra-
-//   key shape as discovery; keep SCREEN_BY_ID mapped or the hash blanks out.
+// (pattern-lab used to live here too, as a depth door off Patterns. It is in
+//  the rail now: it is where looks are MADE, and burying the making of them
+//  behind a button on another screen meant most people never found it.)
 const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery', 'pattern-lab'];
 // Screens that actually render a light preview the short-strip control changes.
 const PREVIEW_SCREENS = new Set(['layout', 'pattern', 'pattern-lab', 'playlist', 'show']);
