@@ -494,8 +494,12 @@
    out in Design target directly below — the one place it was unreadable was
    the only place it had to be. */
 .pm .pm-preview-controls {
-  grid-template-columns: minmax(112px, 1fr) 28px minmax(48px, .7fr) 28px auto;
-  gap: 5px;
+  /* The pattern name is what this module is showing you, and four specs read
+     it from here — it gets the floor. The target select yields, because the
+     section it names is spelled out again in Design target directly below,
+     and the two arrows step through the same list. */
+  grid-template-columns: minmax(132px, 1fr) 24px minmax(38px, .5fr) 24px auto;
+  gap: 4px;
 }
 
 /* Beads / Gradient — a rendering switch on the same interpolated palette. */
@@ -540,4 +544,35 @@
   min-height: 34px;
   border-radius: 2px;
   box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14);
+}
+
+/* The preview pane's control row IS its header bar — the board's "● PREVIEW …
+   PLAYING". Styling it as one, rather than as a toolbar floating above the
+   well, is what makes the right column read as three modules in a row. */
+.pm .pm-preview-pane > .pm-preview-controls {
+  /* No padding at all: horizontal padding narrowed the row's own grid until
+     the toggle clipped to "On my piec", and vertical padding took it to 61px
+     against the 44px cap that `preview toolbar is one compact desktop row`
+     exists to hold. The rule is the border and the spacing under it. */
+  margin: 0 0 10px;
+  padding: 0;
+  /* A shadow, not a border — a 1px border took the row to 45px against a 44px
+     cap. This draws the same hairline and adds no height. */
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--lw-border-hair, var(--border-hair));
+  background: transparent;
+}
+.pm .pm-preview-meta::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--lw-live, var(--accent));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--lw-live, var(--accent)) 70%, transparent);
+}
+.pm .pm-preview-meta .t {
+  font-family: var(--font-mono);
+  letter-spacing: .2em;
+  color: var(--text-lo);
 }

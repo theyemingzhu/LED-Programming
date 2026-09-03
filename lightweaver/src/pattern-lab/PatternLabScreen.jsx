@@ -92,6 +92,27 @@ const PROMOTED_ACTION_HINTS = {
   'studio-only': 'This design can’t reach the piece yet. See Card compatibility & diagnostics below for why.',
 };
 
+const BUDGET_SHORT_LABELS = {
+  pixelCount: 'Pixels',
+  fps: 'FPS',
+  operationsPerFrame: 'Ops / frame',
+  stateBytes: 'State',
+  framebufferBytes: 'Framebuffer',
+  nativeConfigBytes: 'Config',
+  lwseqBytes: 'Baked',
+  microSdBytes: 'microSD',
+};
+
+// Two numbers on one line, from whatever the compatibility check actually
+// measured — never a figure this screen made up to fill the strip.
+function formatBudgetUsage(value) {
+  const used = Number(value?.used ?? value?.value);
+  const limit = Number(value?.limit ?? value?.max);
+  const fmt = n => (Number.isFinite(n) ? new Intl.NumberFormat().format(Math.round(n)) : '—');
+  if (!Number.isFinite(limit)) return fmt(used);
+  return `${fmt(used)} / ${fmt(limit)}`;
+}
+
 function compatibilityBadge(compatibility) {
   if (!compatibility) return null;
   return COMPATIBILITY_BADGES[compatibility.classification] || null;
@@ -1457,6 +1478,11 @@ export default function PatternLabScreen() {
               <path d="M9 3h6M10 3v5l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/>
               <path d="M7.8 15h8.4"/>
             </svg>
+            {/* The board leads with a kicker and a sentence saying what this
+                screen is: a private workspace that changes nothing until you
+                send a look back. Without it the Lab opened on a bare title and
+                never said the one thing that makes it safe to experiment in. */}
+            <span className="plab-kicker">Studio · Patterns · Lab</span>
             <h1>Pattern Lab</h1>
             <span
               className="plab-private-status"
@@ -1469,6 +1495,21 @@ export default function PatternLabScreen() {
               <span aria-hidden="true" />
             </span>
           </div>
+          {/* The board's masthead says what this screen is before it says what
+              you can do in it — "your project stays exactly as it is" is the
+              sentence that makes the Lab safe to experiment in, and it was
+              nowhere on the shipped screen. The way back out belongs here too;
+              the Lab is entered from Patterns and had no marked exit. */}
+          <p className="plab-lede">A private workspace — your project stays exactly as it is until you send a look back to it.</p>
+          <button
+            type="button"
+            className="plab-back"
+            data-testid="pattern-lab-back"
+            onClick={() => { window.location.hash = '#screen=pattern'; }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+            Back to Patterns
+          </button>
           <nav className="plab-workflow" aria-label="Pattern Lab workflow">
             {WORKFLOW.map(([title, description, tooltip, icon], index) => (
               <button
@@ -1487,6 +1528,37 @@ export default function PatternLabScreen() {
             ))}
           </nav>
         </header>
+
+        {/* The card verdict, pinned under the masthead as the board has it.
+            It used to live inside the "Card compatibility & diagnostics" fold
+            at the bottom of the inspector, which meant you could sculpt for
+            twenty minutes before finding out the piece cannot play it. The
+            copy is the same map the promoted button reads, so the two cannot
+            drift. */}
+        {draft && compatibility && (
+          <div
+            className="plab-verdict"
+            data-classification={compatibility.classification}
+            data-testid="pattern-lab-verdict"
+          >
+            <span className="plab-verdict-tag">
+              {(COMPATIBILITY_OUTCOMES.find(([id]) => id === compatibility.classification) || [null, 'Checking'])[1]}
+            </span>
+            <p>{compatibilityBadge(compatibility)}</p>
+            <dl className="plab-verdict-nums">
+              {Object.entries(compatibility.budgets || {}).slice(0, 2).map(([key, value]) => (
+                <div key={key}>
+                  <dt>{BUDGET_SHORT_LABELS[key] || key}</dt>
+                  <dd>{formatBudgetUsage(value)}</dd>
+                </div>
+              ))}
+              <div>
+                <dt>Attention</dt>
+                <dd>{(compatibility.reasons || []).length || 'none'}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
 
         <section className="plab-workspace" aria-label="Pattern authoring workspace" ref={workspaceRef}>
           <div className="plab-preview" inert={sheetModal ? '' : undefined}>

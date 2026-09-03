@@ -1686,10 +1686,14 @@
 .plab-evolution .plab-step-summary { margin-left: 0; }
 
 /* ── The journey: full width, only while Evolve is open ─────────────────── */
+/* Ladder in column 1, piece and journey stacked in column 2 — the board's
+   orientation. These were written the other way round when the inspector was
+   still on the right, and being :has()-qualified they outranked the plain
+   placement rules that came later. */
 .plab-workspace:has(.plab-journey) { grid-template-rows: minmax(0, 1fr) auto; }
-.plab-workspace:has(.plab-journey) > .plab-preview { grid-row: 1; grid-column: 1; }
-.plab-workspace:has(.plab-journey) > .plab-journey { grid-row: 2; grid-column: 1; }
-.plab-workspace:has(.plab-journey) > .plab-controls { grid-row: 1 / -1; grid-column: 2; }
+.plab-workspace:has(.plab-journey) > .plab-preview { grid-row: 1; grid-column: 2; }
+.plab-workspace:has(.plab-journey) > .plab-journey { grid-row: 2; grid-column: 2; }
+.plab-workspace:has(.plab-journey) > .plab-controls { grid-row: 1 / -1; grid-column: 1; }
 
 .plab-journey {
   min-width: 0;
@@ -1803,3 +1807,161 @@
   .plab-journey { border-right: 0; }
 }
 
+
+/* ── Match the board: ladder left, piece right ────────────────────────────
+   The design puts the four numbered steps down a 320px column on the LEFT and
+   gives everything else to the piece, with the journey full-width beneath it.
+   What shipped was mirrored — inspector right, piece left — which reads as a
+   different screen even when every part is present. */
+@media (min-width: 901px) and (min-height: 820px) {
+  .plab-workspace { grid-template-columns: 320px minmax(0, 1fr); }
+  .plab-workspace > .plab-controls { grid-column: 1; grid-row: 1 / -1; border-right: 1px solid var(--border-soft); }
+  .plab-workspace > .plab-preview { grid-column: 2; grid-row: 1; border-right: 0; }
+  .plab-workspace:has(.plab-journey) > .plab-journey { grid-column: 2; grid-row: 2; border-right: 0; }
+}
+
+/* ── Masthead kicker + the pinned card verdict ───────────────────────────── */
+.plab-kicker {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  white-space: nowrap;
+}
+
+.plab-verdict {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-hair);
+  background: var(--bg-canvas);
+  box-shadow: inset 0 -2px 0 var(--warn);
+}
+.plab-verdict[data-classification="live-on-card"] { box-shadow: inset 0 -2px 0 var(--ok); }
+.plab-verdict[data-classification="studio-only"] { box-shadow: inset 0 -2px 0 var(--danger); }
+
+.plab-verdict-tag {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.plab-verdict[data-classification="live-on-card"] .plab-verdict-tag { border-color: var(--ok); color: var(--ok); }
+.plab-verdict[data-classification="studio-only"] .plab-verdict-tag { border-color: var(--danger); color: var(--danger); }
+
+.plab-verdict p {
+  min-width: 0;
+  color: var(--text-mid);
+  font-size: 12.5px;
+}
+.plab-verdict-nums { display: flex; gap: 22px; margin-left: auto; flex: 0 0 auto; }
+.plab-verdict-nums dt {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.plab-verdict-nums dd {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-hi);
+}
+
+@media (max-width: 900px) {
+  .plab-kicker { display: none; }
+  .plab-verdict { flex-wrap: wrap; gap: 8px; }
+  .plab-verdict-nums { margin-left: 0; gap: 16px; }
+}
+
+/* .plab-scroll defines exactly two rows — toolbar, workspace. The verdict is
+   a third child, so it landed in an implicit row and was clipped to nothing
+   behind the toolbar. */
+.plab-scroll:has(.plab-verdict) { grid-template-rows: auto auto minmax(0, 1fr); }
+
+/* ── All four rungs stay in view ──────────────────────────────────────────
+   The board's ladder always shows 01–04 with their values; only the open
+   step's body takes the remaining height. What shipped let the whole column
+   scroll, so opening Evolve pushed Choose and Sculpt off the top and the
+   ladder stopped being a ladder — you could no longer see what the design was
+   set to, which is the entire reason the closed rungs carry their values. */
+@media (min-width: 901px) and (min-height: 820px) {
+  /* The column still scrolls — it carries the diagnostics fold, the drafts
+     library and the action bar below the four steps. What must not happen is
+     a rung leaving the screen, so every step heading sticks. Stacking them at
+     increasing offsets keeps 01 above 02 above 03 as you scroll past, which is
+     what makes it read as a ladder rather than a list.
+     A first attempt gave the open step flex:1 inside a non-scrolling column;
+     the trailing sections then ate the height and Evolve's body collapsed to
+     one visible field. */
+  .plab-controls { overflow-y: auto; }
+  .plab-compact-step-heading {
+    position: sticky;
+    z-index: 4;
+    background: var(--plab-panel, var(--bg-panel));
+  }
+  [data-workflow-step="0"] > .plab-compact-step-heading { top: 0; }
+  [data-workflow-step="1"] > .plab-compact-step-heading { top: 42px; }
+  [data-workflow-step="2"] > .plab-compact-step-heading { top: 84px; }
+  /* The open body gets the room it needs and scrolls past it, rather than
+     pushing the rungs below it out of reach. */
+  .plab-control-section.plab-compact-step[data-active="true"] > .plab-compact-step-body {
+    max-height: 44vh;
+    overflow-y: auto;
+  }
+}
+
+/* Masthead lede and the way back to Patterns. */
+.plab-lede {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-hair);
+  color: var(--text-lo);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plab-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-mid);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.plab-back:hover { color: var(--text-hi); background: var(--bg-elev); }
+.plab-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.plab-toolbar .plab-workflow { margin-left: 10px; }
+@media (max-width: 1200px) { .plab-lede { display: none; } }
+
+/* Below the wide layout the toolbar goes back to what it was — mark, title,
+   private dot, the four step icons. The lede and the way back are the first
+   things to yield: at 793px and under they squeezed the title out entirely,
+   and the title is the one thing that must survive every width. */
+@media (max-width: 1000px) {
+  .plab-back { display: none; }
+}

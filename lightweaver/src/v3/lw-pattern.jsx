@@ -2426,6 +2426,12 @@ import { PatternPreview } from './PatternPreview.jsx';
                 </div>
 
                 <div className="card pm-pane pm-tune-pane">
+                  {/* Every panel in this vocabulary opens with a header bar and
+                      a status light — that is what makes it read as a module
+                      rather than a stack of controls. The tuning pane was the
+                      one panel on this screen with no head at all, so four
+                      faders floated between two headed modules. */}
+                  <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
                     <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
