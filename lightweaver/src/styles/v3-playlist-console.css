@@ -224,3 +224,26 @@
 .pm .pl-stat.is-live { border-color: var(--lw-live-ink); }
 .pm .pl-stat.is-live .v { color: var(--lw-live-ink); }
 .pm .pl-stat.is-ok .v { color: var(--ok); }
+
+/* ── The pattern pool flows, as the board draws it ────────────────────────
+   A single column of full-width rows showed about eleven of 132 patterns in
+   the space a wrapping flow shows three times as many, and every row spent
+   most of its width on empty space between the name and the +. The parts are
+   unchanged — bead strand, name, add — they just sit as pills now. */
+/* Doubled class, not a `.pl` scope: the pool lives in a `.pm-pane` on this
+   screen, so a `.pl`-prefixed rule never matched it at all. */
+.pl-pool.pl-pool {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+.pl-pool.pl-pool .pl-chip {
+  width: auto;
+  flex: 0 0 auto;
+  gap: 7px;
+  padding: 5px 9px 5px 6px;
+  border-radius: 99px;
+}
+.pl-pool.pl-pool .pl-chip-nm { flex: 0 0 auto; }
+.pl-pool.pl-pool .pl-chip-add { margin-left: 2px; }

@@ -160,3 +160,36 @@
     0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 .sh .transport .btn:disabled { opacity: 0.5; }
+
+/* ── The band meter, under the piece ──────────────────────────────────────
+   Four bars off the same analyser the Sound panel reads: deep, middle,
+   sparkle, and the overall energy. Sunken, so it reads as a read-out rather
+   than a control — nothing here is clickable. */
+.sh .sh-stage-bands {
+  /* The stage column centres its children, so without this the meter
+     shrink-wrapped to a 46px stub under the piece. It reads as a meter only
+     at the width of the thing it is measuring. */
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 46px;
+  margin: 10px 0 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--lw-border-hair, var(--border-hair));
+  border-radius: 2px;
+  background: var(--lw-bg-canvas, var(--bg-canvas));
+  box-shadow: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
+}
+.sh .sh-stage-bands i {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(
+    var(--lw-live, var(--accent)),
+    color-mix(in srgb, var(--lw-live, var(--accent)) 30%, transparent)
+  );
+  transition: height 90ms linear;
+}
