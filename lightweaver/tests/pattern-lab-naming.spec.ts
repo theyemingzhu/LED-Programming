@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { choosePattern, openControls } from './helpers/pattern-lab.ts';
+import { choosePattern, openControls, openStep } from './helpers/pattern-lab.ts';
 
 // The destructive paths of Pattern Lab's private library: naming a design,
 // saving a second version of one, deleting one, and undoing the two things
@@ -83,6 +83,9 @@ test('saving a tweaked design again keeps both versions instead of overwriting t
   const replace = page.getByTestId('pattern-lab-replace-draft');
   await expect(replace).toContainText('Rainbow Flow');
 
+  // Saving moves the ladder to Save, which closes Sculpt — so changing Speed
+  // again means opening Sculpt again, the same two clicks an owner makes.
+  await openStep(page, 'sculpt');
   await page.getByRole('slider', { name: 'Speed', exact: true }).fill('175');
   await primary.click();
 
@@ -94,6 +97,7 @@ test('saving a tweaked design again keeps both versions instead of overwriting t
   expect(new Set(both.map(draft => draft.id)).size).toBe(2);
 
   // Replace is still available and still means replace — one record, updated.
+  await openStep(page, 'sculpt');
   await page.getByRole('slider', { name: 'Speed', exact: true }).fill('125');
   await page.getByTestId('pattern-lab-replace-draft').click();
   const replaced = await storedDrafts(page);
