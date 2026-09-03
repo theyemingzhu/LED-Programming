@@ -299,10 +299,15 @@
 
 .pm .pm-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .pm .pmcard { padding: 8px; gap: 8px; }
+/* 44px and edge-to-edge: the board's cell art is a band of colour the width
+   of the cell, not a strip floating inside 9px of padding. The padding was
+   there for the bead row, which needs breathing room; a gradient does not,
+   and inset it read as a smaller, weaker swatch than the design. */
 .pm .pmcard-led {
-  height: 62px;
+  height: 44px;
   padding: 0 9px;
 }
+.pm .pmcard-led:has(.ledrow.is-gradient) { padding: 0; }
 .pm .pmcard-led .ledrow { gap: 6px; }
 .pm .pmcard-led .led { width: 8px; height: 8px; }
 .pm .pmcard-sub {
@@ -574,5 +579,19 @@
 .pm .pm-preview-meta .t {
   font-family: var(--font-mono);
   letter-spacing: .2em;
+  color: var(--text-lo);
+}
+
+/* ── The index gets its own column, as the board draws it ─────────────────
+   The counter was overlaid on the cell art. That was legible while the art
+   was a bead strand on a dark bed; against a full-bleed gradient it lands on
+   whatever colour happens to be at the top-left — white on Sparkle, pale
+   green on Aurora — and disappears. The board never had it there: the number
+   sits in its own narrow column beside the art, in the cell's own ground. */
+.pm .pmcard { padding-left: 26px; }
+.pm .pmcard-wrap::before {
+  top: 11px;
+  left: 9px;
+  z-index: 2;
   color: var(--text-lo);
 }

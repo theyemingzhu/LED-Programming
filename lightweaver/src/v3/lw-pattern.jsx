@@ -384,8 +384,12 @@ import { PatternPreview } from './PatternPreview.jsx';
     // because it is a preference about how you read the bank, not a property
     // of the project.
     const [ledMode, setLedMode] = useState(() => {
-      try { return localStorage.getItem('lw_led_mode') === 'gradient' ? 'gradient' : 'beads'; }
-      catch { return 'beads'; }
+      // Gradient is the default because it is what the board draws — the
+      // bank reads as colour you scan across, and at 132 cells that is the
+      // job. Beads stay one click away for anyone who wants to see the
+      // individual lights.
+      try { return localStorage.getItem('lw_led_mode') === 'beads' ? 'beads' : 'gradient'; }
+      catch { return 'gradient'; }
     });
     const chooseLedMode = mode => {
       setLedMode(mode);
