@@ -1078,6 +1078,18 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
             }}>
               <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', borderRadius: activeTemplateKind === 'mandala' ? '50%' : 'var(--r-lg)' }} />
             </div>
+            {/* The band meter belongs under the piece, at the width of the
+                piece. The board draws it there because it is the answer to
+                "is it hearing anything?" — the question you ask while looking
+                at the artwork, not while reaching for the Sensitivity slider
+                three panels away, where a 6px copy of it was hiding. Same
+                three levels off the same analyser; nothing new is measured. */}
+            <div className="sh-stage-bands" data-testid="show-stage-bands" aria-hidden="true">
+              <i style={{ height: `${Math.round(Math.min(1, levels.bass) * 100)}%` }} />
+              <i style={{ height: `${Math.round(Math.min(1, levels.mid) * 100)}%` }} />
+              <i style={{ height: `${Math.round(Math.min(1, levels.high) * 100)}%` }} />
+              <i style={{ height: `${Math.round(Math.min(1, levels.energy) * 100)}%` }} />
+            </div>
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: '0.06em', color: 'var(--text-lo)', textAlign: 'center' }}>
               {engineMode === 'voices'
                 ? `${soloVoiceId ? `${voiceCards.find((v) => v.id === soloVoiceId)?.name || 'one voice'} in front` : 'Voices'} · ${preset === 'Calm' ? 'calm' : 'listening closely'}`
