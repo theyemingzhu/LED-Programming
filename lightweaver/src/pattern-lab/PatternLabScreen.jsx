@@ -521,7 +521,7 @@ export default function PatternLabScreen() {
   // or the same lights straightened into the order the card addresses them.
   const [previewView, setPreviewView] = useState('piece');
   useEffect(() => {
-    if (activeWorkflowStep >= 0 && activeWorkflowStep <= 3) setOpenInspectorStep(activeWorkflowStep);
+    if (activeWorkflowStep >= 0 && activeWorkflowStep <= 2) setOpenInspectorStep(activeWorkflowStep);
   }, [activeWorkflowStep]);
   const [instrumentResponse, setInstrumentResponse] = useState({
     sequence: 0,
@@ -877,7 +877,7 @@ export default function PatternLabScreen() {
     if (event.target.closest?.('.plab-compact-step-heading')) return;
     const section = event.target.closest?.('[data-workflow-step]');
     const step = Number(section?.dataset.workflowStep);
-    if (Number.isInteger(step) && step >= 0 && step <= 3) setActiveWorkflowStep(step);
+    if (Number.isInteger(step) && step >= 0 && step <= 2) setActiveWorkflowStep(step);
   }
 
   function refreshDrafts() {
@@ -1792,67 +1792,6 @@ export default function PatternLabScreen() {
               onOpenStep={openWorkflowStep}
             />
 
-            {/* Save is the fourth rung. The board numbers it 04 alongside
-                Choose, Sculpt and Evolve, and it is the same kind of thing —
-                a step with a value you can read without opening it. It sat
-                below the ladder as a separate library, so the ladder said it
-                had three steps when the workflow has four. */}
-            <section
-              className="plab-control-section plab-compact-step plab-private-library"
-              aria-labelledby="plab-private-heading"
-              data-testid="pattern-lab-step-save"
-              data-workflow-step="3"
-              data-active={openInspectorStep === 3 ? 'true' : 'false'}
-            >
-              <div className="plab-compact-step-heading plab-library-heading">
-                <button
-                  type="button"
-                  className="plab-step-open"
-                  aria-label="Open Save"
-                  aria-expanded={openInspectorStep === 3}
-                  onClick={() => openWorkflowStep(3)}
-                />
-                <span className="plab-section-index">04</span>
-                <h2 id="plab-private-heading">Save</h2>
-                <span className="plab-step-summary" data-testid="pattern-lab-step-summary-save">
-                  {drafts.length ? `${drafts.length} private draft${drafts.length === 1 ? '' : 's'}` : 'none yet'}
-                </span>
-              </div>
-              {/* Storage failures sit OUTSIDE the rung body, not inside it.
-                  A fold is a fine place for a list of drafts and a terrible
-                  place for the message saying the drafts cannot be saved —
-                  collapsing the rung had hidden both warnings completely. */}
-              {draftState === 'unavailable' && <p className="plab-library-alert" role="alert">Private draft storage is unavailable in this browser.</p>}
-              {draftState === 'unrecoverable' && <p className="plab-library-alert" role="alert">Private drafts could not be recovered. Existing data was left untouched.</p>}
-              <div className="plab-compact-step-body">
-              {draftState === 'loading' && <p>Loading private drafts…</p>}
-              {draftState === 'ready' && drafts.length === 0 && <p>No saved drafts yet. Your first save will be kept in your private workspace.</p>}
-              {drafts.length > 0 && (
-                <ul>
-                  {drafts.map((saved, index) => (
-                    <li key={saved.id} className="plab-draft-row">
-                      <button type="button" onClick={() => openDraft(saved)} aria-label={`Open ${saved.name}`}>
-                        <strong>{saved.name}{draft?.id === saved.id ? <span className="plab-draft-open-flag"> · open</span> : null}</strong>
-                        <small>{Math.round(saved.evolution.durationSeconds / 60)} min · {saved.evolution.character.replaceAll('-', ' ')}</small>
-                      </button>
-                      <button
-                        type="button"
-                        className="plab-draft-delete"
-                        data-testid="pattern-lab-draft-delete"
-                        aria-label={`Delete ${saved.name}`}
-                        title={`Delete ${saved.name}`}
-                        onClick={() => deleteDraft(saved, index)}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                          <path d="M5 7h14M10 7V5h4v2M8 7l1 12h6l1-12" />
-                        </svg>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              </div>
-            </section>
 
             {draft && (
               <details
@@ -1914,6 +1853,41 @@ export default function PatternLabScreen() {
               </div>
             )}
 
+
+            <section className="plab-private-library" aria-labelledby="plab-private-heading">
+              <div className="plab-library-heading">
+                <div><span className="plab-section-index">Saved</span><h2 id="plab-private-heading">Private drafts</h2></div>
+                <span>{drafts.length}</span>
+              </div>
+              {draftState === 'loading' && <p>Loading private drafts…</p>}
+              {draftState === 'unavailable' && <p role="alert">Private draft storage is unavailable in this browser.</p>}
+              {draftState === 'unrecoverable' && <p role="alert">Private drafts could not be recovered. Existing data was left untouched.</p>}
+              {draftState === 'ready' && drafts.length === 0 && <p>No saved drafts yet. Your first save will be kept in your private workspace.</p>}
+              {drafts.length > 0 && (
+                <ul>
+                  {drafts.map((saved, index) => (
+                    <li key={saved.id} className="plab-draft-row">
+                      <button type="button" onClick={() => openDraft(saved)} aria-label={`Open ${saved.name}`}>
+                        <strong>{saved.name}{draft?.id === saved.id ? <span className="plab-draft-open-flag"> · open</span> : null}</strong>
+                        <small>{Math.round(saved.evolution.durationSeconds / 60)} min · {saved.evolution.character.replaceAll('-', ' ')}</small>
+                      </button>
+                      <button
+                        type="button"
+                        className="plab-draft-delete"
+                        data-testid="pattern-lab-draft-delete"
+                        aria-label={`Delete ${saved.name}`}
+                        title={`Delete ${saved.name}`}
+                        onClick={() => deleteDraft(saved, index)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path d="M5 7h14M10 7V5h4v2M8 7l1 12h6l1-12" />
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
             {importErrors.length > 0 && (
               <div className="plab-import-errors" role="alert">

@@ -1966,11 +1966,6 @@
   .plab-back { display: none; }
 }
 
-/* Save is the ladder's fourth rung: same sticky offset series as the other
-   three, and the library heading keeps its own layout inside the rung head. */
-@media (min-width: 901px) and (min-height: 820px) {
-  [data-workflow-step="3"] > .plab-compact-step-heading { top: 126px; }
-}
 .plab-private-library.plab-compact-step { padding: 0; }
 .plab-compact-step-heading.plab-library-heading {
   justify-content: flex-start;
@@ -1987,9 +1982,6 @@
    to be the open rung — a warning you cannot see is worse than no warning,
    and collapsing the rung had just buried both of them. */
 @media (min-width: 901px) and (min-height: 820px) {
-  /* Nothing to exempt: the alerts are rendered outside the body now, which is
-     where a warning belongs. Two rounds of raising specificity to punch a hole
-     in a fold were two rounds of fixing the wrong thing. */
 }
 
 .plab-library-alert {

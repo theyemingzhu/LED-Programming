@@ -212,7 +212,7 @@ export async function touchTargetShortfalls(
 // that step first — the same click an owner makes. Before the ladder every
 // step was open at once and this was unnecessary; a spec that skips it now
 // waits sixty seconds for a control that is deliberately not on screen.
-export async function openStep(page: Page, name: 'choose' | 'sculpt' | 'evolve' | 'save'): Promise<void> {
+export async function openStep(page: Page, name: 'choose' | 'sculpt' | 'evolve'): Promise<void> {
   await page.getByTestId(`pattern-lab-step-${name}`).locator('.plab-step-open').click();
   await expect(page.getByTestId(`pattern-lab-step-${name}`)).toHaveAttribute('data-active', 'true');
 }
