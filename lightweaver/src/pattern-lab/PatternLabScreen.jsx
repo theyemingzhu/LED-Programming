@@ -35,6 +35,7 @@ import {
 } from '../lib/patternLabDraftActions.js';
 import { PATTERN_LAB_WORKER_BUDGETS } from '../lib/patternLabWorkerProtocol.js';
 import { isBuiltInPattern, listPatterns } from '../lib/patternRegistry.js';
+import { flattenToStripView } from '../lib/patternLabStripView.js';
 import { useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import PatternLabControls from './PatternLabControls.jsx';
@@ -516,6 +517,9 @@ export default function PatternLabScreen() {
   // last content step instead, so saving does not take away what you were
   // working on.
   const [openInspectorStep, setOpenInspectorStep] = useState(0);
+  // Piece or strip. Two views of one frame: the artwork as the room sees it,
+  // or the same lights straightened into the order the card addresses them.
+  const [previewView, setPreviewView] = useState('piece');
   useEffect(() => {
     if (activeWorkflowStep >= 0 && activeWorkflowStep <= 3) setOpenInspectorStep(activeWorkflowStep);
   }, [activeWorkflowStep]);
@@ -694,6 +698,14 @@ export default function PatternLabScreen() {
     project.audioBands,
     project.motionSmoothing,
   ]);
+
+  // The strip view is the same geometry with the lights moved onto a line, so
+  // the preview renders it through exactly the same path as the piece — one
+  // renderer, one frame, two arrangements.
+  const shownGeometry = useMemo(
+    () => (previewView === 'strip' ? flattenToStripView(geometry) : geometry),
+    [previewView, geometry],
+  );
 
   useEffect(() => {
     const root = previewStageRef.current;
@@ -1629,7 +1641,7 @@ export default function PatternLabScreen() {
                     recipe={previewRecipe}
                     previewTime={previewTime}
                     playing={playing}
-                    geometry={geometry}
+                    geometry={shownGeometry}
                     fallbackLook={project.standaloneController?.defaultLook}
                     onRenderStatus={handlePreviewRenderStatus}
                   />
@@ -1662,6 +1674,31 @@ export default function PatternLabScreen() {
                 />
               )}
             </div>
+
+            {/* The board's view row, under the artwork. Two entries, not five:
+                Piece and Strip are two arrangements of the frame the renderer
+                already makes. Grid, Coordinates and "Why is this dark?" are on
+                the board too and are deliberately NOT here — nothing in the
+                app answers them yet, and five buttons where two work is worse
+                than two. */}
+            {draft && (
+              <div className="plab-views" role="group" aria-label="Preview view" data-testid="pattern-lab-views">
+                <button
+                  type="button"
+                  className={previewView === 'piece' ? 'on' : undefined}
+                  aria-pressed={previewView === 'piece'}
+                  onClick={() => setPreviewView('piece')}
+                  title="The lights where they physically sit"
+                >Piece</button>
+                <button
+                  type="button"
+                  className={previewView === 'strip' ? 'on' : undefined}
+                  aria-pressed={previewView === 'strip'}
+                  onClick={() => setPreviewView('strip')}
+                  title="The same lights in the order the card addresses them"
+                >Strip</button>
+              </div>
+            )}
           </div>
 
           {/* The journey appears under the artwork only while Evolve is the
