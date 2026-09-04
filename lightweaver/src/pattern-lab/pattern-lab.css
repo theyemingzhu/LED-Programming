@@ -1966,11 +1966,6 @@
   .plab-back { display: none; }
 }
 
-/* Save is the ladder's fourth rung: same sticky offset series as the other
-   three, and the library heading keeps its own layout inside the rung head. */
-@media (min-width: 901px) and (min-height: 820px) {
-  [data-workflow-step="3"] > .plab-compact-step-heading { top: 126px; }
-}
 .plab-private-library.plab-compact-step { padding: 0; }
 .plab-compact-step-heading.plab-library-heading {
   justify-content: flex-start;
@@ -1987,9 +1982,6 @@
    to be the open rung — a warning you cannot see is worse than no warning,
    and collapsing the rung had just buried both of them. */
 @media (min-width: 901px) and (min-height: 820px) {
-  /* Nothing to exempt: the alerts are rendered outside the body now, which is
-     where a warning belongs. Two rounds of raising specificity to punch a hole
-     in a fold were two rounds of fixing the wrong thing. */
 }
 
 .plab-library-alert {
@@ -1998,3 +1990,36 @@
   color: var(--danger);
   font-size: 12px;
 }
+
+/* ── Piece / Strip ────────────────────────────────────────────────────────
+   A segmented pair under the artwork, in the console's key-well idiom: the
+   chosen one is named in amber, because it is what you are looking at now. */
+.plab-views {
+  display: flex;
+  gap: 3px;
+  margin: 0;
+  padding: 3px;
+  border-top: 1px solid var(--border-hair);
+  background: var(--bg-canvas);
+}
+.plab-views button {
+  flex: 1;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.plab-views button:hover { color: var(--text-hi); }
+.plab-views button.on { border-color: var(--accent); color: var(--accent-hi); }
+.plab-views button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* .plab-preview declares two rows — bar, stage. The Piece/Strip row is a third
+   child, so it landed in an implicit row: squeezed to nothing and sitting over
+   the stage, where it could swallow a click meant for the retry button inside
+   a failed preview. Exactly the mistake the verdict strip made against
+   .plab-scroll, one container down. */
+.plab-preview:has(.plab-views) { grid-template-rows: auto minmax(0, 1fr) auto; }

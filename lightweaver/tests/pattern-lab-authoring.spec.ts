@@ -341,8 +341,6 @@ test('creates, compares, and reopens a long private pattern without changing the
   await page.getByRole('button', { name: 'Save private draft' }).click();
   await expect(page.getByTestId('pattern-lab-save-status')).toContainText('Saved privately');
   await page.reload({ waitUntil: 'domcontentloaded' });
-  // Save is the ladder's fourth rung now; its drafts live in that rung's body.
-  await openStep(page, 'save');
   await page.getByRole('button', { name: /Open Aurora/ }).click();
   // Reopening a draft lands on Choose, so each step is opened to read back
   // what it kept — the same two clicks an owner makes to check their work.

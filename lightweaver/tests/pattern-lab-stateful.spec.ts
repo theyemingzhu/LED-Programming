@@ -69,7 +69,6 @@ test('chooses and sculpts a living simulation through the simple Pattern Lab con
   // React state, so the drawer starts closed again on mobile — reopen it
   // before reaching in, same as the initial choosePattern() call does.
   await openControls(page);
-  await openStep(page, 'save');
   await page.getByRole('button', { name: /Open Particle Drift/ }).click();
   // Reopening a draft lands on Choose; its sliders are read back from Sculpt.
   await openStep(page, 'sculpt');
