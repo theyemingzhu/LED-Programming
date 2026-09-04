@@ -520,6 +520,11 @@ export default function PatternLabScreen() {
   // Piece or strip. Two views of one frame: the artwork as the room sees it,
   // or the same lights straightened into the order the card addresses them.
   const [previewView, setPreviewView] = useState('piece');
+  // Whether the preview is currently telling the owner it could not render.
+  // In that state the stage is an error with a Retry, and offering Piece /
+  // Strip beneath it is noise stacked on a problem — worse, the row sat in the
+  // same corner of the screen as the retry control.
+  const [previewFailed, setPreviewFailed] = useState(false);
   useEffect(() => {
     if (activeWorkflowStep >= 0 && activeWorkflowStep <= 2) setOpenInspectorStep(activeWorkflowStep);
   }, [activeWorkflowStep]);
@@ -946,6 +951,7 @@ export default function PatternLabScreen() {
   // the tap has been answered and the tile stops saying it is working.
   function handlePreviewRenderStatus(status) {
     if (status?.hasFrame || status?.failure) setPendingPatternId(null);
+    setPreviewFailed(Boolean(status?.failure));
   }
 
   function choosePattern(patternId) {
@@ -1681,7 +1687,7 @@ export default function PatternLabScreen() {
                 the board too and are deliberately NOT here — nothing in the
                 app answers them yet, and five buttons where two work is worse
                 than two. */}
-            {draft && (
+            {draft && !previewFailed && (
               <div className="plab-views" role="group" aria-label="Preview view" data-testid="pattern-lab-views">
                 <button
                   type="button"
