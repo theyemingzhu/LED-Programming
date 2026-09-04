@@ -125,9 +125,22 @@ export function classifyChangedPaths(paths, {
       continue;
     }
 
+    // Studio source selects the cloud lane too. That lane's specs drive the
+    // real Studio UI — the projects panel, the workspace-asset sync, the
+    // Pattern Lab drafts list — so a change under src/ can break them. It
+    // could not select them before: these two rules matched first and
+    // `continue`d past the cloud rule below, which only fires for functions/,
+    // migrations/ and files literally named cloud-* or library-*.
+    //
+    // That is how a Pattern Lab change shipped a regression where a synced
+    // draft could not be opened: the lane that owns that flow skipped on the
+    // pull request, and only ran later because an unrelated package.json edit
+    // happened to reclassify the change. The lane costs about two and a half
+    // minutes; a regression reaching a customer costs more.
     if (isPath(path, 'lightweaver/src/lib')) {
       lanes.source = true;
       lanes.browser = true;
+      lanes.cloud = true;
       if (studioFirmware) lanes.firmware = true;
       continue;
     }
@@ -135,6 +148,7 @@ export function classifyChangedPaths(paths, {
     if (isPath(path, 'lightweaver/src')) {
       lanes.source = true;
       lanes.browser = true;
+      lanes.cloud = true;
       if (studioFirmware) lanes.firmware = true;
       continue;
     }
