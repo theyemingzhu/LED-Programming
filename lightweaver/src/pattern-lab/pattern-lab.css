@@ -2016,3 +2016,10 @@
 .plab-views button:hover { color: var(--text-hi); }
 .plab-views button.on { border-color: var(--accent); color: var(--accent-hi); }
 .plab-views button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* .plab-preview declares two rows — bar, stage. The Piece/Strip row is a third
+   child, so it landed in an implicit row: squeezed to nothing and sitting over
+   the stage, where it could swallow a click meant for the retry button inside
+   a failed preview. Exactly the mistake the verdict strip made against
+   .plab-scroll, one container down. */
+.plab-preview:has(.plab-views) { grid-template-rows: auto minmax(0, 1fr) auto; }
