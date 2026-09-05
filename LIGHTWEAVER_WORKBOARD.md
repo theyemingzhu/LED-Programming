@@ -146,3 +146,24 @@ COUNT-RULER-003 done locally — intervening yellow now uses the same channel
 intensity as the orange/red markers (3C3C00); removed dim wording. Existing
 current limits unchanged. Focused 25 unit tests and outgoing-frame/browser
 check pass; phone screen inspected. Not deployed.
+
+
+SETUP-CONSOLIDATE-001 — local repair, 2026-09-05. Direction stays editable
+in Layout; placement advances to phase 4 without a duplicate direction gate.
+Open Patterns starts the guarded project install. Removed the separate repeated
+LED-check wizard and duplicate count entry; retained final card confirmation.
+Added explicit recovery for an unrelated unfinished card candidate.
+
+Bench evidence: lw-b0fe81f61b44 at 192.168.18.70 accepted and booted the
+41-LED candidate on GPIO18, GRB, Aurora at brightness115 and approximately
+74FPS. No physical observation received within the90-second test; confirmed
+automatic restoration of prior known-good discovery setup. Permanent install
+and visual playback remain unproven. No firmware flash or deployment.
+Resume: Open Patterns in local9212 preview, start the final light test, then
+confirm only after Adrian observes the physical strip.
+Verification: 2,261 unit tests and production build passed; three focused
+browser cases passed (automatic install, unfinished-test recovery, unverified
+valid wiring). Actual phase4 screen has one Open Patterns action.
+Remaining presentation issue: during card wiring probation, Setup temporarily
+shows phase1/Needs attention while the final confirmation controls remain
+available. Physical confirmation and permanent installation remain pending.

@@ -16,7 +16,7 @@ export const CONNECTED_CARD_LINK_STATES = Object.freeze(['connected-direct', 'co
 export const SETUP_TASK_IDS = Object.freeze([
   'connect-card', 'pair-card', 'reconnect-card', 'recover-operation',
   'update-firmware', 'configure-wifi', 'install-project', 'discover-lights',
-  'place-lights', 'verify-direction', 'test-and-save', 'confirm-visible-lights',
+  'place-lights', 'test-and-save', 'confirm-visible-lights',
   'load-matching-project', 'open-patterns',
 ]);
 
@@ -217,20 +217,8 @@ function layoutProgress(project) {
   const placementDone = layout?.starterPending === false
     && Array.isArray(layout.strips)
     && layout.strips.length > 0;
-  const runs = Array.isArray(layout?.wiring?.runs)
-    ? layout.wiring.runs.filter(run => run?.type === 'strip')
-    : [];
-  // Direction is physical evidence owned by Layout/Wire, not another Setup
-  // checkbox. The canonical wiring verification is cleared whenever output,
-  // count, or direction changes, so it is the durable proof this phase needs.
-  const directionDone = placementDone
-    && layout?.wiring?.verified === true
-    && runs.length > 0
-    && runs.every(run => run?.verified === true
-      && ['source-forward', 'source-reverse'].includes(run?.physicalDirection));
   return [
     { id: 'placement', status: placementDone ? 'done' : 'current' },
-    { id: 'direction', status: directionDone ? 'done' : placementDone ? 'current' : 'locked' },
   ];
 }
 
@@ -372,10 +360,7 @@ export function deriveSetupJourney({
     nextAction = { id: 'discover-lights', phaseId: 'lights' };
   } else if (!layoutComplete(currentLayoutProgress)) {
     currentPhaseId = 'layout';
-    nextAction = {
-      id: currentLayoutProgress[0].status === 'done' ? 'verify-direction' : 'place-lights',
-      phaseId: 'layout',
-    };
+    nextAction = { id: 'place-lights', phaseId: 'layout' };
   } else if (!exactVerificationComplete(verification)) {
     currentPhaseId = 'verify';
     nextAction = nextVerificationAction(verification);

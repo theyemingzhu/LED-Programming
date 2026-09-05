@@ -94,6 +94,8 @@ const ALLOWED = Object.freeze({ allowed: true, reason: '', message: '' });
  * @param {boolean} input.wiringAffecting  This install may carry a layout change.
  * @param {boolean} input.wiringSendReady  The compiled wiring is complete enough to send.
  * @param {boolean} input.commissioningVerified  See readCardCommissioningVerification.
+ * @param {boolean} input.stagedWiringConfirmation  The caller owns the card's staged
+ *   wiring light-test and explicit confirmation flow before committing.
  */
 export function evaluateCardInstallGate({
   hardwareIssue = '',
@@ -103,13 +105,14 @@ export function evaluateCardInstallGate({
   wiringAffecting = false,
   wiringSendReady = true,
   commissioningVerified = false,
+  stagedWiringConfirmation = false,
 } = {}) {
   if (String(hardwareIssue || '').trim()) return blocked('hardware-issue');
   if (busy) return blocked('busy');
   // Checked before the link state so the reason a wiring install is refused is
   // always the missing bench proof, not a transient connection blip.
   if (wiringAffecting && !wiringSendReady) return blocked('wiring-incomplete');
-  if (wiringAffecting && !commissioningVerified) return blocked('not-commissioned');
+  if (wiringAffecting && !commissioningVerified && !stagedWiringConfirmation) return blocked('not-commissioned');
   if (requiresLiveLink) {
     if (cardAccess === 'blank') return blocked('blank');
     if (cardAccess === 'project') return blocked('project-mismatch');

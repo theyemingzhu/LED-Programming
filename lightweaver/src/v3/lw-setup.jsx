@@ -446,6 +446,9 @@ export function SetupScreen({
   }, [journey.currentPhaseId]);
 
   const go = hash => { window.location.hash = hash; };
+  const openPatterns = () => go(journey.setupComplete
+    ? '#screen=pattern'
+    : '#screen=card&section=setup&task=install-project&next=patterns');
 
   const ADOPTION_FAILURES = Object.freeze({
     cancelled: 'Studio kept the open project, so nothing was adopted from the card.',
@@ -913,10 +916,9 @@ export function SetupScreen({
       );
     }
     if (phase.id === 'layout') {
-      const placementDone = phase.progress.some(item => item.id === 'placement' && item.status === 'done');
       return (
         <div className="lw-setup-task" data-testid="setup-active-task">
-          <p>Place the discovered outputs in the artwork, then confirm their physical direction in Layout.</p>
+          <p>Place the discovered outputs in the artwork. You can set each strip&rsquo;s direction there.</p>
           {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount)) && (
             <p data-testid="setup-counted-lights">
               {evidence.count} LED{evidence.count === 1 ? '' : 's'} counted
@@ -924,20 +926,16 @@ export function SetupScreen({
               . Look at the strip — those lights should be on.
             </p>
           )}
-          {ledCountEntry}
-          {ledCountState.message && (
-            <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
-          )}
           <ul className="lw-setup-subprogress" aria-label="Artwork placement progress">
-            {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'placement' ? 'Artwork placement' : 'Light direction'}</li>)}
+            {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} Artwork placement</li>)}
           </ul>
           <button
             type="button"
             className="btn primary"
             data-testid="setup-layout-action"
-            onClick={() => go(placementDone ? '#screen=card&section=setup&task=install-project' : '#screen=layout&mode=draw')}
+            onClick={() => go('#screen=layout&mode=draw')}
           >
-            {placementDone ? 'Verify light direction' : 'Place lights in the artwork'}
+            Place lights in the artwork
           </button>
         </div>
       );
@@ -958,7 +956,7 @@ export function SetupScreen({
             developer vocabulary on the one screen where a visual artist most
             needs to know what is about to happen to their piece. */}
         <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=card&section=setup&task=install-project')}>Test and save to card</button>
+        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={openPatterns}>Open Patterns</button>
       </div>
     );
   };
@@ -1018,7 +1016,7 @@ export function SetupScreen({
                   can render while the ladder still has an active task (an
                   exact project match during a `confirming` lifecycle, for
                   one), and two primaries then ask the owner to arbitrate. */}
-              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>Open Patterns</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
               {firmwareBehind && (
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
@@ -1079,13 +1077,6 @@ export function SetupScreen({
               );
             })}
           </ol>
-        )}
-        {exactTransport && !journey.setupComplete && journey.currentPhaseId !== 'connect' && (
-          <p className="lw-setup-run-anyway">
-            <button type="button" className="btn" data-testid="setup-run-patterns" onClick={() => go('#screen=pattern')}>
-              Open Patterns
-            </button>
-          </p>
         )}
       </section>
 

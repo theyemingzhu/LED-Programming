@@ -19,7 +19,7 @@ const TEST_BUILD_ID = 'a'.repeat(40);
 async function mockLocalCard(page: any, options: any = {}) {
   const card = {
     savedConfig: null as any,
-    candidateConfig: null as any,
+    candidateConfig: options.existingCandidate || null as any,
     attemptedConfigs: [] as any[],
     operations: [] as string[],
     activationId: 'card-issued-layout-1',
@@ -175,8 +175,8 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
   if (!verified) {
-    // Unverified wiring exposes no install control — only the LED-check CTA.
-    await expect(page.getByTestId('start-led-check')).toBeVisible();
+    await expect(page.getByText('Ready to install on the card.')).toBeVisible();
+    await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
     return;
   }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lightweaver-send-ready-'));
@@ -197,9 +197,33 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
   // The seeded project is fully verified, so the primary flow area settles on
   // the install control. Wait for the enabled state instead of sampling early.
-  await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
+  await expect(page.getByText('Ready to install on the card.')).toBeVisible();
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
 }
+
+test('Open Patterns starts the guarded install and can replace an unrelated unfinished test', async ({ page }) => {
+  const card = await mockLocalCard(page, {
+    existingCandidate: {
+      piece: { id: 'old-test', name: 'Old test' },
+      projectRevision: 99,
+      projectFingerprint: 'f'.repeat(64),
+      led: { pixels: 44, outputs: [{ id: 'out1', pin: 16, pixels: 44 }], colorOrder: 'RGB' },
+    },
+  });
+  await gotoWire(page, {
+    verified: true,
+    url: '/#screen=card&section=setup&task=install-project&next=patterns',
+  });
+
+  const recover = page.getByTestId('discard-candidate-and-retry');
+  await expect(recover).toBeVisible({ timeout: 10000 });
+  expect(card.operations).not.toContain('candidate');
+
+  await recover.click();
+  await expect(page).toHaveURL(/#screen=pattern/, { timeout: 10000 });
+  expect(card.operations).toContain('rollback');
+  expect(card.operations).toContain('config');
+});
 
 async function proxyStudioOverHttps(page: any) {
   await page.route('https://led.mandalacodes.com/**', async (route: any) => {
@@ -227,15 +251,13 @@ async function proxyStudioOverHttps(page: any) {
   });
 }
 
-test('unverified wiring exposes no install control and makes no request', async ({ page }) => {
+test('valid unverified wiring enters the staged card flow without a duplicate LED check', async ({ page }) => {
   const card = await mockLocalCard(page);
   await gotoWire(page);
 
-  // The install surface only exists after the LED check verifies the wiring.
-  // No install control or alternate export path is available yet.
-  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
   await expect(page.getByTestId('layout-export-ledmap')).toHaveCount(0);
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
   expect(card.operations).toEqual([]);
 });
 

@@ -1,4 +1,4 @@
-import { useReducer, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { cardActionReducer, createCardActionState } from '../../../lib/cardAction.js';
 import {
@@ -51,6 +51,37 @@ async function readReadyDeploymentEvidence(host) {
   return correlateCardDeploymentReadinessEvidence(project, status);
 }
 
+async function waitForCardAfterCandidateRollback(host, expected = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const [project, status, wiringStatus] = await Promise.all([
+        readCardProjectEvidence({ host }),
+        readCardStatusEnvelope({ host }),
+        getCardWiringStatus({ host }),
+      ]);
+      const cardId = project.cardId || status.cardId;
+      const buildId = project.buildId || status.buildId;
+      if (!cardId || project.cardId !== status.cardId || !buildId || project.buildId !== status.buildId) {
+        throw new CardPushError('readback', 'The card is still reconnecting after the unfinished test was discarded.');
+      }
+      if (expected.cardId && cardId !== expected.cardId) {
+        throw new CardPushError('wrong-card', 'A different card answered after the unfinished test was discarded.');
+      }
+      if (expected.buildId && buildId !== expected.buildId) {
+        throw new CardPushError('target-mismatch', 'The card firmware changed while the unfinished test was being discarded.');
+      }
+      if (!wiringStatus.hasCandidate) return { project, status, wiringStatus };
+      lastError = new CardPushError('candidate-conflict', 'The card is still clearing the unfinished light test.');
+    } catch (error) {
+      lastError = error;
+      if (['wrong-card', 'target-mismatch'].includes(error?.reason)) throw error;
+    }
+  }
+  throw lastError || new CardPushError('readback', 'The card did not reconnect after the unfinished light test was discarded.');
+}
+
 // Send-to-card control (Wire mode, Phase 2 step 9 / plan Phase 3). Extracted
 // from PatchBoardScreen.pushToCard + its push* state. The `connected` prop
 // drives the ambient status dot (grey when disconnected, green when the card
@@ -67,6 +98,8 @@ export function CardPushControl({
   projectName,
   standaloneController,
   disabled = false,
+  autoStart = false,
+  onInstalled,
   // True while a Setup ladder above this control already owns the page's
   // primary action. Applies to the Install button ONLY. The wiring-candidate
   // confirmations below ("Start light test", "The lights look correct") stay
@@ -84,6 +117,7 @@ export function CardPushControl({
   const [pushFallbackPackage, setPushFallbackPackage] = useState(null);
   const [wiringCandidate, setWiringCandidate] = useState(null);
   const [wiringTestState, setWiringTestState] = useState('idle');
+  const [candidateConflict, setCandidateConflict] = useState(null);
   const failedAttemptRef = useRef(null);
   const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, projectLifecycle);
 
@@ -97,6 +131,7 @@ export function CardPushControl({
     let attempt = retryAttempt;
     setWiringTestState('idle');
     setWiringCandidate(null);
+    setCandidateConflict(null);
     setPushFallbackJson(''); setPushFallbackPackage(null);
     try {
       if (!attempt) {
@@ -170,6 +205,12 @@ export function CardPushControl({
       );
       attempt = { ...attempt, wiringStatus: deploymentStart.status, resumeAction: deploymentStart.action };
       if (attempt.resumeAction === 'candidate-conflict') {
+        setCandidateConflict({
+          activationId: attempt.wiringStatus?.activationId,
+          host: attempt.host,
+          cardId: attempt.wiringStatus?.cardId,
+          buildId: attempt.wiringStatus?.buildId,
+        });
         throw new CardPushError(
           'candidate-conflict',
           'This card already has a different staged installation. Roll back that candidate or intentionally replace it, then retry. Nothing was sent.',
@@ -211,6 +252,7 @@ export function CardPushControl({
       markCardLookConfirmed({ ...(standaloneController?.defaultLook || {}), syncZones: true });
       failedAttemptRef.current = null;
       setPushStatus(`Installed revision ${attempt.revision} on card · ${attempt.zoneCount} zone${attempt.zoneCount === 1 ? '' : 's'} at ${cleanHost}`);
+      onInstalled?.();
     } catch (err) {
       failedAttemptRef.current = attempt;
       const message = err instanceof CardPushError ? err.message : `Push failed: ${err.message || err}`;
@@ -268,6 +310,7 @@ export function CardPushControl({
         markCardLookConfirmed({ ...(standaloneController?.defaultLook || {}), syncZones: true });
         setPushStatus(`Wiring confirmed. Revision ${wiringCandidate.attempt.revision} is now the card’s working setup.`);
         setWiringTestState('confirmed');
+        onInstalled?.();
       } else {
         assertCurrentAttempt(wiringCandidate.attempt);
         await rollbackCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host });
@@ -285,6 +328,30 @@ export function CardPushControl({
 
   const pushing = action.status === 'pending' && wiringTestState === 'idle';
   const wiringTransactionActive = Boolean(wiringCandidate);
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || disabled || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void pushToCard();
+  }, [autoStart, disabled]);
+  const discardOldCandidateAndRetry = async () => {
+    if (!candidateConflict?.activationId) return;
+    let cleared = false;
+    await withStudioHardwareOperation('finish-wiring', async () => {
+      setPushStatus('Discarding the unfinished light test…');
+      try {
+        await rollbackCardWiringCandidate(candidateConflict.activationId, { host: candidateConflict.host });
+        setPushStatus('Reconnecting to this card…');
+        await waitForCardAfterCandidateRollback(candidateConflict.host, candidateConflict);
+        setCandidateConflict(null);
+        failedAttemptRef.current = null;
+        cleared = true;
+      } catch (error) {
+        setPushStatus(error.message || 'The unfinished light test could not be discarded. The working setup is still safe.');
+      }
+    });
+    if (cleared) await pushToCard();
+  };
   const openInstaller = () => {
     const host = failedAttemptRef.current?.host || getCardHostname();
     const url = new URL(buildCardConfigHandoffUrl(host, pushFallbackPackage));
@@ -302,7 +369,6 @@ export function CardPushControl({
           data-testid="layout-send-to-card"
           disabled={disabled || pushing || wiringTransactionActive}
           onClick={() => pushToCard()}
-          title="Send this verified project to the card, replacing its active project after card verification."
           data-tooltip="Send this verified project to the card, replacing its active project after card verification."
         >
           <span className={`la-card-push-dot${connected ? ' on' : ' off'}`}/>
@@ -322,7 +388,11 @@ export function CardPushControl({
               <button className="btn" title="Open the paired card's local installer with this project ready to apply." data-tooltip="Open the paired card's local installer with this project ready to apply." onClick={openInstaller}>Open installer</button>
             </div>
           )}
-          {action.status === 'failed' && <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => pushToCard(failedAttemptRef.current)}>Retry</button>}
+          {candidateConflict?.activationId ? (
+            <button className="btn" data-testid="discard-candidate-and-retry" title="Discard the unfinished card light test, keep the working setup, and retry this install." data-tooltip="Discard the unfinished card light test, keep the working setup, and retry this install." onClick={() => void discardOldCandidateAndRetry()}>Discard old test and retry</button>
+          ) : action.status === 'failed' && (
+            <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => pushToCard(failedAttemptRef.current)}>Retry</button>
+          )}
         </div>
       )}
       {wiringCandidate && (

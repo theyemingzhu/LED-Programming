@@ -23,7 +23,7 @@ const CARD_SECTION_KEYS = new Set(['setup', 'overview', 'install', 'settings', '
 const SETUP_TASK_KEYS = new Set([
   'connect-card', 'pair-card', 'reconnect-card', 'recover-operation',
   'update-firmware', 'configure-wifi', 'install-project', 'discover-lights',
-  'place-lights', 'verify-direction', 'test-and-save', 'confirm-visible-lights',
+  'place-lights', 'test-and-save', 'confirm-visible-lights',
   'load-matching-project', 'open-patterns',
 ]);
 
