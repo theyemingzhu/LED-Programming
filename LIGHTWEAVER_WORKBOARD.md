@@ -9,6 +9,13 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-05: **FLOW-BLUEPRINT handoff ready** — planning-only integration blueprint
+with E01–E14 existing-code ledger, B0–B6 ownership/dependencies and J01–J14
+acceptance scenarios. [Plan](docs/plans/2026-09-05-unified-card-journey.md) and
+[root handoff](HANDOFF-FRESH-CHAT.md). Source inventory at `0af4b750`; reconcile
+with current main before implementation. No product changes or hardware proof
+from this planning task. Cheapest capable agents remain the default.
+
 2026-09-05: **JOURNEY-01–09 locally verified; JOURNEY-10 machine setup verified, lights pending** — implemented the approved
 [update-to-playback repair](docs/plans/2026-09-05-update-to-playback-repair.md)
 on `codex/update-to-playback`, based on production build 1525. Exact card remains

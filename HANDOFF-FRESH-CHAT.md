@@ -1,34 +1,29 @@
-# Handoff to fresh chat — compress Card Home after one-action IA
+# Handoff to fresh chat — unified Lightweaver build
 
-Open a new Claude chat in the LED / Lightweaver workspace and paste the block below. The copy button on the code fence grabs it cleanly.
+Open a new task in this repository and paste the block below.
 
 ```
-Resume Lightweaver on branch card-one-action. Do not start from main and do not rebuild the one-action Card plan from scratch.
+Execute the complete Lightweaver integration build defined in docs/plans/2026-09-05-unified-card-journey.md, packages B0–B5, using its acceptance scenarios J01–J14.
 
-A previous Cursor chat already implemented Tasks 1-7 of the plan. The doors are done: Layout is Wire only, check and install live on Card Home, Hardware has no second Install, the footer shows the status word only, and old #screen=layout&mode=wire bookmarks open Card. Head is a5bb834a. Checkpoint on that revision: 2201 unit tests pass and the production build succeeded.
+Read in order:
+1. Repository AGENTS.md instructions and LIGHTWEAVER_WORKBOARD.md.
+2. docs/development-workflow.md and docs/workflows/sprint.md.
+3. docs/plans/2026-09-05-unified-card-journey.md, starting with its audit deltas and E01–E14 existing-build ledger.
+4. docs/plans/2026-09-05-update-to-playback-repair.md for prior repair evidence.
 
-Before touching code, read in this order:
-1. docs/superpowers/plans/2026-08-30-card-one-action.md — start at the 2026-08-30 audit deltas at the top
-2. TODO.md Follow-ups item about compressing Card Home
-3. LIGHTWEAVER_WORKBOARD.md CARD-IA-001 and CARD-IA-VIS-001
+The plan and handoff are on codex/unified-card-journey-handoff. Reconcile current main and pending repairs before selecting an isolated codex/ implementation branch. You do not need to repeat the 2026-09-05 source audit; check only changed code and unresolved integration gaps. Active physical confirmation and commissioning already exist.
 
-You do not need to re-survey how Test & Install, ModeSwitch, or the Hardware Install row used to work — verified 2026-08-30 evening. CardInstallAction already exists and is the only project-write UI. CardPushControl stays the only writer.
+Act as conductor. Use the cheapest capable agents: one exclusive Studio source owner, one journey-test/docs owner, and a firmware owner only for demonstrated firmware gaps. Follow the blueprint's exact ownership and dependencies. Preserve existing implementations and unrelated work.
 
-Sprint mode. Next bounded pass only: compress Card Home so connected / project-name is not repeated across the setup header, the up-to-date banner, Detected state, and the matching-project panel. One status, one primary action. Hardware and Advanced stay closed folds. Keep color-order try-on and the card-address recovery field. Do not re-add tabs. Do not bump VERSION, flash a card, or ship.
+Build one consistent next-action flow with automatic safe recovery, retained project/configuration, accurate installed versions, and continuous journey tests. Use focused regressions, one integrated checkpoint per coherent batch, and inspect real desktop/phone screens. Keep one stable preview and send a clickable preview URL when ready to inspect.
 
-Verify with a focused Playwright if you change Home copy or structure, then node scripts/lightweaver-dev.mjs checkpoint from the repo root. Browser-verify at http://127.0.0.1:4173/#screen=card and http://127.0.0.1:4173/#screen=layout. Send those clickable URLs when ready.
+Do not deploy, sign or flash firmware, factory-erase a card, or invoke exhaustive Prove under this handoff alone. Ask for physical observations one at a time when needed; continue independent checks. Never mark hardware proof passed from mocks. Do not add Pi runtime work or unrelated roadmap features.
 
-Hard rails:
-- Stay on card-one-action
-- Do not merge Wire into Card
-- Do not invent a second install writer
-- Preferences stay in the top bar
-- No firmware release, no launch:check unless Adrian asks to ship
-- After this Home compression lands, stop and report. Do not start follow-ups or open a PR unless he asks.
+Commit verified work with truthful feat/fix/test/docs messages. Finish B0–B5 and report the exact revision, acceptance evidence, outstanding hardware/release gates, and one next step. Stop without expanding the scope; B6 shipment requires a separate shipping instruction.
 ```
 
 ---
 
-## Context for after (Adrian's reference only, not for the fresh chat)
+## Context for after
 
-The IA is on `card-one-action`, not pushed, not shipped. After Home is quieter, the next human call is push / PR / look at the live Card. Preview: http://127.0.0.1:4173/#screen=card
+This publication contains planning documents only. The complete build scope is B0–B5; B6 defines the separately authorized shipment. Audits used inexpensive agents and were checked by the primary. Fetched main at handoff was `2747224f201955cc6c2cee69a96bbf2ff5f9e98b`; the detailed source inventory was made against `0af4b750`, so begin with the specified delta reconciliation.
