@@ -558,6 +558,14 @@ test('Wire button tooltips use one unclipped portal at phone and desktop widths'
     await expect(tooltip).toHaveCount(1);
     await expect(tooltip).toHaveText(text);
     await expect(trigger).not.toHaveAttribute('title');
+    const pseudoTooltipPainted = await trigger.evaluate(element => {
+      const style = getComputedStyle(element, '::after');
+      return style.content !== 'none'
+        && style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity) > 0;
+    });
+    expect(pseudoTooltipPainted, 'the portal must be the only painted tooltip').toBe(false);
     const geometry = await tooltip.evaluate(element => {
       const rect = element.getBoundingClientRect();
       return { rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }, pointerEvents: getComputedStyle(element).pointerEvents, width: innerWidth, height: innerHeight };
