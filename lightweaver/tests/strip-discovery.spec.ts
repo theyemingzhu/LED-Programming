@@ -99,6 +99,7 @@ interface FakeCard {
   beaconPinned: number | null;
   beaconPins: number[];
   beaconRefused: number[];
+  frames: string[][];
 }
 
 // The ports a stock card can actually light: the approved output menu minus the
@@ -120,8 +121,14 @@ const BEACON_PORTS = [15, 16, 17, 18, 21, 38, 40, 41, 42, 47, 48];
 async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirmware } = {}) {
   const card: FakeCard = {
     configs: [], applied: null, reboots: 0, booted: false, restartPending: false, statusReads: 0,
-    beaconPinned: null, beaconPins: [], beaconRefused: [],
+    beaconPinned: null, beaconPins: [], beaconRefused: [], frames: [],
   };
+  await page.routeWebSocket(`ws://${HOST}:81/ws`, socket => {
+    socket.onMessage(message => {
+      const payload = JSON.parse(String(message));
+      if (Array.isArray(payload.seg?.[0]?.i)) card.frames.push(payload.seg[0].i);
+    });
+  });
   await page.route(`http://${HOST}/**`, async (route: any) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -226,14 +233,19 @@ async function dispatchBlankCard(page: any, { routeToDiscovery = true } = {}) {
 async function startDiscoveryOnGpio16(page: any) {
   const panel = page.getByTestId('strip-discovery');
   await expect(panel).toBeVisible();
-  await expect(page.getByTestId('discovery-start')).toBeDisabled();
   // Idempotent: the port may already be lit from an earlier step, and clicking a
   // lit port turns it off.
   if (await page.getByTestId('discovery-probe-16').getAttribute('aria-pressed') !== 'true') {
     await page.getByTestId('discovery-probe-16').click();
   }
-  await page.getByTestId('discovery-claim-16').check();
   await page.getByTestId('discovery-start').click();
+}
+
+async function showCountingRuler(page: any) {
+  await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
+  await page.getByTestId('discovery-color-red').click();
+  await page.getByTestId('discovery-color-green').click();
+  await expect(page.getByTestId('discovery-decade')).toBeVisible();
 }
 
 test.describe('a blank card whose firmware applies its first config', () => {
@@ -282,7 +294,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     await expect(page.getByTestId('strip-discovery')).toBeVisible();
-    await expect(page.getByTestId('discovery-probe-hint')).toBeVisible();
+    await expect(page.getByTestId('discovery-plan')).toContainText('Tap a port');
 
     for (const pin of BEACON_PORTS) {
       await expect(page.getByTestId(`discovery-probe-${pin}`)).toBeVisible();
@@ -369,7 +381,51 @@ test.describe('a blank card whose firmware applies its first config', () => {
     expect(card.restartPending).toBe(false);
   });
 
-  test('probe, decade read-off and end marker produce recorded counts', async ({ page }) => {
+  test('counting uses the strip ruler directly without guessing buttons', async ({ page }) => {
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    const overlay = page.getByTestId('card-setup-overlay');
+    await expect(overlay).toBeVisible();
+    await page.screenshot({ path: '/tmp/lightweaver-count-picker-desktop.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: '/tmp/lightweaver-count-picker-phone.png' });
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeInViewport();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByTestId('discovery-probe-16').click();
+    await expect(page.getByTestId('discovery-claim-16')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-start')).toHaveText('Yes, count this strip');
+    await page.getByTestId('discovery-start').click();
+    await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
+    await page.getByTestId('discovery-color-red').click();
+    await page.getByTestId('discovery-color-green').click();
+    const ruler = page.getByTestId('discovery-decade');
+    await expect(ruler).toBeVisible();
+    // Inspect frames actually sent by the browser, not just legend copy.
+    await expect.poll(() => card.frames.some(frame =>
+      frame.length === 256 && frame[4] === '3C1800' && frame[9] === '3C0000'
+      && frame[49] === '303030' && frame[99] === '303030'
+    )).toBe(true);
+    await expect(ruler).toContainText(/5/);
+    await expect(ruler).toContainText(/orange/i);
+    await expect(ruler).toContainText(/red/i);
+    await expect(ruler).toContainText(/white/i);
+    await expect(page.getByTestId('discovery-more')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-enough')).toHaveCount(0);
+    await page.screenshot({ path: '/tmp/lightweaver-count-ruler-desktop.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: '/tmp/lightweaver-count-ruler-phone.png' });
+    await expect(page.getByTestId('discovery-count-16')).toBeInViewport();
+    await expect(page.getByTestId('discovery-counts-done')).toBeInViewport();
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeInViewport();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByTestId('discovery-count-16').fill('47');
+    await page.getByTestId('discovery-counts-done').click();
+    await page.getByTestId('discovery-end-yes').click();
+    await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 47 LEDs');
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
+  });
+
+  test('ruler read-off and end marker produce recorded counts', async ({ page }) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
 
@@ -378,12 +434,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await startDiscoveryOnGpio16(page);
 
     await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('8');
-    await page.getByTestId('discovery-more').click();
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('16');
-    await page.getByTestId('discovery-more').click();
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('32');
-    await page.getByTestId('discovery-enough').click();
+    await showCountingRuler(page);
 
     await expect(page.getByTestId('discovery-decade')).toBeVisible();
     const count = page.getByTestId('discovery-count-16');
@@ -391,10 +442,9 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.getByTestId('discovery-counts-done').click();
 
     await expect(page.getByTestId('discovery-end-marker')).toBeVisible();
-    // "No" reopens the probe for this port without losing anything else.
+    // A correction returns to the ruler without losing the entered count.
     await page.getByTestId('discovery-end-no').click();
-    await expect(page.getByTestId('discovery-probe')).toBeVisible();
-    await page.getByTestId('discovery-enough').click();
+    await expect(page.getByTestId('discovery-decade')).toBeVisible();
     await count.fill('47');
     await page.getByTestId('discovery-counts-done').click();
     await page.getByTestId('discovery-end-yes').click();
@@ -437,31 +487,26 @@ test.describe('a blank card whose firmware applies its first config', () => {
     expect(recorded).toContainEqual({ pin: 16, role: 'strip', pixelCount: 47, controlKind: '' });
   });
 
-  test('extending discovery grows only the active port', async ({ page }) => {
+  test('adding a strip keeps its count and extension grows only the chosen port', async ({ page }) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
-    await page.getByTestId('discovery-probe-16').click();
-    await page.getByTestId('discovery-claim-16').check();
+    await startDiscoveryOnGpio16(page);
+    await showCountingRuler(page);
+    await page.getByTestId('discovery-count-16').fill('47');
+    await page.getByTestId('discovery-counts-done').click();
+    await page.getByTestId('discovery-end-yes').click();
+    await page.getByTestId('discovery-add-strip').click();
     await page.getByTestId('discovery-probe-17').click();
-    await page.getByTestId('discovery-claim-17').check();
     await page.getByTestId('discovery-start').click();
-    await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
-
-    // Wait for each rendered count before the next click. This exercises the
-    // real owner interaction without allowing several clicks to race the same
-    // React render and collapse into one state transition.
-    for (const expected of [16, 32, 64, 128, 256]) {
-      await page.getByTestId('discovery-more').click();
-      await expect(page.getByTestId('discovery-lit-count')).toContainText(String(expected));
-    }
-    await page.getByTestId('discovery-more').click();
-    await expect(page.getByTestId('discovery-bench-ceiling')).toBeVisible();
-    await page.getByRole('button', { name: 'Extend and keep looking' }).click();
-    await expect.poll(() => card.configs.length).toBe(2);
-
-    const outputs = card.configs[1].led.outputs;
-    expect(outputs.find((output: any) => output.pin === 16).pixels).toBe(512);
-    expect(outputs.find((output: any) => output.pin === 17).pixels).toBe(256);
+    await expect(page.getByTestId('discovery-decade')).toBeVisible();
+    await expect(page.getByTestId('discovery-count-16')).toHaveValue('47');
+    await page.getByTestId('discovery-ruler-extend-17').click();
+    await expect.poll(() => card.configs.length).toBe(3);
+    const outputs = card.configs[2].led.outputs;
+    expect(outputs.find((output: any) => output.pin === 16).pixels).toBe(256);
+    expect(outputs.find((output: any) => output.pin === 17).pixels).toBe(512);
+    await expect(page.getByTestId('discovery-count-16')).toHaveValue('47');
+    await expect(page.getByTestId('discovery-count-17')).toHaveAttribute('max', '512');
   });
 
   test('a typed count cannot exceed the provisioned pixels the card can verify', async ({ page }) => {
@@ -469,7 +514,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await dispatchBlankCard(page);
     await startDiscoveryOnGpio16(page);
     await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
-    await page.getByTestId('discovery-enough').click();
+    await showCountingRuler(page);
 
     const count = page.getByTestId('discovery-count-16');
     await expect(count).toHaveAttribute('max', '256');
@@ -483,25 +528,26 @@ test.describe('a blank card whose firmware applies its first config', () => {
     expect(recorded).toContainEqual({ pin: 16, role: 'strip', pixelCount: 256, controlKind: '' });
   });
 
-  test('the 4-output limit is stated before it is hit and folds into one line', async ({ page }) => {
+  test('a fifth strip is refused before writing another setup', async ({ page }) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
-    await expect(page.getByTestId('strip-discovery')).toBeVisible();
-
-    // The limit is part of the instructions, before any port is picked.
-    await expect(page.getByTestId('discovery-plan')).toContainText('up to 4');
-
-    for (const pin of [15, 16, 17, 18, 21]) {
+    for (const [index, pin] of [15, 16, 17, 18].entries()) {
       await page.getByTestId(`discovery-probe-${pin}`).click();
-      await page.getByTestId(`discovery-claim-${pin}`).check();
+      await page.getByTestId('discovery-start').click();
+      if (index === 0) await showCountingRuler(page);
+      await expect(page.getByTestId('discovery-decade')).toBeVisible();
+      await page.getByTestId(`discovery-count-${pin}`).fill('20');
+      await page.getByTestId('discovery-counts-done').click();
+      for (let confirmed = 0; confirmed <= index; confirmed++) {
+        await page.getByTestId('discovery-end-yes').click();
+      }
+      await expect(page.getByTestId('discovery-record')).toBeVisible();
+      await page.getByTestId('discovery-add-strip').click();
     }
-    const limit = page.getByTestId('discovery-output-limit');
-    await expect(limit).toBeVisible();
-    // The overflowing port is named once, in the banner…
-    await expect(limit).toContainText('GPIO 21');
-    // …not as its own near-identical skipped line.
-    await expect(page.getByTestId('discovery-skipped-21')).toHaveCount(0);
+    await page.getByTestId('discovery-probe-21').click();
+    await expect(page.getByTestId('discovery-output-limit')).toBeVisible();
     await expect(page.getByTestId('discovery-start')).toBeDisabled();
+    expect(card.configs).toHaveLength(4);
   });
 
   test('the probe question offers an explicit relight control', async ({ page }) => {
@@ -514,7 +560,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(relight).toBeVisible();
     await relight.click();
     // Relighting never changes the question or the count being asked about.
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('8');
+    await expect(page.getByTestId('discovery-color-proof')).toBeVisible();
     await expect(page.getByTestId('discovery-probe')).toBeVisible();
   });
 
@@ -522,7 +568,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     await expect(page.getByTestId('strip-discovery')).toBeVisible();
-    await expect(page.getByTestId('discovery-start-note')).toContainText('256 lights per chosen output');
+    await page.getByTestId('discovery-probe-16').click();
+    await expect(page.getByTestId('discovery-start-note')).toContainText('temporary setup');
     await expect(page.getByTestId('discovery-start-note')).toContainText(/restart/i);
   });
 });
@@ -647,6 +694,7 @@ test.describe('discovery on a card that already holds a project (ui-repair B0)',
     // kept), says so, and carries straight on to the probe.
     await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 30000 });
     await expect(page.getByTestId('discovery-install-error')).toHaveCount(0);
+    await showCountingRuler(page);
     await expect(page.getByTestId('discovery-bench-maxed'))
       .toContainText(/cleared it/i);
     expect(clears).toHaveLength(1);
@@ -676,19 +724,17 @@ test.describe('a reload mid-discovery (ui-repair B2)', () => {
     await dispatchBlankCard(page);
     await startDiscoveryOnGpio16(page);
     await expect(page.getByTestId('discovery-probe')).toBeVisible({ timeout: 15000 });
-    await page.getByTestId('discovery-more').click();
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('16');
+    await showCountingRuler(page);
+    await page.getByTestId('discovery-count-16').fill('47');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     await expect(page.getByTestId('discovery-resume')).toBeVisible();
     await page.getByTestId('discovery-resume-continue').click();
-    await expect(page.getByTestId('discovery-probe')).toBeVisible();
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('16');
+    await expect(page.getByTestId('discovery-decade')).toBeVisible();
+    await expect(page.getByTestId('discovery-count-16')).toHaveValue('47');
 
     // Finishing the resumed run records normally and clears the stored run.
-    await page.getByTestId('discovery-color-skip').click();
-    await page.getByTestId('discovery-enough').click();
     await page.getByTestId('discovery-count-16').fill('47');
     await page.getByTestId('discovery-counts-done').click();
     await page.getByTestId('discovery-end-yes').click();
@@ -743,14 +789,14 @@ test.describe('a card restart while a question is on screen (ui-repair B5)', () 
     }, blankStatus({ bootId: 'boot-discovery-99' }));
 
     await expect(page.getByTestId('discovery-card-restarted')).toBeVisible();
-    await expect(page.getByTestId('discovery-more')).toBeDisabled();
-    await expect(page.getByTestId('discovery-enough')).toBeDisabled();
-    await expect(page.getByTestId('discovery-skip')).toBeDisabled();
+    await expect(page.getByTestId('discovery-color-red')).toBeDisabled();
+    await expect(page.getByTestId('discovery-color-green')).toBeDisabled();
+    await expect(page.getByTestId('discovery-color-skip')).toBeDisabled();
 
     // "Light these again" is the one gate back to answering.
     await page.getByTestId('discovery-relight').click();
     await expect(page.getByTestId('discovery-card-restarted')).toHaveCount(0);
-    await expect(page.getByTestId('discovery-enough')).toBeEnabled();
+    await expect(page.getByTestId('discovery-color-red')).toBeEnabled();
   });
 });
 
@@ -770,9 +816,9 @@ test.describe('the colour-proof quiz (ui-repair B-COLOUR)', () => {
 
     const proof = page.getByTestId('discovery-color-proof');
     await expect(proof).toBeVisible();
-    await expect(proof).toContainText('What colour do you see?');
+    await expect(proof).toContainText(/choose its color/i);
     await page.getByTestId('discovery-color-green').click();
-    await expect(proof).toContainText('different colour');
+    await expect(proof).toContainText(/now|changed|different/i);
 
     // The same colour twice cannot happen physically — the check restarts
     // instead of recording a colour map that lies.
@@ -783,9 +829,7 @@ test.describe('the colour-proof quiz (ui-repair B-COLOUR)', () => {
     await page.getByTestId('discovery-color-red').click();
     await expect(page.getByTestId('discovery-color-proof')).toHaveCount(0);
 
-    // The count flow is untouched by the quiz.
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('8');
-    await page.getByTestId('discovery-enough').click();
+    // Calibrated colors lead straight to the ruler, with no guessing step.
     await expect(page.getByTestId('discovery-decade')).toBeVisible();
   });
 
@@ -797,8 +841,7 @@ test.describe('the colour-proof quiz (ui-repair B-COLOUR)', () => {
 
     await page.getByTestId('discovery-color-skip').click();
     await expect(page.getByTestId('discovery-color-proof')).toHaveCount(0);
-    await expect(page.getByTestId('discovery-more')).toBeEnabled();
-    await page.getByTestId('discovery-more').click();
-    await expect(page.getByTestId('discovery-lit-count')).toHaveText('16');
+    await expect(page.getByTestId('discovery-decade')).toBeVisible();
+    await expect(page.getByTestId('discovery-count-16')).toBeEnabled();
   });
 });

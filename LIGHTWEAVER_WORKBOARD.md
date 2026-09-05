@@ -118,3 +118,21 @@ this queue when Adrian is available.
 - Actual local preview: paired card `lw-b0fe81f61b44`, footer **1524 ✓**, phase 2 Find and verify lights. No project/firmware/credential mutation.
 - **Needs eyes / release Bench:** signed preserving update, saved-network continuity through power cycle, card-page visual check, project restore and two patterns/Stop on the physical lights. No release or flash in this Sprint.
 - See [repair evidence](docs/plans/2026-09-05-update-to-playback-repair.md) and [Bench resumption](docs/bench-sessions/2026-09-05-lw-b0fe81f61b44-update-to-playback.md).
+
+## 2026-09-05 visual counting Sprint
+
+COUNT-RULER-001 done locally — compact port confirmation, two color checks,
+then direct count entry with orange every 5, red every 10, white every 50.
+The ruler repeats through extended ranges; correction, add-strip, resume and
+restart pause remain available. Technical text is collapsed into Details.
+
+Evidence: regression red witnessed; 2,260 unit tests, 20 Chromium discovery
+cases, production build passed. Browser tests inspect actual outgoing marker
+frames. Complete 2,048-pixel-per-port marker test covers output offsets and
+255/260/500/1000/2000 boundaries. Desktop and phone screenshots inspected;
+count, continue and Stop visible without scrolling. No release or hardware
+flash performed. Local preview remains http://127.0.0.1:9212/#screen=discovery.
+
+COUNT-RULER-VIS-001 needs-eyes — observe actual orange/red/white markers and
+brightness on the physical strip; automated frame proof cannot verify the
+physical hues. Resume: open Count your lights and choose the connected port.

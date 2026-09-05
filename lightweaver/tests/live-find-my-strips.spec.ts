@@ -40,12 +40,8 @@ test('find my strips, on the real card', async ({ page }) => {
   await page.waitForTimeout(2500);
   console.log('FIND probe: pinned GPIO ' + PIN);
 
-  // Claim the port right where it is lit — one tap, no hunting back through the list.
-  await page.getByTestId(`discovery-claim-${PIN}`).click();
-  await page.waitForTimeout(500);
-  console.log('FIND claim: GPIO ' + PIN + ' marked as the strip');
-  const start = page.getByRole('button', { name: /Start|Find|Begin/i }).first();
-  await start.click().catch(() => {});
+  // Confirm the observed port and start the temporary counting setup.
+  await page.getByTestId('discovery-start').click();
 
   for (let i = 0; i < 60; i += 1) {
     if (await page.getByTestId('discovery-probe').count()) break;
@@ -56,7 +52,7 @@ test('find my strips, on the real card', async ({ page }) => {
     console.log('FIND probe FAILED:', failure || '(no message)');
     throw new Error('probe never started');
   }
-  console.log('FIND probe: lit,', await page.getByTestId('discovery-lit-count').textContent(), 'lights');
+  console.log('FIND color check: visible');
 
   // The colour check, skipped here — the guided screen's reorder is the real one.
   if (await page.getByTestId('discovery-color-skip').count()) {
@@ -64,7 +60,7 @@ test('find my strips, on the real card', async ({ page }) => {
     console.log('FIND colour: skipped');
   }
 
-  await page.getByTestId('discovery-enough').click();
+  await expect(page.getByTestId('discovery-decade')).toBeVisible();
   await page.getByTestId(`discovery-count-${PIN}`).fill(String(LIGHTS));
   await page.getByTestId('discovery-counts-done').click();
   await page.waitForTimeout(2000);
