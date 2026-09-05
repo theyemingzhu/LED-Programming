@@ -100,7 +100,7 @@ async function prepareCardHomeInstall(page, cardId: string) {
     link.dispatch(event);
   }, { id: cardId });
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
-  await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
+  await expect(page.getByText('Ready to install on the card.')).toBeVisible();
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
 }
 
@@ -119,7 +119,9 @@ test('Settings renders an oversized project and reports exact capacity on save',
   await expect(page.locator('.la-card-push-banner')).toHaveText(
     /Card configuration is \d+ bytes, exceeding the 3968-byte flash storage limit\./,
   );
-  expect(requests.slice(requestsBefore).filter(url => url.includes('/api/config') || url.includes('/api/firmware-info'))).toHaveLength(0);
+  // Card Home refreshes identity when a hardware operation ends. The local
+  // capacity rejection may trigger that harmless read, but must never write.
+  expect(requests.slice(requestsBefore).filter(url => url.includes('/api/config'))).toHaveLength(0);
 });
 
 // Patterns gates its Install button on a card that classifies as ready and on

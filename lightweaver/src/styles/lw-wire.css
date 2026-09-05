@@ -193,9 +193,9 @@
 }
 .lww-power-headroom.is-over { color: var(--danger); }
 
-/* The Wire panel lives inside a clipped mobile sheet, so place its hover copy
-   above the trigger and align it with the panel edge. */
-.la-wire-panel [data-tooltip]::after { content: none; }
+/* WireHoverDescription owns the visible portal tooltip; suppress the shared
+   pseudo-element inside every instance so the same copy is not painted twice. */
+[data-wire-hover-description] [data-tooltip]::after { content: none; }
 
 .lw-wire-hover-tooltip {
   position: fixed;
