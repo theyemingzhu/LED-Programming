@@ -70,7 +70,7 @@
 .strip-discovery-legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
 .strip-discovery-legend .is-orange { background: #ff842f; }
 .strip-discovery-legend .is-red { background: #ff4343; }
-.strip-discovery-legend .is-white { background: #fff; }
+.strip-discovery-legend .is-pink { background: #ff77b3; }
 .strip-discovery-counts input { font-size: 2rem; width: 160px; min-height: 56px; }
 @media (max-width: 480px) {
   .strip-discovery-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }

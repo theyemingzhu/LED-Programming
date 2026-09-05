@@ -29,9 +29,9 @@ export const DISCOVERY_FRAME_RATE_WARN_PIXELS = 1100;
 export const DISCOVERY_OFF_COLOR = '000000';
 export const DISCOVERY_PROBE_COLOR = '281400'; // warm — "this pixel is lit"
 export const DISCOVERY_FIFTH_COLOR = '3C1800'; // every 5th — orange
-export const DISCOVERY_RULER_BASE_COLOR = '040408'; // dim intervening LEDs
+export const DISCOVERY_RULER_BASE_COLOR = '080800'; // dim yellow intervening LEDs
 export const DISCOVERY_DECADE_COLOR = '3C0000'; // every 10th — red
-export const DISCOVERY_FIFTY_COLOR = '303030'; // every 50th — white
+export const DISCOVERY_FIFTY_COLOR = '301020'; // every 50th — pink
 export const DISCOVERY_END_MARKER_COLOR = '3C003C'; // the last LED — magenta
 
 export const DISCOVERY_PHASES = Object.freeze([
@@ -90,7 +90,7 @@ export function buildExpandingProbeFrame({ benchLayout = [], pin, litCount = 0 }
   return frame;
 }
 
-// One-based markers; white overrides red, which overrides orange.
+// One-based markers; pink overrides red, which overrides orange.
 function decadeColorForOrdinal(ordinal) {
   if (ordinal % 50 === 0) return DISCOVERY_FIFTY_COLOR;
   if (ordinal % 10 === 0) return DISCOVERY_DECADE_COLOR;

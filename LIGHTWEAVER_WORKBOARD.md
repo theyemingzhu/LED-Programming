@@ -136,3 +136,8 @@ flash performed. Local preview remains http://127.0.0.1:9212/#screen=discovery.
 COUNT-RULER-VIS-001 needs-eyes — observe actual orange/red/white markers and
 brightness on the physical strip; automated frame proof cannot verify the
 physical hues. Resume: open Count your lights and choose the connected port.
+
+COUNT-RULER-002 done locally — user corrected palette: dim yellow between
+markers, orange every 5, red every 10, pink every 50. Supersedes white/50
+in COUNT-RULER-001. Focused 25 unit tests and browser outgoing-frame +
+desktop/phone flow passed. Physical hues remain needs-eyes; not deployed.

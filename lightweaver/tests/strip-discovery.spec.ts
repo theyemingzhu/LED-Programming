@@ -403,12 +403,14 @@ test.describe('a blank card whose firmware applies its first config', () => {
     // Inspect frames actually sent by the browser, not just legend copy.
     await expect.poll(() => card.frames.some(frame =>
       frame.length === 256 && frame[4] === '3C1800' && frame[9] === '3C0000'
-      && frame[49] === '303030' && frame[99] === '303030'
+      && frame[49] === '301020' && frame[99] === '301020'
+      && frame[0] === '080800' && frame[3] === '080800' && frame[50] === '080800'
     )).toBe(true);
     await expect(ruler).toContainText(/5/);
     await expect(ruler).toContainText(/orange/i);
     await expect(ruler).toContainText(/red/i);
-    await expect(ruler).toContainText(/white/i);
+    await expect(ruler).toContainText(/pink/i);
+    await expect(ruler).toContainText(/yellow/i);
     await expect(page.getByTestId('discovery-more')).toHaveCount(0);
     await expect(page.getByTestId('discovery-enough')).toHaveCount(0);
     await page.screenshot({ path: '/tmp/lightweaver-count-ruler-desktop.png' });

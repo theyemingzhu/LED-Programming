@@ -191,17 +191,17 @@ test('the expanding probe frame lights one port and covers the whole bench total
     .every(value => value === DISCOVERY_OFF_COLOR), true);
 });
 
-test('ruler uses orange fifths, red tenths and white fiftieths, restarting at each port', () => {
+test('ruler uses orange fifths, red tenths and pink fiftieths with dim yellow between markers, restarting at each port', () => {
   const frame = buildDecadeMarkerFrame({ benchLayout, counts: { 16: 354, 17: 100 } });
-  assert.equal(frame[3], '040408');
+  assert.equal(frame[3], '080800');
   assert.equal(frame[4], '3C1800');
   assert.equal(frame[9], '3C0000');
-  assert.equal(frame[49], '303030');
-  assert.equal(frame[99], '303030');
-  assert.equal(frame[349], '303030');
+  assert.equal(frame[49], '301020');
+  assert.equal(frame[99], '301020');
+  assert.equal(frame[349], '301020');
   assert.equal(frame[354], DISCOVERY_OFF_COLOR);
   assert.equal(frame[604], '3C1800');
-  assert.equal(frame[649], '303030');
+  assert.equal(frame[649], '301020');
 });
 
 test('ruler markers repeat through 2048 lights independently of each output offset', () => {
@@ -209,16 +209,16 @@ test('ruler markers repeat through 2048 lights independently of each output offs
   const frame = buildDecadeMarkerFrame({ benchLayout: layout, counts: { 16: 2048, 17: 2048 } });
   assert.equal(frame.length, 4096);
   // Inspect every five-light block, including the partial block at the end.
-  const repeatingBlock = ['3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '303030'];
+  const repeatingBlock = ['3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '301020'];
   for (const { start } of layout) {
     for (let block = 0; block < 410; block += 1) {
       const ordinal = block * 5 + 5;
       if (ordinal <= 2048) assert.equal(frame[start + ordinal - 1], repeatingBlock[block % 10], `marker ${ordinal} at output offset ${start}`);
       for (let tail = 1; tail <= 4 && block * 5 + tail <= 2048; tail += 1) {
-        assert.equal(frame[start + block * 5 + tail - 1], '040408');
+        assert.equal(frame[start + block * 5 + tail - 1], '080800');
       }
     }
-    for (const [ordinal, color] of [[255, '3C1800'], [260, '3C0000'], [500, '303030'], [1000, '303030'], [2000, '303030']]) {
+    for (const [ordinal, color] of [[255, '3C1800'], [260, '3C0000'], [500, '301020'], [1000, '301020'], [2000, '301020']]) {
       assert.equal(frame[start + ordinal - 1], color, `boundary ${ordinal} at output offset ${start}`);
     }
   }
