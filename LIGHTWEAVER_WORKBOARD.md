@@ -220,3 +220,14 @@ Bench detail: docs/bench-sessions/2026-09-05-step-four-to-patterns.md.
 Verification:9/9 install-flow browser tests,4/4 focused Patterns tests,
 22 focused adoption/resume Node tests, final2,262 unit tests and production
 build passed. Local repair only; not deployed.
+
+SHIP-SETUP-003 — release integration2026-09-05. Fixed persistent count feedback,
+normalized restored-project binding, interrupted USB-install recovery, coarse
+touch targets, and exact old-bridge update guidance. Reconciled retired wizard
+regressions with consolidated setup; physical command, rollback and lock
+coverage remains in dedicated suites. Initial full release browser run had331
+passes before obsolete wizard failures were stopped. Frozen affected/remaining
+run passed268/269; last quiet-preview fixture corrected and focused green.
+Final2,262 unit tests, production build, Pages staging and artifact verification
+passed. Binary freshness awaits protected main signer (expected firmware-source
+changes; no local signed artifacts or card flash). PR216 release gates pending.
