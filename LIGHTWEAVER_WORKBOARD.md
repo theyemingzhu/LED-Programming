@@ -182,3 +182,16 @@ confirmation→Patterns, expired-test retry, and exact revision acknowledgement
 wiring status reread; test identity says Testing lights and suppresses false
 Recover guidance. This resolves the prior probation presentation limitation.
 Final integrated checkpoint: 2,262 unit tests and production build passed.
+
+STEP4-HANDOFF-001 — follow-up to the actual blocked card route. Root causes:
+Open Patterns stopped at a staged installation behind a second Start light
+test action; repeated same-hash clicks did nothing. Final controls were below
+the phase rather than inside it. Confirmed readiness also was not published
+to the shared link before Patterns could issue its first command.
+Repair keeps a stable installation control in phase4 across phase review,
+auto-activates each exact staged candidate once for explicit Patterns intent,
+and publishes verified readiness before navigation. Bench record:
+docs/bench-sessions/2026-09-05-step-four-to-patterns.md.
+Verification: final2,262unit tests, production build,8install-flow browser
+cases and7setup-ladder cases passed. Immediate pattern command and actual
+expired-test Retry through new activation are covered. Local only.

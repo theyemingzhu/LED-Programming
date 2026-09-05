@@ -28,6 +28,7 @@ import { openLocalCardPage } from '../../../lib/cardBridge.js';
 import { readPersistedCardIdentity } from '../../../lib/cardIdentity.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
+import { getCardLinkState, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
   'mixed-content',
@@ -48,7 +49,35 @@ async function readReadyDeploymentEvidence(host) {
     readCardProjectEvidence({ host }),
     readCardStatusEnvelope({ host }),
   ]);
-  return correlateCardDeploymentReadinessEvidence(project, status);
+  return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
+}
+
+async function waitForReadyDeploymentVerification(prepared, host) {
+  let readiness = null;
+  const verification = await waitForCardDeploymentVerification(prepared, {
+    readEvidence: async () => {
+      const evidence = await readReadyDeploymentEvidence(host);
+      readiness = evidence.readiness;
+      return evidence;
+    },
+    requireReady: true,
+  });
+  return { verification, readiness };
+}
+
+async function publishVerifiedReadiness(prepared, host) {
+  const transport = getCardLinkState().transport;
+  if (!['direct', 'bridge'].includes(transport)) return;
+  for (let read = 0; read < 2; read += 1) {
+    const evidence = await readReadyDeploymentEvidence(host);
+    await waitForCardDeploymentVerification(prepared, {
+      readEvidence: async () => evidence,
+      attempts: 1,
+      intervalMs: 0,
+      requireReady: true,
+    });
+    reportCardStatusEnvelope({ host, status: evidence.readiness, transport });
+  }
 }
 
 async function waitForCardAfterCandidateRollback(host, expected = {}) {
@@ -243,10 +272,8 @@ export function CardPushControl({
         return;
       }
       setPushStatus('Verifying the exact project on the card…');
-      const verification = await waitForCardDeploymentVerification(attempt.prepared, {
-        readEvidence: () => readReadyDeploymentEvidence(attempt.host),
-        requireReady: true,
-      });
+      const { verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host);
+      await publishVerifiedReadiness(attempt.prepared, attempt.host);
       dispatchAction({ type: 'confirm' });
       markProjectInstalled({
         revision: attempt.revision,
@@ -298,7 +325,17 @@ export function CardPushControl({
     }
   });
 
-  const finishWiringTest = async visible => withStudioHardwareOperation('finish-wiring', async () => {
+  const autoActivatedRef = useRef('');
+  useEffect(() => {
+    const activationId = wiringCandidate?.activationId || '';
+    if (!autoStart || wiringTestState !== 'staged' || !activationId || autoActivatedRef.current === activationId) return;
+    autoActivatedRef.current = activationId;
+    void startWiringTest();
+  }, [autoStart, wiringCandidate, wiringTestState]);
+
+  const finishWiringTest = async visible => {
+    let confirmedAttempt = null;
+    await withStudioHardwareOperation('finish-wiring', async () => {
     if (!wiringCandidate) return;
     setWiringTestState(visible ? 'confirming' : 'rolling-back');
     try {
@@ -306,10 +343,10 @@ export function CardPushControl({
         assertCurrentAttempt(wiringCandidate.attempt);
         await confirmCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host });
         setPushStatus('Verifying the confirmed wiring on the card…');
-        const verification = await waitForCardDeploymentVerification(wiringCandidate.attempt.prepared, {
-          readEvidence: () => readReadyDeploymentEvidence(wiringCandidate.attempt.host),
-          requireReady: true,
-        });
+        const { verification } = await waitForReadyDeploymentVerification(
+          wiringCandidate.attempt.prepared,
+          wiringCandidate.attempt.host,
+        );
         dispatchAction({ type: 'confirm' });
         markProjectInstalled({
           revision: wiringCandidate.attempt.revision,
@@ -321,7 +358,7 @@ export function CardPushControl({
         markCardLookConfirmed({ ...(standaloneController?.defaultLook || {}), syncZones: true });
         setPushStatus(`Wiring confirmed. Revision ${wiringCandidate.attempt.revision} is now the card’s working setup.`);
         setWiringTestState('confirmed');
-        onInstalled?.();
+        confirmedAttempt = wiringCandidate.attempt;
       } else {
         assertCurrentAttempt(wiringCandidate.attempt);
         await rollbackCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host });
@@ -335,7 +372,16 @@ export function CardPushControl({
       setWiringTestState('failed');
       setPushStatus(error.message || 'The card could not finish the wiring test. It will roll back automatically when the timer ends.');
     }
-  });
+    });
+    if (!confirmedAttempt) return;
+    try {
+      await publishVerifiedReadiness(confirmedAttempt.prepared, confirmedAttempt.host);
+      onInstalled?.();
+    } catch (error) {
+      dispatchAction({ type: 'fail', error: 'The confirmed card status did not reach Studio.' });
+      setPushStatus(error.message || 'The wiring is confirmed, but Studio could not refresh the card. Read this card again before opening Patterns.');
+    }
+  };
 
   const pushing = action.status === 'pending' && wiringTestState === 'idle';
   const wiringTransactionActive = Boolean(wiringCandidate);
@@ -428,7 +474,7 @@ export function CardPushControl({
 
   return (
     <div className="la-card-push">
-      <div className="la-card-push-row">
+      {!wiringTransactionActive && <div className="la-card-push-row">
         <button
           className={yieldPrimary ? 'btn la-card-push-btn' : 'btn primary la-card-push-btn'}
           data-testid="layout-send-to-card"
@@ -440,7 +486,7 @@ export function CardPushControl({
           <span className="la-card-push-label">{pushing ? `Sending to ${pushHost}…` : 'Install on card'}<small>{connected ? 'Ready to install' : 'Connect the card first'}</small></span>
         </button>
         {children}
-      </div>
+      </div>}
 
       {pushStatus && (
         <div className={`la-card-push-banner ${action.status === 'confirmed' ? 'is-ok' : action.status === 'failed' ? 'is-err' : 'is-pending'}`}>

@@ -884,7 +884,17 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
     || !['install', 'workshop', 'preferences'].includes(route.section);
+  const installIntentOpen = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   let content;
+  const installAction = installIntentOpen ? (
+    <CardInstallAction
+      connected={connected}
+      cardHost={cardHost}
+      yieldPrimary={ladderOwnsPrimary}
+      onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+    />
+  ) : null;
   // Card Home: the guided journey, the one install action, evidence panels,
   // then Hardware and Advanced folded underneath.
   if (home) content = (
@@ -901,13 +911,16 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onLoadOfferChange={setSetupLoadOffer}
         onPrimaryActionChange={setLadderOwnsPrimary}
         onWiringTestActiveChange={setWiringTestActive}
+        installAction={installAction}
       />
-      <CardInstallAction
-        connected={connected}
-        cardHost={cardHost}
-        yieldPrimary={ladderOwnsPrimary}
-        onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
-      />
+      {!installIntentOpen && (
+        <CardInstallAction
+          connected={connected}
+          cardHost={cardHost}
+          yieldPrimary={ladderOwnsPrimary}
+          onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+        />
+      )}
       <CardHomePanels
         {...cardProps}
         suppressMatchingProject={setupLoadOffer}

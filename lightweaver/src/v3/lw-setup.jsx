@@ -118,6 +118,7 @@ export function SetupScreen({
   onLoadOfferChange,
   onPrimaryActionChange,
   onWiringTestActiveChange,
+  installAction = null,
 }) {
   const {
     setProjectId, setPortRoles, setStandaloneController, replaceLayoutGeometry,
@@ -471,6 +472,7 @@ export function SetupScreen({
   }, [journey.currentPhaseId, selectedPhaseId]);
 
   const go = hash => { window.location.hash = hash; };
+  const installIntentOpen = new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   const openPatterns = () => go(journey.setupComplete
     ? '#screen=pattern'
     : '#screen=card&section=setup&task=install-project&next=patterns');
@@ -773,6 +775,7 @@ export function SetupScreen({
   const firmwareBehind = firmwareStatus?.actionable === true;
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
+  const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
       return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
@@ -886,8 +889,7 @@ export function SetupScreen({
               >Put your project back on the card</button>
             ) : (
               <p role="status" data-testid="setup-install-inline">
-                Your project is ready to go on the card. The check and install for it is
-                just below.
+                Finish the earlier setup phases before saving this project to the card.
               </p>
             )
           ) : taskId === 'configure-wifi' ? (
@@ -995,12 +997,12 @@ export function SetupScreen({
             needs to know what is about to happen to their piece. */}
         {journey.taskId === 'confirm-visible-lights' ? (
           <p role="status">The card is running the final light test. Confirm or restore it with the controls below.</p>
-        ) : (
+        ) : !installIntentOpen ? (
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
             <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>
           </>
-        )}
+        ) : null}
       </div>
     );
   };
@@ -1037,7 +1039,7 @@ export function SetupScreen({
             "Open Patterns" — a live card action — while phase 1 was still
             asking the owner to pair, so the screen carried two headline
             buttons and two different accounts of where the owner was. */}
-        {matchesOpenProject && !provisionalSetup && exactTransport && (
+        {matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen && (
           <section
             className="card-support-panel lw-setup-banner"
             data-testid="setup-card-ready"
@@ -1095,13 +1097,12 @@ export function SetupScreen({
       <section className="lw-setup-phases" aria-label="Setup outcomes">
         <p className="lw-setup-progress" data-testid="setup-progress">
           {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
-          {selectedPhaseId && selectedPhaseId !== journey.currentPhaseId
-            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === selectedPhaseId) + 1}`
+          {viewedPhaseId !== journey.currentPhaseId
+            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
             : ''}
         </p>
         <ol className="lw-setup-phase-list">
             {journey.phases.map((phase, index) => {
-              const viewedPhaseId = selectedPhaseId || journey.currentPhaseId || 'verify';
               const active = phase.id === viewedPhaseId;
               const current = phase.id === journey.currentPhaseId;
               return (
@@ -1121,6 +1122,9 @@ export function SetupScreen({
                     </div>
                   </button>
                   {active && renderActiveTask(phase)}
+                  {phase.id === 'verify' && (
+                    <div hidden={!active} data-testid="setup-install-slot">{installAction}</div>
+                  )}
                 </li>
               );
             })}
