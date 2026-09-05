@@ -35,6 +35,7 @@ test('normalizes readiness evidence without inventing boolean or identity values
     runtimePhase: ' ready ',
     knownGoodProject: 'true',
     commandReady: 1,
+    firmwareUpdateReady: true,
     outputReady: false,
   });
 
@@ -43,6 +44,7 @@ test('normalizes readiness evidence without inventing boolean or identity values
   assert.equal(normalized.runtimePhase, 'ready');
   assert.equal(normalized.knownGoodProject, null);
   assert.equal(normalized.commandReady, null);
+  assert.equal(normalized.firmwareUpdateReady, true);
   assert.equal(normalized.outputReady, false);
   assert.equal(normalized.identityValid, true);
   assert.equal(Object.isFrozen(normalized), true);

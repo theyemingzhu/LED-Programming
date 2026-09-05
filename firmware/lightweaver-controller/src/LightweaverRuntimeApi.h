@@ -91,6 +91,7 @@ String runtimeCardId();
 String runtimeBootId();
 const char* runtimeProvisioningPhase();
 bool runtimeCommandReady();
+bool runtimeFirmwareUpdateReady();
 // Pattern/brightness/scene control. Ignores WiFi transport transitions: local
 // playback is safe while the radio is unsettled.
 bool runtimePlaybackReady();

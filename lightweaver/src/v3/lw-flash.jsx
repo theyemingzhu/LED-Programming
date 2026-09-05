@@ -44,6 +44,7 @@ import {
 } from '../lib/firmwareUpdatePlan.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
 import {
+  beginInstallFirmwareVerification,
   clearInstallFirmwareEvidence,
   reportInstallFirmwareEvidence,
 } from '../lib/installFirmwareEvidence.js';
@@ -925,9 +926,10 @@ import {
     // already printed, including through the USB write — inspection is cleared
     // when flashing starts, but the card on the desk has not become unknown.
     useEffect(() => {
-      reportInstallFirmwareEvidence(cardState.state === 'ready' ? installedFirmware : null);
+      if (cardState.state === 'ready') reportInstallFirmwareEvidence(installedFirmware);
+      else clearInstallFirmwareEvidence({ preserveVerification: true });
     }, [cardState.state, installedFirmware]);
-    useEffect(() => () => clearInstallFirmwareEvidence(), []);
+    useEffect(() => () => clearInstallFirmwareEvidence({ preserveVerification: true }), []);
     const updateReadiness = preservingFixture?.readiness || cardLink?.readiness || null;
     const connectedCardCandidate = preservingFixture?.card || cardLink?.card || null;
     // A card already running the published release has nothing to update TO.
@@ -1224,6 +1226,14 @@ import {
         transportRef.current = null;
         installingRef.current = false;
         setProgress(1);
+        beginInstallFirmwareVerification({
+          cardId: cardState.hardware.cardId,
+          buildNumber: releaseState.release.manifest.buildNumber,
+          buildId: releaseState.release.manifest.buildId,
+          previousBuildId: cardState.hardware.buildId,
+          previousBootId: cardLink?.readiness?.bootId,
+        });
+        setCardState(previous => ({ state: 'verifying', hardware: previous.hardware, error: '' }));
         // Flashing does not always clear NVS. A card whose saved Wi-Fi survives
         // boots onto the LAN and never raises a setup hotspot, so Studio has to
         // observe what actually happened instead of asserting AP mode. This

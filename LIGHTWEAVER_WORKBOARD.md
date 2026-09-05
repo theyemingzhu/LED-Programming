@@ -9,6 +9,11 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-05: **JOURNEY-01–09 locally verified; JOURNEY-10 machine setup verified, lights pending** — implemented the approved
+[update-to-playback repair](docs/plans/2026-09-05-update-to-playback-repair.md)
+on `codex/update-to-playback`, based on production build 1525. Exact card remains
+on firmware 1524; no hardware mutation or release is part of this checkpoint.
+
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
@@ -30,6 +35,12 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 | CARD-IA-001 | One Card page owns check + project install; Layout is Wire only; footer is status | Studio Card + Layout + routing | done | Unit 2201/2201 + Vite build; focused Playwright through Tasks 3–7; live preview Card + Layout |
 
 ## Active ownership
+
+Repair batch integrated; no agents retain active ownership. Final ownership boundaries were:
+
+- Studio agent (balanced model): `lightweaver/src/`, JOURNEY-01–04 and 10.
+- Firmware agent: `firmware/lightweaver-controller/src/` and firmware tests, JOURNEY-05–08.
+- Primary: `scripts/bench-check*`, `lightweaver/tests/`, integration and this board.
 
 | Owner | IDs | Exact files / boundary | Started | Latest evidence |
 | --- | --- | --- | --- | --- |
@@ -95,3 +106,15 @@ this queue when Adrian is available.
    board into a transcript.
 4. Every interrupted Bench or Prove session records one and only one next step.
 5. Completed entries name behavior and evidence, not agent activity.
+
+
+## 2026-09-05 update-to-playback checkpoint
+
+- Branch `codex/update-to-playback`; source based on production Studio 1525.
+- Integrated checkpoint: **2258/2258 unit tests and production build passed**.
+- Browser: **104/104** across card workspace, install/update plan and preserving update; includes normal AP handoff, blank station setup, retained project/readback, interrupted flow, stale identity and wrong-card cases.
+- Firmware: 26 relevant scripts plus actual Wi-Fi storage/parser native test passed; ESP32-S3 build passed. New native test also runs after PlatformIO in CI.
+- Diagnostics: six CLI fixtures pass; actual card correctly diagnosed as needing project setup rather than reflashing.
+- Actual local preview: paired card `lw-b0fe81f61b44`, footer **1524 ✓**, phase 2 Find and verify lights. No project/firmware/credential mutation.
+- **Needs eyes / release Bench:** signed preserving update, saved-network continuity through power cycle, card-page visual check, project restore and two patterns/Stop on the physical lights. No release or flash in this Sprint.
+- See [repair evidence](docs/plans/2026-09-05-update-to-playback-repair.md) and [Bench resumption](docs/bench-sessions/2026-09-05-lw-b0fe81f61b44-update-to-playback.md).

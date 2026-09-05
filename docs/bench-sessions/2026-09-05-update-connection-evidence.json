@@ -1,0 +1,74 @@
+{
+  "capturedAt": "2026-09-05T05:36:00.897316+00:00",
+  "route": "http://192.168.18.70",
+  "responses": {
+    "/api/status": {
+      "cardId": "lw-b0fe81f61b44",
+      "firmwareVersion": "1.1.31",
+      "buildId": "ca337dada7795c15db88f58154591d399717654b",
+      "buildNumber": 1524,
+      "bootId": "boot-44bdf529-b0fe81f61b44",
+      "runtimePhase": "factory",
+      "commandReady": false,
+      "playbackReady": false,
+      "configValid": false,
+      "projectId": "",
+      "piece": {
+        "name": "Lightweaver",
+        "hostname": "lightweaver"
+      },
+      "projectRevision": 0,
+      "projectFingerprint": "",
+      "outputs": [],
+      "runtimeSource": "defaults",
+      "wifi": {
+        "transport": "station",
+        "hostname": "lightweaver",
+        "ip": "192.168.18.70",
+        "transition": "station",
+        "phase": "station",
+        "transitionPending": false,
+        "apActive": false,
+        "stationIp": "192.168.18.70",
+        "handoffGeneration": 1,
+        "phaseStartedMs": 418836,
+        "lastAttemptMs": 115365,
+        "attemptCount": 1,
+        "lastError": "",
+        "networkBindingsPending": false,
+        "wledListenerReady": true,
+        "artnetListenerReady": true,
+        "lastBindingAttemptMs": 118699,
+        "configured": true
+      },
+      "currentPatternId": ""
+    },
+    "/api/firmware-info": {
+      "cardId": "lw-b0fe81f61b44",
+      "firmwareVersion": "1.1.31",
+      "buildId": "ca337dada7795c15db88f58154591d399717654b",
+      "buildNumber": 1524,
+      "bootId": "boot-44bdf529-b0fe81f61b44",
+      "runtimePhase": "factory",
+      "commandReady": false,
+      "playbackReady": false,
+      "configValid": false,
+      "piece": {
+        "id": "",
+        "name": "Lightweaver"
+      },
+      "projectRevision": 0,
+      "projectFingerprint": "",
+      "outputs": [],
+      "pixels": 0,
+      "lookCount": 0,
+      "runtimeSource": "defaults",
+      "wifi": {
+        "ip": "192.168.18.70",
+        "hostname": "lightweaver",
+        "transport": "station",
+        "configured": true
+      }
+    }
+  }
+}

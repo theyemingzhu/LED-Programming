@@ -24,7 +24,7 @@ import {
   readStoredBridgeResult,
 } from '../lib/bridgeLaunch.js';
 import { classifyFooterFirmwareStatus, resolveFooterFirmwareInstalled } from '../lib/footerFirmwareStatus.js';
-import { getInstallFirmwareEvidence, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
+import { getInstallFirmwareEvidence, settleInstallFirmwareVerification, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
 import {
   connectCardLink,
   getCardLinkState,
@@ -1119,6 +1119,13 @@ function Shell({ offlineUpdateController = null }) {
     getInstallFirmwareEvidence,
     getInstallFirmwareEvidence,
   );
+  useEffect(() => {
+    if (!isCardTransportConnected(cardLink) || !cardLink?.card) return;
+    settleInstallFirmwareVerification({
+      ...cardLink.card,
+      bootId: cardLink.readiness?.bootId,
+    });
+  }, [cardLink]);
   const firmwareStatus = useMemo(() => classifyFooterFirmwareStatus(
     resolveFooterFirmwareInstalled({
       transportConnected: isCardTransportConnected(cardLink),
@@ -1126,7 +1133,7 @@ function Shell({ offlineUpdateController = null }) {
       usbInspectedFirmware,
     }),
     firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null,
-    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) },
+    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) || usbInspectedFirmware?.verification === 'restarting' },
   ), [cardLink, firmwareReleaseIdentity.manifest, firmwareReleaseIdentity.state, usbInspectedFirmware]);
   const openSetupTask = useCallback(taskId => {
     if (installActiveRef.current) return;

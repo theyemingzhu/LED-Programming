@@ -107,6 +107,37 @@ constexpr bool provisioningCommandReady(const ProvisioningReadinessInputs& input
          !input.transitionPending;
 }
 
+// Firmware can be maintained before a project is commissioned. Empty storage
+// is an affirmative boot result, never inferred from failed reads or safe mode.
+struct FirmwareUpdateReadinessInputs {
+  ProvisioningPhase phase = ProvisioningPhase::Factory;
+  bool configValid = false;
+  bool knownGoodProject = false;
+  bool storageKnownBlank = false;
+  bool storageReadable = false;
+  bool projectHeadPresent = false;
+  bool safeMode = false;
+  bool webServing = false;
+  bool outputDriverReady = false;
+  bool projectOutputReady = false;
+  bool transitionPending = false;
+};
+
+constexpr bool firmwareUpdateSavedConfigHealthy(
+    const FirmwareUpdateReadinessInputs& input) {
+  return !input.safeMode && input.storageReadable &&
+      ((input.phase == ProvisioningPhase::Ready && input.configValid &&
+        input.knownGoodProject) ||
+       (input.phase == ProvisioningPhase::Factory && input.storageKnownBlank &&
+        !input.configValid && !input.knownGoodProject && !input.projectHeadPresent));
+}
+
+constexpr bool firmwareUpdateReady(const FirmwareUpdateReadinessInputs& input) {
+  return firmwareUpdateSavedConfigHealthy(input) && input.webServing &&
+      input.outputDriverReady && !input.transitionPending &&
+      (input.phase == ProvisioningPhase::Factory || input.projectOutputReady);
+}
+
 constexpr bool provisioningOutputReady(bool controllerReady,
                                        size_t outputCount) {
   return controllerReady && outputCount > 0;

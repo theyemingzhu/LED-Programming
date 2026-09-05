@@ -1,4 +1,5 @@
 #include "LightweaverStorage.h"
+#include "LightweaverWifiCredentialPolicy.h"
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverOutputColorParser.h"
@@ -1810,6 +1811,7 @@ RuntimeLoadResult loadRuntimeConfig(RuntimeConfig& config,
   result.ok = true;
   result.source = SOURCE_DEFAULTS;
   setRuntimeLoadTruth(config, result, false, false, false);
+  result.storageKnownBlank = true;
   result.message = "compiled defaults loaded";
   return result;
 }
@@ -2365,6 +2367,25 @@ bool saveWifiConfigJson(const String& json, RuntimeConfig& config, String& messa
     return false;
   }
   JsonObject wifiObject = doc.as<JsonObject>();
+  for (const char* option : {"reuseSaved", "clearPassword"}) {
+    if (!doc[option].isUnbound() && !doc[option].is<bool>()) {
+      message = String(option) + " must be a boolean";
+      return false;
+    }
+  }
+  if (doc["reuseSaved"] | false) {
+    if (!config.wifi.ssid.length()) {
+      message = "no saved network; enter WiFi details";
+      return false;
+    }
+    if (!doc["ssid"].isUnbound() || !doc["password"].isUnbound() ||
+        !doc["hostname"].isUnbound() || (doc["clearPassword"] | false)) {
+      message = "reuseSaved cannot also change WiFi details";
+      return false;
+    }
+    message = "using saved WiFi credentials";
+    return true; // Reconnect only: no NVS write, no secret in the response.
+  }
   if (!doc["ssid"].is<const char*>()) {
     message = "wifi ssid must be a string";
     return false;
@@ -2385,8 +2406,16 @@ bool saveWifiConfigJson(const String& json, RuntimeConfig& config, String& messa
   candidate.ssid = doc["ssid"].as<const char*>();
   candidate.password = doc["password"].is<const char*>()
       ? String(doc["password"].as<const char*>()) : String();
+  if (doc["clearPassword"] | false) candidate.password = String();
+  const bool sameNetwork = candidate.ssid == config.wifi.ssid;
+  if (preserveSavedWifiPassword(sameNetwork, config.wifi.password.length() > 0,
+                               candidate.password.length() > 0,
+                               doc["clearPassword"] | false)) {
+    candidate.password = config.wifi.password;
+  }
   candidate.hostname = doc["hostname"].is<const char*>()
-      ? String(doc["hostname"].as<const char*>()) : String("lightweaver");
+      ? String(doc["hostname"].as<const char*>())
+      : sameNetwork ? config.wifi.hostname : String("lightweaver");
   if (candidate.ssid.length() == 0 || candidate.ssid.length() > 32) {
     message = "wifi ssid must be 1..32 bytes";
     return false;
@@ -2445,6 +2474,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["provisioningContractVersion"] = LW_PROVISIONING_CONTRACT_VERSION;
   doc["runtimePhase"] = runtimeProvisioningPhase();
   doc["commandReady"] = runtimeCommandReady();
+  doc["firmwareUpdateReady"] = runtimeFirmwareUpdateReady();
   // Local playback admission, reported separately so a caller can tell
   // "busy reassociating" apart from "cannot drive the lights".
   doc["playbackReady"] = runtimePlaybackReady();
@@ -2592,6 +2622,8 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["wifi"]["artnetListenerReady"] = wifiState.artnetListenerReady;
   doc["wifi"]["lastBindingAttemptMs"] = wifiState.lastBindingAttemptMs;
   doc["wifi"]["configured"] = config.wifi.ssid.length() > 0;
+  doc["wifi"]["ssid"] = config.wifi.ssid;
+  doc["wifi"]["savedPasswordAvailable"] = config.wifi.password.length() > 0;
   String output;
   serializeJson(doc, output);
   return output;

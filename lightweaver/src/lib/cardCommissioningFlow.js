@@ -464,18 +464,27 @@ export function commissioningReconnectHost(flow, link = {}, {
   storedHost = '',
   history = [],
 } = {}) {
+  return commissioningReconnectHosts(flow, link, { storedHost, history })[0];
+}
+
+export function commissioningReconnectHosts(flow, link = {}, {
+  storedHost = '',
+  history = [],
+} = {}) {
   const candidates = [
     link?.handoffCorrelation?.host,
     flow?.stationHost,
     link?.host,
     storedHost,
     ...(Array.isArray(history) ? history : []),
+    'lightweaver.local',
   ];
+  const hosts = [];
   for (const candidate of candidates) {
     const host = usableReconnectHost(candidate);
-    if (host) return host;
+    if (host && !hosts.includes(host)) hosts.push(host);
   }
-  return 'lightweaver.local';
+  return hosts;
 }
 
 // HTTPS Studio cannot poll the LAN, so the only evidence that the card is back
@@ -515,6 +524,47 @@ export function commissioningAutoReconnectHost(flow, {
   if (!host || host === SETUP_AP_HOST) return '';
   if (transportConnected({ state: linkState }) && String(linkHost || '').trim() === host) return '';
   return host;
+}
+
+// One decision for both the public bridge retry and direct-LAN discovery.
+// Completion comes only from the existing exact-card acknowledgement path;
+// returning from onReconnect is never treated as proof that a card joined.
+export function planCommissioningReconnectAttempt(flow, link = {}, {
+  direct = false,
+  setupReach = '',
+  storedHost = '',
+  history = [],
+  attempt = 0,
+  startedAt = Date.now(),
+  now = Date.now(),
+  maxAttempts = 4,
+  deadlineMs = 30_000,
+} = {}) {
+  const attempts = Math.max(0, Math.trunc(Number(attempt) || 0));
+  if (!flow || flow.stage !== 'set-up-card' || flow.cardAcknowledgedAt) {
+    return { state: 'inactive', reason: 'not-awaiting-card', attempts };
+  }
+  if (selectCommissioningCardAcknowledgement(flow, link, { now }).ok) {
+    return { state: 'connected', reason: 'exact-card-status', attempts };
+  }
+  const retryEligible = flow.networkState === 'station-detected'
+    || (flow.networkState === 'setup-joined' && (direct || setupReach === 'unreachable'));
+  if (!retryEligible) return { state: 'inactive', reason: 'network-path-pending', attempts };
+  const boundedMax = Math.max(1, Math.trunc(Number(maxAttempts) || 0));
+  if (attempts >= boundedMax) return { state: 'exhausted', reason: 'attempt-limit', attempts };
+  const start = Number(startedAt);
+  const elapsed = Number(now) - (Number.isFinite(start) ? start : Number(now));
+  if (elapsed >= Math.max(1, Number(deadlineMs) || 0)) {
+    return { state: 'exhausted', reason: 'deadline', attempts };
+  }
+  const hosts = commissioningReconnectHosts(flow, link, { storedHost, history });
+  return {
+    state: 'retry',
+    reason: attempts === 0 ? 'initial' : 'retry',
+    host: hosts[attempts % hosts.length],
+    attempts,
+    nextAttempt: attempts + 1,
+  };
 }
 
 export function commissioningShouldSuppressConnectOverlay(flow) {
@@ -1093,5 +1143,28 @@ export async function clearCardCommissioning({ storage = defaultStorage(), sessi
   sessionStorage?.removeItem?.(CARD_COMMISSIONING_ACTIVE_KEY);
   notify(null);
   return true;
+  });
+}
+
+
+// A browser connection callback may keep waiting for a popup or stale host.
+// Its completion cannot hold the setup retry budget or survive unmount.
+export function waitForCommissioningReconnect(connect, { timeoutMs = 4000, signal } = {}) {
+  return new Promise(resolve => {
+    let timer;
+    let finished = false;
+    const finish = result => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
+      resolve(result);
+    };
+    const cancel = () => finish('cancelled');
+    if (signal?.aborted) { cancel(); return; }
+    signal?.addEventListener('abort', cancel, { once: true });
+    timer = setTimeout(() => finish('timeout'), Math.max(0, timeoutMs));
+    try { Promise.resolve(connect()).then(() => finish('settled'), () => finish('settled')); }
+    catch { finish('settled'); }
   });
 }

@@ -247,6 +247,7 @@ jobs:
         run: |
           npm run build:card --prefix lightweaver
           pio run -d firmware/lightweaver-controller -e esp32-s3-n16r8
+          node firmware/lightweaver-controller/tests/saved-network-storage-native.mjs
           node firmware/lightweaver-controller/tests/card-identity-capabilities.mjs
           node firmware/lightweaver-controller/tests/windowless-card-studio.mjs
 

@@ -10,6 +10,7 @@ struct RuntimeLoadResult {
   bool ok = false;
   RuntimeSource source = SOURCE_DEFAULTS;
   bool bootedCandidate = false;
+  bool storageKnownBlank = false;
   bool safeMode = false;
   bool configValid = false;
   bool knownGoodProject = false;

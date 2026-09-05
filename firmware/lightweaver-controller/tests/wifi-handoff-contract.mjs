@@ -178,7 +178,7 @@ assert.match(advancedRoot,
   /const manual=\$\('ssid-manual'\)\.value\.trim\(\);const ssid=manual\|\|\$\('ssid'\)\.value;/,
   'manual SSID must override the selected scan result when supplied');
 assert.match(advancedRoot,
-  /post\('\/api\/wifi',\{ssid:ssid,password:\$\('pw'\)\.value,hostname:\$\('hn'\)\.value\}\)/,
+  /submitWifi\(\{ssid:ssid,password:\$\('pw'\)\.value,hostname:\$\('hn'\)\.value,clearPassword:\$\('clear-password'\)\.checked\},ssid\)/,
   'WiFi submission must preserve manual SSID, password, and hostname fields');
 assert.ok(setupMarkup.includes("Save and join Wi&#8209;Fi"),
   'the primary action must use the approved Wi-Fi wording');
@@ -618,7 +618,7 @@ for (const field of [
   assert.match(status, new RegExp(`doc\\["wifi"\\]\\["${field}"\\]\\s*=`),
     `status must expose safe WiFi field ${field}`);
 }
-assert.doesNotMatch(status, /doc\["wifi"\]\["(?:ssid|password)"\]/,
-  'status must never expose WiFi credentials');
+assert.doesNotMatch(status, /doc\["wifi"\]\["password"\]/,
+  'status may expose saved SSID but must never expose the WiFi password');
 
 console.log('wifi handoff source contract tests passed');

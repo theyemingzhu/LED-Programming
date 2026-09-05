@@ -494,6 +494,48 @@ test('a card still on its setup AP (no station transport) is never mistaken for 
   }
 });
 
+test('commissioning reconnect rotates known LAN addresses and ends after a bounded attempt count', async () => {
+  const { planCommissioningReconnectAttempt } = await import('./cardCommissioningFlow.js');
+  const flow = completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-retry-hosts-123456', now: 10,
+  }), { ...installed, postFlashNetwork: { state: 'station', stationIp: '192.168.18.70' } }, { now: 20 });
+  const context = {
+    setupReach: 'unreachable', storedHost: '192.168.18.71',
+    history: ['192.168.18.72'], startedAt: 1_000, now: 2_000,
+    maxAttempts: 4, deadlineMs: 30_000,
+  };
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, { ...context, attempt: 0 }).host, '192.168.18.70');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, { ...context, attempt: 1 }).host, '192.168.18.71');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, { ...context, attempt: 2 }).host, '192.168.18.72');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, { ...context, attempt: 3 }).host, 'lightweaver.local');
+  assert.deepEqual(planCommissioningReconnectAttempt(flow, {}, { ...context, attempt: 4 }), {
+    state: 'exhausted', reason: 'attempt-limit', attempts: 4,
+  });
+  assert.deepEqual(planCommissioningReconnectAttempt(flow, {}, {
+    ...context, attempt: 1, now: 31_001,
+  }), { state: 'exhausted', reason: 'deadline', attempts: 1 });
+});
+
+test('commissioning reconnect stops once fresh exact blank station status is available', async () => {
+  const { planCommissioningReconnectAttempt } = await import('./cardCommissioningFlow.js');
+  const ready = completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-retry-blank-123456', now: 10,
+  }), installed, { now: 20 });
+  const link = {
+    state: 'connected-direct', host: '192.168.18.70', cardBlank: true,
+    readiness: {
+      ...readyStatus(), runtimePhase: 'factory', knownGoodProject: false,
+      commandReady: false, outputReady: true, mode: 'factory-flash', source: 'defaults',
+      wifi: { transport: 'station', transition: 'station', transitionPending: false },
+    },
+  };
+  assert.deepEqual(planCommissioningReconnectAttempt(ready, link, {
+    setupReach: 'unreachable', attempt: 1, startedAt: 1_000, now: 2_000,
+  }), { state: 'connected', reason: 'exact-card-status', attempts: 1 });
+});
+
 test('detection auto-advance rejects a wrong card, firmware version, or build like the manual gate', () => {
   const ready = completeCardInstall(beginCardCommissioning({
     source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
@@ -1108,4 +1150,22 @@ test('a preserve-in-place install still reports preserved and never a station ad
   }), { ...installed, postFlashNetwork: { state: 'station', stationIp: '10.0.0.42' } }, { now: 20 });
   assert.equal(next.networkState, 'preserved');
   assert.equal(next.stationHost, '');
+});
+
+
+test('direct setup-joined discovery does not wait for the AP watchdog', async () => {
+  const { planCommissioningReconnectAttempt } = await import('./cardCommissioningFlow.js');
+  const flow = { stage: 'set-up-card', networkState: 'setup-joined' };
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, { direct: true }).state, 'retry');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, {}).state, 'inactive');
+});
+
+test('a stalled reconnect callback has a bounded wait and supports cleanup', async () => {
+  const { waitForCommissioningReconnect } = await import('./cardCommissioningFlow.js');
+  const pending = () => new Promise(() => {});
+  assert.equal(await waitForCommissioningReconnect(pending, { timeoutMs: 5 }), 'timeout');
+  const controller = new AbortController();
+  const cancelled = waitForCommissioningReconnect(pending, { timeoutMs: 60000, signal: controller.signal });
+  controller.abort();
+  assert.equal(await cancelled, 'cancelled');
 });

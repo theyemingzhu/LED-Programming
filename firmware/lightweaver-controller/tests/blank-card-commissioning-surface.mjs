@@ -46,7 +46,7 @@ assert.match(web, /const studioUrlForPattern=id=>[\s\S]*?u\.searchParams\.set\('
 for (const [name, body] of [['visitor root', visitorRoot], ['advanced root', advancedRoot]]) {
   assert.match(body, /bool projectReady = cfg\.configValid && cfg\.knownGoodProject;/,
     `${name} must derive visitor eligibility from valid known-good project truth`);
-  assert.match(body, /bool needsWifiSetup = !wifiConfigured \|\| \(!stationActive && !projectReady\);/,
+  assert.match(body, /bool needsWifiSetup = server\.hasArg\("wifiSetup"\) \|\| !wifiConfigured \|\| \(!stationActive && !projectReady\);/,
     `${name} must keep WiFi setup for blank cards without a usable station connection`);
 }
 

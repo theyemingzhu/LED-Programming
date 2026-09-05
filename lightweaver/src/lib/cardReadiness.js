@@ -97,6 +97,11 @@ export function normalizeCardReadiness(raw = {}) {
     projectRevision,
     knownGoodProject: explicitBoolean(source.knownGoodProject),
     commandReady: explicitBoolean(source.commandReady),
+    // Firmware updates have their own storage/transport eligibility. A blank
+    // card may truthfully allow updates while command/playback remain locked;
+    // a damaged store can explicitly refuse them without being mistaken for a
+    // playable readiness failure.
+    firmwareUpdateReady: explicitBoolean(source.firmwareUpdateReady),
     // Reported separately from `commandReady` by the firmware. Playback is
     // entirely on-card, so it stays admitted while the radio reassociates.
     // Firmware from before that split omits the field, which normalizes to

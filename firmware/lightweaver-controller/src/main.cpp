@@ -203,6 +203,7 @@ bool webRuntimeServing = false;
 bool restartTransitionPending = false;
 lightweaver::RestartFallbackState configRestartFallbackState;
 bool wifiTransitionPending = false;
+bool runtimeStorageKnownBlank = false;
 String bootId;
 uint32_t cardStateRevision = 0;
 ErrorCode errorCode = ERROR_NONE;
@@ -401,6 +402,7 @@ void setup() {
   String projectRepositoryMessage;
   const bool projectRepositoryReady = lightweaverProjectRepository().begin(
       projectRepositoryMessage, firmwareBootProbation);
+  runtimeStorageKnownBlank = loadResult.storageKnownBlank;
   if (!projectRepositoryReady && Serial) {
     Serial.print("Card project repository disabled: ");
     Serial.println(projectRepositoryMessage);
@@ -499,11 +501,21 @@ void setup() {
   // ready while storage is still in read-only probation mode. Network/router
   // reachability is deliberately absent from this health decision.
   if (firmwareBootProbation) {
+    FirmwareUpdateReadinessInputs storageHealth;
+    storageHealth.phase = loadResult.runtimePhase;
+    storageHealth.configValid = loadResult.configValid;
+    storageHealth.knownGoodProject = loadResult.knownGoodProject;
+    storageHealth.storageKnownBlank = loadResult.storageKnownBlank;
+    storageHealth.storageReadable = projectRepositoryReady;
+    storageHealth.projectHeadPresent = lightweaverProjectRepository().currentHead().length() > 0;
+    storageHealth.safeMode = loadResult.safeMode;
+    const bool savedConfigHealthy = firmwareUpdateSavedConfigHealthy(storageHealth);
     confirmLightweaverFirmwareBootHealth(
         loadResult.ok, projectRepositoryReady,
-        loadResult.configValid && loadResult.knownGoodProject && !loadResult.safeMode,
+        savedConfigHealthy,
         projectRepositoryReady, errorCode == ERROR_NONE,
-        true, webRuntimeServing, watchdogReady, runtimeOutputReady(), true,
+        true, webRuntimeServing, watchdogReady,
+        loadResult.storageKnownBlank ? runtimeOutputDriverReady() : runtimeOutputReady(), true,
         lightweaverProjectRepository().currentHead().c_str());
   }
 
@@ -2591,8 +2603,24 @@ bool readinessFor(bool transitionPending) {
   return provisioningCommandReady(inputs);
 }
 
-// Governs configuration, wiring, and credential mutations: those must not land
-// while any transition, including a WiFi one, is still in flight.
+// An update needs healthy readable storage, including explicitly empty storage.
+bool runtimeFirmwareUpdateReady() {
+  FirmwareUpdateReadinessInputs inputs;
+  inputs.phase = runtimeConfig.runtimePhase;
+  inputs.configValid = runtimeConfig.configValid;
+  inputs.knownGoodProject = runtimeConfig.knownGoodProject;
+  inputs.storageKnownBlank = runtimeStorageKnownBlank;
+  inputs.storageReadable = lightweaverProjectRepository().available();
+  inputs.projectHeadPresent = lightweaverProjectRepository().currentHead().length() > 0;
+  inputs.safeMode = runtimeSafeMode;
+  inputs.webServing = webRuntimeServing;
+  inputs.outputDriverReady = runtimeOutputDriverReady();
+  inputs.projectOutputReady = runtimeProjectOutputReady();
+  inputs.transitionPending = runtimeTransitionPending() || errorCode != ERROR_NONE;
+  return firmwareUpdateReady(inputs);
+}
+
+// Configuration and wiring mutations must wait for every transition.
 bool runtimeCommandReady() {
   return readinessFor(runtimeTransitionPending());
 }
@@ -2657,6 +2685,7 @@ String runtimeFirmwareInfo() {
   doc["provisioningContractVersion"] = LW_PROVISIONING_CONTRACT_VERSION;
   doc["runtimePhase"] = runtimeProvisioningPhase();
   doc["commandReady"] = runtimeCommandReady();
+  doc["firmwareUpdateReady"] = runtimeFirmwareUpdateReady();
   // Local playback admission, reported separately so a caller can tell
   // "busy reassociating" apart from "cannot drive the lights".
   doc["playbackReady"] = runtimePlaybackReady();
@@ -2718,8 +2747,10 @@ String runtimeFirmwareInfo() {
   doc["wifi"]["transport"] =
       runtimeConfig.activeTransport == WIFI_TRANSPORT_STATION ? "station" : "ap";
   // Never serialize the WiFi password into this (unauthenticated) response —
-  // only a boolean hint that credentials exist.
+  // the saved network name and boolean hints support reconnect without disclosure.
   doc["wifi"]["configured"] = runtimeConfig.wifi.ssid.length() > 0;
+  doc["wifi"]["ssid"] = runtimeConfig.wifi.ssid;
+  doc["wifi"]["savedPasswordAvailable"] = runtimeConfig.wifi.password.length() > 0;
   serializeKaleidoscopeMappings(
       doc["kaleidoscopeMappings"].to<JsonArray>(), runtimeConfig);
   JsonArray outputArray = doc["outputs"].to<JsonArray>();
