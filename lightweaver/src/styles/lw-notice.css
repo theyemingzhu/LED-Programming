@@ -68,6 +68,9 @@
   border: 1px solid var(--border-soft);
   border-left: 2px solid var(--lw-notice-tone);
   border-radius: var(--r-md);
+  /* Keeps the arrival sweep inside the card's rounded rect, which is what it
+     was always meant to be bounded by. */
+  overflow: hidden;
   background: var(--bg-elev);
   color: var(--text-mid);
   font-size: 12px;
@@ -90,6 +93,13 @@
     transparent 12%,
     color-mix(in oklab, var(--lw-notice-tone) 24%, transparent) 46%,
     transparent 78%);
+  /* The travel is in `background-position`, NOT `transform`. A transformed
+     overlay ends its animation displaced and `fill-mode: both` holds it
+     there — invisible at opacity 0, but permanently ~100px of scrollable
+     content on a 420px card, which `overflow: hidden` hides without
+     removing. Moving the gradient inside a box that never leaves `inset: 0`
+     has no geometry at all. */
+  background-size: 220% 100%;
   animation: lw-notice-sweep .9s cubic-bezier(.32, .6, .3, 1) .1s both;
 }
 
@@ -98,9 +108,9 @@
   to   { opacity: 1; transform: none; }
 }
 @keyframes lw-notice-sweep {
-  from { opacity: 0; transform: translateX(-24%); }
+  from { opacity: 0; background-position: 130% 0; }
   35%  { opacity: 1; }
-  to   { opacity: 0; transform: translateX(24%); }
+  to   { opacity: 0; background-position: -30% 0; }
 }
 
 .lw-notice-main {
