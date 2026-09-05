@@ -1350,13 +1350,22 @@ import { PatternPreview } from './PatternPreview.jsx';
       setStatusKind('');
       setStatus('Connecting to the local Lightweaver card…');
       const onBridgeChanged = () => {
-        if (sequence !== browsePreviewSeq.current) return;
         const state = getCardBridgeState();
         if (!state.verified) return;
         const firmwareGap = cardBridgeFeatureGap('frame');
         if (!firmwareGap) return;
+        // Acquisition revalidation can cancel this tap before identity arrives.
+        // It must still explain the unsupported bridge; it never resumes a command.
+        const expectedCard = cardLink?.expectedCard || cardLink?.card;
+        const sameVerifiedCard = state.identityVerified
+          && normalizeCardHost(state.host) === normalizeCardHost(cardHost)
+          && state.card?.id === expectedCard?.id
+          && state.card?.firmwareVersion === expectedCard?.firmwareVersion
+          && state.card?.buildId === expectedCard?.buildId;
+        if (sequence !== browsePreviewSeq.current && !sameVerifiedCard) return;
         browsePreviewSeq.current += 1;
         window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
+        setPatternCardGate('');
         setStatusKind('err');
         setStatus(firmwareGap.message);
       };

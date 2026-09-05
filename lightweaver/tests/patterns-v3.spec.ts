@@ -90,6 +90,28 @@ async function issueRegisteredPatternAuthorization(page, intent = '') {
   await expect(page.locator('.pm')).toBeVisible();
 }
 
+// A bridge scenario must own the shared link as a bridge. The removed local
+// card preference no longer overrides an already verified direct connection.
+async function useReadyBridgeTransport(page) {
+  await expect.poll(() => page.evaluate(async () => {
+    const { getCardLinkState } = await import('/src/lib/cardLink.js');
+    return getCardLinkState().readiness?.commandReady;
+  })).toBe(true);
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const link = getSharedCardLink();
+    const current = link.getState();
+    link.dispatch({
+      type: 'card-verified', via: 'bridge', host: current.host,
+      card: current.card, expectedCard: current.expectedCard,
+      readiness: current.readiness, bridgeLifecycle: current.bridgeLifecycle,
+    });
+  });
+  await expect.poll(() => page.evaluate(async () => (
+    (await import('/src/lib/cardLink.js')).getCardLinkState().transport
+  ))).toBe('bridge');
+}
+
 async function gotoFreshPatterns(page) {
   await mockDefaultCardZones(page);
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
@@ -1361,13 +1383,13 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('lw_local_chip_default', '1');
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({
       version: 1, id: 'lw-identity-race', firmwareVersion: '1.0.0', buildId: 'identity-race-build',
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
+  await useReadyBridgeTransport(page);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
   await page.evaluate(() => {
@@ -1391,7 +1413,8 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
     (window as any).__identityAuthorityLost = true;
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     getSharedCardLink().dispatch({
-      type: 'direct-status', connected: true, host: 'lightweaver.local',
+      type: 'bridge-ping-ok', host: 'lightweaver.local',
+      bridgeLifecycle: getSharedCardLink().getState().bridgeLifecycle,
       card: {
         id: 'lw-identity-race', firmwareVersion: '1.0.0', buildId: 'identity-race-build',
       },
@@ -1517,10 +1540,10 @@ test('blocked automatic card window gives one concrete recovery action', async (
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('lw_local_chip_default', '1');
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
+  await useReadyBridgeTransport(page);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
 
@@ -1531,23 +1554,48 @@ test('blocked automatic card window gives one concrete recovery action', async (
 
 test('an older card bridge points to the single Flash recovery action', async ({ page }) => {
   await pairReadyPatternCard(page, 'lw-older-bridge-test');
-  await page.addInitScript(() => {
-    const bridge = { closed: false, postMessage: () => {} };
-    window.open = (() => bridge as any) as typeof window.open;
-  });
+  const fixture = patternAuthorizationFixtures.get(page)!;
+  await page.addInitScript(({ projectId, projectFingerprint }) => {
+    (window as any).__olderBridgeMessages = [];
+    const originalOpen = window.open.bind(window);
+    window.open = ((_url?: string | URL, name?: string) => {
+      const popup = originalOpen('about:blank', name);
+      (window as any).__olderBridgePopup = popup;
+      if (popup) Object.defineProperty(popup, 'postMessage', {
+        configurable: true,
+        value(message: any, targetOrigin: string) {
+          (window as any).__olderBridgeMessages.push(message);
+          // This card answers identity/status but predates versioned bridge
+          // features. Silence would instead model an unreachable card.
+          queueMicrotask(() => window.dispatchEvent(new MessageEvent('message', {
+            origin: targetOrigin, source: popup,
+            data: { app: 'LightweaverCardBridge', id: message.id, ok: true, response: {
+              app: 'Lightweaver', provisioningContractVersion: 1,
+              cardId: 'lw-older-bridge-test', firmwareVersion: '1.0.0', buildId: 'lw-older-bridge-test-build',
+              bootId: 'lw-older-bridge-test-boot', runtimePhase: 'ready', knownGoodProject: true,
+              commandReady: true, outputReady: true, playbackReady: true,
+              projectId, piece: { id: projectId }, projectRevision: 0, projectFingerprint,
+            } },
+          })));
+        },
+      });
+      return popup;
+    }) as typeof window.open;
+  }, { projectId: fixture.project.id, projectFingerprint: fixture.projectFingerprint });
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('lw_local_chip_default', '1');
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
+  await useReadyBridgeTransport(page);
   await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await page.evaluate(() => {
     window.dispatchEvent(new MessageEvent('message', {
       origin: 'http://lightweaver.local',
+      source: (window as any).__olderBridgePopup,
       data: {
         app: 'LightweaverCardBridge',
         type: 'ready',
@@ -1559,6 +1607,8 @@ test('an older card bridge points to the single Flash recovery action', async ({
   await expect(page.getByRole('alert')).toContainText(
     "This card is running older firmware that can't do this yet. Open Flash to update the card, then try again.",
   );
+  expect(await page.evaluate(() => (window as any).__olderBridgeMessages
+    .filter((message: any) => message.type === 'control'))).toEqual([]);
 });
 
 test('a legacy bridge lifecycle change blocks the next pattern before sending it', async ({ page }) => {
