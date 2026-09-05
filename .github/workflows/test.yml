@@ -2,8 +2,9 @@ name: Tests
 
 # One exact merged-source gate. Pull-request updates are proved locally instead
 # of spending the shared Actions allowance on every intermediate commit. A
-# repository-owned classifier selects bounded lanes, and the always-run `gate`
-# job is the single aggregate result for main, merge queue, and manual runs.
+# repository-owned classifier selects bounded lanes. GitHub's workflow result
+# already fails when any selected lane fails, so no runner-only aggregate job
+# is needed.
 on:
   merge_group:
   push:
@@ -276,28 +277,3 @@ jobs:
         working-directory: lightweaver
       - run: npm run ci:artifact:release-ui
         working-directory: lightweaver
-
-  gate:
-    name: gate
-    if: ${{ always() }}
-    needs: [classify, source, browser, cloud, production, firmware, artifact]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Require every selected lane
-        env:
-          CLASSIFY: ${{ needs.classify.result }}
-          SOURCE: ${{ needs.source.result }}
-          BROWSER: ${{ needs.browser.result }}
-          CLOUD: ${{ needs.cloud.result }}
-          PRODUCTION: ${{ needs.production.result }}
-          FIRMWARE: ${{ needs.firmware.result }}
-          ARTIFACT: ${{ needs.artifact.result }}
-        run: |
-          for result in "$CLASSIFY" "$SOURCE" "$BROWSER" "$CLOUD" "$PRODUCTION" "$FIRMWARE" "$ARTIFACT"; do
-            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
-              echo "::error::A selected Lightweaver CI lane did not pass."
-              exit 1
-            fi
-          done
-          echo "Every selected Lightweaver CI lane passed."
