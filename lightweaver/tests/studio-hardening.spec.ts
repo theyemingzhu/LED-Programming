@@ -30,6 +30,8 @@ const HARDENING_FIRMWARE_VERSION = '1.0.0';
 const HARDENING_BUILD_ID = 'studio-hardening-build';
 
 async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', options: any = {}) {
+  const firmwareVersion = options.firmwareVersion || HARDENING_FIRMWARE_VERSION;
+  const buildId = options.buildId || HARDENING_BUILD_ID;
   let installedConfig: any = {
     ...structuredClone(DEFAULT_RUNTIME),
     led: { ...structuredClone(DEFAULT_RUNTIME.led), outputs: structuredClone(CURRENT_TEST_OUTPUTS) },
@@ -46,8 +48,8 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
     json: {
       app: 'Lightweaver',
       cardId,
-      firmwareVersion: HARDENING_FIRMWARE_VERSION,
-      buildId: HARDENING_BUILD_ID,
+      firmwareVersion,
+      buildId,
       bootId,
       projectId: cardProject.id,
       // A card that reports a fingerprint must report a revision integer with
@@ -67,8 +69,8 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
       app: 'Lightweaver',
       provisioningContractVersion: 1,
       cardId,
-      firmwareVersion: HARDENING_FIRMWARE_VERSION,
-      buildId: HARDENING_BUILD_ID,
+      firmwareVersion,
+      buildId,
       bootId,
       runtimePhase: 'ready',
       knownGoodProject: true,
@@ -138,7 +140,7 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({
       version: 1, id, firmwareVersion, buildId,
     }));
-  }, { id: cardId, firmwareVersion: HARDENING_FIRMWARE_VERSION, buildId: HARDENING_BUILD_ID });
+  }, { id: cardId, firmwareVersion, buildId });
   await page.reload({ waitUntil: 'domcontentloaded' });
   // The project this card holds is the one the app just created, so learn it
   // from the app rather than inventing an id the open project can never match.
@@ -170,8 +172,8 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
       return issueCardEditAuthorization(binding);
     }, {
       cardId,
-      firmwareVersion: HARDENING_FIRMWARE_VERSION,
-      buildId: HARDENING_BUILD_ID,
+      firmwareVersion,
+      buildId,
       bootId,
       installedProjectId: cardProject.id,
       installedProjectFingerprint: cardProject.fingerprint,
@@ -473,8 +475,15 @@ test('Pattern acknowledgement does not install an unrelated edit made while pend
 
 test('bench chase restores the last Studio-confirmed look after transport failure', async ({ page }) => {
   const controls: any[] = [];
-  const cardId = 'lw-bench-hardening';
-  await mockConnectedCard(page, cardId);
+  const cardId = 'lw-a1b2c3d4e5f6';
+  const firmwareVersion = HARDENING_FIRMWARE_VERSION;
+  const buildId = 'a'.repeat(40);
+  let installedConfig: any = null;
+  await mockConnectedCard(page, cardId, {
+    firmwareVersion,
+    buildId,
+    onConfigRequest: (config: any) => { installedConfig = config; },
+  });
   await page.route('**/api/control', async route => {
     const body = JSON.parse(route.request().postData() || '{}');
     controls.push(body);
@@ -487,9 +496,46 @@ test('bench chase restores the last Studio-confirmed look after transport failur
   await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await expect.poll(() => controls.length).toBeGreaterThan(0);
+  expect(installedConfig?.startupPatternId).toBe('ocean');
   controls.length = 0;
 
-  await page.evaluate(() => {
+  // The old Layout Wire surface owned this check. Card's consolidated setup
+  // now owns it as the bounded marker test for an installed project.
+  await page.evaluate(async ({ id, firmwareVersion, buildId }) => {
+    const api = await import('/src/lib/cardCommissioningFlow.js');
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    const lifecycle = JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null');
+    const now = Date.now();
+    let flow = api.beginCardCommissioning({
+      source: 'web-serial',
+      operation: 'install-current-release',
+      strategy: 'clean-recovery',
+      projectRecord: { id: project.id, updatedAt: now, project },
+      projectRevision: lifecycle.editedRevision,
+      projectGeneration: lifecycle.generation,
+      installTarget: { id, firmwareVersion, buildId },
+      now,
+    });
+    flow = api.completeCardInstall(flow, {
+      operation: 'install-current-release',
+      cardId: id,
+      firmwareVersion,
+      buildId,
+      postFlashNetwork: { state: 'lan', stationIp: 'lightweaver.local' },
+    }, { now: now + 1 });
+    flow = api.acknowledgeCommissionedCard(flow, { id, firmwareVersion, buildId }, { now: now + 2 }).flow;
+    flow = {
+      ...flow,
+      stage: 'check-lights',
+      updatedAt: now + 3,
+      project: {
+        ...flow.project,
+        restoredAt: now + 3,
+        restoredFingerprint: flow.project.fingerprint,
+      },
+    };
+    await api.writeCardCommissioning(flow, { locks: null });
+
     class FailedSocket {
       static OPEN = 1;
       readyState = 0;
@@ -502,14 +548,12 @@ test('bench chase restores the last Studio-confirmed look after transport failur
       close() {}
     }
     window.WebSocket = FailedSocket as any;
-    window.location.hash = 'screen=layout&mode=wire';
-  });
-  await page.getByTestId('start-led-check').click();
-  const bench = page.getByTestId('wiring-bench-test');
-  await expect(bench).toBeVisible();
-  await expect(bench.getByRole('button', { name: /^Yes — / })).toBeVisible();
-  await expect(bench).toContainText(/Frame delivery failed/i);
-  await expect.poll(() => controls.some(body => body.cancelStream === true && body.patternId === 'ocean')).toBe(true);
+    window.location.hash = 'screen=card&section=install';
+  }, { id: cardId, firmwareVersion, buildId });
+  await page.getByRole('button', { name: 'Start bounded marker test', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(/bounded light test did not start|could not open|frame/i);
+  // Releasing the frame stream returns firmware to the installed Ocean look.
+  await expect.poll(() => controls.some(body => body.cancelStream === true)).toBe(true);
 });
 
 test('Playlist marks a row live only after the card acknowledges it', async ({ page }) => {
@@ -906,4 +950,3 @@ test('flash erase requires a final confirmation before starting', async ({ page 
   await page.getByRole('checkbox', { name: /Wipes the chip first/i }).check();
   await expect(page.getByText(/final confirmation/i)).toBeVisible();
 });
-
