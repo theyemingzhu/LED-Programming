@@ -271,7 +271,6 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
   });
   await gotoWire(page, {
     verified: true,
-    url: '/#screen=card&section=setup&task=install-project&next=patterns',
     transformProject(project: any) {
       const outer = project.layout.strips[0];
       const outerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === outer.id);
@@ -281,6 +280,12 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
       outerRun.seamLed = Math.min(Number(outerRun.seamLed) || 25, 25);
       project.layout.wiring.outputs[0].pin = 17;
     },
+  });
+
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
+  await page.evaluate(() => {
+    window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns';
   });
 
   await expect(page).not.toHaveURL(/#screen=pattern$/);
@@ -306,7 +311,8 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
   await expect(page.getByTestId('pattern-gate-notice')).toHaveCount(0);
   await page.locator('.pmcard').nth(1).click();
   await expect.poll(() => card.operations.filter(operation => operation === 'control').length).toBeGreaterThan(0);
-  expect(card.operations).toEqual(expect.arrayContaining(['config', 'activate', 'confirm']));
+  expect(card.operations).toEqual(expect.arrayContaining(['candidate', 'activate', 'confirm']));
+  expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
 });
 
 test('an expired Open Patterns light test retries with a fresh automatically activated candidate', async ({ page }) => {

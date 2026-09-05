@@ -195,3 +195,8 @@ docs/bench-sessions/2026-09-05-step-four-to-patterns.md.
 Verification: final2,262unit tests, production build,8install-flow browser
 cases and7setup-ladder cases passed. Immediate pattern command and actual
 expired-test Retry through new activation are covered. Local only.
+Live repaired OpenPatterns automatically activated41LEDs and put final
+confirmation inphase4. Timeout returned an actionableRetry. A real overlapping
+operation refresh race was then corrected; overlap+expiry regressions2/2pass.
+Visual confirmation is still pending; no permanent install or live pattern
+change is claimed. Browser now offersRetry when the owner is ready.

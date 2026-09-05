@@ -156,7 +156,6 @@ export function SetupScreen({
   useEffect(() => {
     const rereadAfterWiringChange = event => {
       if (event.detail?.active !== false) return;
-      if (!['activate-wiring', 'finish-wiring'].includes(event.detail?.operation)) return;
       setRecheckTick(tick => tick + 1);
     };
     window.addEventListener(STUDIO_HARDWARE_OPERATION_EVENT, rereadAfterWiringChange);

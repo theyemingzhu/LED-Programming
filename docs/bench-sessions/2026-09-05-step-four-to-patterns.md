@@ -22,3 +22,12 @@ No visual pass or permanent install is claimed.
 After the repaired Open Patterns flow is ready, start it when Adrian can
 observe the lights, confirm the visible result, then exercise a pattern change
 and independently read it back from the same card.
+
+## Repaired live handoff
+One click on Open Patterns automatically staged and activated41LEDs on the
+same card (activation955bc24d4fecdc19). API confirmed testing; confirmation
+controls appeared inside phase4. No separate Start light test click was used.
+An overlapping operation-end event left stale phase1 copy; the exact-status
+refresh now runs for every settled hardware operation; the overlapping-operation regression passed.
+Without visual confirmation the card restored its known-good setup; phase4
+then correctly displayed Retry and removed the expired confirmation.
