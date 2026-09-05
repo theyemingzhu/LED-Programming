@@ -33,6 +33,7 @@ on firmware 1524; no hardware mutation or release is part of this checkpoint.
 | SETUP-COUNT-001 | Setup has an LED count field; 256 headroom is not treated as a counted strip | Studio Setup | done | Unit setupJourney 22/22; Chromium setup-led-count + setup-ladder 7/7; live Setup shows empty LED count on phase 2 |
 | SETUP-COUNT-002 | Entering the count lights the strip and leaves Finding lights | Studio Setup + card lifecycle | done | Adrian: whole strip white after count+recover; Chromium setup-led-count 2/2 |
 | CARD-IA-001 | One Card page owns check + project install; Layout is Wire only; footer is status | Studio Card + Layout + routing | done | Unit 2201/2201 + Vite build; focused Playwright through Tasks 3–7; live preview Card + Layout |
+| CI-COST-001 | Stop duplicate advisory PR fan-outs, restore the browser gate to a true smoke check, retain broad coverage weekly/manual, and cap stalled jobs | CI / release policy | done | Policy 18/18; browser 22/22; YAML/JSON parse; 30-day audit projects ~65% fewer Test minutes |
 
 ## Active ownership
 
@@ -44,7 +45,7 @@ Repair batch integrated; no agents retain active ownership. Final ownership boun
 
 | Owner | IDs | Exact files / boundary | Started | Latest evidence |
 | --- | --- | --- | --- | --- |
-| None | — | — | — | CARD-IA-001 shipped to `main` 2026-08-31 with six defect fixes; per-section patterns and connect-recovery fixed alongside |
+| None | — | — | — | CI-COST-001 committed locally on `codex/actions-minutes-fix`; not pushed or deployed |
 
 The primary assigns at most three sub-agents. Two active owners must never name
 the same file or an inseparable behavior boundary.
@@ -87,6 +88,7 @@ this queue when Adrian is available.
 
 | ID | Outcome | Evidence | Revision / build | Completed |
 | --- | --- | --- | --- | --- |
+| CI-COST-001 | Advisory PR fan-outs removed; main/manual browser gate reduced to 22 targeted cases; former broad suite retained in weekly/manual exhaustive; every Tests job capped at 30 minutes | Policy 18/18; browser smoke 6/6, offline 1/1, preserving update 15/15; workflow/package parse | Local `codex/actions-minutes-fix`; not pushed or deployed | 2026-09-05 |
 | WORKFLOW-001 | Proportional glitch/checkpoint/release workflow shipped | PR #96; live no-store marker | Studio build 1201; firmware release build 1198 | 2026-08-09 |
 | WORKFLOW-002 | Inferred Sprint, guided Bench, and explicit Prove system implemented | Seven mode contracts plus resumable Bench/Prove templates | Branch `codex/three-mode-workflow` | 2026-08-09 |
 | WINDOWLESS-001–003 | Windowless/offline Studio implemented across public PWA, card-local Studio, firmware, project storage, encrypted handoff, and release tooling | Unit 1,364/1,364; tooling 8/8; firmware 4/4; Chromium offline 1/1; Pages staging; Vite/card/PlatformIO builds | Local commit on `codex/windowless-offline-studio` | 2026-08-10 |
