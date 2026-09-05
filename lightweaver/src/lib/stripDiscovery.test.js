@@ -191,9 +191,9 @@ test('the expanding probe frame lights one port and covers the whole bench total
     .every(value => value === DISCOVERY_OFF_COLOR), true);
 });
 
-test('ruler uses orange fifths, red tenths and pink fiftieths with dim yellow between markers, restarting at each port', () => {
+test('ruler uses orange fifths, red tenths and pink fiftieths with yellow between markers, restarting at each port', () => {
   const frame = buildDecadeMarkerFrame({ benchLayout, counts: { 16: 354, 17: 100 } });
-  assert.equal(frame[3], '080800');
+  assert.equal(frame[3], '3C3C00');
   assert.equal(frame[4], '3C1800');
   assert.equal(frame[9], '3C0000');
   assert.equal(frame[49], '301020');
@@ -215,7 +215,7 @@ test('ruler markers repeat through 2048 lights independently of each output offs
       const ordinal = block * 5 + 5;
       if (ordinal <= 2048) assert.equal(frame[start + ordinal - 1], repeatingBlock[block % 10], `marker ${ordinal} at output offset ${start}`);
       for (let tail = 1; tail <= 4 && block * 5 + tail <= 2048; tail += 1) {
-        assert.equal(frame[start + block * 5 + tail - 1], '080800');
+        assert.equal(frame[start + block * 5 + tail - 1], '3C3C00');
       }
     }
     for (const [ordinal, color] of [[255, '3C1800'], [260, '3C0000'], [500, '301020'], [1000, '301020'], [2000, '301020']]) {

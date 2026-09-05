@@ -404,7 +404,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect.poll(() => card.frames.some(frame =>
       frame.length === 256 && frame[4] === '3C1800' && frame[9] === '3C0000'
       && frame[49] === '301020' && frame[99] === '301020'
-      && frame[0] === '080800' && frame[3] === '080800' && frame[50] === '080800'
+      && frame[0] === '3C3C00' && frame[3] === '3C3C00' && frame[50] === '3C3C00'
     )).toBe(true);
     await expect(ruler).toContainText(/5/);
     await expect(ruler).toContainText(/orange/i);

@@ -1125,7 +1125,7 @@ export function StripDiscoveryPanel({
           {channelProof.stage !== 'skipped' && <div className="strip-discovery-legend" aria-label="Counting markers">
             <span><i className="is-orange" />Every 5 · orange</span><span><i className="is-red" />Every 10 · red</span><span><i className="is-pink" />Every 50 · pink</span>
           </div>}
-          {channelProof.stage !== 'skipped' && <p>Count the markers, then the dim yellow lights at the end. Enter your total.</p>}
+          {channelProof.stage !== 'skipped' && <p>Count the markers, then the yellow lights at the end. Enter your total.</p>}
           {channelProof.stage === 'skipped' && <p role="status">Colors are unverified. Enter a count you know, or <button type="button" className="btn" onClick={() => { setChannelProof({ stage: 'first', firstSeen: '', map: null, retry: false }); setSession(current => ({ ...current, phase: 'probe', activePin: current.ports.find(port => port.probed)?.pin })); }}>Check colors</button>.</p>}
           {benchNotice && <p role="status" data-testid="discovery-bench-maxed">{benchNotice}</p>}
           <ul className="strip-discovery-counts">

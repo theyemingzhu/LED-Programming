@@ -141,3 +141,8 @@ COUNT-RULER-002 done locally — user corrected palette: dim yellow between
 markers, orange every 5, red every 10, pink every 50. Supersedes white/50
 in COUNT-RULER-001. Focused 25 unit tests and browser outgoing-frame +
 desktop/phone flow passed. Physical hues remain needs-eyes; not deployed.
+
+COUNT-RULER-003 done locally — intervening yellow now uses the same channel
+intensity as the orange/red markers (3C3C00); removed dim wording. Existing
+current limits unchanged. Focused 25 unit tests and outgoing-frame/browser
+check pass; phone screen inspected. Not deployed.
