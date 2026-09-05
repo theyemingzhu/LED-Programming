@@ -883,9 +883,15 @@ import {
     const [installState, setInstallState] = useState('idle');
     const [releaseAttempt, setReleaseAttempt] = useState(0);
     const [commissioning, setCommissioning] = useState(readCardCommissioning);
+    // Only a flow present at mount represents an interrupted install. A new
+    // flow written by this mounted installer must retain its active USB UI.
+    const [interruptedInstallFlowId] = useState(() => {
+      const flow = readCardCommissioning();
+      return flow?.source === 'web-serial' && flow.stage === 'install-safely' ? flow.flowId : '';
+    });
     const [selectedStage, setSelectedStage] = useState(() => {
       const stage = readCardCommissioning()?.stage;
-      return stage === 'set-up-card' || stage === 'check-lights' ? stage : 'connect-card';
+      return interruptedInstallFlowId || stage === 'set-up-card' || stage === 'check-lights' ? stage : 'connect-card';
     });
     // `selectedStage` was read from the stored flow ONCE, at mount, and then
     // never again — a second store of the flow's own stage, reconciled never.
@@ -1318,7 +1324,8 @@ import {
       setSelectedStage(stage);
     };
 
-    const showCommissioningPanel = selectedStage === 'set-up-card' || selectedStage === 'check-lights';
+    const showCommissioningPanel = selectedStage === 'set-up-card' || selectedStage === 'check-lights'
+      || (selectedStage === 'install-safely' && interruptedInstallFlowId === commissioning?.flowId);
     if (showCommissioningPanel) {
       return (
         <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
