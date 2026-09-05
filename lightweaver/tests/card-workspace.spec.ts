@@ -807,9 +807,10 @@ test('Card overview delegates resumable install and test work to exact Setup tas
   await connectCommissioningCard(page);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  // Card Home renders check + install in place (the old "Install project on
-  // card" jump is gone).
-  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  // The resumable Setup task owns the action; a fresh project installer
+  // must not compete with restoration of this exact saved transaction.
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
   // "delegates to exact Setup tasks" is what this test is named for: the card
   // was flashed and its saved project is waiting to go back on it, so the
   // ladder's active task carries that door. It used to assert the commissioning
