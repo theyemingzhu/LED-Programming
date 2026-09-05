@@ -167,3 +167,18 @@ valid wiring). Actual phase4 screen has one Open Patterns action.
 Remaining presentation issue: during card wiring probation, Setup temporarily
 shows phase1/Needs attention while the final confirmation controls remain
 available. Physical confirmation and permanent installation remain pending.
+
+SETUP-REVISIT-001 — local follow-up, 2026-09-05. All four phase headings
+are selectable, including completed setup; viewing an earlier phase retains
+evidence-derived progress and never resets the card. Actual preview clicks
+1→2→3→4 verified connection options, recount/review, Layout, and final install.
+Known exact-card wiring probation now stays on the final confirmation phase.
+Expired tests reconcile card state and clear stale confirmation controls.
+Physical confirmation remains pending: owner readiness question unanswered;
+no new hardware activation, confirmation, flash or deployment in this batch.
+Final browser proof: setup phase navigation suite7/7 passed; staged
+confirmation→Patterns, expired-test retry, and exact revision acknowledgement
+3/3 passed. Existing hardware-operation completion now triggers an exact-card
+wiring status reread; test identity says Testing lights and suppresses false
+Recover guidance. This resolves the prior probation presentation limitation.
+Final integrated checkpoint: 2,262 unit tests and production build passed.

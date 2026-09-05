@@ -26,7 +26,10 @@ test('matching candidates resume in place and conflicts give non-mutating rollba
   assert.match(text, /attempt\.resumeAction === 'resume-physical-test' \|\| attempt\.resumeAction === 'resume-confirmation'/);
   assert.match(text, /candidate-conflict[\s\S]{0,500}roll back[\s\S]{0,200}replace/i);
   assert.match(text, /Nothing (?:was sent|was changed)/);
-  assert.match(text, /if \(attempt\.resumeAction !== 'stage-new'\)[\s\S]{0,800}return;/);
+  const resumeStart = text.indexOf("if (attempt.resumeAction !== 'stage-new')");
+  const stageStart = text.indexOf('const response = deploymentStart.response', resumeStart);
+  assert.ok(resumeStart >= 0 && stageStart > resumeStart);
+  assert.match(text.slice(resumeStart, stageStart), /return;/);
 });
 
 test('installed state requires combined exact project and readiness readback', async () => {

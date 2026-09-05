@@ -70,6 +70,18 @@ function commissioningStage(commissioningFlow) {
   return commissioningFlow?.stage ?? commissioningFlow?.flow?.stage ?? '';
 }
 
+function exactWiringTest(wiringStatus, cardLink) {
+  if (!wiringStatus?.activationId) return false;
+  const state = String(wiringStatus.state || '').trim().toLowerCase();
+  const candidateState = String(wiringStatus.candidateState || '').trim().toLowerCase();
+  if (state !== 'testing' && !['testing', 'awaiting-confirmation'].includes(candidateState)) return false;
+  const expectedId = String(cardLink?.expectedCard?.id || cardLink?.card?.id || cardLink?.readiness?.cardId || '').trim();
+  const observedId = String(wiringStatus.cardId || '').trim();
+  if (!expectedId || observedId !== expectedId) return false;
+  const expectedBuild = String(cardLink?.card?.buildId || cardLink?.readiness?.buildId || '').trim();
+  return !expectedBuild || String(wiringStatus.buildId || '').trim() === expectedBuild;
+}
+
 function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution }) {
   const stage = commissioningStage(commissioningFlow);
   if (cardLink?.activity === 'failed' || cardLink?.reason === 'operation-uncertain') {
@@ -271,10 +283,23 @@ export function deriveSetupJourney({
   project,
   resolution,
   verification,
+  wiringStatus,
 } = {}) {
   const blockers = connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution });
   const progress = lightProgress(project);
   const currentLayoutProgress = layoutProgress(project);
+
+  if (exactWiringTest(wiringStatus, cardLink)) {
+    return withTask({
+      diagnosis: { state: 'setup-required' },
+      phases: phasesFor('verify', progress, currentLayoutProgress),
+      blockers: [],
+      currentPhaseId: 'verify',
+      nextAction: { id: 'confirm-visible-lights', taskId: 'confirm-visible-lights', phaseId: 'verify' },
+      resumeDestination: null,
+      setupComplete: false,
+    });
+  }
 
   if (commissioningStage(commissioningFlow) === 'check-lights') {
     return withTask({

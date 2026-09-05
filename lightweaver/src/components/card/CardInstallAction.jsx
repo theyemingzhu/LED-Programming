@@ -179,7 +179,7 @@ export function CardInstallAction({
               standaloneController={installController}
               disabled={!installGate.allowed}
               autoStart={continueToPatterns}
-              onInstalled={() => { window.location.hash = '#screen=pattern'; }}
+              onInstalled={continueToPatterns ? () => { window.location.hash = '#screen=pattern'; } : undefined}
             />
           </section>
         </>

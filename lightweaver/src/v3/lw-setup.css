@@ -123,7 +123,15 @@
   align-items: start;
   gap: 12px;
   width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
 }
+
+.lw-setup-phase-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
 .lw-setup-phase-marker {
   display: grid;
@@ -168,6 +176,11 @@
   background: color-mix(in oklch, var(--accent) 6%, var(--bg-panel));
   box-shadow: 0 14px 30px -24px color-mix(in oklch, var(--accent) 62%, transparent);
   scroll-margin-top: 80px;
+}
+
+.lw-setup-phase.is-active:not(.is-current) {
+  border-color: var(--border-strong);
+  background: color-mix(in oklch, var(--bg-panel) 92%, var(--text-hi));
 }
 
 .lw-setup-phase.is-current .lw-setup-phase-marker {

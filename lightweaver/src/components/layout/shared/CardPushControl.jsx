@@ -217,7 +217,13 @@ export function CardPushControl({
         );
       }
       if (attempt.resumeAction !== 'stage-new') {
-        setWiringCandidate({ activationId: attempt.wiringStatus.activationId, attempt });
+        setWiringCandidate({
+          activationId: attempt.wiringStatus.activationId,
+          attempt,
+          ...(attempt.resumeAction === 'resume-physical-test' || attempt.resumeAction === 'resume-confirmation'
+            ? { expiresAt: Date.now() + (attempt.wiringStatus.remainingMs || 90000), expiryChecks: 0 }
+            : {}),
+        });
         if (attempt.resumeAction === 'resume-activation') {
           setWiringTestState('staged');
           setPushStatus('This exact wiring installation is already staged. Continue with its light test; nothing was sent again.');
@@ -275,10 +281,15 @@ export function CardPushControl({
     setPushStatus('Restarting the card with the test wiring…');
     try {
       assertCurrentAttempt(wiringCandidate.attempt);
-      await activateAndWaitForCardWiring(wiringCandidate.activationId, {
+      const testingStatus = await activateAndWaitForCardWiring(wiringCandidate.activationId, {
         host: wiringCandidate.attempt.host,
         timeoutMs: 18000,
       });
+      setWiringCandidate(current => current ? {
+        ...current,
+        expiresAt: Date.now() + (testingStatus.remainingMs || 90000),
+        expiryChecks: 0,
+      } : current);
       setWiringTestState('testing');
       setPushStatus('Testing the new wiring. The card will restore the working setup automatically if you do not confirm it.');
     } catch (error) {
@@ -328,6 +339,60 @@ export function CardPushControl({
 
   const pushing = action.status === 'pending' && wiringTestState === 'idle';
   const wiringTransactionActive = Boolean(wiringCandidate);
+  useEffect(() => {
+    if (wiringTestState !== 'testing' || !wiringCandidate?.expiresAt) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const status = await getCardWiringStatus({ host: wiringCandidate.attempt.host });
+        if (cancelled) return;
+        const expectedCardId = wiringCandidate.attempt.prepared?.cardId;
+        const expectedBuildId = wiringCandidate.attempt.prepared?.buildId;
+        const exactCard = (!expectedCardId || status.cardId === expectedCardId)
+          && (!expectedBuildId || status.buildId === expectedBuildId);
+        if (!exactCard) {
+          failedAttemptRef.current = wiringCandidate.attempt;
+          setWiringCandidate(null);
+          setWiringTestState('failed');
+          dispatchAction({ type: 'fail', error: 'The card identity changed while the light test was open.' });
+          setPushStatus('A different card or firmware build answered. Read this card again before retrying.');
+          return;
+        }
+        if (status.hasCandidate && status.activationId === wiringCandidate.activationId && status.state === 'testing') {
+          setWiringCandidate(current => current ? {
+            ...current,
+            expiresAt: Date.now() + Math.max(status.remainingMs || 1000, 1000),
+            expiryChecks: 0,
+          } : current);
+          return;
+        }
+        failedAttemptRef.current = wiringCandidate.attempt;
+        setWiringCandidate(null);
+        if (!status.hasCandidate && ['known-good', 'rolled-back'].includes(status.state)) {
+          setWiringTestState('rolled-back');
+          dispatchAction({ type: 'fail', error: 'The card restored its working setup before the light test was confirmed.' });
+          setPushStatus('The light test expired, so the card restored its working setup. Start the install again when you can check the lights.');
+        } else {
+          setWiringTestState('failed');
+          dispatchAction({ type: 'fail', error: 'The card returned a different light-test state.' });
+          setPushStatus('Studio could not confirm how the light test ended. Read this card again before retrying.');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        const checks = Number(wiringCandidate.expiryChecks || 0) + 1;
+        if (checks < 4) {
+          setWiringCandidate(current => current ? { ...current, expiresAt: Date.now() + 750, expiryChecks: checks } : current);
+        } else {
+          failedAttemptRef.current = wiringCandidate.attempt;
+          setWiringCandidate(null);
+          setWiringTestState('failed');
+          dispatchAction({ type: 'fail', error: 'The card did not answer after the light test ended.' });
+          setPushStatus('The card did not answer after the light test ended. Read this card again before retrying.');
+        }
+      }
+    }, Math.max(0, wiringCandidate.expiresAt - Date.now()) + 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [wiringCandidate, wiringTestState]);
   const autoStartedRef = useRef(false);
   useEffect(() => {
     if (!autoStart || disabled || autoStartedRef.current) return;
