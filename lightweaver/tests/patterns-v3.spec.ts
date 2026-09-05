@@ -2003,9 +2003,11 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
 
   await page.getByTestId('save-current-combo').click();
 
-  // A new mix card (tagged 'mix') appears in the grid.
+  // A new mix card (tagged 'mix') appears in the grid. The catalog sentinel
+  // may concurrently reveal its next batch, so saving must not shrink the
+  // visible catalog but does not own an exact rendered-card count.
   await expect(page.locator('.pm-cards .pmcard .mixtag')).toHaveCount(1);
-  await expect(page.locator('.pm-cards .pmcard')).toHaveCount(before);
+  expect(await page.locator('.pm-cards .pmcard').count()).toBeGreaterThanOrEqual(before);
 });
 
 test('the mirror geometry control switches the active geometry', async ({ page }) => {
