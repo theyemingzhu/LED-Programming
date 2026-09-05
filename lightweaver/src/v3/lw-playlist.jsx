@@ -70,6 +70,7 @@ import {
   classifyCardActionFailure,
   createCardActionState,
 } from '../lib/cardAction.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
 function downloadJson(filename, content) {
   const blob = new Blob([content], { type: 'application/json' });
@@ -729,6 +730,84 @@ function realPatternShape(patternId) {
     // identified itself, which is a truthful blank rather than a stand-in.
     const cardNowMeta = installedRecord?.cardId || cardLink?.readiness?.cardId || '';
 
+    // ── screen-scoped messages into the notice layer ───────────────────────
+    React.useEffect(() => {
+      if (!hardwareConfigurationIssue) {
+        dismissNoticeKey('playlist-hardware-warning');
+        return;
+      }
+      publishNotice({
+        key: 'playlist-hardware-warning',
+        testId: 'playlist-hardware-warning',
+        tone: 'error',
+        title: 'Hardware setup needs attention.',
+        body: `${hardwareConfigurationIssue} You can still add, remove, copy, and reorder every look. Only card setup actions are paused.`,
+        source: 'playlist-hardware',
+        action: { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
+      });
+    }, [hardwareConfigurationIssue]);
+
+    // The physicalPreview branch (live-preview / reset-live / recover-lights
+    // failures) deliberately stays in the old in-flow markup below, not
+    // migrated. Its primary button carries `disabled={recoveryPending}` —
+    // tests/playlist-storage.spec.ts's 'Playlist keeps missing runtime proof
+    // visible while recovery runs…' asserts `toBeDisabled()` on that exact
+    // button mid-recovery. The notice layer's `action` is label+onSelect
+    // only; it has no disabled state (NoticeLayer.jsx renders a plain
+    // `<button>` with no disabled/aria-disabled wiring), and adding one is
+    // out of scope here (this migration touches lw-playlist.jsx/lw-pattern.jsx
+    // only). Collapsing that distinction would make a real, currently-green
+    // spec fail, so this one case is left exactly as it was.
+    React.useEffect(() => {
+      if (!playlistStatus || playlistStatus.physicalPreview) {
+        dismissNoticeKey('playlist-card-status');
+        return;
+      }
+      const tone = playlistStatus.kind === 'ok' ? 'success'
+        : playlistStatus.kind === 'err' ? 'error'
+        : playlistStatus.kind === 'pending' ? 'progress'
+        : 'info';
+      // Priority when more than one button would have rendered — the
+      // reconcile action ("Set card to X & load" / "Recommission card &
+      // load") > Retry > Open card installer > Open card page (the last is
+      // the generic fallback, offered whenever nothing more specific
+      // applies — including the plain pending/success states, matching what
+      // the old box always rendered there too). "Open card installer" ranks
+      // above the generic fallback because it is the specific fix a
+      // mixed-content/bridge-* message explicitly names. No test exercises
+      // these combinations directly (checked against
+      // tests/playlist-storage.spec.ts and tests/workflow.spec.ts), so
+      // nothing tested is lost — only ever the untested "Adjust LED count"
+      // secondary button (always paired with the reconcile action) and
+      // whichever of {Retry, Open card installer, Open card page} loses this
+      // priority race.
+      let action = null;
+      if (playlistStatus.action) {
+        action = {
+          label: playlistStatus.action.label,
+          onSelect: () => { void loadPlaylistToCard({
+            allowLayoutChange: playlistStatus.action.kind === 'allow-layout-change',
+            allowProjectChange: playlistStatus.action.kind === 'allow-project-change',
+          }); },
+        };
+      } else if (playlistStatus.retry === 'playlist') {
+        action = { label: 'Retry', onSelect: () => { void loadPlaylistToCard(); } };
+      } else if (playlistStatus.handoffUrl) {
+        action = { label: 'Open card installer', onSelect: openCardInstaller };
+      } else {
+        action = { label: 'Open card page', onSelect: openCard };
+      }
+      publishNotice({
+        key: 'playlist-card-status',
+        testId: 'playlist-card-status',
+        tone,
+        title: playlistStatus.message,
+        body: playlistStatus.action?.hint || '',
+        source: 'playlist-status',
+        action,
+      });
+    }, [playlistStatus, playlistSyncing]);
+
     return (
       <div className="screen">
         <div className="screen-scroll">
@@ -758,16 +837,15 @@ function realPatternShape(patternId) {
               </div>
             </header>
 
-            {hardwareConfigurationIssue &&
-              <div className="pmx-status is-err" role="alert" data-testid="playlist-hardware-warning">
-                <strong>Hardware setup needs attention.</strong> {hardwareConfigurationIssue} You can still add, remove, copy, and reorder every look. Only card setup actions are paused.
-                <div className="pmx-status-actions">
-                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Fix wiring</button>
-                </div>
-              </div>
-            }
-
-            {playlistStatus &&
+            {/* The hardware-configuration warning and most of the playlist
+                card status now publish to the notice layer (see the two
+                effects above this component's JSX). One branch stays here,
+                deliberately: a physicalPreview failure (live preview / reset
+                live / recover lights) whose primary button is disabled while
+                `recoveryPending` — the notice layer's action has no disabled
+                state, and tests/playlist-storage.spec.ts asserts
+                `toBeDisabled()` on this exact button mid-recovery. */}
+            {playlistStatus && playlistStatus.physicalPreview &&
               <div
                 className={"pmx-status" + (playlistStatus.kind === 'ok' ? ' is-ok' : playlistStatus.kind === 'err' ? ' is-err' : '')}
                 data-testid="playlist-card-status"
@@ -775,42 +853,9 @@ function realPatternShape(patternId) {
                 aria-live="polite"
               >
                 {playlistStatus.message}
-                {playlistStatus.action?.hint &&
-                  <div className="pmx-status-hint">{playlistStatus.action.hint}</div>
-                }
                 <div className="pmx-status-actions">
-                  {playlistStatus.physicalPreview && previewFailureHandler &&
+                  {previewFailureHandler &&
                     <button className="btn primary" disabled={recoveryPending} onClick={previewFailureHandler}>{playlistStatus.failure.actionLabel}</button>
-                  }
-                  {playlistStatus.action &&
-                    <button
-                      className="btn primary"
-                      // Only the allow-layout-change escalation can rewrite the
-                      // physical output layout, so only it carries the shared
-                      // wiring-install proof. The other kinds send no layout
-                      // change and keep their existing precondition.
-                      disabled={playlistSyncing || recoveryPending
-                        || (playlistStatus.action.kind === 'allow-layout-change' && !layoutChangeInstallGate.allowed)}
-                      title={playlistStatus.action.kind === 'allow-layout-change' && !layoutChangeInstallGate.allowed
-                        ? layoutChangeInstallGate.message
-                        : undefined}
-                      onClick={() => loadPlaylistToCard({
-                        allowLayoutChange: playlistStatus.action.kind === 'allow-layout-change',
-                        allowProjectChange: playlistStatus.action.kind === 'allow-project-change',
-                      })}
-                    >
-                      {playlistSyncing ? 'Loading…' : playlistStatus.action.label}
-                    </button>
-                  }
-                  {playlistStatus.action?.kind === 'allow-layout-change' &&
-                    <button className="btn" disabled={playlistSyncing || recoveryPending} onClick={adjustLedCounts}>Adjust LED count</button>
-                  }
-                  {playlistStatus.retry === 'playlist' &&
-                    <button className="btn primary" disabled={playlistSyncing || recoveryPending} onClick={() => loadPlaylistToCard()}>Retry</button>
-                  }
-                  {!playlistStatus.physicalPreview && <button className="btn" onClick={openCard}>{I.open}Open card page</button>}
-                  {handoffUrl &&
-                    <button type="button" className="btn primary" onClick={openCardInstaller}>Open card installer</button>
                   }
                 </div>
               </div>

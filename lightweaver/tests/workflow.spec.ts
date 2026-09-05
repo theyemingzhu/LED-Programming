@@ -358,7 +358,11 @@ test('quiet pattern preview does not render routine notifications', async ({ pag
   await page.locator('[data-pattern-id="aurora"]').click();
   await expect.poll(() => card.controls.at(-1)?.patternId).toBe('aurora');
 
-  await expect(page.locator('.pmx-status')).toHaveCount(0);
+  // The hero status box migrated to the notice layer (see
+  // src/v3/lw-pattern.jsx's 'pattern-card-status' publish effect); a quiet
+  // success still means no notice, same as the old in-flow box meant no
+  // `.pmx-status` before it.
+  await expect(page.getByTestId('pattern-card-status')).toHaveCount(0);
 });
 
 test('complete playlist sync writes and verifies all card sections', async ({ page }) => {
@@ -421,7 +425,9 @@ test('the latest section preview wins rapid taps and never writes the card confi
   // The pattern still reaches the strip, whole-piece, and the screen says which
   // of the two happened rather than letting a section tab imply otherwise.
   expect(card.controls.every(control => control.zone === undefined)).toBe(true);
-  await expect(page.locator('.pmx-status')).toContainText('played on the whole piece');
+  // Migrated to the notice layer; same message, now under the
+  // 'pattern-card-status' testid instead of the old `.pmx-status` class.
+  await expect(page.getByTestId('pattern-card-status')).toContainText('played on the whole piece');
 });
 
 // ── Mandala import: repeats and transforms ────────────────────────────────
