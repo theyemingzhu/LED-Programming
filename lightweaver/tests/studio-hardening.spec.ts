@@ -39,6 +39,7 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
   let candidateConfig: any = null;
   let wiringState = 'known-good';
   const activationId = 'studio-hardening-activation';
+  const wiringOperations: string[] = [];
   const bootId = `${cardId}-boot`;
   // Filled in after the first reload, once the app has created the project
   // this card is meant to be holding. Read live by both status routes so the
@@ -95,19 +96,31 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
       await route.fulfill({ json: installedConfig });
       return;
     }
-    installedConfig = JSON.parse(route.request().postData() || '{}');
-    options.onConfigRequest?.(structuredClone(installedConfig));
+    const incomingConfig = JSON.parse(route.request().postData() || '{}');
+    options.onConfigRequest?.(structuredClone(incomingConfig));
     if (options.configGate) await options.configGate();
     if (options.configDelayMs) await new Promise(resolve => setTimeout(resolve, options.configDelayMs));
+    if (options.forceStagedConfig) {
+      candidateConfig = incomingConfig;
+      wiringState = 'staged';
+      await route.fulfill({ json: {
+        ok: true,
+        state: wiringState,
+        activationId,
+        currentOutputs: candidateConfig?.led?.outputs || [],
+      } });
+      return;
+    }
+    installedConfig = incomingConfig;
     await route.fulfill({ json: { ok: true, requiresReboot: false } });
   });
   await page.route('**/api/wiring/candidate', async route => {
+    wiringOperations.push('candidate');
     candidateConfig = JSON.parse(route.request().postData() || '{}').candidate;
-    installedConfig = candidateConfig;
-    options.onConfigRequest?.(structuredClone(installedConfig));
+    options.onConfigRequest?.(structuredClone(candidateConfig));
     if (options.configGate) await options.configGate();
     if (options.configDelayMs) await new Promise(resolve => setTimeout(resolve, options.configDelayMs));
-    wiringState = 'known-good';
+    wiringState = 'staged';
     await route.fulfill({ json: {
       ok: true,
       state: wiringState,
@@ -116,20 +129,54 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
     } });
   });
   await page.route('**/api/wiring/activate', async route => {
+    wiringOperations.push('activate');
     wiringState = 'testing';
+    if (options.ambiguousActivate && !options.activationDropped) {
+      options.activationDropped = true;
+      await route.abort('connectionrefused');
+      return;
+    }
     await route.fulfill({ json: { ok: true, state: wiringState, activationId, remainingProbationMs: 90000, currentOutputs: candidateConfig?.led?.outputs || [] } });
   });
   await page.route('**/api/wiring/status', async route => {
-    await route.fulfill({ json: { ok: true, state: wiringState, activationId, remainingProbationMs: wiringState === 'testing' ? 84000 : 0, currentOutputs: (candidateConfig || installedConfig)?.led?.outputs || [] } });
+    wiringOperations.push('status');
+    const hasCandidate = Boolean(candidateConfig);
+    const identity = candidateConfig || installedConfig;
+    await route.fulfill({ json: {
+      ok: true,
+      state: wiringState,
+      candidateState: hasCandidate ? (wiringState === 'testing' ? 'awaiting-confirmation' : 'staged') : 'none',
+      hasCandidate,
+      cardId,
+      firmwareVersion: HARDENING_FIRMWARE_VERSION,
+      buildId: HARDENING_BUILD_ID,
+      ...(hasCandidate ? { activationId } : {}),
+      projectRevision: identity?.projectRevision ?? 0,
+      projectFingerprint: identity?.projectFingerprint ?? '',
+      productionJobId: identity?.productionJobId ?? '',
+      productionJobDigest: identity?.productionJobDigest ?? '',
+      wiringRevision: identity?.wiringRevision ?? 0,
+      wiringDigest: identity?.wiringDigest ?? '',
+      ledType: identity?.led?.type || 'WS2812B',
+      colorOrder: identity?.led?.colorOrder || 'RGB',
+      maxMilliamps: identity?.led?.maxMilliamps ?? 1500,
+      nextStep: hasCandidate ? (wiringState === 'testing' ? 'confirm-or-rollback' : 'activate') : 'stage-candidate',
+      remainingProbationMs: wiringState === 'testing' ? 84000 : 0,
+      currentOutputs: installedConfig?.led?.outputs || [],
+      ...(hasCandidate ? { candidateOutputs: candidateConfig?.led?.outputs || [] } : {}),
+    } });
   });
   await page.route('**/api/wiring/confirm', async route => {
+    wiringOperations.push('confirm');
     if (candidateConfig) installedConfig = candidateConfig;
+    candidateConfig = null;
     wiringState = 'known-good';
     await route.fulfill({ json: { ok: true, state: wiringState, activationId, currentOutputs: installedConfig?.led?.outputs || [] } });
   });
   await page.route('**/api/wiring/rollback', async route => {
+    wiringOperations.push('rollback');
     candidateConfig = null;
-    wiringState = 'rolled-back';
+    wiringState = 'known-good';
     await route.fulfill({ json: { ok: true, state: wiringState, activationId, currentOutputs: installedConfig?.led?.outputs || [] } });
   });
   await page.route('**/api/control', async route => {
@@ -184,7 +231,11 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
     expect(authorized).toBe(true);
   };
   await authorize();
-  return { authorize };
+  return {
+    authorize,
+    wiringOperations,
+    installedConfig: () => structuredClone(installedConfig),
+  };
 }
 
 async function seedBrowserProjectLibrary(page: any) {
@@ -262,7 +313,7 @@ async function ensureVerifiedWiring(page: any) {
 
 async function openCardInstall(page: any) {
   await ensureVerifiedWiring(page);
-  await page.evaluate(() => { window.location.hash = '#screen=card'; });
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project'; });
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
 }
@@ -473,7 +524,41 @@ test('Pattern acknowledgement does not install an unrelated edit made while pend
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
 });
 
-test('bench chase restores the last Studio-confirmed look after transport failure', async ({ page }) => {
+test('staged light test restores the last Studio-confirmed look after a lost activation response', async ({ page }) => {
+  const cardId = 'lw-bench-hardening';
+  const options = { forceStagedConfig: false, ambiguousActivate: true, activationDropped: false };
+  const card = await mockConnectedCard(page, cardId, options);
+
+  await page.getByPlaceholder('Search chip patterns').fill('ocean');
+  await page.locator('[data-pattern-id="ocean"]').click();
+  await page.getByTitle('Install the current look on the card').click();
+  await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
+  await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
+  expect(card.installedConfig().startupPatternId).toBe('ocean');
+
+  // A later wiring edit enters the current staged safety transaction. Simulate
+  // the card accepting activation while its HTTP response is lost: Studio must
+  // recover the card-owned state, ask for the physical verdict, and preserve
+  // the last confirmed Ocean config when the owner rejects the candidate.
+  await page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    project.layout.wiring.outputs[0].pin = 17;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  options.forceStagedConfig = true;
+  await openCardInstall(page);
+  await card.authorize();
+  await page.getByTestId('layout-send-to-card').click();
+  await page.getByRole('button', { name: 'Start light test' }).click();
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+  await page.getByRole('button', { name: 'No, restore working setup' }).click();
+
+  await expect(page.locator('.la-card-push-banner')).toContainText('Restored the last working setup');
+  expect(card.wiringOperations).toEqual(expect.arrayContaining(['activate', 'status', 'rollback']));
+  expect(card.installedConfig().startupPatternId).toBe('ocean');
+});
+
+test('bounded marker failure releases the stream back to the last Studio-confirmed look', async ({ page }) => {
   const controls: any[] = [];
   const cardId = 'lw-a1b2c3d4e5f6';
   const firmwareVersion = HARDENING_FIRMWARE_VERSION;
