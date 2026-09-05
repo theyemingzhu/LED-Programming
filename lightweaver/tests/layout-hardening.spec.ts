@@ -5,6 +5,11 @@ async function gotoLayout(page: any) {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
 }
 
+async function keepCardDiscoveryOffline(page: any) {
+  await page.route('**/api/status', route => route.fulfill({ status: 503, json: { ok: false } }));
+  await page.route('**/api/firmware-info', route => route.fulfill({ status: 503, json: { ok: false } }));
+}
+
 test('pending drawing survives a mode visit until explicitly cancelled', async ({ page }) => {
   await gotoLayout(page);
   await page.getByTitle('Draw a new LED strip path on the artwork.').click();
@@ -167,6 +172,7 @@ test('reduced motion disables the selected path marching animation', async ({ pa
 test('coarse targets keep primary Layout and wire controls at least 44 pixels', async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
+  await keepCardDiscoveryOffline(page);
   await gotoLayout(page);
   expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
 
@@ -182,9 +188,10 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
   let box = await install.boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await install.click();
-  // Layout now hands the install to Card setup. For an unpaired card, its
-  // truthful next action is pairing rather than starting a physical LED test.
-  box = await page.getByRole('button', { name: 'Pair this card' }).boundingBox();
+  // Layout now hands the install to Card setup. With discovery explicitly
+  // offline, the truthful next action is finding a card; Pair appears only
+  // after a specific unpaired card has actually answered.
+  box = await page.getByRole('button', { name: 'Find my card' }).boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
   // Specialist tools stay behind the top-level Advanced disclosure.
@@ -265,13 +272,14 @@ test('focusable SVG strip supports Select, arrow nudge, and Delete', async ({ pa
 });
 
 test('wire scaffold is concise and recovery actions stay hidden without a mixed-content failure', async ({ page }) => {
+  await keepCardDiscoveryOffline(page);
   await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
   // Old Test & Install bookmarks open Card install.
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
   await expect(page.getByRole('region', { name: 'Wire setup guide' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Steps' })).toHaveCount(0);
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Pair this card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Find my card' })).toBeVisible();
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Copy payload' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open installer' })).toHaveCount(0);
