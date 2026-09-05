@@ -138,7 +138,7 @@ export function CardPushControl({
   yieldPrimary = false,
   children,
 }) {
-  const { projectLifecycle, markProjectInstalled, markCardLookConfirmed } = useProject();
+  const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed } = useProject();
   const [pushHost, setPushHost] = useState(() => getCardHostname());
   const [pushStatus, setPushStatus] = useState('');
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
@@ -148,7 +148,7 @@ export function CardPushControl({
   const [wiringTestState, setWiringTestState] = useState('idle');
   const [candidateConflict, setCandidateConflict] = useState(null);
   const failedAttemptRef = useRef(null);
-  const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, projectLifecycle);
+  const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, readProjectLifecycle());
 
   // Serialize the current patch board into the firmware's runtime contract.
   // Direct push is only for local HTTP/file Studio sessions; hosted HTTPS
@@ -215,6 +215,7 @@ export function CardPushControl({
           handoffOnly,
         };
       }
+      assertCurrentAttempt(attempt);
       dispatchAction({ type: 'start', revision: attempt.revision });
       if (attempt.handoffOnly) {
         throw new CardPushError('bridge-missing', 'Open the paired card installer to continue. Nothing was sent.');
@@ -274,6 +275,7 @@ export function CardPushControl({
       setPushStatus('Verifying the exact project on the card…');
       const { verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host);
       await publishVerifiedReadiness(attempt.prepared, attempt.host);
+      assertCurrentAttempt(attempt);
       dispatchAction({ type: 'confirm' });
       markProjectInstalled({
         revision: attempt.revision,
@@ -347,6 +349,7 @@ export function CardPushControl({
           wiringCandidate.attempt.prepared,
           wiringCandidate.attempt.host,
         );
+        assertCurrentAttempt(wiringCandidate.attempt);
         dispatchAction({ type: 'confirm' });
         markProjectInstalled({
           revision: wiringCandidate.attempt.revision,

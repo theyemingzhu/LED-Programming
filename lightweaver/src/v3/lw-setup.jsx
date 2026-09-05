@@ -18,7 +18,7 @@ import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { useProject } from '../state/ProjectContext.jsx';
-import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
@@ -266,7 +266,14 @@ export function SetupScreen({
   };
 
   const adoptedCardRef = useRef('');
-  const adoptWiringFromCard = status => {
+  const adoptWiringFromCard = (status, wiringStatus) => {
+    // A test boot exposes the candidate geometry before the owner confirms it.
+    // Reconstructing it here replaces the open project/generation and falsely
+    // records it installed, invalidating the very confirmation still on screen.
+    const route = new URLSearchParams(window.location.hash.slice(1));
+    if (route.get('task') === 'install-project' || route.get('next') === 'patterns'
+      || !wiringStatus || wiringStatus.hasCandidate !== false
+      || status?.wiringProbation === true || status?.wiringProbation?.active === true) return;
     const signature = `${status?.cardId || ''}:${status?.projectId || ''}:${status?.bootId || ''}`;
     if (!signature.replace(/:/g, '') || adoptedCardRef.current === signature) return;
     const skeleton = projectSkeletonFromCardStatus(status || {});
@@ -301,7 +308,7 @@ export function SetupScreen({
       const status = statusResult.status === 'fulfilled' ? statusResult.value : null;
       const wiringStatus = wiringResult.status === 'fulfilled' ? wiringResult.value : null;
       setCardState({ evidence, status, wiringStatus, read: true });
-      adoptWiringFromCard(status);
+      adoptWiringFromCard(status, wiringStatus);
       if (!evidence) {
         setResolution({ kind: 'none' });
         return;
@@ -570,7 +577,10 @@ export function SetupScreen({
   const autoAdoptedRef = useRef('');
   useEffect(() => {
     if (!exactTransport || !cardState.read) return;
-    if (provisionalSetup) return;
+    if (provisionalSetup || installIntentOpen
+      || new URLSearchParams(window.location.hash.slice(1)).get('task') === 'install-project'
+      || !cardState.wiringStatus || cardState.wiringStatus.hasCandidate !== false
+      || cardState.status?.wiringProbation === true || cardState.status?.wiringProbation?.active === true) return;
     const cardProjectId = String(cardState.status?.projectId || cardLink?.readiness?.projectId || '').trim();
     if (!cardProjectId) return;
     // Not "is the id the same" — pairing already copies the id across, so that
@@ -578,7 +588,8 @@ export function SetupScreen({
     // is the whole case adoption exists for. The question is whether Studio
     // holds the card's exact project: same id, same fingerprint, same revision.
     if (cardLifecycle?.exactProject === true) return;
-    if (projectLifecycle?.dirty === true) return;
+    // The live lifecycle has revisions, not the persisted summary's dirty flag.
+    if (hasUnsavedChanges(readProjectLifecycle())) return;
     // And never over work the owner already has open. "Adopt by default" means
     // "do not make me choose when there is nothing to lose" — not "throw away
     // the piece I am in the middle of". Two cases are safe:
@@ -613,7 +624,9 @@ export function SetupScreen({
     cardLifecycle?.exactProject,
     currentProject?.id,
     exactTransport,
-    projectLifecycle?.dirty,
+    projectLifecycle,
+    cardState.wiringStatus,
+    installIntentOpen,
     provisionalSetup,
     resolution.kind,
     resolution?.resolved,

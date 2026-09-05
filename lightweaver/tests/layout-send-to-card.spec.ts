@@ -31,8 +31,9 @@ async function mockLocalCard(page: any, options: any = {}) {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (pathname === '/api/status') {
+      const runtimeConfig = options.exposeCandidateRuntime && card.testing ? card.candidateConfig : card.savedConfig;
       const runtimeReady = !(options.testingRuntimeNotReady && card.testing);
-      const outputs = card.savedConfig?.led?.outputs || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }];
+      const outputs = runtimeConfig?.led?.outputs || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }];
       await route.fulfill({ json: {
         app: 'Lightweaver',
         provisioningContractVersion: 1,
@@ -46,10 +47,11 @@ async function mockLocalCard(page: any, options: any = {}) {
         commandReady: runtimeReady,
         outputReady: runtimeReady,
         playbackReady: runtimeReady,
-        projectId: card.savedConfig?.piece?.id || '',
-        projectRevision: card.savedConfig?.projectRevision ?? 0,
-        projectFingerprint: card.savedConfig?.projectFingerprint ?? '',
-        led: card.savedConfig?.led || {
+        ...(options.exposeCandidateRuntime ? { wiringProbation: { active: card.testing } } : {}),
+        projectId: runtimeConfig?.piece?.id || '',
+        projectRevision: runtimeConfig?.projectRevision ?? 0,
+        projectFingerprint: runtimeConfig?.projectFingerprint ?? '',
+        led: runtimeConfig?.led || {
           pixels: 44,
           maxMilliamps: 1500,
           colorOrder: 'RGB',
@@ -404,7 +406,9 @@ test('candidate test locks conflicting saves, recovers an ambiguous activation, 
       outer.pixels = outer.pixels.slice(0, 26).map((pixel: any, index: number) => ({ ...pixel, index }));
       outerRun.source.to = 25;
       outerRun.seamLed = Math.min(Number(outerRun.seamLed) || 25, 25);
-      project.layout.wiring.outputs[0].pin = 17;
+      project.layout.strips = [outer];
+      project.layout.wiring.runs = [outerRun];
+      project.layout.wiring.outputs = [{ ...project.layout.wiring.outputs[0], pin: 17, runIds: [outerRun.id] }];
     },
   });
 
@@ -488,4 +492,38 @@ test('mixed-content recovery copies JSON, opens the installer, and retries the s
   await page.evaluate(() => { (window as any).__copiedPayload = ''; });
   await recovery.getByRole('button', { name: 'Copy payload' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__copiedPayload)).toBe(firstPayload);
+});
+
+
+test('candidate runtime readback cannot replace an open project with no port roles during confirmation', async ({ page }) => {
+  const card = await mockLocalCard(page, {
+    currentOutputs: [], forceStagedConfig: true, exposeCandidateRuntime: true,
+  });
+  await gotoWire(page, {
+    verified: true,
+    transformProject(project: any) { project.portRoles = []; },
+  });
+  const before = await page.evaluate(async () => {
+    const { readProjectLifecycleRecord } = await import('/src/lib/projectStorage.js');
+    return readProjectLifecycleRecord();
+  });
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; });
+  const confirm = page.getByRole('button', { name: 'The lights look correct', exact: true });
+  await expect(confirm).toBeVisible({ timeout: 10000 });
+  // Activation's completion triggers Setup's background read. Its response
+  // now contains the probationary geometry, just as the physical card does.
+  await expect(page.getByTestId('setup-identity-row')).toContainText('Testing lights');
+  const during = await page.evaluate(async () => {
+    const { readProjectLifecycleRecord } = await import('/src/lib/projectStorage.js');
+    return readProjectLifecycleRecord();
+  });
+  expect(before.installation).toBeNull();
+  expect(during.installation).toBeNull();
+  expect(during.dirty).toBe(before.dirty);
+  expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(0);
+  await confirm.click();
+  await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 10000 });
+  expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'rollback')).toHaveLength(0);
 });

@@ -200,3 +200,23 @@ confirmation inphase4. Timeout returned an actionableRetry. A real overlapping
 operation refresh race was then corrected; overlap+expiry regressions2/2pass.
 Visual confirmation is still pending; no permanent install or live pattern
 change is claimed. Browser now offersRetry when the owner is ready.
+
+
+STEP4-PLAYBACK-002 — 2026-09-05, supersedes the pending confirmation above.
+Actual final confirmation failed because two background adoption paths could
+replace the project while its candidate was testing; one also checked a
+nonexistent live lifecycle dirty field. Guarded both paths and use live
+lifecycle validation around async installation writes/readbacks.
+User already reported the41-LED light test looked correct; carried that exact
+confirmation through activation c199aa70f2ad0308. Card now known-good,41LEDs
+onGPIO18, playback-ready with no probation. No new visual observation invented.
+Patterns polling had silently canceled pending clicks. Same-card evidence
+refreshes now preserve the send; real authority changes still invalidate it.
+Removed redundant local-card toggle and made playback status acknowledgement-
+based. Actual browser Rainbow→Ocean clicks matched independent card status
+readbacks (brightness115,26FPS); actual screen inspected.
+Resume: click patterns on local9212. No install repeat is required for playback.
+Bench detail: docs/bench-sessions/2026-09-05-step-four-to-patterns.md.
+Verification:9/9 install-flow browser tests,4/4 focused Patterns tests,
+22 focused adoption/resume Node tests, final2,262 unit tests and production
+build passed. Local repair only; not deployed.

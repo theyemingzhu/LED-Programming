@@ -1111,12 +1111,28 @@ test('Studio preview changes immediately while runtime application waits for the
     });
   });
   await gotoFreshPatterns(page);
+  const cardReadout = page.locator('.tc-stat.tc-live');
+  await expect(cardReadout).toContainText('Selected in Studio');
+  await expect(page.getByRole('button', { name: /Use local card/i })).toHaveCount(0);
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
+  // The shared link polls status in the background. A fresh report for the
+  // same exact ready card must not cancel the click's short send timer.
+  await page.evaluate(async () => {
+    const cardLink = await import('/src/lib/cardLink.js');
+    const current = cardLink.getCardLinkState();
+    cardLink.reportCardStatusEnvelope({
+      host: current.host,
+      status: { ...current.readiness },
+      transport: current.transport,
+    });
+  });
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
   await expect(page.getByTestId('physical-preview-status')).toHaveText('Sending to Lightweaver');
+  await expect(cardReadout).toContainText('Sending to card');
   await expect.poll(() => Boolean(releaseControl)).toBe(true);
   releaseControl?.();
   await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
+  await expect(cardReadout).toContainText('On the card now');
 });
 
 test('an old card keeps the Studio selection and offers a card software update', async ({ page }) => {
@@ -1149,6 +1165,7 @@ test('an invalid preview response stays bounded and does not render the card res
   await expect(alert).toBeVisible();
   await expect(alert).not.toContainText('PRIVATE-CARD-RESPONSE');
   await expect(alert).toContainText(/could not be verified|did not answer in time/i);
+  await expect(page.locator('.tc-stat.tc-live')).toContainText('Selected in Studio');
 });
 
 test('missing runtime state proof recovers the card before asking for visible confirmation', async ({ page }) => {

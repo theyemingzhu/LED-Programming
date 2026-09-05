@@ -97,9 +97,8 @@ import {
   cardBridgeFeatureGap,
   getCardBridgeState,
   hasCardBridge,
-  readLocalChipDefault,
   sendCardBridgeRequest,
-  writeLocalChipDefault, openLocalCardPage } from '../lib/cardBridge.js';
+  openLocalCardPage } from '../lib/cardBridge.js';
 import { computeSymmetryFit } from '../lib/symmetry.js';
 import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderCheck.jsx';
 import { PatternPreview } from './PatternPreview.jsx';
@@ -365,7 +364,6 @@ import { PatternPreview } from './PatternPreview.jsx';
     // ── browse / ui state ───────────────────────────────────────────────
     const [q, setQ] = useState("");
     const [cat, setCat] = useState("all");
-    const [localCard, setLocalCard] = useState(readLocalChipDefault);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const menuRef = useRef(null);
@@ -518,6 +516,14 @@ import { PatternPreview } from './PatternPreview.jsx';
     const patternAccessRef = useRef(patternCardAccess);
     patternAccessRef.current = patternCardAccess;
     const previousPatternAccessRef = useRef(patternCardAccess);
+    const patternPreviewAuthorityKey = [
+      patternCardAccess,
+      cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '',
+      cardLink?.readiness?.firmwareVersion || cardLink?.card?.firmwareVersion || '',
+      cardLink?.readiness?.buildId || cardLink?.card?.buildId || '',
+      cardLink?.readiness?.bootId || cardLink?.validatedBootId || '',
+    ].join('|');
+    const previousPatternAuthorityKeyRef = useRef(patternPreviewAuthorityKey);
 
     // Live, un-retained card evidence for `ensureCardEditAuthorization`. This
     // deliberately reads `cardLink.readiness` directly rather than the
@@ -713,13 +719,22 @@ import { PatternPreview } from './PatternPreview.jsx';
         && classifyCardReadiness(cardLink.readiness, { expectedCard: cardLink?.expectedCard || null }).playbackAccess !== 'ready';
       if (patternCardAccess !== 'ready' && previousAccess === 'ready'
         && (explicitReadinessLoss || !transitionalBridgeCheck)) {
+        previousPatternAuthorityKeyRef.current = patternPreviewAuthorityKey;
         setColorOrderOpen(false);
         blockPatternCardEffect(patternCardAccess);
         return;
       }
-      if (!transitionalBridgeCheck) invalidatePendingPreview();
+      // Routine status polling replaces the readiness envelope even when it
+      // confirms the same exact card and boot. Cancelling on every replacement
+      // erased the 80 ms pattern-send timer, so a tap changed Studio while the
+      // strip did nothing. Only an actual authority change invalidates a send.
+      if (!transitionalBridgeCheck
+        && previousPatternAuthorityKeyRef.current !== patternPreviewAuthorityKey) {
+        previousPatternAuthorityKeyRef.current = patternPreviewAuthorityKey;
+        invalidatePendingPreview();
+      }
       if (patternCardAccess !== 'ready' && !transitionalBridgeCheck) setHandoffUrl('');
-    }, [blockPatternCardEffect, cardLink?.expectedCard, cardLink?.readiness, cardLink?.state, invalidatePendingPreview, patternCardAccess]);
+    }, [blockPatternCardEffect, cardLink?.expectedCard, cardLink?.readiness, cardLink?.state, invalidatePendingPreview, patternCardAccess, patternPreviewAuthorityKey]);
 
     // Warm default so first load reads warm (Lava Lamp-like) like the mockup,
     // unless a real saved default look exists.
@@ -1066,7 +1081,8 @@ import { PatternPreview } from './PatternPreview.jsx';
               host: cardHost,
               timeoutMs: 2200,
               fallbackMissingZoneToAll: true,
-              preferBridge: localCard || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
+              preferBridge: cardLink?.transport === 'bridge'
+                || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
               revision: sequence,
               ...(expectedControlPatch ? { expectedControlPatch } : {}),
             },
@@ -1112,7 +1128,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           }
         }
       }, delayMs);
-    }, [blockPatternCardEffect, cardHost, currentPatternPreviewAccess, localCard, markCardLookConfirmed, selectedTarget]);
+    }, [blockPatternCardEffect, cardHost, cardLink?.transport, currentPatternPreviewAccess, markCardLookConfirmed, selectedTarget]);
 
     const retryLatestPreview = useCallback(() => {
       const latest = latestPreviewIntent.current;
@@ -1245,9 +1261,8 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     const scheduleBrowseLivePreview = useCallback((nextLook, target) => {
       if (!nextLook) return;
-      const needsBridge = Boolean(
-        localCard || (typeof window !== 'undefined' && window.location?.protocol === 'https:')
-      );
+      const needsBridge = cardLink?.transport === 'bridge'
+        || (typeof window !== 'undefined' && window.location?.protocol === 'https:');
       // On https the card link cannot become ready until the card page is
       // open, and the card page only opens further down THIS function. Gating
       // the whole path on readiness therefore closed a loop: every tap was
@@ -1366,7 +1381,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           setStatus(error?.message || 'The local card did not connect. Open Flash to update the card, then try again.');
         }
       });
-    }, [blockPatternCardEffect, cardHost, currentPatternPreviewAccess, localCard, scheduleLivePreview]);
+    }, [blockPatternCardEffect, cardHost, cardLink?.transport, currentPatternPreviewAccess, scheduleLivePreview]);
 
     // Clicking a target tab pushes that target's current look to its zone
     // (debounced) so the physical strip follows the selection.
@@ -1849,7 +1864,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           openConnectionCenter();
           setStatus('Pair this Lightweaver card before sending lights — tap Connect in the card panel.');
         } else {
-          setStatus(error?.message || `LED repair could not reach ${cardHostToUrl(cardHost)}. Check power and WiFi, then turn on Use local card.`);
+          setStatus(error?.message || `LED repair could not reach ${cardHostToUrl(cardHost)}. Check power and WiFi, then try again.`);
         }
       }
     };
@@ -1921,20 +1936,6 @@ import { PatternPreview } from './PatternPreview.jsx';
           setStatus(error?.message || `Could not apply split preview to the card at ${cardHostToUrl(cardHost)}.`);
         }
       }
-    };
-
-    const toggleLocalCard = () => {
-      const next = !localCard;
-      if (!next) invalidatePendingPreview();
-      writeLocalChipDefault(next);
-      setLocalCard(next);
-      if (next) {
-        setStatusKind('ok');
-        setStatus('Local preview is on. Your next pattern tap will connect to the card automatically.');
-        return;
-      }
-      setStatusKind('ok');
-      setStatus('Local card is off. Studio will use direct local access when the browser allows it.');
     };
 
     const openCardPage = () => {
@@ -2093,7 +2094,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                   }
                 </div>
                 <div className="ag-conn">
-                  <button className={"btn" + (localCard ? " toggled" : "")} aria-pressed={localCard} onClick={toggleLocalCard}>{localCard ? "Using local card" : "Use local card"}</button>
                   <button className="btn" onClick={openCardPage}>{I.open}Open card page</button>
                 </div>
                 <div className="pm-menu">
@@ -2324,7 +2324,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                         in the neutral ink, and the bank's status line above
                         says whether it has landed. */}
                     <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
-                      <span className="tc-stat-k">On the card now</span>
+                      <span className="tc-stat-k">{previewAction.status === 'confirmed'
+                        ? 'On the card now'
+                        : previewAction.status === 'pending'
+                          ? 'Sending to card'
+                          : 'Selected in Studio'}</span>
                       <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
                     </div>
                   </div>

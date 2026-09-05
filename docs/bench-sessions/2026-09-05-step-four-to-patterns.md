@@ -31,3 +31,40 @@ An overlapping operation-end event left stale phase1 copy; the exact-status
 refresh now runs for every settled hardware operation; the overlapping-operation regression passed.
 Without visual confirmation the card restored its known-good setup; phase4
 then correctly displayed Retry and removed the expired confirmation.
+
+## Final confirmation and real pattern playback repair
+
+Adrian reported that he had already clicked “The lights look correct” for the
+41-LED GPIO18 setup. Reproduced the rejection on the actual screen: background
+card reconstruction replaced the open project during probation, prematurely
+marked it installed, and invalidated the confirmation's project generation.
+Both background adoption paths now exclude active installation/candidates, and
+the unsaved-project check uses the live lifecycle's supported predicate.
+
+Carried that existing owner confirmation through for the exact same card and
+geometry: verified activation c199aa70f2ad0308 in testing, then confirmed that
+activation. Card returned known-good, runtimePhase ready, playbackReady true,
+provisionalSetup false, and no active probation. This is reuse of the owner's
+reported observation, not a newly claimed visual hardware observation.
+
+A separate Patterns bug canceled its delayed command whenever routine status
+polling replaced an otherwise identical readiness envelope. Pattern commands
+now survive same-card refreshes and still cancel when card authority changes.
+The readout only claims “On the card now” after acknowledgement.
+
+Actual browser clicks on Rainbow then Ocean were independently followed by
+GET /api/status: currentPatternId rainbow then ocean, same card lw-b0fe81f61b44,
+ready playback, brightness115 and measured26FPS. Inspected the actual screen:
+Ocean selected,41LEDs, Connected, and “On the card now Ocean”.
+An earlier chase snapshot while Ocean was sending was not reproduced; both
+explicit final selections matched their exact IDs. No mapping change needed.
+
+Resume: click any pattern in http://127.0.0.1:9212/#screen=pattern. The card is
+permanently configured; no repeated installation or confirmation is needed
+for live pattern changes. New physical color appearance remains owner-observed.
+No firmware flash, production deployment, or new firmware release performed.
+
+Final verification: realistic candidate-runtime regression witnessed failing
+confirmation before the fix and passing afterward.9/9 installation browser
+cases,4/4 focused Patterns cases,22 adoption/resume Node checks,2,262 full
+library tests, and production build passed.
