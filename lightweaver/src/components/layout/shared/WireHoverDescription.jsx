@@ -85,7 +85,7 @@ export function WireHoverDescription({ children, ...props }) {
 
   return (
     <>
-      <div ref={rootRef} {...props} onMouseOver={handleMouseOver} onMouseOut={handleMouseOut}>{children}</div>
+      <div ref={rootRef} {...props} data-wire-hover-description onMouseOver={handleMouseOver} onMouseOut={handleMouseOut}>{children}</div>
       {tooltip && createPortal(
         <div ref={tooltipRef} className="lw-wire-hover-tooltip" role="tooltip" style={position ? { left: `${position.left}px`, top: `${position.top}px` } : { left: '-9999px', top: '-9999px', visibility: 'hidden' }}>{tooltip}</div>,
         document.body,
