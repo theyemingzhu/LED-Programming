@@ -1216,6 +1216,17 @@ test('Hardware loads the verified production project that matches the paired car
   await expect.poll(() => page.evaluate(() => (
     JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null')?.installation?.projectRevision
   ))).toBe(job.project.revision);
+  await expect.poll(() => page.evaluate(async () => {
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    const installation = JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null')?.installation;
+    return Boolean(project && installation?.studioFingerprint === cardProjectFingerprint(project));
+  })).toBe(true);
+  const binding = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null')?.installation);
+  expect(binding).toMatchObject({
+    cardId: 'lw-bench-fixture', projectRevision: job.project.revision,
+    projectFingerprint: job.project.fingerprint,
+  });
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
   await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
   const savedProjects = await page.evaluate(() => {

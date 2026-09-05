@@ -1570,19 +1570,29 @@ function Shell({ offlineUpdateController = null }) {
       || !/^[a-f0-9]{16,64}$/.test(String(evidence?.projectFingerprint || ''))) {
       return { ok: false, reason: 'exact-installation-evidence-required' };
     }
+    // Bind the normalized Studio snapshot that actually replaced the project.
+    // A signed production restore can gain current schema defaults; its live
+    // structure need not hash to the card's installed package fingerprint.
+    const snapshot = latestProjectSaveStateRef.current;
+    if (!isProjectLifecycleMarkerCurrent(expectedMarker)
+      || snapshot?.marker?.generation !== expectedMarker.generation
+      || snapshot?.marker?.revision !== expectedMarker.revision) {
+      return { ok: false, reason: 'superseded' };
+    }
     const next = markProjectInstalled({
       generation: expectedMarker.generation,
       revision: expectedMarker.revision,
       cardId: evidence.cardId,
       projectRevision: evidence.projectRevision,
       projectFingerprint: evidence.projectFingerprint,
+      studioFingerprint: cardProjectFingerprint(snapshot.project),
       verified: true,
     });
     return next?.installedRevision === expectedMarker.revision
       && next?.installation?.verified === true
       ? { ok: true }
       : { ok: false, reason: 'superseded' };
-  }, [markProjectInstalled]);
+  }, [isProjectLifecycleMarkerCurrent, markProjectInstalled]);
   const openBrowserProject = useCallback(async project => {
     const recordId = String(project?.id || '');
     const recordSnapshot = readProjectLibraryRecordSnapshot(recordId);
