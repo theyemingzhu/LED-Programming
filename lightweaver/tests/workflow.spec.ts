@@ -351,8 +351,12 @@ test('quiet pattern preview does not render routine notifications', async ({ pag
   const card = await mockLocalCard(page);
   await gotoAuthorizedPatterns(page, card);
 
+  // This case exercises successful whole-piece playback. Missing section IDs
+  // correctly produce a fallback notice and are covered separately below.
+  await page.getByRole('button', { name: 'All sections', exact: true }).click();
+  card.controls.length = 0;
   await page.locator('[data-pattern-id="aurora"]').click();
-  await page.waitForTimeout(350);
+  await expect.poll(() => card.controls.at(-1)?.patternId).toBe('aurora');
 
   await expect(page.locator('.pmx-status')).toHaveCount(0);
 });

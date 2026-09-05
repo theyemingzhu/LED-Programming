@@ -7,7 +7,7 @@ import {
   DISCOVERY_END_MARKER_COLOR,
   DISCOVERY_FIFTY_COLOR,
   DISCOVERY_FRAME_RATE_WARN_PIXELS,
-  DISCOVERY_HUNDRED_COLOR,
+  DISCOVERY_RULER_BASE_COLOR,
   DISCOVERY_OFF_COLOR,
   DISCOVERY_PROBE_COLOR,
   DISCOVERY_PROBE_START,
@@ -166,8 +166,8 @@ test('"that was not the last LED" reopens only that port and keeps the other con
   state = advance(state, { type: 'end-marker-yes' }); // 16 confirmed
   assert.equal(state.activePin, 17);
   state = advance(state, { type: 'end-marker-no' });
-  assert.equal(state.phase, 'probe');
-  assert.equal(state.activePin, 17);
+  assert.equal(state.phase, 'decade');
+  assert.equal(state.activePin, null);
   assert.equal(state.ports.find(port => port.pin === 16).confirmed, true, 'port 16 keeps its confirmation');
   assert.equal(state.ports.find(port => port.pin === 17).confirmed, false);
 });
@@ -191,23 +191,50 @@ test('the expanding probe frame lights one port and covers the whole bench total
     .every(value => value === DISCOVERY_OFF_COLOR), true);
 });
 
-test('the decade frame marks 10s, 50s and 100s with 100 beating 50 beating 10', () => {
-  const frame = buildDecadeMarkerFrame({ benchLayout, counts: { 16: 120 } });
-  assert.equal(frame.length, 1200);
-  assert.equal(frame[0], DISCOVERY_PROBE_COLOR);
-  assert.equal(frame[9], DISCOVERY_DECADE_COLOR, 'the 10th LED is green');
-  assert.equal(frame[49], DISCOVERY_FIFTY_COLOR, 'the 50th LED is blue, not green');
-  assert.equal(frame[99], DISCOVERY_HUNDRED_COLOR, 'the 100th LED is red, not blue');
-  assert.equal(frame[119], DISCOVERY_DECADE_COLOR);
-  assert.equal(frame[120], DISCOVERY_OFF_COLOR);
-  // The read-off arithmetic the owner performs: reds*100 + blues-since-red*50 +
-  // greens-since-blue*10 + warm tail.
-  const marked = buildDecadeMarkerFrame({ benchLayout, counts: { 16: 354 } }).slice(0, 354);
-  const reds = marked.filter(value => value === DISCOVERY_HUNDRED_COLOR).length;
-  const lastRed = marked.lastIndexOf(DISCOVERY_HUNDRED_COLOR);
-  const bluesSinceRed = marked.slice(lastRed).filter(value => value === DISCOVERY_FIFTY_COLOR).length;
-  const lastMarker = Math.max(marked.lastIndexOf(DISCOVERY_FIFTY_COLOR), marked.lastIndexOf(DISCOVERY_DECADE_COLOR), lastRed);
-  assert.equal(reds * 100 + bluesSinceRed * 50 + (marked.length - 1 - lastMarker), 354);
+test('ruler uses orange fifths, red tenths and pink fiftieths with yellow between markers, restarting at each port', () => {
+  const frame = buildDecadeMarkerFrame({ benchLayout, counts: { 16: 354, 17: 100 } });
+  assert.equal(frame[3], '3C3C00');
+  assert.equal(frame[4], '3C1800');
+  assert.equal(frame[9], '3C0000');
+  assert.equal(frame[49], '301020');
+  assert.equal(frame[99], '301020');
+  assert.equal(frame[349], '301020');
+  assert.equal(frame[354], DISCOVERY_OFF_COLOR);
+  assert.equal(frame[604], '3C1800');
+  assert.equal(frame[649], '301020');
+});
+
+test('ruler markers repeat through 2048 lights independently of each output offset', () => {
+  const layout = [{ pin: 16, start: 0, count: 2048 }, { pin: 17, start: 2048, count: 2048 }];
+  const frame = buildDecadeMarkerFrame({ benchLayout: layout, counts: { 16: 2048, 17: 2048 } });
+  assert.equal(frame.length, 4096);
+  // Inspect every five-light block, including the partial block at the end.
+  const repeatingBlock = ['3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '3C0000', '3C1800', '301020'];
+  for (const { start } of layout) {
+    for (let block = 0; block < 410; block += 1) {
+      const ordinal = block * 5 + 5;
+      if (ordinal <= 2048) assert.equal(frame[start + ordinal - 1], repeatingBlock[block % 10], `marker ${ordinal} at output offset ${start}`);
+      for (let tail = 1; tail <= 4 && block * 5 + tail <= 2048; tail += 1) {
+        assert.equal(frame[start + block * 5 + tail - 1], '3C3C00');
+      }
+    }
+    for (const [ordinal, color] of [[255, '3C1800'], [260, '3C0000'], [500, '301020'], [1000, '301020'], [2000, '301020']]) {
+      assert.equal(frame[start + ordinal - 1], color, `boundary ${ordinal} at output offset ${start}`);
+    }
+  }
+});
+
+test('ruler-ready lights the provisioned strip without guessing a count and correction returns to ruler', () => {
+  let state = advance(createStripDiscoverySession({ portRoles, benchLayout }), { type: 'bench-installed' });
+  state = advance(state, { type: 'ruler-ready' });
+  assert.equal(state.phase, 'decade');
+  assert.equal(state.ports[0].probedCeiling, 600);
+  assert.equal(state.ports[0].count, 0);
+  state = advance(state, { type: 'set-count', pin: 16, count: 41 });
+  state = advance(state, { type: 'counts-entered' });
+  state = advance(state, { type: 'end-marker-no' });
+  assert.equal(state.phase, 'decade');
+  assert.equal(state.ports[0].count, 41);
 });
 
 test('the end marker lights exactly one pixel', () => {
@@ -244,7 +271,7 @@ test('discoveryFrame follows the phase', () => {
   assert.equal(discoveryFrame(state)[0], DISCOVERY_PROBE_COLOR);
   state = advance(state, { type: 'probe-enough' });
   state = advance(state, { type: 'probe-enough' });
-  assert.equal(discoveryFrame(state)[600], DISCOVERY_PROBE_COLOR, 'the decade frame lights every probed port at once');
+  assert.equal(discoveryFrame(state)[600], DISCOVERY_RULER_BASE_COLOR, 'the decade frame lights every probed port at once');
   state = advance(state, { type: 'set-count', pin: 16, count: 12 });
   state = advance(state, { type: 'set-count', pin: 17, count: 12 });
   state = advance(state, { type: 'counts-entered' });

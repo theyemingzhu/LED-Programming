@@ -18,11 +18,13 @@ import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { useProject } from '../state/ProjectContext.jsx';
-import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
+import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
+import { STUDIO_HARDWARE_OPERATION_EVENT } from '../lib/studioHardwareOperation.js';
 import { useCardActions } from './CardActionsProvider.jsx';
 
 // The reconstruction itself moved to lib/cardProjectAdoption.js (the
@@ -115,6 +117,8 @@ export function SetupScreen({
   firmwareStatus = null,
   onLoadOfferChange,
   onPrimaryActionChange,
+  onWiringTestActiveChange,
+  installAction = null,
 }) {
   const {
     setProjectId, setPortRoles, setStandaloneController, replaceLayoutGeometry,
@@ -122,20 +126,22 @@ export function SetupScreen({
   } = useProject();
   const cardActions = useCardActions();
   const [commissioningFlow, setCommissioningFlow] = useState(() => inspectCardCommissioning().flow);
-  const [cardState, setCardState] = useState({ evidence: null, status: null, read: false });
+  const [cardState, setCardState] = useState({ evidence: null, status: null, wiringStatus: null, read: false });
   const [resolution, setResolution] = useState({ kind: 'unknown' });
   const [recheckTick, setRecheckTick] = useState(0);
   const [adoptionError, setAdoptionError] = useState('');
   const [pairState, setPairState] = useState({ busy: false, message: '' });
   const [ledCountDraft, setLedCountDraft] = useState('');
   const [ledCountState, setLedCountState] = useState({ busy: false, message: '' });
+  const [selectedPhaseId, setSelectedPhaseId] = useState('');
   const importRef = useRef(null);
   const resolveInputsRef = useRef({ currentProject, activeCloudProjects, browserProjects });
   const previousPhaseRef = useRef('');
   resolveInputsRef.current = { currentProject, activeCloudProjects, browserProjects };
 
   const exactTransport = CONNECTED_CARD_LINK_STATES.includes(cardLink?.state);
-  const cardReachable = exactTransport || connected;
+  const cardReachable = exactTransport || connected
+    || (cardLink?.state === 'revalidating' && Boolean(cardLink?.card?.id || cardLink?.readiness?.cardId));
 
   useEffect(() => {
     const sync = () => setCommissioningFlow(inspectCardCommissioning().flow);
@@ -145,6 +151,15 @@ export function SetupScreen({
       window.removeEventListener('storage', sync);
       window.removeEventListener(CARD_COMMISSIONING_CHANGED_EVENT, sync);
     };
+  }, []);
+
+  useEffect(() => {
+    const rereadAfterWiringChange = event => {
+      if (event.detail?.active !== false) return;
+      setRecheckTick(tick => tick + 1);
+    };
+    window.addEventListener(STUDIO_HARDWARE_OPERATION_EVENT, rereadAfterWiringChange);
+    return () => window.removeEventListener(STUDIO_HARDWARE_OPERATION_EVENT, rereadAfterWiringChange);
   }, []);
 
   // Read-back adoption is an installation fact, and until now nothing recorded
@@ -251,7 +266,14 @@ export function SetupScreen({
   };
 
   const adoptedCardRef = useRef('');
-  const adoptWiringFromCard = status => {
+  const adoptWiringFromCard = (status, wiringStatus) => {
+    // A test boot exposes the candidate geometry before the owner confirms it.
+    // Reconstructing it here replaces the open project/generation and falsely
+    // records it installed, invalidating the very confirmation still on screen.
+    const route = new URLSearchParams(window.location.hash.slice(1));
+    if (route.get('task') === 'install-project' || route.get('next') === 'patterns'
+      || !wiringStatus || wiringStatus.hasCandidate !== false
+      || status?.wiringProbation === true || status?.wiringProbation?.active === true) return;
     const signature = `${status?.cardId || ''}:${status?.projectId || ''}:${status?.bootId || ''}`;
     if (!signature.replace(/:/g, '') || adoptedCardRef.current === signature) return;
     const skeleton = projectSkeletonFromCardStatus(status || {});
@@ -268,7 +290,7 @@ export function SetupScreen({
 
   useEffect(() => {
     if (!cardReachable) {
-      setCardState({ evidence: null, status: null, read: false });
+      setCardState({ evidence: null, status: null, wiringStatus: null, read: false });
       setResolution({ kind: 'unknown' });
       return undefined;
     }
@@ -276,15 +298,17 @@ export function SetupScreen({
     (async () => {
       const readHost = cardLink?.host || cardHost || '';
       const readTransport = cardLink?.transport;
-      const [projectResult, statusResult] = await Promise.allSettled([
+      const [projectResult, statusResult, wiringResult] = await Promise.allSettled([
         readCardProjectEvidence({ host: readHost, transport: readTransport }),
         readCardStatusEnvelope({ host: readHost, transport: readTransport }),
+        getCardWiringStatus({ host: readHost, transport: readTransport }),
       ]);
       if (cancelled) return;
       const evidence = projectResult.status === 'fulfilled' ? projectResult.value : null;
       const status = statusResult.status === 'fulfilled' ? statusResult.value : null;
-      setCardState({ evidence, status, read: true });
-      adoptWiringFromCard(status);
+      const wiringStatus = wiringResult.status === 'fulfilled' ? wiringResult.value : null;
+      setCardState({ evidence, status, wiringStatus, read: true });
+      adoptWiringFromCard(status, wiringStatus);
       if (!evidence) {
         setResolution({ kind: 'none' });
         return;
@@ -310,7 +334,7 @@ export function SetupScreen({
       }
     })();
     return () => { cancelled = true; };
-  }, [cardReachable, cardLink?.host, cardLink?.transport, cardHost, currentProject?.id, currentProject?.projectRevision, recheckTick]);
+  }, [cardReachable, cardLink?.host, cardLink?.state, cardLink?.transport, cardHost, currentProject?.id, currentProject?.projectRevision, recheckTick]);
 
   // A project adopted from a card can never match it by fingerprint: the card
   // hashed the bytes it was installed with, and a reconstruction from
@@ -396,7 +420,14 @@ export function SetupScreen({
     commissioningFlow,
     project: currentProject,
     resolution: journeyResolution,
-  }), [cardLifecycle, cardLink, commissioningFlow, currentProject, installationMatch, provisionalSetup, resolution.kind]);
+    wiringStatus: cardState.wiringStatus,
+  }), [cardLifecycle, cardLink, cardState.wiringStatus, commissioningFlow, currentProject, installationMatch, provisionalSetup, resolution.kind]);
+  const wiringTestActive = journey.taskId === 'confirm-visible-lights';
+
+  useEffect(() => {
+    onWiringTestActiveChange?.(wiringTestActive);
+    return () => onWiringTestActiveChange?.(false);
+  }, [onWiringTestActiveChange, wiringTestActive]);
 
   useEffect(() => {
     if (!onLoadOfferChange) return undefined;
@@ -413,6 +444,7 @@ export function SetupScreen({
   // commissioning: it deliberately renders no button because the install
   // action below IS its button, so the floor passes down.
   const ladderOwnsPrimary = !journey.setupComplete
+    && !(journey.currentPhaseId === 'verify' && journey.taskId === 'confirm-visible-lights')
     && !(journey.currentPhaseId === 'connect'
       && journey.taskId === 'install-project'
       && !hasResumableCommissioning(commissioningFlow));
@@ -438,14 +470,18 @@ export function SetupScreen({
   useEffect(() => {
     const previous = previousPhaseRef.current;
     previousPhaseRef.current = journey.currentPhaseId || '';
-    if (!previous || !journey.currentPhaseId || previous === journey.currentPhaseId) return undefined;
+    if (selectedPhaseId || !previous || !journey.currentPhaseId || previous === journey.currentPhaseId) return undefined;
     const frame = requestAnimationFrame(() => {
-      document.querySelector(`[data-testid="setup-phase-${journey.currentPhaseId}"] h2`)?.focus();
+      document.querySelector(`[data-testid="setup-phase-${journey.currentPhaseId}"] .lw-setup-phase-head`)?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [journey.currentPhaseId]);
+  }, [journey.currentPhaseId, selectedPhaseId]);
 
   const go = hash => { window.location.hash = hash; };
+  const installIntentOpen = new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
+  const openPatterns = () => go(journey.setupComplete
+    ? '#screen=pattern'
+    : '#screen=card&section=setup&task=install-project&next=patterns');
 
   const ADOPTION_FAILURES = Object.freeze({
     cancelled: 'Studio kept the open project, so nothing was adopted from the card.',
@@ -541,7 +577,10 @@ export function SetupScreen({
   const autoAdoptedRef = useRef('');
   useEffect(() => {
     if (!exactTransport || !cardState.read) return;
-    if (provisionalSetup) return;
+    if (provisionalSetup || installIntentOpen
+      || new URLSearchParams(window.location.hash.slice(1)).get('task') === 'install-project'
+      || !cardState.wiringStatus || cardState.wiringStatus.hasCandidate !== false
+      || cardState.status?.wiringProbation === true || cardState.status?.wiringProbation?.active === true) return;
     const cardProjectId = String(cardState.status?.projectId || cardLink?.readiness?.projectId || '').trim();
     if (!cardProjectId) return;
     // Not "is the id the same" — pairing already copies the id across, so that
@@ -549,7 +588,8 @@ export function SetupScreen({
     // is the whole case adoption exists for. The question is whether Studio
     // holds the card's exact project: same id, same fingerprint, same revision.
     if (cardLifecycle?.exactProject === true) return;
-    if (projectLifecycle?.dirty === true) return;
+    // The live lifecycle has revisions, not the persisted summary's dirty flag.
+    if (hasUnsavedChanges(readProjectLifecycle())) return;
     // And never over work the owner already has open. "Adopt by default" means
     // "do not make me choose when there is nothing to lose" — not "throw away
     // the piece I am in the middle of". Two cases are safe:
@@ -584,7 +624,9 @@ export function SetupScreen({
     cardLifecycle?.exactProject,
     currentProject?.id,
     exactTransport,
-    projectLifecycle?.dirty,
+    projectLifecycle,
+    cardState.wiringStatus,
+    installIntentOpen,
     provisionalSetup,
     resolution.kind,
     resolution?.resolved,
@@ -739,12 +781,26 @@ export function SetupScreen({
   // connectionLabel, not label: `label` is the footer chip's errand text. See
   // CONNECTION_LABELS in cardLifecycle.js.
   const identityLifecycle = cardLifecycle || deriveCardLifecycle({ link: cardLink || {} });
-  const identityStatus = identityLifecycle.connectionLabel || identityLifecycle.label;
+  const identityStatus = wiringTestActive
+    ? 'Testing lights'
+    : identityLifecycle.connectionLabel || identityLifecycle.label;
   const firmwareBehind = firmwareStatus?.actionable === true;
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
+  const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
   const renderActiveTask = phase => {
+    if (phase.status === 'upcoming') {
+      return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
+    }
     if (phase.id === 'connect') {
+      if (journey.currentPhaseId !== 'connect') {
+        return (
+          <div className="lw-setup-task" data-testid="setup-active-task">
+            <p>{exactTransport ? 'This exact card is connected.' : 'Reconnect the exact card before continuing setup.'}</p>
+            <button type="button" className="btn" data-testid="setup-connect-manual" onClick={() => onOpenConnectionCenter?.()}>Card connection options</button>
+          </div>
+        );
+      }
       const blocker = journey.blockers[0]?.id;
       const taskId = journey.taskId;
       const connectionLabel = taskId === 'pair-card' ? 'Pair this card'
@@ -845,8 +901,7 @@ export function SetupScreen({
               >Put your project back on the card</button>
             ) : (
               <p role="status" data-testid="setup-install-inline">
-                Your project is ready to go on the card. The check and install for it is
-                just below.
+                Finish the earlier setup phases before saving this project to the card.
               </p>
             )
           ) : taskId === 'configure-wifi' ? (
@@ -899,10 +954,7 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          {ledCountState.message && (
-            <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
-          )}
-          <button type="button" className={ledCountEntry ? 'btn' : 'btn primary'} data-testid="setup-lights-action" onClick={() => go('#screen=discovery')}>
+          <button type="button" className={ledCountEntry ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
             {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
               ? 'Review the connected lights'
               : ledCountEntry
@@ -913,10 +965,9 @@ export function SetupScreen({
       );
     }
     if (phase.id === 'layout') {
-      const placementDone = phase.progress.some(item => item.id === 'placement' && item.status === 'done');
       return (
         <div className="lw-setup-task" data-testid="setup-active-task">
-          <p>Place the discovered outputs in the artwork, then confirm their physical direction in Layout.</p>
+          <p>Place the discovered outputs in the artwork. You can set each strip&rsquo;s direction there.</p>
           {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount)) && (
             <p data-testid="setup-counted-lights">
               {evidence.count} LED{evidence.count === 1 ? '' : 's'} counted
@@ -924,20 +975,16 @@ export function SetupScreen({
               . Look at the strip — those lights should be on.
             </p>
           )}
-          {ledCountEntry}
-          {ledCountState.message && (
-            <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
-          )}
           <ul className="lw-setup-subprogress" aria-label="Artwork placement progress">
-            {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'placement' ? 'Artwork placement' : 'Light direction'}</li>)}
+            {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} Artwork placement</li>)}
           </ul>
           <button
             type="button"
             className="btn primary"
             data-testid="setup-layout-action"
-            onClick={() => go(placementDone ? '#screen=card&section=setup&task=install-project' : '#screen=layout&mode=draw')}
+            onClick={() => go('#screen=layout&mode=draw')}
           >
-            {placementDone ? 'Verify light direction' : 'Place lights in the artwork'}
+            Place lights in the artwork
           </button>
         </div>
       );
@@ -957,8 +1004,14 @@ export function SetupScreen({
             and waits for your explicit visible confirmation" — four pieces of
             developer vocabulary on the one screen where a visual artist most
             needs to know what is about to happen to their piece. */}
-        <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-        <button type="button" className="btn primary" data-testid="setup-verify-action" onClick={() => go('#screen=card&section=setup&task=install-project')}>Test and save to card</button>
+        {journey.taskId === 'confirm-visible-lights' ? (
+          <p role="status">The card is running the final light test. Confirm or restore it with the controls below.</p>
+        ) : !installIntentOpen ? (
+          <>
+            <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
+            <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>
+          </>
+        ) : null}
       </div>
     );
   };
@@ -977,6 +1030,9 @@ export function SetupScreen({
       </section>
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
+        {ledCountState.message && (
+          <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
+        )}
         {adoptionError && (
           <p className="lw-setup-error" role="alert" data-testid="setup-adoption-error">{adoptionError}</p>
         )}
@@ -995,7 +1051,7 @@ export function SetupScreen({
             "Open Patterns" — a live card action — while phase 1 was still
             asking the owner to pair, so the screen carried two headline
             buttons and two different accounts of where the owner was. */}
-        {matchesOpenProject && !provisionalSetup && exactTransport && (
+        {matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen && (
           <section
             className="card-support-panel lw-setup-banner"
             data-testid="setup-card-ready"
@@ -1018,7 +1074,7 @@ export function SetupScreen({
                   can render while the ladder still has an active task (an
                   exact project match during a `confirming` lifecycle, for
                   one), and two primaries then ask the owner to arbitrate. */}
-              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={() => go('#screen=pattern')}>Open Patterns</button>
+              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>Open Patterns</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
               {firmwareBehind && (
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
@@ -1053,11 +1109,14 @@ export function SetupScreen({
       <section className="lw-setup-phases" aria-label="Setup outcomes">
         <p className="lw-setup-progress" data-testid="setup-progress">
           {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
+          {viewedPhaseId !== journey.currentPhaseId
+            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
+            : ''}
         </p>
-        {!journey.setupComplete && (
-          <ol className="lw-setup-phase-list">
+        <ol className="lw-setup-phase-list">
             {journey.phases.map((phase, index) => {
-              const active = phase.id === journey.currentPhaseId;
+              const active = phase.id === viewedPhaseId;
+              const current = phase.id === journey.currentPhaseId;
               return (
                 <li
                   key={phase.id}
@@ -1065,28 +1124,23 @@ export function SetupScreen({
                   data-testid={`setup-phase-${phase.id}`}
                   data-phase-id={phase.id}
                   data-status={phase.status}
-                  aria-current={active ? 'step' : undefined}
+                  aria-current={current ? 'step' : undefined}
                 >
-                  <div className="lw-setup-phase-head">
+                  <button type="button" className="lw-setup-phase-head" onClick={() => setSelectedPhaseId(phase.id)} aria-expanded={active}>
                     <span className="lw-setup-phase-marker" aria-hidden="true">{phase.status === 'done' ? '✓' : index + 1}</span>
                     <div>
-                      <h2 tabIndex={-1}>{phase.title}</h2>
+                      <h2>{phase.title}</h2>
                       {!active && <p>{phase.detail}</p>}
                     </div>
-                  </div>
+                  </button>
                   {active && renderActiveTask(phase)}
+                  {phase.id === 'verify' && (
+                    <div hidden={!active} data-testid="setup-install-slot">{installAction}</div>
+                  )}
                 </li>
               );
             })}
-          </ol>
-        )}
-        {exactTransport && !journey.setupComplete && journey.currentPhaseId !== 'connect' && (
-          <p className="lw-setup-run-anyway">
-            <button type="button" className="btn" data-testid="setup-run-patterns" onClick={() => go('#screen=pattern')}>
-              Open Patterns
-            </button>
-          </p>
-        )}
+        </ol>
       </section>
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />

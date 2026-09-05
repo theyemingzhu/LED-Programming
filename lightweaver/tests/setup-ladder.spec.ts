@@ -78,6 +78,19 @@ test('Setup presents four outcome phases with one active task', async ({ page })
   await expect(page.getByTestId('setup-phase-verify')).toContainText('Test and save to card');
 });
 
+test('every phase can be reviewed without changing truthful progress or unlocking its action', async ({ page }) => {
+  await page.getByTestId('setup-phase-layout').getByRole('button').click();
+
+  await expect(page.getByTestId('setup-progress')).toHaveText('Phase 2 of 4 · Viewing phase 3');
+  await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByTestId('setup-phase-layout')).not.toHaveAttribute('aria-current', 'step');
+  await expect(page.getByTestId('setup-active-task')).toContainText('Finish the earlier setup phases');
+
+  await page.getByTestId('setup-phase-connect').getByRole('button').click();
+  await expect(page.getByTestId('setup-progress')).toHaveText('Phase 2 of 4 · Viewing phase 1');
+  await expect(page.getByTestId('setup-active-task')).toContainText('This exact card is connected');
+});
+
 test('bottom-left attention opens the exact Setup task instead of a competing connection screen', async ({ page }) => {
   await page.route(`http://${CARD_HOST}/api/status`, route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(commissionedStatus()),

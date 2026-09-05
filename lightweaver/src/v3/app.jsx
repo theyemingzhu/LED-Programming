@@ -24,7 +24,7 @@ import {
   readStoredBridgeResult,
 } from '../lib/bridgeLaunch.js';
 import { classifyFooterFirmwareStatus, resolveFooterFirmwareInstalled } from '../lib/footerFirmwareStatus.js';
-import { getInstallFirmwareEvidence, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
+import { getInstallFirmwareEvidence, settleInstallFirmwareVerification, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
 import {
   connectCardLink,
   getCardLinkState,
@@ -1119,6 +1119,13 @@ function Shell({ offlineUpdateController = null }) {
     getInstallFirmwareEvidence,
     getInstallFirmwareEvidence,
   );
+  useEffect(() => {
+    if (!isCardTransportConnected(cardLink) || !cardLink?.card) return;
+    settleInstallFirmwareVerification({
+      ...cardLink.card,
+      bootId: cardLink.readiness?.bootId,
+    });
+  }, [cardLink]);
   const firmwareStatus = useMemo(() => classifyFooterFirmwareStatus(
     resolveFooterFirmwareInstalled({
       transportConnected: isCardTransportConnected(cardLink),
@@ -1126,7 +1133,7 @@ function Shell({ offlineUpdateController = null }) {
       usbInspectedFirmware,
     }),
     firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null,
-    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) },
+    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) || usbInspectedFirmware?.verification === 'restarting' },
   ), [cardLink, firmwareReleaseIdentity.manifest, firmwareReleaseIdentity.state, usbInspectedFirmware]);
   const openSetupTask = useCallback(taskId => {
     if (installActiveRef.current) return;
@@ -1563,19 +1570,29 @@ function Shell({ offlineUpdateController = null }) {
       || !/^[a-f0-9]{16,64}$/.test(String(evidence?.projectFingerprint || ''))) {
       return { ok: false, reason: 'exact-installation-evidence-required' };
     }
+    // Bind the normalized Studio snapshot that actually replaced the project.
+    // A signed production restore can gain current schema defaults; its live
+    // structure need not hash to the card's installed package fingerprint.
+    const snapshot = latestProjectSaveStateRef.current;
+    if (!isProjectLifecycleMarkerCurrent(expectedMarker)
+      || snapshot?.marker?.generation !== expectedMarker.generation
+      || snapshot?.marker?.revision !== expectedMarker.revision) {
+      return { ok: false, reason: 'superseded' };
+    }
     const next = markProjectInstalled({
       generation: expectedMarker.generation,
       revision: expectedMarker.revision,
       cardId: evidence.cardId,
       projectRevision: evidence.projectRevision,
       projectFingerprint: evidence.projectFingerprint,
+      studioFingerprint: cardProjectFingerprint(snapshot.project),
       verified: true,
     });
     return next?.installedRevision === expectedMarker.revision
       && next?.installation?.verified === true
       ? { ok: true }
       : { ok: false, reason: 'superseded' };
-  }, [markProjectInstalled]);
+  }, [isProjectLifecycleMarkerCurrent, markProjectInstalled]);
   const openBrowserProject = useCallback(async project => {
     const recordId = String(project?.id || '');
     const recordSnapshot = readProjectLibraryRecordSnapshot(recordId);

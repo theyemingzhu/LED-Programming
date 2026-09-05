@@ -182,19 +182,16 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
   let box = await install.boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await install.click();
-  // The single next action is the guided LED check CTA…
-  box = await page.getByTestId('start-led-check').boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(44);
-  // …and the check itself keeps its primary button touch-sized.
-  await page.getByTestId('start-led-check').click();
-  box = await page.getByRole('button', { name: /^Yes — / }).boundingBox();
+  // Layout now hands the install to Card setup. For an unpaired card, its
+  // truthful next action is pairing rather than starting a physical LED test.
+  box = await page.getByRole('button', { name: 'Pair this card' }).boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
   // Specialist tools stay behind the top-level Advanced disclosure.
   const advanced = page.getByTestId('advanced-installation-tools');
   box = await advanced.locator('summary').first().boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
-  await expect(advanced).toHaveJSProperty('open', false);
+  await expect(advanced.locator('details').first()).toHaveJSProperty('open', false);
   await context.close();
 });
 
@@ -221,9 +218,11 @@ test('mobile Layout keeps a useful canvas and presents the inspector as a bottom
   expect(nonOverlappedCanvasHeight).toBeGreaterThan(300);
   await page.getByRole('button', { name: 'Expand inspector' }).click();
   await expect(page.getByRole('button', { name: 'Collapse inspector' })).toHaveAttribute('aria-expanded', 'true');
-  const wireSheetBox = await sheet.boundingBox();
-  expect(wireSheetBox?.height).toBeGreaterThanOrEqual(300);
-  expect(wireSheetBox?.height).toBeLessThanOrEqual(480);
+  const expandedSheetBox = await sheet.boundingBox();
+  // Wire mode moved to Card setup. The remaining Draw inspector uses the
+  // mobile sheet's documented 180–240px range.
+  expect(expandedSheetBox?.height).toBeGreaterThanOrEqual(180);
+  expect(expandedSheetBox?.height).toBeLessThanOrEqual(240);
 });
 
 test('mode toolbar only presents tools that apply while keeping secondary groups named', async ({ page }) => {
@@ -272,7 +271,8 @@ test('wire scaffold is concise and recovery actions stay hidden without a mixed-
   await expect(page.getByRole('region', { name: 'Wire setup guide' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Steps' })).toHaveCount(0);
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pair this card' })).toBeVisible();
+  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Copy payload' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open installer' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);

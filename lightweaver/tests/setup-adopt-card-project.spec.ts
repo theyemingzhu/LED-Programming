@@ -45,6 +45,12 @@ test.beforeEach(async ({ page }) => {
         body: JSON.stringify({ ...status, bridgeVersion: 6 }),
       });
     }
+    if (url.pathname === '/api/wiring/status') {
+      // A missing fingerprint does not imply a missing wiring safety API.
+      // Automatic adoption requires independent proof that no candidate exists.
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, state: 'known-good', hasCandidate: false, outputs: status.outputs }) });
+    }
     // Patterns/zones readback is optional for adoption; a legacy card without
     // them must still adopt from the status skeleton alone.
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' });
@@ -71,7 +77,7 @@ async function expectSetupComplete(page) {
   // paragraph of its own; Card Home was compressed to one status, so this
   // asserts the banner is present and lets the row and the ladder say it once.
   await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
+  await expect(page.getByTestId('setup-progress')).toHaveText(/^Setup complete(?: · Viewing phase [1-4])?$/);
   await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
   await expect(page.getByTestId('setup-adoption-error')).toHaveCount(0);
   await expect(page.getByTestId('setup-open-patterns')).toBeVisible();
@@ -86,7 +92,7 @@ test('a fresh Studio adopts the legacy card project and finishes Setup by itself
   // against the same legacy evidence rather than demoting back to phase 1.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 10000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText(/^Setup complete(?: · Viewing phase [1-4])?$/, { timeout: 10000 });
   await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
 });
 
@@ -111,6 +117,19 @@ test('"Use this card’s project" visibly finishes Setup when another project is
   // an owner — so it now states the relationship instead.
   await expect(page.getByTestId('setup-card-project-note'))
     .toContainText(/different project|holds the same project/, { timeout: 10000 });
+  await page.getByTestId('setup-start-from-card').click();
+  await expectSetupComplete(page);
+});
+
+// A truly older card without this API still has an explicit adoption path;
+// unknown candidate state must never silently replace the open project.
+test('missing wiring safety readback requires explicit adoption even in a fresh Studio', async ({ page }) => {
+  await page.route('http://lightweaver.local/api/wiring/status', route =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' }));
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
+  await expect(page.getByTestId('setup-card-ready')).toHaveCount(0);
   await page.getByTestId('setup-start-from-card').click();
   await expectSetupComplete(page);
 });

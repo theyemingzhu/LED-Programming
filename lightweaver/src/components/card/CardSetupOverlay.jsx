@@ -131,8 +131,8 @@ export function CardSetupOverlay({
       >
         <header className="card-setup-overlay-head">
           <div>
-            <h2 id="card-setup-title">Find and verify the lights</h2>
-            <p id="card-setup-description">Identify each connected output, establish color, and prove exactly where its lights end.</p>
+            <h2 id="card-setup-title">Count your lights</h2>
+            <p id="card-setup-description">Find the strip. Read the markers. Save the count.</p>
           </div>
           <button
             type="button"
@@ -178,8 +178,8 @@ export function CardSetupOverlay({
           </div>
           <p>
             {protectedWork
-              ? 'Keep this task and the card connection open while Studio checks the physical lights.'
-              : 'Closing this task keeps the card connection ready for Layout, installation, and Patterns.'}
+              ? 'Keep the card connected.'
+              : 'Your card stays connected when you close this.'}
           </p>
           <button
             type="button"

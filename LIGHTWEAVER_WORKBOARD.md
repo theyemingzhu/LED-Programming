@@ -9,6 +9,11 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-05: **JOURNEY-01–09 locally verified; JOURNEY-10 machine setup verified, lights pending** — implemented the approved
+[update-to-playback repair](docs/plans/2026-09-05-update-to-playback-repair.md)
+on `codex/update-to-playback`, based on production build 1525. Exact card remains
+on firmware 1524; no hardware mutation or release is part of this checkpoint.
+
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
@@ -30,6 +35,12 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 | CARD-IA-001 | One Card page owns check + project install; Layout is Wire only; footer is status | Studio Card + Layout + routing | done | Unit 2201/2201 + Vite build; focused Playwright through Tasks 3–7; live preview Card + Layout |
 
 ## Active ownership
+
+Repair batch integrated; no agents retain active ownership. Final ownership boundaries were:
+
+- Studio agent (balanced model): `lightweaver/src/`, JOURNEY-01–04 and 10.
+- Firmware agent: `firmware/lightweaver-controller/src/` and firmware tests, JOURNEY-05–08.
+- Primary: `scripts/bench-check*`, `lightweaver/tests/`, integration and this board.
 
 | Owner | IDs | Exact files / boundary | Started | Latest evidence |
 | --- | --- | --- | --- | --- |
@@ -95,3 +106,128 @@ this queue when Adrian is available.
    board into a transcript.
 4. Every interrupted Bench or Prove session records one and only one next step.
 5. Completed entries name behavior and evidence, not agent activity.
+
+
+## 2026-09-05 update-to-playback checkpoint
+
+- Branch `codex/update-to-playback`; source based on production Studio 1525.
+- Integrated checkpoint: **2258/2258 unit tests and production build passed**.
+- Browser: **104/104** across card workspace, install/update plan and preserving update; includes normal AP handoff, blank station setup, retained project/readback, interrupted flow, stale identity and wrong-card cases.
+- Firmware: 26 relevant scripts plus actual Wi-Fi storage/parser native test passed; ESP32-S3 build passed. New native test also runs after PlatformIO in CI.
+- Diagnostics: six CLI fixtures pass; actual card correctly diagnosed as needing project setup rather than reflashing.
+- Actual local preview: paired card `lw-b0fe81f61b44`, footer **1524 ✓**, phase 2 Find and verify lights. No project/firmware/credential mutation.
+- **Needs eyes / release Bench:** signed preserving update, saved-network continuity through power cycle, card-page visual check, project restore and two patterns/Stop on the physical lights. No release or flash in this Sprint.
+- See [repair evidence](docs/plans/2026-09-05-update-to-playback-repair.md) and [Bench resumption](docs/bench-sessions/2026-09-05-lw-b0fe81f61b44-update-to-playback.md).
+
+## 2026-09-05 visual counting Sprint
+
+COUNT-RULER-001 done locally — compact port confirmation, two color checks,
+then direct count entry with orange every 5, red every 10, white every 50.
+The ruler repeats through extended ranges; correction, add-strip, resume and
+restart pause remain available. Technical text is collapsed into Details.
+
+Evidence: regression red witnessed; 2,260 unit tests, 20 Chromium discovery
+cases, production build passed. Browser tests inspect actual outgoing marker
+frames. Complete 2,048-pixel-per-port marker test covers output offsets and
+255/260/500/1000/2000 boundaries. Desktop and phone screenshots inspected;
+count, continue and Stop visible without scrolling. No release or hardware
+flash performed. Local preview remains http://127.0.0.1:9212/#screen=discovery.
+
+COUNT-RULER-VIS-001 needs-eyes — observe actual orange/red/white markers and
+brightness on the physical strip; automated frame proof cannot verify the
+physical hues. Resume: open Count your lights and choose the connected port.
+
+COUNT-RULER-002 done locally — user corrected palette: dim yellow between
+markers, orange every 5, red every 10, pink every 50. Supersedes white/50
+in COUNT-RULER-001. Focused 25 unit tests and browser outgoing-frame +
+desktop/phone flow passed. Physical hues remain needs-eyes; not deployed.
+
+COUNT-RULER-003 done locally — intervening yellow now uses the same channel
+intensity as the orange/red markers (3C3C00); removed dim wording. Existing
+current limits unchanged. Focused 25 unit tests and outgoing-frame/browser
+check pass; phone screen inspected. Not deployed.
+
+
+SETUP-CONSOLIDATE-001 — local repair, 2026-09-05. Direction stays editable
+in Layout; placement advances to phase 4 without a duplicate direction gate.
+Open Patterns starts the guarded project install. Removed the separate repeated
+LED-check wizard and duplicate count entry; retained final card confirmation.
+Added explicit recovery for an unrelated unfinished card candidate.
+
+Bench evidence: lw-b0fe81f61b44 at 192.168.18.70 accepted and booted the
+41-LED candidate on GPIO18, GRB, Aurora at brightness115 and approximately
+74FPS. No physical observation received within the90-second test; confirmed
+automatic restoration of prior known-good discovery setup. Permanent install
+and visual playback remain unproven. No firmware flash or deployment.
+Resume: Open Patterns in local9212 preview, start the final light test, then
+confirm only after Adrian observes the physical strip.
+Verification: 2,261 unit tests and production build passed; three focused
+browser cases passed (automatic install, unfinished-test recovery, unverified
+valid wiring). Actual phase4 screen has one Open Patterns action.
+Remaining presentation issue: during card wiring probation, Setup temporarily
+shows phase1/Needs attention while the final confirmation controls remain
+available. Physical confirmation and permanent installation remain pending.
+
+SETUP-REVISIT-001 — local follow-up, 2026-09-05. All four phase headings
+are selectable, including completed setup; viewing an earlier phase retains
+evidence-derived progress and never resets the card. Actual preview clicks
+1→2→3→4 verified connection options, recount/review, Layout, and final install.
+Known exact-card wiring probation now stays on the final confirmation phase.
+Expired tests reconcile card state and clear stale confirmation controls.
+Physical confirmation remains pending: owner readiness question unanswered;
+no new hardware activation, confirmation, flash or deployment in this batch.
+Final browser proof: setup phase navigation suite7/7 passed; staged
+confirmation→Patterns, expired-test retry, and exact revision acknowledgement
+3/3 passed. Existing hardware-operation completion now triggers an exact-card
+wiring status reread; test identity says Testing lights and suppresses false
+Recover guidance. This resolves the prior probation presentation limitation.
+Final integrated checkpoint: 2,262 unit tests and production build passed.
+
+STEP4-HANDOFF-001 — follow-up to the actual blocked card route. Root causes:
+Open Patterns stopped at a staged installation behind a second Start light
+test action; repeated same-hash clicks did nothing. Final controls were below
+the phase rather than inside it. Confirmed readiness also was not published
+to the shared link before Patterns could issue its first command.
+Repair keeps a stable installation control in phase4 across phase review,
+auto-activates each exact staged candidate once for explicit Patterns intent,
+and publishes verified readiness before navigation. Bench record:
+docs/bench-sessions/2026-09-05-step-four-to-patterns.md.
+Verification: final2,262unit tests, production build,8install-flow browser
+cases and7setup-ladder cases passed. Immediate pattern command and actual
+expired-test Retry through new activation are covered. Local only.
+Live repaired OpenPatterns automatically activated41LEDs and put final
+confirmation inphase4. Timeout returned an actionableRetry. A real overlapping
+operation refresh race was then corrected; overlap+expiry regressions2/2pass.
+Visual confirmation is still pending; no permanent install or live pattern
+change is claimed. Browser now offersRetry when the owner is ready.
+
+
+STEP4-PLAYBACK-002 — 2026-09-05, supersedes the pending confirmation above.
+Actual final confirmation failed because two background adoption paths could
+replace the project while its candidate was testing; one also checked a
+nonexistent live lifecycle dirty field. Guarded both paths and use live
+lifecycle validation around async installation writes/readbacks.
+User already reported the41-LED light test looked correct; carried that exact
+confirmation through activation c199aa70f2ad0308. Card now known-good,41LEDs
+onGPIO18, playback-ready with no probation. No new visual observation invented.
+Patterns polling had silently canceled pending clicks. Same-card evidence
+refreshes now preserve the send; real authority changes still invalidate it.
+Removed redundant local-card toggle and made playback status acknowledgement-
+based. Actual browser Rainbow→Ocean clicks matched independent card status
+readbacks (brightness115,26FPS); actual screen inspected.
+Resume: click patterns on local9212. No install repeat is required for playback.
+Bench detail: docs/bench-sessions/2026-09-05-step-four-to-patterns.md.
+Verification:9/9 install-flow browser tests,4/4 focused Patterns tests,
+22 focused adoption/resume Node tests, final2,262 unit tests and production
+build passed. Local repair only; not deployed.
+
+SHIP-SETUP-003 — release integration2026-09-05. Fixed persistent count feedback,
+normalized restored-project binding, interrupted USB-install recovery, coarse
+touch targets, and exact old-bridge update guidance. Reconciled retired wizard
+regressions with consolidated setup; physical command, rollback and lock
+coverage remains in dedicated suites. Initial full release browser run had331
+passes before obsolete wizard failures were stopped. Frozen affected/remaining
+run passed268/269; last quiet-preview fixture corrected and focused green.
+Final2,262 unit tests, production build, Pages staging and artifact verification
+passed. Binary freshness awaits protected main signer (expected firmware-source
+changes; no local signed artifacts or card flash). PR216 release gates pending.

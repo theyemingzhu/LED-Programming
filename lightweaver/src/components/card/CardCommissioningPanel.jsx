@@ -46,12 +46,14 @@ import {
   clearCardCommissioning,
   completeCardInstall,
   commissioningFlowMatchesProject,
+  commissioningReconnectHosts,
   commissioningReconnectHost,
-  commissioningAutoReconnectHost,
   commissioningInitialConfigAuthority,
   confirmCardSetupNetworkJoined,
   markCardProjectRestored,
   preflightCardCommissioningMutation,
+  planCommissioningReconnectAttempt,
+  waitForCommissioningReconnect,
   readCardCommissioning,
   readCardRestorationAttempt,
   recordCardRestorationResponse,
@@ -273,6 +275,7 @@ export function CardCommissioningPanel({
   const [lightCheckNotice, setLightCheckNotice] = useState('');
   const [bridgeHandoffStatus, setBridgeHandoffStatus] = useState(null);
   const [setupReach, setSetupReach] = useState({ state: 'idle' });
+  const [autoReconnect, setAutoReconnect] = useState({ state: 'idle', attempts: 0, host: '' });
   // Which route the owner said they can actually see after an inconclusive
   // install. Showing both routes at once put three headings and three buttons
   // on one screen and left the owner with no way to tell which was theirs.
@@ -281,6 +284,7 @@ export function CardCommissioningPanel({
   const markerTimeoutRef = useRef(null);
   const acknowledgementPersistenceRef = useRef('');
   const autoReconnectAttemptRef = useRef('');
+  const reconnectContextRef = useRef(null);
   const autoReconcileRef = useRef('');
   const restoreFnRef = useRef(async () => {});
   const activeFlowIdRef = useRef(initialState.flow?.flowId || '');
@@ -453,12 +457,14 @@ export function CardCommissioningPanel({
     storedHost: readStoredCardHost(),
     history: readStoredCardHostHistory(),
   });
-  const autoReconnectHost = commissioningAutoReconnectHost(flow, {
+  reconnectContextRef.current = {
+    flow,
+    link,
     setupReach: setupReach.state,
-    reconnectHost,
-    linkHost: link?.host,
-    linkState: link?.state,
-  });
+    storedHost: readStoredCardHost(),
+    history: readStoredCardHostHistory(),
+    onReconnect,
+  };
   const publicStudio = !canPushDirectlyToCard();
   // The one thing Studio may still finish by itself. A restoration ATTEMPT is
   // recorded durably before the config is posted, so when one exists the card
@@ -510,12 +516,57 @@ export function CardCommissioningPanel({
   }, [cardAcknowledgement, flow?.cardAcknowledgedAt, flow?.flowId]);
 
   useEffect(() => {
-    if (!autoReconnectHost) return;
-    const key = `${flow?.flowId || ''}:${autoReconnectHost}`;
-    if (autoReconnectAttemptRef.current === key) return;
+    if (canPushDirectlyToCard()) return undefined;
+    const initial = planCommissioningReconnectAttempt(flow, link, {
+      setupReach: setupReach.state,
+      storedHost: readStoredCardHost(),
+      history: readStoredCardHostHistory(),
+      attempt: 0,
+    });
+    if (initial.state === 'inactive' || initial.state === 'connected') return undefined;
+    const key = `${flow?.flowId || ''}:${flow?.networkState || ''}`;
+    if (autoReconnectAttemptRef.current === key) return undefined;
     autoReconnectAttemptRef.current = key;
-    onReconnect?.(autoReconnectHost);
-  }, [autoReconnectHost, flow?.flowId, onReconnect]);
+    let active = true;
+    const reconnectWait = new AbortController();
+    let timer = null;
+    let attempt = 0;
+    const startedAt = Date.now();
+    const next = async () => {
+      if (!active) return;
+      const current = reconnectContextRef.current || {};
+      const plan = planCommissioningReconnectAttempt(current.flow, current.link, {
+        setupReach: current.setupReach,
+        storedHost: current.storedHost,
+        history: current.history,
+        attempt,
+        startedAt,
+      });
+      if (plan.state === 'connected' || plan.state === 'inactive') {
+        setAutoReconnect({ state: plan.state, attempts: plan.attempts, host: '' });
+        return;
+      }
+      if (plan.state === 'exhausted') {
+        setAutoReconnect({ state: 'exhausted', attempts: plan.attempts, host: '' });
+        return;
+      }
+      setAutoReconnect({ state: 'trying', attempts: plan.nextAttempt, host: plan.host });
+      await waitForCommissioningReconnect(() => current.onReconnect?.(plan.host), {
+        timeoutMs: Math.min(4000, Math.max(0, startedAt + 30000 - Date.now())),
+        signal: reconnectWait.signal,
+      });
+      if (!active) return;
+      attempt = plan.nextAttempt;
+      timer = window.setTimeout(next, Math.min(3500, Math.max(0, startedAt + 30000 - Date.now())));
+    };
+    void next();
+    return () => {
+      active = false;
+      reconnectWait.abort();
+      if (timer != null) window.clearTimeout(timer);
+      if (autoReconnectAttemptRef.current === key) autoReconnectAttemptRef.current = '';
+    };
+  }, [flow?.flowId, flow?.networkState, setupReach.state]);
 
   // Read back a write that already happened; never start a new one. See
   // reconcileRestoreOnly above.
@@ -619,23 +670,50 @@ export function CardCommissioningPanel({
   // button uses — no click required. Only runs on http/file pages that can
   // actually reach the card; on HTTPS the bridge/link path stays the only route.
   const expectedCardId = flow?.stage === 'set-up-card' ? flow.expectedCard?.id : '';
-  const pollHost = link?.host;
+  const reconnectHosts = commissioningReconnectHosts(flow, link, {
+    storedHost: readStoredCardHost(),
+    history: readStoredCardHostHistory(),
+  });
+  const pollHost = reconnectHosts[0];
   useEffect(() => {
     if (!expectedCardId || flow?.cardAcknowledgedAt) {
       setDetection(prev => (prev.state === 'idle' ? prev : { state: 'idle' }));
       return undefined;
     }
     if (!canPushDirectlyToCard()) return undefined;
+    const initialPlan = planCommissioningReconnectAttempt(flow, link, {
+        direct: true,
+      setupReach: setupReach.state,
+      storedHost: readStoredCardHost(),
+      history: readStoredCardHostHistory(),
+      attempt: 0,
+    });
+    if (initialPlan.state === 'inactive' || initialPlan.state === 'connected') return undefined;
     let active = true;
     let timer = null;
+    let attempts = 0;
+    const startedAt = Date.now();
     const flowId = flow.flowId;
     setDetection(prev => (prev.state === 'found' ? prev : { state: 'searching' }));
     const poll = async () => {
       if (!active) return;
+      const plan = planCommissioningReconnectAttempt(flow, link, {
+        direct: true,
+        setupReach: setupReach.state,
+        storedHost: readStoredCardHost(),
+        history: readStoredCardHostHistory(),
+        attempt: attempts,
+        startedAt,
+      });
+      if (plan.state === 'connected' || plan.state === 'inactive') return;
+      if (plan.state === 'exhausted') {
+        setDetection({ state: 'failed', reason: plan.reason });
+        return;
+      }
       let result = null;
       try {
         result = await discoverCardStatus({
-          preferredHost: pollHost,
+          preferredHost: plan.host,
           expectedCard: { id: expectedCardId },
           timeoutMs: 1500,
           persist: true,
@@ -671,11 +749,12 @@ export function CardCommissioningPanel({
           } catch { /* stale generation — listener re-syncs; retry below */ }
         }
       }
+      attempts = plan.nextAttempt;
       if (active) timer = window.setTimeout(poll, 2500);
     };
     void poll();
     return () => { active = false; if (timer != null) window.clearTimeout(timer); };
-  }, [expectedCardId, flow?.cardAcknowledgedAt, flow?.flowId, pollHost]);
+  }, [expectedCardId, flow?.cardAcknowledgedAt, flow?.flowId, flow?.networkState, pollHost, setupReach.state]);
 
   if (!flow && lightCheckState === 'complete') return (
     <div className="card-commissioning" aria-live="polite">
@@ -1148,7 +1227,11 @@ export function CardCommissioningPanel({
                   {`The card page opened, but nothing answered at ${flow.stationHost}. Its address may have changed since the install. Check that this device is on the same Wi-Fi, then use “Reconnect installed card” below.`}
                 </p>
               )}
-              <p role="status">{detection.state === 'searching' ? `Verifying ${flow.expectedCard.id} on your network…` : 'Studio continues automatically once this exact card answers.'}</p>
+              <p role="status">{detection.state === 'searching' || autoReconnect.state === 'trying'
+                ? `Verifying ${flow.expectedCard.id} on your network${autoReconnect.host ? ` at ${autoReconnect.host}` : ''}…`
+                : detection.state === 'failed' || autoReconnect.state === 'exhausted'
+                  ? 'Studio did not find this exact card within the bounded search. Use Reconnect installed card after confirming this device is on the same Wi-Fi.'
+                  : 'Studio continues automatically once this exact card answers.'}</p>
               <button type="button" className="btn" onClick={useSetupNetworkPathInstead}>{setupSsid ? `No — the card is showing ${setupSsid}` : 'No — the card is showing its setup hotspot'}</button>
             </div>
           )}
@@ -1186,7 +1269,7 @@ export function CardCommissioningPanel({
             <div className="card-commissioning-network">
               {setupReach.state === 'unreachable' ? (
                 <>
-                  <p role="status"><strong>The setup hotspot is gone — the card is already on your Wi-Fi.</strong> Studio is connecting to the card on your Wi-Fi and will continue by itself.</p>
+                  <p role="status"><strong>The setup address stopped answering.</strong> That does not prove which network the card joined. Studio is checking the card&rsquo;s known LAN addresses for fresh exact-card status.</p>
                   <button type="button" className="btn" onClick={reconnectInstalledCard} disabled={reconnecting} data-testid="setup-joined-station-reconnect">
                     {reconnecting ? 'Connecting…' : 'Reconnect installed card'}
                   </button>
@@ -1194,6 +1277,8 @@ export function CardCommissioningPanel({
                   <p className="card-connection-failure" role="alert">
                     {`The setup page opened, but the card never answered at 192.168.4.1, so that tab will keep loading forever. Usually this device is not on ${setupNetworkLabel}, it silently switched back to a different network, or the card already rejoined your home Wi-Fi and its setup hotspot is gone.`}
                   </p>
+                  {autoReconnect.state === 'trying' && <p role="status">Checking {autoReconnect.host} · attempt {autoReconnect.attempts} of 4…</p>}
+                  {autoReconnect.state === 'exhausted' && <p role="status">Automatic checks ended without verified card status. Confirm this device is on the same Wi-Fi, then reconnect the installed card.</p>}
                 </>
               ) : (
                 <>

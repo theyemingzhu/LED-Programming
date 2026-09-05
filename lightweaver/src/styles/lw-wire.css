@@ -92,6 +92,11 @@
   line-height: 1.5;
 }
 
+.lww-flow:has(.lw-wiring-candidate) > .lww-flow-heading,
+.lww-flow:has(.lw-wiring-candidate) > .lww-install-ready {
+  display: none;
+}
+
 /* ---------- advanced: quiet, specialist-only disclosure ---------- */
 
 .lww-advanced-tools {

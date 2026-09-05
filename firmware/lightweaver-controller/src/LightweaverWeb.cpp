@@ -461,7 +461,7 @@ void handleRoot() {
   bool stationActive = cfg.activeTransport == WIFI_TRANSPORT_STATION;
   bool wifiConfigured = cfg.wifi.ssid.length() > 0;
   bool projectReady = cfg.configValid && cfg.knownGoodProject;
-  bool needsWifiSetup = !wifiConfigured || (!stationActive && !projectReady);
+  bool needsWifiSetup = server.hasArg("wifiSetup") || !wifiConfigured || (!stationActive && !projectReady);
 
   // Pattern controls are truthful only for a valid known-good project. The
   // advanced page distinguishes a missing WiFi connection from a blank card
@@ -637,7 +637,7 @@ void handleRoot() {
     page += escapeHtml(cfg.wifi.ssid);
     page += F("\" — the password may be wrong, or the network is out of range. "
               "It keeps retrying every 10 seconds while this setup network stays available. If the password changed, re-enter it:"
-              "<button class='off-btn' id='wifi-retry-btn' type='button' style='display:block;margin-top:10px'>Re-enter WiFi details</button>"
+              "<button class='off-btn' id='wifi-retry-btn' type='button' style='display:block;margin-top:10px'>Change network</button>"
               "</div>");
   }
   page += F("<div class='stream-banner' id='stream-banner'>"
@@ -718,7 +718,7 @@ void handleRoot() {
               "</div>"
               "<div class='drawer-row'>"
                 "<button class='ghost' id='reboot' type='button'>Reboot</button>"
-                "<button class='ghost' id='change-wifi' type='button'>Change WiFi</button>"
+                "<button class='ghost' id='change-wifi' type='button'>Change network</button>"
               "</div>"
               "<div class='drawer-row'>"
                 "<button class='danger' id='factory' type='button'>Factory reset</button>"
@@ -734,8 +734,9 @@ void handleRoot() {
             "</div>"
             "<script>"
             "const $=id=>document.getElementById(id);"
-            "const post=async(p,b)=>{const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));return j};"
-            "const get=p=>fetch(p).then(r=>r.json());");
+            "const request=async(p,options={},timeoutMs=5000)=>{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs);try{const r=await fetch(p,{...options,cache:'no-store',signal:controller.signal});const j=await r.json();if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));return j}catch(e){if(controller.signal.aborted)throw new Error('The card did not answer in time. Check the connection and retry.');throw e}finally{clearTimeout(timer)}};"
+            "const post=(p,b,timeoutMs)=>request(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})},timeoutMs);"
+            "const get=(p,timeoutMs)=>request(p,{},timeoutMs);");
   page += studioOpenScript();
   page += studioBridgeScript();
   page += F(
@@ -819,7 +820,7 @@ void handleRoot() {
             "$('off-btn').onclick=()=>blackoutControl.request(!blackoutOn);"
             // Settings drawer (inline, no separate page)
             "$('set-toggle').onclick=()=>{const open=$('drawer').classList.toggle('open');if(open){"
-              "fetch('/api/firmware-info').then(r=>r.json()).then(d=>{var net=d.wifi&&d.wifi.transport==='station'?(' \xE2\x80\xA2 '+(d.wifi.ip||(d.wifi.hostname+'.local'))):'';$('fw-info').textContent='build '+d.build+' \xE2\x80\xA2 '+(d.freeHeap/1024|0)+'KB free \xE2\x80\xA2 '+d.rssi+' dBm'+net}).catch(()=>{});"
+              "get('/api/firmware-info').then(d=>{var net=d.wifi&&d.wifi.transport==='station'?(' \xE2\x80\xA2 '+(d.wifi.ip||(d.wifi.hostname+'.local'))):'';$('fw-info').textContent='build '+(d.buildNumber>0?d.buildNumber:'unknown')+' \xE2\x80\xA2 '+(d.freeHeap/1024|0)+'KB free \xE2\x80\xA2 '+d.rssi+' dBm'+net}).catch(()=>{});"
             "}};"
             "const setMsg=(text,kind)=>{const m=$('set-msg');m.textContent=text;m.className='drawer-msg'+(kind?' '+kind:'')};"
             "$('rn-save').onclick=async()=>{setMsg('Saving\xE2\x80\xA6');try{const r=await post('/api/rename',{pieceName:$('rn-piece').value,hostname:$('rn-host').value});if(r.ok){setMsg('Saved. Reboot to use new hostname.','ok')}else{setMsg(r.error||'Failed','err')}}catch(e){setMsg(e.message,'err')}};"
@@ -828,10 +829,9 @@ void handleRoot() {
             // WiFi reset is shared between the settings drawer button and the
             // AP-fallback warning banner; the banner reports through showHandoff
             // (the drawer is closed in that flow), the drawer through setMsg.
-            "const resetWifiFlow=async report=>{report('Clearing WiFi\xE2\x80\xA6');try{const r=await post('/api/reset-wifi',{});if(r&&r.ok){report('WiFi cleared. The card is rebooting into setup mode \xE2\x80\x94 join its Lightweaver-XXXX network from a phone to enter new WiFi details.','ok')}else{report((r&&r.error)||'Reset failed','err')}}catch(e){report('Could not reach the card: '+e.message,'err')}};"
-            "$('change-wifi').onclick=()=>{if(!confirm('Clear the saved WiFi and restart in setup mode? Patterns and names are kept.'))return;resetWifiFlow(setMsg)};"
+            "$('change-wifi').onclick=()=>{location.href='/?wifiSetup=1'};"
             "const wifiRetryBtn=$('wifi-retry-btn');"
-            "if(wifiRetryBtn)wifiRetryBtn.onclick=()=>{if(!confirm('Clear the saved WiFi and restart in setup mode? Patterns and names are kept.'))return;resetWifiFlow(showHandoff)};"
+            "if(wifiRetryBtn)wifiRetryBtn.onclick=()=>{location.href='/?wifiSetup=1'};"
             "$('factory').onclick=async()=>{if(!confirm('Erase ALL settings (patterns, WiFi, names) and restart? This cannot be undone.'))return;setMsg('Erasing everything\xE2\x80\xA6');try{const r=await post('/api/factory-reset',{confirm:'RESET'});if(r&&r.ok){setMsg('All settings erased. The card is rebooting into setup mode \xE2\x80\x94 join its Lightweaver-XXXX network from a phone to set it up again.','ok')}else{setMsg((r&&r.error)||'Factory reset failed','err')}}catch(e){setMsg('Could not reach the card: '+e.message,'err')}};"
             // Apply pasted designer config (the mixed-content fallback path)
             "$('cfg-apply').onclick=async()=>{const raw=$('cfg-paste').value.trim();if(!raw){setMsg('Paste a config JSON first','err');return}let json;try{json=JSON.parse(raw)}catch(e){setMsg('Not valid JSON: '+e.message,'err');return}"
@@ -883,7 +883,7 @@ void handleAdvancedRoot() {
   bool stationActive = cfg.activeTransport == WIFI_TRANSPORT_STATION;
   bool wifiConfigured = cfg.wifi.ssid.length() > 0;
   bool projectReady = cfg.configValid && cfg.knownGoodProject;
-  bool needsWifiSetup = !wifiConfigured || (!stationActive && !projectReady);
+  bool needsWifiSetup = server.hasArg("wifiSetup") || !wifiConfigured || (!stationActive && !projectReady);
   bool needsCommissioning = !projectReady && !needsWifiSetup;
   bool factoryBlank = cfg.runtimePhase == ProvisioningPhase::Factory;
 
@@ -978,7 +978,13 @@ void handleAdvancedRoot() {
   page += F("</div><div class='card-origin'>On this Lightweaver card</div>");
 
   if (needsWifiSetup) {
-    // First-time setup — only show the WiFi join form
+    // Saved credentials stay on-card; changing networks does not clear them.
+    if (wifiConfigured) {
+      page += F("<div class='card'><p>Saved network: <strong id='saved-ssid'>");
+      page += escapeHtml(cfg.wifi.ssid);
+      page += F("</strong></p><button class='primary' id='reuse-wifi'>Use saved network</button>"
+                "<p class='note'>Your network details are saved on this card. Leave the password blank to reuse them for the same network.</p></div>");
+    }
     page += F("<div class='card'><h2>Join Wi&#8209;Fi</h2>"
               "<label class='field' for='ssid'>Network</label>"
               "<div class='setup-network'>"
@@ -991,8 +997,11 @@ void handleAdvancedRoot() {
                 "<summary>More options</summary><div class='body'>"
                   "<label class='field' for='ssid-manual'>Hidden network name (optional)</label>"
                   "<input type='text' id='ssid-manual' autocomplete='off' placeholder='Type a network name if it is not listed'>"
+                  "<label class='field'><input type='checkbox' id='clear-password'> This network has no password</label>"
                   "<label class='field' for='hn'>Hostname</label>"
-                  "<input type='text' id='hn' value='lightweaver'>"
+                  "<input type='text' id='hn' value='");
+    page += escapeHtml(cfg.wifi.hostname.length() ? cfg.wifi.hostname : String("lightweaver"));
+    page += F("'>"
                 "</div>"
               "</details>"
               "<div class='row join-row'><button class='primary' id='join' type='button'>Save and join Wi&#8209;Fi</button></div>"
@@ -1107,7 +1116,7 @@ void handleAdvancedRoot() {
     page += F("'><p class='note'>Reachable at <strong>&lt;hostname&gt;.local</strong> after reboot.</p>"
               "<div class='row'><button class='primary' id='rn-save'>Save names</button></div>"
               "<div class='row'><button id='identify'>Find this card</button><span class='note' style='margin:0'>Flashes 3 times</span></div>"
-              "<div class='row'><button id='reboot'>Reboot</button><button class='ghost' id='change-wifi'>Reset WiFi only</button></div>"
+              "<div class='row'><button id='reboot'>Reboot</button><button class='ghost' id='change-wifi'>Change network</button></div>"
               "<p class='note' style='font-size:11px;color:#5a5247'>Reset WiFi only keeps your piece name and patterns. The card will reboot into setup mode \xE2\x80\x94 join its <strong>Lightweaver-XXXX</strong> WiFi from a phone to enter new credentials.</p>"
               "<details style='margin-top:14px;border:1px solid #3a2c1a;border-radius:8px;padding:12px;background:rgba(58,44,26,0.2)'>"
                 "<summary style='cursor:pointer;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#e07856'>Dangerous \xE2\x80\x94 erase everything</summary>"
@@ -1129,14 +1138,17 @@ void handleAdvancedRoot() {
 
   page += F("<div class='foot' id='foot'>");
   page += escapeHtml(stationActive ? cfg.activeHostname + ".local" : cfg.activeIp);
+  page += F(" &middot; firmware build ");
+  page += String(LW_BUILD_NUMBER);
   page += F("</div></div>"
             "<p class='bridge-utility' id='bridge-utility' hidden role='status' aria-live='polite'>Connection active — keep this window open while Studio uses the card.</p>");
 
   // Script
   page += F("<script>"
             "const $=id=>document.getElementById(id);"
-            "const post=async(p,b)=>{const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));return j};"
-            "const get=p=>fetch(p).then(r=>r.json());");
+            "const request=async(p,options={},timeoutMs=5000)=>{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs);try{const r=await fetch(p,{...options,cache:'no-store',signal:controller.signal});const j=await r.json();if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));return j}catch(e){if(controller.signal.aborted)throw new Error('The card did not answer in time. Check the connection and retry.');throw e}finally{clearTimeout(timer)}};"
+            "const post=(p,b,timeoutMs)=>request(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})},timeoutMs);"
+            "const get=(p,timeoutMs)=>request(p,{},timeoutMs);");
   page += studioOpenScript();
   page += studioBridgeScript();
   page += F(
@@ -1152,7 +1164,7 @@ void handleAdvancedRoot() {
     // until scanning:false (capped at ~30s), show a Scanning placeholder
     // meanwhile, and offer Rescan + a manual SSID field for hidden networks.
     page += F("const setScanPlaceholder=text=>{const sel=$('ssid');sel.innerHTML='';const o=document.createElement('option');o.value='';o.textContent=text;sel.appendChild(o)};"
-              "const renderNets=nets=>{const sel=$('ssid');sel.innerHTML='';nets.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=n.ssid+(n.rssi?' ('+n.rssi+'dBm)':'');sel.appendChild(o)});if(!nets.length){setScanPlaceholder('No networks found — rescan or type the name below');$('setup-more').open=true}};"
+              "const renderNets=nets=>{const sel=$('ssid');sel.innerHTML='';nets.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=n.ssid+(n.rssi?' ('+n.rssi+'dBm)':'');sel.appendChild(o)});const saved=$('saved-ssid');if(saved&&nets.some(n=>n.ssid===saved.textContent))sel.value=saved.textContent;if(!nets.length){setScanPlaceholder('No networks found — rescan or type the name below');$('setup-more').open=true}};"
               "let scanPolls=0,scanTimer=null;"
               "let scanRefresh=false;"
               "const pollScan=async()=>{scanTimer=null;try{const d=await get('/api/wifi/scan'+(scanRefresh?'?refresh=1':''));scanRefresh=false;if(d.scanning){if(scanPolls++<30){scanTimer=setTimeout(pollScan,1500)}else{renderNets([])}return}renderNets(d.networks||[])}catch(_){scanRefresh=false;if(scanPolls++<30){scanTimer=setTimeout(pollScan,1500)}else{renderNets([])}}};"
@@ -1160,20 +1172,22 @@ void handleAdvancedRoot() {
               "$('rescan').onclick=()=>startScan(true);"
               "startScan(false);"
               "let wifiJoinPollToken=0;"
-              "const pollWifiJoin=async(expectedGeneration,expectedBootId,pollToken)=>{const btn=$('join'),m=$('msg');let polls=0,readyReads=0;while(polls++<90){"
-              "await new Promise(resolve=>setTimeout(resolve,750));if(pollToken!==wifiJoinPollToken)return'cancelled';let s;try{s=await get('/api/status')}catch(_){continue}if(pollToken!==wifiJoinPollToken)return'cancelled';const w=s&&s.wifi||{};"
+              "const pollWifiJoin=async(expectedGeneration,expectedBootId,pollToken)=>{const btn=$('join'),m=$('msg');let polls=0,readyReads=0;const deadline=Date.now()+67500;while(polls++<90&&Date.now()<deadline){"
+              "await new Promise(resolve=>setTimeout(resolve,750));if(pollToken!==wifiJoinPollToken)return'cancelled';let s;try{s=await get('/api/status',Math.max(1,Math.min(5000,deadline-Date.now())))}catch(_){continue}if(pollToken!==wifiJoinPollToken)return'cancelled';const w=s&&s.wifi||{};"
               "if(s.bootId!==expectedBootId||w.handoffGeneration!==expectedGeneration){m.textContent='The card restarted or began another WiFi setup. Reopen this setup page and try again.';m.className='note err';btn.disabled=false;return'replaced'}"
-              "if(w.transition==='handoff-ready'&&w.transitionPending===true&&w.apActive===true&&w.stationIp){readyReads++;if(readyReads<2)continue;m.textContent='Verified: this card joined gallery WiFi at '+w.stationIp+'. Return this device to gallery WiFi now; Studio will continue automatically.';m.className='note ok';return'verified'}"
+              "if(w.transition==='handoff-ready'&&w.transitionPending===true&&w.apActive===true&&w.stationIp){readyReads++;if(readyReads<2)continue;m.textContent='Verified: this card joined gallery WiFi at '+w.stationIp+'. Return this device to gallery WiFi, then return to Studio to continue.';m.className='note ok';return'verified'}"
+              "if(w.transition==='station'&&w.transport==='station'&&w.stationIp){m.textContent='Connected to gallery WiFi at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';btn.disabled=false;return'verified'}"
               "readyReads=0;if(w.transition==='setup-ap'&&w.lastError){m.textContent='First gallery WiFi attempt did not connect: '+w.lastError+'. The card is retrying automatically every 10 seconds. You can also correct the network name or password and submit again.';m.className='note err';btn.disabled=false;continue}"
               "m.textContent='Credentials saved. Waiting for this card to verify its gallery WiFi connection…';m.className='note'}"
               "m.textContent='The card did not verify gallery WiFi in time. Stay on Lightweaver-XXXX, check the network name and password, then try again.';m.className='note err';btn.disabled=false;return'timeout'};"
               "const startWifiJoinPoll=(expectedGeneration,expectedBootId)=>pollWifiJoin(expectedGeneration,expectedBootId,++wifiJoinPollToken);"
-              "$('join').onclick=async()=>{const btn=$('join'),m=$('msg');const manual=$('ssid-manual').value.trim();const ssid=manual||$('ssid').value;"
+              "let pendingWifiSubmission=null;"
+              "const reconcileWifiJoin=async(pollToken)=>{if(!pendingWifiSubmission)return false;const pending=pendingWifiSubmission;const s=await get('/api/status');if(pollToken!==wifiJoinPollToken)return true;const w=s.wifi||{};if(s.cardId!==pending.cardId)throw new Error('A different card answered. Reopen setup for the intended card.');if(w.ssid!==pending.ssid)return false;if(s.bootId===pending.bootId&&w.handoffGeneration===pending.generation)return false;pendingWifiSubmission=null;await pollWifiJoin(w.handoffGeneration,s.bootId,pollToken);return true};"
+              "const submitWifi=async(payload,ssid)=>{const btn=$('join'),m=$('msg');const submitToken=++wifiJoinPollToken;btn.disabled=true;m.textContent='Checking the card…';m.className='note';try{if(await reconcileWifiJoin(submitToken))return;const before=await get('/api/status');if(submitToken!==wifiJoinPollToken)return;const w=before.wifi||{};if(payload.reuseSaved&&w.transport==='station'&&w.transition==='station'){m.textContent='Connected to saved network '+w.ssid+' at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';return}pendingWifiSubmission={cardId:before.cardId,bootId:before.bootId,generation:w.handoffGeneration,ssid};m.textContent='Saving…';const r=await post('/api/wifi',payload);if(submitToken!==wifiJoinPollToken)return;pendingWifiSubmission=null;await pollWifiJoin(r.handoffGeneration,r.bootId,submitToken)}catch(e){try{if(await reconcileWifiJoin(submitToken))return}catch(_){}if(submitToken===wifiJoinPollToken){m.textContent=e.message+' Retry will check whether the card already saved this network.';m.className='note err'}}finally{if(submitToken===wifiJoinPollToken)btn.disabled=false}};"
+              "const reuseWifi=$('reuse-wifi');if(reuseWifi)reuseWifi.onclick=async()=>{reuseWifi.disabled=true;try{await submitWifi({reuseSaved:true},$('saved-ssid').textContent)}finally{reuseWifi.disabled=false}};"
+              "$('join').onclick=async()=>{const m=$('msg');const manual=$('ssid-manual').value.trim();const ssid=manual||$('ssid').value;"
               "if(!ssid){m.textContent='Choose a network or type its name first.';m.className='note err';return}"
-              "const submitToken=++wifiJoinPollToken;btn.disabled=true;m.textContent='Saving…';m.className='note';"
-              "try{const r=await post('/api/wifi',{ssid:ssid,password:$('pw').value,hostname:$('hn').value});"
-              "if(r.ok){m.textContent='Credentials saved. Waiting for this card to verify its gallery WiFi connection…';m.className='note';await pollWifiJoin(r.handoffGeneration,r.bootId,submitToken)}"
-              "else{m.textContent=r.error||'Save failed';m.className='note err';btn.disabled=false}}catch(e){m.textContent=e.message;m.className='note err';btn.disabled=false}};");
+              "await submitWifi({ssid:ssid,password:$('pw').value,hostname:$('hn').value,clearPassword:$('clear-password').checked},ssid)};");
   } else if (!needsCommissioning) {
     page += F("let patterns=[],currentId='',blackoutOn=false;"
               "const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');"
@@ -1230,12 +1244,12 @@ void handleAdvancedRoot() {
               "$('find-wire').onclick=async()=>{const el=$('wiring-safe-status');try{const d=await post('/api/wiring/discover',{step:0});el.textContent=(d.rebooting||d.requiresReboot?'Card is restarting into wire discovery. Reconnect, then watch':'Watch')+' the dim amber pulse on GPIO '+d.pin+' (step '+(d.step+1)+' of '+d.stepCount+'). Confirm what you observe before trying step '+(d.nextStep+1)+'.'}catch(e){el.textContent=e.message;el.className='note err'}};"
               "$('identify').onclick=()=>{post('/api/identify',{});const m=$('set-msg');m.textContent='Watch the strip — it will flash 3 times.';m.className='note ok';setTimeout(()=>m.textContent='',3000)};"
               "$('reboot').onclick=async()=>{if(!confirm('Reboot the card? Everything stays saved; the strip will go dark for ~5 seconds.'))return;const m=$('set-msg');m.textContent='Rebooting…';m.className='note';await post('/api/reboot',{})};"
-              "$('change-wifi').onclick=()=>{if(!confirm('Reset WiFi only? Patterns and piece name stay. Card reboots into setup mode — you will need to rejoin it from a phone (Lightweaver-XXXX) to enter new WiFi credentials.'))return;const m=$('set-msg');m.textContent='Resetting WiFi…';m.className='note';post('/api/reset-wifi',{})};"
+              "$('change-wifi').onclick=()=>{location.href='/?wifiSetup=1'};"
               "$('factory').onclick=async()=>{const v=$('factory-confirm').value;if(v!=='RESET'){const m=$('set-msg');m.textContent='Type RESET in the box above first.';m.className='note err';return}const m=$('set-msg');m.textContent='Erasing everything and rebooting…';m.className='note';try{await post('/api/factory-reset',{confirm:'RESET'})}catch(e){}};"
               "$('rn-save').onclick=async()=>{const m=$('set-msg');m.textContent='Saving…';m.className='note';"
                 "const r=await post('/api/rename',{pieceName:$('rn-piece').value,hostname:$('rn-host').value});"
                 "if(r.ok){m.textContent='Saved. Reboot to use new hostname.';m.className='note ok'}else{m.textContent=r.error||'Failed';m.className='note err'}};"
-              "get('/api/firmware-info').then(d=>{const f=$('fw-info');f.textContent='build '+d.build+' • '+(d.freeHeap/1024|0)+'KB free • '+d.rssi+' dBm'}).catch(()=>{});"
+              "get('/api/firmware-info').then(d=>{const f=$('fw-info');f.textContent='build '+(d.buildNumber>0?d.buildNumber:'unknown')+' • '+(d.freeHeap/1024|0)+'KB free • '+d.rssi+' dBm'}).catch(()=>{});"
               "loadOnce();refreshWiringSafety();");
   }
 

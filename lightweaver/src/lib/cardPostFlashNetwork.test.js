@@ -178,6 +178,20 @@ test('observePostFlashNetwork stops early on a blank card instead of burning the
   assert.equal(port.closeCount, 1);
 });
 
+test('observePostFlashNetwork settles a silent blank-card AP without waiting for the whole observation budget', async () => {
+  const clock = fakeClock();
+  const port = scriptedPort([
+    'Runtime source: defaults / none\r\nLightweaver AP: Lightweaver-EEFF / 192.168.4.1\r\nCaptive DNS up\r\n',
+  ]);
+  const result = await observePostFlashNetwork({
+    port, now: clock.now, sleep: clock.sleep, timeoutMs: 25_000, settleMs: 3_000,
+  });
+  assert.equal(result.state, 'setup-ap');
+  assert.equal(result.reason, 'setup-ap-only');
+  assert.equal(port.closeCount, 1);
+  assert.equal(port.cancelled, true);
+});
+
 test('observePostFlashNetwork retries the reopen while the ESP32-S3 re-enumerates its USB', async () => {
   const clock = fakeClock();
   const port = scriptedPort(['WiFi station associated at 10.0.0.42\r\n'], { openErrors: 3 });

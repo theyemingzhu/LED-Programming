@@ -15,7 +15,6 @@ export const CARD_TASK_COPY = Object.freeze({
   'install-project': 'Install the current project on this exact card.',
   'discover-lights': 'Find and count the connected lights.',
   'place-lights': 'Place the discovered lights on the artwork.',
-  'verify-direction': 'Verify the physical direction of each strip.',
   'test-and-save': 'Test and save the project to the card.',
   'confirm-visible-lights': 'Confirm what the installed lights show.',
   'load-matching-project': 'Load the saved project that matches this card.',

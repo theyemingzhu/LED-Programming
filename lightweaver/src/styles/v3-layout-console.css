@@ -819,3 +819,7 @@
   overflow: visible;
   text-overflow: clip;
 }
+
+@media (pointer: coarse) {
+  .la .lww-tools-panel details > summary { min-height: 44px; }
+}

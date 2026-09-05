@@ -26,7 +26,9 @@ function buildNumberOf(source) {
 // network mutation path.
 export function cardSupportsNetworkFirmwareUpdate(readiness = {}) {
   const capability = readiness?.capabilities?.firmwareUpdate;
-  return capability?.version === 1 && capability.network === true;
+  return capability?.version === 1
+    && capability.network === true
+    && readiness.firmwareUpdateReady !== false;
 }
 
 // Software authorization arrived after the preserving network updater. Keep

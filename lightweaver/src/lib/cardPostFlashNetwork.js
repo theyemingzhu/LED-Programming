@@ -183,18 +183,35 @@ export async function observePostFlashNetwork({
   }
 
   let text = '';
-  let apFirstSeenAt = 0;
+  let apFirstSeenAt = null;
   let reader = null;
   try {
     reader = port.readable?.getReader?.();
     if (!reader) throw new Error('serial-unreadable');
     while (clock.now() < deadline) {
       const remaining = deadline - clock.now();
+      const currentEvidence = readPostFlashSerialEvidence(text);
+      if (currentEvidence.stationIp) {
+        return { state: 'station', stationIp: currentEvidence.stationIp, reason: 'station-associated' };
+      }
+      const settleRemaining = apFirstSeenAt !== null && !currentEvidence.stationAttempt
+        ? Math.max(0, settleMs - (clock.now() - apFirstSeenAt))
+        : remaining;
+      if (apFirstSeenAt !== null && !currentEvidence.stationAttempt && settleRemaining === 0) {
+        return { state: 'setup-ap', stationIp: '', reason: 'setup-ap-only' };
+      }
+      const waitMs = Math.min(remaining, settleRemaining);
       const chunk = await Promise.race([
         reader.read(),
-        clock.sleep(remaining).then(() => ({ expired: true })),
+        clock.sleep(waitMs).then(() => ({ expired: true })),
       ]);
-      if (!chunk || chunk.expired || chunk.done) break;
+      if (!chunk || chunk.done) break;
+      if (chunk.expired) {
+        if (apFirstSeenAt !== null && !currentEvidence.stationAttempt && clock.now() - apFirstSeenAt >= settleMs) {
+          return { state: 'setup-ap', stationIp: '', reason: 'setup-ap-only' };
+        }
+        break;
+      }
       if (chunk.value) text += decode(chunk.value);
       if (text.length > maxBytes) text = text.slice(-maxBytes);
 
@@ -204,11 +221,11 @@ export async function observePostFlashNetwork({
       if (evidence.stationIp) {
         return { state: 'station', stationIp: evidence.stationIp, reason: 'station-associated' };
       }
-      if (!apFirstSeenAt && (evidence.apStarted || evidence.captiveDns)) apFirstSeenAt = clock.now();
+      if (apFirstSeenAt === null && (evidence.apStarted || evidence.captiveDns)) apFirstSeenAt = clock.now();
       // A genuinely blank card never prints a station attempt. Once the
       // captive portal has been up past the settle window with no attempt,
       // the AP is the whole story — release USB and let setup continue.
-      if (apFirstSeenAt && !evidence.stationAttempt && clock.now() - apFirstSeenAt >= settleMs) {
+      if (apFirstSeenAt !== null && !evidence.stationAttempt && clock.now() - apFirstSeenAt >= settleMs) {
         return { state: 'setup-ap', stationIp: '', reason: 'setup-ap-only' };
       }
     }

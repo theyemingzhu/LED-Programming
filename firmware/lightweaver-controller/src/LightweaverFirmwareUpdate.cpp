@@ -655,7 +655,7 @@ void handleChallenge() {
       !strictHex(releaseBuildId, 40) || !strictHex(ticketSha256, 64)) {
     sendChallengeError(400, "challenge binding is incomplete"); return;
   }
-  if (!runtimeCommandReady() || lightweaverFirmwareUpdateActive()) {
+  if (!runtimeFirmwareUpdateReady() || lightweaverFirmwareUpdateActive()) {
     sendChallengeError(409, "card is not ready for an update challenge"); return;
   }
   FirmwareUpdateGrantBinding binding;
@@ -702,7 +702,7 @@ void handlePreflight() {
                     lightweaverCardStudioValidationError()); return;
   }
   if (lightweaverFirmwareUpdateActive() || lightweaverHttpFrameStreamActive() ||
-      lightweaverProjectRepository().stagingActive() || !runtimeCommandReady()) {
+      lightweaverProjectRepository().stagingActive() || !runtimeFirmwareUpdateReady()) {
     sendUpdateError(409, FirmwareUpdateResult::ConcurrentMutation); return;
   }
   FirmwareUpdateBinding binding = updateBinding(doc.as<JsonVariantConst>());

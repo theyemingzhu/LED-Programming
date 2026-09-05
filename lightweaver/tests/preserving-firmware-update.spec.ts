@@ -33,6 +33,7 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
         cardId, bootId: recovering ? 'boot-new' : 'boot-old', projectHead: head, projectFingerprint: fingerprint,
         firmwareVersion: recovering ? '1.2.0' : '1.1.1', buildId: recovering ? targetBuild : oldBuild,
         firmwareUpdate: { phase: recovering ? 'valid' : 'idle', rollbackReason: '' },
+        ...(outcome === 'blank-ready' ? { runtimePhase: 'factory', configValid: false, knownGoodProject: false, commandReady: false, playbackReady: false, firmwareUpdateReady: true, projectId: '', projectHead: '', projectFingerprint: '' } : {}),
         ...(capabilityShape === 'current'
           ? { capabilities: { firmwareUpdate: { version: 1, network: mode === 'wifi', softwareGrant: mode === 'wifi' } } }
           : capabilityShape === 'network-physical'
@@ -331,4 +332,14 @@ test('preserving update: USB reset ends with an actionable bounded reconnect fai
   await expect(panel.getByRole('alert')).toContainText(/could not verify the restarted card/i);
   await expect(panel).not.toContainText('Restarting card');
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('lw_firmware_update_session_v1') || 'null')?.phase)).toBe('restarting');
+});
+
+
+test('preserving update: a blank card with explicit update readiness can start without a project', async ({ page }) => {
+  await openPreservingFixture(page, 'wifi', 'blank-ready');
+  const panel = page.getByTestId('preserving-update-panel');
+  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
+  await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
+  await expect(panel).toContainText('Restarting card');
+  await expect(panel.getByRole('alert')).toHaveCount(0);
 });

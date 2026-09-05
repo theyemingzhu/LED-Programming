@@ -51,6 +51,11 @@ int main() {
   assert(rate.allow(1000 + LW_FIRMWARE_UPDATE_RATE_WINDOW_MS) == true);
 
   LightweaverFirmwareTransferState state;
+  auto blankBinding = binding(); blankBinding.expectedProjectHead = "";
+  assert(state.preflight(blankBinding, 16, 1) == FirmwareUpdateResult::Accepted);
+  assert(state.begin(blankBinding, "blank-lease", 2) == FirmwareUpdateResult::Accepted);
+  assert(state.acceptChunk(blankBinding, "blank-lease", 1, 0, 16, 3) == FirmwareUpdateResult::Accepted);
+  state.reset();
   auto expected = binding();
   assert(state.preflight(expected, 16, 1000) == FirmwareUpdateResult::Accepted);
   assert(state.begin(expected, "lease-a", 1001) == FirmwareUpdateResult::Accepted);

@@ -16,7 +16,7 @@ export const CONNECTED_CARD_LINK_STATES = Object.freeze(['connected-direct', 'co
 export const SETUP_TASK_IDS = Object.freeze([
   'connect-card', 'pair-card', 'reconnect-card', 'recover-operation',
   'update-firmware', 'configure-wifi', 'install-project', 'discover-lights',
-  'place-lights', 'verify-direction', 'test-and-save', 'confirm-visible-lights',
+  'place-lights', 'test-and-save', 'confirm-visible-lights',
   'load-matching-project', 'open-patterns',
 ]);
 
@@ -68,6 +68,18 @@ function connectedExactCard(cardLink) {
 
 function commissioningStage(commissioningFlow) {
   return commissioningFlow?.stage ?? commissioningFlow?.flow?.stage ?? '';
+}
+
+function exactWiringTest(wiringStatus, cardLink) {
+  if (!wiringStatus?.activationId) return false;
+  const state = String(wiringStatus.state || '').trim().toLowerCase();
+  const candidateState = String(wiringStatus.candidateState || '').trim().toLowerCase();
+  if (state !== 'testing' && !['testing', 'awaiting-confirmation'].includes(candidateState)) return false;
+  const expectedId = String(cardLink?.expectedCard?.id || cardLink?.card?.id || cardLink?.readiness?.cardId || '').trim();
+  const observedId = String(wiringStatus.cardId || '').trim();
+  if (!expectedId || observedId !== expectedId) return false;
+  const expectedBuild = String(cardLink?.card?.buildId || cardLink?.readiness?.buildId || '').trim();
+  return !expectedBuild || String(wiringStatus.buildId || '').trim() === expectedBuild;
 }
 
 function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution }) {
@@ -217,20 +229,8 @@ function layoutProgress(project) {
   const placementDone = layout?.starterPending === false
     && Array.isArray(layout.strips)
     && layout.strips.length > 0;
-  const runs = Array.isArray(layout?.wiring?.runs)
-    ? layout.wiring.runs.filter(run => run?.type === 'strip')
-    : [];
-  // Direction is physical evidence owned by Layout/Wire, not another Setup
-  // checkbox. The canonical wiring verification is cleared whenever output,
-  // count, or direction changes, so it is the durable proof this phase needs.
-  const directionDone = placementDone
-    && layout?.wiring?.verified === true
-    && runs.length > 0
-    && runs.every(run => run?.verified === true
-      && ['source-forward', 'source-reverse'].includes(run?.physicalDirection));
   return [
     { id: 'placement', status: placementDone ? 'done' : 'current' },
-    { id: 'direction', status: directionDone ? 'done' : placementDone ? 'current' : 'locked' },
   ];
 }
 
@@ -283,10 +283,23 @@ export function deriveSetupJourney({
   project,
   resolution,
   verification,
+  wiringStatus,
 } = {}) {
   const blockers = connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution });
   const progress = lightProgress(project);
   const currentLayoutProgress = layoutProgress(project);
+
+  if (exactWiringTest(wiringStatus, cardLink)) {
+    return withTask({
+      diagnosis: { state: 'setup-required' },
+      phases: phasesFor('verify', progress, currentLayoutProgress),
+      blockers: [],
+      currentPhaseId: 'verify',
+      nextAction: { id: 'confirm-visible-lights', taskId: 'confirm-visible-lights', phaseId: 'verify' },
+      resumeDestination: null,
+      setupComplete: false,
+    });
+  }
 
   if (commissioningStage(commissioningFlow) === 'check-lights') {
     return withTask({
@@ -372,10 +385,7 @@ export function deriveSetupJourney({
     nextAction = { id: 'discover-lights', phaseId: 'lights' };
   } else if (!layoutComplete(currentLayoutProgress)) {
     currentPhaseId = 'layout';
-    nextAction = {
-      id: currentLayoutProgress[0].status === 'done' ? 'verify-direction' : 'place-lights',
-      phaseId: 'layout',
-    };
+    nextAction = { id: 'place-lights', phaseId: 'layout' };
   } else if (!exactVerificationComplete(verification)) {
     currentPhaseId = 'verify';
     nextAction = nextVerificationAction(verification);

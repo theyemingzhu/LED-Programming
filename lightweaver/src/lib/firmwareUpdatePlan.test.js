@@ -15,6 +15,14 @@ test('network update capability is read from the exact firmware status envelope'
   }), true);
   assert.equal(cardSupportsNetworkFirmwareUpdate({ firmwareUpdate: { version: 1, network: true } }), false);
   assert.equal(cardSupportsNetworkFirmwareUpdate({ capabilities: { firmwareUpdate: { version: 1, network: false } } }), false);
+  assert.equal(cardSupportsNetworkFirmwareUpdate({
+    firmwareUpdateReady: false,
+    capabilities: { firmwareUpdate: { version: 1, network: true } },
+  }), false, 'an explicitly damaged/unready update path stays blocked');
+  assert.equal(cardSupportsNetworkFirmwareUpdate({
+    firmwareUpdateReady: true, commandReady: false, knownGoodProject: false,
+    capabilities: { firmwareUpdate: { version: 1, network: true } },
+  }), true, 'a blank card may update independently of playback readiness');
 });
 
 test('software update grants require an explicit nested capability bit', () => {

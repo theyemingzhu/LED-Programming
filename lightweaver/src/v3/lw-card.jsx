@@ -125,6 +125,7 @@ function CardHomePanels({
   onStartNewProject,
   suppressMatchingProject = false,
   yieldPrimary = false,
+  wiringTestActive = false,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
@@ -397,6 +398,14 @@ function CardHomePanels({
         ? presentations.reasonFailure(lifecycleReason)
         : presentations.notConnected();
       break;
+  }
+
+  if (wiringTestActive) {
+    presentation = {
+      tone: 'connecting',
+      redundant: true,
+      message: 'Testing lights. Use the final setup controls above to confirm or restore them.',
+    };
   }
 
   // Connect actions must be visible: prefer the connection center when the
@@ -694,11 +703,11 @@ function CardHomePanels({
           className="card-support-panel card-checks-panel"
           aria-label="Hardware checks and recovery"
           data-testid="card-checks-recovery"
-          open={!ready || benchProject}
+          open={(!ready && !wiringTestActive) || benchProject}
         >
           <summary><h2>Checks &amp; recovery</h2></summary>
           <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
-          {!ready && (
+          {!ready && !wiringTestActive && (
             <p role="status">
               This card is answering but is not reporting a ready runtime. Recover lights is
               the check to run first — the card accepts it in this state.
@@ -855,6 +864,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // While it is, every surface below it renders secondary controls — one
   // primary per page. See the comment on `ladderOwnsPrimary` in lw-setup.jsx.
   const [ladderOwnsPrimary, setLadderOwnsPrimary] = useState(false);
+  const [wiringTestActive, setWiringTestActive] = useState(false);
 
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
@@ -874,7 +884,17 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
     || !['install', 'workshop', 'preferences'].includes(route.section);
+  const installIntentOpen = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   let content;
+  const installAction = installIntentOpen ? (
+    <CardInstallAction
+      connected={connected}
+      cardHost={cardHost}
+      yieldPrimary={ladderOwnsPrimary}
+      onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+    />
+  ) : null;
   // Card Home: the guided journey, the one install action, evidence panels,
   // then Hardware and Advanced folded underneath.
   if (home) content = (
@@ -890,17 +910,22 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
         onPrimaryActionChange={setLadderOwnsPrimary}
+        onWiringTestActiveChange={setWiringTestActive}
+        installAction={installAction}
       />
-      <CardInstallAction
-        connected={connected}
-        cardHost={cardHost}
-        yieldPrimary={ladderOwnsPrimary}
-        onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
-      />
+      {!installIntentOpen && (
+        <CardInstallAction
+          connected={connected}
+          cardHost={cardHost}
+          yieldPrimary={ladderOwnsPrimary}
+          onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+        />
+      )}
       <CardHomePanels
         {...cardProps}
         suppressMatchingProject={setupLoadOffer}
         yieldPrimary={ladderOwnsPrimary}
+        wiringTestActive={wiringTestActive}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onOpenSection={onOpenSection}
         go={go}
