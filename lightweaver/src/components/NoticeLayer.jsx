@@ -32,46 +32,53 @@ function NoticeCard({ notice }) {
       aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
     >
       {notice.tone === 'progress' && <span className="lw-notice-spinner" aria-hidden="true" />}
-      <div className="lw-notice-copy">
-        {notice.title && <strong>{notice.title}</strong>}
-        {notice.body && <span>{notice.body}</span>}
-      </div>
-      {(notice.actions.length > 0 || dismissible) && (
-        <div className="lw-notice-actions">
-          {notice.actions.map((action, index) => (
-            <button
-              key={action.testId || action.label}
-              type="button"
-              // The first action is the recommended one. The rest stay quiet,
-              // so a two-way question reads as a question and not as two
-              // equally urgent demands.
-              className={index === 0 ? 'lw-notice-act is-primary' : 'lw-notice-act'}
-              data-testid={action.testId || undefined}
-              disabled={action.disabled}
-              onClick={() => {
-                // An action decides its own fate: most resolve the condition
-                // that raised the notice, and the publisher retracts by key.
-                action.onSelect();
-              }}
-            >
-              {action.label}
-            </button>
-          ))}
-          {dismissible && (
-            <button
-              type="button"
-              className="lw-notice-close"
-              // "Dismiss notice" verbatim: it is the accessible name every
-              // workspace-notice spec drives the close button by, and the
-              // button sits inside the notice's own live region, so a screen
-              // reader already has the message for context.
-              aria-label="Dismiss notice"
-              onClick={() => dismissNotice(notice.id, { notify: true })}
-            >
-              ×
-            </button>
-          )}
+      {/* Copy and actions share one wrapping row. With one short action the
+          button sits beside the text; with two or three it wraps onto its own
+          line rather than forcing the card wider than the layer — which is
+          what happened the first time this was built, and put a notice past
+          the right edge of its own stack. */}
+      <div className="lw-notice-main">
+        <div className="lw-notice-copy">
+          {notice.title && <strong>{notice.title}</strong>}
+          {notice.body && <span>{notice.body}</span>}
         </div>
+        {notice.actions.length > 0 && (
+          <div className="lw-notice-actions">
+            {notice.actions.map((action, index) => (
+              <button
+                key={action.testId || action.label}
+                type="button"
+                // The first action is the recommended one. The rest stay quiet,
+                // so a two-way question reads as a question and not as two
+                // equally urgent demands.
+                className={index === 0 ? 'lw-notice-act is-primary' : 'lw-notice-act'}
+                data-testid={action.testId || undefined}
+                disabled={action.disabled}
+                onClick={() => {
+                  // An action decides its own fate: most resolve the condition
+                  // that raised the notice, and the publisher retracts by key.
+                  action.onSelect();
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {dismissible && (
+        <button
+          type="button"
+          className="lw-notice-close"
+          // "Dismiss notice" verbatim: it is the accessible name every
+          // workspace-notice spec drives the close button by, and the button
+          // sits inside the notice's own live region, so a screen reader
+          // already has the message for context.
+          aria-label="Dismiss notice"
+          onClick={() => dismissNotice(notice.id, { notify: true })}
+        >
+          ×
+        </button>
       )}
     </div>
   );

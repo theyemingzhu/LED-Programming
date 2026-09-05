@@ -17,8 +17,8 @@
 /* ── The stack ─────────────────────────────────────────────
    Docked bottom-left, clear of the 32px status bar. Bottom-LEFT
    because every screen's action buttons cluster top-right, so a
-   notice here can never land on the control that raised it.
-   column-reverse puts the newest nearest the status bar, so new
+   notice here can never land on the control that raised it. The
+   newest renders last, so it sits nearest the status bar and new
    information always arrives at the same place on screen rather
    than the stack growing under the eye. */
 .lw-notice-layer {
@@ -60,9 +60,11 @@
   position: relative;
   width: 100%;
   display: flex;
-  align-items: flex-start;
   gap: 10px;
   padding: 10px 10px 10px 13px;
+  /* The close button is a sibling of the wrapping main row, so it stays
+     pinned to the top-right whatever the actions below it do. */
+  align-items: flex-start;
   border: 1px solid var(--border-soft);
   border-left: 2px solid var(--lw-notice-tone);
   border-radius: var(--r-md);
@@ -101,7 +103,17 @@
   to   { opacity: 0; transform: translateX(24%); }
 }
 
-.lw-notice-copy { min-width: 0; display: grid; gap: 1px; }
+.lw-notice-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  /* Wrapping is what keeps a three-button notice inside its own stack.
+     Without it the nowrap buttons forced the card wider than the layer. */
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.lw-notice-copy { flex: 1 1 190px; min-width: 0; display: grid; gap: 1px; }
 .lw-notice-copy strong {
   color: var(--text-hi);
   font-size: 12.5px;
@@ -111,9 +123,11 @@
 
 .lw-notice-actions {
   margin-left: auto;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .lw-notice-act {
