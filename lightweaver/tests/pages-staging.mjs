@@ -149,9 +149,8 @@ assert.match(testWorkflow, /wrangler d1 migrations apply PROJECTS_DB[\s\S]*?--co
 assert.doesNotMatch(testWorkflow, /^\s{2}pull_request:/m);
 assert.match(testWorkflow, /CI_BASE_SHA:\s*\$\{\{ github\.event\.merge_group\.base_sha \|\| github\.event\.before \}\}/);
 assert.match(testWorkflow, /CI_HEAD_SHA:\s*\$\{\{ github\.event\.merge_group\.head_sha \|\| github\.sha \}\}/);
-assert.match(testWorkflow, /needs: \[classify, source, browser, cloud, production, firmware, artifact\]/);
-assert.match(testWorkflow, /if: \$\{\{ always\(\) \}\}/);
-assert.match(testWorkflow, /if \[ "\$result" = "failure" \] \|\| \[ "\$result" = "cancelled" \]/);
+assert.doesNotMatch(testWorkflow, /^  gate:/m);
+assert.doesNotMatch(testWorkflow, /Require every selected lane/);
 
 assert.match(
   workflow,

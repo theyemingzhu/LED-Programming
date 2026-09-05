@@ -175,7 +175,7 @@ test('generator advances the required release without raising the trusted firmwa
   }
 });
 
-test('fast Tests workflow exposes one aggregate gate over every focused lane', async () => {
+test('fast Tests workflow relies on selected lane conclusions without a runner-only aggregate', async () => {
   const workflow = await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8');
   assert.doesNotMatch(workflow, /^\s{2}pull_request:/m, 'Tests must not spend minutes on every PR update');
   assert.doesNotMatch(workflow, /github\.event\.pull_request/, 'removed PR events must not remain in source selection');
@@ -183,7 +183,7 @@ test('fast Tests workflow exposes one aggregate gate over every focused lane', a
   assert.match(workflow, /^\s{2}workflow_dispatch:/m);
   assert.match(workflow, /branches:\s*\n\s*- main/);
   assert.doesNotMatch(workflow, /workflow_call:/);
-  const jobs = ['classify', 'source', 'browser', 'cloud', 'production', 'firmware', 'artifact', 'gate'];
+  const jobs = ['classify', 'source', 'browser', 'cloud', 'production', 'firmware', 'artifact'];
   for (const [index, job] of jobs.entries()) {
     assert.match(workflow, new RegExp(`^  ${job}:`, 'm'), `Tests workflow must define ${job}`);
     const start = workflow.indexOf(`\n  ${job}:\n`);
@@ -194,8 +194,7 @@ test('fast Tests workflow exposes one aggregate gate over every focused lane', a
     assert.ok(timeout, `${job} must have a bounded timeout`);
     assert.ok(Number(timeout[1]) <= 30, `${job} timeout must not exceed 30 minutes`);
   }
-  assert.match(workflow, /gate:\s*\n\s*name: gate\s*\n\s*if: \$\{\{ always\(\) \}\}/);
-  assert.match(workflow, /needs: \[classify, source, browser, cloud, production, firmware, artifact\]/);
+  assert.doesNotMatch(workflow, /^  gate:/m, 'workflow conclusion must not require a separate billed runner');
   assert.doesNotMatch(workflow, /npm run launch:(?:source|check)/, 'fast lanes must not rerun the monolithic launch gate');
   assert.doesNotMatch(workflow, /test:release-ui|--shard=/, 'blocking browser validation must remain a focused smoke set');
   for (const [job, nextJob] of [
