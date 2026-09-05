@@ -291,7 +291,7 @@ test('focused browser script covers core workflow without embedding the full rel
   const regression = packageJson.scripts['ci:browser-regression'];
   assert.equal(
     smoke,
-    'playwright test tests/workflow.spec.ts tests/screen-smoke.spec.ts tests/card-workspace.spec.ts --project=chromium --workers=1 --grep "imports SVG|every primary screen|Hardware loads the verified production project|Hardware offers an exact current project|reachable recovering factory card uses URL IP"',
+    'playwright test tests/workflow.spec.ts tests/screen-smoke.spec.ts tests/card-workspace.spec.ts --project=chromium --workers=1 --grep "imports SVG|every primary screen|Hardware loads the verified production project|Hardware offers an exact current project|reachable recovering factory card uses URL IP" && playwright test tests/strip-discovery.spec.ts --project=chromium --workers=1',
   );
   assert.match(regression, /npm run test:show/);
   assert.match(regression, /npm run test:screen-recovery/);
