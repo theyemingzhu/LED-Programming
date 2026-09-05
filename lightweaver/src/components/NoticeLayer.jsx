@@ -36,21 +36,27 @@ function NoticeCard({ notice }) {
         {notice.title && <strong>{notice.title}</strong>}
         {notice.body && <span>{notice.body}</span>}
       </div>
-      {(notice.action || dismissible) && (
+      {(notice.actions.length > 0 || dismissible) && (
         <div className="lw-notice-actions">
-          {notice.action && (
+          {notice.actions.map((action, index) => (
             <button
+              key={action.testId || action.label}
               type="button"
-              className="lw-notice-act"
+              // The first action is the recommended one. The rest stay quiet,
+              // so a two-way question reads as a question and not as two
+              // equally urgent demands.
+              className={index === 0 ? 'lw-notice-act is-primary' : 'lw-notice-act'}
+              data-testid={action.testId || undefined}
+              disabled={action.disabled}
               onClick={() => {
-                // The action decides its own fate: most resolve the condition
+                // An action decides its own fate: most resolve the condition
                 // that raised the notice, and the publisher retracts by key.
-                notice.action.onSelect();
+                action.onSelect();
               }}
             >
-              {notice.action.label}
+              {action.label}
             </button>
-          )}
+          ))}
           {dismissible && (
             <button
               type="button"

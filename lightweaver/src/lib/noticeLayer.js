@@ -65,11 +65,43 @@ function normalizeTone(tone) {
   return NOTICE_TONES.includes(value) ? value : 'info';
 }
 
-function normalizeAction(action) {
+// A notice may carry up to three buttons, and each keeps its own testId and
+// its own disabled state.
+//
+// The single-button version of this was wrong, and it was wrong in the
+// expensive direction: three migrations hit it on the first day. A two-button
+// question ("Yes, warm white is visible" / "No, lights are still dark") cannot
+// be represented by one slot without silently dropping the answer nobody
+// clicked first, and a button a spec drives by testid — or asserts
+// `toBeDisabled()` on mid-recovery — cannot be represented at all. The result
+// was real recovery actions left stranded in the old in-flow markup, or
+// dropped outright on paths no test happened to cover. Breadth here is not
+// luxury: it is what lets a message and its answer travel together.
+//
+// Three is the cap because a fourth button is a decision, and a decision
+// belongs on the screen that owns it, not in a corner notice.
+const MAX_NOTICE_ACTIONS = 3;
+
+function normalizeOneAction(action) {
   if (!action || typeof action !== 'object') return null;
   const label = String(action.label || '').trim();
   if (!label || typeof action.onSelect !== 'function') return null;
-  return { label, onSelect: action.onSelect };
+  return {
+    label,
+    onSelect: action.onSelect,
+    testId: String(action.testId || '').trim(),
+    disabled: action.disabled === true,
+  };
+}
+
+// Accepts `actions: [...]`, a single `action: {...}`, or both — publishers
+// written against the first version of this contract keep working.
+function normalizeActions(input) {
+  const raw = [
+    ...(Array.isArray(input.actions) ? input.actions : []),
+    ...(input.action ? [input.action] : []),
+  ];
+  return raw.map(normalizeOneAction).filter(Boolean).slice(0, MAX_NOTICE_ACTIONS);
 }
 
 // The visible stack is capped. Beyond the cap the layer renders an overflow
@@ -136,7 +168,7 @@ export function publishNotice(input = {}) {
     // state for the same condition can retire it too — without this, state
     // and layer disagree and the notice returns on the next unrelated render.
     onDismiss: typeof input.onDismiss === 'function' ? input.onDismiss : null,
-    action: normalizeAction(input.action),
+    actions: normalizeActions(input),
     // Every notice records where it came from. When one turns up looking
     // wrong, this is the difference between a five-minute grep and an hour.
     source: String(input.source || '').trim(),

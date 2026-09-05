@@ -130,7 +130,11 @@
   white-space: nowrap;
   transition: background .12s, border-color .12s;
 }
-.lw-notice-act:hover { background: var(--bg-elev-2); border-color: var(--lw-notice-tone); }
+.lw-notice-act:hover:not(:disabled) { background: var(--bg-elev-2); border-color: var(--lw-notice-tone); }
+/* The recommended answer carries the tone; the alternatives stay quiet, so a
+   two-way question reads as one recommendation plus an out, not two demands. */
+.lw-notice-act.is-primary { border-color: var(--lw-notice-tone); color: var(--text-hi); }
+.lw-notice-act:disabled { opacity: .45; cursor: default; }
 .lw-notice-close {
   min-width: 26px;
   min-height: 26px;
