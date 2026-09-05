@@ -954,9 +954,6 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          {ledCountState.message && (
-            <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
-          )}
           <button type="button" className={ledCountEntry ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
             {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
               ? 'Review the connected lights'
@@ -1033,6 +1030,9 @@ export function SetupScreen({
       </section>
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
+        {ledCountState.message && (
+          <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
+        )}
         {adoptionError && (
           <p className="lw-setup-error" role="alert" data-testid="setup-adoption-error">{adoptionError}</p>
         )}

@@ -51,7 +51,9 @@ test('the Check and install CTA opens Card install', async ({ page }) => {
   await page.getByTestId('layout-check-and-install').click();
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(1);
+  await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
+  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
 });
 
 test('#screen=layout&mode=wire opens Card install, not a Layout tab', async ({ page }) => {
@@ -59,7 +61,9 @@ test('#screen=layout&mode=wire opens Card install, not a Layout tab', async ({ p
 
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(1);
+  await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
+  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
   await expect(page.getByTestId('layout-mode-switch')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Find your connected card/i })).toHaveCount(0);
 });

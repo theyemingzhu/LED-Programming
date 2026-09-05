@@ -30,9 +30,12 @@ test('Hardware fold has no primary Install on card row', async ({ page }) => {
   await expect(fold.getByRole('button', { name: 'Installer guide' })).toHaveCount(0);
 });
 
-test('Card Home shows the commissioning install', async ({ page }) => {
+test('Card Home gives connection to the setup journey without a duplicate install', async ({ page }) => {
   await page.goto(CARD_HOME, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('commissioning-step')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('setup-connect-card')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('setup-connect-card')).toHaveCount(1);
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
 });
 
 test('the card address stays editable, because it is also the recovery path', async ({ page }) => {
