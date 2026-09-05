@@ -9,7 +9,7 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 // scrollWidth stayed clean, so the standard overflow assertion never saw it.
 // See todo/plans/patternlab-rebuild.md §7 Phase 1.
 //
-// It lives in its own config because `ci:browser-smoke` runs `test:show` and
+// It lives in its own config because `ci:browser-regression` runs `test:show` and
 // `test:screen-recovery` WITHOUT `--project`, so every project declared in the main
 // config runs implicitly. A phone profile there doubles desktop-era specs onto a
 // device they were never written for. Same pattern as windowless-playwright.config.ts.

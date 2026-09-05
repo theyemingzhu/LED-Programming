@@ -22,7 +22,7 @@ const allLanes = {
 
 // A signed card release is on demand, not a tax on every visual change: the
 // firmware lane still runs its TESTS for Studio changes (a bundle that no
-// longer fits must fail on the pull request), but the signer and the site
+// longer fits must fail in the exact main gate), but the signer and the site
 // deploy read firmwareBundleOnly so a colour tweak neither mints a release nor
 // waits twenty minutes for one.
 test('Studio-only changes are firmware-sensitive for tests but produce no signed release', () => {
@@ -56,22 +56,22 @@ test('the conservative everything-runs answer never skips a release', () => {
   assert.equal(firmwareBundleOnly(['lightweaver/src/v3/lw-pattern.jsx'], { conservative: true }), false);
 });
 
-test('shared Studio UI changes select source, browser, and firmware-sensitive lanes', () => {
+test('shared Studio UI changes select source, browser, cloud, and firmware-sensitive lanes', () => {
   assert.deepEqual(classifyChangedPaths(['lightweaver/src/v3/lw-pattern.jsx']), {
     source: true,
     browser: true,
-    cloud: false,
+    cloud: true,
     production: false,
     firmware: true,
     artifact: false,
   });
 });
 
-test('Studio domain libraries select source, browser, and firmware-sensitive lanes', () => {
+test('Studio domain libraries select source, browser, cloud, and firmware-sensitive lanes', () => {
   assert.deepEqual(classifyChangedPaths(['lightweaver/src/lib/cardProjectResolver.js']), {
     source: true,
     browser: true,
-    cloud: false,
+    cloud: true,
     production: false,
     firmware: true,
     artifact: false,
@@ -196,6 +196,28 @@ test('cloud and production paths select their bounded browser lanes', () => {
 test('workflow and classifier configuration changes conservatively select every lane', () => {
   assert.deepEqual(classifyChangedPaths(['.github/workflows/test.yml']), allLanes);
   assert.deepEqual(classifyChangedPaths(['scripts/ci-changed-lanes.mjs']), allLanes);
+});
+
+test('CI controls do not turn a proven package scripts change into a signed release', () => {
+  const paths = [
+    '.github/workflows/test.yml',
+    'scripts/ci-changed-lanes.mjs',
+    'scripts/ci-changed-lanes.test.mjs',
+    'docs/deployment-checklist.md',
+    'lightweaver/package.json',
+  ];
+  assert.equal(classifyChangedPaths(paths, { cardBundleUnchanged: true }).firmware, true);
+  assert.equal(firmwareBundleOnly(paths), true);
+});
+
+test('CI controls cannot hide a hard firmware input from signing', () => {
+  const paths = [
+    '.github/workflows/test.yml',
+    'scripts/ci-changed-lanes.mjs',
+    'lightweaver/package.json',
+    'firmware/lightweaver-controller/src/main.cpp',
+  ];
+  assert.equal(firmwareBundleOnly(paths), false);
 });
 
 test('lightweaver/package.json defers the firmware lane to the byte-level bundle proof, unlike workflow/classifier files', () => {

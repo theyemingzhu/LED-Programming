@@ -21,6 +21,9 @@ const GENERATED_RELEASE_PATHS = Object.freeze([
 
 const isPath = (path, prefix) => path === prefix || path.startsWith(`${prefix}/`);
 const isAnyPath = (path, prefixes) => prefixes.some(prefix => isPath(path, prefix));
+const isReleaseNeutralCiControlPath = path => path === '.github/workflows/test.yml'
+  || path === 'scripts/ci-changed-lanes.mjs'
+  || path === 'scripts/ci-changed-lanes.test.mjs';
 
 export function isGeneratedReleaseChange(paths) {
   return paths.length > 0
@@ -245,17 +248,22 @@ function parseArguments(argv) {
 // (a hard firmware path) triggers on demand.
 //
 // The firmware TEST lane is unaffected — Studio changes still compile against
-// the card, so a bundle that no longer fits is caught on the pull request
-// rather than twenty minutes into a release.
+// the card, so a bundle that no longer fits is caught by the exact main gate
+// rather than twenty minutes into a release. CI controls also select that
+// conservative test lane, but do not by themselves turn an otherwise
+// bundle-only diff into a signed release.
 export function firmwareBundleOnly(paths, {
   conservative = false,
   generatedRelease = false,
 } = {}) {
   if (conservative) return false;
   const options = { conservative, generatedRelease };
-  const withBundle = classifyChangedPaths(paths, { ...options, cardBundleUnchanged: false });
+  const releasePaths = (paths || [])
+    .map(path => String(path || '').trim().replace(/^\.\//, ''))
+    .filter(path => path && !isReleaseNeutralCiControlPath(path));
+  const withBundle = classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: false });
   if (!withBundle.firmware) return false;
-  return classifyChangedPaths(paths, { ...options, cardBundleUnchanged: true }).firmware === false;
+  return classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: true }).firmware === false;
 }
 
 function writeOutputs(lanes, paths, outputPath, signedRelease = false, bundleOnly = false) {

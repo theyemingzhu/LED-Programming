@@ -37,10 +37,10 @@ export default defineConfig({
     timeout: 30000,
   },
   // Desktop only. A phone profile deliberately does NOT live here: two scripts
-  // in ci:browser-smoke (`test:show`, `test:screen-recovery`) run playwright
+  // in ci:browser-regression (`test:show`, `test:screen-recovery`) run playwright
   // WITHOUT --project, so any project added to this file is picked up
   // implicitly and runs specs never written for it. Adding Pixel 5 here failed
-  // browser smoke on four show-screen tests that click controls sitting behind
+  // browser regression on four show-screen tests that click controls sitting behind
   // the mobile drawer. The phone lens lives in tests/mobile-playwright.config.ts
   // and is run deliberately, never implicitly.
   projects: [

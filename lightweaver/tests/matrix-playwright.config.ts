@@ -4,7 +4,7 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 // The card state matrix — see docs/card-state-matrix.md.
 //
 // Its own config for the same reason the phone lens has one: two scripts in
-// ci:browser-smoke run playwright WITHOUT --project, so anything declared in
+// ci:browser-regression run playwright WITHOUT --project, so anything declared in
 // the root config runs implicitly. The matrix is deliberate, never implicit.
 //
 // The live tier (tests/live-card-states.spec.ts) is EXCLUDED here — it writes
