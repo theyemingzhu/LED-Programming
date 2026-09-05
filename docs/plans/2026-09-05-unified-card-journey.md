@@ -318,3 +318,59 @@ Track each row as `not run`, `automated passed`, `physical pending`, `passed`, `
 The build is integration-complete only when B0–B5 deliverables and applicable automated journey rows pass, affected real screens are inspected, and all required physical observations are passed or explicitly outstanding in the handoff. Do not call it fully proven with physical requirements outstanding. Shipment additionally requires B6: tested integrated `origin/main`, terminal signer commit when applicable, real production deployment, no-store release marker and exact staged/live files, with Studio and firmware commit-count build numbers. Existing release blockers remain blockers.
 
 Freeze feature scope during final verification. Any newly discovered issue must name the acceptance row it blocks; otherwise record it for later. This keeps “thorough” finite and prevents the build from becoming another endless series of unrelated repairs.
+
+## 2026-09-05 B0 — integration baseline (conductor record)
+
+Recorded before the first implementation edit, as the blueprint requires.
+
+| Fact | Value | How it was established |
+| --- | --- | --- |
+| Integration branch | `claude/lightweaver-audit-refinement-9a5034`, isolated worktree | `git worktree list` |
+| Baseline revision | `aba1e6f5` = `origin/main` `2747224f` + the planning docs cherry-picked from `codex/unified-card-journey-handoff` (`c9baeac4`) | `git log`, `git fetch origin main` |
+| Working tree | clean at start | `git status --short` empty |
+| Pending repairs | `codex/update-to-playback` is already contained in `main` (merged as PR #216); nothing from it is pending | `git branch --merged main` |
+| Delta since the audit snapshot `0af4b750` | No change under `lightweaver/src/`, `firmware/lightweaver-controller/src/` (except the generated Studio bundle header), or `scripts/bench-check*`. Changes are `.github/workflows/test.yml`, the signed release artifacts from the #216 signer, `scripts/ci-changed-lanes.*`, `scripts/production-job-consistency.test.mjs`, three Playwright configs, `layout-hardening.spec.ts`, `patterns-v3.spec.ts`. The E01–E14 source inventory therefore still describes current `main`. | `git diff --stat 0af4b750 main` |
+| Deployed Studio | build **1551**, source revision `0e299ff5`, read live with no-cache | `curl https://led.mandalacodes.com/studio-release.json` |
+| Local `main` commit count | **1560** — `main` is nine commits ahead of what is live; the next ship carries them | `git rev-list --count main` |
+| Unit baseline | `npm run test:unit` → 2262 tests, 2262 pass, 0 fail, 11.8 s | run in this worktree at `aba1e6f5` |
+| B2 Node lanes at baseline | `test:firmware-update:unit` 19/19; `test:firmware-update:firmware` five contract suites pass (ticket, state, web contract, boot health, blank readiness); `scripts/bench-check.test.mjs` + `ci-release-owed.test.mjs` 15/15; native contracts `update-blank-readiness`, `saved-network-reuse`, `card-page-request-deadline`, `wifi-project-preservation` pass | run in this worktree; simulated — not hardware proof |
+
+### Ledger reconciliation at `aba1e6f5`
+
+Every row was re-read in the current source, not carried from the audit.
+
+| ID | Status at baseline | What was verified |
+| --- | --- | --- |
+| E01 | present | `src/lib/cardFlowEntry.js` resolves intents; chip, footer and screens call `openCardFlow`. |
+| E02 | **gap confirmed** | `deriveSetupJourney` has three consumers with three input sets: `lw-setup.jsx:417` passes `resolution` + `wiringStatus`; `SetupJourneyChip.jsx:30` and `app.jsx:1142` (`openSetupTask`) pass neither. `resumeDestination` is produced at `setupJourney.js:328,409` and consumed nowhere. Card Home learns "light test active" only through the `onWiringTestActiveChange` prop callback (`lw-card.jsx:913`), a component-scoped second channel. |
+| E03 | present | `lw-setup.jsx:425,1007` — confirmation branch renders from the journey's `confirm-visible-lights` task. |
+| E04 | present | `footerFirmwareStatus.js` + `installFirmwareEvidence.js` wired in `app.jsx:1116–1137`; verification settles on exact card/boot evidence. |
+| E05 | present | `firmwareUpdateRecovery.js` bounds reconnect to 45 s with exponential backoff and terminal blockers; `cardCommissioningFlow.js` holds the durable flow. |
+| E06 | present | `lw-card.jsx:968` → automatic installer → commissioning panel (not re-audited beyond route). |
+| E07 | present | `discoveryCommit.js`, `cardProjectAdoption.js`; Setup auto-adopts only where nothing can be lost (`lw-setup.jsx:576–634`). |
+| E08 | present | `CardInstallAction.jsx`, `CardPushControl.jsx` wrap writes in `withStudioHardwareOperation`, which is the existing invalidation bus (`lw-hardware-operation-active`). |
+| E09–E12 | present, not re-audited | Out of B1's path; covered by existing suites listed in the acceptance ledger. |
+| E13, E14 | present; physical proof pending | Firmware repairs from #216 are in `main`; native contracts above pass; hardware preservation/power-cut still Bench evidence. |
+
+### Test harness fact the audit missed
+
+`lightweaver/tests/harness/cardSimulator.ts` is already the "one stateful simulated card" the blueprint asks for (mutable state, refusals, reboot, offline, bridge relay). Its one journey-relevant hole: after `/api/wiring/activate` it still answers `staged`, so no browser test could put a card into the live light-test state that the E02 discrepancy depends on. B5 extends the simulator before writing the agreement scenario.
+
+### Owners used in this run
+
+Cheapest capable, per the blueprint: one Studio owner (deeper model, because B1 is the cross-boundary shared-authority change Sprint reserves the deeper model for), one test/docs owner (balanced model), no firmware owner — no firmware contract gap was demonstrated at baseline. The conductor owns this plan, the workboard, `package.json` script lanes and integration.
+
+## Blueprint iteration — holes found by the conductor's survey (additive)
+
+The blueprint is kept whole; these rows extend it. Each names the concrete mechanism the blueprint left abstract, so the next reader cannot re-invent it.
+
+| # | Hole in the blueprint | What this build does about it | Package |
+| --- | --- | --- | --- |
+| H1 | "One canonical snapshot assembler" named no mechanism, so each consumer would keep assembling its own subset. | A module-scoped evidence store (`src/lib/cardJourneyEvidence.js`, same pattern as `cardLink.js`) holds the card's wiring status, status envelope and project resolution, keyed by **card id + boot id**; `src/lib/setupJourneyInputs.js` is the one assembler every consumer calls. Evidence from another boot is not evidence. | B1 |
+| H2 | Freshness/invalidation was a table with no trigger. | The existing `lw-hardware-operation-active` event (already fired by every card write) marks the store stale; the hook re-reads once per (card, boot, operation). No polling loop is added. | B1 |
+| H3 | Component-scoped prop callbacks (`onWiringTestActiveChange`, `onPrimaryActionChange`, `onLoadOfferChange`) are a second journey channel that only exists while Setup is mounted — the same class of defect THINKING.md 2026-08-07 records for routing. | Card Home reads "light test active" from the shared journey; callbacks are removed where every caller is updated, otherwise retained and listed. | B1 |
+| H4 | `resumeDestination` is documented as "align through routing" but nothing says where the return intent lives. | `src/lib/cardReturnIntent.js` (sessionStorage, one-use, card-scoped) remembers the working screen a card flow was opened from; Setup's completion primary resolves stored intent → journey `resumeDestination` → Patterns, and its label names the destination. No timed navigation. | B2 |
+| H5 | J13 ("all setup surfaces agree during an active light test") was listed with no way to put a simulated card into that state. | Simulator gains the firmware's real wiring-test lifecycle (`testing` / `awaiting-confirmation`, probation, confirm, rollback, expiry) and `beginWiringTest()`; the agreement spec asserts one `data-journey-task` across the chip and Card Home. | B5 |
+| H6 | B5 named no CI lane. THINKING.md 2026-08-31 shows a spec outside the PR gate rots for weeks. | `tests/journey-continuity.spec.ts` is added to `ci:browser-smoke` so it runs on every PR. | B5 (conductor edits `package.json` scripts) |
+| H7 | Reads were unbounded in the blueprint's "double entry points join the same pending operation" rule (it covered writes only). | The evidence store's refresh is single-flight per (card, boot, tick); Setup publishes its own read so the chip never double-reads the same card. | B1 |
+| H8 | "Bounded local diagnostic trail" — `src/lib/cardLinkJournal.js` already exists and is not mentioned. | Reuse it; journey transitions should append there rather than to new storage. Recorded as follow-up, not done in this run. | later |
