@@ -177,11 +177,22 @@ test('generator advances the required release without raising the trusted firmwa
 
 test('fast Tests workflow exposes one aggregate gate over every focused lane', async () => {
   const workflow = await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8');
+  assert.doesNotMatch(workflow, /^\s{2}pull_request:/m, 'Tests must not spend minutes on every PR update');
+  assert.doesNotMatch(workflow, /github\.event\.pull_request/, 'removed PR events must not remain in source selection');
   assert.match(workflow, /merge_group:/);
+  assert.match(workflow, /^\s{2}workflow_dispatch:/m);
   assert.match(workflow, /branches:\s*\n\s*- main/);
   assert.doesNotMatch(workflow, /workflow_call:/);
-  for (const job of ['classify', 'source', 'browser', 'cloud', 'production', 'firmware', 'artifact', 'gate']) {
+  const jobs = ['classify', 'source', 'browser', 'cloud', 'production', 'firmware', 'artifact', 'gate'];
+  for (const [index, job] of jobs.entries()) {
     assert.match(workflow, new RegExp(`^  ${job}:`, 'm'), `Tests workflow must define ${job}`);
+    const start = workflow.indexOf(`\n  ${job}:\n`);
+    const nextJob = jobs[index + 1];
+    const end = nextJob ? workflow.indexOf(`\n  ${nextJob}:\n`, start + 1) : workflow.length;
+    const segment = workflow.slice(start, end);
+    const timeout = segment.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/m);
+    assert.ok(timeout, `${job} must have a bounded timeout`);
+    assert.ok(Number(timeout[1]) <= 30, `${job} timeout must not exceed 30 minutes`);
   }
   assert.match(workflow, /gate:\s*\n\s*name: gate\s*\n\s*if: \$\{\{ always\(\) \}\}/);
   assert.match(workflow, /needs: \[classify, source, browser, cloud, production, firmware, artifact\]/);
@@ -219,6 +230,7 @@ test('focused package scripts compose existing checks without weakening launch c
   for (const name of [
     'ci:source-build',
     'ci:browser-smoke',
+    'ci:browser-regression',
     'ci:cloud',
     'ci:production',
     'ci:firmware-sensitive',
@@ -276,15 +288,33 @@ test('manual deploy cannot bypass protected signing for a firmware-sensitive rev
 test('focused browser script covers core workflow without embedding the full release suite', async () => {
   const packageJson = await readJson('lightweaver/package.json');
   const smoke = packageJson.scripts['ci:browser-smoke'];
-  assert.match(smoke, /tests\/workflow\.spec\.ts/);
-  assert.match(smoke, /tests\/screen-smoke\.spec\.ts/);
-  assert.match(smoke, /tests\/card-workspace\.spec\.ts/);
-  assert.match(smoke, /--grep/);
-  assert.match(smoke, /reachable recovering factory card uses URL IP/);
-  assert.match(smoke, /Hardware loads the verified production project/);
-  assert.match(smoke, /npm run test:show/);
-  assert.match(smoke, /npm run test:screen-recovery/);
+  const regression = packageJson.scripts['ci:browser-regression'];
+  assert.equal(
+    smoke,
+    'playwright test tests/workflow.spec.ts tests/screen-smoke.spec.ts tests/card-workspace.spec.ts --project=chromium --workers=1 --grep "imports SVG|every primary screen|Hardware loads the verified production project|Hardware offers an exact current project|reachable recovering factory card uses URL IP"',
+  );
+  assert.match(regression, /npm run test:show/);
+  assert.match(regression, /npm run test:screen-recovery/);
+  assert.match(regression, /tests\/pattern-lab-authoring\.spec\.ts/);
+  assert.match(regression, /npm run test:mobile/);
   assert.doesNotMatch(smoke, /test:release-ui|--shard/);
+  assert.match(packageJson.scripts['launch:source'], /npm run ci:browser-regression/);
+  assert.doesNotMatch(packageJson.scripts['launch:source'], /npm run test:(?:show|screen-recovery)/);
+});
+
+test('Tests workflow runs only the bounded browser smoke and targeted card checks', async () => {
+  const workflow = await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8');
+  const browserJob = workflow.slice(workflow.indexOf('\n  browser:\n'), workflow.indexOf('\n  cloud:\n'));
+  assert.match(browserJob, /npm run ci:browser-smoke/);
+  assert.match(browserJob, /npm run test:windowless:browser/);
+  assert.match(browserJob, /npm run test:firmware-update:browser/);
+  assert.doesNotMatch(browserJob, /ci:browser-regression/);
+});
+
+test('deployment checklist describes the exhaustive launch check as weekly', async () => {
+  const checklist = await readFile(resolve(repoRoot, 'docs/deployment-checklist.md'), 'utf8');
+  assert.doesNotMatch(checklist, /nightly(?:\/manual)? `Exhaustive launch check`|runs nightly/);
+  assert.match(checklist, /weekly\/manual `Exhaustive launch check`/);
 });
 
 test('exhaustive workflow retains the complete launch gate and Linux Rollup repair', async () => {

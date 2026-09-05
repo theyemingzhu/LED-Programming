@@ -114,7 +114,7 @@ keys:
 7. One fully erased physical card completes the live Production Setup route and
    [`new-card-checklist.md`](new-card-checklist.md). Only then may a batch begin.
 
-The unchanged exhaustive `npm run launch:check` runs nightly and on manual
+The unchanged exhaustive `npm run launch:check` runs weekly and on manual
 dispatch in `exhaustive.yml`. Its failure is a release incident: investigate it
 and keep the next shipment blocked until the exact current `main` revision is
 green. It does not retroactively turn a previously proven live revision into a
@@ -134,7 +134,7 @@ steps 5–7. A human manual deploy with missing credentials fails loudly.
       signature, manifest schema 2 and signature, provenance, regenerated job
       source, content-addressed job, and job index.
 - [ ] Signed release commit is current; record commit: `____________`.
-- [ ] The most recent nightly/manual `Exhaustive launch check` is green on
+- [ ] The most recent weekly/manual `Exhaustive launch check` is green on
       current `main`; if not, this shipment remains blocked.
 - [ ] Deploy workflow says the Cloudflare upload ran—not **NOT RUN**.
 - [ ] `PROD_CHECK_REQUIRED=1 npm run check:prod` passed after publish, including

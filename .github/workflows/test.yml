@@ -1,19 +1,10 @@
 name: Tests
 
-# One exact source gate. A repository-owned classifier selects bounded lanes;
-# the always-run `gate` job is the sole branch-protection check.
+# One exact merged-source gate. Pull-request updates are proved locally instead
+# of spending the shared Actions allowance on every intermediate commit. A
+# repository-owned classifier selects bounded lanes, and the always-run `gate`
+# job is the single aggregate result for main, merge queue, and manual runs.
 on:
-  pull_request:
-    paths:
-      - 'lightweaver/**'
-      - 'led-art-mapper/**'
-      - 'packages/installer-core/**'
-      - 'firmware/**'
-      - 'release/**'
-      - 'scripts/**'
-      - 'docs/**'
-      - 'TODO.md'
-      - '.github/workflows/**'
   merge_group:
   push:
     branches:
@@ -34,12 +25,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.merge_group.head_sha || github.ref }}
+  group: tests-${{ github.event_name }}-${{ github.event.merge_group.head_sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   classify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       source: ${{ steps.lanes.outputs.source }}
       browser: ${{ steps.lanes.outputs.browser }}
@@ -59,8 +51,8 @@ jobs:
         id: lanes
         env:
           CI_ACTOR: ${{ github.actor }}
-          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-          CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          CI_BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before }}
+          CI_HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
         run: |
           if [ "$CI_ACTOR" = "github-actions[bot]" ] \
             && [ "$(git log -1 --format=%s "$CI_HEAD_SHA")" = "CI: publish signed Lightweaver firmware release" ]; then
@@ -78,6 +70,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.source == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -106,6 +99,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: browser smoke
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -135,6 +129,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.cloud == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -159,6 +154,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.production == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -183,6 +179,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.firmware == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -214,12 +211,12 @@ jobs:
       # AFTER merge: the PR went green, main landed, the signer went red on its
       # own workflow, Deploy site deferred to a signer that would never publish,
       # and the site kept serving the previous build. Three changes shipped days
-      # late that way. Ask for the bump here, where it is one line and the
-      # change has not merged yet.
+      # late that way. Ask for the bump in the exact-source gate, before the
+      # protected signer starts, where the correction is one follow-up on main.
       #
       # The predecessor is read from the committed manifest, not the live site:
       # the signer commits it in the same job that publishes, so the two always
-      # agree, and a PR gate must not depend on the network being up.
+      # agree, and the exact-source gate must not depend on the network being up.
       #
       # Only when a release will actually be built. build-firmware.yml skips the
       # signer outright when the firmware lane fired solely because Studio source
@@ -233,7 +230,7 @@ jobs:
           previous="$(node -p 'require("./lightweaver/public/firmware/release-manifest.json").firmwareVersion')"
           current="$(tr -d '\r\n' < firmware/lightweaver-controller/VERSION)"
           if ! npm run --silent firmware:version:check --prefix lightweaver -- --previous "$previous" >/dev/null; then
-            echo "::error file=firmware/lightweaver-controller/VERSION::This change is firmware-sensitive, so it can only reach led.mandalacodes.com through the protected signer — and the signer will refuse version $current because $previous is already signed. Bump firmware/lightweaver-controller/VERSION (and the literal in firmware/lightweaver-controller/tests/firmware-version-policy.mjs, which pins it) before merging."
+            echo "::error file=firmware/lightweaver-controller/VERSION::This change is firmware-sensitive, so it can only reach led.mandalacodes.com through the protected signer — and the signer will refuse version $current because $previous is already signed. Bump firmware/lightweaver-controller/VERSION (and the literal in firmware/lightweaver-controller/tests/firmware-version-policy.mjs, which pins it), then rerun the exact main gate."
             exit 1
           fi
           echo "Firmware version $current is publishable over signed $previous."
@@ -255,6 +252,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.artifact == 'true' && needs.classify.outputs.firmware != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -284,6 +282,7 @@ jobs:
     if: ${{ always() }}
     needs: [classify, source, browser, cloud, production, firmware, artifact]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Require every selected lane
         env:
