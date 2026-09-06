@@ -46,7 +46,9 @@ overflow at 375 px). No card write, flash or deploy was performed.
    `card.waitForPlaying`, screen facts on `data-testid` only, never on prose.
    Use `refuse`, `respondThenDrop`, `goOffline/goOnline`, `reboot`,
    `beginWiringTest`, `expireWiringProbation`. Never swap in a fresh "already
-   successful" fixture mid-test.
+   successful" fixture mid-test. A frozen stub whose zones already show the
+   requested pattern makes any lost-reply read-back succeed: model the card
+   *before* the write.
 5. **Shared decisions.** Never call `deriveSetupJourney` from a screen; use
    `useSetupJourney` / `assembleSetupJourney`. Never add a second store of the
    current screen (the URL hash is the only one). A write whose reply was lost
