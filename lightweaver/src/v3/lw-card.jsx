@@ -6,6 +6,7 @@ import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.js
 import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
 import { SetupScreen } from './lw-setup.jsx';
+import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
@@ -864,7 +865,21 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // While it is, every surface below it renders secondary controls — one
   // primary per page. See the comment on `ladderOwnsPrimary` in lw-setup.jsx.
   const [ladderOwnsPrimary, setLadderOwnsPrimary] = useState(false);
-  const [wiringTestActive, setWiringTestActive] = useState(false);
+  // The card is mid light-test. Read from the SHARED journey (the same one the
+  // Patterns/Playlist chip and the shell's task router read) rather than only
+  // from the Setup screen's prop callback, so this page's panels stand down for
+  // a test that any screen can see. The callback is kept and OR-ed in: it is
+  // the earlier signal on a first mount, before Setup has published what it
+  // read, and removing it would open a window where the panels do not yield.
+  const [setupReportedWiringTest, setWiringTestActive] = useState(false);
+  const sharedJourney = useSetupJourney({
+    cardLink,
+    cardLifecycle,
+    project: currentProject,
+    refresh: false,
+  });
+  const wiringTestActive = setupReportedWiringTest
+    || sharedJourney.taskId === 'confirm-visible-lights';
 
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required

@@ -30,7 +30,12 @@ export type CardRequest = { method: string; path: string; body: unknown };
 
 export type CardSimulator = {
   /** Live, mutable. Assertions read this to ask the CARD what it is doing. */
-  state: CardStateSpec & { cardId: string; bootId: string; stateRevision: number };
+  state: CardStateSpec & {
+    cardId: string; bootId: string; stateRevision: number;
+    /** True from activate until confirm/rollback/expiry — the probation window. */
+    wiringTestActive: boolean;
+    wiringProbationRemainingMs: number;
+  };
   install(page: Page): Promise<void>;
   /** The pattern the card is actually playing right now. */
   playingId(): string;
@@ -54,10 +59,38 @@ export type CardSimulator = {
   goOffline(): void;
   /** Answer again. Pass a new host to model the card returning on a new address. */
   goOnline(): void;
+
+  // ── Wiring test lifecycle ─────────────────────────────────────────────────
+  /**
+   * Put the card straight into the "testing" state, as if Studio had already
+   * staged a wiring change and activated it (the card rebooted with the
+   * candidate live and probation running). Skips the staged intermediate —
+   * use this when a test's subject is what happens DURING the test, not the
+   * activation itself.
+   */
+  beginWiringTest(options?: { pixels?: number; pin?: number }): void;
+  /**
+   * The card's own probation deadline elapses with nobody confirming or
+   * rolling back — exactly what firmware does when nothing calls
+   * /api/wiring/confirm before LW_WIRING_PROBATION_MS: it reboots back to the
+   * prior known-good wiring on its own.
+   */
+  expireWiringProbation(): void;
+
+  /**
+   * A request that the card genuinely APPLIES — the mutation lands — but
+   * whose reply never arrives, modelling a lost reply after a successful
+   * write. Different from `refuse`, which never applies the request at all;
+   * this is the case that makes a naive retry send a second, real, duplicate
+   * command.
+   */
+  respondThenDrop(path: string, options?: { times?: number }): void;
 };
 
 const ZONE_ID = 'zone-all';
 const STAGED_ACTIVATION_ID = 'act-matrix-1';
+/** LW_WIRING_PROBATION_MS in firmware/lightweaver-controller/src/LightweaverTypes.h. */
+const WIRING_PROBATION_MS = 90000;
 
 function hasProject(state: CardStateSpec) {
   return String(state.projectId || '').trim() !== '';
@@ -159,7 +192,10 @@ function statusBody(state: CardSimulator['state']) {
     outputInitialization: outputReadyOf(state)
       ? { ok: true, code: 'ready', message: 'configured project outputs initialized' }
       : { ok: false, code: 'no-outputs', message: 'no configured project outputs' },
-    wiringProbation: { active: false, remainingMs: 0 },
+    wiringProbation: {
+      active: state.wiringTestActive === true,
+      remainingMs: state.wiringTestActive ? state.wiringProbationRemainingMs : 0,
+    },
     limits: { pixels: 65535, outputs: 4, looks: 32, zones: 12, rangesPerZone: 6, configStorageBytes: 3968 },
     kaleidoscopeMappings: [],
     recipeCapabilities: {
@@ -258,21 +294,31 @@ function patternsBody(state: CardSimulator['state']) {
  */
 function wiringStatusBody(state: CardSimulator['state']) {
   const staged = state.wiringTransactionOpen;
+  // Field-for-field against runtimeWiringSafetyStatus() in
+  // firmware/lightweaver-controller/src/main.cpp: state is computed from the
+  // candidate's lifecycle (WIRING_CANDIDATE_STAGED → 'staged',
+  // WIRING_CANDIDATE_BOOTING/AWAITING_CONFIRMATION → 'testing'), and
+  // candidateState carries the finer label — 'awaiting-confirmation' is what
+  // the card reports once it has rebooted with the candidate live and is
+  // waiting for a human to look at the strip. Before this, /api/wiring/status
+  // kept answering 'staged' forever after activate, because nothing here read
+  // the testing flag activate had already set on the write side.
+  const testing = state.wiringTestActive === true;
   return {
     app: 'Lightweaver',
     ok: true,
-    state: staged ? 'staged' : 'known-good',
-    candidateState: staged ? 'staged' : 'none',
-    activationId: staged ? STAGED_ACTIVATION_ID : '',
+    state: testing ? 'testing' : staged ? 'staged' : 'known-good',
+    candidateState: testing ? 'awaiting-confirmation' : staged ? 'staged' : 'none',
+    activationId: (testing || staged) ? STAGED_ACTIVATION_ID : '',
     ledType: 'WS2812B',
     hasKnownGood: state.pixels > 0,
-    hasCandidate: staged,
-    bootedCandidate: false,
+    hasCandidate: testing || staged,
+    bootedCandidate: testing,
     discoveryActive: false,
-    probationMs: 90000,
-    remainingProbationMs: 0,
-    testing: false,
-    nextStep: staged ? 'activate' : 'none',
+    probationMs: WIRING_PROBATION_MS,
+    remainingProbationMs: testing ? state.wiringProbationRemainingMs : 0,
+    testing,
+    nextStep: testing ? 'confirm-physical-lights' : staged ? 'activate' : 'none',
     outputsReady: state.pixels > 0,
     cardId: state.cardId,
     firmwareVersion: state.firmwareVersion,
@@ -297,7 +343,7 @@ function wiringStatusBody(state: CardSimulator['state']) {
         segments: [{ id: 'run-strip-1', count: state.pixels, direction: 'forward' }],
       }]
       : [],
-    candidateOutputs: staged
+    candidateOutputs: (staged || testing)
       ? [{
         id: 'out1', pin: state.pin, pixels: state.pixels,
         segments: [{ id: 'run-strip-1', count: state.pixels, direction: 'forward' }],
@@ -359,12 +405,21 @@ export function createCardSimulator(
     // Wiring the card is holding but has not adopted — the candidate slot.
     stagedPixels: undefined as number | undefined,
     stagedPin: undefined as number | undefined,
+    // Set on activate/beginWiringTest, cleared on confirm/rollback/expiry.
+    wiringTestActive: false,
+    wiringProbationRemainingMs: 0,
+    // What the card was running before this test began — the rollback target.
+    preTestPixels: undefined as number | undefined,
+    preTestPin: undefined as number | undefined,
   };
   const requests: CardRequest[] = [];
   const unhandled: string[] = [];
   let dropped = 0;
   let offline = false;
   const refusals = new Map<string, { status: number; body: unknown; times: number }>();
+  // Requests whose mutation is applied for real, but whose HTTP reply is
+  // withheld — a lost reply after a successful write, not a refusal.
+  const dropRepliesAfterApply = new Map<string, number>();
 
   function applyControl(body: Record<string, unknown>) {
     state.stateRevision += 1;
@@ -465,30 +520,52 @@ export function createCardSimulator(
         };
       case '/api/wiring/status':
         return ok(wiringStatusBody(state));
-      case '/api/wiring/activate':
+      case '/api/wiring/activate': {
         // The card boots the candidate and enters probation with a new bootId,
         // exactly as the firmware does — which is what makes Studio have to
-        // survive a reboot mid-install.
+        // survive a reboot mid-install. Save what was running before, so a
+        // rollback (owner-driven or on probation expiry) has something to
+        // return to.
+        state.preTestPixels = state.pixels;
+        state.preTestPin = state.pin;
         if (Number.isFinite(state.stagedPixels)) state.pixels = Number(state.stagedPixels);
         if (Number.isFinite(state.stagedPin)) state.pin = Number(state.stagedPin);
+        state.wiringTransactionOpen = false;
+        state.wiringTestActive = true;
+        state.wiringProbationRemainingMs = WIRING_PROBATION_MS;
         state.bootId = `${state.bootId}-act`;
         return ok({
           ok: true, state: 'testing', activationId: STAGED_ACTIVATION_ID,
-          rebooting: true, remainingProbationMs: 90000,
+          rebooting: true, remainingProbationMs: WIRING_PROBATION_MS,
           nextStep: 'confirm-physical-lights',
           currentOutputs: wiringStatusBody(state).currentOutputs,
         });
+      }
       case '/api/wiring/confirm':
-      case '/api/wiring/rollback':
+      case '/api/wiring/rollback': {
+        const rollback = path.endsWith('rollback');
+        // A confirm promotes the candidate that is already running (activate
+        // applied it); a rollback returns to what was running before the
+        // test, exactly as the firmware's own rollback reboot does.
+        if (rollback) {
+          if (state.preTestPixels !== undefined) state.pixels = state.preTestPixels;
+          if (state.preTestPin !== undefined) state.pin = state.preTestPin;
+        }
         state.wiringTransactionOpen = false;
+        state.wiringTestActive = false;
+        state.wiringProbationRemainingMs = 0;
         state.stagedPixels = undefined;
         state.stagedPin = undefined;
+        state.preTestPixels = undefined;
+        state.preTestPin = undefined;
+        if (rollback) state.bootId = `${state.bootId}-rb`;
         return ok({
-          ok: true, state: path.endsWith('confirm') ? 'known-good' : 'rolled-back',
-          activationId: STAGED_ACTIVATION_ID, rebooting: !path.endsWith('confirm'),
-          remainingProbationMs: 0, nextStep: path.endsWith('confirm') ? 'none' : 'find-led-wire',
+          ok: true, state: rollback ? 'rolled-back' : 'known-good',
+          activationId: STAGED_ACTIVATION_ID, rebooting: rollback,
+          remainingProbationMs: 0, nextStep: rollback ? 'find-led-wire' : 'none',
           currentOutputs: wiringStatusBody(state).currentOutputs,
         });
+      }
       case '/api/reboot':
         state.bootId = `${state.bootId}-r`;
         return ok({ ok: true, message: 'rebooting' });
@@ -600,6 +677,19 @@ export function createCardSimulator(
     await new Promise(resolve => setTimeout(resolve, method === 'GET' ? latency.read : latency.write));
 
     const answer = respond(method, path, body);
+
+    // The write already landed above — respond() mutated state — but the
+    // reply the owner would use to know that is withheld, modelling exactly
+    // the case that makes a naive "no reply, so retry" turn one real command
+    // into two.
+    const dropCount = dropRepliesAfterApply.get(path);
+    if (dropCount && dropCount > 0) {
+      const remaining = dropCount - 1;
+      if (remaining > 0) dropRepliesAfterApply.set(path, remaining);
+      else dropRepliesAfterApply.delete(path);
+      return route.abort('connectionrefused');
+    }
+
     return route.fulfill({
       status: answer.status,
       contentType: 'application/json',
@@ -637,6 +727,33 @@ export function createCardSimulator(
     },
     goOffline() { offline = true; },
     goOnline() { offline = false; },
+    beginWiringTest(options = {}) {
+      state.preTestPixels = state.pixels;
+      state.preTestPin = state.pin;
+      if (Number.isFinite(options.pixels)) state.pixels = Number(options.pixels);
+      if (Number.isFinite(options.pin)) state.pin = Number(options.pin);
+      state.wiringTransactionOpen = false;
+      state.wiringTestActive = true;
+      state.wiringProbationRemainingMs = WIRING_PROBATION_MS;
+      state.bootId = `${state.bootId}-act`;
+    },
+    expireWiringProbation() {
+      if (!state.wiringTestActive) return;
+      if (state.preTestPixels !== undefined) state.pixels = state.preTestPixels;
+      if (state.preTestPin !== undefined) state.pin = state.preTestPin;
+      state.wiringTransactionOpen = false;
+      state.wiringTestActive = false;
+      state.wiringProbationRemainingMs = 0;
+      state.stagedPixels = undefined;
+      state.stagedPin = undefined;
+      state.preTestPixels = undefined;
+      state.preTestPin = undefined;
+      state.bootId = `${state.bootId}-exp`;
+    },
+    respondThenDrop(path, options = {}) {
+      const times = options.times ?? 1;
+      dropRepliesAfterApply.set(path, (dropRepliesAfterApply.get(path) || 0) + times);
+    },
     async install(page: Page) {
       for (const host of CARD_HOSTS) {
         await page.route(`http://${host}/**`, handle);

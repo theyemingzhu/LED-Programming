@@ -89,7 +89,9 @@ import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
-import { CONNECTED_CARD_LINK_STATES, deriveSetupJourney } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
+import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
+import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
@@ -1139,11 +1141,15 @@ function Shell({ offlineUpdateController = null }) {
     if (installActiveRef.current) return;
     markCardSectionNavigation();
     flushProjectAutosave();
-    const journey = deriveSetupJourney({
+    // The same evidence Card Home and the working-screen chip decide from. This
+    // used to call deriveSetupJourney with a reduced subset, so the task the
+    // shell routed to could name a different step than the screen it landed on.
+    const journey = assembleSetupJourney({
       cardLink,
       cardLifecycle,
       commissioningFlow: inspectCardCommissioning().flow,
       project: serializeProject(),
+      evidence: getCardJourneyEvidence(),
     });
     routeStore.replace(`#screen=card&section=setup&task=${encodeURIComponent(taskId || journey.taskId)}`);
   }, [cardLifecycle, cardLink, flushProjectAutosave, routeStore, serializeProject]);

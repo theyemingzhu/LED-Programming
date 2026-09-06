@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CONNECTED_CARD_LINK_STATES, SETUP_PHASE_IDS, deriveSetupJourney } from '../lib/setupJourney.js';
+import React from 'react';
+import { CONNECTED_CARD_LINK_STATES, SETUP_PHASE_IDS } from '../lib/setupJourney.js';
 import { cardTaskCopy } from '../lib/cardTaskCopy.js';
-import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
+import { useSetupJourney } from '../hooks/useSetupJourney.js';
 
 // The one setup reminder a working screen (Patterns, Playlist) is allowed to
 // carry. It replaced the 6-step JOURNEY_STEPS hint, which was a second journey
@@ -14,25 +14,15 @@ import { openCardFlow } from '../lib/cardFlowEntry.js';
 // One line, one action: the chip names the current phase and the exact next
 // task (the same copy table Card Home uses), and clicking it runs
 // openCardFlow('fix'), which routes to that task's own surface.
+//
+// The journey now comes from the shared hook rather than a local
+// `deriveSetupJourney` call with whatever this component happened to know.
+// That local call was the defect: with the card mid light-test, Card Home asked
+// the owner to confirm what they could see on the strip while this chip — blind
+// to the wiring status, because nothing had handed it one — reported the setup
+// finished and removed itself.
 export function SetupJourneyChip({ cardLink, cardLifecycle, project }) {
-  // Commissioning state lives in storage, not props; re-read it when the flow
-  // announces a change so the chip's phase tracks an in-flight commissioning.
-  const [commissioningTick, bump] = useState(0);
-  useEffect(() => {
-    const sync = () => bump(tick => tick + 1);
-    window.addEventListener('storage', sync);
-    window.addEventListener(CARD_COMMISSIONING_CHANGED_EVENT, sync);
-    return () => {
-      window.removeEventListener('storage', sync);
-      window.removeEventListener(CARD_COMMISSIONING_CHANGED_EVENT, sync);
-    };
-  }, []);
-  const journey = useMemo(() => deriveSetupJourney({
-    cardLink,
-    cardLifecycle,
-    commissioningFlow: inspectCardCommissioning().flow,
-    project,
-  }), [cardLink, cardLifecycle, commissioningTick, project]);
+  const journey = useSetupJourney({ cardLink, cardLifecycle, project });
   if (journey.setupComplete) return null;
   // Footer already owns "connected or not". Repeating "Setup: phase 1 of 4"
   // on Patterns while no card is talking sent people back into Connect/Setup
@@ -46,7 +36,13 @@ export function SetupJourneyChip({ cardLink, cardLifecycle, project }) {
       type="button"
       className="setup-journey-chip"
       data-testid="setup-journey-chip"
-      onClick={() => openCardFlow('fix', { lifecycle: cardLifecycle, journey })}
+      data-journey-task={journey.taskId}
+      data-journey-complete={journey.setupComplete ? 'true' : 'false'}
+      onClick={() => openCardFlow('fix', {
+        lifecycle: cardLifecycle,
+        journey,
+        cardId: cardLink?.card?.id || cardLink?.readiness?.cardId || '',
+      })}
     >
       Setup: phase {phaseNumber} of {SETUP_PHASE_IDS.length} — {cardTaskCopy(journey.taskId)}
     </button>
