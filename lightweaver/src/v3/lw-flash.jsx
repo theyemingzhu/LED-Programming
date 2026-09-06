@@ -68,6 +68,7 @@ import {
   clearActiveUsbInspection,
   registerActiveUsbInspection,
 } from '../lib/usbInspection.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
   const STEPS = [
     { n: 1, label: "Hold BOOT", sub: "GPIO0 pin", kbd: "BOOT ↓" },
@@ -146,6 +147,35 @@ import {
         onFallback: setChromeFallback,
       });
     };
+
+    // Only the FAILURE half of this banner belongs in the layer.
+    //
+    // "This browser cannot flash — open it in Chrome" is a screen-scoped
+    // warning: it appears on a condition, it blocks the screen's whole
+    // purpose, and it carries a recovery action. It floats.
+    //
+    // Its `hasWebSerial` counterpart is not a notice at all. "Use this only
+    // for blank ESP32-S3 boards" is standing context for the tool, true for
+    // as long as the screen is open. Floating it would park a permanent card
+    // in the corner for the entire visit and spend one of only three visible
+    // slots on something that never changes. A banner that is ALWAYS present
+    // reserves its space once and never reflows, so it causes none of the
+    // movement this layer exists to remove — the region-scoped case, left
+    // exactly where it is.
+    useEffect(() => {
+      if (hasWebSerial) return undefined;
+      publishNotice({
+        key: 'technician-flash-webserial',
+        tone: 'warning',
+        title: 'Open this page in Chrome to flash your card.',
+        // The result of pressing "Open in Chrome" rides along as the body so
+        // it stays attached to the same message instead of a second box.
+        body: chromeFallback,
+        source: 'technician-flash',
+        actions: [{ label: 'Open in Chrome', onSelect: launchInChrome, testId: 'flash-open-in-chrome' }],
+      });
+      return () => dismissNoticeKey('technician-flash-webserial');
+    }, [hasWebSerial, chromeFallback]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const connect = async () => {
       if (connected) {
@@ -272,19 +302,14 @@ import {
               <TechnicianHeading className="flash-screen-title">Manual firmware tools</TechnicianHeading>
               <p className="flash-screen-intro">Manual firmware files, offsets, erase controls, and the serial log are kept here for trained repair work.</p>
             </div>
-            <div className={"fl-warn " + (hasWebSerial ? "ok" : "warn")}>
-              <span style={ICON16}>{I.info}</span>
-              {hasWebSerial ? (
+            {/* Standing context for the tool, not an event: always present, so
+                it reserves its space once and never pushes anything. */}
+            {hasWebSerial && (
+              <div className="fl-warn ok">
+                <span style={ICON16}>{I.info}</span>
                 <div>The card ships pre-flashed with Lightweaver firmware. Use this only for blank ESP32-S3 boards or a firmware replacement.</div>
-              ) : (
-                <div className="fl-warn-copy">
-                  <span>Open this page in Chrome to flash your card.</span>
-                  <button className="btn primary" type="button" onClick={launchInChrome}>Open in Chrome</button>
-                  {chromeFallback && <span className="fl-warn-feedback" role="status">{chromeFallback}</span>}
-                </div>
-              )}
-            </div>
-
+              </div>
+            )}
             <div>
               <div className="sec-h"><span className="t">Bootloader mode</span><span className="m">do this before connecting</span><span className="line" /></div>
               <div className="boot-steps">
@@ -1015,6 +1040,34 @@ import {
     const browserAssociationRef = useRef(null);
     const InstallHeading = embedded ? 'h2' : 'h1';
 
+    // Both screen-scoped: neither is about one field, both are about the
+    // whole install/update run. They used to be static `.install-check-error`
+    // boxes stacked in the flow, pushing whatever came after them (the card
+    // lookup button, the identity panel) down whenever a check failed.
+    // Cleanup dismisses on every re-run so leaving this screen — or the
+    // condition clearing on retry — never strands a floating notice.
+    useEffect(() => {
+      if (!preservingMode || updateReleaseState.state !== 'error') return undefined;
+      publishNotice({
+        key: 'automatic-install-update-release-error',
+        tone: 'error',
+        title: `Signed preserving update unavailable. ${updateReleaseState.error}`,
+        source: 'automatic-install-update-release',
+      });
+      return () => dismissNoticeKey('automatic-install-update-release-error');
+    }, [preservingMode, updateReleaseState.state, updateReleaseState.error]);
+
+    useEffect(() => {
+      if (cardState.state !== 'error') return undefined;
+      publishNotice({
+        key: 'automatic-install-card-error',
+        tone: 'error',
+        title: cardState.error,
+        source: 'automatic-install-card',
+      });
+      return () => dismissNoticeKey('automatic-install-card-error');
+    }, [cardState.state, cardState.error]);
+
     // A read and a write cannot share the USB line, so every path that takes
     // the card back — installing, or letting the card go — waits for an
     // in-flight version read to stop first. It stops between chunks, so the
@@ -1409,10 +1462,6 @@ import {
               onFirmwareSession={session => { if (session) setRecoverySession(session); }}
             />
           )}
-          {preservingMode && updateReleaseState.state === 'error' && (
-            <div className="install-check-error" role="alert">Signed preserving update unavailable. {updateReleaseState.error}</div>
-          )}
-
           {/* Explain exactly what this install does to the connected card. */}
           {!preservingMode && updatePlan.headline && (
             <div className={`install-update-plan is-${updatePlan.state}`} data-testid="install-update-plan" role="status">
@@ -1442,7 +1491,6 @@ import {
                 )}
               </div>
             )}
-            {cardState.state === 'error' && <div className="install-check-error" role="alert">{cardState.error}</div>}
           </section>
           )}
 

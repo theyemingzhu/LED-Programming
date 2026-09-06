@@ -3,6 +3,7 @@ import { ProductionRecovery } from './ProductionRecovery.jsx';
 import { createCardFrameStream } from '../../lib/cardFrameStream.js';
 import { readCardProjectEvidence } from '../../lib/cardPushClient.js';
 import { invalidateCardLinkOperationLease } from '../../lib/cardLink.js';
+import { dismissNoticeKey, publishNotice } from '../../lib/noticeLayer.js';
 import {
   activateAndWaitForCardWiring, confirmCardWiringCandidate, getCardWiringStatus,
   readCardWiringCandidateEvidence, rollbackCardWiringCandidate, stageCardWiringCandidate,
@@ -87,6 +88,27 @@ export function ProductionPhysicalTest({ job, runId, cardLink, expectedCardId, p
   useEffect(() => { setFailedObservation(''); setRecoveryEntered(false); }, [state.activeBoundaryId]);
   useEffect(() => { if (failedObservation) setRecoveryEntered(false); }, [failedObservation]);
 
+  // Screen-scoped: every failure here is about the physical-test run as a
+  // whole (a stale wiring readback, a rejected candidate, a lost card link),
+  // never about one input. It used to be a static `<p>` at the foot of the
+  // section, pushing the boundary tabs and diagnosis panel down whenever a
+  // check failed. The layer floats it instead; nothing here reflows.
+  //
+  // Cleanup dismisses on every re-run (not just unmount): recovery can hand
+  // this screen off to a different production step while an error is still
+  // showing (`handOffRecovery` never clears `error` itself), and a guard that
+  // only fires on unmount-by-condition-change would strand the notice
+  // floating forever once this component is gone.
+  useEffect(() => {
+    if (!error) return undefined;
+    publishNotice({
+      key: 'production-physical-error',
+      tone: 'error',
+      title: error,
+      source: 'production-physical-test',
+    });
+    return () => dismissNoticeKey('production-physical-error');
+  }, [error]);
 
   useEffect(() => { onResultsChange?.(state.results); }, [onResultsChange, state.results]);
   useEffect(() => {
@@ -467,7 +489,6 @@ export function ProductionPhysicalTest({ job, runId, cardLink, expectedCardId, p
       </div>}
     </>}
     {state.candidate && <div className="prod-candidate" role="status"><strong>{state.candidate.phase === 'testing' ? `Temporary boundary test · ${countdown}s` : 'Temporary candidate cleanup required'}</strong><p>{active.label} is locked to activation {state.candidate.activationId}. It cannot be bypassed or confirmed from another boundary.</p><button type="button" disabled={busy} onClick={() => void rollback()}>Restore last confirmed wiring</button></div>}
-    {error && <p className="prod-error" role="alert">{error}</p>}
     {state.canComplete && !physicalRecovery && <button className="btn primary" type="button" disabled={!deliveryConfirmed || busy} onClick={() => void completePhysical()}>Continue to pass record</button>}
   </section>;
 }
