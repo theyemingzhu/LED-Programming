@@ -42,3 +42,36 @@ export function projectCopyLabel(kind, detail = '') {
   const build = LABELS[kind] || LABELS.none;
   return build(detail);
 }
+
+// Whether `project` currently carries real artwork — the SVG/path data a
+// card reconstruction never has (see `reconstructInstalledCardState` in
+// cardProjectAdoption.js, which builds strips from straight-line geometry
+// only). `layout.svgText` is the one field every real Import-SVG path writes
+// and a card readback never touches, so its presence is what actually
+// completes a reconstruction — not a save, not a rename.
+function hasRealArtwork(project) {
+  return typeof project?.layout?.svgText === 'string' && project.layout.svgText.trim().length > 0;
+}
+
+// THE kind-selection rule (defect C1b / blueprint preservation matrix): "do
+// not label reconstructed card configuration as a complete editable backup
+// unless it contains the complete project." `association` is the caller's
+// translated destination signals (cloud/browser/file/card), exactly what
+// `ProjectsPanel`'s old inline `describeAssociation` computed. The partial
+// check runs FIRST and overrides every destination, because the claim it
+// guards against is about completeness, not location — saving a still
+// artwork-less reconstruction to the browser, or exporting it to a file,
+// does not make it a complete backup, so it must keep reading "partial"
+// until real artwork exists. Once `hasRealArtwork` is true the marker simply
+// stops applying; nothing has to go back and edit `project.origin`.
+export function projectCopyKind(project, association = {}) {
+  if (project?.origin?.kind === 'card-partial' && !hasRealArtwork(project)) {
+    return 'card-partial';
+  }
+  const { activeRemoteProject, browserRecord, persistedDestination } = association;
+  if (activeRemoteProject) return 'cloud';
+  if (browserRecord) return 'browser';
+  if (persistedDestination === 'file') return 'file';
+  if (persistedDestination === 'card') return 'card';
+  return 'none';
+}

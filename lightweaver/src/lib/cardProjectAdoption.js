@@ -99,7 +99,7 @@ function visualLookFromZone(zone = {}, fallbackPatternId = 'aurora') {
   };
 }
 
-export function reconstructInstalledCardState({ skeleton = {}, patterns = null, zones = null } = {}) {
+export function reconstructInstalledCardState({ skeleton = {}, patterns = null, zones = null, cardId = '' } = {}) {
   const installedPatterns = Array.isArray(patterns?.patterns) ? patterns.patterns : [];
   const installedZones = Array.isArray(zones?.zones) ? zones.zones : [];
   const startupPatternId = String(zones?.startupPatternId || installedZones[0]?.patternId || installedPatterns[0]?.id || 'aurora');
@@ -124,6 +124,13 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
   }));
   return {
     ...skeleton,
+    // Defect C1b: this reconstruction is real evidence of what the card is
+    // currently playing, but it is NOT an editable copy of the artwork that
+    // produced it — see projectCopyLabel.js's `projectCopyKind`, the one
+    // place this marker is read back into a display label. `at` is a plain
+    // timestamp (not itself load-bearing for the label), kept for any future
+    // "reconstructed N minutes ago" copy.
+    origin: { kind: 'card-partial', cardId: String(cardId || '').trim(), at: Date.now() },
     devices: {
       standaloneController: {
         defaultLook: visualLookFromZone(startupZone, startupPatternId),
@@ -168,8 +175,12 @@ async function runReconstructStrategy(deps, params = {}) {
   if (!skeleton.strips.length) {
     return { ok: false, reason: 'no-geometry', status };
   }
+  const reconstructionCardId = String(status?.cardId || cardLink?.card?.id || '').trim();
   try {
-    const applied = await actions.applyCardParts(reconstructInstalledCardState({ skeleton, patterns, zones }), status);
+    const applied = await actions.applyCardParts(
+      reconstructInstalledCardState({ skeleton, patterns, zones, cardId: reconstructionCardId }),
+      status,
+    );
     if (!applied?.ok) return { ok: false, reason: applied?.reason, status };
     return { ok: true, status };
   } catch (error) {
