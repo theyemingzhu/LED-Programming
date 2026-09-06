@@ -520,6 +520,24 @@ export function createCardSimulator(
         };
       case '/api/wiring/status':
         return ok(wiringStatusBody(state));
+      case '/api/wiring/candidate': {
+        // Added for journey-edits.spec.ts [J07]: stageCardWiringCandidate() in
+        // src/lib/cardWiringSafety.js posts here directly (a bare stage, no
+        // full project save), and nothing in this suite modelled it before —
+        // every other wiring-change fixture went through the `/api/config`
+        // "wiringChanged" branch below instead. Mirrors that branch's staging
+        // behaviour exactly so the real stage -> activate -> confirm cycle can
+        // be driven end to end against this simulator.
+        const candidate = (payload.candidate || {}) as Record<string, unknown>;
+        const led = (candidate.led || {}) as Record<string, unknown>;
+        const nextPixels = Number(led.pixels ?? state.pixels);
+        const outputs = (led.outputs || []) as { pin?: number }[];
+        const nextPin = Number(outputs[0]?.pin ?? state.pin);
+        state.wiringTransactionOpen = true;
+        state.stagedPixels = nextPixels;
+        state.stagedPin = nextPin;
+        return ok(wiringStatusBody(state));
+      }
       case '/api/wiring/activate': {
         // The card boots the candidate and enters probation with a new bootId,
         // exactly as the firmware does — which is what makes Studio have to
@@ -637,6 +655,7 @@ export function createCardSimulator(
     'recover-lights': { method: 'POST', path: '/api/recover-lights' },
     'clear-project': { method: 'POST', path: '/api/clear-project' },
     'wiring-status': { method: 'GET', path: '/api/wiring/status' },
+    'wiring-candidate': { method: 'POST', path: '/api/wiring/candidate' },
     'wiring-activate': { method: 'POST', path: '/api/wiring/activate' },
     'wiring-confirm': { method: 'POST', path: '/api/wiring/confirm' },
     'wiring-rollback': { method: 'POST', path: '/api/wiring/rollback' },
