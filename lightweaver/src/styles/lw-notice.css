@@ -1,0 +1,282 @@
+/* ============================================================
+   Lightweaver — the notice layer
+   ============================================================
+   One floating stack for every screen-scoped message in Studio,
+   plus the reserved-ground treatment for field-scoped ones.
+
+   The whole point is that NOTHING in here occupies document
+   flow. A notice appearing must not move a single pixel of
+   interface — that was the defect: eleven message idioms, ten
+   of them static boxes that shoved the page down under the
+   owner's cursor mid-click.
+
+   Colours come from the v3 token set (v3-styles.css). Nothing
+   here defines a colour of its own, so both themes follow.
+   ============================================================ */
+
+/* ── The stack ─────────────────────────────────────────────
+   Docked bottom-left, clear of the 32px status bar. Bottom-LEFT
+   because every screen's action buttons cluster top-right, so a
+   notice here can never land on the control that raised it. The
+   newest renders last, so it sits nearest the status bar and new
+   information always arrives at the same place on screen rather
+   than the stack growing under the eye. */
+.lw-notice-layer {
+  /* The tool rail is 58px at every width — it does NOT collapse on narrow
+     screens (v3-styles.css keeps `58px minmax(0,1fr) 0px` under 640px), so
+     the stack must start clear of it or a notice lands on the navigation.
+     tests/cloud-project-library.spec.ts asserts this at 320px and 390px. */
+  --lw-rail: 58px;
+  position: fixed;
+  left: calc(var(--lw-rail) + 14px);
+  /* --lw-statusbar-h is measured live by NoticeLayer: the bar is 32px by its
+     stylesheet but wraps to ~91px on a phone, and docking against the CSS
+     number put a notice 51px inside it. The fallback matches the desktop bar. */
+  bottom: calc(var(--lw-statusbar-h, 32px) + 12px);
+  z-index: 720;
+  width: min(420px, calc(100vw - var(--lw-rail) - 28px));
+  display: flex;
+  /* Plain `column`, with the newest notice rendered LAST, so the newest sits
+     nearest the status bar and older ones ride up above it. New information
+     therefore always arrives at the same spot on screen instead of the stack
+     growing downward under the eye — which would reintroduce, inside the
+     layer, exactly the movement the layer exists to remove. */
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* The layer is a strip of empty space most of the time; let clicks
+     through it and re-arm them on the cards themselves. */
+  pointer-events: none;
+}
+.lw-notice-layer > * { pointer-events: auto; }
+
+/* ── A notice ──────────────────────────────────────────────
+   Severity is a 2px left edge, not a full outline. The full
+   amber border was why a progress note read as an alarm — the
+   box shouted before the words were read. The edge is scannable
+   at a glance and silent otherwise. */
+.lw-notice {
+  --lw-notice-tone: var(--accent);
+  position: relative;
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  padding: 10px 10px 10px 13px;
+  /* The close button is a sibling of the wrapping main row, so it stays
+     pinned to the top-right whatever the actions below it do. */
+  align-items: flex-start;
+  border: 1px solid var(--border-soft);
+  border-left: 2px solid var(--lw-notice-tone);
+  border-radius: var(--r-md);
+  /* Keeps the arrival sweep inside the card's rounded rect, which is what it
+     was always meant to be bounded by. */
+  overflow: hidden;
+  background: var(--bg-elev);
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .34);
+  animation: lw-notice-in .24s cubic-bezier(.22, .75, .3, 1) both;
+}
+
+/* Arrival has to be seen from across the screen — the eye is usually
+   at the button that was just pressed, which is the far corner. A
+   single tone-coloured sweep across the card announces it once and
+   then gets out of the way. It runs once and never repeats. */
+.lw-notice::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(100deg,
+    transparent 12%,
+    color-mix(in oklab, var(--lw-notice-tone) 24%, transparent) 46%,
+    transparent 78%);
+  /* The travel is in `background-position`, NOT `transform`. A transformed
+     overlay ends its animation displaced and `fill-mode: both` holds it
+     there — invisible at opacity 0, but permanently ~100px of scrollable
+     content on a 420px card, which `overflow: hidden` hides without
+     removing. Moving the gradient inside a box that never leaves `inset: 0`
+     has no geometry at all. */
+  background-size: 220% 100%;
+  animation: lw-notice-sweep .9s cubic-bezier(.32, .6, .3, 1) .1s both;
+}
+
+@keyframes lw-notice-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lw-notice-sweep {
+  from { opacity: 0; background-position: 130% 0; }
+  35%  { opacity: 1; }
+  to   { opacity: 0; background-position: -30% 0; }
+}
+
+.lw-notice-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  /* Wrapping is what keeps a three-button notice inside its own stack.
+     Without it the nowrap buttons forced the card wider than the layer. */
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.lw-notice-copy { flex: 1 1 190px; min-width: 0; display: grid; gap: 1px; }
+.lw-notice-copy strong {
+  color: var(--text-hi);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.lw-notice-copy span { color: var(--text-mid); }
+
+.lw-notice-actions {
+  margin-left: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lw-notice-act {
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-hi);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s;
+}
+.lw-notice-act:hover:not(:disabled) { background: var(--bg-elev-2); border-color: var(--lw-notice-tone); }
+/* The recommended answer carries the tone; the alternatives stay quiet, so a
+   two-way question reads as one recommendation plus an out, not two demands. */
+.lw-notice-act.is-primary { border-color: var(--lw-notice-tone); color: var(--text-hi); }
+.lw-notice-act:disabled { opacity: .45; cursor: default; }
+.lw-notice-close {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.lw-notice-close:hover { background: var(--bg-elev-2); color: var(--text-hi); }
+
+/* ── Tones ────────────────────────────────────────────────
+   Semantic colour only. The brand accent means "about the card",
+   which is why `info` — the tone Studio uses to talk about the
+   card it is connected to — is the one that carries it. */
+/* --text-lo, not --text-faint: at 2px the faint token disappeared against
+   --bg-elev entirely, leaving the progress card looking edgeless next to
+   cards that had one. Neutral, but present. */
+.lw-notice.is-progress { --lw-notice-tone: var(--text-lo); }
+.lw-notice.is-info     { --lw-notice-tone: var(--accent); }
+.lw-notice.is-success  { --lw-notice-tone: var(--ok); }
+.lw-notice.is-warning  { --lw-notice-tone: var(--warn); }
+.lw-notice.is-error    { --lw-notice-tone: var(--danger); }
+
+/* A progress notice earns a moving mark: without one, "Sending…" is
+   indistinguishable from a message that has got stuck. */
+.lw-notice-spinner {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--text-lo);
+  animation: lw-notice-spin .7s linear infinite;
+}
+@keyframes lw-notice-spin { to { transform: rotate(360deg); } }
+
+.lw-notice-overflow {
+  margin: 0;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+/* ── Motion ───────────────────────────────────────────────
+   Reduced motion keeps the arrival legible — it still fades in, so
+   the change is perceptible — but drops every transform, the sweep,
+   and the spin. */
+@media (prefers-reduced-motion: reduce) {
+  .lw-notice { animation: lw-notice-fade .01s both; }
+  .lw-notice::after { display: none; }
+  .lw-notice-spinner { animation: none; border-top-color: var(--text-hi); }
+}
+@keyframes lw-notice-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Narrow screens ───────────────────────────────────────
+   Full width, still clear of the status bar. The stack keeps its
+   cap so a phone never shows a column of boxes over the artwork. */
+@media (max-width: 640px) {
+  .lw-notice-layer {
+    left: calc(var(--lw-rail) + 8px);
+    right: 8px;
+    bottom: calc(var(--lw-statusbar-h, 32px) + 8px);
+    width: auto;
+  }
+  .lw-notice-act, .lw-notice-close { min-height: 44px; }
+  .lw-notice-close { min-width: 44px; }
+}
+
+/* ============================================================
+   Field-scoped messages — reserved ground
+   ============================================================
+   The other half of the rule. An error bound to ONE input belongs
+   beside that input; floating it to the corner abandons the thing
+   it is about. So it stays — but it stops pushing.
+
+   The wrapper permanently holds a line open and the message is
+   absolutely positioned into it. The space is paid for once, in
+   layout, whether or not there is anything to say.
+
+     <div class="lw-field">
+       <input …>
+       {error && <p class="lw-field-note is-error">{error}</p>}
+     </div>
+   ============================================================ */
+.lw-field {
+  position: relative;
+  /* The reserved line. One message height, always present. */
+  padding-bottom: 17px;
+}
+.lw-field-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-lo);
+  /* Two lines of message in a one-line slot would clip; ellipsis keeps
+     the layout honest and the full text stays in the DOM for a11y. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: lw-notice-fade .16s both;
+}
+.lw-field-note.is-error   { color: var(--danger); }
+.lw-field-note.is-warning { color: var(--warn); }
+.lw-field-note.is-ok      { color: var(--ok); }
+
+/* A field whose message genuinely needs two lines opts in, and pays
+   for the second line in the same permanent way. */
+.lw-field.is-tall { padding-bottom: 32px; }
+.lw-field.is-tall .lw-field-note { white-space: normal; }

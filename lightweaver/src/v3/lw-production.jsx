@@ -4,6 +4,7 @@ import { ProductionPassRecord } from '../components/production/ProductionPassRec
 import { ProductionPhysicalTest } from '../components/production/ProductionPhysicalTest.jsx';
 import { ProductionRecovery } from '../components/production/ProductionRecovery.jsx';
 import { clearCardCommissioning } from '../lib/cardCommissioningFlow.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import {
   PRODUCTION_READ_ONLY_PREFLIGHT_FALLBACK_MS,
   normalizeCardHost,
@@ -293,6 +294,34 @@ export function ProductionScreen({ cardHost, cardLink, onConnectCard, embedded =
       setStatus('Card link lost — reconnect the exact USB-inspected card. No command or pass is authorized.');
     }
   }, [cardLink, run?.expectedCardId, run?.state]);
+
+  // Screen-scoped: both used to be static `<p className="prod-error">` boxes
+  // inside `.prod-action`, pushing the action buttons below them down every
+  // time a firmware preload or run-level operation failed. Neither is bound
+  // to one input; both are about the whole production run. Cleanup dismisses
+  // on every re-run (not just unmount) so leaving the production screen
+  // entirely — or the run clearing the condition — never strands a notice.
+  useEffect(() => {
+    if (!(release.state === 'error' && !recovery)) return undefined;
+    publishNotice({
+      key: 'production-release-error',
+      tone: 'error',
+      title: 'Official firmware could not be preloaded. USB stays locked.',
+      source: 'production-release',
+    });
+    return () => dismissNoticeKey('production-release-error');
+  }, [release.state, recovery]);
+
+  useEffect(() => {
+    if (!error) return undefined;
+    publishNotice({
+      key: 'production-error',
+      tone: 'error',
+      title: error,
+      source: 'production',
+    });
+    return () => dismissNoticeKey('production-error');
+  }, [error]);
 
   async function preloadFirmware(selected = job) {
     if (!selected || release.state === 'loading') return;
@@ -1191,7 +1220,6 @@ export function ProductionScreen({ cardHost, cardLink, onConnectCard, embedded =
                 <div className="prod-section-head"><div><span className="prod-kicker">Current action</span><h2>{run?.state?.replaceAll('-', ' ') || 'Preparing'}</h2></div>{hardware && <span className="prod-card-id">{hardware.cardId}</span>}</div>
                 <p className="prod-status" role="status">{status}</p>
                 {release.state === 'loading' && <p>Verifying and preloading official firmware…</p>}
-                {release.state === 'error' && !recovery && <p className="prod-error" role="alert">Official firmware could not be preloaded. USB stays locked.</p>}
                 {!recovery && <>{run?.state === 'connect-card' && <button className="btn primary" type="button" disabled={busy || release.state !== 'ready' || usbOwnershipForeign} onClick={connectCard}>{busy ? 'Inspecting card…' : 'Connect one USB card'}</button>}
                 {usbOwnershipForeign && retainedUsb.connection && <button className="btn" type="button" disabled={busy || retainedUsb.releasing} onClick={() => void releaseRetainedUsbOwnership()}>{retainedUsb.releasing ? 'Releasing retained USB…' : 'Release retained USB safely'}</button>}
                 {run?.state === 'inspect' && !hardware && firmwareDecision === 'uninspected' && <button className="btn primary" type="button" disabled={busy || release.state !== 'ready' || usbOwnershipForeign} onClick={connectCard}>{busy ? 'Inspecting same card…' : 'Reconnect same USB card'}</button>}
@@ -1207,7 +1235,6 @@ export function ProductionScreen({ cardHost, cardLink, onConnectCard, embedded =
                 {run?.state === 'record' && <><form className="prod-record-form" onSubmit={event => { event.preventDefault(); void savePass(); }}><label htmlFor="prod-worker">Worker initials or ID</label><input id="prod-worker" value={workerId} maxLength={80} onChange={event => setWorkerId(event.target.value)} /><button className="btn primary" disabled={!workerId.trim() || busy || !runtimeAuthority.ok}>{busy ? 'Saving pass…' : 'Save pass record'}</button></form>{recordRecoveryNeeded && <button className="btn" type="button" disabled={busy} onClick={() => void handlePhysicalRecovery('rerun-lights')}>Re-run physical checks</button>}</>}
                 {run?.state === 'complete' && <div className="prod-complete"><strong>Artwork passed</strong><p>The card, exact job, and physical outputs were recorded.</p><button className="btn primary" onClick={nextArtwork}>Next artwork</button></div>}</>}
                 {canChangeJob && !recovery && <button className="btn prod-change-job" type="button" disabled={busy} onClick={changeJob}>Change job</button>}
-                {error && <p className="prod-error" role="alert">{error}</p>}
                 {recovery && <ProductionRecovery
                   recovery={recovery}
                   phase={run?.state || 'unknown'}
