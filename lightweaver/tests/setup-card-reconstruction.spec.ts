@@ -32,6 +32,7 @@ test('card reconstruction preserves installed playlist and startup look', async 
           customDrift: false,
         }],
       },
+      cardId: 'lw-recon-fixture',
     });
   });
 
@@ -53,4 +54,46 @@ test('card reconstruction preserves installed playlist and startup look', async 
     customDrift: false,
   }));
   expect(reconstructed.devices.standaloneController.activeLookId).toBe('fire');
+
+  // Defect C1b: the reconstruction marks itself so it is never described as
+  // a complete editable backup — see projectCopyLabel.js's projectCopyKind,
+  // the one place `origin` is read back into a display label.
+  expect(reconstructed.origin.kind).toBe('card-partial');
+  expect(reconstructed.origin.cardId).toBe('lw-recon-fixture');
+  expect(typeof reconstructed.origin.at).toBe('number');
 });
+
+// ── the label a reconstruction gets in Projects (defect C1b) ───────────────
+//
+// A browser-level test seeding `lw_autosave_v3` with an `origin` field and
+// then opening Projects (the way tests/project-recovery-fixtures.spec.ts
+// seeds fixtures) was tried here and DELETED after it proved nothing: even
+// though migrateProject preserves `origin` (see src/lib/projectModel.test.js),
+// ProjectContext.jsx's `applyProject` reads a migrated project into a large
+// set of individually-tracked React state variables — an explicit allow-list
+// with no slot for `origin` — and `serializeProject` (what ProjectsPanel
+// reads to build the association label) reconstructs the live project from
+// those same state variables. `origin` is dropped the instant it passes
+// through `applyProject`, from ANY source, seeded or real. Confirmed live:
+// the seeded test above returned "Not saved yet", never the partial label,
+// regardless of the labeling logic under test.
+//
+// The same gap blocks the real "Use this card's project" flow: lw-setup.jsx's
+// `applyCardParts` (owned by another fixer, out of scope for this ticket)
+// builds its replacement project from its own explicit allow-list off
+// `parts` — strips, portRoles, patchBoard, wiring, devices.standaloneController
+// — and does not thread `parts.origin` through either.
+//
+// So today, no browser test can show the partial label, however it is
+// produced. What IS fully wired and covered:
+//   - reconstructInstalledCardState attaches `origin` — asserted above, and
+//     in src/lib/cardProjectAdoption.test.js's reconstruct-strategy tests.
+//   - migrateProject preserves `origin` across a save/reload round trip —
+//     src/lib/projectModel.test.js.
+//   - projectCopyKind/projectCopyLabel/ProjectsPanel.describeAssociation
+//     turn `origin` into the partial label and keep it stable across every
+//     other destination signal, and stop applying once real artwork exists —
+//     src/lib/projectCopyLabel.test.js.
+// Wiring `origin` into ProjectContext.jsx's tracked state (so it survives
+// `applyProject`/`serializeProject`) and into `applyCardParts` is the
+// follow-up integration work needed before this label can appear live.

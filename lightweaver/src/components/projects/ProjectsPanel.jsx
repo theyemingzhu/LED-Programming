@@ -27,7 +27,7 @@ import {
   readAutosaveStorageLimited,
   renameProjectLibraryRecordGuarded,
 } from '../../lib/projectStorage.js';
-import { projectCopyLabel } from '../../lib/projectCopyLabel.js';
+import { projectCopyKind, projectCopyLabel } from '../../lib/projectCopyLabel.js';
 import { ProjectLibraryPanel } from './ProjectLibraryPanel.jsx';
 
 // Preferences (and any other surface) asks the shell to open the panel by
@@ -44,12 +44,18 @@ function formatRecoveryTime(lastSaved) {
   return `Recovery copy ${new Date(lastSaved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-function describeAssociation({ activeRemoteProject, browserRecord, persistedDestination }) {
-  if (activeRemoteProject) return projectCopyLabel('cloud', activeRemoteProject.title);
-  if (browserRecord) return projectCopyLabel('browser', browserRecord.name);
-  if (persistedDestination === 'file') return projectCopyLabel('file');
-  if (persistedDestination === 'card') return projectCopyLabel('card');
-  return projectCopyLabel('none');
+// Defect C1b: the kind itself is now decided by projectCopyKind (which also
+// checks `project.origin` — see projectCopyLabel.js), so a project
+// reconstructed from a card's own readback and not yet carrying real artwork
+// reads as "Card copy (partial — no artwork)" regardless of where it has
+// ALSO been saved, instead of the destination label it would otherwise get.
+function describeAssociation({ project, activeRemoteProject, browserRecord, persistedDestination }) {
+  const association = { activeRemoteProject, browserRecord, persistedDestination };
+  const kind = projectCopyKind(project, association);
+  const detail = kind === 'cloud' ? activeRemoteProject?.title
+    : kind === 'browser' ? browserRecord?.name
+      : '';
+  return projectCopyLabel(kind, detail);
 }
 
 export function ProjectsPanel({
@@ -228,6 +234,7 @@ export function ProjectsPanel({
         </div>
         <span className="projects-current-association" data-testid="projects-association">
           {describeAssociation({
+            project: serializeProject(),
             activeRemoteProject: library.activeRemoteProject,
             browserRecord,
             persistedDestination: projectLifecycle?.persistedDestination,
