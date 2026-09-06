@@ -26,6 +26,12 @@ import { MATRIX_CARD_ID } from './cardStates.js';
 /** Every host Studio might reach a card on. */
 export const CARD_HOSTS = ['lightweaver.local', '192.168.4.1', '192.168.18.70'];
 
+// The approved output menu minus the GPIOs the default control assignment
+// claims (encoder, buttons, status LED) — see BENCH_RESERVED_CONTROL_PINS in
+// src/lib/benchConfig.js. Verified against LightweaverWeb.cpp's compiled pin
+// menu the same way tests/strip-discovery.spec.ts's own BEACON_PORTS is.
+export const BEACON_PORTS = [15, 16, 17, 18, 21, 38, 40, 41, 42, 47, 48];
+
 export type CardRequest = { method: string; path: string; body: unknown; at: number };
 
 export type CardSimulator = {
@@ -42,6 +48,8 @@ export type CardSimulator = {
   requests: CardRequest[];
   /** Paths Studio asked for that this simulator does not model. */
   unhandled: string[];
+  /** Raw pixel-array frames received over the frame-stream WebSocket (see `frames` above). */
+  frames: string[][];
   waitForPlaying(id: string, timeoutMs?: number): Promise<void>;
   /** Answer one bridge-relayed request from the same state. */
   handleBridge(type: string, payload: unknown): Record<string, unknown>;
@@ -411,9 +419,18 @@ export function createCardSimulator(
     // What the card was running before this test began — the rollback target.
     preTestPixels: undefined as number | undefined,
     preTestPin: undefined as number | undefined,
+    // The one GPIO the factory beacon is currently holding lit, or null. Only
+    // meaningful before a real project exists (see /api/beacon/port above).
+    beaconPinned: null as number | null,
   };
   const requests: CardRequest[] = [];
   const unhandled: string[] = [];
+  // Raw pixel arrays received over the frame-stream WebSocket
+  // (ws://<host>:81/ws), one entry per frame — see cardFrameStream.js. Strip
+  // discovery's probe/decade/end-marker steps push frames this way, not
+  // through /api/control, so a simulator with HTTP routes only would leave
+  // that whole path unmodelled and every discovery frame silently lost.
+  const frames: string[][] = [];
   let dropped = 0;
   let offline = false;
   const refusals = new Map<string, { status: number; body: unknown; times: number }>();
@@ -633,8 +650,34 @@ export function createCardSimulator(
         }
         return ok({ ok: true, message: 'applied', requiresReboot: true });
       }
-      case '/api/beacon/port':
-        return ok({ ok: true, available: true, pixelsPerPort: 8, ports: [state.pin] });
+      case '/api/beacon/port': {
+        // Field-for-field against LightweaverWeb.cpp's factory beacon probe
+        // (src/lib/beaconProbe.js): GET lists the ports this card can light
+        // right now (only while it is not yet holding a real project — the
+        // beacon steps aside for the ordinary frame path the moment a project
+        // exists), POST {gpio} pins one, POST {release:true} hands it back.
+        // A simulator that answered the same body for every method (the
+        // original stub here) could not model strip discovery's port-probe
+        // step at all — every pin looked lit and none looked released.
+        if (method === 'GET') {
+          return ok({
+            ok: true,
+            available: !hasProject(state) || state.provisionalSetup === true,
+            ports: BEACON_PORTS,
+            pixelsPerPort: 8,
+          });
+        }
+        if (payload.release === true) {
+          state.beaconPinned = null;
+          return ok({ ok: true, pinned: false });
+        }
+        const gpio = Number(payload.gpio);
+        if (!BEACON_PORTS.includes(gpio)) {
+          return { body: { ok: false, error: 'this card cannot light that port right now' }, status: 409 };
+        }
+        state.beaconPinned = gpio;
+        return ok({ ok: true, pinned: true, gpio, litPixels: 8, holdMs: 20000 });
+      }
       default:
         // Recorded, not silently swallowed. A path that matters to the journey
         // and is missing here fails the matrix loudly rather than 404-ing and
@@ -721,6 +764,7 @@ export function createCardSimulator(
     state,
     requests,
     unhandled,
+    frames,
     playingId: () => state.currentId,
     refuse(path, refusal) {
       refusals.set(path, {
@@ -777,6 +821,21 @@ export function createCardSimulator(
       for (const host of CARD_HOSTS) {
         await page.route(`http://${host}/**`, handle);
         await page.route(`https://${host}/**`, handle);
+        // The frame streamer's direct transport (cardFrameStream.js) opens
+        // ws://<host>:81/ws itself — a page.route on the HTTP origin above
+        // never sees it. Without this the strip-discovery probe/decade/
+        // end-marker steps run against a stream that can never open, which
+        // reads to Studio as "the card is not reaching us" even though every
+        // HTTP fact about the card is fine.
+        await page.routeWebSocket(`ws://${host}:81/ws`, socket => {
+          socket.onMessage(message => {
+            try {
+              const payload = JSON.parse(String(message));
+              const pixels = payload?.seg?.[0]?.i;
+              if (Array.isArray(pixels)) frames.push(pixels);
+            } catch { /* not a frame chunk this simulator understands — ignored, not fatal */ }
+          });
+        });
       }
     },
     // The bridge relay adds a postMessage hop each way on top of the card's own
