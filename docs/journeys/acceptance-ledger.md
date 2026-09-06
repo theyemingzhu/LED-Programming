@@ -210,3 +210,21 @@ production build. `journey-continuity.spec.ts` is now part of
   screen-reader status) is unverified.
 - **Physical proof: none.** Every row above marked `physical pending` remains
   genuinely unperformed. This package never touches hardware.
+
+## Integrated checkpoint (director, 2026-09-06, revision `faf55185` + closing docs)
+
+Chromium, 30 spec files (`strip-discovery, journey-continuity, journey-edits,
+journey-ownership, journey-j01, journey-readback, card-state-matrix,
+patterns-v3, card-workspace, setup-ladder, setup-adopt-card-project,
+setup-card-reconstruction, setup-find-card, setup-led-count, playlist-storage,
+preserving-firmware-update, connection-center-quality, card-control-drawer,
+studio-hardening, one-owner-per-question, project-recovery-fixtures,
+footer-build-status, studio-route, card-edit-handoff, layout-send-to-card,
+install-update-plan, pattern-controls-live, show-screen, screen-smoke,
+workflow`) → `{"expected":451,"skipped":5,"unexpected":6,"flaky":0}` in 18 min.
+The six: five footer/build assertions expected `Studio 1604` and read `1603`
+because a docs commit landed mid-run and moved the commit count the build
+number is derived from (self-inflicted, not a defect); one connection-center
+case is the documented contention flake. Isolated rerun of exactly those six:
+`{"expected":6,"unexpected":0}`. Windowless config: `{"expected":2,"unexpected":0}`.
+Unit 2361/2361; production build. No hardware, deploy or push.

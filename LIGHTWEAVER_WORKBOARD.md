@@ -329,3 +329,8 @@ the smoke lane) merged; all fifteen tickets plus five follow-up fixes landed
 at `faf55185`. Unit 2361/2361; production build. Six follow-ups recorded
 in the execution plan Phase F. Nothing pushed, deployed or flashed; Phase E
 physical rows stay pending for Adrian.
+Final checkpoint at `faf55185`: 30 browser suites 451 expected / 5 skipped /
+6 unexpected, all six green in isolation (five were the build number moving
+under a mid-run docs commit, one the known contention case); windowless 2/0;
+unit 2361/2361; build. Fixer worktrees `fix-*` under `.claude/worktrees` are
+merged and safe to remove.
