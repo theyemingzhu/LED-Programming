@@ -87,11 +87,58 @@ export function readStorageJsonWithBackup(primaryKey, backupKey, options = {}) {
   return null;
 }
 
+// ── Storage-limited signal (defect C-1: quota / private-mode writes) ───────
+//
+// A browser at its storage quota (or in a mode that refuses persistent
+// writes) throws synchronously from `setItem` — before anything is written,
+// so the previous good copy under that key is left exactly as it was. The
+// autosave flush already treats that throw as "did not save" (it never
+// records a fresh `lastSaved`), so a false "Saved" is never claimed. What was
+// missing is a way for the UI to say so out loud and point at the escape
+// hatch (export). This module owns that signal — a tiny in-memory marker plus
+// a same-tab event — because the write call sites that can hit it
+// (autosave flush, library saves) are outside this ticket's file boundary;
+// a mounted panel can still show it without those call sites changing.
+export const AUTOSAVE_STORAGE_LIMITED_EVENT = 'lightweaver-autosave-storage-limited';
+
+let autosaveStorageLimitedMarker = null;
+
+function isStorageQuotaError(error) {
+  if (!error || typeof error !== 'object') return false;
+  if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') return true;
+  // Legacy DOMException error codes for the same condition (older Firefox/IE).
+  return error.code === 22 || error.code === 1014;
+}
+
+function setAutosaveStorageLimited(marker) {
+  autosaveStorageLimitedMarker = marker;
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(AUTOSAVE_STORAGE_LIMITED_EVENT, { detail: marker }));
+  }
+}
+
+// The most recent unresolved storage-limited write, or null once a write to
+// that same key has since succeeded. Shape: { key, reason, at }.
+export function readAutosaveStorageLimited() {
+  return autosaveStorageLimitedMarker;
+}
+
 export function writeStorageJsonWithBackup(primaryKey, backupKey, value, options = {}) {
   const storage = storageFromOptions(options);
   if (!storage) return false;
   const text = JSON.stringify(value);
-  storage.setItem(primaryKey, text);
+  try {
+    storage.setItem(primaryKey, text);
+  } catch (error) {
+    if (isStorageQuotaError(error)) {
+      // Nothing was written — `setItem` either lands whole or throws whole —
+      // so the previous copy under `primaryKey` (and any backup) is intact.
+      setAutosaveStorageLimited({ key: primaryKey, reason: 'quota', at: Date.now() });
+      return false;
+    }
+    throw error;
+  }
+  if (autosaveStorageLimitedMarker?.key === primaryKey) setAutosaveStorageLimited(null);
   if (backupKey) {
     try {
       storage.setItem(backupKey, text);

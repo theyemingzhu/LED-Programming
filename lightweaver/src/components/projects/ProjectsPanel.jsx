@@ -17,14 +17,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { useCloudLibrary } from '../../state/CloudLibraryContext.jsx';
 import {
+  AUTOSAVE_STORAGE_LIMITED_EVENT,
   PROJECT_LIBRARY_CHANGED_EVENT,
   PROJECT_LIBRARY_LIMIT,
   deleteProjectLibraryRecord,
   duplicateProjectLibraryRecord,
   listProjectLibraryRecords,
   readActiveProjectLibraryRecordId,
+  readAutosaveStorageLimited,
   renameProjectLibraryRecordGuarded,
 } from '../../lib/projectStorage.js';
+import { projectCopyLabel } from '../../lib/projectCopyLabel.js';
 import { ProjectLibraryPanel } from './ProjectLibraryPanel.jsx';
 
 // Preferences (and any other surface) asks the shell to open the panel by
@@ -42,11 +45,11 @@ function formatRecoveryTime(lastSaved) {
 }
 
 function describeAssociation({ activeRemoteProject, browserRecord, persistedDestination }) {
-  if (activeRemoteProject) return `Saved online as ${activeRemoteProject.title}`;
-  if (browserRecord) return `Saved in this browser as ${browserRecord.name}`;
-  if (persistedDestination === 'file') return 'Exported as a project file';
-  if (persistedDestination === 'card') return 'Saved on the card';
-  return 'Not saved yet';
+  if (activeRemoteProject) return projectCopyLabel('cloud', activeRemoteProject.title);
+  if (browserRecord) return projectCopyLabel('browser', browserRecord.name);
+  if (persistedDestination === 'file') return projectCopyLabel('file');
+  if (persistedDestination === 'card') return projectCopyLabel('card');
+  return projectCopyLabel('none');
 }
 
 export function ProjectsPanel({
@@ -72,6 +75,11 @@ export function ProjectsPanel({
   const [records, setRecords] = useState(() => listProjectLibraryRecords());
   const [renaming, setRenaming] = useState(null);
   const [rowNotice, setRowNotice] = useState('');
+  // Set only when the most recent autosave write hit a storage quota (or a
+  // private-mode refusal) — see readAutosaveStorageLimited in
+  // lib/projectStorage.js. Cleared automatically once a later write to the
+  // same key succeeds; the panel just mirrors it, live, while open.
+  const [storageLimited, setStorageLimited] = useState(() => readAutosaveStorageLimited());
   const closeRef = useRef(null);
   const searchRef = useRef(null);
 
@@ -88,6 +96,14 @@ export function ProjectsPanel({
       window.removeEventListener(PROJECT_LIBRARY_CHANGED_EVENT, sync);
       window.removeEventListener('storage', sync);
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const sync = () => setStorageLimited(readAutosaveStorageLimited());
+    sync();
+    window.addEventListener(AUTOSAVE_STORAGE_LIMITED_EVENT, sync);
+    return () => window.removeEventListener(AUTOSAVE_STORAGE_LIMITED_EVENT, sync);
   }, [open]);
 
   // Focus lands in the panel on open (search when there is one, else the
@@ -308,6 +324,12 @@ export function ProjectsPanel({
             <span className="set-recovery-warn" data-testid="autosave-quarantine">
               A saved copy from a newer or damaged Studio session could not be opened. It was preserved untouched so support can recover it.
               <button type="button" className="btn ghost-sm" onClick={() => autosaveStatus.dismissQuarantine()}>Dismiss</button>
+            </span>
+          )}
+          {storageLimited && (
+            <span className="set-recovery-warn" data-testid="project-save-limited">
+              This browser is out of storage space, so your latest changes were not saved automatically. Nothing already saved was touched — export a copy now to keep the newest work.
+              <button type="button" className="btn ghost-sm" onClick={onExport}>Export to computer</button>
             </span>
           )}
         </div>
