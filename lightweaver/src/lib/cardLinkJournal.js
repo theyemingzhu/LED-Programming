@@ -21,6 +21,14 @@
  *   diagnosing is worse than no diagnostic.
  * - It holds nothing sensitive: state names, a reason string, a transport, a
  *   host on the local network, and a counter.
+ *
+ * A second kind of entry shares this same journal (blueprint H8, see
+ * `appendCardJournalEntry` and src/lib/journeyTrail.js): a setup-journey
+ * transition, recorded when the task an owner is asked to do changes rather
+ * than when the connection does. It carries `task`/`step`/`cardId`/`bootId`
+ * instead of `state`/`transport`/`host`/`missed` — the two shapes are told
+ * apart by which fields they carry, not by a schema version, so one log stays
+ * one place to look for "what changed and when" instead of two.
  */
 
 export const CARD_LINK_JOURNAL_KEY = 'lw_card_link_journal_v1';
@@ -90,6 +98,23 @@ export function recordCardLinkTransition(prev, next, {
   return entry;
 }
 
+/**
+ * Append an already-built entry to the same bounded, best-effort journal —
+ * for a caller that has already decided (with its own rules) whether this is
+ * worth recording, and just needs the shared cap and storage instead of a
+ * second log. Used by the setup-journey diagnostic trail (blueprint H8,
+ * src/lib/journeyTrail.js) so a changed setup task lands in the same place an
+ * owner already knows to look for "what changed and when" — same discipline
+ * as `recordCardLinkTransition`: never throws, drops oldest-first.
+ */
+export function appendCardJournalEntry(entry, { storage = defaultStorage() } = {}) {
+  if (!entry) return null;
+  const entries = safeRead(storage);
+  entries.push(entry);
+  safeWrite(storage, entries.slice(-CARD_LINK_JOURNAL_LIMIT));
+  return entry;
+}
+
 export function readCardLinkJournal({ storage = defaultStorage() } = {}) {
   return safeRead(storage);
 }
@@ -120,6 +145,11 @@ export function formatCardLinkJournal(entries = []) {
       held = ` (${seconds}s)`;
     }
     const reason = entry.reason ? ` — ${entry.reason}` : '';
+    // A setup-journey entry (blueprint H8) carries `task`, never `state` — see
+    // the module docstring. Render it on its own line rather than printing an
+    // empty state, which would otherwise read as a connection change with a
+    // blank name.
+    if (entry.task) return `${entry.at}  setup: ${entry.task}${reason}${held}`;
     const missed = entry.missed ? ` [missed ${entry.missed}]` : '';
     return `${entry.at}  ${entry.state}${reason}${held}${missed}`;
   });
