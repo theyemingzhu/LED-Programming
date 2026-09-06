@@ -20,6 +20,8 @@ build on them, not around them.
 | `40e2c3c8` | B0 baseline record and blueprint holes H1–H8 (plan §B0) | — |
 | `f3b760ae` | **B1** one shared journey decision: `src/lib/cardJourneyEvidence.js` (store keyed by card id + boot id, single-flight, stale after a hardware operation), `src/lib/setupJourneyInputs.js` (`assembleSetupJourney`, the only evidence→journey mapping), `src/hooks/useSetupJourney.js`; chip, shell router, Setup and Card Home consume it. `data-journey-task` / `data-journey-complete` on the chip and Setup root. **B2 slice:** `src/lib/cardReturnIntent.js` makes `resumeDestination` real. Simulator gained the firmware's wiring-test lifecycle. | unit 2282/2282; Chromium 244/0 unexpected |
 | `f28d4999` | Three real defects found by the new stateful suite, fixed: duplicate `/api/control` after a lost reply (read-back before any resend: `readBackLivePreview`, `retryWhileTransient({ readBack })`); `adoptWiringFromCard` replacing open work; double-tap sending twice. `tests/journey-continuity.spec.ts` (J02, J02-negative, J05, J08 ×2, J13) added to `ci:browser-smoke`. `docs/journeys/acceptance-ledger.md` written. | unit 2285/2285; Chromium 259/0 unexpected; J05+J08 ×4 = 12/12 |
+| `d4c404a8` | Read-back narrowed to transport failures only (a card's explicit answer is never reinterpreted from a zone read); the playlist timeout fixture no longer pre-shows the requested row. | four `playlist-storage` cases: pass at main, red at `f28d4999`, green now; playlist + journey + drawer 27/0 |
+| `a238e915` | This plan. | — |
 
 Real-card screens inspected on `lw-b0fe81f61b44` (192.168.18.70, firmware 1524,
 Studio release 1548 available): desktop and phone Card Home agree with the
@@ -136,6 +138,28 @@ files may run in parallel (max three).
    on the same hosts; assert lifecycle `wrong-card`, no write, progress kept
    (autosave id unchanged).
 3. Done when both pass 3/3; ledger J08 updated.
+
+**A5 · Retire the playlist route stub in favour of the simulator** · tier S · files:
+`lightweaver/tests/playlist-storage.spec.ts`
+
+1. Replace `mockConnectedPlaylistCard`'s frozen `page.route` stubs with
+   `createCardSimulator(cardState('installed-match'))`, keeping every existing
+   assertion. Where a test needs a refusal or a lost reply use `refuse` /
+   `respondThenDrop`; where it needs "the card is not showing this row yet"
+   set `card.state.currentId = 'blackout'` before `install`.
+2. Done when the suite is green with `unexpected: 0` and no test registers its
+   own `/api/zones` route any more.
+
+**A6 · Full-field read-back** · tier M · files: `lightweaver/src/lib/cardLiveControl.js`
+(+ colocated test), `lightweaver/tests/harness/cardSimulator.ts`
+
+1. `readBackLivePreview` confirms only pattern-shaped intents today
+   (`READ_BACK_VERIFIABLE_PATCH_KEYS`). Make the simulator apply brightness,
+   speed, hue, saturation, breathe and drift from `/api/control` into its zones
+   (it reports fixed values now), then compare every `CUSTOMER_CONTROL_WIRE_FIELDS`
+   control present in the look against the zone (numbers within 0.01) and drop
+   the patch-key exclusion. Red first: a J05 variant that changes brightness and
+   loses the reply must send once.
 
 ### Phase B — firmware maintenance completion (B2 remainder)
 

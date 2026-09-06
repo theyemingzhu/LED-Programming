@@ -263,5 +263,20 @@ witnessed on the active-light-test agreement case); Chromium focused 244/0
 unexpected/5 skipped; production build. Screens not yet inspected; no
 hardware, flash or deploy.
 
-FLOW-B5 active — journey-continuity spec (J02, J05, J08, J13) and the J01–J14
-acceptance ledger; test/docs owner, `lightweaver/tests/` + `docs/journeys/`.
+FLOW-B5 done locally — `tests/journey-continuity.spec.ts` (J02, J02-negative,
+J05, J08 ×2, J13) on one simulated card per test, now in `ci:browser-smoke`;
+`docs/journeys/acceptance-ledger.md` maps J01–J14 to actual test titles with
+per-row status. The suite surfaced three real defects, fixed in `f28d4999`
+and scoped in `d4c404a8`: duplicate `/api/control` after a lost reply (read
+the card back before any resend; transport failures only), silent replacement
+of open work on first card read, and a double tap sending twice.
+Checkpoint at `d4c404a8`: unit 2285/2285; Chromium batches 244/0, 259/0,
+115+27/0 after the fix, windowless 1/1; production build. Real-card screens
+(desktop + phone, read-only, card 1524) agree. Not deployed; no flash.
+
+FLOW-PLAN done — `docs/plans/2026-09-06-unified-card-journey-execution.md`:
+ticketed sequel for low-cost models (phases A–E, rules, brief template, B6
+separate). Remaining tickets: J01 continuous test, playlist stub → simulator,
+full-field read-back, update return-intent, optional-update copy, persistence
+and version-skew cases, diagnostic trail, callback cleanup, doc reconciliation,
+and the four Bench observations.
