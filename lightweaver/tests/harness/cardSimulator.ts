@@ -133,10 +133,19 @@ function derivedReadiness(state: CardStateSpec) {
   };
 }
 
-function zonesFor(state: CardStateSpec) {
+function zonesFor(state: CardStateSpec & { zoneIds?: string[] }) {
   if (!state.pixels) return [];
-  return [{
-    id: ZONE_ID,
+  // One entry per id the card currently answers under — normally just
+  // 'zone-all' for the matrix's abstract fixtures, but a real project's
+  // /api/config push can declare several (e.g. a default project's own
+  // "outer circle" / "inner circle" board), and a save-then-verify install
+  // has to read back every one of those ids, not a fixture default. Ranges
+  // are computed fresh from the CURRENT pixel count on every call — never
+  // snapshotted — so a wiring change that resizes the strip can't leave a
+  // stale zone shape behind.
+  const ids = state.zoneIds && state.zoneIds.length ? state.zoneIds : [ZONE_ID];
+  return ids.map(id => ({
+    id,
     label: 'All lights',
     patternId: state.currentId,
     brightness: 0.65,
@@ -153,7 +162,7 @@ function zonesFor(state: CardStateSpec) {
     driftHueMax: 255,
     blackout: state.currentId === 'blackout',
     ranges: [{ start: 0, count: state.pixels }],
-  }];
+  }));
 }
 
 function statusBody(state: CardSimulator['state']) {
@@ -410,6 +419,13 @@ export function createCardSimulator(
     cardId: options.cardId || MATRIX_CARD_ID,
     bootId: 'boot-matrix-1',
     stateRevision: 1,
+    // The id(s) /api/zones reports. Defaults to the fixed 'zone-all' every
+    // existing fixture already expects; a /api/config apply that carries a
+    // real project's own zone topology (e.g. a default project's separate
+    // "outer circle" / "inner circle" zones) replaces this list to match, so
+    // a save-then-verify flow reads back the zones the card actually holds
+    // instead of a fixture default no pushed project ever declared.
+    zoneIds: [ZONE_ID] as string[],
     // Wiring the card is holding but has not adopted — the candidate slot.
     stagedPixels: undefined as number | undefined,
     stagedPin: undefined as number | undefined,
@@ -648,6 +664,15 @@ export function createCardSimulator(
             label: String(look.label || look.id || ''),
           })).filter(entry => entry.id);
         }
+        // A save that isn't a wiring change still carries the pushed
+        // project's own zone topology — possibly more than one zone (a
+        // default project's separate "outer circle" / "inner circle" board,
+        // for instance). Adopt every id so a save-then-verify flow
+        // (syncRuntimePackageToCard's waitForCardZones) reads back the exact
+        // zones the card genuinely holds, not the fixture default.
+        const pushedZones = (payload.zones || []) as { id?: string }[];
+        const pushedZoneIds = pushedZones.map(zone => String(zone?.id || '').trim()).filter(Boolean);
+        if (pushedZoneIds.length) state.zoneIds = pushedZoneIds;
         return ok({ ok: true, message: 'applied', requiresReboot: true });
       }
       case '/api/beacon/port': {
