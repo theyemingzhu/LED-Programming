@@ -93,6 +93,7 @@ import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
 import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
 import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
+import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
@@ -1808,7 +1809,13 @@ function Shell({ offlineUpdateController = null }) {
         firmwareStatus={firmwareStatus}
         firmwareRelease={firmwareReleaseIdentity.manifest}
         firmwareReleaseError={firmwareReleaseIdentity.error}
-        onOpenFirmwareUpdate={() => openCardSection('install')}
+        onOpenFirmwareUpdate={() => {
+          // Where the owner was before the update took the screen — the
+          // preserving update's continue button reads this back to send them
+          // home instead of always to Patterns (cardReturnDestination).
+          rememberCardReturnIntent({ hash: window.location.hash, cardId: cardLink.card?.id || cardLink.readiness?.cardId });
+          openCardSection('install');
+        }}
         offlineUpdateState={offlineUpdateState}
         onActivateOfflineUpdate={() => offlineUpdateController?.activateUpdate?.()}
         testStrip={testStrip}
@@ -1837,6 +1844,7 @@ function Shell({ offlineUpdateController = null }) {
         firmwareStatus={firmwareStatus}
         firmwareRelease={firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null}
         onOpenFirmwareUpdate={() => {
+          rememberCardReturnIntent({ hash: window.location.hash, cardId: cardLink.card?.id || cardLink.readiness?.cardId });
           closeConnectionCenter();
           openCardSection('install');
         }}

@@ -59,6 +59,7 @@ import {
   saveFirmwareUpdateSession,
 } from '../lib/cardFirmwareUpdater.js';
 import { recoverFirmwareUpdate } from '../lib/firmwareUpdateRecovery.js';
+import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { runPreservingUsbBootstrap } from '../lib/preservingUsbBootstrap.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
@@ -527,6 +528,14 @@ import {
     const softwareGrantBlocked = grantService.state === 'sign-in-required' || grantService.state === 'unavailable';
     const useSoftwareAuthorization = softwareGrantAvailable && !forcePhysicalAuthorization && !softwareGrantBlocked;
     const actionLabel = mode === 'wifi' ? 'Update over Wi-Fi' : 'Update once over USB';
+    // Once the card is verified back on the target build, the one continue
+    // button goes where the owner was when the update interrupted them
+    // (recorded by the footer chip, Connection Center and Setup through
+    // rememberCardReturnIntent), else the journey's own destination, else
+    // Patterns. Pressed, never automatic; the label names the destination.
+    const continueDestination = phase === 'reconnected'
+      ? cardReturnDestination({ cardId: card.id, resumeDestination: 'patterns' })
+      : null;
     const phaseLabel = mode === 'usb' && phase === 'verifying'
       ? 'Upload complete · checking the saved update'
       : UPDATE_PHASE_LABELS[phase] || '';
@@ -859,6 +868,19 @@ import {
             {phase === 'sending' && release && <span> · {acknowledgedBytes} of {release.imageBytes.byteLength} bytes acknowledged by the card</span>}
             {phase === 'reconnected' && <span> to Card {card.id} on firmware {targetLabel}</span>}
           </div>
+        )}
+        {continueDestination && (
+          <button
+            className="btn-lg"
+            type="button"
+            data-testid="preserving-update-continue"
+            onClick={() => {
+              clearCardReturnIntent();
+              window.location.hash = continueDestination.hash;
+            }}
+          >
+            {continueDestination.label}
+          </button>
         )}
         {error && <div className="install-check-error" role="alert">{error}</div>}
         {rollback && (
