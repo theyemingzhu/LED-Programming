@@ -14,6 +14,7 @@ import {
   normalizePortRoles,
 } from './portRoles.js';
 import { normalizeUsbLedColorOrder } from './usbLedColorOrder.js';
+import { channelProofMap } from './channelProof.js';
 import { createDefaultPatchBoard } from './patchBoard.js';
 import { BENCH_DEFAULT_PORT_PIXELS, isUncountedDiscoveryHeadroom } from './benchConfig.js';
 
@@ -139,7 +140,7 @@ export function discoveryProjectParts(session, channelProof, geometry = {}) {
   const outputs = outputsFromStrips(portRoles);
   return {
     portRoles,
-    colorOrder: namedColorOrderFromChannelMap(channelProof?.channelMap),
+    colorOrder: namedColorOrderFromChannelMap(channelProofMap(channelProof)),
     outputs,
     ...provisionalLayoutFromOutputs(outputs, geometry),
   };

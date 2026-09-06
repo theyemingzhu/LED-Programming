@@ -41,6 +41,9 @@ export type CardSimulator = {
     /** True from activate until confirm/rollback/expiry — the probation window. */
     wiringTestActive: boolean;
     wiringProbationRemainingMs: number;
+    /** The candidate wiring the card holds but has not adopted (undefined when none). */
+    stagedPixels?: number;
+    stagedPin?: number;
   };
   install(page: Page): Promise<void>;
   /** The pattern the card is actually playing right now. */
@@ -399,6 +402,52 @@ function controlAcknowledgement(state: CardSimulator['state'], body: Record<stri
  */
 export const CARD_LATENCY_MS = { read: 40, write: 120 };
 
+type CandidateIdentity = {
+  projectId: string;
+  projectName: string;
+  projectRevision: number;
+  projectFingerprint: string;
+  provisionalSetup: boolean;
+  patterns: PatternEntry[];
+};
+
+function identityFromConfig(state: CardStateSpec, payload: Record<string, unknown>): CandidateIdentity {
+  const piece = (payload.piece || {}) as Record<string, unknown>;
+  const looks = (payload.looks || payload.patterns || []) as { id?: string; label?: string }[];
+  const patterns = looks.map(look => ({
+    id: String(look.id || ''),
+    label: String(look.label || look.id || ''),
+  })).filter(entry => entry.id);
+  return {
+    projectId: String(piece.id || payload.projectId || state.projectId),
+    projectName: String(piece.name || state.projectName),
+    projectRevision: Number(payload.projectRevision ?? state.projectRevision),
+    projectFingerprint: String(payload.projectFingerprint ?? state.projectFingerprint),
+    provisionalSetup: payload.provisional === true,
+    patterns: patterns.length ? patterns : state.patterns.map(pattern => ({ ...pattern })),
+  };
+}
+
+function snapshotIdentity(state: CardStateSpec): CandidateIdentity {
+  return {
+    projectId: state.projectId,
+    projectName: state.projectName,
+    projectRevision: state.projectRevision,
+    projectFingerprint: state.projectFingerprint,
+    provisionalSetup: state.provisionalSetup === true,
+    patterns: state.patterns.map(pattern => ({ ...pattern })),
+  };
+}
+
+function applyIdentity(state: CardStateSpec, identity: CandidateIdentity) {
+  state.projectId = identity.projectId;
+  state.projectName = identity.projectName;
+  state.projectRevision = identity.projectRevision;
+  state.projectFingerprint = identity.projectFingerprint;
+  state.provisionalSetup = identity.provisionalSetup;
+  state.patterns = identity.patterns.map(pattern => ({ ...pattern }));
+}
+
 export function createCardSimulator(
   spec: CardStateSpec,
   options: { cardId?: string; latencyMs?: { read: number; write: number } } = {},
@@ -413,12 +462,20 @@ export function createCardSimulator(
     // Wiring the card is holding but has not adopted — the candidate slot.
     stagedPixels: undefined as number | undefined,
     stagedPin: undefined as number | undefined,
+    // The rest of the candidate config. Firmware stages the WHOLE runtime
+    // config (stageRuntimeConfigJson in LightweaverWeb.cpp), so a confirmed
+    // wiring change also adopts the project identity, provisional flag and
+    // pattern list that config carried — a simulator that promoted only the
+    // pixel count left the card claiming the bench project after a confirmed
+    // install, and Studio's exact-project verification rightly refused it.
+    stagedIdentity: undefined as CandidateIdentity | undefined,
     // Set on activate/beginWiringTest, cleared on confirm/rollback/expiry.
     wiringTestActive: false,
     wiringProbationRemainingMs: 0,
     // What the card was running before this test began — the rollback target.
     preTestPixels: undefined as number | undefined,
     preTestPin: undefined as number | undefined,
+    preTestIdentity: undefined as CandidateIdentity | undefined,
     // The one GPIO the factory beacon is currently holding lit, or null. Only
     // meaningful before a real project exists (see /api/beacon/port above).
     beaconPinned: null as number | null,
@@ -545,8 +602,10 @@ export function createCardSimulator(
         // return to.
         state.preTestPixels = state.pixels;
         state.preTestPin = state.pin;
+        state.preTestIdentity = snapshotIdentity(state);
         if (Number.isFinite(state.stagedPixels)) state.pixels = Number(state.stagedPixels);
         if (Number.isFinite(state.stagedPin)) state.pin = Number(state.stagedPin);
+        if (state.stagedIdentity) applyIdentity(state, state.stagedIdentity);
         state.wiringTransactionOpen = false;
         state.wiringTestActive = true;
         state.wiringProbationRemainingMs = WIRING_PROBATION_MS;
@@ -567,6 +626,7 @@ export function createCardSimulator(
         if (rollback) {
           if (state.preTestPixels !== undefined) state.pixels = state.preTestPixels;
           if (state.preTestPin !== undefined) state.pin = state.preTestPin;
+          if (state.preTestIdentity) applyIdentity(state, state.preTestIdentity);
         }
         state.wiringTransactionOpen = false;
         state.wiringTestActive = false;
@@ -575,6 +635,8 @@ export function createCardSimulator(
         state.stagedPin = undefined;
         state.preTestPixels = undefined;
         state.preTestPin = undefined;
+        state.stagedIdentity = undefined;
+        state.preTestIdentity = undefined;
         if (rollback) state.bootId = `${state.bootId}-rb`;
         return ok({
           ok: true, state: rollback ? 'rolled-back' : 'known-good',
@@ -605,6 +667,7 @@ export function createCardSimulator(
           state.wiringTransactionOpen = true;
           state.stagedPixels = nextPixels;
           state.stagedPin = nextPin;
+          state.stagedIdentity = identityFromConfig(state, payload);
           return {
             body: {
               ok: true, state: 'staged', activationId: STAGED_ACTIVATION_ID,
@@ -785,13 +848,16 @@ export function createCardSimulator(
       if (!state.wiringTestActive) return;
       if (state.preTestPixels !== undefined) state.pixels = state.preTestPixels;
       if (state.preTestPin !== undefined) state.pin = state.preTestPin;
+      if (state.preTestIdentity) applyIdentity(state, state.preTestIdentity);
       state.wiringTransactionOpen = false;
       state.wiringTestActive = false;
       state.wiringProbationRemainingMs = 0;
       state.stagedPixels = undefined;
       state.stagedPin = undefined;
+      state.stagedIdentity = undefined;
       state.preTestPixels = undefined;
       state.preTestPin = undefined;
+      state.preTestIdentity = undefined;
       state.bootId = `${state.bootId}-exp`;
     },
     respondThenDrop(path, options = {}) {

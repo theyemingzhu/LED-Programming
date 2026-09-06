@@ -11,6 +11,15 @@ import {
   projectSkeletonFromCardStatus,
   starterLedCountFromProject,
 } from './discoveryCommit.js';
+import { answerChannelProof, createChannelProof, skippedChannelProof } from './channelProof.js';
+
+// The colour proof exactly as StripDiscoveryPanel.jsx builds it: two answers
+// through the shared state machine, never a hand-shaped object. If the panel
+// and discoveryCommit ever disagree on the proof's shape again, these fixtures
+// disagree with it too.
+function provenColors(seenFirst, seenSecond) {
+  return answerChannelProof(answerChannelProof(createChannelProof(), seenFirst), seenSecond);
+}
 
 const benchLayout = [
   { pin: 16, start: 0, count: 600 },
@@ -45,9 +54,7 @@ function discoveredSession() {
 }
 
 test('discoveryProjectParts commits a multi-port walk into outputs, port roles and colour order', () => {
-  const parts = discoveryProjectParts(discoveredSession(), {
-    channelMap: { red: 1, green: 0, blue: 2 },
-  });
+  const parts = discoveryProjectParts(discoveredSession(), provenColors('green', 'red'));
   assert.deepEqual(parts.outputs, [
     { id: 'strip-16', pin: 16, pixels: 354 },
     { id: 'strip-17', pin: 17, pixels: 120 },
@@ -61,9 +68,7 @@ test('discoveryProjectParts commits a multi-port walk into outputs, port roles a
 });
 
 test('discoveryProjectParts creates proportional provisional layout strips and wiring', () => {
-  const parts = discoveryProjectParts(discoveredSession(), {
-    channelMap: { red: 1, green: 0, blue: 2 },
-  });
+  const parts = discoveryProjectParts(discoveredSession(), provenColors('green', 'red'));
 
   assert.equal(parts.strips.length, 2);
   assert.deepEqual(parts.strips.map(strip => [strip.id, strip.pixelCount]), [
@@ -100,19 +105,34 @@ test('a port that ended with no count is omitted from outputs', () => {
     { type: 'counts-entered' },
     { type: 'end-marker-yes' },
   ]);
-  const parts = discoveryProjectParts(session, { channelMap: { red: 0, green: 1, blue: 2 } });
+  const parts = discoveryProjectParts(session, provenColors('red', 'green'));
   assert.deepEqual(parts.outputs, [{ id: 'strip-16', pin: 16, pixels: 60 }]);
   assert.equal(parts.portRoles.find(entry => entry.pin === 17).role, 'unused');
 });
 
-test('an absent colour proof leaves the colour order empty, not a guess', () => {
-  const parts = discoveryProjectParts(discoveredSession(), null);
+test('an absent, skipped or unfinished colour proof leaves the colour order empty, not a guess', () => {
+  assert.equal(discoveryProjectParts(discoveredSession(), null).colorOrder, '');
+  assert.equal(discoveryProjectParts(discoveredSession(), skippedChannelProof()).colorOrder, '');
+  assert.equal(discoveryProjectParts(discoveredSession(), answerChannelProof(createChannelProof(), 'red')).colorOrder, '');
+});
+
+test('the identity answer (red, then green) still confirms a colour order — the declared one', () => {
+  // A correct strip is the common case; it must still count as "checked", or
+  // the Setup ladder never leaves discover-lights after a perfect walk.
+  const parts = discoveryProjectParts(discoveredSession(), provenColors('red', 'green'));
+  assert.equal(parts.colorOrder, 'GRB');
+});
+
+test('a proof shaped for some other field name is not silently accepted', () => {
+  // Regression guard for the map/channelMap drift that blanked every real
+  // discovery run's colour order.
+  const parts = discoveryProjectParts(discoveredSession(), { stage: 'done', channelMap: { red: 1, green: 0, blue: 2 } });
   assert.equal(parts.colorOrder, '');
 });
 
 test('discoveryProjectParts is safe for a session that has not been walked', () => {
   const fresh = createStripDiscoverySession({ portRoles, benchLayout });
-  const parts = discoveryProjectParts(fresh, { channelMap: null });
+  const parts = discoveryProjectParts(fresh, createChannelProof());
   assert.deepEqual(parts.outputs, []);
   assert.equal(parts.colorOrder, '');
   assert.equal(parts.portRoles.every(entry => entry.role === 'unused'), true);

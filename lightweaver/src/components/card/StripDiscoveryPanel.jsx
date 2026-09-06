@@ -31,6 +31,13 @@ import { readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardP
 import { readPersistedCardIdentity } from '../../lib/cardIdentity.js';
 import { buildPackageForPortRoles, deploySetupToCard } from '../../lib/cardSetupDeploy.js';
 import { discoveryProjectParts, layoutIsUncountedHeadroom } from '../../lib/discoveryCommit.js';
+import {
+  answerChannelProof as answerProof,
+  channelProofMap,
+  channelProofSettled,
+  createChannelProof,
+  skippedChannelProof,
+} from '../../lib/channelProof.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { CARD_HARDWARE_CONTRACT } from '../../lib/cardHardwareContract.js';
 import { FRAME_CHUNK_MAX_PIXELS, createCardFrameStream } from '../../lib/cardFrameStream.js';
@@ -46,7 +53,6 @@ import {
   DISCOVERY_FRAME_RATE_WARN_PIXELS,
   advance,
   buildChannelProofFrame,
-  channelMapFromProofAnswers,
   correctFrameForChannelMap,
   createStripDiscoverySession,
   discoveryFrame,
@@ -250,7 +256,7 @@ export function StripDiscoveryPanel({
   // The two-question colour proof (ui-repair B-COLOUR). 'first'/'second' are
   // the open questions, 'done' carries the measured map, 'skipped' is the
   // owner's explicit opt-out (colours then behave exactly as before).
-  const [channelProof, setChannelProof] = useState({ stage: 'first', firstSeen: '', map: null, retry: false });
+  const [channelProof, setChannelProof] = useState(createChannelProof);
   const [streamHealth, setStreamHealth] = useState(null);
   const streamRef = useRef(null);
   // The "look at your strip" question assumes the light holds steady while the
@@ -547,7 +553,7 @@ export function StripDiscoveryPanel({
       });
     }
     if (session?.phase === 'decade' && channelProof.stage === 'skipped') return discoveryFrame(session)?.map(color => color === '000000' ? color : '080808');
-    return correctFrameForChannelMap(discoveryFrame(session), channelProof.map);
+    return correctFrameForChannelMap(discoveryFrame(session), channelProofMap(channelProof));
   }, [session, channelProof]);
 
   // Frames are pushed, not sent: the stream owns the throttle, the keepalive,
@@ -587,28 +593,16 @@ export function StripDiscoveryPanel({
     setInterruptedRun(null);
   };
 
-  // ui-repair B-COLOUR: the two colour-proof answers. The same colour twice is
-  // physically impossible — one answer was a slip — so the check starts over
-  // rather than recording a map that lies.
-  const answerChannelProof = seen => {
-    setChannelProof(current => {
-      if (current.stage === 'first') {
-        return { stage: 'second', firstSeen: seen, map: null, retry: false };
-      }
-      if (current.stage === 'second') {
-        const map = channelMapFromProofAnswers(current.firstSeen, seen);
-        if (!map) return { stage: 'first', firstSeen: '', map: null, retry: true };
-        return { stage: 'done', firstSeen: current.firstSeen, map, retry: false };
-      }
-      return current;
-    });
-  };
+  // ui-repair B-COLOUR: the two colour-proof answers. The state machine lives
+  // in src/lib/channelProof.js so discoveryCommit.js reads the exact shape this
+  // panel writes (the same colour twice starts the check over there too).
+  const answerChannelProof = seen => setChannelProof(current => answerProof(current, seen));
 
   useEffect(() => {
-    if (session?.phase === 'probe' && ['done', 'skipped'].includes(channelProof.stage)) dispatch({ type: 'ruler-ready' });
+    if (session?.phase === 'probe' && channelProofSettled(channelProof)) dispatch({ type: 'ruler-ready' });
   }, [session?.phase, channelProof.stage, dispatch]);
 
-  const skipChannelProof = () => setChannelProof({ stage: 'skipped', firstSeen: '', map: null, retry: false });
+  const skipChannelProof = () => setChannelProof(skippedChannelProof());
 
   // Explicit "show me again": re-push the current phase's frame and clear the
   // restart notice. The stream keepalive re-sends on its own; this exists so
@@ -1126,7 +1120,7 @@ export function StripDiscoveryPanel({
             <span><i className="is-orange" />Every 5 · orange</span><span><i className="is-red" />Every 10 · red</span><span><i className="is-pink" />Every 50 · pink</span>
           </div>}
           {channelProof.stage !== 'skipped' && <p>Count the markers, then the yellow lights at the end. Enter your total.</p>}
-          {channelProof.stage === 'skipped' && <p role="status">Colors are unverified. Enter a count you know, or <button type="button" className="btn" onClick={() => { setChannelProof({ stage: 'first', firstSeen: '', map: null, retry: false }); setSession(current => ({ ...current, phase: 'probe', activePin: current.ports.find(port => port.probed)?.pin })); }}>Check colors</button>.</p>}
+          {channelProof.stage === 'skipped' && <p role="status">Colors are unverified. Enter a count you know, or <button type="button" className="btn" onClick={() => { setChannelProof(createChannelProof()); setSession(current => ({ ...current, phase: 'probe', activePin: current.ports.find(port => port.probed)?.pin })); }}>Check colors</button>.</p>}
           {benchNotice && <p role="status" data-testid="discovery-bench-maxed">{benchNotice}</p>}
           <ul className="strip-discovery-counts">
             {session.ports.filter(port => port.probed && !port.skipped).map(port => (

@@ -1,4 +1,4 @@
-// [J01-partial] blank card to saved playback — docs/plans/2026-09-06-unified-card-journey-execution.md ticket A1.
+// [J01] blank card to saved playback — docs/plans/2026-09-06-unified-card-journey-execution.md ticket A1.
 //
 // This is a NEW file (journey-continuity.spec.ts is left untouched per the
 // ticket). It reuses that file's boot/connect conventions — see the comment
@@ -9,16 +9,21 @@
 // can be found (with no prior identity — a genuinely fresh browser), its one
 // strip discovered by port/colour/count exactly the way StripDiscoveryPanel.jsx
 // drives it (beacon probe, bench install, colour proof, ruler count, end
-// marker, record), and folded into a real project with a real wiring mapping
-// (discoveryCommit.js — no manual Layout drag needed; starterPending flips
-// false the moment discovery records).
+// marker, record), folded into a real project with a real wiring mapping
+// (discoveryCommit.js — no manual Layout drag needed), installed on the card
+// through the Setup ladder's own "Open Patterns" (CardPushControl autoStart:
+// push, staged wiring candidate, light-test activation, all unaided), confirmed
+// by the owner at the light-test gate, and then played from the Patterns
+// screen. Every step is asserted from the card's own state or a data-testid,
+// never from prose.
 //
-// It stops there — not on a missing test id, but on a real product defect
-// this test found: the colour order a discovery walk measures never survives
-// into the saved project, so the Setup ladder can never leave its
-// discover-lights task after ANY real discovery run. See the "STOPS HERE"
-// comment below for the exact root cause, and the return packet for the full
-// writeup.
+// History: the first version of this file stopped after the discovery walk on
+// a real defect it found — the panel's colour proof stored its measured map
+// under `map` while discoveryCommit.js read `channelMap`, so
+// colorOrderConfirmed never landed and the ladder never left discover-lights.
+// The proof's state machine now lives in src/lib/channelProof.js and both
+// sides import it; the assertion on the saved colour order below is the
+// regression guard.
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
@@ -72,7 +77,7 @@ async function bootBlank(page: Page, card: CardSimulator) {
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
 }
 
-test('[J01-partial] blank card: connect, discover one strip, push to card, wiring test activates', async ({ page }) => {
+test('[J01] blank card: connect, discover one strip, install through Open Patterns, confirm the light test, play', async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
   await bootBlank(page, card);
@@ -165,74 +170,85 @@ test('[J01-partial] blank card: connect, discover one strip, push to card, wirin
   });
   expect(await visibleAlerts(page), 'a fully successful discovery walk must not itself raise an alert').toEqual([]);
 
-  // ── STOPS HERE — a genuine product defect, not a missing test id. ─────────
-  //
-  // The ladder should now show "layout" (or later) as the current task:
-  // src/lib/setupJourney.js's layoutProgress() only needs starterPending:false
-  // and a non-empty strips array, both true above. But lightsComplete() gates
-  // on colorDone (confirmedColor(project) — devices.standaloneController.led.
-  // colorOrderConfirmed) BEFORE layout is even consulted, and that flag can
-  // never be set from a real discovery walk:
-  //
-  //   src/components/card/StripDiscoveryPanel.jsx's channelProof state stores
-  //   the measured colour-order map under the key `map` (see the `useState`
-  //   initializer and `answerChannelProof`'s three `return`s), and passes that
-  //   object straight to `discoveryProjectParts(session, channelProof, …)`
-  //   (StripDiscoveryPanel.jsx `record()`). But
-  //   src/lib/discoveryCommit.js:142 reads `channelProof?.channelMap` — a
-  //   different key that channelProof never has. `namedColorOrderFromChannelMap`
-  //   therefore always receives `undefined` from a real run, always returns
-  //   '', and `parts.colorOrder` is always falsy — so `record()`'s
-  //   `...(parts.colorOrder ? { led: { …, colorOrderConfirmed: true } } : {})`
-  //   spread never fires. This is independent of which colour buttons are
-  //   pressed, and independent of Skip: every path through the real colour
-  //   proof ends the same way. discoveryCommit.test.js never catches it
-  //   because its own fixtures hand-construct `{ channelMap: {...} }` directly
-  //   rather than obtaining channelProof from the component, so the two
-  //   disagree on the field name without either side's tests ever comparing
-  //   them.
-  //
-  // Confirmed below from the SAVED PROJECT (not asserted on prose): the
-  // colour order this walk measured is missing from local storage, so the
-  // ladder is still showing discover-lights after a full, successful
-  // discovery walk — the exact owner-visible consequence of the defect above.
-  // This is unreachable from `journeyLocator`/`setupJourney.js` and from
-  // `discoveryCommit.js`, neither of which is in this ticket's file list
-  // (`journey-continuity.spec.ts`, `cardSimulator.ts`, `cardStates.ts` only),
-  // so it is reported here rather than fixed in this change.
+  // ── The colour order the walk measured must survive into the saved project.
+  // src/lib/setupJourney.js's lightsComplete() gates on confirmedColor(project)
+  // (devices.standaloneController.led.colorOrderConfirmed) before the count or
+  // the layout are even consulted, so this flag is what lets the ladder leave
+  // discover-lights. Red-then-green is the identity answer: the strip renders
+  // truly under the declared order, and a correct strip must still count as
+  // "checked". Asserted from the SAVED PROJECT, not prose. (Before the shared
+  // src/lib/channelProof.js state machine existed, the panel wrote the map
+  // under `map` while discoveryCommit.js read `channelMap`, and this was
+  // null after every real walk — the ladder never left discover-lights.)
   const savedColor = await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
-    return saved?.devices?.standaloneController?.led?.colorOrderConfirmed ?? null;
+    const led = saved?.devices?.standaloneController?.led || {};
+    return { confirmed: led.colorOrderConfirmed ?? null, order: led.colorOrder ?? null };
   });
   expect(
     savedColor,
-    'src/lib/discoveryCommit.js:142 reads channelProof.channelMap, but StripDiscoveryPanel.jsx\'s '
-    + 'channelProof state stores the measured map under `map` — colorOrderConfirmed can never be set '
-    + 'by a real discovery walk. This is the actual block on J01, upstream of the CardPushControl '
-    + 'confirm-button test-id gap noted in the ticket.',
-  ).toBeNull();
+    'a completed colour proof must land in the saved project as a confirmed colour order',
+  ).toEqual({ confirmed: true, order: 'GRB' });
 
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J01 back on the ladder after a completed discovery walk');
   await expect(
     journey,
-    'the owner-visible symptom: the ladder cannot leave discover-lights after a fully completed, '
-    + 'correctly-counted discovery walk, because colorOrderConfirmed never lands (see above)',
-  ).toHaveAttribute('data-journey-task', 'discover-lights', { timeout: CONNECT_BUDGET_MS });
+    'after a fully completed, correctly-counted discovery walk the ladder must move past discover-lights',
+  ).not.toHaveAttribute('data-journey-task', 'discover-lights', { timeout: CONNECT_BUDGET_MS });
 
-  // Every card endpoint this prefix actually needed was modelled — nothing
+  await expect(journey, 'connect, lights and layout are done; only the verified install remains')
+    .toHaveAttribute('data-journey-task', 'test-and-save');
+  await expect(journey).toHaveAttribute('data-journey-complete', 'false');
+
+  // ── Verify phase: "Open Patterns" IS the install. With setup incomplete it
+  // routes through the install-project task with next=patterns, where
+  // CardInstallAction mounts CardPushControl with autoStart — the push, the
+  // staged wiring candidate and the light-test activation all run unaided.
+  const openProjectId = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')?.id || '');
+  expect(openProjectId, 'discovery must have left a real project open').not.toBe('');
+  await page.getByTestId('setup-verify-action').click();
+  await expect(page).toHaveURL(/task=install-project&next=patterns/);
+
+  // The simulator stages any config that changes wiring (bench 256px → 41px
+  // counted) and only adopts it on confirm, exactly like firmware. autoStart
+  // must therefore end with the card in probation, not merely "pushed".
+  await expect.poll(
+    () => ({ testing: card.state.wiringTestActive, staged: card.state.stagedPixels }),
+    { timeout: 30000, message: 'the auto-started push must stage the counted wiring and activate the light test by itself' },
+  ).toEqual({ testing: true, staged: COUNTED_PIXELS });
+  await expect(page.getByTestId('wiring-test-confirm'), 'the confirm gate must be on screen while the card is in probation')
+    .toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId('wiring-test-reject')).toBeVisible();
+  await expect(journey, 'the ladder must agree that the card is mid light test')
+    .toHaveAttribute('data-journey-task', 'confirm-visible-lights', { timeout: CONNECT_BUDGET_MS });
+
+  // The owner confirms the lights. The card promotes the candidate: real
+  // project id, counted pixel length, no longer provisional.
+  await page.getByTestId('wiring-test-confirm').click();
+  await expect.poll(
+    () => ({
+      testing: card.state.wiringTestActive,
+      projectId: card.state.projectId,
+      provisional: card.state.provisionalSetup,
+      pixels: card.state.pixels,
+    }),
+    { timeout: 30000, message: 'confirming the light test must make the counted project the card\'s working setup' },
+  ).toEqual({ testing: false, projectId: openProjectId, provisional: false, pixels: COUNTED_PIXELS });
+
+  // onInstalled hands the owner to Patterns, and the card is playable there.
+  await expect(page).toHaveURL(/#screen=pattern/, { timeout: 15000 });
+  await waitConnectedUnaided(page, 'J01 patterns after the verified install');
+  const cardPatterns = card.state.patterns.map(pattern => pattern.id);
+  expect(cardPatterns.length, 'the installed project must have put at least one pattern on the card').toBeGreaterThan(0);
+  const target = cardPatterns.find(id => id !== card.playingId()) || cardPatterns[0];
+  const tile = patternTile(page, target);
+  await expect(tile).toHaveCount(1, { timeout: CONNECT_BUDGET_MS });
+  await tile.click();
+  await card.waitForPlaying(target, 8000);
+
+  expect(await visibleAlerts(page), 'the whole blank-card journey must complete without raising an alert').toEqual([]);
+  // Every card endpoint this journey actually needed was modelled — nothing
   // Studio asked for fell through to the simulator's 404 default.
   expect(card.unhandled, 'every /api/* path this journey touched must be modelled by the simulator').toEqual([]);
-
-  // Everything past this point — Layout placement already being a no-op,
-  // "Open Patterns", CardPushControl's autoStart push + wiring activate, the
-  // confirm gate, and the final pattern click / card.waitForPlaying — is
-  // real, reachable code (verified by reading
-  // src/components/layout/shared/CardPushControl.jsx and
-  // src/components/card/CardInstallAction.jsx) but not reachable from the
-  // real screens while the defect above stands. `patternTile` is kept, unused,
-  // as the marker for where a follow-up resumes once discoveryCommit.js is
-  // fixed to read `channelProof.map` and CardPushControl.jsx's confirm/
-  // rollback buttons gain data-testids.
-  void patternTile;
 });
