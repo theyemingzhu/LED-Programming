@@ -168,3 +168,18 @@ raw `page.route` override:**
 All four compose with the wiring-test lifecycle and with each other on the
 same simulator instance — they are independent knobs on one mutable `state`,
 not separate simulator modes.
+
+**`/api/zones` reports `state.zoneIds`, not a hardcoded `'zone-all'`.** Added
+for `playlist-storage.spec.ts` (A5): the matrix's abstract fixtures never
+declare a project with real zone topology, so `zoneIds` defaults to
+`['zone-all']` and nothing here changes. A real project can hold more than
+one zone (a default project's separate "outer circle" / "inner circle"
+board, for instance), and `syncRuntimePackageToCard`'s save-then-verify
+install (`waitForCardZones`) requires every one of those ids to come back
+from `/api/zones` before it calls the save confirmed. `/api/config`'s
+non-wiring-change apply branch now adopts the *full* id list from the
+pushed project's own `config.zones`, so that verification reads back the
+zones the card genuinely holds instead of a fixture default no pushed
+project ever declared. Ranges are still computed fresh from the current
+pixel count on every call, never snapshotted, so a wiring change that
+resizes the strip can't leave a stale zone shape behind.
