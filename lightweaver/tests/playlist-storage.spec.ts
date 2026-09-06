@@ -631,6 +631,11 @@ test('Playlist serializes card mutations behind recovery so the final physical c
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
   expect(physicalCommandsFrom(card).at(-1)).toMatch(/^control:/);
   expect(physicalCommandsFrom(card).lastIndexOf('recover:2')).toBeLessThan(physicalCommandsFrom(card).length - 1);
+  // Recovering from the restart re-acquires the transport ONCE and resends the
+  // same command ONCE. Two controls in the card's whole record — the first
+  // row's, and this one — is what proves the recovery is bounded and never
+  // becomes a second real write.
+  expect(controlRequestCount(card)).toBe(2);
 });
 
 test('Playlist reports a bounded failure when dedicated light recovery is rejected', async ({ page }) => {
