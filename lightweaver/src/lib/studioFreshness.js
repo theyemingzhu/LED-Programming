@@ -1,5 +1,6 @@
 import { STUDIO_BUILD_GRAPH_PATH, parseStudioBuildGraph } from './productionDeploymentCheck.js';
 import { parseStudioRelease } from './studioRelease.js';
+import { STUDIO_HARDWARE_OPERATION_EVENT } from './studioHardwareOperation.js';
 
 export const STUDIO_RELEASE_PATH = '/studio-release.json';
 export const STUDIO_FRESHNESS_POLL_MS = 30_000;
@@ -65,6 +66,20 @@ export function createStudioFreshnessMonitor({
   const listeners = new Set();
   let state = immutableState('checking', release);
   let started = false;
+  // Two independent sources compose into one `operationActive` gate rather
+  // than one overwriting the other. `explicitOperationActive` is whatever the
+  // caller last passed to setOperationActive() — app.jsx already folds
+  // install/commissioning/hardware-operation state into that single call.
+  // `hardwareEventActive` is this monitor's own read of the raw
+  // hardware-operation event on windowRef (see onHardwareOperationActive
+  // below), so a screen only has to call beginStudioHardwareOperation on the
+  // same target and never has to thread setOperationActive through at all.
+  // Composing with OR means neither source can clear a deferral the other
+  // still holds open — e.g. app.jsx's combined flag staying true because an
+  // install is active must survive an unrelated hardware operation's own
+  // "active: false" event arriving on the same target.
+  let explicitOperationActive = false;
+  let hardwareEventActive = false;
   let operationActive = false;
   let pendingRelease = null;
   let convergedReleaseRevision = '';
@@ -230,6 +245,36 @@ export function createStudioFreshnessMonitor({
     if (documentRef.visibilityState === 'visible') void checkNow();
   };
 
+  // Recomputes the composed gate and, only on a true→false edge with a
+  // deferred target waiting, clears it and re-checks — always re-obtaining a
+  // fresh convergence proof before reloading (never trusting a pending target
+  // frozen from before the operation started).
+  const applyOperationActive = () => {
+    const next = explicitOperationActive || hardwareEventActive;
+    operationActive = next;
+    if (!operationActive && pendingRelease) {
+      pendingRelease = null;
+      convergedReleaseRevision = '';
+      return checkNow();
+    }
+    return Promise.resolve(state);
+  };
+
+  const setOperationActive = active => {
+    explicitOperationActive = active === true;
+    return applyOperationActive();
+  };
+
+  // The monitor observes its own hardware-operation lifecycle directly on
+  // windowRef rather than requiring every caller to thread setOperationActive
+  // through — a screen that starts protected work only has to call
+  // beginStudioHardwareOperation/withStudioHardwareOperation on the same
+  // target this monitor was constructed with.
+  const onHardwareOperationActive = event => {
+    hardwareEventActive = event?.detail?.active === true;
+    void applyOperationActive();
+  };
+
   return Object.freeze({
     getState: () => state,
     subscribe(listener) {
@@ -241,6 +286,7 @@ export function createStudioFreshnessMonitor({
       started = true;
       windowRef.addEventListener('focus', onFocus);
       windowRef.addEventListener('online', onOnline);
+      windowRef.addEventListener(STUDIO_HARDWARE_OPERATION_EVENT, onHardwareOperationActive);
       documentRef.addEventListener('visibilitychange', onVisibilityChange);
       schedulePoll();
       return checkNow();
@@ -251,18 +297,11 @@ export function createStudioFreshnessMonitor({
       clearPoll();
       windowRef.removeEventListener('focus', onFocus);
       windowRef.removeEventListener('online', onOnline);
+      windowRef.removeEventListener(STUDIO_HARDWARE_OPERATION_EVENT, onHardwareOperationActive);
       documentRef.removeEventListener('visibilitychange', onVisibilityChange);
       listeners.clear();
     },
     checkNow,
-    setOperationActive(active) {
-      operationActive = active === true;
-      if (!operationActive && pendingRelease) {
-        pendingRelease = null;
-        convergedReleaseRevision = '';
-        return checkNow();
-      }
-      return Promise.resolve(state);
-    },
+    setOperationActive,
   });
 }
