@@ -41,10 +41,13 @@ import {
   listProjectLibraryRecords,
   readActiveProjectLibraryRecordId,
   readProjectLibraryRecordSnapshot,
+  readProjectLifecycleRecord,
+  readStorageJsonWithBackup,
   saveCurrentProjectToLibraryGuarded,
   setProjectLibrarySaveBlocked,
   writeActiveProjectLibraryRecordId,
 } from '../lib/projectStorage.js';
+import { PROJECT_AUTOSAVE_BACKUP_KEY, PROJECT_AUTOSAVE_KEY } from '../lib/indexedDbProjectRepository.js';
 import {
   adoptBrowserRecordAssociation,
   adoptCloudProjectAssociation,
@@ -74,6 +77,7 @@ import {
 import { LayoutScreen } from './lw-layout.jsx';
 import { markCardSectionNavigation } from './cardWorkspaceRoute.js';
 import {
+  bareRouteFor,
   canonicalStudioHash,
   cardRouteFromHash,
   createStudioRouteStore,
@@ -304,13 +308,29 @@ function viewOptions() {
 // downstream route decision reading from one place — the URL — instead of
 // special-casing an empty hash in the view state, the card route and the
 // hash-sync effect.
+//
+// Which section of Card Home a bare hash lands on is decided from the
+// journey (`bareRouteFor`), not a completion flag: a returning owner whose
+// saved project is already complete for the card Studio remembers should see
+// the overview, not be walked back through the setup ladder just because
+// Studio reopened. Reading `lw_autosave_v3` / `lw_project_lifecycle_v1` /
+// `lw_card_identity_v1` here — the same synchronous localStorage reads
+// ProjectContext.jsx and cardIdentity.js make at their own boot — keeps this
+// a pure function of the same evidence the journey later re-derives from a
+// live connection; nothing here is a second store of that verdict.
 function bootstrapFirstRunSetupRoute() {
   try {
     if (window.location.hash) return;
+    const rememberedCard = readPersistedCardIdentity();
+    const savedProjectRaw = readStorageJsonWithBackup(PROJECT_AUTOSAVE_KEY, PROJECT_AUTOSAVE_BACKUP_KEY);
+    const lifecycleRecord = readProjectLifecycleRecord();
+    const savedProject = savedProjectRaw
+      ? { layout: savedProjectRaw.layout, installation: lifecycleRecord?.installation || null }
+      : null;
     window.history.replaceState(
       null,
       '',
-      `${window.location.pathname}${window.location.search}#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+      `${window.location.pathname}${window.location.search}${bareRouteFor({ savedProject, rememberedCard })}`,
     );
   } catch {
     // No hash rewrite is possible without history; the ordinary fallback

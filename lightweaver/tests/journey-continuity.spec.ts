@@ -191,6 +191,98 @@ test('[J02] a card holding a different project never silently replaces open work
 });
 
 // ---------------------------------------------------------------------------
+// J02 (F8) — bare root for a returning owner. `bootstrapFirstRunSetupRoute`
+// used to force `#screen=card&section=setup` on every empty hash, even for a
+// browser holding a saved project that is already complete for the exact
+// card it remembers — "Existing installation verified → Open patterns; do
+// not rerun setup merely because Studio reopened." The section a bare hash
+// resolves to is decided from the saved project (src/lib/studioRoute.js
+// `bareRouteFor`) before the card is ever probed, so this asserts the hash
+// itself immediately on `domcontentloaded` — then, once the connection
+// settles, that the shared journey independently agrees the install is
+// complete (data-journey-complete), which is what actually collapses the
+// ladder inside Card Home (see [T6] in card-state-matrix.spec.ts — Card Home
+// is one page whose content follows the journey, not the URL section).
+// ---------------------------------------------------------------------------
+async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardStateSpec) {
+  await page.addInitScript(({ id, firmwareVersion, buildId, project }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_autosave_v3', JSON.stringify({
+      version: 3,
+      id: project.projectId,
+      name: 'Matrix piece',
+      layout: {
+        starterPending: false,
+        strips: [{ id: 'strip-1', pixels: project.pixels, pin: project.pin }],
+        wiring: {
+          verified: true,
+          runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
+        },
+      },
+      portRoles: [{ port: 'out1', role: 'strip', pin: project.pin, pixelCount: project.pixels }],
+      devices: {
+        standaloneController: {
+          led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' },
+        },
+      },
+    }));
+    // The exact record a real install writes (projectLifecycle.js
+    // `lifecycleRecordFromState`): this card, this revision, this fingerprint.
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      version: 2,
+      dirty: false,
+      persistedDestination: null,
+      installation: {
+        cardId: id,
+        projectRevision: project.projectRevision,
+        projectFingerprint: project.projectFingerprint,
+        studioFingerprint: project.projectFingerprint,
+      },
+    }));
+  }, {
+    id: MATRIX_CARD_ID,
+    firmwareVersion: MATRIX_FIRMWARE_VERSION,
+    buildId: MATRIX_BUILD_ID,
+    project: {
+      projectId: spec.projectId,
+      projectRevision: spec.projectRevision,
+      projectFingerprint: spec.projectFingerprint,
+      pixels: spec.pixels,
+      pin: spec.pin,
+    },
+  });
+}
+
+test('[J02] a bare URL for a returning owner with a complete saved project lands on Card Home overview', async ({ page }) => {
+  const spec = cardState('installed-match');
+  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+
+  // Decided before the card is ever probed — a saved project already
+  // installed on the exact card Studio remembers must not be routed back
+  // through the setup ladder just because Studio reopened.
+  await expect.poll(() => page.evaluate(() => window.location.hash), {
+    message: 'a returning owner with a complete saved project must land on the overview section, not be forced into setup',
+  }).toBe('#screen=card&section=overview');
+
+  await waitConnectedUnaided(page, 'F8 returning-owner connect');
+  await expect(
+    journeyLocator(page),
+    'a saved project already installed on the card it names must read as setup-complete without a click',
+  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
+
+  expect(card.unhandled, 'Studio called a card endpoint the simulator does not model').toEqual([]);
+});
+
+test('[J02] a bare URL with nothing remembered still lands on the setup ladder', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => window.location.hash), {
+    message: 'a fresh browser must still be walked through setup on a bare hash',
+  }).toBe('#screen=card&section=setup');
+});
+
+// ---------------------------------------------------------------------------
 // J13 — every setup surface agrees during an active light test, and agrees
 // again once the card's own probation clock ends it without anyone confirming.
 // ---------------------------------------------------------------------------

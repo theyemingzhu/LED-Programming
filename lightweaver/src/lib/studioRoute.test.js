@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  bareRouteFor,
   canonicalStudioHash,
   cardRouteFromHash,
   createStudioRouteStore,
   DEFAULT_CARD_SECTION,
+  FIRST_RUN_CARD_SECTION,
   isBridgeCallbackHash,
   normalizeStudioView,
   STUDIO_ROUTE_EVENT,
@@ -157,6 +159,68 @@ test('in-app navigation notifies subscribers synchronously, because replaceState
   unsubscribe();
   store.replace('#screen=show');
   assert.deepEqual(seen, ['#screen=pattern', '#screen=layout']);
+});
+
+// F8 — where a bare URL lands, decided from the journey rather than a flag.
+test('a fresh browser with nothing remembered lands on the setup ladder', () => {
+  assert.equal(bareRouteFor({}), `#screen=card&section=${FIRST_RUN_CARD_SECTION}`);
+  assert.equal(bareRouteFor(), `#screen=card&section=${FIRST_RUN_CARD_SECTION}`);
+});
+
+test('a remembered card with a complete saved project lands on the overview, not the ladder', () => {
+  const rememberedCard = { id: 'lw-known-card' };
+  const savedProject = {
+    layout: { starterPending: false, strips: [{ id: 'strip-a', pixels: 60, pin: 21 }] },
+    installation: { cardId: 'lw-known-card', projectRevision: 3, projectFingerprint: 'abc123' },
+  };
+  assert.equal(bareRouteFor({ savedProject, rememberedCard }), `#screen=card&section=${DEFAULT_CARD_SECTION}`);
+});
+
+test('a remembered card with an incomplete saved project still lands on the ladder', () => {
+  const rememberedCard = { id: 'lw-known-card' };
+  // Placement never finished.
+  assert.equal(
+    bareRouteFor({
+      rememberedCard,
+      savedProject: { layout: { starterPending: true, strips: [] }, installation: { cardId: 'lw-known-card' } },
+    }),
+    `#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+  );
+  // No strips placed even though the pending flag cleared.
+  assert.equal(
+    bareRouteFor({
+      rememberedCard,
+      savedProject: { layout: { starterPending: false, strips: [] }, installation: { cardId: 'lw-known-card' } },
+    }),
+    `#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+  );
+  // No installation record for this card at all.
+  assert.equal(
+    bareRouteFor({
+      rememberedCard,
+      savedProject: { layout: { starterPending: false, strips: [{ id: 'a', pixels: 60, pin: 21 }] } },
+    }),
+    `#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+  );
+  // Installation record names a DIFFERENT card than the one remembered.
+  assert.equal(
+    bareRouteFor({
+      rememberedCard,
+      savedProject: {
+        layout: { starterPending: false, strips: [{ id: 'a', pixels: 60, pin: 21 }] },
+        installation: { cardId: 'lw-some-other-card' },
+      },
+    }),
+    `#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+  );
+});
+
+test('a complete saved project with no remembered card still lands on the ladder', () => {
+  const savedProject = {
+    layout: { starterPending: false, strips: [{ id: 'strip-a', pixels: 60, pin: 21 }] },
+    installation: { cardId: 'lw-known-card' },
+  };
+  assert.equal(bareRouteFor({ savedProject }), `#screen=card&section=${FIRST_RUN_CARD_SECTION}`);
 });
 
 test('a direct hash assignment reaches subscribers, one task later, with the URL already moved', async () => {
