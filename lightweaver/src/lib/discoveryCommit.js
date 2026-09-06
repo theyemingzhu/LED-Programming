@@ -129,6 +129,20 @@ function provisionalLayoutFromOutputs(outputs, {
   };
 }
 
+// F1: StripDiscoveryPanel.jsx's own channelProof state — the object record()
+// actually hands this module — is { stage, firstSeen, map, retry } (see its
+// `useState` initializer and every `setChannelProof` call in that file). `map`
+// is therefore the canonical field for a real discovery walk. `channelMap` is
+// kept as a fallback for any other caller (this module's own test fixtures
+// hand-construct `{ channelMap: {...} }` directly), so nothing that already
+// passes `channelMap` breaks. Before this normaliser, the module read only
+// `channelMap`, which the panel's object never has, so a real discovery run's
+// measured colour order was silently discarded every time — see
+// tests/journey-j01.spec.ts's `[J01-partial]` for the owner-visible symptom.
+function measuredChannelMap(channelProof) {
+  return channelProof?.map ?? channelProof?.channelMap;
+}
+
 /**
  * The project parts a discovery session has landed on: the port roles exactly
  * as portRoles.js would persist them, the named colour order the proof measured
@@ -139,7 +153,7 @@ export function discoveryProjectParts(session, channelProof, geometry = {}) {
   const outputs = outputsFromStrips(portRoles);
   return {
     portRoles,
-    colorOrder: namedColorOrderFromChannelMap(channelProof?.channelMap),
+    colorOrder: namedColorOrderFromChannelMap(measuredChannelMap(channelProof)),
     outputs,
     ...provisionalLayoutFromOutputs(outputs, geometry),
   };

@@ -13,11 +13,15 @@
 // (discoveryCommit.js — no manual Layout drag needed; starterPending flips
 // false the moment discovery records).
 //
-// It stops there — not on a missing test id, but on a real product defect
-// this test found: the colour order a discovery walk measures never survives
-// into the saved project, so the Setup ladder can never leave its
-// discover-lights task after ANY real discovery run. See the "STOPS HERE"
-// comment below for the exact root cause, and the return packet for the full
+// F1 (fixed): the colour order a discovery walk measures used to never
+// survive into the saved project — src/lib/discoveryCommit.js read
+// `channelProof?.channelMap`, but StripDiscoveryPanel.jsx's own channelProof
+// state stores the measured map under `map`. discoveryProjectParts() now
+// reads either field (a real discovery walk supplies `map`; this file's own
+// hand-built fixtures still supply `channelMap`), so colorOrderConfirmed
+// lands and the Setup ladder can leave discover-lights after a real walk.
+// See "STOPS HERE" below for where this test genuinely still stops — a
+// missing test id, not a product defect — and the return packet for the full
 // writeup.
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
@@ -165,74 +169,55 @@ test('[J01-partial] blank card: connect, discover one strip, push to card, wirin
   });
   expect(await visibleAlerts(page), 'a fully successful discovery walk must not itself raise an alert').toEqual([]);
 
-  // ── STOPS HERE — a genuine product defect, not a missing test id. ─────────
+  // ── F1 fixed: the measured colour order now survives into the project. ────
   //
-  // The ladder should now show "layout" (or later) as the current task:
-  // src/lib/setupJourney.js's layoutProgress() only needs starterPending:false
-  // and a non-empty strips array, both true above. But lightsComplete() gates
-  // on colorDone (confirmedColor(project) — devices.standaloneController.led.
-  // colorOrderConfirmed) BEFORE layout is even consulted, and that flag can
-  // never be set from a real discovery walk:
-  //
-  //   src/components/card/StripDiscoveryPanel.jsx's channelProof state stores
-  //   the measured colour-order map under the key `map` (see the `useState`
-  //   initializer and `answerChannelProof`'s three `return`s), and passes that
-  //   object straight to `discoveryProjectParts(session, channelProof, …)`
-  //   (StripDiscoveryPanel.jsx `record()`). But
-  //   src/lib/discoveryCommit.js:142 reads `channelProof?.channelMap` — a
-  //   different key that channelProof never has. `namedColorOrderFromChannelMap`
-  //   therefore always receives `undefined` from a real run, always returns
-  //   '', and `parts.colorOrder` is always falsy — so `record()`'s
-  //   `...(parts.colorOrder ? { led: { …, colorOrderConfirmed: true } } : {})`
-  //   spread never fires. This is independent of which colour buttons are
-  //   pressed, and independent of Skip: every path through the real colour
-  //   proof ends the same way. discoveryCommit.test.js never catches it
-  //   because its own fixtures hand-construct `{ channelMap: {...} }` directly
-  //   rather than obtaining channelProof from the component, so the two
-  //   disagree on the field name without either side's tests ever comparing
-  //   them.
-  //
-  // Confirmed below from the SAVED PROJECT (not asserted on prose): the
-  // colour order this walk measured is missing from local storage, so the
-  // ladder is still showing discover-lights after a full, successful
-  // discovery walk — the exact owner-visible consequence of the defect above.
-  // This is unreachable from `journeyLocator`/`setupJourney.js` and from
-  // `discoveryCommit.js`, neither of which is in this ticket's file list
-  // (`journey-continuity.spec.ts`, `cardSimulator.ts`, `cardStates.ts` only),
-  // so it is reported here rather than fixed in this change.
+  // discoveryProjectParts (src/lib/discoveryCommit.js) now reads
+  // channelProof.map — the field StripDiscoveryPanel.jsx's own state actually
+  // carries — falling back to channelProof.channelMap for callers that still
+  // pass that shape (this file's own fixtures). Confirmed below from the
+  // SAVED PROJECT, not asserted on prose: record()'s
+  // `...(parts.colorOrder ? { led: { …, colorOrderConfirmed: true } } : {})`
+  // spread now fires for a real discovery walk.
   const savedColor = await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved?.devices?.standaloneController?.led?.colorOrderConfirmed ?? null;
   });
   expect(
     savedColor,
-    'src/lib/discoveryCommit.js:142 reads channelProof.channelMap, but StripDiscoveryPanel.jsx\'s '
-    + 'channelProof state stores the measured map under `map` — colorOrderConfirmed can never be set '
-    + 'by a real discovery walk. This is the actual block on J01, upstream of the CardPushControl '
-    + 'confirm-button test-id gap noted in the ticket.',
-  ).toBeNull();
+    'discoveryProjectParts must read the colour map out of channelProof.map (the panel\'s real shape) '
+    + 'so colorOrderConfirmed lands after a real discovery walk — see src/lib/discoveryCommit.js',
+  ).toBe(true);
 
+  // The ladder must leave discover-lights now that colour is confirmed AND
+  // layout is already placed (asserted above: starterPending:false, one
+  // strip). It does not assert the exact next task id — that is
+  // setupJourney.js's call, not this test's — only that discovery is no
+  // longer the current task.
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J01 back on the ladder after a completed discovery walk');
   await expect(
     journey,
-    'the owner-visible symptom: the ladder cannot leave discover-lights after a fully completed, '
-    + 'correctly-counted discovery walk, because colorOrderConfirmed never lands (see above)',
-  ).toHaveAttribute('data-journey-task', 'discover-lights', { timeout: CONNECT_BUDGET_MS });
+    'the owner-visible fix: after a fully completed, correctly-counted discovery walk with colour '
+    + 'confirmed and a strip already placed, the ladder must not still be asking to discover lights',
+  ).not.toHaveAttribute('data-journey-task', 'discover-lights', { timeout: CONNECT_BUDGET_MS });
+  await expect(journey).toHaveAttribute('data-journey-complete', 'false');
 
   // Every card endpoint this prefix actually needed was modelled — nothing
   // Studio asked for fell through to the simulator's 404 default.
   expect(card.unhandled, 'every /api/* path this journey touched must be modelled by the simulator').toEqual([]);
 
-  // Everything past this point — Layout placement already being a no-op,
-  // "Open Patterns", CardPushControl's autoStart push + wiring activate, the
-  // confirm gate, and the final pattern click / card.waitForPlaying — is
-  // real, reachable code (verified by reading
+  // ── STOPS HERE — a missing test id, not a product defect. ─────────────────
+  //
+  // Everything past this point — "Open Patterns", CardPushControl's autoStart
+  // push + wiring activate, the confirm gate, and the final pattern click /
+  // card.waitForPlaying — is real, reachable code (verified by reading
   // src/components/layout/shared/CardPushControl.jsx and
-  // src/components/card/CardInstallAction.jsx) but not reachable from the
-  // real screens while the defect above stands. `patternTile` is kept, unused,
-  // as the marker for where a follow-up resumes once discoveryCommit.js is
-  // fixed to read `channelProof.map` and CardPushControl.jsx's confirm/
-  // rollback buttons gain data-testids.
+  // src/components/card/CardInstallAction.jsx), but CardPushControl.jsx's
+  // physical-confirm buttons ("The lights look correct" / "No, restore
+  // working setup", CardPushControl.jsx ~line 526) still have no
+  // `data-testid`, only `title`/`data-tooltip`. This file's edit list does not
+  // include CardPushControl.jsx, so the gap is reported rather than fixed
+  // here. `patternTile` is kept, unused, as the marker for where a follow-up
+  // resumes once those buttons gain data-testids.
   void patternTile;
 });
