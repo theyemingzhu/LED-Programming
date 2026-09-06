@@ -75,7 +75,7 @@ import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardP
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview } from '../lib/cardLiveControl.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
 import {
@@ -443,6 +443,10 @@ import { PatternPreview } from './PatternPreview.jsx';
     const savedComboSeq = useRef(0);
     const cardReturnConsumed = useRef(false);
     const latestPreviewIntent = useRef(null);
+    // The preview currently on its way to the card, by intent. A second tap on
+    // the same tile while the first is in flight is one owner intent, not two
+    // commands: it joins the pending send instead of issuing another.
+    const inFlightPreview = useRef(null);
     const syncedPreviewSelectionRef = useRef('');
     const installIntentRef = useRef(null);
 
@@ -1036,8 +1040,12 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
       setPatternCardGate('');
       setHandoffUrl('');
+      const zoneForIntent = target?.kind === 'section' ? target.zoneId || target.id : '';
+      const intentSignature = JSON.stringify({ look: nextLook, zone: zoneForIntent, patch: expectedControlPatch || null });
+      if (inFlightPreview.current && inFlightPreview.current.signature === intentSignature) return;
       if (livePreviewTimer.current) clearTimeout(livePreviewTimer.current);
       const sequence = ++livePreviewSeq.current;
+      inFlightPreview.current = { signature: intentSignature, sequence };
       // The world this request was issued into. If the project authorization
       // changes before it lands, the response describes a world that no longer
       // exists and must not speak for the present — see the status write below.
@@ -1049,6 +1057,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       livePreviewTimer.current = setTimeout(async () => {
         setHandoffUrl('');
         if (!hasCurrentAuthority()) {
+          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
           blockPatternCardEffect(currentPatternPreviewAccess());
           return;
         }
@@ -1075,18 +1084,32 @@ import { PatternPreview } from './PatternPreview.jsx';
           // Safe to repeat: setting THIS pattern means the same thing twice,
           // and a newer tap makes the intent check throw a non-transient error,
           // which stops the retry immediately rather than fighting it.
-          const response = await retryWhileTransient(() => pushLivePreviewToCard(
-            { ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true },
+          //
+          // But a reply LOST after the card applied the command is not a card
+          // that never heard it, and sending again in that case is a second
+          // real command. Before any retry the card is read back; if it
+          // already shows this pattern, that read is the acknowledgement.
+          const previewLook = { ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true };
+          const previewOptions = {
+            host: cardHost,
+            timeoutMs: 2200,
+            fallbackMissingZoneToAll: true,
+            preferBridge: cardLink?.transport === 'bridge'
+              || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
+            revision: sequence,
+            ...(expectedControlPatch ? { expectedControlPatch } : {}),
+          };
+          const response = await retryWhileTransient(
+            () => pushLivePreviewToCard(previewLook, previewOptions),
             {
-              host: cardHost,
-              timeoutMs: 2200,
-              fallbackMissingZoneToAll: true,
-              preferBridge: cardLink?.transport === 'bridge'
-                || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
-              revision: sequence,
-              ...(expectedControlPatch ? { expectedControlPatch } : {}),
+              attempts: 3,
+              delayMs: 350,
+              readBack: () => (sequence === livePreviewSeq.current
+                ? readBackLivePreview(previewLook, { ...previewOptions, timeoutMs: 1200 })
+                : null),
             },
-          ), { attempts: 3, delayMs: 350 });
+          );
+          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
           if (sequence === livePreviewSeq.current && hasCurrentAuthority()) {
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
             setPreviewFailure(null);
@@ -1113,6 +1136,7 @@ import { PatternPreview } from './PatternPreview.jsx';
             }
           }
         } catch (error) {
+          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
           if (error?.reason === 'superseded') {
             return;
           }

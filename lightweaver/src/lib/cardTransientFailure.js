@@ -64,12 +64,22 @@ export function isTransientCardFailure(error) {
  *
  * The delay grows so a card that needs a few seconds to boot gets them without
  * being hammered while it does.
+ *
+ * `readBack` is for a WRITE whose reply was lost. A dropped reply after the
+ * card has already applied the command looks exactly like a card that never
+ * heard it, and repeating the command in that case sends a real second
+ * command — the duplicate write the journey contract forbids. When supplied,
+ * `readBack(error, attemptNumber)` is asked before every retry; a truthy
+ * result is the acknowledgement (the card was read and already holds the
+ * intent) and is returned instead of trying again. A falsy result, or a
+ * read that itself fails, falls through to the ordinary retry.
  */
 export async function retryWhileTransient(attempt, {
   attempts = 3,
   delayMs = 400,
   maxDelayMs = 2000,
   onRetry = null,
+  readBack = null,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
 } = {}) {
   let lastError = null;
@@ -80,6 +90,15 @@ export async function retryWhileTransient(attempt, {
       lastError = error;
       const worthRetrying = index < attempts - 1 && isTransientCardFailure(error);
       if (!worthRetrying) break;
+      if (typeof readBack === 'function') {
+        let settled = null;
+        try {
+          settled = await readBack(error, index + 1);
+        } catch {
+          settled = null;
+        }
+        if (settled) return settled;
+      }
       onRetry?.(error, index + 1);
       await sleep(Math.min(maxDelayMs, delayMs * (2 ** index)));
     }

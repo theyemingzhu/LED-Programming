@@ -1203,6 +1203,20 @@ async function sendLivePreviewToCard(look, options = {}) {
         timeoutMs: Math.min(options.timeoutMs || 2500, 900),
       });
       requireCurrentPreviewIntent(options);
+      if (found.connected) {
+        // The card is reachable, so the failed post may well have LANDED and
+        // only its reply was lost. Re-posting to a rediscovered address was
+        // the duplicate write: a second real /api/control with the same
+        // revision, every time the reply dropped. Read the card first — if it
+        // already shows this look, that read is the acknowledgement.
+        const settled = await readBackLivePreview(look, {
+          ...options,
+          host: found.host,
+          timeoutMs: Math.min(options.timeoutMs || 1200, 1200),
+        }).catch(() => null);
+        requireCurrentPreviewIntent(options);
+        if (settled) return settled;
+      }
       if (found.connected && normalizeCardHost(found.host) !== normalizeCardHost(host)) {
         try {
           requireCurrentPreviewIntent(options);
@@ -1225,6 +1239,76 @@ export async function pushLivePreviewToCard(look, options = {}) {
     latestPreviewQueueKey(host),
     arbitration => sendLivePreviewToCard(look, { ...options, previewArbitration: arbitration }),
   );
+}
+
+// Control fields whose intent a zone read-back can confirm. A pattern id is
+// echoed back by `/api/zones` exactly as it was sent; brightness, speed and the
+// colour controls come back in the card's own units (a 0..1 scale, a byte,
+// a boolean) rather than the wire values Studio sent, so a read cannot prove
+// THOSE landed. Only an intent made of the fields below is settled by reading.
+const READ_BACK_VERIFIABLE_PATCH_KEYS = new Set(['patternId', 'zone', 'syncZones']);
+
+/**
+ * Settle a live-preview write whose reply was lost by READING the card.
+ *
+ * A dropped reply after `/api/control` looks identical to a card that never
+ * received the command, and `retryWhileTransient` used to answer both by
+ * sending again — a second real command, which is the duplicate write the
+ * journey contract forbids ("a successful write followed by lost readback is
+ * verification pending, not write failed"). This reads `/api/zones` and, when
+ * every targeted zone already reports the requested pattern, returns an
+ * acknowledgement-shaped result so the caller treats the write as confirmed.
+ *
+ * Returns null whenever the read cannot PROVE the intent landed: a control
+ * patch it cannot verify (see READ_BACK_VERIFIABLE_PATCH_KEYS), a zone the
+ * card does not have, no zones at all, or a read that fails. Null means "retry
+ * as before"; it never means "failed".
+ */
+export async function readBackLivePreview(look = {}, options = {}) {
+  const patch = options.expectedControlPatch;
+  if (patch && typeof patch === 'object') {
+    const unverifiable = Object.keys(patch).some(key => !READ_BACK_VERIFIABLE_PATCH_KEYS.has(key));
+    if (unverifiable) return null;
+  }
+  if (look?.blackout === true) return null;
+  const requestedPatternId = String(look?.patternId || '').trim();
+  const requestedRuntimePatternId = String(options.exactCardPatternId || '').trim()
+    || getCardPatternRuntimeId(requestedPatternId) || requestedPatternId;
+  if (!requestedRuntimePatternId) return null;
+
+  const host = options.host || readStoredCardHost();
+  let payload;
+  try {
+    payload = await readCardZones(host, {
+      timeoutMs: Math.min(options.timeoutMs || 1200, 1200),
+      ...(options.expectedCardId ? { expectedCardId: options.expectedCardId } : {}),
+    });
+  } catch {
+    return null;
+  }
+  const zones = Array.isArray(payload?.zones) ? payload.zones : [];
+  const zoneId = String(look?.zone || '').trim();
+  let targets = zoneId ? zones.filter(zone => String(zone?.id || '') === zoneId) : zones;
+  // The send path falls back from a zone the card does not have to the whole
+  // strip (`fallbackMissingZoneToAll`, resolved before the post went out). The
+  // read-back must ask the same question the write answered, or it can never
+  // confirm exactly the writes that used the fallback.
+  if (zoneId && !targets.length && options.fallbackMissingZoneToAll === true) targets = zones;
+  if (!targets.length) return null;
+  const confirmed = targets.every(zone => String(zone?.patternId || '').trim() === requestedRuntimePatternId);
+  if (!confirmed) return null;
+  return Object.freeze({
+    ok: true,
+    readBack: true,
+    patternId: requestedRuntimePatternId,
+    appliedPatternId: requestedRuntimePatternId,
+    ...(options.revision !== undefined ? { revision: options.revision, confirmedRevision: options.revision } : {}),
+    confirmedLook: {
+      patternId: requestedPatternId || requestedRuntimePatternId,
+      zone: zoneId,
+      syncZones: look?.syncZones === true,
+    },
+  });
 }
 
 export async function pushLiveHardwareToCard(settings, options = {}) {

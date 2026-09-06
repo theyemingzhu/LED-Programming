@@ -282,6 +282,20 @@ export function SetupScreen({
     if (!skeleton.portRoles.some(output => output?.role === 'strip' && Number(output.pixelCount) > 0)) return;
     const alreadyDescribed = (currentProject?.portRoles || [])
       .some(output => output?.role === 'strip' && Number(output.pixelCount) > 0);
+    // The same rule as the "adopt by default" effect below: this may only run
+    // where nothing can be lost. `applyCardParts` replaces the WHOLE project,
+    // id included, with no owner gate — so a real piece that simply had not
+    // yet written its strip into `portRoles` was overwritten by the first
+    // card it met, whichever project that card held. Only the open project
+    // itself (same id, refreshing from its own card) or an untouched starter
+    // may be described from a card read without being asked.
+    const cardProjectId = String(status?.projectId || '').trim();
+    const openIsSameProject = Boolean(cardProjectId) && cardProjectId === String(currentProject?.id || '').trim();
+    // A starter (the default circle a fresh browser opens, `starterPending`
+    // still true) is untouched however many placeholder strips it carries; a
+    // project that has left the starter behind is the owner's work.
+    const openIsUntouched = currentProject?.layout?.starterPending !== false;
+    if (!openIsSameProject && !openIsUntouched) return;
     adoptedCardRef.current = signature;
     if (!alreadyDescribed) {
       void applyCardParts(skeleton, status)
