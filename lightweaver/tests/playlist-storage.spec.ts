@@ -565,6 +565,17 @@ test('Playlist transport timeout keeps its prior live row and offers a bounded r
   const project = makePlaylistProject({ count: 2 });
   await mockConnectedPlaylistCard(page, project, 'lw-playlist-test');
   await page.route('**/api/control', route => route.abort('timedout'));
+  // A lost reply is settled by READING the card first (readBackLivePreview):
+  // a card already showing the requested row makes the timeout moot, so this
+  // card must be showing something else for the timeout to be a real failure.
+  await page.route('**/api/zones', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      ok: true,
+      zones: preparedForProject(project).config.zones.map(zone => ({ ...zone, patternId: 'blackout' })),
+    }),
+  }));
   await gotoPlaylist(page, project);
 
   await page.locator('.pl-row').first().getByRole('button', { name: 'Live' }).click();

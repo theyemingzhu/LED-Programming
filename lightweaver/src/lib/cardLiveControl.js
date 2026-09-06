@@ -24,6 +24,7 @@ import { reclaimCardFrameStreams } from './cardFrameStream.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from './cardTransport.js';
 import { discoverCardWiring, getCardWiringStatus, rollbackCardWiringCandidate } from './cardWiringSafety.js';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from './cardCustomerControlContract.js';
+import { isTransientCardFailure } from './cardTransientFailure.js';
 
 function isMixedContentBlocked() {
   return typeof window !== 'undefined' && !canPushDirectlyToCard(window.location.protocol);
@@ -1203,7 +1204,11 @@ async function sendLivePreviewToCard(look, options = {}) {
         timeoutMs: Math.min(options.timeoutMs || 2500, 900),
       });
       requireCurrentPreviewIntent(options);
-      if (found.connected) {
+      // Only a TRANSPORT failure (timeout, abort, network) leaves the outcome
+      // unknown. When the card answered — a refusal, or an acknowledgement
+      // that did not name the pattern — its answer stands and is not
+      // reinterpreted by reading zones that may simply show the previous look.
+      if (found.connected && isTransientCardFailure(error)) {
         // The card is reachable, so the failed post may well have LANDED and
         // only its reply was lost. Re-posting to a rediscovered address was
         // the duplicate write: a second real /api/control with the same
