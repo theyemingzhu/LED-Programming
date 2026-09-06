@@ -1246,12 +1246,43 @@ export async function pushLivePreviewToCard(look, options = {}) {
   );
 }
 
-// Control fields whose intent a zone read-back can confirm. A pattern id is
-// echoed back by `/api/zones` exactly as it was sent; brightness, speed and the
-// colour controls come back in the card's own units (a 0..1 scale, a byte,
-// a boolean) rather than the wire values Studio sent, so a read cannot prove
-// THOSE landed. Only an intent made of the fields below is settled by reading.
-const READ_BACK_VERIFIABLE_PATCH_KEYS = new Set(['patternId', 'zone', 'syncZones']);
+/**
+ * Pure comparison: does one card zone (as reported by `/api/zones`, which
+ * echoes every control under its CUSTOMER_CONTROL_WIRE_FIELDS *control* name,
+ * not its wire name) already reflect a live-preview control payload (as
+ * returned by `buildLivePreviewControlPayload`, keyed by *wire* name)?
+ *
+ * Only fields actually present in `controlPayload` are checked — a field the
+ * caller never sent is not part of the intent being confirmed. Numbers match
+ * within 0.01 (the card's own units can round); booleans match exactly;
+ * `patternId` matches by the runtime id, which is exactly what
+ * `buildLivePreviewControlPayload` already resolved it to.
+ *
+ * Exported standalone so it can be unit-tested without a network or a card.
+ */
+export function zoneConfirmsLivePreviewIntent(controlPayload, zone) {
+  if (!controlPayload || typeof controlPayload !== 'object') return false;
+  if (!zone || typeof zone !== 'object') return false;
+  for (const field of CUSTOMER_CONTROL_WIRE_FIELDS) {
+    const expected = controlPayload[field.wire];
+    if (expected === undefined) continue;
+    const actual = zone[field.control];
+    if (typeof expected === 'boolean') {
+      if (Boolean(actual) !== expected) return false;
+      continue;
+    }
+    if (typeof expected === 'string') {
+      if (String(actual ?? '').trim() !== expected.trim()) return false;
+      continue;
+    }
+    const expectedNum = Number(expected);
+    const actualNum = Number(actual);
+    if (!Number.isFinite(expectedNum) || !Number.isFinite(actualNum) || Math.abs(actualNum - expectedNum) > 0.01) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Settle a live-preview write whose reply was lost by READING the card.
@@ -1261,25 +1292,33 @@ const READ_BACK_VERIFIABLE_PATCH_KEYS = new Set(['patternId', 'zone', 'syncZones
  * sending again — a second real command, which is the duplicate write the
  * journey contract forbids ("a successful write followed by lost readback is
  * verification pending, not write failed"). This reads `/api/zones` and, when
- * every targeted zone already reports the requested pattern, returns an
- * acknowledgement-shaped result so the caller treats the write as confirmed.
+ * every targeted zone already reports the requested control values, returns
+ * an acknowledgement-shaped result so the caller treats the write as
+ * confirmed.
  *
- * Returns null whenever the read cannot PROVE the intent landed: a control
- * patch it cannot verify (see READ_BACK_VERIFIABLE_PATCH_KEYS), a zone the
- * card does not have, no zones at all, or a read that fails. Null means "retry
- * as before"; it never means "failed".
+ * Every CUSTOMER_CONTROL_WIRE_FIELDS control present in the look (merged with
+ * `options.expectedControlPatch`, when supplied) is checked against the
+ * targeted zones — brightness, speed, hue, saturation, breathe and drift
+ * included, not only the pattern id. Returns null whenever the read cannot
+ * PROVE the intent landed: a zone the card does not have, no zones at all, a
+ * read that fails, or any targeted zone disagreeing on any checked control.
+ * Null means "retry as before"; it never means "failed".
  */
 export async function readBackLivePreview(look = {}, options = {}) {
-  const patch = options.expectedControlPatch;
-  if (patch && typeof patch === 'object') {
-    const unverifiable = Object.keys(patch).some(key => !READ_BACK_VERIFIABLE_PATCH_KEYS.has(key));
-    if (unverifiable) return null;
-  }
   if (look?.blackout === true) return null;
   const requestedPatternId = String(look?.patternId || '').trim();
   const requestedRuntimePatternId = String(options.exactCardPatternId || '').trim()
     || getCardPatternRuntimeId(requestedPatternId) || requestedPatternId;
   if (!requestedRuntimePatternId) return null;
+
+  const patch = options.expectedControlPatch;
+  const intent = patch && typeof patch === 'object' ? { ...look, ...patch } : look;
+  let controlPayload;
+  try {
+    controlPayload = buildLivePreviewControlPayload(intent, options);
+  } catch {
+    return null;
+  }
 
   const host = options.host || readStoredCardHost();
   let payload;
@@ -1300,7 +1339,7 @@ export async function readBackLivePreview(look = {}, options = {}) {
   // confirm exactly the writes that used the fallback.
   if (zoneId && !targets.length && options.fallbackMissingZoneToAll === true) targets = zones;
   if (!targets.length) return null;
-  const confirmed = targets.every(zone => String(zone?.patternId || '').trim() === requestedRuntimePatternId);
+  const confirmed = targets.every(zone => zoneConfirmsLivePreviewIntent(controlPayload, zone));
   if (!confirmed) return null;
   return Object.freeze({
     ok: true,
