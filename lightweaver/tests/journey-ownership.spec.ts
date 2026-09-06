@@ -132,16 +132,22 @@ async function readyInstallProject(page: Page, edit?: (project: Record<string, a
 // /api/wiring/candidate (ticket A1 in this same execution plan is the one
 // that teaches it to; confirmed here by reading it live at 404 under
 // `not-modelled-by-simulator`). This test is therefore scoped to exactly the
-// path this harness CAN prove today, and what it proves is a real gap: a
-// same-wiring push has no ownership check of ANY kind.
+// path this harness CAN prove today, and it used to prove a real gap: a
+// same-wiring push had no ownership check of ANY kind. Two tabs are two
+// independent React instances that only ever agreed by both reading the same
+// card, and for this path the card had nothing to disagree with either:
+// `/api/config`'s non wiring-changed branch (cardSimulator.ts) just applies
+// whatever it is sent. `withStudioHardwareOperation` did not close it —
+// its registry hangs off `window`, so it can only ever see its own page.
 //
-// CardPushControl (src/components/layout/shared/CardPushControl.jsx) has no
-// cross-tab lock of its own — confirmed by reading it end to end: no
-// BroadcastChannel, no storage-event listener, nothing that one browser tab's
-// install could tell another about. Two tabs are two independent React
-// instances that only ever agree by both reading the same card, and for this
-// path the card has nothing to disagree with either: `/api/config`'s non
-// wiring-changed branch (cardSimulator.ts) just applies whatever it is sent.
+// Closed by src/lib/cardWriteLease.js (ticket F2): CardPushControl takes a
+// cross-tab write lease on the card before any request leaves the browser and
+// releases it in `finally`. The refused tab is shown the specific conflict by
+// `card-write-owner-conflict`, naming the operation that owns the card, and
+// nothing retries on its behalf. The two attempts below therefore OVERLAP on
+// purpose — tab one's write is held open while tab two tries — because
+// strictly sequential attempts could not observe a lock of any kind, and the
+// rule being proved is about racing a live writer.
 // ---------------------------------------------------------------------------
 test('[J08] two tabs: exactly one write reaches the card when both attempt the same install', async ({ page, context }) => {
   // pin 16 / 44 pixels matches Studio's own generated default project exactly
@@ -152,6 +158,24 @@ test('[J08] two tabs: exactly one write reaches the card when both attempt the s
 
   await card.install(page);
   await seedFreshCardIdentity(page);
+
+  // Hold tab one's config write open, so tab two's attempt lands while a real
+  // writer genuinely owns the card rather than after it has finished. This
+  // handler is registered AFTER card.install so it wins (page.route is LIFO)
+  // and hands the request straight back to the simulator with route.fallback()
+  // the moment it is let go — the card still sees exactly the bytes Studio
+  // sent, just later. Without the hold, the two attempts are strictly
+  // sequential and no lock of any kind could be observed by this test.
+  let releaseTabOneWrite: () => void = () => {};
+  const tabOneWriteHeld = new Promise<void>(resolve => { releaseTabOneWrite = resolve; });
+  let tabOneWriteInFlight = false;
+  await page.route('**/api/config', async route => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    tabOneWriteInFlight = true;
+    await tabOneWriteHeld;
+    return route.fallback();
+  });
+
   await readyInstallProject(page, project => {
     // CardInstallAction's push never carries allowProjectChange, so the
     // card's OWN project id must be matched exactly or Studio refuses before
@@ -162,12 +186,12 @@ test('[J08] two tabs: exactly one write reaches the card when both attempt the s
     project.name = 'Matrix piece';
   });
 
-  await page.getByTestId('layout-send-to-card').click();
-  await expect(
-    page.getByText(/Installed revision .* on card/),
-    'tab one must finish its own install before tab two attempts the same one — otherwise this test races instead of proving anything',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
-
+  // Tab two is brought all the way to an armed Install button BEFORE tab one
+  // starts writing, so the only thing left inside the held window is its
+  // click. `seedFreshCardIdentity` clears this origin's storage on every one
+  // of its navigations — including, in a real browser, out from under a live
+  // holder — which is exactly why the lease is announced on a channel and
+  // rewritten on every renewal rather than being read from storage alone.
   const two = await context.newPage();
   await card.install(two);
   await seedFreshCardIdentity(two);
@@ -176,26 +200,36 @@ test('[J08] two tabs: exactly one write reaches the card when both attempt the s
     project.name = 'Matrix piece';
   });
 
+  await page.getByTestId('layout-send-to-card').click();
+  await expect
+    .poll(() => tabOneWriteInFlight, { timeout: CONNECT_BUDGET_MS, intervals: [50] })
+    .toBe(true);
+
   await two.getByTestId('layout-send-to-card').click();
+  // Tab one is let go immediately: the refusal above is already decided (the
+  // lease is taken synchronously, before any request), so nothing after this
+  // point is racing the card's 6-second write deadline.
+  releaseTabOneWrite();
+
   await expect(
-    two.getByText(/Installed revision .* on card/),
-    'tab two must also be told its own attempt finished — a silent failure would hide the very collision this test is checking for',
+    two.getByTestId('card-write-owner-conflict'),
+    'the second tab must be told which operation owns the card, not silently write over it',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(two.getByTestId('card-write-owner-conflict')).toContainText('Try again when the other tab finishes');
+
+  await expect(
+    page.getByText(/Installed revision .* on card/),
+    'the tab that owned the write must still finish its own install',
   ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
 
   const configWrites = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config');
   const timeline = JSON.stringify(card.requests.map(entry => [entry.method, entry.path]));
 
-  // REAL DEFECT, left red rather than weakened: both tabs' pushes succeed.
-  // Tab two's write silently wins with no error to either owner and no
-  // "someone else just saved this" notice — confirmed live, twice
-  // (card.requests carries two /api/config POSTs; both banners read
-  // "Installed revision 0 on card"). Ticket A4 rule 2 says a red test proving
-  // a genuine defect is the correct outcome, not a loosened assertion.
   expect(
     configWrites.length,
     `two tabs installing the same project must reach the card once, not ${configWrites.length} times — `
-    + `CardPushControl has no ownership check on a same-wiring push, so the second tab's write silently wins with `
-    + `no error to either owner. Timeline: ${timeline}`,
+    + `the second tab has to acquire the same write authority and be told the specific conflict, never race the `
+    + `writer that already holds it. Timeline: ${timeline}`,
   ).toBe(1);
 
   await two.close();
