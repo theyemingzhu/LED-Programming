@@ -280,3 +280,30 @@ separate). Remaining tickets: J01 continuous test, playlist stub → simulator,
 full-field read-back, update return-intent, optional-update copy, persistence
 and version-skew cases, diagnostic trail, callback cleanup, doc reconciliation,
 and the four Bench observations.
+
+## 2026-09-06 autonomous fix run (director: Fable; fixers: Sonnet, Opus only for F2)
+
+Executing docs/plans/2026-09-06-unified-card-journey-execution.md without
+Adrian present. Merges land on this branch only; no push, deploy, flash.
+
+Merged so far (all verified by the director's own runs, unit 2289/2289):
+- B2 `a2d985b7` — optional-update banner copy is truthful (new pure
+  `readyBannerFirmwareCopy`), regression in setup-adopt-card-project.
+- B1 `f49c5ffe` — a finished preserving update returns the owner to the
+  screen it interrupted (`preserving-update-continue`), regression in
+  preserving-firmware-update.
+- A3 `c364d777` — `tests/journey-edits.spec.ts` J06/J07 green 6/6 (repeat 3);
+  simulator gained `/api/wiring/candidate`.
+- A1 `4683cd55` — `tests/journey-j01.spec.ts` `[J01-partial]` 3/3; simulator
+  gained beacon port + frame stream. **Found a real defect:** discovery
+  passes `{ map }` while `discoveryCommit.js:142` reads `channelMap`, so a
+  real discovery never records colour order and Setup can never leave
+  "find lights" → ticket F1 (in progress).
+- A4 `31355f49` — `tests/journey-ownership.spec.ts`: card swap green 3/3;
+  **two-tabs red 3/3 deterministically**: same-wiring pushes from two tabs
+  both write `/api/config` with no owner → ticket F2 (in progress, Opus).
+
+In progress: F1 (fix-f1), F2 (fix-f2), C3 diagnostic trail (fix-c3).
+Queued: C1 storage limits, A5 playlist stub → simulator, A6 full-field
+read-back, C2 version skew, D1 callback cleanup, D2 doc reconciliation.
+Physical rows (Phase E) stay pending until Adrian is at the bench.
