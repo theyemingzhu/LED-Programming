@@ -8,6 +8,8 @@ import {
   refreshCardJourneyEvidence,
   subscribeCardJourneyEvidence,
 } from '../lib/cardJourneyEvidence.js';
+import { journeyTransition } from '../lib/journeyTrail.js';
+import { appendCardJournalEntry } from '../lib/cardLinkJournal.js';
 
 // The setup journey, as one answer for every screen that asks.
 //
@@ -53,6 +55,24 @@ export function useCardJourneyEvidence() {
   return useSyncExternalStore(subscribeCardJourneyEvidence, getCardJourneyEvidence, getCardJourneyEvidence);
 }
 
+function commissioningStageOf(commissioningFlow) {
+  return String(commissioningFlow?.stage ?? commissioningFlow?.flow?.stage ?? '');
+}
+
+// Blueprint H8's diagnostic trail (src/lib/journeyTrail.js) needs a "previous"
+// to diff the assembled journey against. It lives at MODULE scope — like
+// cardJourneyEvidence.js's own `current` — rather than in a per-instance
+// `useRef`, because only one screen renders at a time (the URL is the only
+// current screen; THINKING.md 2026-08-07) but that screen's `useSetupJourney`
+// call still unmounts and remounts on every navigation. A per-instance ref
+// would treat each remount as a fresh "first ever" snapshot and log a
+// duplicate line for a task that never changed — exactly the sampling this
+// journal exists NOT to be (cardLinkJournal.js's own design notes: "records
+// TRANSITIONS, not samples"). A shared module value survives the remount and
+// still costs no extra render: it is only ever read and written from inside
+// an effect, never from render.
+let lastLoggedJourneySnapshot = null;
+
 export function useSetupJourney({
   cardLink,
   cardLifecycle,
@@ -77,10 +97,33 @@ export function useSetupJourney({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, exact, cardId, bootId, evidence]);
 
-  return useMemo(
+  const journey = useMemo(
     () => assembleSetupJourney({ cardLink, cardLifecycle, commissioningFlow, project, evidence }),
     [cardLink, cardLifecycle, commissioningFlow, project, evidence],
   );
+
+  const projectId = String(project?.id || '');
+  const commissioningStage = commissioningStageOf(commissioningFlow);
+  const evidenceStale = evidence?.stale === true;
+  useEffect(() => {
+    const snapshot = {
+      journey: {
+        taskId: journey.taskId,
+        currentPhaseId: journey.currentPhaseId,
+        setupComplete: journey.setupComplete,
+      },
+      cardId,
+      bootId,
+      commissioningStage,
+      projectId,
+      evidenceStale,
+    };
+    const record = journeyTransition(lastLoggedJourneySnapshot, snapshot);
+    lastLoggedJourneySnapshot = snapshot;
+    if (record) appendCardJournalEntry(record);
+  }, [journey.taskId, journey.currentPhaseId, journey.setupComplete, cardId, bootId, commissioningStage, projectId, evidenceStale]);
+
+  return journey;
 }
 
 export default useSetupJourney;

@@ -237,6 +237,35 @@ test('[J13] every setup surface agrees on an active light test, and agrees again
 });
 
 // ---------------------------------------------------------------------------
+// C3 — blueprint H8's diagnostic trail. A changed setup-journey task leaves
+// one line in the connection log (src/lib/journeyTrail.js via
+// src/hooks/useSetupJourney.js, appended through the shared bounded journal
+// in src/lib/cardLinkJournal.js), and that line survives a reload the same
+// way the journey verdict itself does — it lives in the same localStorage the
+// journey's own evidence is read from, not in memory.
+// ---------------------------------------------------------------------------
+test('[C3] a live light test writes a diagnostic line to the connection log, and it survives a reload', async ({ page }) => {
+  const spec = cardState('installed-match');
+  const card = createCardSimulator(spec);
+  card.beginWiringTest();
+  await boot(page, spec, '/#screen=card', seedKnownCard, card);
+  await waitConnectedUnaided(page, 'C3 card home');
+  await expect(
+    journeyLocator(page),
+    'the shared journey must show the live light test before the log can have recorded it',
+  ).toHaveAttribute('data-journey-task', 'confirm-visible-lights', { timeout: CONNECT_BUDGET_MS });
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'C3 card home after reload');
+  await page.goto('/#screen=card&section=support', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Connection log', exact: true }).click();
+  await expect(
+    page.getByTestId('connection-log-text'),
+    'the diagnostic line naming the light-test task must be in the connection log after a reload',
+  ).toHaveValue(/confirm-visible-lights/, { timeout: CONNECT_BUDGET_MS });
+});
+
+// ---------------------------------------------------------------------------
 // J05 — a first reconnect that has to retry, then a reply lost after the card
 // genuinely applied the write. Neither may cost a click, and the lost reply
 // must never turn into a duplicate command.
