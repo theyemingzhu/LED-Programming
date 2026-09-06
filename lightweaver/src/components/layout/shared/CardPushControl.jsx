@@ -28,6 +28,7 @@ import { openLocalCardPage } from '../../../lib/cardBridge.js';
 import { readPersistedCardIdentity } from '../../../lib/cardIdentity.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
+import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
 import { getCardLinkState, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
@@ -147,14 +148,40 @@ export function CardPushControl({
   const [wiringCandidate, setWiringCandidate] = useState(null);
   const [wiringTestState, setWiringTestState] = useState('idle');
   const [candidateConflict, setCandidateConflict] = useState(null);
+  const [writeOwnerConflict, setWriteOwnerConflict] = useState(null);
   const failedAttemptRef = useRef(null);
   const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, readProjectLifecycle());
+
+  // One write owner per card, ACROSS tabs. withStudioHardwareOperation below
+  // serialises hardware work inside this page and cannot see another one, so
+  // until this wrapper existed two Studio tabs could both take the direct-apply
+  // branch and POST /api/config at the same card, each reporting a clean
+  // install. The lease is taken before any write and released in `finally`, so
+  // a refused tab is told exactly which operation it is waiting on and nothing
+  // retries on its behalf — a silent retry is how one command reaches a card
+  // twice. Cards are keyed by their paired identity, falling back to the host
+  // when Studio has not named the card yet.
+  const withCardWriteOwnership = async (operation, host, task) => {
+    const cardId = readPersistedCardIdentity()?.id || host || getCardHostname();
+    const claim = acquireCardWriteLease({ cardId, operation });
+    if (!claim.ok) {
+      setWriteOwnerConflict({ operation: claim.conflict.operation, message: claim.message });
+      return undefined;
+    }
+    setWriteOwnerConflict(null);
+    try {
+      return await task();
+    } finally {
+      claim.release();
+    }
+  };
 
   // Serialize the current patch board into the firmware's runtime contract.
   // Direct push is only for local HTTP/file Studio sessions; hosted HTTPS
   // flows use the copy-paste fallback shown by the error state.
-  const pushToCard = async (retryAttempt = null) => withStudioHardwareOperation('install-project', async () => {
+  const pushToCard = async (retryAttempt = null) => {
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
+    return withCardWriteOwnership('install-project', cleanHost, () => withStudioHardwareOperation('install-project', async () => {
     setCardHostname(cleanHost);
     setPushHost(getCardHostname());
     let attempt = retryAttempt;
@@ -302,10 +329,12 @@ export function CardPushControl({
         setPushStatus(`Push failed: ${err.message || err}`);
       }
     }
-  });
+    }));
+  };
 
-  const startWiringTest = async () => withStudioHardwareOperation('activate-wiring', async () => {
-    if (!wiringCandidate) return;
+  const startWiringTest = async () => {
+    if (!wiringCandidate) return undefined;
+    return withCardWriteOwnership('activate-wiring', wiringCandidate.attempt.host, () => withStudioHardwareOperation('activate-wiring', async () => {
     setWiringTestState('starting');
     setPushStatus('Restarting the card with the test wiring…');
     try {
@@ -325,7 +354,8 @@ export function CardPushControl({
       setWiringTestState('failed');
       setPushStatus(error.message || 'The test wiring did not start. The working setup remains safe.');
     }
-  });
+    }));
+  };
 
   const autoActivatedRef = useRef('');
   useEffect(() => {
@@ -477,6 +507,11 @@ export function CardPushControl({
 
   return (
     <div className="la-card-push">
+      {writeOwnerConflict && (
+        <div className="la-card-push-banner is-err" role="alert" data-testid="card-write-owner-conflict">
+          {writeOwnerConflict.message}
+        </div>
+      )}
       {!wiringTransactionActive && <div className="la-card-push-row">
         <button
           className={yieldPrimary ? 'btn la-card-push-btn' : 'btn primary la-card-push-btn'}
@@ -521,9 +556,9 @@ export function CardPushControl({
             ? 'The card is running your new wiring now. Confirming makes it permanent; if you say nothing, the card puts its old setup back by itself.'
             : 'The card keeps its last working setup until you confirm this one on the real lights. Nothing is permanent yet.'}</p>
           {wiringTestState === 'staged' || wiringTestState === 'failed' ? (
-            <div><button className="btn primary" title="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-tooltip="Restart the card using the staged wiring so you can check the real LEDs before committing it." onClick={startWiringTest}>Start light test</button><button className="btn" title="Discard the staged wiring change and keep the card's last working setup." data-tooltip="Discard the staged wiring change and keep the card's last working setup." onClick={() => finishWiringTest(false)}>Cancel change</button></div>
+            <div><button className="btn primary" title="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-tooltip="Restart the card using the staged wiring so you can check the real LEDs before committing it." data-testid="wiring-test-start" onClick={startWiringTest}>Start light test</button><button className="btn" title="Discard the staged wiring change and keep the card's last working setup." data-tooltip="Discard the staged wiring change and keep the card's last working setup." data-testid="wiring-test-cancel" onClick={() => finishWiringTest(false)}>Cancel change</button></div>
           ) : wiringTestState === 'testing' ? (
-            <div><button className="btn primary" title="Confirm the real light test passed and make this wiring the card's working setup." data-tooltip="Confirm the real light test passed and make this wiring the card's working setup." onClick={() => finishWiringTest(true)}>The lights look correct</button><button className="btn" title="Reject the tested wiring and restore the card's last working setup." data-tooltip="Reject the tested wiring and restore the card's last working setup." onClick={() => finishWiringTest(false)}>No, restore working setup</button></div>
+            <div><button className="btn primary" title="Confirm the real light test passed and make this wiring the card's working setup." data-tooltip="Confirm the real light test passed and make this wiring the card's working setup." data-testid="wiring-test-confirm" onClick={() => finishWiringTest(true)}>The lights look correct</button><button className="btn" title="Reject the tested wiring and restore the card's last working setup." data-tooltip="Reject the tested wiring and restore the card's last working setup." data-testid="wiring-test-restore" onClick={() => finishWiringTest(false)}>No, restore working setup</button></div>
           ) : <p>Working…</p>}
         </section>
       )}
