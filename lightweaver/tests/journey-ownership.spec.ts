@@ -289,3 +289,179 @@ test('[J08] card swap: a different card answering the same address is refused, a
   const openIdAfter = await readAutosaveId(page);
   expect(openIdAfter, 'the open project must survive meeting a different card completely unchanged').toBe(openIdBefore);
 });
+
+// ---------------------------------------------------------------------------
+// [J08] sequential identical install (ticket F5) — the question the two-tabs
+// case above deliberately does NOT answer. There, tab two is refused because
+// a live writer holds the card; here tab one has already FINISHED before tab
+// two ever presses Install — the lease is free, so it is correctly let
+// through — but nothing stopped the write itself: the card already holds
+// this exact project, this exact wiring, this exact revision and
+// fingerprint. A second identical write is not a race to catch; it is a
+// preflight question the install never asked. `isCardAlreadyCurrent`
+// (src/lib/cardDeployment.js) answers it before any request leaves the
+// browser.
+//
+// Tab two is seeded with the BYTE-IDENTICAL project tab one installed —
+// captured from tab one right before its click, not a second independently
+// generated Studio default — because "the card already holds this exact
+// fingerprint + revision" only means something when the two attempts are
+// provably the same project, not two defaults that merely look alike.
+// ---------------------------------------------------------------------------
+test('[J08] sequential identical install: a second tab pressing install after the first finishes writes nothing', async ({ page, context }) => {
+  // pin 16 / 44 pixels matches Studio's own generated default project exactly
+  // (see the two-tabs test above), so this install takes the direct-apply
+  // branch — no wiring change, no staged candidate, nothing to distract from
+  // the redundant-write question this test is actually about.
+  const spec = { ...cardState('installed-match'), pin: 16, pixels: 44 };
+  const card = createCardSimulator(spec);
+
+  await card.install(page);
+  await seedFreshCardIdentity(page);
+
+  const installedProject = await readyInstallProject(page, project => {
+    // Same reason as the two-tabs test: the card's own project id must be
+    // matched exactly or Studio refuses before either attempt reaches the
+    // question this test is about.
+    project.id = MATRIX_PROJECT_ID;
+    project.name = 'Matrix piece';
+  });
+
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(
+    page.getByText(/Installed revision .* on card/),
+    'tab one must finish its own real install before tab two presses install',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+
+  const two = await context.newPage();
+  await card.install(two);
+  await two.addInitScript(({ id, firmwareVersion, buildId, project }) => {
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    // The exact project tab one just installed, not a fresh generation — see
+    // the comment above the test.
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID, project: installedProject });
+  await two.goto(INSTALL_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expect(two.getByTestId('commissioning-step')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(two.getByText('Ready to install on the card.')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(two.getByTestId('layout-send-to-card')).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
+
+  await two.getByTestId('layout-send-to-card').click();
+  await expect(
+    two.getByTestId('card-install-already-current'),
+    'a second tab installing exactly what the card already holds must read as already current — no error, no write',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(
+    two.getByTestId('card-write-owner-conflict'),
+    'a redundant install of the exact same project is not a write-ownership conflict',
+  ).toHaveCount(0);
+
+  const configWrites = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config');
+  const timeline = JSON.stringify(card.requests.map(entry => [entry.method, entry.path]));
+  expect(
+    configWrites.length,
+    `a second tab installing the exact project already on the card must reach it once in total (tab one's real write), `
+    + `not ${configWrites.length} — the redundant install must be gated in the preflight before any POST. Timeline: ${timeline}`,
+  ).toBe(1);
+
+  await two.close();
+});
+
+// ---------------------------------------------------------------------------
+// [J08] lease-guarded wiring confirm (ticket F6) — `finishWiringTest`
+// (`/api/wiring/confirm`, `/api/wiring/rollback`) used to run outside the
+// cross-tab write lease that F2 gave `pushToCard` and `startWiringTest`: a
+// second tab holding the lease for an unrelated reason could not stop a
+// first tab from confirming (or rolling back) a light test underneath it.
+// Proven the same way F2's own two-tabs case is — a live holder announced
+// through `cardWriteLease.js` directly (not through the UI, since nothing
+// in this app's own screens currently drives that path), refusing tab one's
+// confirm until the lease is released.
+// ---------------------------------------------------------------------------
+test('[J08] a wiring confirm refuses while another tab holds the write lease, and succeeds once it is released', async ({ page, context }) => {
+  // No pin/pixel override here, deliberately: the card's default wiring
+  // (pin 18 / 41 pixels, tests/harness/cardStates.ts's `base()`) differs from
+  // Studio's own generated default project (pin 16 / 44 pixels), so this push
+  // takes the staged-candidate branch and reaches a real light test to
+  // confirm — the exact path `finishWiringTest` guards.
+  const spec = cardState('installed-match');
+  const card = createCardSimulator(spec);
+
+  await card.install(page);
+  await seedFreshCardIdentity(page);
+  await readyInstallProject(page, project => {
+    project.id = MATRIX_PROJECT_ID;
+    project.name = 'Matrix piece';
+  });
+
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(
+    page.getByTestId('wiring-test-start'),
+    'fixture sanity: a wiring-changing push must stage a candidate, not apply directly',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await page.getByTestId('wiring-test-start').click();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+
+  // Tab two never opens any Studio screen for this — it acquires the same
+  // cross-tab write lease directly, exactly as the module's own doc comment
+  // describes: "is another browser tab already writing to it?". It still
+  // needs to land on the app's own origin for `localStorage` /
+  // `BroadcastChannel` to be the SAME ones tab one's lease announces on —
+  // but a full second mount of the Studio app on this shared-storage origin
+  // would run its own autosave/adoption machinery against the exact project
+  // tab one has live and mid-flow, which is a real corruption risk this test
+  // has no interest in causing. Blocking the entry module (index.html's own
+  // `import('/src/main.jsx')`) keeps the origin (and its storage) real while
+  // never mounting a second competing app instance; `cardWriteLease.js`
+  // itself has no dependency on the app having mounted.
+  const two = await context.newPage();
+  await two.route('**/src/main.jsx', route => route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
+  await two.goto('/', { waitUntil: 'domcontentloaded' });
+  const acquired = await two.evaluate(async cardId => {
+    const { acquireCardWriteLease } = await import('/src/lib/cardWriteLease.js');
+    const claim = acquireCardWriteLease({ cardId, operation: 'install-project' });
+    if (claim.ok) window.__f6TestLease = claim;
+    return claim.ok;
+  }, MATRIX_CARD_ID);
+  expect(acquired, 'fixture sanity: tab two must actually hold the write lease before tab one is asked to confirm').toBe(true);
+
+  await page.getByTestId('wiring-test-confirm').click();
+  await expect(
+    page.getByTestId('card-write-owner-conflict'),
+    'confirming a light test while another tab owns the write lease must refuse, not silently proceed',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(
+    page.getByTestId('wiring-test-confirm'),
+    'a refused confirm must leave the light test exactly where it was, so retrying after the lease frees is possible',
+  ).toBeVisible();
+
+  const confirmPostsWhileHeld = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/confirm');
+  expect(confirmPostsWhileHeld.length, 'a refused confirm must post nothing to the card').toBe(0);
+
+  await two.evaluate(() => { window.__f6TestLease?.release(); });
+
+  await page.getByTestId('wiring-test-confirm').click();
+  // Card facts on `card.state` / `card.requests`, never prose (rule 4) —
+  // confirming can navigate the screen on (exactly as
+  // tests/layout-send-to-card.spec.ts's own confirm does, on to Patterns),
+  // so the transient success banner is not a stable thing to assert on.
+  await expect
+    .poll(
+      () => card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/confirm').length,
+      { timeout: CONNECT_BUDGET_MS, intervals: [200] },
+    )
+    .toBe(1);
+  expect(card.state.wiringTestActive, 'confirming once the lease is released must actually end the probation window').toBe(false);
+
+  const confirmPosts = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/confirm');
+  const timeline = JSON.stringify(card.requests.map(entry => [entry.method, entry.path]));
+  expect(
+    confirmPosts.length,
+    `the wiring confirm must reach the card exactly once total once the lease was released, not ${confirmPosts.length}. Timeline: ${timeline}`,
+  ).toBe(1);
+
+  await two.close();
+});
