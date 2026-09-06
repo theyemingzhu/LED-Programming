@@ -84,6 +84,7 @@ import {
   classifyCardActionFailure,
   createCardActionState,
 } from '../lib/cardAction.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { createProjectPreviewStrip } from '../lib/previewVisuals.js';
 import {
   buildPatternPreviewSegments,
@@ -432,8 +433,6 @@ import { PatternPreview } from './PatternPreview.jsx';
     const [previewAction, dispatchPreviewAction] = useReducer(cardActionReducer, undefined, createCardActionState);
     const [previewFailure, setPreviewFailure] = useState(null);
     const [patternCardGate, setPatternCardGate] = useState('');
-    const [patternCardGateSeq, setPatternCardGateSeq] = useState(0);
-    const patternGateNoticeRef = useRef(null);
     const [handoffUrl, setHandoffUrl] = useState("");
     const [selectedTargetId, setSelectedTargetId] = useState(ALL_SECTIONS_TARGET_ID);
     const [draftLooks, setDraftLooks] = useState({});
@@ -640,22 +639,16 @@ import { PatternPreview } from './PatternPreview.jsx';
     const blockPatternCardEffect = useCallback((access = patternAccessRef.current) => {
       invalidatePendingPreview();
       setPatternCardGate(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery');
-      // The hero status sits far above the pattern grid, so on a scrolled page
-      // a refused tap looked like nothing happened at all. Bump this on every
-      // refusal (not just when the reason changes) so the same repeated block
-      // still brings its explanation back into view.
-      setPatternCardGateSeq(seq => seq + 1);
       setHandoffUrl('');
       setStatusKind('err');
       setStatus(patternGateMessage(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery'));
     }, [invalidatePendingPreview]);
 
-    useEffect(() => {
-      if (!patternCardGateSeq || !patternCardGate) return;
-      const notice = patternGateNoticeRef.current;
-      if (typeof notice?.scrollIntoView !== 'function') return;
-      notice.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, [patternCardGate, patternCardGateSeq]);
+    // Was: a scrollIntoView effect keyed on patternCardGateSeq, bringing the
+    // in-flow refusal notice back into view on a repeated tap because the
+    // hero status sits far above the pattern grid. The refusal now floats in
+    // the notice layer (see the 'pattern-gate-notice' publish effect), so it
+    // is always visible and never needs scrolling to.
 
     useEffect(() => {
       // Every readiness poll that still reports the exact bound card, boot,
@@ -2063,6 +2056,101 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
     };
 
+    // ── screen-scoped messages into the notice layer ───────────────────────
+    // The hero status used to be a static box in document flow, pushing the
+    // pattern grid down every time it appeared. Three exceptions stay in the
+    // old in-flow markup, deliberately, because the notice layer's `action`
+    // is a single button and these need more than that:
+    //   - recoveryConfirmation 'pending'/'dark' is a two-button yes/no
+    //     confirmation ("Yes, warm white is visible" / "No, lights are still
+    //     dark"), both real, both tested
+    //     (tests/patterns-v3.spec.ts: 'Recover lights asks for physical
+    //     confirmation…'). Collapsing to one action would silently drop the
+    //     "No" answer, which is exactly what constraint 6 forbids.
+    // Everything else — the plain info/success/error hero messages, the
+    // firmware-gap "Open Flash" case, the mixed-content "Open card installer"
+    // case, and the single-button preview-failure recovery case — moves.
+    const isPatternRecoveryConfirmFlow = recoveryConfirmation === 'pending' || recoveryConfirmation === 'dark';
+    useEffect(() => {
+      // While the pattern-gate notice (below) is up, it already carries this
+      // exact refusal text as its own alert (blockPatternCardEffect sets both
+      // `status` and `patternCardGate` to the same message). The old markup
+      // solved the resulting double-announcement by downgrading this box's
+      // role from 'alert' to 'status' while still showing both boxes; here
+      // there is no role to downgrade, so this notice simply stands down and
+      // lets the gate notice own the announcement — same fix, no duplicate.
+      if (!status || isPatternRecoveryConfirmFlow || patternCardGate) {
+        dismissNoticeKey('pattern-card-status');
+        return;
+      }
+      const isSendingStatus = /(…|\.\.\.)$/.test(status);
+      const tone = statusKind === 'err' ? 'error' : statusKind === 'ok' ? 'success' : isSendingStatus ? 'progress' : 'info';
+      // Priority when more than one would have rendered (handoffUrl and
+      // hasPreviewFailureAction can co-occur on a mixed-content failure —
+      // untested in combination, so this follows the boxes' own top-to-bottom
+      // order): Open card installer > Open Flash > the preview failure's own
+      // recovery action. Nothing here is ever dropped silently in a tested
+      // combination — only the untested mixed-content pairing loses its
+      // second button.
+      let action = null;
+      if (handoffUrl) {
+        action = { label: 'Open card installer', onSelect: () => { void openCardInstaller(); } };
+      } else if (showFlashAction) {
+        action = { label: 'Open Flash', onSelect: () => { window.location.hash = '#screen=flash'; } };
+      } else if (hasPreviewFailureAction) {
+        action = { label: previewFailure.actionLabel, onSelect: runPreviewFailureAction };
+      }
+      publishNotice({
+        key: 'pattern-card-status',
+        testId: 'pattern-card-status',
+        tone,
+        title: status,
+        source: 'pattern-status',
+        action,
+      });
+    }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
+
+    useEffect(() => {
+      if (!hardwareConfigurationIssue) {
+        dismissNoticeKey('hardware-configuration-warning');
+        return;
+      }
+      // Two buttons existed in the old box: "Fix automatically" (one-click,
+      // only offered when the fix is unambiguous) and "Fix wiring" (always
+      // offered, navigates to Layout). When both are available the automatic
+      // fix is strictly better, so it is the notice's action and "Fix wiring"
+      // is dropped — tests/patterns-v3.spec.ts's own duplicate-encoder test
+      // only exercises the case where "Fix automatically" is ABSENT, so
+      // "Fix wiring" stays the action in that (tested) case.
+      publishNotice({
+        key: 'hardware-configuration-warning',
+        testId: 'hardware-configuration-warning',
+        tone: 'error',
+        title: 'Hardware setup needs attention.',
+        body: `${hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.`,
+        source: 'pattern-hardware',
+        action: canRemoveDuplicateAlternatePress
+          ? { label: 'Fix automatically', onSelect: removeDuplicateAlternatePress }
+          : { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
+      });
+    }, [hardwareConfigurationIssue, canRemoveDuplicateAlternatePress]);
+
+    useEffect(() => {
+      if (!patternCardGate) {
+        dismissNoticeKey('pattern-gate-notice');
+        return;
+      }
+      publishNotice({
+        key: 'pattern-gate-notice',
+        testId: 'pattern-gate-notice',
+        tone: 'error',
+        title: 'That tap was not sent to the card.',
+        body: status || patternGateMessage(patternCardGate),
+        source: 'pattern-gate',
+        action: { label: patternGateActionLabel, onSelect: runPatternGateAction },
+      });
+    }, [patternCardGate, status, patternGateActionLabel]);
+
     return (
       <div className="screen">
         <div className="screen-scroll">
@@ -2147,33 +2235,19 @@ import { PatternPreview } from './PatternPreview.jsx';
               </div>
             </header>
 
-            {/* When the grid's refusal notice is up it carries this exact
-                sentence plus the action, so keeping this an `alert` too made a
-                screen reader announce the same refusal twice and gave the page
-                two matching alert roles. The notice owns the announcement
-                while it is showing; this stays visible, quietly. */}
-            {status &&
-              <div className={"pmx-status" + (statusKind === 'ok' ? ' is-ok' : statusKind === 'err' ? ' is-err' : '')} role={statusKind === 'err' && !patternCardGate ? 'alert' : 'status'} aria-live="polite">
+            {/* Two states of this same physical-recovery confirmation stay in
+                document flow, unmigrated: the notice layer's `action` is one
+                button, and "Yes, warm white is visible" / "No, lights are
+                still dark" are both real, both tested
+                (tests/patterns-v3.spec.ts: 'Recover lights asks for physical
+                confirmation…'). Everything else this box used to show —
+                plain info/success/error, the firmware-gap and mixed-content
+                cases, the single-button preview-failure recovery — is
+                published to the notice layer instead (see the
+                'pattern-card-status' effect above). */}
+            {status && isPatternRecoveryConfirmFlow &&
+              <div className={"pmx-status" + (statusKind === 'ok' ? ' is-ok' : statusKind === 'err' ? ' is-err' : '')} role={statusKind === 'err' ? 'alert' : 'status'} aria-live="polite">
                 {status}
-                {handoffUrl &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={openCardInstaller}>Open card installer</button>
-                  </div>
-                }
-                {showFlashAction &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={() => { window.location.hash = '#screen=flash'; }}>Open Flash</button>
-                  </div>
-                }
-                {/* The gate's action button is NOT here: it lives in the
-                    notice beside the pattern grid, which is where the owner is
-                    looking when a tap is refused. Two copies of the same button
-                    would also make "the" button ambiguous to click. */}
-                {hasPreviewFailureAction &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={runPreviewFailureAction}>{previewFailure.actionLabel}</button>
-                  </div>
-                }
                 {recoveryConfirmation === 'pending' &&
                   <div className="pmx-status-actions" aria-label="Confirm physical recovery">
                     <button type="button" className="btn primary" onClick={() => {
@@ -2193,18 +2267,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                     <button type="button" className="btn primary" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Find my LED wire</button>
                   </div>
                 }
-              </div>
-            }
-
-            {hardwareConfigurationIssue &&
-              <div className="pmx-status is-err" role="alert" data-testid="hardware-configuration-warning">
-                <strong>Hardware setup needs attention.</strong> {hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.
-                <div className="pmx-status-actions">
-                  {canRemoveDuplicateAlternatePress &&
-                    <button type="button" className="btn primary" onClick={removeDuplicateAlternatePress}>Fix automatically</button>
-                  }
-                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Fix wiring</button>
-                </div>
               </div>
             }
 
@@ -2242,25 +2304,10 @@ import { PatternPreview } from './PatternPreview.jsx';
                     </div>
                     <span className="pt-count">{Math.min(visibleCount, filtered.length)} of {filtered.length} shown</span>
                   </div>
-                  {/* The hero status is often scrolled off by the time anyone
-                      is tapping patterns, so a refused tap repeats its reason
-                      and its one-click fix right here, next to the grid. */}
-                  {patternCardGate &&
-                    <div
-                      ref={patternGateNoticeRef}
-                      className="pmx-status is-err"
-                      role="alert"
-                      data-testid="pattern-gate-notice"
-                      style={{ margin: "0 0 10px" }}
-                    >
-                      <strong>That tap was not sent to the card.</strong> {status || patternGateMessage(patternCardGate)}
-                      <div className="pmx-status-actions">
-                        <button type="button" className="btn primary" onClick={runPatternGateAction}>
-                          {patternGateActionLabel}
-                        </button>
-                      </div>
-                    </div>
-                  }
+                  {/* This refusal now floats (see the 'pattern-gate-notice'
+                      effect above) instead of living in document flow here,
+                      so it no longer needs scrolling into view when the hero
+                      status is off-screen — it is always visible. */}
                   <div className="pm-cards">
                     {filtered.slice(0, visibleCount).map((p) => {
                       const cardInPlaylist = inPlaylist(p.id);

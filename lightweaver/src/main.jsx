@@ -55,6 +55,9 @@ import './styles/v3-show-console.css';
 // Layout: physical chrome from the Console candidate, measured register
 // from the Blueprint one. The canvas renderer is deliberately untouched.
 import './styles/v3-layout-console.css';
+// The notice layer loads last so its floating stack wins the cascade over
+// every screen stylesheet that used to draw its own in-flow message box.
+import './styles/lw-notice.css';
 import App from './v3/app.jsx';
 import { createOfflineUpdateController } from './lib/offlineUpdate.js';
 import { detectRuntimeMode } from './lib/runtimeMode.js';

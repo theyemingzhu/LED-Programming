@@ -12,7 +12,8 @@ import { CardStatusControl } from '../components/card/CardStatusControl.jsx';
 import { useFirmwareReleaseIdentity } from '../hooks/useFirmwareReleaseIdentity.js';
 import { ProjectSaveDialog } from '../components/projects/TopBarProjectDialogs.jsx';
 import { OPEN_PROJECTS_PANEL_EVENT, ProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
-import { WorkspaceNotice } from '../components/projects/WorkspaceNotice.jsx';
+import { NoticeLayer } from '../components/NoticeLayer.jsx';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { releaseCardBridge } from '../lib/cardBridge.js';
 import { bootstrapCardHostFromLocation, canPushDirectlyToCard, readStoredCardHost } from '../lib/cardConnection.js';
 import {
@@ -1687,6 +1688,68 @@ function Shell({ offlineUpdateController = null }) {
   const visiblePersistentNotice = persistentNotice?.key === dismissedPersistentKey ? null : persistentNotice;
   const visibleWorkspaceNotice = visiblePersistentNotice || workspaceEvent;
 
+  // ── Workspace events into the notice layer ──────────────────────────────
+  // These used to be two fixed-position `<aside>`s, the second pinned under
+  // the first with a hardcoded `top: 122px`. The layer stacks them properly,
+  // and — the point of the whole change — they are no longer the ONLY two
+  // messages in Studio that decline to shove the interface down.
+  //
+  // The lifecycle stays exactly where it was (workspaceEvent state, the
+  // 2200ms timer, dismissedPersistentKey). This only changes where the
+  // message is drawn, so every existing test assertion still holds.
+  const workspaceNoticeTone = (kind) => {
+    if (kind === 'conflict' || kind === 'error') return 'error';
+    if (kind === 'offline') return 'warning';
+    if (kind === 'success') return 'success';
+    return 'info';
+  };
+  useEffect(() => {
+    if (!visibleWorkspaceNotice) {
+      dismissNoticeKey('workspace-event');
+      return;
+    }
+    publishNotice({
+      key: 'workspace-event',
+      testId: 'workspace-notice',
+      tone: workspaceNoticeTone(visibleWorkspaceNotice.kind),
+      // Kept verbatim: specs assert on this text with toContainText.
+      title: visibleWorkspaceNotice.message,
+      source: visibleWorkspaceNotice.source || 'workspace',
+      action: visibleWorkspaceNotice.review
+        ? { label: 'Review', onSelect: () => openCardSection('preferences') }
+        : null,
+      onDismiss: () => {
+        if (visiblePersistentNotice) setDismissedPersistentKey(visiblePersistentNotice.key);
+        else setWorkspaceEvent(null);
+      },
+    });
+  }, [
+    visibleWorkspaceNotice?.id,
+    visibleWorkspaceNotice?.key,
+    visibleWorkspaceNotice?.message,
+    visibleWorkspaceNotice?.kind,
+    visibleWorkspaceNotice?.review,
+    visiblePersistentNotice?.key,
+    openCardSection,
+  ]);
+
+  useEffect(() => {
+    if (!projectAssociationSaveBlocked) {
+      dismissNoticeKey('association-save-blocked');
+      return;
+    }
+    publishNotice({
+      key: 'association-save-blocked',
+      testId: 'association-save-blocked',
+      tone: 'error',
+      title: 'Saving is paused — Studio could not establish a safe place to keep this project.',
+      source: 'association-save',
+      // No ×: this notice IS the only sign that work is not being kept.
+      dismissible: false,
+      action: { label: 'Retry', onSelect: () => { void retryAssociationSaveBlock(); } },
+    });
+  }, [projectAssociationSaveBlocked, retryAssociationSaveBlock]);
+
   return (
     // Mounted ONCE, unconditionally, above the screen switch: the provider's
     // component identity must never change across renders (remount-reset-guard
@@ -1775,29 +1838,7 @@ function Shell({ offlineUpdateController = null }) {
         </Suspense>
       )}
 
-      <WorkspaceNotice
-        notice={visibleWorkspaceNotice}
-        onDismiss={() => {
-          if (visiblePersistentNotice) setDismissedPersistentKey(visiblePersistentNotice.key);
-          else setWorkspaceEvent(null);
-        }}
-        onReview={() => openCardSection('preferences')}
-      />
-
-      {projectAssociationSaveBlocked && (
-        <aside
-          className="workspace-notice workspace-notice-error association-save-banner"
-          data-testid="association-save-blocked"
-          role="alert"
-          aria-live="assertive"
-          aria-label="Saving blocked"
-        >
-          <span>Saving is paused — Studio could not establish a safe place to keep this project.</span>
-          <div className="workspace-notice-actions">
-            <button type="button" onClick={() => void retryAssociationSaveBlock()}>Retry</button>
-          </div>
-        </aside>
-      )}
+      <NoticeLayer />
 
       <StatusBar
         link={cardLink}
