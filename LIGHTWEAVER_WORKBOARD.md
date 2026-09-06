@@ -322,3 +322,10 @@ preview transport keeps a stale boot authority and reports "did not answer
 in time" → ticket F3 (Opus, in progress). A6 full-field read-back in
 progress. Journey specs (continuity, edits, ownership, J01) now run in
 `ci:browser-smoke`. Unit 2348/2348 at `ba158c0b`.
+
+Closing: F3 `46e4774f` (card-restarted named, one bounded transport
+re-acquire) and A6 `084fd4b3` (full-field read-back, `journey-readback` in
+the smoke lane) merged; all fifteen tickets plus five follow-up fixes landed
+at `faf55185`. Unit 2361/2361; production build. Six follow-ups recorded
+in the execution plan Phase F. Nothing pushed, deployed or flashed; Phase E
+physical rows stay pending for Adrian.

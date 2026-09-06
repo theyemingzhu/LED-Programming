@@ -22,6 +22,18 @@ build on them, not around them.
 | `f28d4999` | Three real defects found by the new stateful suite, fixed: duplicate `/api/control` after a lost reply (read-back before any resend: `readBackLivePreview`, `retryWhileTransient({ readBack })`); `adoptWiringFromCard` replacing open work; double-tap sending twice. `tests/journey-continuity.spec.ts` (J02, J02-negative, J05, J08 ×2, J13) added to `ci:browser-smoke`. `docs/journeys/acceptance-ledger.md` written. | unit 2285/2285; Chromium 259/0 unexpected; J05+J08 ×4 = 12/12 |
 | `d4c404a8` | Read-back narrowed to transport failures only (a card's explicit answer is never reinterpreted from a zone read); the playlist timeout fixture no longer pre-shows the requested row. | four `playlist-storage` cases: pass at main, red at `f28d4999`, green now; playlist + journey + drawer 27/0 |
 | `a238e915` | This plan. | — |
+| `a2d985b7` | **B2** optional-update banner copy is truthful (`readyBannerFirmwareCopy`). | setup-adopt-card-project 4/0 |
+| `f49c5ffe` | **B1** a finished preserving update returns the owner to the interrupted screen (`preserving-update-continue`). | preserving-firmware-update 17/0 |
+| `c364d777` | **A3** `journey-edits.spec.ts` J06/J07; simulator `/api/wiring/candidate`. | 6/0 (repeat 3) |
+| `4683cd55` + `74906d02` | **A1 + F1** `journey-j01.spec.ts` (`[J01-partial]` through discovery, colour confirmed, ladder past "find lights"); simulator beacon port + frame stream. **Fixed the real defect** that discovery passed `{ map }` while `discoveryCommit.js` read `channelMap`, so colour order was never recorded and Setup could never leave "find lights". | j01 3/3; unit +1 |
+| `31355f49` + `263a6db0` | **A4 + F2** `journey-ownership.spec.ts` card swap + two overlapping tabs; **fixed the real defect** that same-wiring pushes had no write owner: `cardWriteLease.js` (localStorage + BroadcastChannel, TTL 3 s), conflict id `card-write-owner-conflict`, wiring-test button ids. | ownership 6/0 (repeat 3); 6-suite batch 104/0 |
+| `dc9dc0b3` | **C3** journey transitions append one line to the connection journal (`journeyTrail.js`). | unit +17; continuity 7/0 |
+| `661dc08b` + `80969642` + `94328f22` | **C1/C1b/C1c** quota-limited saves surfaced (`project-save-limited`); `projectCopyLabel`; reconstructed card copies carry `origin: { kind: 'card-partial' }` through `ProjectContext` and read "Card copy (partial — no artwork)". | 95/0 |
+| `82c277f6` | **C2** freshness prompt deferred while a hardware operation runs; skew classifier confirmed correct; offline saved-project entry covered. | windowless 2/0; tooling 8/8 |
+| `7ba6599c` | **D1** `onWiringTestActiveChange` and `onPrimaryActionChange` retired; `ladderOwnsPrimary` is a pure shared function; `onLoadOfferChange` kept (needs Setup-only context). | 99/0 |
+| `2a967491` | **D2** three contradictory sentences reconciled (roadmap, TODO). | — |
+| `914e5337` + `46e4774f` | **A5 + F3** playlist suite runs on the simulator; **fixed the real defect** that after a recovery reboot the live-preview transport kept a stale boot authority and reported "did not answer in time": named `card-restarted`, one bounded re-acquire for the same card (`reacquireCardTransportAuthority`). | playlist 20/0; 4-suite batch 84/0 |
+| `084fd4b3` | **A6** read-back verifies every control field against the zones; simulator applies controls per zone; `journey-readback.spec.ts` in the smoke lane. | readback 3/3; unit +8 |
 
 Real-card screens inspected on `lw-b0fe81f61b44` (192.168.18.70, firmware 1524,
 Studio release 1548 available): desktop and phone Card Home agree with the
@@ -254,6 +266,40 @@ files may run in parallel (max three).
    experience table (preserving Wi-Fi update for capable cards; card-local
    same-tab path; factory erase never automatic). Quote the old and new sentence
    in the return packet.
+
+### Phase F — follow-ups surfaced by the fixers (small, tier S unless noted)
+
+**F4 · Finish J01 to playback** · files: `tests/journey-j01.spec.ts` — the wiring-test
+buttons now carry `wiring-test-start/confirm/restore/cancel` (F2). Drive placement →
+"Open Patterns" → start → confirm → pattern click; done when the title loses
+`-partial` and passes 3/3.
+
+**F5 · Same-project redundant write gate** · files: `CardPushControl.jsx`,
+`cardDeployment.js` (+ tests) — a second tab re-installing an identical project
+after the first finished is permitted by the lease (correctly) but still writes;
+gate on "card already holds this exact fingerprint + revision" in the install
+preflight. Red first with the sequential two-tabs case.
+
+**F6 · Lease the wiring confirm/rollback** · files: `CardPushControl.jsx` — wrap
+`finishWiringTest` (`/api/wiring/confirm`, `/api/wiring/rollback`) in the same
+`acquireCardWriteLease` as the start.
+
+**F7 · Origin on the adopt-wiring shortcut** · files: `lw-setup.jsx`
+(`adoptWiringFromCard`) — set `origin: card-partial` when the skeleton is applied
+through that path too; assert in setup-card-reconstruction.
+
+**F8 · Bare root for a returning owner** · files: `src/lib/studioRoute.js`, `app.jsx`
+— `FIRST_RUN_CARD_SECTION` forces `#screen=card&section=setup` on any empty hash
+even with a saved, complete project; decide with the journey (`setupComplete` →
+Card Home overview or last screen). Tier M.
+
+**F9 · Consolidate `authority.revalidate()`** · files: `cardTransport.js` — it still
+throws `identity-changed` for the boot-change condition that `request()` now
+names `card-restarted`; one vocabulary.
+
+**F10 · Duplicate fix in flight elsewhere** — a separate session picked up the
+"colorOrderConfirmed never set" chip after F1 had already fixed it here
+(`74906d02`). If that session opens a PR, close it in favour of this branch.
 
 ### Phase E — Bench proof (Adrian's eyes, one observation at a time)
 
