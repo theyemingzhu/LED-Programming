@@ -81,7 +81,12 @@ test('does not show fallback feedback after the page leaves for Chrome', async (
 test('the unsupported-browser warning offers the Chrome action and fallback status', () => {
   const screen = readFileSync(resolve(import.meta.dirname, '../v3/lw-flash.jsx'), 'utf8');
 
-  assert.match(screen, />Open in Chrome</);
+  // Since #222 the warning is published through the notice layer, so the
+  // action is a notice action (label + testId) and the fallback result rides
+  // along as the notice body instead of a separate status element.
+  assert.match(screen, /label: 'Open in Chrome'/);
+  assert.match(screen, /testId: 'flash-open-in-chrome'/);
   assert.match(screen, /openInChrome/);
+  assert.match(screen, /body: chromeFallback/);
   assert.match(screen, /role="status"/);
 });
