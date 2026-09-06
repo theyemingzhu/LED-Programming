@@ -329,6 +329,13 @@ the smoke lane) merged; all fifteen tickets plus five follow-up fixes landed
 at `faf55185`. Unit 2361/2361; production build. Six follow-ups recorded
 in the execution plan Phase F. Nothing pushed, deployed or flashed; Phase E
 physical rows stay pending for Adrian.
+
+Phase F (2026-09-07): F4 `e1ce1d15` J01 end to end (13 clicks); F5+F6
+`5bb7b341` redundant-install gate + leased wiring confirm; F7 `6a92e8ff`;
+F8 `8e17126a` bare URL routes a returning owner to the overview; F9
+`89f1eacb` one transport vocabulary. Checkpoint: 30 suites 458/5/3 with the
+three re-seeded fixtures green 126/0 afterwards; unit 2369/2369; build.
+Remaining: Phase E bench observations; B6 shipment on instruction.
 Final checkpoint at `faf55185`: 30 browser suites 451 expected / 5 skipped /
 6 unexpected, all six green in isolation (five were the build number moving
 under a mid-run docs commit, one the known contention case); windowless 2/0;

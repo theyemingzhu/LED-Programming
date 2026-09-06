@@ -34,6 +34,11 @@ build on them, not around them.
 | `2a967491` | **D2** three contradictory sentences reconciled (roadmap, TODO). | — |
 | `914e5337` + `46e4774f` | **A5 + F3** playlist suite runs on the simulator; **fixed the real defect** that after a recovery reboot the live-preview transport kept a stale boot authority and reported "did not answer in time": named `card-restarted`, one bounded re-acquire for the same card (`reacquireCardTransportAuthority`). | playlist 20/0; 4-suite batch 84/0 |
 | `084fd4b3` | **A6** read-back verifies every control field against the zones; simulator applies controls per zone; `journey-readback.spec.ts` in the smoke lane. | readback 3/3; unit +8 |
+| `e1ce1d15` | **F4** `[J01]` runs blank card → discover → count → colour → install → light test → confirm → playing pattern in 13 deliberate clicks; simulator stages the whole config payload on a wiring change, as firmware does. | j01 3/3; edits + matrix 67/0 |
+| `5bb7b341` | **F5 + F6** a second tab re-installing exactly what the card holds sends nothing (`card-install-already-current`, `isCardAlreadyCurrent`); wiring confirm/rollback take the write lease. Three studio-hardening fixtures that seeded a card already holding the project were re-seeded stale (`seedStaleInstall`) so their write assertions test a write. | ownership 12/0 (repeat 3); 5-suite batch 126/0 |
+| `6a92e8ff` | **F7** the automatic adopt-wiring shortcut stamps `card-partial` origin (`cardPartialOrigin` shared). | 79/0 |
+| `8e17126a` | **F8** a bare URL routes a returning owner with a complete saved project to Card Home overview (`bareRouteFor`), never the ladder; fresh browsers still land on setup. | 200/0; unit +4 |
+| `89f1eacb` | **F9** `authority.revalidate()` uses the same divergence classifier as `request()`: `card-restarted` for a reboot, existing identity words otherwise. | 71/0; unit +2 |
 
 Real-card screens inspected on `lw-b0fe81f61b44` (192.168.18.70, firmware 1524,
 Studio release 1548 available): desktop and phone Card Home agree with the
@@ -267,7 +272,7 @@ files may run in parallel (max three).
    same-tab path; factory erase never automatic). Quote the old and new sentence
    in the return packet.
 
-### Phase F — follow-ups surfaced by the fixers (small, tier S unless noted)
+### Phase F — follow-ups surfaced by the fixers — **all done 2026-09-06/07** (F10 is a note)
 
 **F4 · Finish J01 to playback** · files: `tests/journey-j01.spec.ts` — the wiring-test
 buttons now carry `wiring-test-start/confirm/restore/cancel` (F2). Drive placement →
