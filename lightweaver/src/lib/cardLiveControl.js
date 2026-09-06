@@ -21,7 +21,12 @@ import {
   readPersistedCardIdentity,
 } from './cardIdentity.js';
 import { reclaimCardFrameStreams } from './cardFrameStream.js';
-import { connectCardTransport, getActiveCardTransportAuthority } from './cardTransport.js';
+import {
+  CARD_RESTARTED_REASON,
+  connectCardTransport,
+  getActiveCardTransportAuthority,
+  reacquireCardTransportAuthority,
+} from './cardTransport.js';
 import { discoverCardWiring, getCardWiringStatus, rollbackCardWiringCandidate } from './cardWiringSafety.js';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from './cardCustomerControlContract.js';
 import { isTransientCardFailure } from './cardTransientFailure.js';
@@ -962,25 +967,70 @@ async function resolveZoneForPreview(host, look, options = {}) {
   }
 }
 
+// The two things Studio can truthfully say about a card that rebooted under a
+// live command. Neither is "the card did not answer in time" — the card was
+// healthy and back; only the authority Studio held still named the old boot.
+const CARD_RESTARTED_RECONNECTING_MESSAGE = 'The card restarted. Studio is reconnecting to it — try the command again.';
+const CARD_RESTARTED_RECONNECTED_MESSAGE = 'The card restarted. Studio reconnected — try the command again.';
+
+async function sendLivePreviewThroughAuthority(host, look, options, authority) {
+  requireCurrentPreviewIntent(options);
+  const resolved = needsZoneResolution(look, options)
+    ? await resolveZoneForPreview(host, look, { ...options, authority })
+    : null;
+  const previewLook = resolved?.previewLook || look;
+  const response = requireBoundedControlObject(await authority.request('/api/control', {
+    method: 'POST',
+    body: {
+      ...buildLivePreviewControlPayload(previewLook, options),
+      ...(options.revision !== undefined ? { revision: options.revision } : {}),
+    },
+  }));
+  const acknowledged = requireLivePreviewAcknowledgement(response, previewLook, options, { id: authority.cardId });
+  return resolved
+    ? { ...acknowledged, previewZoneFallback: true, ...resolved.previewZoneFallback }
+    : acknowledged;
+}
+
+/**
+ * Re-acquire once, for the SAME card, after a restart refused the command.
+ *
+ * Bounded on purpose: exactly one re-acquire and exactly one resend, and only
+ * when the authority refused BEFORE reaching the card (`requestSent === false`),
+ * so the resend cannot be a second real `/api/control`. A refusal raised after
+ * the card's reply arrived means the command landed; that one is reported, not
+ * repeated.
+ */
+async function retryLivePreviewAfterRestart(host, look, options, authority, restartError) {
+  if (restartError?.requestSent) {
+    throw new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTING_MESSAGE, restartError);
+  }
+  requireCurrentPreviewIntent(options);
+  const reacquired = await (options.reacquireTransportImpl || reacquireCardTransportAuthority)({
+    host,
+    expectedCardId: options.expectedCardId || authority.cardId,
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+  }).catch(() => null);
+  if (!reacquired?.connected) {
+    throw new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTING_MESSAGE, restartError);
+  }
+  try {
+    return await sendLivePreviewThroughAuthority(host, look, options, reacquired);
+  } catch (retryError) {
+    if (retryError?.reason !== CARD_RESTARTED_REASON) throw retryError;
+    throw new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTED_MESSAGE, retryError);
+  }
+}
+
 async function pushLivePreviewToHost(host, look, options = {}) {
   const authority = options.authority || getActiveCardTransportAuthority(host);
   if (authority) {
-    requireCurrentPreviewIntent(options);
-    const resolved = needsZoneResolution(look, options)
-      ? await resolveZoneForPreview(host, look, { ...options, authority })
-      : null;
-    const previewLook = resolved?.previewLook || look;
-    const response = requireBoundedControlObject(await authority.request('/api/control', {
-      method: 'POST',
-      body: {
-        ...buildLivePreviewControlPayload(previewLook, options),
-        ...(options.revision !== undefined ? { revision: options.revision } : {}),
-      },
-    }));
-    const acknowledged = requireLivePreviewAcknowledgement(response, previewLook, options, { id: authority.cardId });
-    return resolved
-      ? { ...acknowledged, previewZoneFallback: true, ...resolved.previewZoneFallback }
-      : acknowledged;
+    try {
+      return await sendLivePreviewThroughAuthority(host, look, options, authority);
+    } catch (error) {
+      if (error?.reason !== CARD_RESTARTED_REASON) throw error;
+      return retryLivePreviewAfterRestart(host, look, options, authority, error);
+    }
   }
   // Local-card mode deliberately exercises the same verified postMessage path
   // as public HTTPS, even when Studio itself is running from an HTTP dev host.
@@ -1170,6 +1220,12 @@ async function pushSectionPreviewToBridge(host, targets = [], options = {}) {
 
 function normalizePreviewError(host, error) {
   if (error instanceof CardPushError) return error;
+  // A card that rebooted is a named, recoverable condition. Left unnamed it
+  // fell through to 'offline' and then to the timeout copy, which told the
+  // owner the card had not answered when it had simply restarted.
+  if (error?.reason === CARD_RESTARTED_REASON) {
+    return new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTING_MESSAGE, error);
+  }
   if (['identity-missing', 'wrong-card', 'firmware-too-old', 'stale-host', 'bridge-missing', 'card-rejected', 'runtime-state-unconfirmed', 'physical-output-unconfirmed'].includes(error?.reason)) {
     return new CardPushError(error.reason, error.message, error);
   }
