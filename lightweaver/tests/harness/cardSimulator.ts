@@ -41,6 +41,9 @@ export type CardSimulator = {
     /** True from activate until confirm/rollback/expiry — the probation window. */
     wiringTestActive: boolean;
     wiringProbationRemainingMs: number;
+    /** Per-zone brightness/speed/colour/breathe/drift, as `/api/control`
+     * writes have actually left it — see `zoneControlsFor`. */
+    zoneControls: Map<string, ZoneControlValues>;
   };
   install(page: Page): Promise<void>;
   /** The pattern the card is actually playing right now. */
@@ -133,7 +136,55 @@ function derivedReadiness(state: CardStateSpec) {
   };
 }
 
-function zonesFor(state: CardStateSpec & { zoneIds?: string[] }) {
+type ZoneControlValues = {
+  brightness: number; speed: number; hueShift: number;
+  customHue: number; customSaturation: number; customBreathe: boolean;
+  breatheLowerPct: number; breatheUpperPct: number; breatheCycleSeconds: number;
+  customDrift: boolean; driftHueMin: number; driftHueMax: number;
+};
+
+/** The values every zone starts at, before any `/api/control` has touched it
+ * — the same numbers this simulator always reported, now the DEFAULT rather
+ * than the permanent answer. */
+function defaultZoneControlValues(): ZoneControlValues {
+  return {
+    brightness: 0.65,
+    speed: 1,
+    hueShift: 0,
+    customHue: 32,
+    customSaturation: 230,
+    customBreathe: false,
+    breatheLowerPct: 85,
+    breatheUpperPct: 100,
+    breatheCycleSeconds: 9,
+    customDrift: false,
+    driftHueMin: 0,
+    driftHueMax: 255,
+  };
+}
+
+/** Every CUSTOMER_CONTROL_WIRE_FIELDS control that is genuinely per-zone
+ * state in this model. `patternId` and `blackout` are deliberately excluded —
+ * both already come from `state.currentId`, which a real `/api/control` write
+ * mutates for real (see `applyControl`); only the fields below were still
+ * hardcoded literals that `/api/zones` handed back unchanged. */
+const ZONE_CONTROL_FIELDS = CUSTOMER_CONTROL_WIRE_FIELDS.filter(
+  field => field.control !== 'patternId' && field.control !== 'blackout',
+);
+
+function zoneControlsFor(
+  state: { zoneControls: Map<string, ZoneControlValues> },
+  id: string,
+): ZoneControlValues {
+  let controls = state.zoneControls.get(id);
+  if (!controls) {
+    controls = defaultZoneControlValues();
+    state.zoneControls.set(id, controls);
+  }
+  return controls;
+}
+
+function zonesFor(state: CardStateSpec & { zoneIds?: string[]; zoneControls: Map<string, ZoneControlValues> }) {
   if (!state.pixels) return [];
   // One entry per id the card currently answers under — normally just
   // 'zone-all' for the matrix's abstract fixtures, but a real project's
@@ -148,18 +199,7 @@ function zonesFor(state: CardStateSpec & { zoneIds?: string[] }) {
     id,
     label: 'All lights',
     patternId: state.currentId,
-    brightness: 0.65,
-    speed: 1,
-    hueShift: 0,
-    customHue: 32,
-    customSaturation: 230,
-    customBreathe: false,
-    breatheLowerPct: 85,
-    breatheUpperPct: 100,
-    breatheCycleSeconds: 9,
-    customDrift: false,
-    driftHueMin: 0,
-    driftHueMax: 255,
+    ...zoneControlsFor(state, id),
     blackout: state.currentId === 'blackout',
     ranges: [{ start: 0, count: state.pixels }],
   }));
@@ -426,6 +466,11 @@ export function createCardSimulator(
     // a save-then-verify flow reads back the zones the card actually holds
     // instead of a fixture default no pushed project ever declared.
     zoneIds: [ZONE_ID] as string[],
+    // Per-zone brightness/speed/colour/breathe/drift, keyed by zone id — see
+    // `zoneControlsFor`. Starts empty; a zone reads its defaults the first
+    // time it is asked for, and `/api/control` mutates real entries here so
+    // `/api/zones` stops reporting the same fixed numbers forever.
+    zoneControls: new Map<string, ZoneControlValues>(),
     // Wiring the card is holding but has not adopted — the candidate slot.
     stagedPixels: undefined as number | undefined,
     stagedPin: undefined as number | undefined,
@@ -454,8 +499,33 @@ export function createCardSimulator(
   // withheld — a lost reply after a successful write, not a refusal.
   const dropRepliesAfterApply = new Map<string, number>();
 
+  /** `body.zone` names one zone; an absent/empty zone means every zone the
+   * card currently answers under — the same rule `controlAcknowledgement`
+   * already encodes for `affectedOutputScope` (`body.zone ? 'selected-zones'
+   * : 'all-active-outputs'`). `syncZones` is a different flag (whether
+   * several zones stay in step with each other) and does not gate this. */
+  function targetZoneIds(body: Record<string, unknown>): string[] {
+    const explicit = typeof body.zone === 'string' ? body.zone.trim() : '';
+    if (explicit) return [explicit];
+    return state.zoneIds.length ? state.zoneIds : [ZONE_ID];
+  }
+
+  function applyZoneControlFields(body: Record<string, unknown>) {
+    const present = ZONE_CONTROL_FIELDS.filter(field => body[field.wire] !== undefined);
+    if (!present.length) return;
+    for (const id of targetZoneIds(body)) {
+      const controls = zoneControlsFor(state, id);
+      for (const field of present) {
+        const raw = body[field.wire];
+        (controls as Record<string, number | boolean>)[field.control] =
+          typeof raw === 'boolean' ? raw : Number(raw);
+      }
+    }
+  }
+
   function applyControl(body: Record<string, unknown>) {
     state.stateRevision += 1;
+    applyZoneControlFields(body);
     if (body.blackout === true) {
       state.currentIndex = -1;
       state.currentId = 'blackout';
