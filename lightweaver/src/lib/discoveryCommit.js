@@ -16,6 +16,7 @@ import {
 import { normalizeUsbLedColorOrder } from './usbLedColorOrder.js';
 import { createDefaultPatchBoard } from './patchBoard.js';
 import { BENCH_DEFAULT_PORT_PIXELS, isUncountedDiscoveryHeadroom } from './benchConfig.js';
+import { cardPartialOrigin } from './projectCopyLabel.js';
 
 // Same defaults as createDefaultProject(). Counted LEDs are a physical length
 // at the reel density — never a 2px-per-LED sketch or a fixed 480px line.
@@ -251,6 +252,15 @@ export function projectSkeletonFromCardStatus(status = {}) {
   const patchBoard = createDefaultPatchBoard(strips);
   patchBoard.physicalLocked = verified;
   return {
+    // F7: whenever the status actually carried outputs, this skeleton IS a
+    // card reconstruction — straight-line geometry read back from the card,
+    // never the original artwork. `adoptWiringFromCard`'s shortcut in
+    // lw-setup.jsx hands this skeleton straight to `applyCardParts` with no
+    // button press, so the marker has to be stamped here, at the source, not
+    // left to whichever caller remembers to add it. See `cardPartialOrigin`
+    // in projectCopyLabel.js — the same marker `reconstructInstalledCardState`
+    // stamps for the explicit "Use this card's project" path.
+    ...(reportedOutputs.length ? { origin: cardPartialOrigin(status?.cardId) } : {}),
     portRoles,
     colorOrder: normalizeUsbLedColorOrder(status?.led?.colorOrder || status?.outputColor?.colorOrder, ''),
     led: {

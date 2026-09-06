@@ -60,6 +60,7 @@ import {
 } from './cardProjectResolver.js';
 import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
 import { createDefaultProject } from './projectModel.js';
+import { cardPartialOrigin } from './projectCopyLabel.js';
 
 export const SAVE_FAILURE_MESSAGES = Object.freeze({
   'browser-recovery-failed': 'Studio could not create a browser recovery copy. Your current project is still open; free browser storage and retry.',
@@ -129,8 +130,11 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
     // produced it — see projectCopyLabel.js's `projectCopyKind`, the one
     // place this marker is read back into a display label. `at` is a plain
     // timestamp (not itself load-bearing for the label), kept for any future
-    // "reconstructed N minutes ago" copy.
-    origin: { kind: 'card-partial', cardId: String(cardId || '').trim(), at: Date.now() },
+    // "reconstructed N minutes ago" copy. `cardPartialOrigin` is the one
+    // construction of this shape (F7) — `projectSkeletonFromCardStatus` in
+    // discoveryCommit.js stamps the same marker for the automatic
+    // adopt-wiring shortcut, so both paths must agree exactly.
+    origin: cardPartialOrigin(cardId),
     devices: {
       standaloneController: {
         defaultLook: visualLookFromZone(startupZone, startupPatternId),

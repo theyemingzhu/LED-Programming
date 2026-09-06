@@ -139,6 +139,20 @@ test('[J02] a returning browser recognizes the installed project without re-onbo
     'a card holding exactly the project it already reports installed must read as setup-complete on first sight',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
 
+  // F7: seedKnownCard leaves no project of its own open, so this journey just
+  // completed through adoptWiringFromCard's skeleton-only shortcut in
+  // lw-setup.jsx (the untouched-starter case documented above at
+  // seedOtherProjectOpen) — not the slower "adopt by default" effect that
+  // reconstructs through reconstructInstalledCardState. That shortcut hands
+  // its skeleton straight to applyCardParts with no button press, so without
+  // a `card-partial` origin stamped on the skeleton itself
+  // (projectSkeletonFromCardStatus, discoveryCommit.js) the adopted project
+  // carried no record of where it came from, and Projects silently read "Not
+  // saved yet" instead of naming this as a partial card reconstruction.
+  await page.getByTestId('topbar-projects').click();
+  await expect(page.getByTestId('projects-panel')).toBeVisible();
+  await expect(page.getByTestId('projects-association')).toHaveText('Card copy (partial — no artwork)');
+
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J02 after reload');
   await expect(

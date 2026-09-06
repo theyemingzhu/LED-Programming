@@ -43,6 +43,21 @@ export function projectCopyLabel(kind, detail = '') {
   return build(detail);
 }
 
+// The one construction of a `card-partial` origin marker, shared by every
+// caller that builds a project skeleton straight from a card's own status —
+// discoveryCommit.js's `projectSkeletonFromCardStatus` (the automatic
+// adopt-wiring shortcut in lw-setup.jsx's `adoptWiringFromCard` hands this
+// skeleton straight to `applyCardParts` with no button press) and
+// cardProjectAdoption.js's `reconstructInstalledCardState` (the explicit
+// "Use this card's project" reconstruction, which also folds in installed
+// patterns/zones). Both must stamp the exact same shape so `projectCopyKind`
+// above recognizes either path's output identically — a second, drifted copy
+// of this literal is exactly the kind of duplication that let the automatic
+// path go unmarked (F7).
+export function cardPartialOrigin(cardId = '') {
+  return { kind: 'card-partial', cardId: String(cardId || '').trim(), at: Date.now() };
+}
+
 // Whether `project` currently carries real artwork — the SVG/path data a
 // card reconstruction never has (see `reconstructInstalledCardState` in
 // cardProjectAdoption.js, which builds strips from straight-line geometry

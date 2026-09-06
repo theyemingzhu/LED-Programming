@@ -149,6 +149,25 @@ test('projectSkeletonFromCardStatus maps a real status blob into a project skele
   assert.equal(skeleton.portRoles.find(entry => entry.pin === 16).pixelCount, 300);
 });
 
+// F7: adoptWiringFromCard's shortcut hands this skeleton straight to
+// applyCardParts with no button press. Without a `card-partial` origin on
+// the skeleton itself, the automatic path never marks the project as a card
+// reconstruction — projectCopyLabel.js's projectCopyKind only recognizes
+// project.origin.kind, so ProjectsPanel silently claimed "Not saved yet"
+// instead of "Card copy (partial — no artwork)".
+test('projectSkeletonFromCardStatus marks the skeleton as a card-partial reconstruction when the status carries outputs', () => {
+  const skeleton = projectSkeletonFromCardStatus({
+    cardId: 'lw-b0fe81f61b44',
+    outputs: [
+      { id: 'bench-16', name: 'Bench GPIO 16', pin: 16, pixels: 300, direction: 'forward' },
+    ],
+    outputColor: { colorOrder: 'BGR' },
+  });
+  assert.equal(skeleton.origin?.kind, 'card-partial');
+  assert.equal(skeleton.origin?.cardId, 'lw-b0fe81f61b44');
+  assert.equal(typeof skeleton.origin?.at, 'number');
+});
+
 test('Find-my-strips 256 headroom is not a locked install, even when the card says it is known-good', () => {
   // Live card lw-b0fe81f61b44 on 2026-08-25: sentinel project, revision 4,
   // provisionalSetup false, GPIO 18 still holding the 256-pixel probe ceiling.
