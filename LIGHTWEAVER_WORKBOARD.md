@@ -240,3 +240,28 @@ run passed268/269; last quiet-preview fixture corrected and focused green.
 Final2,262 unit tests, production build, Pages staging and artifact verification
 passed. Binary freshness awaits protected main signer (expected firmware-source
 changes; no local signed artifacts or card flash). PR216 release gates pending.
+
+## 2026-09-06 unified card journey — B0–B1 checkpoint
+
+FLOW-B0 done — baseline `aba1e6f5` (main `2747224f` + handoff docs) in the
+isolated worktree branch `claude/lightweaver-audit-refinement-9a5034`. Delta
+since the audit snapshot `0af4b750` touched no Studio or firmware source;
+`codex/update-to-playback` is already in main (#216). Live Studio is build 1551
+against local main count 1560. Full record and the blueprint's H1–H8 holes:
+[plan](docs/plans/2026-09-05-unified-card-journey.md) §B0.
+
+FLOW-B1 done locally, commit `f3b760ae` — one shared journey decision. New
+`cardJourneyEvidence` store (card id + boot id keyed, single-flight, stale on
+hardware-operation end), `setupJourneyInputs.assembleSetupJourney` as the only
+evidence→journey mapping, `useSetupJourney` hook. Card Home, the Patterns/
+Playlist chip and the shell's task router now decide from the same inputs;
+Setup publishes its read so the card is read once. `resumeDestination` is
+consumed through `cardReturnIntent` (Setup's completion button returns the
+owner to the screen they left, one-use, never automatic). Simulator gained the
+firmware's wiring-test lifecycle. Evidence: unit 2282/2282 (20 new, red
+witnessed on the active-light-test agreement case); Chromium focused 244/0
+unexpected/5 skipped; production build. Screens not yet inspected; no
+hardware, flash or deploy.
+
+FLOW-B5 active — journey-continuity spec (J02, J05, J08, J13) and the J01–J14
+acceptance ledger; test/docs owner, `lightweaver/tests/` + `docs/journeys/`.
