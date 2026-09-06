@@ -76,7 +76,17 @@ async function bootBlank(page: Page, card: CardSimulator) {
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
 }
 
-test('[J01-partial] blank card: connect, discover one strip, push to card, wiring test activates', async ({ page }) => {
+test('[J01] blank card: connect, discover one strip, install it, confirm the wiring test, and play a pattern', {
+  // F4 (docs/plans/2026-09-06-unified-card-journey-execution.md): counted by
+  // hand — every `.click()` below, in source order: setup-connect-card,
+  // setup-lights-action, discovery-probe-18, discovery-start,
+  // discovery-color-red, discovery-color-green, discovery-counts-done,
+  // discovery-end-yes, discovery-record-save, discovery-continue-layout,
+  // setup-verify-action ("Open Patterns"), wiring-test-confirm, the
+  // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
+  // is not counted.
+  annotation: { type: 'clicks', description: '13 deliberate clicks' },
+}, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
   await bootBlank(page, card);
@@ -178,15 +188,23 @@ test('[J01-partial] blank card: connect, discover one strip, push to card, wirin
   // SAVED PROJECT, not asserted on prose: record()'s
   // `...(parts.colorOrder ? { led: { …, colorOrderConfirmed: true } } : {})`
   // spread now fires for a real discovery walk.
-  const savedColor = await page.evaluate(() => {
+  const { savedColor, realProjectId } = await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
-    return saved?.devices?.standaloneController?.led?.colorOrderConfirmed ?? null;
+    return {
+      savedColor: saved?.devices?.standaloneController?.led?.colorOrderConfirmed ?? null,
+      // ProjectContext.jsx's own persisted shape (`id: projectId` in its
+      // autosave writer) — the id discoveryProjectParts minted for this
+      // walk, needed below to prove the CARD ends up holding this exact
+      // project rather than just "some" project.
+      realProjectId: saved?.id || '',
+    };
   });
   expect(
     savedColor,
     'discoveryProjectParts must read the colour map out of channelProof.map (the panel\'s real shape) '
     + 'so colorOrderConfirmed lands after a real discovery walk — see src/lib/discoveryCommit.js',
   ).toBe(true);
+  expect(realProjectId, 'fixture sanity: discovery must have minted a real project id to install later').toBeTruthy();
 
   // The ladder must leave discover-lights now that colour is confirmed AND
   // layout is already placed (asserted above: starterPending:false, one
@@ -206,18 +224,105 @@ test('[J01-partial] blank card: connect, discover one strip, push to card, wirin
   // Studio asked for fell through to the simulator's 404 default.
   expect(card.unhandled, 'every /api/* path this journey touched must be modelled by the simulator').toEqual([]);
 
-  // ── STOPS HERE — a missing test id, not a product defect. ─────────────────
-  //
-  // Everything past this point — "Open Patterns", CardPushControl's autoStart
-  // push + wiring activate, the confirm gate, and the final pattern click /
-  // card.waitForPlaying — is real, reachable code (verified by reading
-  // src/components/layout/shared/CardPushControl.jsx and
-  // src/components/card/CardInstallAction.jsx), but CardPushControl.jsx's
-  // physical-confirm buttons ("The lights look correct" / "No, restore
-  // working setup", CardPushControl.jsx ~line 526) still have no
-  // `data-testid`, only `title`/`data-tooltip`. This file's edit list does not
-  // include CardPushControl.jsx, so the gap is reported rather than fixed
-  // here. `patternTile` is kept, unused, as the marker for where a follow-up
-  // resumes once those buttons gain data-testids.
-  void patternTile;
+  // ── F4: on to the last phase. discoveryProjectParts() already wrote a
+  // complete strip + wiring run the instant record() ran (proven above from
+  // the SAVED PROJECT: starterPending:false, one strip) — layoutProgress()
+  // in src/lib/setupJourney.js only needs exactly that, so there is nothing
+  // left in Layout for this walk to place. Assert the ladder's own verdict
+  // (setupJourney.js's call, not this test's) directly, rather than driving
+  // placement test ids against a screen with nothing left to do.
+  await expect(
+    journey,
+    'a fully placed, colour-confirmed discovery walk must land the ladder on its last phase (test-and-save), '
+    + 'not layout placement — there is no strip left to place',
+  ).toHaveAttribute('data-journey-task', 'test-and-save', { timeout: CONNECT_BUDGET_MS });
+
+  // ── "Open Patterns" — phase 4's real button (setup-verify-action, inside
+  // setup-install-slot's phase). It navigates to
+  // '…&task=install-project&next=patterns', which is exactly what makes
+  // CardInstallAction render CardPushControl with autoStart=true
+  // (continueToPatterns): the install push AND the resulting wiring-test
+  // activation both run with NO further click
+  // (CardPushControl.jsx's autoStartedRef / autoActivatedRef effects) — going
+  // from the 256-pixel bench sentinel to this project's real 41-pixel/pin-18
+  // strip is a wiring change (cardDeployment.js's classifyCardChanges), so
+  // the card stages it, and this IS the wiring test the ticket asks for.
+  await page.getByTestId('setup-verify-action').click();
+  await expect(page).toHaveURL(/next=patterns/);
+
+  await expect.poll(
+    () => ({ wiringTestActive: card.state.wiringTestActive, pixels: card.state.pixels }),
+    {
+      timeout: CONNECT_BUDGET_MS,
+      message: 'Open Patterns must auto-push the real project and auto-activate its wiring candidate without another click',
+    },
+  ).toEqual({ wiringTestActive: true, pixels: COUNTED_PIXELS });
+
+  // Field-for-field against firmware (LightweaverStorage.cpp's
+  // activateStagedRuntimeConfig / stageRuntimeConfigJson): the candidate BOOT
+  // that just happened runs off the ENTIRE staged config, not a wiring-only
+  // patch of the project the card already had — so the card must already be
+  // running the real project's identity here, mid-test, before any confirm.
+  expect(
+    card.state.projectId,
+    'activating the staged candidate must already be running the real project — firmware boots the whole '
+    + 'staged config, not just its wiring — not still the bench sentinel',
+  ).toBe(realProjectId);
+
+  await expect(
+    page.getByTestId('wiring-test-confirm'),
+    'the physical light test must offer its real confirm control once the card is testing',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await page.getByTestId('wiring-test-confirm').click();
+
+  await expect.poll(
+    () => ({
+      wiringTestActive: card.state.wiringTestActive,
+      pixels: card.state.pixels,
+      projectId: card.state.projectId,
+    }),
+    {
+      timeout: CONNECT_BUDGET_MS,
+      message: 'confirming the light test must promote the real project — end the probation window, keep the '
+        + 'real pixel count, keep the real project id',
+    },
+  ).toEqual({ wiringTestActive: false, pixels: COUNTED_PIXELS, projectId: realProjectId });
+
+  const confirmPosts = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/confirm');
+  expect(confirmPosts.length, 'confirming a light test must post exactly one confirmation').toBe(1);
+
+  // CardPushControl's own onInstalled (continueToPatterns) sends the owner
+  // straight to Patterns the moment verification lands — waiting for that
+  // natural navigation proves the whole confirm-then-verify chain actually
+  // finished settling, not just that the card-side facts already had.
+  await expect(page, 'a confirmed install must hand the owner on to Patterns on its own').toHaveURL(/#screen=pattern$/, { timeout: CONNECT_BUDGET_MS });
+
+  // ── Prove the ladder's own verdict on Card Home, on its own terms, before
+  // following that handoff onward — "the card holds the project" and "Card
+  // Home reads complete" are two different claims and each gets its own
+  // assertion rather than being inferred from the other.
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J01 back on Card Home after the wiring test was confirmed');
+  await expect(
+    journey,
+    'the real project is now installed and confirmed on the card — Card Home must read the setup as complete',
+  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
+
+  // ── The last step of J01: play a pattern for real, on the card this whole
+  // walk just finished setting up. 'aurora' is the project's own default
+  // look — DEFAULT_CARD_PATTERN_BANK[0].id (src/lib/cardVisualLook.js) — so
+  // buildRuntimeLooksFromPlaylist always produces it as the fresh project's
+  // one playlist entry, and it is guaranteed to be in card.state.patterns
+  // after the install (unlike MATRIX_PATTERNS' 'plasma'/'fire', which this
+  // project's config never asked the card to hold).
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J01 patterns entry');
+  await patternTile(page, 'aurora').click();
+  await card.waitForPlaying('aurora', 8000);
+
+  // Every card endpoint this journey actually needed was modelled — nothing
+  // Studio asked for fell through to the simulator's 404 default, start to
+  // finish.
+  expect(card.unhandled, 'every /api/* path this journey touched must be modelled by the simulator').toEqual([]);
+  expect(await visibleAlerts(page), 'a fully successful J01 walk must never raise an alert').toEqual([]);
 });
