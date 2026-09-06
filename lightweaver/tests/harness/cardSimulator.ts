@@ -474,12 +474,34 @@ export function createCardSimulator(
     // Wiring the card is holding but has not adopted — the candidate slot.
     stagedPixels: undefined as number | undefined,
     stagedPin: undefined as number | undefined,
+    // The FULL /api/config payload behind a staged wiring change (F4, for
+    // journey-j01.spec.ts [J01]) — firmware's stageRuntimeConfigJson stages the
+    // entire submitted runtime config, not just the wiring fields
+    // (LightweaverStorage.cpp), and the candidate boot that follows activation
+    // runs off that whole config, not a wiring-only patch. Before this the
+    // simulator only staged stagedPixels/stagedPin and silently dropped the
+    // rest of the payload (projectId, patterns, revision, fingerprint…), so a
+    // wiring-changing install could never be proven to leave the card holding
+    // the new project after confirm — every field but the wiring itself just
+    // vanished. undefined for the bare-wiring-only /api/wiring/candidate path
+    // (J07), which genuinely has no project payload to apply.
+    stagedConfigPayload: undefined as Record<string, unknown> | undefined,
     // Set on activate/beginWiringTest, cleared on confirm/rollback/expiry.
     wiringTestActive: false,
     wiringProbationRemainingMs: 0,
     // What the card was running before this test began — the rollback target.
     preTestPixels: undefined as number | undefined,
     preTestPin: undefined as number | undefined,
+    // The project identity this test's activation is about to overwrite —
+    // captured only when stagedConfigPayload applies, so a rollback (owner
+    // "No"/"Cancel change", or the probation clock elapsing) restores project
+    // identity exactly as it restores pixels/pin, instead of leaving the new
+    // project's id/patterns behind while pretending the wiring alone reverted.
+    preTestProjectSnapshot: undefined as {
+      projectId: string; projectName: string; projectRevision: number;
+      projectFingerprint: string; provisionalSetup: boolean;
+      patterns: PatternEntry[]; zoneIds: string[];
+    } | undefined,
     // The one GPIO the factory beacon is currently holding lit, or null. Only
     // meaningful before a real project exists (see /api/beacon/port above).
     beaconPinned: null as number | null,
@@ -544,6 +566,66 @@ export function createCardSimulator(
     if (index < 0) return;
     state.currentIndex = index;
     state.currentId = requested;
+  }
+
+  /**
+   * Apply a full /api/config payload's project fields to the live state —
+   * everything a non-wiring-changing save has always applied immediately
+   * (pixels/pin/projectId/projectName/projectRevision/projectFingerprint/
+   * provisionalSetup/patterns/zoneIds). Shared by that direct-apply path and
+   * by `/api/wiring/activate`'s candidate boot below, which — field-for-field
+   * against LightweaverStorage.cpp's stageRuntimeConfigJson /
+   * activateStagedRuntimeConfig — runs off the ENTIRE staged config once the
+   * card reboots into it, not a wiring-only patch of the project it already
+   * had.
+   */
+  function applyConfigProjectFields(payload: Record<string, unknown>) {
+    const led = (payload.led || {}) as Record<string, unknown>;
+    const nextPixels = Number(led.pixels ?? state.pixels);
+    const outputs = (led.outputs || []) as { pin?: number }[];
+    const nextPin = Number(outputs[0]?.pin ?? state.pin);
+    const piece = (payload.piece || {}) as Record<string, unknown>;
+    state.pixels = nextPixels;
+    state.pin = nextPin;
+    state.projectId = String(piece.id || payload.projectId || state.projectId);
+    state.projectName = String(piece.name || state.projectName);
+    state.projectRevision = Number(payload.projectRevision ?? state.projectRevision);
+    state.projectFingerprint = String(payload.projectFingerprint ?? state.projectFingerprint);
+    state.provisionalSetup = payload.provisional === true;
+    const looks = (payload.looks || payload.patterns || []) as { id?: string; label?: string }[];
+    if (looks.length) {
+      state.patterns = looks.map(look => ({
+        id: String(look.id || ''),
+        label: String(look.label || look.id || ''),
+      })).filter(entry => entry.id);
+    }
+    // A save that isn't a wiring change still carries the pushed project's
+    // own zone topology — possibly more than one zone (a default project's
+    // separate "outer circle" / "inner circle" board, for instance). Adopt
+    // every id so a save-then-verify flow (syncRuntimePackageToCard's
+    // waitForCardZones) reads back the exact zones the card genuinely holds,
+    // not the fixture default.
+    const pushedZones = (payload.zones || []) as { id?: string }[];
+    const pushedZoneIds = pushedZones.map(zone => String(zone?.id || '').trim()).filter(Boolean);
+    if (pushedZoneIds.length) state.zoneIds = pushedZoneIds;
+  }
+
+  /** Restore the project identity a wiring-change activation is about to
+   * overwrite — the counterpart to `applyConfigProjectFields`, used on
+   * rollback (owner-driven or probation expiry) so a project's id/patterns/
+   * revision revert exactly as pixels/pin already did. No-op when the test
+   * being rolled back never carried a staged project (e.g. the bare
+   * /api/wiring/candidate path [J07], which has no project payload at all). */
+  function restorePreTestProjectSnapshot() {
+    const snapshot = state.preTestProjectSnapshot;
+    if (!snapshot) return;
+    state.projectId = snapshot.projectId;
+    state.projectName = snapshot.projectName;
+    state.projectRevision = snapshot.projectRevision;
+    state.projectFingerprint = snapshot.projectFingerprint;
+    state.provisionalSetup = snapshot.provisionalSetup;
+    state.patterns = snapshot.patterns;
+    state.zoneIds = snapshot.zoneIds;
   }
 
   /**
@@ -651,6 +733,25 @@ export function createCardSimulator(
         state.preTestPin = state.pin;
         if (Number.isFinite(state.stagedPixels)) state.pixels = Number(state.stagedPixels);
         if (Number.isFinite(state.stagedPin)) state.pin = Number(state.stagedPin);
+        // A wiring-changing /api/config staged the ENTIRE project, not just
+        // pixels/pin (see applyConfigProjectFields above) — the candidate
+        // boot this activation triggers runs off that whole config, exactly
+        // as firmware's activateStagedRuntimeConfig does. Snapshot what the
+        // card was holding first so a rollback can put it back complete, not
+        // just its wiring.
+        if (state.stagedConfigPayload) {
+          state.preTestProjectSnapshot = {
+            projectId: state.projectId,
+            projectName: state.projectName,
+            projectRevision: state.projectRevision,
+            projectFingerprint: state.projectFingerprint,
+            provisionalSetup: state.provisionalSetup,
+            patterns: state.patterns.map(pattern => ({ ...pattern })),
+            zoneIds: [...state.zoneIds],
+          };
+          applyConfigProjectFields(state.stagedConfigPayload);
+          state.stagedConfigPayload = undefined;
+        }
         state.wiringTransactionOpen = false;
         state.wiringTestActive = true;
         state.wiringProbationRemainingMs = WIRING_PROBATION_MS;
@@ -671,6 +772,7 @@ export function createCardSimulator(
         if (rollback) {
           if (state.preTestPixels !== undefined) state.pixels = state.preTestPixels;
           if (state.preTestPin !== undefined) state.pin = state.preTestPin;
+          restorePreTestProjectSnapshot();
         }
         state.wiringTransactionOpen = false;
         state.wiringTestActive = false;
@@ -679,6 +781,7 @@ export function createCardSimulator(
         state.stagedPin = undefined;
         state.preTestPixels = undefined;
         state.preTestPin = undefined;
+        state.preTestProjectSnapshot = undefined;
         if (rollback) state.bootId = `${state.bootId}-rb`;
         return ok({
           ok: true, state: rollback ? 'rolled-back' : 'known-good',
@@ -709,6 +812,11 @@ export function createCardSimulator(
           state.wiringTransactionOpen = true;
           state.stagedPixels = nextPixels;
           state.stagedPin = nextPin;
+          // Stage the WHOLE payload, not just the wiring fields — see
+          // applyConfigProjectFields's doc comment. Applied (and the pre-test
+          // project snapshotted) when /api/wiring/activate boots the
+          // candidate, exactly like a real card's confirm-pending reboot.
+          state.stagedConfigPayload = payload;
           return {
             body: {
               ok: true, state: 'staged', activationId: STAGED_ACTIVATION_ID,
@@ -719,30 +827,7 @@ export function createCardSimulator(
           };
         }
 
-        const piece = (payload.piece || {}) as Record<string, unknown>;
-        state.pixels = nextPixels;
-        state.pin = nextPin;
-        state.projectId = String(piece.id || payload.projectId || state.projectId);
-        state.projectName = String(piece.name || state.projectName);
-        state.projectRevision = Number(payload.projectRevision ?? state.projectRevision);
-        state.projectFingerprint = String(payload.projectFingerprint ?? state.projectFingerprint);
-        state.provisionalSetup = payload.provisional === true;
-        const looks = (payload.looks || payload.patterns || []) as { id?: string; label?: string }[];
-        if (looks.length) {
-          state.patterns = looks.map(look => ({
-            id: String(look.id || ''),
-            label: String(look.label || look.id || ''),
-          })).filter(entry => entry.id);
-        }
-        // A save that isn't a wiring change still carries the pushed
-        // project's own zone topology — possibly more than one zone (a
-        // default project's separate "outer circle" / "inner circle" board,
-        // for instance). Adopt every id so a save-then-verify flow
-        // (syncRuntimePackageToCard's waitForCardZones) reads back the exact
-        // zones the card genuinely holds, not the fixture default.
-        const pushedZones = (payload.zones || []) as { id?: string }[];
-        const pushedZoneIds = pushedZones.map(zone => String(zone?.id || '').trim()).filter(Boolean);
-        if (pushedZoneIds.length) state.zoneIds = pushedZoneIds;
+        applyConfigProjectFields(payload);
         return ok({ ok: true, message: 'applied', requiresReboot: true });
       }
       case '/api/beacon/port': {
