@@ -307,3 +307,18 @@ In progress: F1 (fix-f1), F2 (fix-f2), C3 diagnostic trail (fix-c3).
 Queued: C1 storage limits, A5 playlist stub → simulator, A6 full-field
 read-back, C2 version skew, D1 callback cleanup, D2 doc reconciliation.
 Physical rows (Phase E) stay pending until Adrian is at the bench.
+
+Progress (same run, later): merged C3 `dc9dc0b3` diagnostic trail; F2
+`263a6db0` cross-tab write lease (`cardWriteLease.js`, conflict id
+`card-write-owner-conflict`, wiring-test button ids); C1 `661dc08b` quota-
+limited saves surfaced + `projectCopyLabel`; C1b `80969642` + C1c `94328f22`
+reconstructed card copies labelled "Card copy (partial — no artwork)" end to
+end; C2 `82c277f6` freshness prompt deferred during hardware operations,
+skew classifier confirmed correct, offline saved-project entry covered; D1
+`7ba6599c` two prop callbacks retired (`onLoadOfferChange` kept, justified);
+D2 `2a967491` docs reconciled; A5 `914e5337` playlist suite now runs on the
+simulator and **found a real defect**: after a recovery reboot the live-
+preview transport keeps a stale boot authority and reports "did not answer
+in time" → ticket F3 (Opus, in progress). A6 full-field read-back in
+progress. Journey specs (continuity, edits, ownership, J01) now run in
+`ci:browser-smoke`. Unit 2348/2348 at `ba158c0b`.
