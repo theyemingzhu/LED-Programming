@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { deriveSetupJourney } from './setupJourney.js';
-import { assembleSetupJourney, journeyAgreementInputs } from './setupJourneyInputs.js';
+import { assembleSetupJourney, journeyAgreementInputs, ladderOwnsPrimary } from './setupJourneyInputs.js';
 import { emptyCardJourneyEvidence, journeyEvidenceSnapshot } from './cardJourneyEvidence.js';
 
 // The defect this module exists to end: `deriveSetupJourney` is the one journey
@@ -260,4 +260,65 @@ test('a readiness that reports the temporary setup is honoured without a card re
   });
   assert.equal(journey.setupComplete, false);
   assert.equal(journey.taskId, 'test-and-save');
+});
+
+// `ladderOwnsPrimary` used to live only inside lw-setup.jsx and reach Card
+// Home a render late through the now-removed `onPrimaryActionChange` prop
+// callback (blueprint H3). It is a pure function of the same shared journey
+// both screens already read via `useSetupJourney`, so this only has to prove
+// it agrees with itself given the same two inputs — the callback channel
+// added nothing a second call here cannot reproduce exactly.
+test('ladderOwnsPrimary: false once setup is complete', () => {
+  assert.equal(ladderOwnsPrimary({ setupComplete: true, currentPhaseId: 'verify', taskId: 'open-patterns' }, null), false);
+});
+
+test('ladderOwnsPrimary: false while the ladder itself is confirming a light test', () => {
+  assert.equal(
+    ladderOwnsPrimary({ setupComplete: false, currentPhaseId: 'verify', taskId: 'confirm-visible-lights' }, null),
+    false,
+  );
+});
+
+test('ladderOwnsPrimary: true for an ordinary unfinished task', () => {
+  assert.equal(
+    ladderOwnsPrimary({ setupComplete: false, currentPhaseId: 'lights', taskId: 'discover-lights' }, null),
+    true,
+  );
+});
+
+test('ladderOwnsPrimary: install-project with no resumable commissioning yields the floor to the install action', () => {
+  assert.equal(
+    ladderOwnsPrimary(
+      { setupComplete: false, currentPhaseId: 'connect', taskId: 'install-project' },
+      { stage: 'discovery' },
+    ),
+    false,
+  );
+});
+
+test('ladderOwnsPrimary: install-project WITH a resumable commissioning stage keeps the ladder owning the button', () => {
+  assert.equal(
+    ladderOwnsPrimary(
+      { setupComplete: false, currentPhaseId: 'connect', taskId: 'install-project' },
+      { stage: 'set-up-card' },
+    ),
+    true,
+  );
+  assert.equal(
+    ladderOwnsPrimary(
+      { setupComplete: false, currentPhaseId: 'connect', taskId: 'install-project' },
+      { stage: 'check-lights' },
+    ),
+    true,
+  );
+});
+
+test('ladderOwnsPrimary: install-project outside the connect phase is unaffected by the resumable exception', () => {
+  assert.equal(
+    ladderOwnsPrimary(
+      { setupComplete: false, currentPhaseId: 'lights', taskId: 'install-project' },
+      null,
+    ),
+    true,
+  );
 });

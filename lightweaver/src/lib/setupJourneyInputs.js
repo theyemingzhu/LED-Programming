@@ -14,6 +14,7 @@
 import { deriveSetupJourney } from './setupJourney.js';
 import { freshJourneyEvidence, emptyCardJourneyEvidence } from './cardJourneyEvidence.js';
 import { isBenchProjectEvidence } from './benchConfig.js';
+import { hasResumableCommissioning } from './cardFlowEntry.js';
 
 // Whether the card is still holding the TEMPORARY light-finding setup. A card
 // fact, so it is read from the card wherever the card has spoken, and from the
@@ -64,6 +65,28 @@ export function setupJourneyWiringStatus({ cardLink, evidence } = {}) {
 // does; the journey question is answered from exactly these.
 export function journeyAgreementInputs({ cardLink, cardLifecycle, commissioningFlow, project } = {}) {
   return { cardLink, cardLifecycle, commissioningFlow, project };
+}
+
+// ONE primary action per page. While the ladder's active task is offering the
+// next step, everything below it on Card Home renders its controls as
+// secondary — Card Home used to show three buttons styled as the primary
+// action at once (the ladder's, the install action's, and the matching
+// project panel's), so the owner had to work out which one the screen meant.
+// The single exception is the install-project task with no resumable
+// commissioning: it deliberately renders no button because the install action
+// below IS its button, so the floor passes down.
+//
+// A pure function of the shared journey (blueprint H3): both the Setup ladder
+// and Card Home derive it from the same `useSetupJourney` result instead of
+// Card Home learning it a render late through a prop callback only Setup
+// used to call.
+export function ladderOwnsPrimary(journey, commissioningFlow) {
+  return Boolean(journey)
+    && !journey.setupComplete
+    && !(journey.currentPhaseId === 'verify' && journey.taskId === 'confirm-visible-lights')
+    && !(journey.currentPhaseId === 'connect'
+      && journey.taskId === 'install-project'
+      && !hasResumableCommissioning(commissioningFlow));
 }
 
 export function assembleSetupJourney({
