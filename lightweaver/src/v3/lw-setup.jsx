@@ -19,6 +19,7 @@ import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
+import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
@@ -837,6 +838,7 @@ export function SetupScreen({
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
   const firmwareBehind = firmwareStatus?.actionable === true;
+  const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
   const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
@@ -1124,10 +1126,10 @@ export function SetupScreen({
                 of one fact, so the healthy card keeps only its doors. Old
                 firmware is a DIFFERENT fact the row does not carry, so that
                 case keeps its sentence and its Update action. */}
-            {firmwareBehind && (
+            {firmwareBannerCopy && (
               <>
-                <h2>This card&rsquo;s software is behind</h2>
-                <p>Update the card software before relying on it.</p>
+                <h2>{firmwareBannerCopy.heading}</h2>
+                <p>{firmwareBannerCopy.body}</p>
               </>
             )}
             <div className="lw-setup-banner-actions">
