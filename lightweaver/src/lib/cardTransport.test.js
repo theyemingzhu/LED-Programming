@@ -371,3 +371,52 @@ test('re-acquiring without an expected card id refuses instead of adopting whoev
   assert.equal(result.reason, 'identity-missing');
   assert.equal(probes, 0, 'an unattended re-acquire with no identity never probes');
 });
+
+// revalidate() does its own live /api/status probe (used while re-acquiring a
+// bounced connection, before the shared link has caught up) and must name the
+// same two conditions request() names via snapshotDivergence: a reboot is
+// `card-restarted` (recoverable, same card), a genuine identity change stays
+// on the identity vocabulary already produced for a first connect — never the
+// invented 'identity-changed'.
+
+test('revalidate() rejects a rebooted card with card-restarted, not identity-changed', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  let probeStatus = status;
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(probeStatus),
+  });
+  probeStatus = readyStatus({ bootId: 'boot-3' });
+
+  await assert.rejects(
+    () => authority.revalidate(),
+    error => {
+      assert.equal(error.reason, CARD_RESTARTED_REASON);
+      assert.notEqual(error.reason, 'identity-changed');
+      return true;
+    },
+  );
+  assert.equal(authority.revoked, true);
+});
+
+test('revalidate() rejects a genuine identity change with the existing wrong-card vocabulary', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  let probeStatus = status;
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(probeStatus),
+  });
+  probeStatus = readyStatus({ cardId: 'lw-other', bootId: 'boot-9' });
+
+  await assert.rejects(
+    () => authority.revalidate(),
+    error => {
+      assert.equal(error.reason, 'wrong-card');
+      assert.notEqual(error.reason, 'identity-changed');
+      return true;
+    },
+  );
+  assert.equal(authority.revoked, true);
+});

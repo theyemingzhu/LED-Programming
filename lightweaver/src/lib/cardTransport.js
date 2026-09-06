@@ -225,7 +225,34 @@ export function createTransportAuthority({
       const response = await doFetch(`${baseUrl}/api/status`, { method: 'GET', cache: 'no-store', credentials: 'omit', targetAddressSpace: transport === CARD_TRANSPORTS.DIRECT ? 'local' : undefined });
       const nextStatus = await parseJsonResponse(response);
       const exact = exactStatus(nextStatus, { expectedCardId: immutableSnapshot.cardId, host: normalizedHost });
-      if (!exact.ok || exact.bootId !== immutableSnapshot.bootId) { revoked = true; throw authorityError('identity-changed'); }
+      // A live probe answering as the wrong card, or not answering as a valid
+      // card at all, is a genuine identity problem: keep the vocabulary
+      // `exactStatus` already produces for a first connect (`wrong-card`,
+      // `identity-missing`, `firmware-incompatible`) rather than inventing a
+      // new word for it.
+      if (!exact.ok) {
+        revoked = true;
+        revocationReason = exact.reason;
+        throw authorityError(exact.reason);
+      }
+      // Otherwise the only fact this live probe can still disagree with the
+      // pinned authority on is the boot id — run it through the same
+      // divergence classifier `request()` uses so a reboot is named
+      // `card-restarted` here too, the one vocabulary this ticket exists to
+      // consolidate. Every other field is pinned to the authority's own
+      // values, so this can only ever resolve to '' or CARD_RESTARTED_REASON.
+      const divergence = snapshotDivergence(immutableSnapshot, {
+        host: normalizedHost,
+        cardId: String(exact.card?.id || ''),
+        ownerSessionId: immutableSnapshot.ownerSessionId,
+        bootId: exact.bootId,
+        operationGeneration: immutableSnapshot.operationGeneration,
+      });
+      if (divergence) {
+        revoked = true;
+        revocationReason = divergence;
+        throw authorityError(divergence);
+      }
       return nextStatus;
     },
     async issueOwnerCapability({ commissioningProof = '', expectedProjectHead = immutableSnapshot.projectHead } = {}) {
