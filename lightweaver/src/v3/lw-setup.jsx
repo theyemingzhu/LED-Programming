@@ -224,6 +224,7 @@ export function SetupScreen({
       const replacement = await replaceProject({
         ...currentProject,
         ...(status?.projectId ? { id: status.projectId } : {}),
+        ...(parts?.origin ? { origin: parts.origin } : {}),
         ...(Array.isArray(parts?.portRoles) ? { portRoles: parts.portRoles } : {}),
         layout: {
           ...(currentProject?.layout || {}),
