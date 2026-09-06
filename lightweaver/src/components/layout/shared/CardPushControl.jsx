@@ -15,6 +15,7 @@ import {
   cardStatusAsConfig,
   assertCardDeploymentPreflightIdentity,
   correlateCardDeploymentReadinessEvidence,
+  isCardAlreadyCurrent,
   orchestrateCardDeploymentStart,
   waitForCardDeploymentVerification,
 } from '../../../lib/cardDeployment.js';
@@ -26,6 +27,7 @@ import {
 } from '../../../lib/cardWiringSafety.js';
 import { openLocalCardPage } from '../../../lib/cardBridge.js';
 import { readPersistedCardIdentity } from '../../../lib/cardIdentity.js';
+import { currentInstallation } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
@@ -149,6 +151,7 @@ export function CardPushControl({
   const [wiringTestState, setWiringTestState] = useState('idle');
   const [candidateConflict, setCandidateConflict] = useState(null);
   const [writeOwnerConflict, setWriteOwnerConflict] = useState(null);
+  const [installAlreadyCurrent, setInstallAlreadyCurrent] = useState(false);
   const failedAttemptRef = useRef(null);
   const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, readProjectLifecycle());
 
@@ -188,6 +191,7 @@ export function CardPushControl({
     setWiringTestState('idle');
     setWiringCandidate(null);
     setCandidateConflict(null);
+    setInstallAlreadyCurrent(false);
     setPushFallbackJson(''); setPushFallbackPackage(null);
     try {
       if (!attempt) {
@@ -232,6 +236,29 @@ export function CardPushControl({
           activationId: wiringStatus?.activationId,
           previousConfig: cardStatusAsConfig(status),
         });
+        // A second install of exactly the project the card already holds and
+        // already reports ready is permitted by the write lease above
+        // (correctly — nothing here disagrees about who owns the card) but
+        // has nothing left to send. Only decided here, never upstream of the
+        // preflight reads: it needs the SAME independent card/status evidence
+        // every other preflight decision uses, and it must never fire while a
+        // wiring candidate is staged or testing — that is a real, separate
+        // decision (resume-activation / resume-confirmation), not a
+        // redundant write.
+        //
+        // `!currentInstallation(...)` scopes this to a caller who does not
+        // already locally know it just installed this exact revision — the
+        // "second tab, after the first finished" shape this exists for. A
+        // caller whose OWN lifecycle already records this revision as
+        // installed (the same component, clicking Install again on purpose —
+        // tests/layout-send-to-card.spec.ts's "a failed push retains the
+        // acknowledged installed revision and Retry installs successfully"
+        // does exactly this to exercise its own retry path) is a deliberate
+        // explicit resend and must still reach the card.
+        const alreadyCurrent = !handoffOnly
+          && !currentInstallation(readProjectLifecycle())
+          && isCardAlreadyCurrent(prepared, status)
+          && !wiringStatus?.hasCandidate;
         attempt = {
           host: cleanHost,
           revision: projectLifecycle.editedRevision,
@@ -240,12 +267,28 @@ export function CardPushControl({
           pkg: prepared.runtimePackage,
           prepared,
           handoffOnly,
+          alreadyCurrent,
         };
       }
       assertCurrentAttempt(attempt);
       dispatchAction({ type: 'start', revision: attempt.revision });
       if (attempt.handoffOnly) {
         throw new CardPushError('bridge-missing', 'Open the paired card installer to continue. Nothing was sent.');
+      }
+      if (attempt.alreadyCurrent) {
+        dispatchAction({ type: 'confirm' });
+        markProjectInstalled({
+          revision: attempt.revision,
+          generation: attempt.generation,
+          cardId: attempt.prepared.cardId,
+          projectRevision: attempt.prepared.config.projectRevision,
+          projectFingerprint: attempt.prepared.config.projectFingerprint,
+        });
+        failedAttemptRef.current = null;
+        setInstallAlreadyCurrent(true);
+        setPushStatus(`This exact project is already on the card · ${attempt.zoneCount} zone${attempt.zoneCount === 1 ? '' : 's'} at ${cleanHost}. Nothing was sent.`);
+        onInstalled?.();
+        return;
       }
       const deploymentStart = await orchestrateCardDeploymentStart(
         attempt.prepared,
@@ -366,8 +409,9 @@ export function CardPushControl({
   }, [autoStart, wiringCandidate, wiringTestState]);
 
   const finishWiringTest = async visible => {
+    if (!wiringCandidate) return;
     let confirmedAttempt = null;
-    await withStudioHardwareOperation('finish-wiring', async () => {
+    await withCardWriteOwnership('finish-wiring', wiringCandidate.attempt.host, () => withStudioHardwareOperation('finish-wiring', async () => {
     if (!wiringCandidate) return;
     setWiringTestState(visible ? 'confirming' : 'rolling-back');
     try {
@@ -405,7 +449,7 @@ export function CardPushControl({
       setWiringTestState('failed');
       setPushStatus(error.message || 'The card could not finish the wiring test. It will roll back automatically when the timer ends.');
     }
-    });
+    }));
     if (!confirmedAttempt) return;
     try {
       await publishVerifiedReadiness(confirmedAttempt.prepared, confirmedAttempt.host);
@@ -527,7 +571,10 @@ export function CardPushControl({
       </div>}
 
       {pushStatus && (
-        <div className={`la-card-push-banner ${action.status === 'confirmed' ? 'is-ok' : action.status === 'failed' ? 'is-err' : 'is-pending'}`}>
+        <div
+          className={`la-card-push-banner ${action.status === 'confirmed' ? 'is-ok' : action.status === 'failed' ? 'is-err' : 'is-pending'}`}
+          {...(installAlreadyCurrent ? { 'data-testid': 'card-install-already-current' } : {})}
+        >
           {pushStatus}
           {action.status === 'failed' && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (
