@@ -9,6 +9,7 @@ import {
 import { publishCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { useSetupJourney } from '../hooks/useSetupJourney.js';
+import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
@@ -119,8 +120,6 @@ export function SetupScreen({
   replaceProject,
   firmwareStatus = null,
   onLoadOfferChange,
-  onPrimaryActionChange,
-  onWiringTestActiveChange,
   installAction = null,
 }) {
   const {
@@ -463,11 +462,6 @@ export function SetupScreen({
   const wiringTestActive = journey.taskId === 'confirm-visible-lights';
 
   useEffect(() => {
-    onWiringTestActiveChange?.(wiringTestActive);
-    return () => onWiringTestActiveChange?.(false);
-  }, [onWiringTestActiveChange, wiringTestActive]);
-
-  useEffect(() => {
     if (!onLoadOfferChange) return undefined;
     onLoadOfferChange(savedMatchLoadOffer);
     return () => onLoadOfferChange(false);
@@ -481,16 +475,12 @@ export function SetupScreen({
   // The single exception is the install-project task with no resumable
   // commissioning: it deliberately renders no button because the install
   // action below IS its button, so the floor passes down.
-  const ladderOwnsPrimary = !journey.setupComplete
-    && !(journey.currentPhaseId === 'verify' && journey.taskId === 'confirm-visible-lights')
-    && !(journey.currentPhaseId === 'connect'
-      && journey.taskId === 'install-project'
-      && !hasResumableCommissioning(commissioningFlow));
-  useEffect(() => {
-    if (!onPrimaryActionChange) return undefined;
-    onPrimaryActionChange(ladderOwnsPrimary);
-    return () => onPrimaryActionChange(false);
-  }, [onPrimaryActionChange, ladderOwnsPrimary]);
+  //
+  // Derived by `lib/setupJourneyInputs.js` now, from this same journey and
+  // commissioning flow, so Card Home can compute the identical answer itself
+  // instead of learning it a render late through a prop callback (blueprint
+  // H3 — the now-removed `onPrimaryActionChange`).
+  const ladderOwnsPrimary = deriveLadderOwnsPrimary(journey, commissioningFlow);
 
   // Record completion so older notes of this key stay truthful. The shell
   // no longer routes on it — a bare URL always opens Card Home.

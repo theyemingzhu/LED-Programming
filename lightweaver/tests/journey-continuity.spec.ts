@@ -214,6 +214,14 @@ test('[J13] every setup surface agrees on an active light test, and agrees again
     'Card Home must show the same live light test the chip showed',
   ).toHaveAttribute('data-journey-task', 'confirm-visible-lights', { timeout: CONNECT_BUDGET_MS });
   await expect(journeyLocator(page)).toHaveAttribute('data-journey-complete', 'false');
+  // The detected-state panel below the ladder must yield to the identity
+  // row's "Testing lights" line purely from the shared journey — this page
+  // no longer learns the wiring test is active from a Setup prop callback
+  // (blueprint H3's retired `onWiringTestActiveChange`).
+  await expect(
+    page.getByTestId('card-detected-state'),
+    'the detected-state panel must not repeat a live light test the identity row already states',
+  ).toHaveCount(0);
 
   // The card's own probation clock elapses with nobody confirming or rolling
   // back — exactly what firmware does on its own.
