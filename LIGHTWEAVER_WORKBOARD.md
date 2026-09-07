@@ -341,3 +341,16 @@ Final checkpoint at `faf55185`: 30 browser suites 451 expected / 5 skipped /
 under a mid-run docs commit, one the known contention case); windowless 2/0;
 unit 2361/2361; build. Fixer worktrees `fix-*` under `.claude/worktrees` are
 merged and safe to remove.
+
+## 2026-09-07 ship status — MERGED, NOT DEPLOYED
+
+PR #224 merged as `7126e7e1` (main commit count 1620 = the Studio build
+number once it deploys). The post-merge Tests run (34068720822) failed in
+`classify` with GitHub's annotation "The job was not started because recent
+account payments have failed or your spending limit needs to be increased",
+the same wall the previous three main pushes hit, so Deploy site is skipped
+and led.mandalacodes.com still serves build 1551. Unblock: fix Billing &
+plans on the GitHub account, then rerun the Tests workflow for `7126e7e1`;
+the real deploy follows automatically. Superseded PR #223 closed; branches
+swept (restore file `.claude/worktrees/restore-branches-2026-09-07.txt`).
+Phase E bench observations remain pending.
