@@ -6,6 +6,8 @@ import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.js
 import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
 import { SetupScreen } from './lw-setup.jsx';
+import { useSetupJourney, useCommissioningFlow } from '../hooks/useSetupJourney.js';
+import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
@@ -860,11 +862,27 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // Load for this card's project — the Matching-card-project panel below
   // suppresses its duplicate offer while it is (one project, one Load).
   const [setupLoadOffer, setSetupLoadOffer] = useState(false);
+  const sharedJourney = useSetupJourney({
+    cardLink,
+    cardLifecycle,
+    project: currentProject,
+    refresh: false,
+  });
+  // The card is mid light-test. Read straight from the SHARED journey (the
+  // same one the Patterns/Playlist chip and the shell's task router read),
+  // so this page's panels stand down for a test that any screen can see. No
+  // longer OR-ed with a Setup screen prop callback (blueprint H3) — Setup and
+  // Card Home compute `wiringTestActive` from the identical journey, so
+  // there is nothing the callback told this page that the journey did not
+  // already carry.
+  const wiringTestActive = sharedJourney.taskId === 'confirm-visible-lights';
   // Whether the Setup ladder is currently offering the page's primary action.
   // While it is, every surface below it renders secondary controls — one
-  // primary per page. See the comment on `ladderOwnsPrimary` in lw-setup.jsx.
-  const [ladderOwnsPrimary, setLadderOwnsPrimary] = useState(false);
-  const [wiringTestActive, setWiringTestActive] = useState(false);
+  // primary per page. Derived the same way Setup derives it — a pure function
+  // of the shared journey plus the commissioning flow — instead of learning it
+  // a render late through the now-removed `onPrimaryActionChange` callback.
+  const commissioningFlow = useCommissioningFlow();
+  const ladderOwnsPrimary = deriveLadderOwnsPrimary(sharedJourney, commissioningFlow);
 
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
@@ -909,8 +927,6 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
-        onPrimaryActionChange={setLadderOwnsPrimary}
-        onWiringTestActiveChange={setWiringTestActive}
         installAction={installAction}
       />
       {!installIntentOpen && (

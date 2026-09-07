@@ -42,10 +42,13 @@ import {
   listProjectLibraryRecords,
   readActiveProjectLibraryRecordId,
   readProjectLibraryRecordSnapshot,
+  readProjectLifecycleRecord,
+  readStorageJsonWithBackup,
   saveCurrentProjectToLibraryGuarded,
   setProjectLibrarySaveBlocked,
   writeActiveProjectLibraryRecordId,
 } from '../lib/projectStorage.js';
+import { PROJECT_AUTOSAVE_BACKUP_KEY, PROJECT_AUTOSAVE_KEY } from '../lib/indexedDbProjectRepository.js';
 import {
   adoptBrowserRecordAssociation,
   adoptCloudProjectAssociation,
@@ -75,6 +78,7 @@ import {
 import { LayoutScreen } from './lw-layout.jsx';
 import { markCardSectionNavigation } from './cardWorkspaceRoute.js';
 import {
+  bareRouteFor,
   canonicalStudioHash,
   cardRouteFromHash,
   createStudioRouteStore,
@@ -90,8 +94,11 @@ import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
-import { CONNECTED_CARD_LINK_STATES, deriveSetupJourney } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
+import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
+import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
+import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
@@ -302,13 +309,29 @@ function viewOptions() {
 // downstream route decision reading from one place — the URL — instead of
 // special-casing an empty hash in the view state, the card route and the
 // hash-sync effect.
+//
+// Which section of Card Home a bare hash lands on is decided from the
+// journey (`bareRouteFor`), not a completion flag: a returning owner whose
+// saved project is already complete for the card Studio remembers should see
+// the overview, not be walked back through the setup ladder just because
+// Studio reopened. Reading `lw_autosave_v3` / `lw_project_lifecycle_v1` /
+// `lw_card_identity_v1` here — the same synchronous localStorage reads
+// ProjectContext.jsx and cardIdentity.js make at their own boot — keeps this
+// a pure function of the same evidence the journey later re-derives from a
+// live connection; nothing here is a second store of that verdict.
 function bootstrapFirstRunSetupRoute() {
   try {
     if (window.location.hash) return;
+    const rememberedCard = readPersistedCardIdentity();
+    const savedProjectRaw = readStorageJsonWithBackup(PROJECT_AUTOSAVE_KEY, PROJECT_AUTOSAVE_BACKUP_KEY);
+    const lifecycleRecord = readProjectLifecycleRecord();
+    const savedProject = savedProjectRaw
+      ? { layout: savedProjectRaw.layout, installation: lifecycleRecord?.installation || null }
+      : null;
     window.history.replaceState(
       null,
       '',
-      `${window.location.pathname}${window.location.search}#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+      `${window.location.pathname}${window.location.search}${bareRouteFor({ savedProject, rememberedCard })}`,
     );
   } catch {
     // No hash rewrite is possible without history; the ordinary fallback
@@ -1140,11 +1163,15 @@ function Shell({ offlineUpdateController = null }) {
     if (installActiveRef.current) return;
     markCardSectionNavigation();
     flushProjectAutosave();
-    const journey = deriveSetupJourney({
+    // The same evidence Card Home and the working-screen chip decide from. This
+    // used to call deriveSetupJourney with a reduced subset, so the task the
+    // shell routed to could name a different step than the screen it landed on.
+    const journey = assembleSetupJourney({
       cardLink,
       cardLifecycle,
       commissioningFlow: inspectCardCommissioning().flow,
       project: serializeProject(),
+      evidence: getCardJourneyEvidence(),
     });
     routeStore.replace(`#screen=card&section=setup&task=${encodeURIComponent(taskId || journey.taskId)}`);
   }, [cardLifecycle, cardLink, flushProjectAutosave, routeStore, serializeProject]);
@@ -1843,7 +1870,13 @@ function Shell({ offlineUpdateController = null }) {
         firmwareStatus={firmwareStatus}
         firmwareRelease={firmwareReleaseIdentity.manifest}
         firmwareReleaseError={firmwareReleaseIdentity.error}
-        onOpenFirmwareUpdate={() => openCardSection('install')}
+        onOpenFirmwareUpdate={() => {
+          // Where the owner was before the update took the screen — the
+          // preserving update's continue button reads this back to send them
+          // home instead of always to Patterns (cardReturnDestination).
+          rememberCardReturnIntent({ hash: window.location.hash, cardId: cardLink.card?.id || cardLink.readiness?.cardId });
+          openCardSection('install');
+        }}
         offlineUpdateState={offlineUpdateState}
         onActivateOfflineUpdate={() => offlineUpdateController?.activateUpdate?.()}
         testStrip={testStrip}
@@ -1872,6 +1905,7 @@ function Shell({ offlineUpdateController = null }) {
         firmwareStatus={firmwareStatus}
         firmwareRelease={firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null}
         onOpenFirmwareUpdate={() => {
+          rememberCardReturnIntent({ hash: window.location.hash, cardId: cardLink.card?.id || cardLink.readiness?.cardId });
           closeConnectionCenter();
           openCardSection('install');
         }}

@@ -15,6 +15,7 @@ import {
   quarantineAutosavePayload,
   readActiveProjectLibraryRecordId,
   readAutosaveQuarantine,
+  readAutosaveStorageLimited,
   readProjectLifecycleRecord,
   readRestorableProjectJson,
   listProjectLibraryRecords,
@@ -741,6 +742,72 @@ test('generic JSON storage helpers recover from a corrupt primary snapshot', () 
     ok: true,
     value: 42,
   });
+});
+
+// ── Storage-limited signal (defect C-1) ─────────────────────────────────────
+// A quota-exceeded (or private-mode-refused) primary write must not throw
+// past the caller, must not touch what was already stored under that key
+// (real `setItem` never partially writes), and must be visible to a mounted
+// panel via `readAutosaveStorageLimited` until a later write to that same key
+// succeeds.
+
+test('a quota-exceeded primary write reports failure without disturbing the existing copy', () => {
+  const storage = memoryStorage();
+  storage.setItem('lw_autosave_v3', JSON.stringify({ version: 3, name: 'Existing Good Copy' }));
+  storage.setItem('lw_autosave_v3_backup', JSON.stringify({ version: 3, name: 'Existing Good Copy' }));
+
+  const realSetItem = storage.setItem;
+  let thrown = false;
+  storage.setItem = (key, value) => {
+    if (key === 'lw_autosave_v3' && !thrown) {
+      thrown = true;
+      const error = new Error('Quota exceeded');
+      error.name = 'QuotaExceededError';
+      throw error;
+    }
+    return realSetItem(key, value);
+  };
+
+  assert.equal(readAutosaveStorageLimited(), null);
+
+  const saved = writeStorageJsonWithBackup(
+    'lw_autosave_v3',
+    'lw_autosave_v3_backup',
+    { version: 3, name: 'New Edit Lost To Quota' },
+    { storage },
+  );
+  assert.equal(saved, false);
+
+  // Neither slot was touched — a quota-exceeded `setItem` never partially
+  // writes, so the previous good copy is exactly what it was before.
+  assert.deepEqual(JSON.parse(storage.getItem('lw_autosave_v3')), { version: 3, name: 'Existing Good Copy' });
+  assert.deepEqual(JSON.parse(storage.getItem('lw_autosave_v3_backup')), { version: 3, name: 'Existing Good Copy' });
+
+  const marker = readAutosaveStorageLimited();
+  assert.equal(marker.key, 'lw_autosave_v3');
+  assert.equal(marker.reason, 'quota');
+  assert.ok(marker.at > 0);
+
+  // A later write to the same key succeeding clears the marker again.
+  const savedAfterRetry = writeStorageJsonWithBackup(
+    'lw_autosave_v3',
+    'lw_autosave_v3_backup',
+    { version: 3, name: 'Retry Saved' },
+    { storage },
+  );
+  assert.equal(savedAfterRetry, true);
+  assert.equal(readAutosaveStorageLimited(), null);
+  assert.equal(JSON.parse(storage.getItem('lw_autosave_v3')).name, 'Retry Saved');
+});
+
+test('a non-quota storage error still throws instead of being swallowed as storage-limited', () => {
+  const storage = memoryStorage();
+  storage.setItem = () => { throw new Error('some other failure'); };
+  assert.throws(
+    () => writeStorageJsonWithBackup('some-key', '', { a: 1 }, { storage }),
+    /some other failure/,
+  );
+  assert.equal(readAutosaveStorageLimited(), null);
 });
 
 // ── Autosave round-trip: physical data-wire review flag ─────────────────────

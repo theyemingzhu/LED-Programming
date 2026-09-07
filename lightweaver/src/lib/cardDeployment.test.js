@@ -534,6 +534,35 @@ test('readiness evidence must carry its own exact card build and project identit
   }
 });
 
+test('isCardAlreadyCurrent recognizes an exact ready match and refuses every mismatch or not-ready flag', async () => {
+  const { prepareCardDeployment, isCardAlreadyCurrent } = await deploymentApi();
+  const prepared = prepareCardDeployment(projectFixture(), { cardId: 'lw-aabbccddeeff', buildId: 'build-1123' });
+  const ready = {
+    cardId: prepared.cardId,
+    buildId: prepared.buildId,
+    projectRevision: prepared.config.projectRevision,
+    projectFingerprint: prepared.config.projectFingerprint,
+    knownGoodProject: true,
+    commandReady: true,
+    runtimePhase: 'ready',
+    playbackReady: true,
+    outputReady: true,
+  };
+  assert.equal(isCardAlreadyCurrent(prepared, ready), true, 'an exact, ready match must read as already current');
+  assert.equal(isCardAlreadyCurrent(prepared), false, 'a missing status must never read as already current');
+  assert.equal(isCardAlreadyCurrent(null, ready), false, 'a missing prepared deployment must never read as already current');
+
+  assert.equal(isCardAlreadyCurrent(prepared, { ...ready, cardId: 'lw-other-card' }), false, 'a different card must not read as already current');
+  assert.equal(isCardAlreadyCurrent(prepared, { ...ready, buildId: 'build-9999' }), false, 'a different firmware build must not read as already current');
+  assert.equal(isCardAlreadyCurrent(prepared, { ...ready, projectRevision: ready.projectRevision + 1 }), false, 'a different project revision must not read as already current');
+  assert.equal(isCardAlreadyCurrent(prepared, { ...ready, projectFingerprint: 'b'.repeat(64) }), false, 'a different project fingerprint must not read as already current');
+
+  for (const field of ['knownGoodProject', 'commandReady', 'playbackReady', 'outputReady']) {
+    assert.equal(isCardAlreadyCurrent(prepared, { ...ready, [field]: false }), false, `${field} not ready must not read as already current`);
+  }
+  assert.equal(isCardAlreadyCurrent(prepared, { ...ready, runtimePhase: 'recovering' }), false, 'a card still recovering must not read as already current');
+});
+
 test('requires an explicit hardware confirmation and rolls back when it is declined', async () => {
   const { prepareCardDeployment, runCardDeployment } = await deploymentApi();
   const prepared = prepareCardDeployment(projectFixture(), { cardId: 'lw-aabbccddeeff', previousConfig: { led: { outputs: [{ pin: 17, pixels: 8 }] } } });

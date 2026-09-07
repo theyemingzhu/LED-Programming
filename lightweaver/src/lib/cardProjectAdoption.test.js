@@ -342,6 +342,26 @@ test('reconstruct strategy rebuilds looks, playlist, and startup state from the 
   assert.equal(controller.defaultLook.patternId, 'aurora');
   assert.equal(controller.defaultLook.brightness, 0.72);
   assert.equal(calls.appliedParts[0].status.cardId, CARD_ID);
+  // Defect C1b: the reconstruction marks itself so ProjectsPanel never
+  // describes it as a complete backup (projectCopyLabel.js's projectCopyKind
+  // is the one place this marker is read back into a display label).
+  const { origin } = calls.appliedParts[0].parts;
+  assert.equal(origin.kind, 'card-partial');
+  assert.equal(origin.cardId, CARD_ID);
+  assert.equal(typeof origin.at, 'number');
+});
+
+test('reconstruct strategy falls back to the card link id when the status envelope omits cardId', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => {
+    const { cardId: _omitted, ...rest } = statusEnvelope({
+      outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+    });
+    return rest;
+  };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, true);
+  assert.equal(calls.appliedParts[0].parts.origin.cardId, CARD_ID);
 });
 
 test('reconstruct still adopts from the status skeleton alone when patterns and zones endpoints fail', async () => {

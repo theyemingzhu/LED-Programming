@@ -16,6 +16,7 @@ import {
 import { normalizeUsbLedColorOrder } from './usbLedColorOrder.js';
 import { createDefaultPatchBoard } from './patchBoard.js';
 import { BENCH_DEFAULT_PORT_PIXELS, isUncountedDiscoveryHeadroom } from './benchConfig.js';
+import { cardPartialOrigin } from './projectCopyLabel.js';
 
 // Same defaults as createDefaultProject(). Counted LEDs are a physical length
 // at the reel density — never a 2px-per-LED sketch or a fixed 480px line.
@@ -129,6 +130,20 @@ function provisionalLayoutFromOutputs(outputs, {
   };
 }
 
+// F1: StripDiscoveryPanel.jsx's own channelProof state — the object record()
+// actually hands this module — is { stage, firstSeen, map, retry } (see its
+// `useState` initializer and every `setChannelProof` call in that file). `map`
+// is therefore the canonical field for a real discovery walk. `channelMap` is
+// kept as a fallback for any other caller (this module's own test fixtures
+// hand-construct `{ channelMap: {...} }` directly), so nothing that already
+// passes `channelMap` breaks. Before this normaliser, the module read only
+// `channelMap`, which the panel's object never has, so a real discovery run's
+// measured colour order was silently discarded every time — see
+// tests/journey-j01.spec.ts's `[J01-partial]` for the owner-visible symptom.
+function measuredChannelMap(channelProof) {
+  return channelProof?.map ?? channelProof?.channelMap;
+}
+
 /**
  * The project parts a discovery session has landed on: the port roles exactly
  * as portRoles.js would persist them, the named colour order the proof measured
@@ -139,7 +154,7 @@ export function discoveryProjectParts(session, channelProof, geometry = {}) {
   const outputs = outputsFromStrips(portRoles);
   return {
     portRoles,
-    colorOrder: namedColorOrderFromChannelMap(channelProof?.channelMap),
+    colorOrder: namedColorOrderFromChannelMap(measuredChannelMap(channelProof)),
     outputs,
     ...provisionalLayoutFromOutputs(outputs, geometry),
   };
@@ -237,6 +252,15 @@ export function projectSkeletonFromCardStatus(status = {}) {
   const patchBoard = createDefaultPatchBoard(strips);
   patchBoard.physicalLocked = verified;
   return {
+    // F7: whenever the status actually carried outputs, this skeleton IS a
+    // card reconstruction — straight-line geometry read back from the card,
+    // never the original artwork. `adoptWiringFromCard`'s shortcut in
+    // lw-setup.jsx hands this skeleton straight to `applyCardParts` with no
+    // button press, so the marker has to be stamped here, at the source, not
+    // left to whichever caller remembers to add it. See `cardPartialOrigin`
+    // in projectCopyLabel.js — the same marker `reconstructInstalledCardState`
+    // stamps for the explicit "Use this card's project" path.
+    ...(reportedOutputs.length ? { origin: cardPartialOrigin(status?.cardId) } : {}),
     portRoles,
     colorOrder: normalizeUsbLedColorOrder(status?.led?.colorOrder || status?.outputColor?.colorOrder, ''),
     led: {

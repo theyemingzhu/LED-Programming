@@ -165,3 +165,95 @@ test('fresh boot is a clean New project and New project needs no discard confirm
   expect(await page.evaluate(() => (window as any).__lwConfirmCalls)).toBe(0);
   await expectWorkingLayoutScreen(page);
 });
+
+// ── Storage limits (defect C-1) ──────────────────────────────────────────
+//
+// A quota-exceeded (or private-mode-refused) `localStorage.setItem` throws
+// synchronously and does not partially write, so the copy already stored
+// under a key is untouched by a write attempt that fails. What must be true
+// on top of that browser guarantee: Studio must not claim the failed edit
+// was saved, and must give the owner an explicit way to keep the work
+// (export) instead of silently losing it.
+
+test('a storage-quota write does not claim the edit as saved, offers export, and leaves the previous copy intact', async ({ page }) => {
+  const EDIT_SENTINEL = 'LW-SENTINEL-QUOTA-EDIT';
+  const seedProject = JSON.stringify({ version: 3, id: 'lwproj-quota-fixture', name: 'Good Copy' });
+  await seedStorage(page, { [AUTOSAVE_KEY]: seedProject, [AUTOSAVE_BACKUP_KEY]: seedProject });
+
+  // Throw once — specifically on the write that would persist OUR edit (the
+  // one containing the sentinel) — so a legitimate, unrelated flush (e.g. the
+  // boot-time re-save of the restored project) is never the thing quota
+  // blocks in this test.
+  await page.addInitScript(({ key, sentinel }: { key: string; sentinel: string }) => {
+    const realSetItem = Storage.prototype.setItem;
+    let thrown = false;
+    Storage.prototype.setItem = function patchedSetItem(this: Storage, k: string, v: string) {
+      if (k === key && !thrown && typeof v === 'string' && v.includes(sentinel)) {
+        thrown = true;
+        throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      }
+      return realSetItem.call(this, k, v);
+    };
+  }, { key: AUTOSAVE_KEY, sentinel: EDIT_SENTINEL });
+
+  await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expectWorkingLayoutScreen(page);
+  await expect(page.locator('.crumb .proj')).toHaveText('Good Copy');
+
+  // Let the boot-time flush land first, so "the previous good copy" below is
+  // compared against Studio's own normalized snapshot, not the hand-written
+  // fixture (the app re-serializes with its full field set on first flush).
+  await page.waitForTimeout(700);
+  const goodCopyBeforeEdit = await readKey(page, AUTOSAVE_KEY);
+  expect(goodCopyBeforeEdit).not.toContain(EDIT_SENTINEL);
+
+  // Edit the project — renaming is the lightest real edit available on this
+  // screen — which the debounced autosave then tries, and fails, to persist.
+  await page.getByTestId('project-name-edit').click();
+  await page.getByTestId('project-name-input').fill(EDIT_SENTINEL);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(900);
+
+  // The edit is still live in the open workspace…
+  await expect(page.locator('.crumb .proj')).toHaveText(EDIT_SENTINEL);
+
+  // …but Studio never claims it was saved, and offers an explicit way out.
+  await page.getByTestId('topbar-projects').click();
+  await expect(page.getByTestId('projects-panel')).toBeVisible();
+  await expect(page.getByTestId('project-save-limited')).toBeVisible();
+  await expect(page.getByTestId('project-save-limited')).toContainText('Export to computer');
+
+  // The previous good copy — primary AND backup slot — is exactly what it
+  // was before the failed write attempt; the failed edit never reached
+  // storage.
+  expect(await readKey(page, AUTOSAVE_KEY)).toBe(goodCopyBeforeEdit);
+  expect(await readKey(page, AUTOSAVE_KEY)).not.toContain(EDIT_SENTINEL);
+  expect(await readKey(page, AUTOSAVE_BACKUP_KEY)).not.toContain(EDIT_SENTINEL);
+});
+
+test('an unknown newer schema (version 99) is quarantined and Studio opens a default project, not the sentinel data', async ({ page }) => {
+  const FUTURE_SENTINEL = 'LW-SENTINEL-FUTURE-SCHEMA';
+  const future = JSON.stringify({ version: 99, name: FUTURE_SENTINEL, sentinel: FUTURE_SENTINEL });
+  await seedStorage(page, { [AUTOSAVE_KEY]: future });
+
+  await page.goto(LAYOUT_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expectWorkingLayoutScreen(page);
+
+  // The raw, unrestorable payload survives in quarantine…
+  await expect.poll(() => readKey(page, QUARANTINE_KEY)).toContain(FUTURE_SENTINEL);
+  const record = JSON.parse(await readKey(page, QUARANTINE_KEY));
+  expect(record.reason).toBe('unsupported-version');
+  expect(JSON.parse(record.payload).version).toBe(99);
+
+  // …Studio opened a default project instead of the unreadable sentinel
+  // data — never named after it, and warned that it could not be opened…
+  await expect(page.locator('.crumb .proj')).toHaveText('Untitled Project');
+  await expect(page.locator('.crumb .proj')).not.toHaveText(FUTURE_SENTINEL);
+  await page.getByTestId('topbar-projects').click();
+  await expect(page.getByTestId('autosave-quarantine')).toBeVisible();
+
+  // …and the 500 ms debounced flush did not destroy the quarantined bytes.
+  await page.waitForTimeout(2500);
+  expect(await readKey(page, QUARANTINE_KEY)).toContain(FUTURE_SENTINEL);
+  expect(await readKey(page, AUTOSAVE_KEY)).not.toContain(FUTURE_SENTINEL);
+});

@@ -3,10 +3,13 @@ import './lw-setup.css';
 import {
   CONNECTED_CARD_LINK_STATES,
   SETUP_SKIP_STORAGE_KEY,
-  deriveSetupJourney,
   setupOffersTypedLedCount,
   setupTypedLedCountPin,
 } from '../lib/setupJourney.js';
+import { publishCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
+import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
+import { useSetupJourney } from '../hooks/useSetupJourney.js';
+import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
@@ -17,6 +20,7 @@ import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
+import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
@@ -116,8 +120,6 @@ export function SetupScreen({
   replaceProject,
   firmwareStatus = null,
   onLoadOfferChange,
-  onPrimaryActionChange,
-  onWiringTestActiveChange,
   installAction = null,
 }) {
   const {
@@ -222,6 +224,7 @@ export function SetupScreen({
       const replacement = await replaceProject({
         ...currentProject,
         ...(status?.projectId ? { id: status.projectId } : {}),
+        ...(parts?.origin ? { origin: parts.origin } : {}),
         ...(Array.isArray(parts?.portRoles) ? { portRoles: parts.portRoles } : {}),
         layout: {
           ...(currentProject?.layout || {}),
@@ -280,6 +283,20 @@ export function SetupScreen({
     if (!skeleton.portRoles.some(output => output?.role === 'strip' && Number(output.pixelCount) > 0)) return;
     const alreadyDescribed = (currentProject?.portRoles || [])
       .some(output => output?.role === 'strip' && Number(output.pixelCount) > 0);
+    // The same rule as the "adopt by default" effect below: this may only run
+    // where nothing can be lost. `applyCardParts` replaces the WHOLE project,
+    // id included, with no owner gate — so a real piece that simply had not
+    // yet written its strip into `portRoles` was overwritten by the first
+    // card it met, whichever project that card held. Only the open project
+    // itself (same id, refreshing from its own card) or an untouched starter
+    // may be described from a card read without being asked.
+    const cardProjectId = String(status?.projectId || '').trim();
+    const openIsSameProject = Boolean(cardProjectId) && cardProjectId === String(currentProject?.id || '').trim();
+    // A starter (the default circle a fresh browser opens, `starterPending`
+    // still true) is untouched however many placeholder strips it carries; a
+    // project that has left the starter behind is the owner's work.
+    const openIsUntouched = currentProject?.layout?.starterPending !== false;
+    if (!openIsSameProject && !openIsUntouched) return;
     adoptedCardRef.current = signature;
     if (!alreadyDescribed) {
       void applyCardParts(skeleton, status)
@@ -407,27 +424,43 @@ export function SetupScreen({
   const provisionalSetup = cardState.status?.provisionalSetup === true
     || cardLink?.readiness?.provisionalSetup === true
     || resolution.kind === 'bench';
-  const journeyResolution = matchesOpenProject
-    ? { matchesCurrentProject: true, playbackAccess: 'ready', provisionalSetup }
-    : resolution.kind === 'saved-match'
-      ? { savedProjectMatch: true, playbackAccess: 'ready', provisionalSetup }
-      : provisionalSetup
-        ? { provisionalSetup: true }
-        : null;
-  const journey = useMemo(() => deriveSetupJourney({
+
+  // This screen reads the card more deeply than anyone else — it needs the
+  // project evidence for adoption as well as the status and the wiring safety
+  // state — so it PUBLISHES what it read into the shared evidence store. That
+  // is what lets the Patterns/Playlist chip and the shell's task router reach
+  // the same verdict without reading the card a second time.
+  //
+  // The mapping from this evidence to the journey's `resolution` used to live
+  // here as a local ternary, which is precisely why only this screen could see
+  // the full picture: mid light-test it asked the owner to confirm the strip
+  // while the chip, blind to the wiring status, called the setup finished.
+  // lib/setupJourneyInputs.js owns that mapping now, for everybody.
+  useEffect(() => {
+    if (!cardState.read) return;
+    if (!(cardLink?.card?.id || cardLink?.readiness?.cardId)) return;
+    publishCardJourneyEvidence({
+      cardLink,
+      projectId: currentProject?.id || '',
+      status: cardState.status,
+      wiringStatus: cardState.wiringStatus,
+      evidence: cardState.evidence,
+      resolutionKind: resolution.kind,
+      matchesOpenProject,
+    });
+  }, [cardLink, cardState, currentProject?.id, matchesOpenProject, resolution.kind]);
+
+  // `refresh: false` — the effect above already read this card. Letting the
+  // hook read it too would put two conversations on one microcontroller every
+  // time Card Home mounts.
+  const journey = useSetupJourney({
     cardLink,
     cardLifecycle,
-    commissioningFlow,
     project: currentProject,
-    resolution: journeyResolution,
-    wiringStatus: cardState.wiringStatus,
-  }), [cardLifecycle, cardLink, cardState.wiringStatus, commissioningFlow, currentProject, installationMatch, provisionalSetup, resolution.kind]);
+    commissioningFlow,
+    refresh: false,
+  });
   const wiringTestActive = journey.taskId === 'confirm-visible-lights';
-
-  useEffect(() => {
-    onWiringTestActiveChange?.(wiringTestActive);
-    return () => onWiringTestActiveChange?.(false);
-  }, [onWiringTestActiveChange, wiringTestActive]);
 
   useEffect(() => {
     if (!onLoadOfferChange) return undefined;
@@ -443,16 +476,12 @@ export function SetupScreen({
   // The single exception is the install-project task with no resumable
   // commissioning: it deliberately renders no button because the install
   // action below IS its button, so the floor passes down.
-  const ladderOwnsPrimary = !journey.setupComplete
-    && !(journey.currentPhaseId === 'verify' && journey.taskId === 'confirm-visible-lights')
-    && !(journey.currentPhaseId === 'connect'
-      && journey.taskId === 'install-project'
-      && !hasResumableCommissioning(commissioningFlow));
-  useEffect(() => {
-    if (!onPrimaryActionChange) return undefined;
-    onPrimaryActionChange(ladderOwnsPrimary);
-    return () => onPrimaryActionChange(false);
-  }, [onPrimaryActionChange, ladderOwnsPrimary]);
+  //
+  // Derived by `lib/setupJourneyInputs.js` now, from this same journey and
+  // commissioning flow, so Card Home can compute the identical answer itself
+  // instead of learning it a render late through a prop callback (blueprint
+  // H3 — the now-removed `onPrimaryActionChange`).
+  const ladderOwnsPrimary = deriveLadderOwnsPrimary(journey, commissioningFlow);
 
   // Record completion so older notes of this key stay truthful. The shell
   // no longer routes on it — a bare URL always opens Card Home.
@@ -479,9 +508,24 @@ export function SetupScreen({
 
   const go = hash => { window.location.hash = hash; };
   const installIntentOpen = new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
-  const openPatterns = () => go(journey.setupComplete
-    ? '#screen=pattern'
-    : '#screen=card&section=setup&task=install-project&next=patterns');
+  // Where a finished setup sends the owner. `journey.resumeDestination` has
+  // existed since the journey was written and nothing ever read it — this
+  // button hard-coded Patterns — so an owner who was mid-playlist, followed the
+  // chip into Setup and finished it was handed a screen they had not asked for.
+  // Now: where they actually were, else the journey's own destination, else
+  // Patterns. Pressed, never automatic, and the label says where it goes.
+  const returnDestination = cardReturnDestination({
+    cardId: cardLink?.card?.id || cardLink?.readiness?.cardId || '',
+    resumeDestination: journey.resumeDestination,
+  });
+  const openPatterns = () => {
+    if (!journey.setupComplete) {
+      go('#screen=card&section=setup&task=install-project&next=patterns');
+      return;
+    }
+    clearCardReturnIntent();
+    go(returnDestination.hash);
+  };
 
   const ADOPTION_FAILURES = Object.freeze({
     cancelled: 'Studio kept the open project, so nothing was adopted from the card.',
@@ -785,6 +829,7 @@ export function SetupScreen({
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
   const firmwareBehind = firmwareStatus?.actionable === true;
+  const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
   const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
@@ -1017,7 +1062,16 @@ export function SetupScreen({
   };
 
   return (
-    <>
+    // `display: contents` — the wrapper exists so the journey's verdict is
+    // readable from ONE element (the same two attributes the working-screen
+    // chip carries), without inserting a box that would change how these
+    // sections lay out inside Card Home.
+    <div
+      data-testid="setup-journey"
+      data-journey-task={journey.taskId}
+      data-journey-complete={journey.setupComplete ? 'true' : 'false'}
+      style={{ display: 'contents' }}
+    >
       {/* The lede used to explain the ladder here ("Connect to the card, then
           Studio resumes whatever is still unfinished…"). Phase 1 is that
           sentence, with the button attached. Explaining a step directly above
@@ -1063,10 +1117,10 @@ export function SetupScreen({
                 of one fact, so the healthy card keeps only its doors. Old
                 firmware is a DIFFERENT fact the row does not carry, so that
                 case keeps its sentence and its Update action. */}
-            {firmwareBehind && (
+            {firmwareBannerCopy && (
               <>
-                <h2>This card&rsquo;s software is behind</h2>
-                <p>Update the card software before relying on it.</p>
+                <h2>{firmwareBannerCopy.heading}</h2>
+                <p>{firmwareBannerCopy.body}</p>
               </>
             )}
             <div className="lw-setup-banner-actions">
@@ -1074,7 +1128,7 @@ export function SetupScreen({
                   can render while the ladder still has an active task (an
                   exact project match during a `confirming` lifecycle, for
                   one), and two primaries then ask the owner to arbitrate. */}
-              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>Open Patterns</button>
+              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>{journey.setupComplete ? returnDestination.label : 'Open Patterns'}</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
               {firmwareBehind && (
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
@@ -1144,6 +1198,6 @@ export function SetupScreen({
       </section>
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />
-    </>
+    </div>
   );
 }

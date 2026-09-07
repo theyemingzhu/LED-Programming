@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CARD_LINK_JOURNAL_LIMIT,
+  appendCardJournalEntry,
   clearCardLinkJournal,
   formatCardLinkJournal,
   readCardLinkJournal,
@@ -105,4 +106,50 @@ test('formats each leg with how long it was held', () => {
 
 test('an empty log says so in words rather than showing nothing', () => {
   assert.match(formatCardLinkJournal([]), /No connection changes recorded/);
+});
+
+// ── appendCardJournalEntry — the setup-journey trail's write path (H8) ──────
+
+test('appendCardJournalEntry writes a pre-built entry into the same bounded log', () => {
+  const storage = memoryStorage();
+  const entry = { at: '2026-09-06T10:00:00.000Z', task: 'confirm-visible-lights', step: 'verify', cardId: 'lw-abc', bootId: 'boot-1', reason: 'link-changed' };
+  const written = appendCardJournalEntry(entry, { storage });
+  assert.equal(written, entry);
+  const entries = readCardLinkJournal({ storage });
+  assert.equal(entries.length, 1);
+  assert.deepEqual(entries[0], entry);
+});
+
+test('appendCardJournalEntry shares the connection log\'s cap with recordCardLinkTransition', () => {
+  const storage = memoryStorage();
+  recordCardLinkTransition(connected, dropped, { storage, now: () => '2026-09-06T09:00:00.000Z' });
+  appendCardJournalEntry(
+    { at: '2026-09-06T09:00:01.000Z', task: 'confirm-visible-lights', step: 'verify', cardId: 'lw-abc', bootId: 'boot-1', reason: 'evidence-fresh' },
+    { storage },
+  );
+  const entries = readCardLinkJournal({ storage });
+  assert.equal(entries.length, 2, 'both kinds of entry land in the one journal');
+});
+
+test('appendCardJournalEntry never throws on broken storage', () => {
+  const exploding = {
+    getItem: () => { throw new Error('denied'); },
+    setItem: () => { throw new Error('quota'); },
+  };
+  assert.doesNotThrow(() => appendCardJournalEntry({ at: 'x', task: 'connect-card' }, { storage: exploding }));
+});
+
+test('appendCardJournalEntry with no entry is a no-op', () => {
+  const storage = memoryStorage();
+  assert.equal(appendCardJournalEntry(null, { storage }), null);
+  assert.equal(readCardLinkJournal({ storage }).length, 0);
+});
+
+test('formats a setup-journey entry by its task, not a blank connection state', () => {
+  const text = formatCardLinkJournal([
+    { at: '2026-09-06T10:00:00.000Z', task: 'confirm-visible-lights', step: 'verify', cardId: 'lw-abc', bootId: 'boot-1', reason: 'link-changed' },
+  ]);
+  assert.match(text, /setup: confirm-visible-lights/);
+  assert.match(text, /link-changed/);
+  assert.doesNotMatch(text, /undefined/);
 });

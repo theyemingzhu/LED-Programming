@@ -6,7 +6,7 @@ const TARGET_BUILD = '2'.repeat(40);
 const HEAD = 'a'.repeat(64);
 const FINGERPRINT = 'b'.repeat(64);
 
-async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 'progress', capabilityShape = 'current') {
+async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 'progress', capabilityShape = 'current', { returnHash = '' } = {}) {
   if (outcome === 'reload-disconnected' || outcome === 'in-place-disconnect') {
     const exactRestartedStatus = {
       app: 'Lightweaver', provisioningContractVersion: 1,
@@ -19,9 +19,16 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
     await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: exactRestartedStatus }));
     await page.route('http://lightweaver.local/api/update/status', route => route.fulfill({ json: { phase: 'idle' } }));
   }
-  await page.addInitScript(({ mode, outcome, capabilityShape, cardId, oldBuild, targetBuild, head, fingerprint }) => {
+  await page.addInitScript(({ mode, outcome, capabilityShape, cardId, oldBuild, targetBuild, head, fingerprint, returnHash }) => {
     localStorage.clear();
     sessionStorage.clear();
+    // Stands in for whatever real surface (footer chip, Connection Center,
+    // Setup) took the owner into this update: those callers call
+    // rememberCardReturnIntent before routing here, and this fixture models
+    // that already having happened for the working screen under test.
+    if (returnHash) {
+      sessionStorage.setItem('lw_card_return_intent_v1', JSON.stringify({ hash: returnHash, cardId }));
+    }
     const imageBytes = new Uint8Array([0xe9, 1, 2]);
     const recovering = outcome === 'reload-valid';
     const disconnectedRecovery = outcome === 'reload-disconnected';
@@ -102,7 +109,7 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
       },
       });
     };
-  }, { mode, outcome, capabilityShape, cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, head: HEAD, fingerprint: FINGERPRINT });
+  }, { mode, outcome, capabilityShape, cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, head: HEAD, fingerprint: FINGERPRINT, returnHash });
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', {
     name: capabilityShape === 'legacy' ? 'Install Lightweaver' : 'Update Lightweaver',
@@ -190,6 +197,33 @@ test('preserving update: reload resumes redacted state and shows valid only afte
   await openPreservingFixture(page, 'wifi', 'reload-valid');
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
+});
+
+test('preserving update: the continue button returns the owner to the task an update interrupted', async ({ page }) => {
+  // The owner was on Playlist when they entered this update (from the footer
+  // chip, Connection Center, or Setup — every one of those callers records
+  // this before routing here). Once the card is verified back on the target
+  // build, the panel offers exactly one button, and it must go home instead
+  // of always defaulting to Patterns.
+  await openPreservingFixture(page, 'wifi', 'reload-valid', 'current', { returnHash: '#screen=playlist' });
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
+  const continueButton = panel.getByTestId('preserving-update-continue');
+  await expect(continueButton).toHaveText('Back to Playlist');
+  await continueButton.click();
+  await expect(page).toHaveURL(/#screen=playlist$/);
+  // Pressed once, spent once: a second visit to this update must not still
+  // offer a stale destination from the last interruption.
+  expect(await page.evaluate(() => sessionStorage.getItem('lw_card_return_intent_v1'))).toBeNull();
+});
+
+test('preserving update: with nothing remembered, the continue button falls back to Patterns', async ({ page }) => {
+  await openPreservingFixture(page, 'wifi', 'reload-valid');
+  const panel = page.getByTestId('preserving-update-panel');
+  const continueButton = panel.getByTestId('preserving-update-continue');
+  await expect(continueButton).toHaveText('Open Patterns');
+  await continueButton.click();
+  await expect(page).toHaveURL(/#screen=pattern$/);
 });
 
 test('preserving update: a Wi-Fi reboot self-heals from exact runtime-known-good evidence', async ({ page }) => {

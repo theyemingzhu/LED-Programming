@@ -13,6 +13,7 @@ import {
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
 import { locateReachableCard } from '../../lib/cardFind.js';
 import { openCardFlow } from '../../lib/cardFlowEntry.js';
+import { rememberCardReturnIntent } from '../../lib/cardReturnIntent.js';
 import { cardTaskCopy } from '../../lib/cardTaskCopy.js';
 import { connectPanelRouteOut } from '../../lib/connectPanelRouting.js';
 import { cardBuildLabel, readPersistedCardIdentity, setupNetworkLabelForCardId } from '../../lib/cardIdentity.js';
@@ -192,6 +193,13 @@ export function CardConnectionCenter({
 
   const openInstall = () => {
     shouldRestoreFocusRef.current = false;
+    // Where the owner was working before this panel took the screen — the
+    // preserving update's continue button reads this back so a finished
+    // update sends them home instead of always to Patterns.
+    rememberCardReturnIntent({
+      hash: window.location.hash,
+      cardId: link.card?.id || link.expectedCard?.id || '',
+    });
     onClose();
     goToInstall();
   };

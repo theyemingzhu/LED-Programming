@@ -8,6 +8,7 @@ import {
   STUDIO_REFRESH_ATTEMPT_KEY,
   createStudioFreshnessMonitor,
 } from './studioFreshness.js';
+import { beginStudioHardwareOperation } from './studioHardwareOperation.js';
 
 const release = character => Object.freeze({
   schemaVersion: 1,
@@ -309,6 +310,40 @@ test('freshness defers one target until all protected hardware operations clear'
   assert.equal(reloads, 0);
   await harness.monitor.setOperationActive(false);
   assert.equal(reloads, 1);
+});
+
+test('freshness observes hardware-operation events on its own target, deferring until they clear and then surfacing once', async () => {
+  const running = release('a');
+  const remote = release('b');
+  let reloads = 0;
+  const harness = monitorHarness({
+    release: running,
+    fetchImpl: readyReleaseFetch(remote),
+    reload: () => { reloads += 1; },
+  });
+
+  // start() registers the monitor's own listeners synchronously before its
+  // first checkNow() suspends on the mocked fetch, so beginning the operation
+  // right after start() (no await between them) is observed by the SAME
+  // check that discovers the newer release — no caller has to thread
+  // setOperationActive through app wiring for this to hold.
+  const startPromise = harness.monitor.start();
+  const finishOperation = beginStudioHardwareOperation('test-hardware-operation', harness.windowRef);
+  await startPromise;
+
+  assert.deepEqual(harness.monitor.getState(), {
+    status: 'update-ready', buildId: remote.buildId, buildNumber: remote.buildNumber, reason: 'operation-active',
+  });
+  assert.equal(reloads, 0, 'the refresh prompt must not surface while the operation is active');
+
+  finishOperation();
+  await harness.monitor.checkNow();
+  assert.equal(reloads, 1, 'the refresh prompt surfaces exactly once after the operation ends');
+
+  await harness.monitor.checkNow();
+  assert.equal(reloads, 1, 'a later check must not surface the same pending release a second time');
+
+  harness.monitor.stop();
 });
 
 test('ending a protected operation revalidates the newest marker instead of reloading a stale pending release', async () => {

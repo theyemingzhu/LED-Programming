@@ -21,9 +21,15 @@ import {
   readPersistedCardIdentity,
 } from './cardIdentity.js';
 import { reclaimCardFrameStreams } from './cardFrameStream.js';
-import { connectCardTransport, getActiveCardTransportAuthority } from './cardTransport.js';
+import {
+  CARD_RESTARTED_REASON,
+  connectCardTransport,
+  getActiveCardTransportAuthority,
+  reacquireCardTransportAuthority,
+} from './cardTransport.js';
 import { discoverCardWiring, getCardWiringStatus, rollbackCardWiringCandidate } from './cardWiringSafety.js';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from './cardCustomerControlContract.js';
+import { isTransientCardFailure } from './cardTransientFailure.js';
 
 function isMixedContentBlocked() {
   return typeof window !== 'undefined' && !canPushDirectlyToCard(window.location.protocol);
@@ -961,25 +967,70 @@ async function resolveZoneForPreview(host, look, options = {}) {
   }
 }
 
+// The two things Studio can truthfully say about a card that rebooted under a
+// live command. Neither is "the card did not answer in time" — the card was
+// healthy and back; only the authority Studio held still named the old boot.
+const CARD_RESTARTED_RECONNECTING_MESSAGE = 'The card restarted. Studio is reconnecting to it — try the command again.';
+const CARD_RESTARTED_RECONNECTED_MESSAGE = 'The card restarted. Studio reconnected — try the command again.';
+
+async function sendLivePreviewThroughAuthority(host, look, options, authority) {
+  requireCurrentPreviewIntent(options);
+  const resolved = needsZoneResolution(look, options)
+    ? await resolveZoneForPreview(host, look, { ...options, authority })
+    : null;
+  const previewLook = resolved?.previewLook || look;
+  const response = requireBoundedControlObject(await authority.request('/api/control', {
+    method: 'POST',
+    body: {
+      ...buildLivePreviewControlPayload(previewLook, options),
+      ...(options.revision !== undefined ? { revision: options.revision } : {}),
+    },
+  }));
+  const acknowledged = requireLivePreviewAcknowledgement(response, previewLook, options, { id: authority.cardId });
+  return resolved
+    ? { ...acknowledged, previewZoneFallback: true, ...resolved.previewZoneFallback }
+    : acknowledged;
+}
+
+/**
+ * Re-acquire once, for the SAME card, after a restart refused the command.
+ *
+ * Bounded on purpose: exactly one re-acquire and exactly one resend, and only
+ * when the authority refused BEFORE reaching the card (`requestSent === false`),
+ * so the resend cannot be a second real `/api/control`. A refusal raised after
+ * the card's reply arrived means the command landed; that one is reported, not
+ * repeated.
+ */
+async function retryLivePreviewAfterRestart(host, look, options, authority, restartError) {
+  if (restartError?.requestSent) {
+    throw new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTING_MESSAGE, restartError);
+  }
+  requireCurrentPreviewIntent(options);
+  const reacquired = await (options.reacquireTransportImpl || reacquireCardTransportAuthority)({
+    host,
+    expectedCardId: options.expectedCardId || authority.cardId,
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+  }).catch(() => null);
+  if (!reacquired?.connected) {
+    throw new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTING_MESSAGE, restartError);
+  }
+  try {
+    return await sendLivePreviewThroughAuthority(host, look, options, reacquired);
+  } catch (retryError) {
+    if (retryError?.reason !== CARD_RESTARTED_REASON) throw retryError;
+    throw new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTED_MESSAGE, retryError);
+  }
+}
+
 async function pushLivePreviewToHost(host, look, options = {}) {
   const authority = options.authority || getActiveCardTransportAuthority(host);
   if (authority) {
-    requireCurrentPreviewIntent(options);
-    const resolved = needsZoneResolution(look, options)
-      ? await resolveZoneForPreview(host, look, { ...options, authority })
-      : null;
-    const previewLook = resolved?.previewLook || look;
-    const response = requireBoundedControlObject(await authority.request('/api/control', {
-      method: 'POST',
-      body: {
-        ...buildLivePreviewControlPayload(previewLook, options),
-        ...(options.revision !== undefined ? { revision: options.revision } : {}),
-      },
-    }));
-    const acknowledged = requireLivePreviewAcknowledgement(response, previewLook, options, { id: authority.cardId });
-    return resolved
-      ? { ...acknowledged, previewZoneFallback: true, ...resolved.previewZoneFallback }
-      : acknowledged;
+    try {
+      return await sendLivePreviewThroughAuthority(host, look, options, authority);
+    } catch (error) {
+      if (error?.reason !== CARD_RESTARTED_REASON) throw error;
+      return retryLivePreviewAfterRestart(host, look, options, authority, error);
+    }
   }
   // Local-card mode deliberately exercises the same verified postMessage path
   // as public HTTPS, even when Studio itself is running from an HTTP dev host.
@@ -1169,6 +1220,12 @@ async function pushSectionPreviewToBridge(host, targets = [], options = {}) {
 
 function normalizePreviewError(host, error) {
   if (error instanceof CardPushError) return error;
+  // A card that rebooted is a named, recoverable condition. Left unnamed it
+  // fell through to 'offline' and then to the timeout copy, which told the
+  // owner the card had not answered when it had simply restarted.
+  if (error?.reason === CARD_RESTARTED_REASON) {
+    return new CardPushError(CARD_RESTARTED_REASON, CARD_RESTARTED_RECONNECTING_MESSAGE, error);
+  }
   if (['identity-missing', 'wrong-card', 'firmware-too-old', 'stale-host', 'bridge-missing', 'card-rejected', 'runtime-state-unconfirmed', 'physical-output-unconfirmed'].includes(error?.reason)) {
     return new CardPushError(error.reason, error.message, error);
   }
@@ -1203,6 +1260,24 @@ async function sendLivePreviewToCard(look, options = {}) {
         timeoutMs: Math.min(options.timeoutMs || 2500, 900),
       });
       requireCurrentPreviewIntent(options);
+      // Only a TRANSPORT failure (timeout, abort, network) leaves the outcome
+      // unknown. When the card answered — a refusal, or an acknowledgement
+      // that did not name the pattern — its answer stands and is not
+      // reinterpreted by reading zones that may simply show the previous look.
+      if (found.connected && isTransientCardFailure(error)) {
+        // The card is reachable, so the failed post may well have LANDED and
+        // only its reply was lost. Re-posting to a rediscovered address was
+        // the duplicate write: a second real /api/control with the same
+        // revision, every time the reply dropped. Read the card first — if it
+        // already shows this look, that read is the acknowledgement.
+        const settled = await readBackLivePreview(look, {
+          ...options,
+          host: found.host,
+          timeoutMs: Math.min(options.timeoutMs || 1200, 1200),
+        }).catch(() => null);
+        requireCurrentPreviewIntent(options);
+        if (settled) return settled;
+      }
       if (found.connected && normalizeCardHost(found.host) !== normalizeCardHost(host)) {
         try {
           requireCurrentPreviewIntent(options);
@@ -1225,6 +1300,115 @@ export async function pushLivePreviewToCard(look, options = {}) {
     latestPreviewQueueKey(host),
     arbitration => sendLivePreviewToCard(look, { ...options, previewArbitration: arbitration }),
   );
+}
+
+/**
+ * Pure comparison: does one card zone (as reported by `/api/zones`, which
+ * echoes every control under its CUSTOMER_CONTROL_WIRE_FIELDS *control* name,
+ * not its wire name) already reflect a live-preview control payload (as
+ * returned by `buildLivePreviewControlPayload`, keyed by *wire* name)?
+ *
+ * Only fields actually present in `controlPayload` are checked — a field the
+ * caller never sent is not part of the intent being confirmed. Numbers match
+ * within 0.01 (the card's own units can round); booleans match exactly;
+ * `patternId` matches by the runtime id, which is exactly what
+ * `buildLivePreviewControlPayload` already resolved it to.
+ *
+ * Exported standalone so it can be unit-tested without a network or a card.
+ */
+export function zoneConfirmsLivePreviewIntent(controlPayload, zone) {
+  if (!controlPayload || typeof controlPayload !== 'object') return false;
+  if (!zone || typeof zone !== 'object') return false;
+  for (const field of CUSTOMER_CONTROL_WIRE_FIELDS) {
+    const expected = controlPayload[field.wire];
+    if (expected === undefined) continue;
+    const actual = zone[field.control];
+    if (typeof expected === 'boolean') {
+      if (Boolean(actual) !== expected) return false;
+      continue;
+    }
+    if (typeof expected === 'string') {
+      if (String(actual ?? '').trim() !== expected.trim()) return false;
+      continue;
+    }
+    const expectedNum = Number(expected);
+    const actualNum = Number(actual);
+    if (!Number.isFinite(expectedNum) || !Number.isFinite(actualNum) || Math.abs(actualNum - expectedNum) > 0.01) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Settle a live-preview write whose reply was lost by READING the card.
+ *
+ * A dropped reply after `/api/control` looks identical to a card that never
+ * received the command, and `retryWhileTransient` used to answer both by
+ * sending again — a second real command, which is the duplicate write the
+ * journey contract forbids ("a successful write followed by lost readback is
+ * verification pending, not write failed"). This reads `/api/zones` and, when
+ * every targeted zone already reports the requested control values, returns
+ * an acknowledgement-shaped result so the caller treats the write as
+ * confirmed.
+ *
+ * Every CUSTOMER_CONTROL_WIRE_FIELDS control present in the look (merged with
+ * `options.expectedControlPatch`, when supplied) is checked against the
+ * targeted zones — brightness, speed, hue, saturation, breathe and drift
+ * included, not only the pattern id. Returns null whenever the read cannot
+ * PROVE the intent landed: a zone the card does not have, no zones at all, a
+ * read that fails, or any targeted zone disagreeing on any checked control.
+ * Null means "retry as before"; it never means "failed".
+ */
+export async function readBackLivePreview(look = {}, options = {}) {
+  if (look?.blackout === true) return null;
+  const requestedPatternId = String(look?.patternId || '').trim();
+  const requestedRuntimePatternId = String(options.exactCardPatternId || '').trim()
+    || getCardPatternRuntimeId(requestedPatternId) || requestedPatternId;
+  if (!requestedRuntimePatternId) return null;
+
+  const patch = options.expectedControlPatch;
+  const intent = patch && typeof patch === 'object' ? { ...look, ...patch } : look;
+  let controlPayload;
+  try {
+    controlPayload = buildLivePreviewControlPayload(intent, options);
+  } catch {
+    return null;
+  }
+
+  const host = options.host || readStoredCardHost();
+  let payload;
+  try {
+    payload = await readCardZones(host, {
+      timeoutMs: Math.min(options.timeoutMs || 1200, 1200),
+      ...(options.expectedCardId ? { expectedCardId: options.expectedCardId } : {}),
+    });
+  } catch {
+    return null;
+  }
+  const zones = Array.isArray(payload?.zones) ? payload.zones : [];
+  const zoneId = String(look?.zone || '').trim();
+  let targets = zoneId ? zones.filter(zone => String(zone?.id || '') === zoneId) : zones;
+  // The send path falls back from a zone the card does not have to the whole
+  // strip (`fallbackMissingZoneToAll`, resolved before the post went out). The
+  // read-back must ask the same question the write answered, or it can never
+  // confirm exactly the writes that used the fallback.
+  if (zoneId && !targets.length && options.fallbackMissingZoneToAll === true) targets = zones;
+  if (!targets.length) return null;
+  const confirmed = targets.every(zone => zoneConfirmsLivePreviewIntent(controlPayload, zone));
+  if (!confirmed) return null;
+  return Object.freeze({
+    ok: true,
+    readBack: true,
+    patternId: requestedRuntimePatternId,
+    appliedPatternId: requestedRuntimePatternId,
+    ...(options.revision !== undefined ? { revision: options.revision, confirmedRevision: options.revision } : {}),
+    confirmedLook: {
+      patternId: requestedPatternId || requestedRuntimePatternId,
+      zone: zoneId,
+      syncZones: look?.syncZones === true,
+    },
+  });
 }
 
 export async function pushLiveHardwareToCard(settings, options = {}) {

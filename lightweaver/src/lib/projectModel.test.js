@@ -214,3 +214,46 @@ test('old projects load without Kaleidoscope fields and legacy export strips new
   assert.equal(legacy.strips.some(strip => 'kaleidoscope' in strip), false);
   assert.equal('projectWarnings' in legacy, false);
 });
+
+// ── origin provenance marker (defect C1b) ──────────────────────────────────
+// projectCopyLabel.js's `projectCopyKind` reads `project.origin` to decide
+// whether a card reconstruction may be described as a complete backup. That
+// only works if the field actually survives a save/reload round trip.
+
+test('a fresh default project has no origin marker', () => {
+  const project = createDefaultProject();
+  assert.equal(project.origin, null);
+  assert.equal(migrateProject(project).origin, null);
+});
+
+test('migrateProject preserves a card-reconstruction origin marker across a save/reload round trip', () => {
+  const saved = createDefaultProject();
+  saved.origin = { kind: 'card-partial', cardId: 'lw-abc123', at: 1700000000000 };
+
+  const migrated = migrateProject(jsonRoundTrip(saved));
+
+  assert.deepEqual(migrated.origin, { kind: 'card-partial', cardId: 'lw-abc123', at: 1700000000000 });
+});
+
+test('migrateProject normalizes a malformed or hand-edited origin instead of trusting it verbatim', () => {
+  const missingKind = createDefaultProject();
+  missingKind.origin = { cardId: 'lw-abc123' };
+  assert.equal(migrateProject(missingKind).origin, null);
+
+  const wrongType = createDefaultProject();
+  wrongType.origin = 'card-partial';
+  assert.equal(migrateProject(wrongType).origin, null);
+
+  const extraJunk = createDefaultProject();
+  extraJunk.origin = { kind: 'card-partial', cardId: 42, at: 'not-a-number', evil: () => {} };
+  assert.deepEqual(migrateProject(extraJunk).origin, { kind: 'card-partial', cardId: '42', at: 0 });
+});
+
+test('a v1/v2 legacy save never fabricates an origin marker it never had', () => {
+  const migrated = migrateProject({
+    version: 2,
+    projectId: 'legacy-no-origin',
+    strips: [],
+  });
+  assert.equal(migrated.origin, null);
+});

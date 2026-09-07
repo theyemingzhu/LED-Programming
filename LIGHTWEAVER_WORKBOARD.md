@@ -9,6 +9,13 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-05: **FLOW-BLUEPRINT handoff ready** — planning-only integration blueprint
+with E01–E14 existing-code ledger, B0–B6 ownership/dependencies and J01–J14
+acceptance scenarios. [Plan](docs/plans/2026-09-05-unified-card-journey.md) and
+[root handoff](HANDOFF-FRESH-CHAT.md). Source inventory at `0af4b750`; reconcile
+with current main before implementation. No product changes or hardware proof
+from this planning task. Cheapest capable agents remain the default.
+
 2026-09-05: **JOURNEY-01–09 locally verified; JOURNEY-10 machine setup verified, lights pending** — implemented the approved
 [update-to-playback repair](docs/plans/2026-09-05-update-to-playback-repair.md)
 on `codex/update-to-playback`, based on production build 1525. Exact card remains
@@ -233,3 +240,104 @@ run passed268/269; last quiet-preview fixture corrected and focused green.
 Final2,262 unit tests, production build, Pages staging and artifact verification
 passed. Binary freshness awaits protected main signer (expected firmware-source
 changes; no local signed artifacts or card flash). PR216 release gates pending.
+
+## 2026-09-06 unified card journey — B0–B1 checkpoint
+
+FLOW-B0 done — baseline `aba1e6f5` (main `2747224f` + handoff docs) in the
+isolated worktree branch `claude/lightweaver-audit-refinement-9a5034`. Delta
+since the audit snapshot `0af4b750` touched no Studio or firmware source;
+`codex/update-to-playback` is already in main (#216). Live Studio is build 1551
+against local main count 1560. Full record and the blueprint's H1–H8 holes:
+[plan](docs/plans/2026-09-05-unified-card-journey.md) §B0.
+
+FLOW-B1 done locally, commit `f3b760ae` — one shared journey decision. New
+`cardJourneyEvidence` store (card id + boot id keyed, single-flight, stale on
+hardware-operation end), `setupJourneyInputs.assembleSetupJourney` as the only
+evidence→journey mapping, `useSetupJourney` hook. Card Home, the Patterns/
+Playlist chip and the shell's task router now decide from the same inputs;
+Setup publishes its read so the card is read once. `resumeDestination` is
+consumed through `cardReturnIntent` (Setup's completion button returns the
+owner to the screen they left, one-use, never automatic). Simulator gained the
+firmware's wiring-test lifecycle. Evidence: unit 2282/2282 (20 new, red
+witnessed on the active-light-test agreement case); Chromium focused 244/0
+unexpected/5 skipped; production build. Screens not yet inspected; no
+hardware, flash or deploy.
+
+FLOW-B5 done locally — `tests/journey-continuity.spec.ts` (J02, J02-negative,
+J05, J08 ×2, J13) on one simulated card per test, now in `ci:browser-smoke`;
+`docs/journeys/acceptance-ledger.md` maps J01–J14 to actual test titles with
+per-row status. The suite surfaced three real defects, fixed in `f28d4999`
+and scoped in `d4c404a8`: duplicate `/api/control` after a lost reply (read
+the card back before any resend; transport failures only), silent replacement
+of open work on first card read, and a double tap sending twice.
+Checkpoint at `d4c404a8`: unit 2285/2285; Chromium batches 244/0, 259/0,
+115+27/0 after the fix, windowless 1/1; production build. Real-card screens
+(desktop + phone, read-only, card 1524) agree. Not deployed; no flash.
+
+FLOW-PLAN done — `docs/plans/2026-09-06-unified-card-journey-execution.md`:
+ticketed sequel for low-cost models (phases A–E, rules, brief template, B6
+separate). Remaining tickets: J01 continuous test, playlist stub → simulator,
+full-field read-back, update return-intent, optional-update copy, persistence
+and version-skew cases, diagnostic trail, callback cleanup, doc reconciliation,
+and the four Bench observations.
+
+## 2026-09-06 autonomous fix run (director: Fable; fixers: Sonnet, Opus only for F2)
+
+Executing docs/plans/2026-09-06-unified-card-journey-execution.md without
+Adrian present. Merges land on this branch only; no push, deploy, flash.
+
+Merged so far (all verified by the director's own runs, unit 2289/2289):
+- B2 `a2d985b7` — optional-update banner copy is truthful (new pure
+  `readyBannerFirmwareCopy`), regression in setup-adopt-card-project.
+- B1 `f49c5ffe` — a finished preserving update returns the owner to the
+  screen it interrupted (`preserving-update-continue`), regression in
+  preserving-firmware-update.
+- A3 `c364d777` — `tests/journey-edits.spec.ts` J06/J07 green 6/6 (repeat 3);
+  simulator gained `/api/wiring/candidate`.
+- A1 `4683cd55` — `tests/journey-j01.spec.ts` `[J01-partial]` 3/3; simulator
+  gained beacon port + frame stream. **Found a real defect:** discovery
+  passes `{ map }` while `discoveryCommit.js:142` reads `channelMap`, so a
+  real discovery never records colour order and Setup can never leave
+  "find lights" → ticket F1 (in progress).
+- A4 `31355f49` — `tests/journey-ownership.spec.ts`: card swap green 3/3;
+  **two-tabs red 3/3 deterministically**: same-wiring pushes from two tabs
+  both write `/api/config` with no owner → ticket F2 (in progress, Opus).
+
+In progress: F1 (fix-f1), F2 (fix-f2), C3 diagnostic trail (fix-c3).
+Queued: C1 storage limits, A5 playlist stub → simulator, A6 full-field
+read-back, C2 version skew, D1 callback cleanup, D2 doc reconciliation.
+Physical rows (Phase E) stay pending until Adrian is at the bench.
+
+Progress (same run, later): merged C3 `dc9dc0b3` diagnostic trail; F2
+`263a6db0` cross-tab write lease (`cardWriteLease.js`, conflict id
+`card-write-owner-conflict`, wiring-test button ids); C1 `661dc08b` quota-
+limited saves surfaced + `projectCopyLabel`; C1b `80969642` + C1c `94328f22`
+reconstructed card copies labelled "Card copy (partial — no artwork)" end to
+end; C2 `82c277f6` freshness prompt deferred during hardware operations,
+skew classifier confirmed correct, offline saved-project entry covered; D1
+`7ba6599c` two prop callbacks retired (`onLoadOfferChange` kept, justified);
+D2 `2a967491` docs reconciled; A5 `914e5337` playlist suite now runs on the
+simulator and **found a real defect**: after a recovery reboot the live-
+preview transport keeps a stale boot authority and reports "did not answer
+in time" → ticket F3 (Opus, in progress). A6 full-field read-back in
+progress. Journey specs (continuity, edits, ownership, J01) now run in
+`ci:browser-smoke`. Unit 2348/2348 at `ba158c0b`.
+
+Closing: F3 `46e4774f` (card-restarted named, one bounded transport
+re-acquire) and A6 `084fd4b3` (full-field read-back, `journey-readback` in
+the smoke lane) merged; all fifteen tickets plus five follow-up fixes landed
+at `faf55185`. Unit 2361/2361; production build. Six follow-ups recorded
+in the execution plan Phase F. Nothing pushed, deployed or flashed; Phase E
+physical rows stay pending for Adrian.
+
+Phase F (2026-09-07): F4 `e1ce1d15` J01 end to end (13 clicks); F5+F6
+`5bb7b341` redundant-install gate + leased wiring confirm; F7 `6a92e8ff`;
+F8 `8e17126a` bare URL routes a returning owner to the overview; F9
+`89f1eacb` one transport vocabulary. Checkpoint: 30 suites 458/5/3 with the
+three re-seeded fixtures green 126/0 afterwards; unit 2369/2369; build.
+Remaining: Phase E bench observations; B6 shipment on instruction.
+Final checkpoint at `faf55185`: 30 browser suites 451 expected / 5 skipped /
+6 unexpected, all six green in isolation (five were the build number moving
+under a mid-run docs commit, one the known contention case); windowless 2/0;
+unit 2361/2361; build. Fixer worktrees `fix-*` under `.claude/worktrees` are
+merged and safe to remove.

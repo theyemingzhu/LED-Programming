@@ -61,7 +61,12 @@ export const BROWSER_STATES: BrowserState[] = [
     seed: async (page: Page) => {
       await seedKnownCard(page);
       await page.addInitScript(() => {
+        // `version` is what makes this a project Studio will OPEN. Without it
+        // migrateProject discards the payload and boots a fresh default, so the
+        // "work that must not be replaced" was never actually open — the
+        // assertion below passed against stored bytes nobody had loaded.
         localStorage.setItem('lw_autosave_v3', JSON.stringify({
+          version: 3,
           id: 'lwproj-open-work',
           name: 'Open work',
           layout: { starterPending: false, strips: [{ id: 'strip-a', pixels: 60, pin: 21 }] },

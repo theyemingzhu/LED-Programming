@@ -198,7 +198,13 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
     return { id: project?.id || '', fingerprint: cardProjectFingerprint(project) };
   });
   cardProject.id = installedProject.id;
-  cardProject.fingerprint = installedProject.fingerprint;
+  // A card that already holds this exact project at this exact revision has
+  // nothing left to receive (CardPushControl's redundant-install gate,
+  // F5), so a test whose subject is the WRITE must seed a card that holds an
+  // earlier state of the same project: same id, drifted fingerprint.
+  cardProject.fingerprint = options.seedStaleInstall
+    ? `${installedProject.fingerprint[0] === '0' ? '1' : '0'}${installedProject.fingerprint.slice(1)}`
+    : installedProject.fingerprint;
   // Reload so the card now answers as holding that exact project, then issue
   // the edit authorization the install controls require. The grant lives in
   // module memory, so it has to be issued after the last reload.
@@ -407,6 +413,9 @@ test('Settings installs the exact requested revision when an edit happens during
   await mockConnectedCard(page, 'lw-studio-hardening', {
     onConfigRequest: () => { configRequested = true; },
     configGate: () => configGate,
+    // The subject is the WRITE, so the card must not already hold this exact
+    // project (the redundant-install gate would truthfully send nothing).
+    seedStaleInstall: true,
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   const name = page.locator('.set-row', { hasText: 'Project name' }).locator('input');
@@ -435,7 +444,9 @@ test('Settings installs the exact requested revision when an edit happens during
 });
 
 test('Settings records a current install only after exact card read-back', async ({ page }) => {
-  await mockConnectedCard(page);
+  // A card that already holds this exact project would make Install a
+  // truthful no-op (redundant-install gate); this test is about the write.
+  await mockConnectedCard(page, 'lw-studio-hardening', { seedStaleInstall: true });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   const name = page.locator('.set-row', { hasText: 'Project name' }).locator('input');
   await name.fill('Exact settings install');
@@ -453,6 +464,9 @@ test('a stale revision-zero install acknowledgement cannot label a replacement p
   await mockConnectedCard(page, 'lw-studio-hardening', {
     onConfigRequest: () => { configRequested = true; },
     configGate: () => configGate,
+    // Nothing is edited before Install here, so the card must not already
+    // hold this exact project or there is genuinely nothing to send.
+    seedStaleInstall: true,
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await clickInstallOnCard(page);

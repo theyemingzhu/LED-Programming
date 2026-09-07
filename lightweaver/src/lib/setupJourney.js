@@ -239,11 +239,17 @@ function layoutComplete(progress) {
 }
 
 // `verification` is supplied by NO production caller — not lw-setup.jsx, not
-// app.jsx, not SetupJourneyChip.jsx (verified 2026-08-23). It was designed as a
-// second, independent way for phase 4 to complete — the card confirmed the
-// send, Studio confirmed the exact readback, and the owner said they saw the
-// lights — and was never wired up. `confirm-visible-lights` in SETUP_TASK_IDS
-// is unreachable for the same reason.
+// app.jsx, not SetupJourneyChip.jsx (verified 2026-08-23, still true
+// 2026-09-06). It was designed as a second, independent way for phase 4 to
+// complete — the card confirmed the send, Studio confirmed the exact readback,
+// and the owner said they saw the lights — and was never wired up.
+//
+// `confirm-visible-lights` itself is NOT unreachable: `exactWiringTest` above
+// produces it whenever the exact card reports a live wiring test
+// (state `testing` / candidate `awaiting-confirmation` with a matching card
+// and build), and every consumer now sees that through the shared evidence
+// store (lib/setupJourneyInputs.js). tests/journey-continuity.spec.ts [J13]
+// exercises exactly that. Only the `verification`-driven path below is dead.
 //
 // The ladder still finishes, through the `installedMatch` early return above,
 // and tests/card-state-matrix.spec.ts [T6] holds that exit open against a card

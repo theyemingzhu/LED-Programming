@@ -6,6 +6,11 @@
 // but no fingerprint could ever match, so Setup stayed on phase 1 offering the
 // same buttons forever.
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+
+// The real signed release this Studio ships — read, not hardcoded, so the
+// assertion below stays true across releases without editing this file.
+const release = JSON.parse(await readFile(new URL('../public/firmware/release-manifest.json', import.meta.url), 'utf8'));
 
 const CARD_ID = 'lw-legacy-fp-card';
 const PROJECT_ID = 'lwproj-legacy-piece';
@@ -132,4 +137,29 @@ test('missing wiring safety readback requires explicit adoption even in a fresh 
   await expect(page.getByTestId('setup-card-ready')).toHaveCount(0);
   await page.getByTestId('setup-start-from-card').click();
   await expectSetupComplete(page);
+});
+
+// legacyStatus() reports a real signed build (1306) that is genuinely older
+// than this Studio's release, verified against the actual public manifest —
+// not a mocked one. Ticket B2: that state is maintenance, not a blocker, and
+// the banner must say so instead of reusing the "update before relying on
+// it" sentence reserved for a card whose firmware cannot run the installed
+// project (cardLifecycle state 'update-required').
+test('the ready banner treats a compatible-but-older release as optional, not required', async ({ page }) => {
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expectSetupComplete(page);
+
+  const banner = page.getByTestId('setup-card-ready');
+  await expect(banner).toContainText('A newer card release is available');
+  await expect(banner).toContainText(
+    new RegExp(`Your lights keep working on 1306\\. Update to ${release.buildNumber} when convenient\\.`),
+  );
+  await expect(banner).not.toContainText('This card’s software is behind');
+  await expect(banner).not.toContainText('Update the card software before relying on it.');
+
+  // Same one-primary rule as the rest of Card Home: the optional wording must
+  // not demote Open Patterns to make room for a louder warning.
+  await expect(page.getByTestId('setup-open-patterns')).toHaveClass(/\bprimary\b/);
+  await expect(page.getByTestId('setup-update-card')).toBeVisible();
 });

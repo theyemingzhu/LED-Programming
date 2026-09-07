@@ -71,3 +71,54 @@ test('a card that never comes back still fails, with its own error', async () =>
   );
   assert.equal(calls, 4, 'it gives up after the agreed number of attempts');
 });
+
+test('a lost reply is settled by reading the card back, not by sending the command again', async () => {
+  let sends = 0;
+  let reads = 0;
+  const result = await retryWhileTransient(() => {
+    sends += 1;
+    const error = new TypeError('Failed to fetch');
+    throw error;
+  }, {
+    attempts: 3,
+    sleep: async () => {},
+    readBack: async (error, attemptNumber) => {
+      reads += 1;
+      assert.equal(attemptNumber, 1, 'the read happens before the first retry');
+      assert.match(String(error?.message), /fetch/);
+      return { ok: true, readBack: true };
+    },
+  });
+  assert.deepEqual(result, { ok: true, readBack: true });
+  assert.equal(sends, 1, 'the write went out exactly once');
+  assert.equal(reads, 1, 'one read settled it');
+});
+
+test('a read-back that cannot confirm the intent falls through to the ordinary retry', async () => {
+  let sends = 0;
+  const result = await retryWhileTransient(() => {
+    sends += 1;
+    if (sends === 1) throw new TypeError('Failed to fetch');
+    return { ok: true, sent: sends };
+  }, {
+    attempts: 3,
+    sleep: async () => {},
+    readBack: async () => null,
+  });
+  assert.deepEqual(result, { ok: true, sent: 2 });
+  assert.equal(sends, 2, 'an unconfirmed read still allows one more send');
+});
+
+test('a read-back that throws is treated as unconfirmed', async () => {
+  let sends = 0;
+  await retryWhileTransient(() => {
+    sends += 1;
+    if (sends === 1) throw new TypeError('Failed to fetch');
+    return { ok: true };
+  }, {
+    attempts: 3,
+    sleep: async () => {},
+    readBack: async () => { throw new Error('zones unreadable'); },
+  });
+  assert.equal(sends, 2);
+});
