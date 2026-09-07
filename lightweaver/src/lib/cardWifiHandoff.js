@@ -116,6 +116,22 @@ function expectedIdentity(options = {}) {
     : null;
 }
 
+// F13 deliberately does NOT reach here, and the exact firmware equality below
+// stays exact.
+//
+// Everywhere else a same-card firmware difference means "this card was
+// updated", and `classifyPairedCardReadiness` accepts it. A handoff correlation
+// is a different kind of claim: it is minted from the card's own live status
+// seconds earlier and is pinned to that ONE BOOT (`expectedBootId`, required by
+// every caller). A firmware update always reboots the card onto a new boot id,
+// so no legitimately updated card can be inside a live correlation — a status
+// that reports the right boot with different firmware is not an update, it is
+// evidence the correlation no longer describes reality, and it must fail.
+//
+// The `classifyCardReadiness` call at the end of this function therefore can
+// never see a firmware mismatch: the raw equality here has already returned
+// false. Routing it through `isStaleFirmwareMismatch` would be dead code, and
+// relaxing the equality would trade a same-boot proof for nothing.
 function readinessMatches(status, expected, expectedBootId) {
   if (!expected) return false;
   const rawCardId = exactText(status?.cardId ?? status?.id, 64, CARD_ID_PATTERN);

@@ -1,4 +1,5 @@
 import { normalizeCardKaleidoscopeMappings } from './cardRuntimeContract.js';
+import { classifyCardReadiness, isStaleFirmwareMismatch } from './cardReadiness.js';
 
 export const CARD_IDENTITY_STORAGE_KEY = 'lw_card_identity_v1';
 
@@ -270,6 +271,92 @@ export function readPersistedCardIdentity({ storage = defaultStorage() } = {}) {
 
 export function adoptExpectedCardIdentity(identity = {}, options = {}) {
   return persistCardIdentity(identity, options);
+}
+
+// The remembered card answered with the SAME id and different firmware. That is
+// an update, not a swap — Studio's own note is what is out of date, and the
+// note is the only thing that changes here. The pairing, the host, the name and
+// everything else the record carries are preserved exactly.
+//
+// F13, found on Adrian's card 2026-09-07: after the preserving Wi-Fi update
+// 1524 → 1548 the stored record held the OLD buildId beside a buildNumber that
+// had already moved to the new build — a firmware identity that described no
+// build that has ever existed, written by a caller that updated part of it.
+// So the three firmware fields move TOGETHER or not at all: a reader that sees
+// a buildNumber can trust the buildId beside it names the same build.
+//
+// Returns the refreshed record, the unchanged record when nothing moved, or
+// null when this is not the remembered card (a different id is never
+// re-learned here — `isDifferentCardMismatch` is the gate for that, and it
+// stops).
+export function refreshExpectedCardFirmware(observed = {}, {
+  storage = defaultStorage(),
+  acknowledgedAt = new Date().toISOString(),
+} = {}) {
+  const remembered = readPersistedCardIdentity({ storage });
+  const observedId = cleanText(observed?.id ?? observed?.cardId, 64);
+  if (!remembered?.id || !observedId || remembered.id !== observedId) return null;
+  const firmwareVersion = cleanText(observed.firmwareVersion, 48);
+  const buildId = cleanText(observed.buildId, 96);
+  // A card that cannot name both halves of its firmware has told us nothing
+  // worth writing down; keep the note we already have rather than blanking it.
+  if (!firmwareVersion || !buildId) return null;
+  if (remembered.firmwareVersion === firmwareVersion && remembered.buildId === buildId) return remembered;
+  const written = persistCardIdentity({
+    ...remembered,
+    firmwareVersion,
+    buildId,
+    // Whole or nothing: a build that reports no number (a bench build) stores 0
+    // rather than leaving the previous release's number standing beside a
+    // buildId it does not belong to.
+    buildNumber: Number.isSafeInteger(Number(observed.buildNumber)) && Number(observed.buildNumber) > 0
+      ? Number(observed.buildNumber)
+      : 0,
+  }, { storage, acknowledgedAt });
+  return written ? readPersistedCardIdentity({ storage }) : null;
+}
+
+// Classify a card status for a card Studio has already paired with.
+//
+// `classifyCardReadiness` reports three different findings as
+// `identity-mismatch`, and only one of them means a stranger answered. Every
+// gate used to treat all three alike, so the state a successful firmware update
+// ALWAYS produces — same card id, firmware Studio has not written down yet —
+// was refused at every transport, and the owner was sent back through pairing
+// and setup for a card that was sitting right there, healthy, on the build the
+// official updater had just installed.
+//
+// Here a same-id firmware difference is what it is: compatible evidence. The
+// remembered firmware is re-learned whole, and the status is re-classified
+// against the refreshed note so every downstream verdict — blank, safe mode,
+// boot change, runtime readiness — is reached exactly as it would have been had
+// the note never been stale. Nothing else is relaxed: a different card id still
+// returns `identity-mismatch`/`unexpected-card`, an unsupported contract or an
+// invalid identity still returns `checking`, and `firmware-too-old` refusals
+// elsewhere are untouched — a genuinely incompatible firmware still blocks.
+export function classifyPairedCardReadiness(raw = {}, options = {}) {
+  const { storage, acknowledgedAt, ...classifyOptions } = options;
+  const classified = classifyCardReadiness(raw, classifyOptions);
+  if (!isStaleFirmwareMismatch(classified)) return classified;
+  // Re-learn against the persisted record when this IS that record's card;
+  // otherwise (a caller comparing against a locally held expectation, e.g. a
+  // handoff correlation or an injected test expectation) accept the live
+  // firmware for this classification only and write nothing.
+  const refreshed = refreshExpectedCardFirmware({
+    id: classified.cardId,
+    firmwareVersion: classified.firmwareVersion,
+    buildId: classified.buildId,
+    buildNumber: classified.buildNumber,
+  }, {
+    ...(storage === undefined ? {} : { storage }),
+    ...(acknowledgedAt === undefined ? {} : { acknowledgedAt }),
+  });
+  const expectedCard = refreshed || {
+    ...(classifyOptions.expectedCard || {}),
+    firmwareVersion: classified.firmwareVersion,
+    buildId: classified.buildId,
+  };
+  return classifyCardReadiness(raw, { ...classifyOptions, expectedCard });
 }
 
 export function forgetExpectedCardIdentity({ storage = defaultStorage() } = {}) {

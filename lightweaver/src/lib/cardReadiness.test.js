@@ -594,3 +594,26 @@ test('normalizes the installed project revision alongside the rest of the projec
     4,
   );
 });
+
+// F13. `firmwareVersion` and `buildId` were normalized here and `buildNumber`
+// was not, so anything re-learning a card's firmware from a readiness envelope
+// could carry only two of the three fields and left the third describing the
+// previous build — which is precisely the half-updated record found on the real
+// card on 2026-09-07.
+test('normalized readiness carries the whole firmware identity, build number included', () => {
+  const withNumber = normalizeCardReadiness({
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.33', buildId: 'c'.repeat(40),
+    buildNumber: 1548, bootId: 'boot-9',
+  });
+  assert.equal(withNumber.firmwareVersion, '1.1.33');
+  assert.equal(withNumber.buildId, 'c'.repeat(40));
+  assert.equal(withNumber.buildNumber, 1548);
+
+  // A bench build reports no number. 0 is the same "no comparable number" that
+  // normalizeCardIdentity reports, never a stale number from another build.
+  assert.equal(normalizeCardReadiness({ buildNumber: 0 }).buildNumber, 0);
+  assert.equal(normalizeCardReadiness({}).buildNumber, 0);
+  assert.equal(normalizeCardReadiness({ buildNumber: -4 }).buildNumber, 0);
+  assert.equal(normalizeCardReadiness({ buildNumber: '1548' }).buildNumber, 1548);
+});

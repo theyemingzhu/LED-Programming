@@ -75,13 +75,27 @@ test('Studio does not probe an unpaired card on reload', async () => {
   assert.equal(directCalls, 0);
 });
 
-test('Studio reload keeps the firmware build it paired with, so a reflash stays visible', async () => {
+// F13. This test used to assert the opposite — that a reload must KEEP the
+// remembered build so a reflash "stays visible" — and the code it protected is
+// what stranded Adrian's card on 2026-09-07. That code did not keep the note;
+// it tore it: the live `card` was spread in, carrying its buildNumber, while
+// only firmwareVersion and buildId were pinned back to the remembered ones. So
+// after the 1524 → 1548 update the stored record held build number 1548 beside
+// the buildId of 1524 — a firmware identity describing no build that has ever
+// existed — and every firmware comparison in Studio refused the card in front
+// of him.
+//
+// A same-id firmware change is what an official update always produces. The
+// change worth stopping for is a DIFFERENT CARD, and that is unreachable here:
+// `connectTransport` is given the remembered id and refuses any other as
+// `wrong-card`. So the note is brought current, whole.
+test('Studio reload writes down the firmware the card is actually running, whole', async () => {
   let persisted = null;
   await bootstrapStudioCardConnection({
     bootstrapLink: async () => ({ state: 'disconnected' }),
     isConnected: () => false,
     readIdentity: () => ({
-      id: 'lw-card-a', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40),
+      id: 'lw-card-a', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40), buildNumber: 1524,
     }),
     readHost: () => 'lightweaver.local',
     candidateHosts: () => ['lightweaver.local'],
@@ -90,14 +104,19 @@ test('Studio reload keeps the firmware build it paired with, so a reflash stays 
       host: 'lightweaver.local',
       cardId: 'lw-card-a',
       bootId: 'boot-new',
-      // The card now answers with a DIFFERENT build: the owner reflashed it.
-      card: { id: 'lw-card-a', firmwareVersion: '1.0.0', buildId: 'b'.repeat(40) },
+      // The card now answers on a newer signed build: it was updated.
+      card: {
+        id: 'lw-card-a', firmwareVersion: '1.1.0', buildId: 'b'.repeat(40), buildNumber: 1548,
+      },
     }),
     persistIdentity: value => { persisted = value; return true; },
   });
-  // Restoring the pairing must not re-learn the new firmware behind the
-  // owner's back — the remembered build is what makes the change detectable,
-  // and only the explicit "keep the new firmware" action may replace it.
-  assert.equal(persisted.buildId, 'a'.repeat(40));
+  // All three firmware fields move together, or the record describes a build
+  // that never existed.
+  assert.equal(persisted.buildId, 'b'.repeat(40));
+  assert.equal(persisted.firmwareVersion, '1.1.0');
+  assert.equal(persisted.buildNumber, 1548);
+  // The pairing itself is untouched — this is the same card.
+  assert.equal(persisted.id, 'lw-card-a');
   assert.equal(persisted.bootId, 'boot-new');
 });
