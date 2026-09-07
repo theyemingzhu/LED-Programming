@@ -420,3 +420,79 @@ test('revalidate() rejects a genuine identity change with the existing wrong-car
   );
   assert.equal(authority.revoked, true);
 });
+
+// ---------------------------------------------------------------------------
+// F13 — a card that came back on a newer signed build is the same card.
+// The transport pins identity, never firmware: `exactStatus` compares the id
+// alone on purpose. What was missing is the other half — proving the new build
+// is the first moment it can be written down, and the note has to move WHOLE.
+// ---------------------------------------------------------------------------
+
+function withMemoryLocalStorage(seed, run) {
+  const values = new Map();
+  if (seed) values.set('lw_card_identity_v1', JSON.stringify(seed));
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: key => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: key => values.delete(key),
+    },
+  });
+  const read = () => JSON.parse(values.get('lw_card_identity_v1') || 'null');
+  return Promise.resolve(run(read)).finally(() => {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else delete globalThis.localStorage;
+  });
+}
+
+const PAIRED_ON_OLD_BUILD = {
+  version: 1,
+  id: 'lw-card-a',
+  name: 'Front Mandala',
+  address: '192.168.18.70',
+  firmwareVersion: '1.1.31',
+  buildId: 'a'.repeat(40),
+  buildNumber: 1524,
+  acknowledgedAt: '2026-09-01T10:00:00.000Z',
+};
+
+test('the paired card connects on a newer build, and its firmware note is rewritten whole', async () => {
+  const status = readyStatus({ firmwareVersion: '1.1.33', buildId: 'c'.repeat(40), buildNumber: 1548 });
+  await withMemoryLocalStorage(PAIRED_ON_OLD_BUILD, async (readIdentity) => {
+    const authority = await connectCardTransport({
+      host: '192.168.18.70',
+      expectedCardId: 'lw-card-a',
+      link: linkFor(status),
+      fetchImpl: async () => response(status),
+    });
+    assert.equal(authority.connected, true,
+      'refusing the paired card because Studio’s own note is out of date is F13');
+    assert.equal(authority.cardId, 'lw-card-a');
+
+    const stored = readIdentity();
+    assert.equal(stored.buildId, 'c'.repeat(40));
+    assert.equal(stored.firmwareVersion, '1.1.33');
+    assert.equal(stored.buildNumber, 1548);
+    assert.equal(stored.id, 'lw-card-a', 'the pairing itself is untouched');
+    assert.equal(stored.name, 'Front Mandala', 'nothing but the firmware note moves');
+  });
+});
+
+test('a different card on a newer build is still refused, and the note is untouched', async () => {
+  const status = readyStatus({
+    cardId: 'lw-someone-elses', firmwareVersion: '1.1.33', buildId: 'c'.repeat(40), buildNumber: 1548,
+  });
+  await withMemoryLocalStorage(PAIRED_ON_OLD_BUILD, async (readIdentity) => {
+    const result = await connectCardTransport({
+      host: '192.168.18.70',
+      expectedCardId: 'lw-card-a',
+      link: linkFor(status),
+      fetchImpl: async () => response(status),
+    });
+    assert.equal(result.connected, false);
+    assert.equal(result.reason, 'wrong-card');
+    assert.deepEqual(readIdentity(), PAIRED_ON_OLD_BUILD);
+  });
+});
