@@ -794,19 +794,26 @@ export function createCardSimulator(
         state.bootId = `${state.bootId}-r`;
         return ok({ ok: true, message: 'rebooting' });
       case '/api/config': {
-        // The firmware's actual rule, and the reason "save to card" is two
-        // steps rather than one: a config that changes WIRING is staged, not
-        // applied, and waits for a human to confirm the lights still look
-        // right. Anything else applies immediately. A simulator that just
-        // answered {ok:true} could not tell those apart, so the entire
-        // stage/activate/confirm lifecycle — the part that actually programs
-        // the card — was untestable.
+        // The firmware's actual rule (LightweaverStorage.cpp
+        // runtimeConfigJsonChangesWiring, F14): a REWIRE — output identity/
+        // pin, LED type, current ceiling, segment count/id/reversed — is
+        // staged, not applied, and waits for a human to confirm the lights
+        // still look right through the candidate dance. A changed PIXEL
+        // COUNT on the SAME outputs is the length the owner typed: apply it
+        // and reboot AT ONCE, no candidate dance. Firmware's own comment:
+        // "Pixel count on the same outputs is the length the owner typed —
+        // save and reboot, do not send them through the LED-check candidate
+        // dance." This simulator only tracks output pin identity as the
+        // wiring fact (matching hardwareFacts() in src/lib/cardDeployment.js,
+        // which independently agrees pixel count alone is not a wiring
+        // change), so only a pin change stages here — a pixel-only change
+        // falls to the apply-and-reboot branch below.
         const led = (payload.led || {}) as Record<string, unknown>;
         const nextPixels = Number(led.pixels ?? state.pixels);
         const outputs = (led.outputs || []) as { pin?: number }[];
         const nextPin = Number(outputs[0]?.pin ?? state.pin);
-        const wiringChanged = state.pixels > 0
-          && (nextPixels !== state.pixels || nextPin !== state.pin);
+        const wiringChanged = state.pixels > 0 && nextPin !== state.pin;
+        const pixelCountChanged = state.pixels > 0 && nextPixels !== state.pixels;
 
         if (wiringChanged) {
           state.wiringTransactionOpen = true;
@@ -828,7 +835,26 @@ export function createCardSimulator(
         }
 
         applyConfigProjectFields(payload);
-        return ok({ ok: true, message: 'applied', requiresReboot: true });
+
+        if (pixelCountChanged) {
+          // The write above already landed for real — state was just
+          // mutated. What a real card loses next is the reply itself, mid-
+          // restart: it saves and restarts at once (F14). Model the whole
+          // thing: drop THIS one reply (the write already landed; a naive
+          // "no reply, so retry" would resend a real second command, which
+          // is exactly the duplicate write the journey contract forbids),
+          // and take the card off the air for a beat under a new boot id —
+          // the same shape `reboot()` produces, just delayed so a caller
+          // polling status mid-window genuinely finds the card gone before
+          // it answers again.
+          state.bootId = `${state.bootId}-r`;
+          state.stateRevision += 1;
+          offline = true;
+          setTimeout(() => { offline = false; }, 1500);
+          dropRepliesAfterApply.set('/api/config', (dropRepliesAfterApply.get('/api/config') || 0) + 1);
+        }
+
+        return ok({ ok: true, message: 'applied', requiresReboot: pixelCountChanged });
       }
       case '/api/beacon/port': {
         // Field-for-field against LightweaverWeb.cpp's factory beacon probe
