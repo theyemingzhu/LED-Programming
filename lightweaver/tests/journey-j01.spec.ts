@@ -241,59 +241,53 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // setup-install-slot's phase). It navigates to
   // '…&task=install-project&next=patterns', which is exactly what makes
   // CardInstallAction render CardPushControl with autoStart=true
-  // (continueToPatterns): the install push AND the resulting wiring-test
-  // activation both run with NO further click
-  // (CardPushControl.jsx's autoStartedRef / autoActivatedRef effects) — going
-  // from the 256-pixel bench sentinel to this project's real 41-pixel/pin-18
-  // strip is a wiring change (cardDeployment.js's classifyCardChanges), so
-  // the card stages it, and this IS the wiring test the ticket asks for.
+  // (continueToPatterns): the install push runs with no further click
+  // (CardPushControl.jsx's autoStartedRef effect). Going from the 256-pixel
+  // bench sentinel to this project's real 41-pixel/pin-18 strip changes ONLY
+  // the pixel count — the pin stays 18, the exact port the beacon probed —
+  // which per the firmware rule (F14, LightweaverStorage.cpp's
+  // runtimeConfigJsonChangesWiring) is NOT a rewire: the card applies it and
+  // reboots at once, no staged candidate, no light test. (This test used to
+  // assert the opposite here — `wiringTestActive: true` plus a
+  // wiring-test-confirm click — on the mistaken belief that any pixel change
+  // stages a candidate; that was the simulator's own prior bug, corrected
+  // alongside F14 to match cardDeployment.js's classifyCardChanges, which
+  // never counted pixel count as a hardware fact in the first place.)
+  // Discovery's own bench-sentinel write already posted one /api/config
+  // before this point (installBenchConfig, above) — count only what "Open
+  // Patterns" itself sends, not the whole walk's total.
+  const configPostsBeforeOpenPatterns = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length;
   await page.getByTestId('setup-verify-action').click();
   await expect(page).toHaveURL(/next=patterns/);
 
   await expect.poll(
-    () => ({ wiringTestActive: card.state.wiringTestActive, pixels: card.state.pixels }),
+    () => ({ wiringTestActive: card.state.wiringTestActive, pixels: card.state.pixels, projectId: card.state.projectId }),
     {
       timeout: CONNECT_BUDGET_MS,
-      message: 'Open Patterns must auto-push the real project and auto-activate its wiring candidate without another click',
-    },
-  ).toEqual({ wiringTestActive: true, pixels: COUNTED_PIXELS });
-
-  // Field-for-field against firmware (LightweaverStorage.cpp's
-  // activateStagedRuntimeConfig / stageRuntimeConfigJson): the candidate BOOT
-  // that just happened runs off the ENTIRE staged config, not a wiring-only
-  // patch of the project the card already had — so the card must already be
-  // running the real project's identity here, mid-test, before any confirm.
-  expect(
-    card.state.projectId,
-    'activating the staged candidate must already be running the real project — firmware boots the whole '
-    + 'staged config, not just its wiring — not still the bench sentinel',
-  ).toBe(realProjectId);
-
-  await expect(
-    page.getByTestId('wiring-test-confirm'),
-    'the physical light test must offer its real confirm control once the card is testing',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  await page.getByTestId('wiring-test-confirm').click();
-
-  await expect.poll(
-    () => ({
-      wiringTestActive: card.state.wiringTestActive,
-      pixels: card.state.pixels,
-      projectId: card.state.projectId,
-    }),
-    {
-      timeout: CONNECT_BUDGET_MS,
-      message: 'confirming the light test must promote the real project — end the probation window, keep the '
-        + 'real pixel count, keep the real project id',
+      message: 'Open Patterns must auto-push the real project — a pixel-count-only change on the same pin '
+        + 'applies and reboots at once, with no wiring candidate to activate or confirm',
     },
   ).toEqual({ wiringTestActive: false, pixels: COUNTED_PIXELS, projectId: realProjectId });
 
-  const confirmPosts = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/confirm');
-  expect(confirmPosts.length, 'confirming a light test must post exactly one confirmation').toBe(1);
+  // The card's first /api/config reply is lost to its own immediate reboot
+  // (F14) — Studio must recover by reading the card back, never by resending
+  // the write. Exactly one /api/config POST from "Open Patterns" itself, and
+  // never a wiring candidate: this really was a length change, not a rewire.
+  const configPostsAfterOpenPatterns = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length
+    - configPostsBeforeOpenPatterns;
+  expect(
+    configPostsAfterOpenPatterns,
+    'the auto-push must send exactly one /api/config — Studio must recover from the lost reply by reading '
+    + 'the card back, not by resending the write',
+  ).toBe(1);
+  expect(
+    card.requests.some(entry => entry.method === 'POST' && entry.path === '/api/wiring/candidate'),
+    'a pixel-count-only change on the same pin must never open a wiring candidate',
+  ).toBe(false);
 
   // CardPushControl's own onInstalled (continueToPatterns) sends the owner
   // straight to Patterns the moment verification lands — waiting for that
-  // natural navigation proves the whole confirm-then-verify chain actually
+  // natural navigation proves the restart-recovery chain (F14) actually
   // finished settling, not just that the card-side facts already had.
   await expect(page, 'a confirmed install must hand the owner on to Patterns on its own').toHaveURL(/#screen=pattern$/, { timeout: CONNECT_BUDGET_MS });
 
@@ -302,7 +296,7 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // Home reads complete" are two different claims and each gets its own
   // assertion rather than being inferred from the other.
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await waitConnectedUnaided(page, 'J01 back on Card Home after the wiring test was confirmed');
+  await waitConnectedUnaided(page, 'J01 back on Card Home after the real project was installed');
   await expect(
     journey,
     'the real project is now installed and confirmed on the card — Card Home must read the setup as complete',
