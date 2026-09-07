@@ -26,6 +26,7 @@ import {
   rollbackCardWiringCandidate,
 } from '../../../lib/cardWiringSafety.js';
 import { openLocalCardPage } from '../../../lib/cardBridge.js';
+import { isTransientCardFailure } from '../../../lib/cardTransientFailure.js';
 import { readPersistedCardIdentity } from '../../../lib/cardIdentity.js';
 import { currentInstallation } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
@@ -152,6 +153,13 @@ export function CardPushControl({
   const [candidateConflict, setCandidateConflict] = useState(null);
   const [writeOwnerConflict, setWriteOwnerConflict] = useState(null);
   const [installAlreadyCurrent, setInstallAlreadyCurrent] = useState(false);
+  // True while Studio is waiting out a card-initiated reboot after a push —
+  // a pixel-count-only save applies and restarts the card at once (F14), and
+  // the HTTP reply that would say so is exactly what a real card loses
+  // mid-restart. A lost reply after a successful write is "verification
+  // pending", never automatically "write failed" (the same rule F3 already
+  // applies to card-restarted /api/control failures).
+  const [installRestarting, setInstallRestarting] = useState(false);
   const failedAttemptRef = useRef(null);
   const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, readProjectLifecycle());
 
@@ -192,6 +200,7 @@ export function CardPushControl({
     setWiringCandidate(null);
     setCandidateConflict(null);
     setInstallAlreadyCurrent(false);
+    setInstallRestarting(false);
     setPushFallbackJson(''); setPushFallbackPackage(null);
     try {
       if (!attempt) {
@@ -290,19 +299,36 @@ export function CardPushControl({
         onInstalled?.();
         return;
       }
-      const deploymentStart = await orchestrateCardDeploymentStart(
-        attempt.prepared,
-        {
-          readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host }),
-          readStatus: () => readCardStatusEnvelope({ host: attempt.host }),
-          readWiringStatus: () => getCardWiringStatus({ host: attempt.host }),
-          config: async () => {
-            assertCurrentAttempt(attempt);
-            setPushStatus(`Sending revision ${attempt.revision} to ${cleanHost}...`);
-            return pushConfigToCard(attempt.pkg, { host: attempt.host, allowLayoutChange: true });
+      let configPushAttempted = false;
+      let deploymentStart;
+      try {
+        deploymentStart = await orchestrateCardDeploymentStart(
+          attempt.prepared,
+          {
+            readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host }),
+            readStatus: () => readCardStatusEnvelope({ host: attempt.host }),
+            readWiringStatus: () => getCardWiringStatus({ host: attempt.host }),
+            config: async () => {
+              assertCurrentAttempt(attempt);
+              setPushStatus(`Sending revision ${attempt.revision} to ${cleanHost}...`);
+              configPushAttempted = true;
+              return pushConfigToCard(attempt.pkg, { host: attempt.host, allowLayoutChange: true });
+            },
           },
-        },
-      );
+        );
+      } catch (configError) {
+        // A pixel-count-only save applies and reboots the card at once
+        // (F14) — the reply that would tell Studio that is exactly what a
+        // real card loses mid-restart. Nothing was sent yet (a bad preflight
+        // read, before the POST) is a genuine failure and falls straight to
+        // the outer catch below, same as always — resending it is safe. A
+        // transport failure AFTER the POST was sent may mean the write
+        // already landed: treat it as verification pending, not write
+        // failed, and fall into the exact same "wait, read back, decide"
+        // path the success case takes below.
+        if (!configPushAttempted || !isTransientCardFailure(configError)) throw configError;
+        deploymentStart = { action: 'stage-new', status: null, response: { requiresReboot: true, rebooting: true } };
+      }
       attempt = { ...attempt, wiringStatus: deploymentStart.status, resumeAction: deploymentStart.action };
       if (attempt.resumeAction === 'candidate-conflict') {
         setCandidateConflict({
@@ -342,23 +368,46 @@ export function CardPushControl({
         setPushStatus('New wiring is ready to test. Your current working setup is still safe.');
         return;
       }
-      setPushStatus('Verifying the exact project on the card…');
-      const { verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host);
-      await publishVerifiedReadiness(attempt.prepared, attempt.host);
-      assertCurrentAttempt(attempt);
-      dispatchAction({ type: 'confirm' });
-      markProjectInstalled({
-        revision: attempt.revision,
-        generation: attempt.generation,
-        cardId: verification.cardId,
-        projectRevision: attempt.prepared.config.projectRevision,
-        projectFingerprint: attempt.prepared.config.projectFingerprint,
-      });
-      markCardLookConfirmed({ ...(standaloneController?.defaultLook || {}), syncZones: true });
-      failedAttemptRef.current = null;
-      setPushStatus(`Installed revision ${attempt.revision} on card · ${attempt.zoneCount} zone${attempt.zoneCount === 1 ? '' : 's'} at ${cleanHost}`);
-      onInstalled?.();
+      // A response that names the reboot explicitly (a reply that survived)
+      // or the synthesized fallback above (a reply that did not) both mean
+      // the same thing: the card is restarting on its own, unattended, and
+      // Studio's job now is to wait it out and read back — never to treat
+      // silence as a refusal.
+      const cardIsRestarting = response?.requiresReboot === true || response?.rebooting === true;
+      setPushStatus(cardIsRestarting ? 'Card restarted — verifying…' : 'Verifying the exact project on the card…');
+      if (cardIsRestarting) setInstallRestarting(true);
+      try {
+        const { verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host);
+        await publishVerifiedReadiness(attempt.prepared, attempt.host);
+        assertCurrentAttempt(attempt);
+        dispatchAction({ type: 'confirm' });
+        markProjectInstalled({
+          revision: attempt.revision,
+          generation: attempt.generation,
+          cardId: verification.cardId,
+          projectRevision: attempt.prepared.config.projectRevision,
+          projectFingerprint: attempt.prepared.config.projectFingerprint,
+        });
+        markCardLookConfirmed({ ...(standaloneController?.defaultLook || {}), syncZones: true });
+        failedAttemptRef.current = null;
+        setInstallRestarting(false);
+        setPushStatus(`Installed revision ${attempt.revision} on card · ${attempt.zoneCount} zone${attempt.zoneCount === 1 ? '' : 's'} at ${cleanHost}`);
+        onInstalled?.();
+      } catch (verifyError) {
+        if (!cardIsRestarting) throw verifyError;
+        // The card restarted, but Studio still cannot prove it holds this
+        // exact project — it may still be booting, or the write genuinely
+        // never landed. Either way this is NOT the generic "Push failed"
+        // path below: Retry here must read the card again before it is
+        // ever allowed to resend (see retryAfterCardRestart) — a blind
+        // resend would write a config the card may already hold.
+        setInstallRestarting(false);
+        failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true };
+        dispatchAction({ type: 'fail', error: 'The card restarted but does not hold this project yet.' });
+        setPushStatus('The card restarted but does not hold this project yet.');
+      }
     } catch (err) {
+      setInstallRestarting(false);
       failedAttemptRef.current = attempt;
       const message = err instanceof CardPushError ? err.message : `Push failed: ${err.message || err}`;
       dispatchAction({ type: 'fail', error: message });
@@ -373,6 +422,45 @@ export function CardPushControl({
       }
     }
     }));
+  };
+
+  // Retry after a restart-recovery failure (see the `awaitingRestartConfirmation`
+  // attempt above). Reads the card once before ever resending: if it now
+  // proves the card holds this exact project (it may simply have finished
+  // booting between the failure and this click), that read IS the
+  // installation and nothing is sent again; only a genuine, freshly-confirmed
+  // mismatch falls through to the ordinary retry, which resends for real.
+  const retryAfterCardRestart = async () => {
+    const pending = failedAttemptRef.current;
+    if (!pending?.awaitingRestartConfirmation) return pushToCard(pending);
+    setPushStatus('Reading the card again before retrying…');
+    try {
+      const verification = await waitForCardDeploymentVerification(pending.prepared, {
+        readEvidence: () => readReadyDeploymentEvidence(pending.host),
+        attempts: 1,
+        intervalMs: 0,
+        requireReady: true,
+      });
+      await publishVerifiedReadiness(pending.prepared, pending.host);
+      assertCurrentAttempt(pending);
+      dispatchAction({ type: 'confirm' });
+      markProjectInstalled({
+        revision: pending.revision,
+        generation: pending.generation,
+        cardId: verification.cardId,
+        projectRevision: pending.prepared.config.projectRevision,
+        projectFingerprint: pending.prepared.config.projectFingerprint,
+      });
+      markCardLookConfirmed({ ...(standaloneController?.defaultLook || {}), syncZones: true });
+      failedAttemptRef.current = null;
+      setPushStatus(`Installed revision ${pending.revision} on card · ${pending.zoneCount} zone${pending.zoneCount === 1 ? '' : 's'} at ${pending.host}`);
+      onInstalled?.();
+    } catch {
+      // Confirmed: the card genuinely does not hold this project yet. This
+      // is no longer a blind retry — the read above just proved it — so
+      // resend for real.
+      await pushToCard(pending);
+    }
   };
 
   const startWiringTest = async () => {
@@ -573,7 +661,9 @@ export function CardPushControl({
       {pushStatus && (
         <div
           className={`la-card-push-banner ${action.status === 'confirmed' ? 'is-ok' : action.status === 'failed' ? 'is-err' : 'is-pending'}`}
-          {...(installAlreadyCurrent ? { 'data-testid': 'card-install-already-current' } : {})}
+          {...(installAlreadyCurrent
+            ? { 'data-testid': 'card-install-already-current' }
+            : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
           {pushStatus}
           {action.status === 'failed' && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
@@ -587,7 +677,7 @@ export function CardPushControl({
           {candidateConflict?.activationId ? (
             <button className="btn" data-testid="discard-candidate-and-retry" title="Discard the unfinished card light test, keep the working setup, and retry this install." data-tooltip="Discard the unfinished card light test, keep the working setup, and retry this install." onClick={() => void discardOldCandidateAndRetry()}>Discard old test and retry</button>
           ) : action.status === 'failed' && (
-            <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => pushToCard(failedAttemptRef.current)}>Retry</button>
+            <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => void retryAfterCardRestart()}>Retry</button>
           )}
         </div>
       )}

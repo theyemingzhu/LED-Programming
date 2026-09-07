@@ -10,6 +10,8 @@ import { WireBuildSheet } from './layout/wire/WireBuildSheet.jsx';
 import { openCardFlow } from '../lib/cardFlowEntry.js';
 import { useLayoutState } from './layout/hooks/useLayoutState.js';
 import { useProject } from '../state/ProjectContext.jsx';
+import { classifyCardChanges, cardStatusAsConfig } from '../lib/cardDeployment.js';
+import { getCardLinkState } from '../lib/cardLink.js';
 import {
   createDefaultKaleidoscope,
   deriveReflectionPointIndices,
@@ -36,7 +38,37 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   // Live values from the starter panel ({ shape, ledCount, density, lengthM }
   // or null) — drives the ghost preview of the primitive on the canvas.
   const [starterPreview, setStarterPreview] = useState(null);
-  const { wiring, compiledWiring, updateWiring } = useProject();
+  const { wiring, compiledWiring, updateWiring, standaloneController } = useProject();
+  // Reuses classifyCardChanges (src/lib/cardDeployment.js) — the same
+  // function that decides `prepared.changes` for an actual push — purely to
+  // choose which sentence to show, never to gate the button. hardwareFacts()
+  // inside it deliberately ignores pixel COUNT (only pin/segment identity,
+  // power, and colour count as hardware), so a length-only edit reads
+  // 'visual' here exactly as it does on the card (F14): applied and
+  // rebooted at once, no light test. Any pin/output/power/colour edit reads
+  // 'hardware': staged, and answered with a light test. `getCardLinkState()`
+  // is read as a plain snapshot (same pattern CardPushControl already uses
+  // for its transport check) — stale by at most a render, which is fine for
+  // an informational line that never decides anything.
+  const layoutChangeKind = useMemo(() => {
+    const readiness = getCardLinkState()?.readiness;
+    if (!readiness || !standaloneController?.outputs?.length) return null;
+    const previousConfig = cardStatusAsConfig(readiness);
+    const nextConfig = {
+      led: {
+        outputs: standaloneController.outputs.map((output, index) => ({
+          id: output.id || `out${index + 1}`,
+          pin: Number(output.pin),
+        })),
+        maxMilliamps: Number(standaloneController.led?.maxMilliamps),
+        colorOrder: standaloneController.led?.colorOrder,
+        outputGammaEnabled: standaloneController.led?.outputGammaEnabled,
+        outputGammaValue: standaloneController.led?.outputGammaValue,
+        calibration: standaloneController.led?.calibration,
+      },
+    };
+    return classifyCardChanges(previousConfig, nextConfig).kind;
+  }, [standaloneController]);
   const {
     // context passthroughs + composer-level derived (chrome + canvas only)
     strips, layers, hidden,
@@ -437,6 +469,13 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           >
             Check and install on the card
           </button>
+          {layoutChangeKind && (
+            <p className="la-change-kind" data-testid="layout-change-kind">
+              {layoutChangeKind === 'hardware'
+                ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
+                : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
+            </p>
+          )}
         </div>
         <div className="la-mode-content is-draw">
           <DrawModePanel state={state}
