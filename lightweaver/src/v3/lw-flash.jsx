@@ -542,9 +542,14 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     useEffect(() => {
       if (!softwareGrantAvailable) return undefined;
       if (import.meta.env.DEV) {
-        // The dev server has no owner-protected library; probing it would
-        // misreport. Fixtures opt into a specific probe answer.
-        setGrantService(window.__LW_GRANT_PROBE_RESULT_FOR_TEST__ || { state: 'ready', reason: '' });
+        // The dev server's own /api/library/session is a deliberate "signed
+        // out" 204 stub (see vite.config.js), never the real session JSON —
+        // so this origin truthfully has no grant service to reach, the same
+        // as the card's own served page. Fixtures opt into a specific probe
+        // answer; absent one, the truthful default is "no service", not
+        // "ready" (F12 — offering software authorization here used to lead
+        // straight into a bare "API route not found").
+        setGrantService(window.__LW_GRANT_PROBE_RESULT_FOR_TEST__ || { state: 'unavailable', reason: 'no-session-service' });
         return undefined;
       }
       let active = true;
@@ -866,9 +871,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                 {softwareGrantAvailable && mode === 'wifi' && (softwareGrantBlocked ? (
                   <div className="install-release" role="status" data-testid="software-grant-blocked">
                     <span>
-                      {grantService.state === 'sign-in-required'
-                        ? 'Software authorization needs the owner sign-in for this Studio site. The card-button update above works without it.'
-                        : 'Studio cannot reach its software authorization service right now. The card-button update above works without it.'}
+                      {grantService.reason === 'no-session-service'
+                        ? 'This Studio has no software authorisation service (local or card-hosted). Use the card button.'
+                        : grantService.state === 'sign-in-required'
+                          ? 'Software authorization needs the owner sign-in for this Studio site. The card-button update above works without it.'
+                          : 'Studio cannot reach its software authorization service right now. The card-button update above works without it.'}
                     </span>
                     {grantService.reason === 'owner-access' && (
                       <button className="btn" type="button" onClick={() => openOwnerLibrarySignIn()}>Open owner sign-in</button>
