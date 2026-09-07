@@ -70,6 +70,15 @@ export async function requestSoftwareFirmwareUpdateGrant({
     error.reason = 'owner-sign-in-required';
     throw error;
   }
+  // A 404 `not_found` here is not "the update is broken" — it is a Studio
+  // origin (local dev, or the card's own served page) that never had this
+  // route at all. Naming the card-button path is the only actionable thing
+  // to tell the owner; the raw "API route not found." body is not.
+  if (response.status === 404 && signed?.error?.code === 'not_found') {
+    const error = new Error(GRANT_SERVICE_MISSING_GUIDANCE);
+    error.reason = 'grant-service-missing';
+    throw error;
+  }
   if (!response.ok) {
     throw new Error(signed?.error?.message || 'Studio could not authorize this firmware update.');
   }
@@ -86,6 +95,8 @@ export async function requestSoftwareFirmwareUpdateGrant({
 }
 
 export const OWNER_SIGN_IN_GUIDANCE = 'Secure software authorization needs the owner sign-in for this Studio site, and this browser is not signed in. Open the owner sign-in and retry, or use the card button instead.';
+
+export const GRANT_SERVICE_MISSING_GUIDANCE = 'This Studio has no software update authorization service to reach here. Use the card button on the card instead.';
 
 // A Cloudflare Access wall answers /api/library/* with an off-site login
 // redirect before the Studio's own code ever runs. Under `redirect: 'manual'`
@@ -120,6 +131,21 @@ export function openOwnerLibrarySignIn(openImpl = globalThis.open) {
   return openImpl?.('/api/library/session', '_blank', 'noopener');
 }
 
+// A real deployed `/api/library/session` always answers either the owner
+// protection (redirect, 401/403) or a signed-in session as JSON shaped like
+// `{ session: { role, ... } }` (see functions/api/library/_shared/router.js
+// `publicSession`). Anything else — a 204, an SPA-fallback 200 text/html, a
+// 200 whose body does not carry that shape — is not a real answer from that
+// route at all. It means this Studio origin (local dev's Vite stub, or the
+// card's own served page, which has no library API and falls back to its
+// index page for any unknown GET) has no grant service to reach, which is a
+// different, calmer fact than "sign in and it will work."
+function isRealSignedInSession(body) {
+  return Boolean(body && typeof body === 'object'
+    && body.session && typeof body.session === 'object'
+    && typeof body.session.role === 'string');
+}
+
 // Answers whether this browser could obtain a software update grant right
 // now, without spending the card's challenge. `/api/library/session` sits
 // behind the same owner protection as the grant route, so its answer is the
@@ -136,7 +162,17 @@ export async function probeFirmwareUpdateGrantService({ fetchImpl = globalThis.f
     });
     if (isOwnerAccessRedirect(response)) return { state: 'sign-in-required', reason: 'owner-access' };
     if (response.status === 401 || response.status === 403) return { state: 'sign-in-required', reason: 'native-session' };
-    if (response.ok || response.status === 204) return { state: 'ready', reason: '' };
+    if (response.status === 204) return { state: 'unavailable', reason: 'no-session-service' };
+    if (response.ok) {
+      const contentType = typeof response.headers?.get === 'function' ? (response.headers.get('content-type') || '') : '';
+      if (!contentType.toLowerCase().includes('application/json')) {
+        return { state: 'unavailable', reason: 'no-session-service' };
+      }
+      let body;
+      try { body = await response.json(); } catch { body = null; }
+      if (isRealSignedInSession(body)) return { state: 'ready', reason: '' };
+      return { state: 'unavailable', reason: 'no-session-service' };
+    }
     return { state: 'unavailable', reason: `http-${response.status || 0}` };
   } catch {
     return { state: 'unavailable', reason: 'unreachable' };
