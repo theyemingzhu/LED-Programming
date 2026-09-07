@@ -7,6 +7,10 @@ const BUILD = 'b'.repeat(40);
 const TICKET = 'c'.repeat(64);
 const SIGNATURE = 'A'.repeat(86);
 
+function headersWithContentType(contentType) {
+  return { get: name => (String(name).toLowerCase() === 'content-type' ? contentType : null) };
+}
+
 function exactAuthority(calls) {
   return {
     cardId: 'lw-b0fe81f61b44', bootId: 'boot-1', ownerSessionId: 'owner-1',
@@ -102,6 +106,29 @@ test('an owner-protection redirect or network failure names the sign-in, not "Fa
   );
 });
 
+test('a 404 "not_found" grant response names the card-button path, not the raw route-not-found body', async () => {
+  const common = {
+    authority: exactAuthority([]), release: { manifest: { buildId: BUILD }, ticketSha256: TICKET },
+    origin: 'https://led.mandalacodes.com',
+  };
+  // This is the exact dev-server and card-hosted-Studio shape: neither has
+  // this route mounted at all, so the API answers a generic 404 not_found —
+  // never "the update failed", and never the bare "API route not found."
+  // body text an owner cannot act on.
+  await assert.rejects(
+    requestSoftwareFirmwareUpdateGrant({
+      ...common,
+      fetchImpl: async () => ({
+        ok: false, status: 404,
+        async json() { return { error: { code: 'not_found', message: 'API route not found.' } }; },
+      }),
+    }),
+    error => error.reason === 'grant-service-missing'
+      && /card button/i.test(error.message)
+      && !/^API route not found\.$/.test(error.message),
+  );
+});
+
 test('probeFirmwareUpdateGrantService classifies the owner protection states', async () => {
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ type: 'opaqueredirect', status: 0 }) }),
@@ -112,15 +139,59 @@ test('probeFirmwareUpdateGrantService classifies the owner protection states', a
     { state: 'sign-in-required', reason: 'native-session' },
   );
   assert.deepEqual(
-    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ ok: true, status: 200 }) }),
-    { state: 'ready', reason: '' },
-  );
-  assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => { throw new TypeError('Failed to fetch'); } }),
     { state: 'unavailable', reason: 'unreachable' },
   );
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ status: 503 }) }),
     { state: 'unavailable', reason: 'http-503' },
+  );
+});
+
+test('probeFirmwareUpdateGrantService must not claim "ready" on an origin with no real grant service', async () => {
+  // The dev server's Vite middleware answers a deliberate "signed out" stub:
+  // 204 No Content, no body at all. It is not a real session answer and must
+  // not be read as one.
+  assert.deepEqual(
+    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ status: 204 }) }),
+    { state: 'unavailable', reason: 'no-session-service' },
+  );
+  // A card-hosted Studio has no library API; an unmatched GET falls back to
+  // its own served index page — 200, but text/html, not the session JSON.
+  assert.deepEqual(
+    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
+      ok: true, status: 200, headers: headersWithContentType('text/html; charset=utf-8'),
+      async json() { throw new Error('not JSON'); },
+    }) }),
+    { state: 'unavailable', reason: 'no-session-service' },
+  );
+  // A 200 JSON body that does not carry the real `{ session: { role } }`
+  // shape is equally untrustworthy — never infer "ready" from mere success.
+  assert.deepEqual(
+    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
+      ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
+      async json() { return { ok: true }; },
+    }) }),
+    { state: 'unavailable', reason: 'no-session-service' },
+  );
+});
+
+test('probeFirmwareUpdateGrantService reports ready only for the real signed-in session shape', async () => {
+  // Matches functions/api/library/_shared/router.js `publicSession` for an
+  // Access identity: { email, role }.
+  assert.deepEqual(
+    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
+      ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
+      async json() { return { session: { email: 'owner@example.com', role: 'owner' } }; },
+    }) }),
+    { state: 'ready', reason: '' },
+  );
+  // ...and for a native identity: { username, displayName, role, mustChangePassword }.
+  assert.deepEqual(
+    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
+      ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
+      async json() { return { session: { username: 'adrian', displayName: 'Adrian', role: 'owner', mustChangePassword: false } }; },
+    }) }),
+    { state: 'ready', reason: '' },
   );
 });
