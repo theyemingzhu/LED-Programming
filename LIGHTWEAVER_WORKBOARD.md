@@ -354,3 +354,17 @@ plans on the GitHub account, then rerun the Tests workflow for `7126e7e1`;
 the real deploy follows automatically. Superseded PR #223 closed; branches
 swept (restore file `.claude/worktrees/restore-branches-2026-09-07.txt`).
 Phase E bench observations remain pending.
+
+## 2026-09-07 Phase E bench run (real card lw-b0fe81f61b44)
+
+E1 patterns A/B/Stop passed. E2 power-cycle reconnect passed. E3 preserving
+update 1524 → 1548 passed on the card (slot app1, everything kept) but Studio
+stayed "Not connected" until the owner re-paired → F13 in progress; F11
+(install screen waits for the link) and F12 (grant probe truthful) fixed and
+merged (#227, main `7bcfec2a`, count 1626). E4 could not be run as written:
+a LED-count change is a plain save-and-reboot on the firmware, and Studio
+called that write "Push failed" with a Retry → F14 open (Studio read-back
+after a config restart + simulator mirrors the firmware rule). Card now holds
+42 px on a 41-LED strip (harmless; set 41 once F14 lands). Deploy still
+blocked by GitHub Actions billing; live is build 1551. Plan Phase G has the
+tickets and the corrected E4 script (rewire, not a count).
