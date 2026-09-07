@@ -315,7 +315,7 @@ while a remembered card's link settles instead of headlining the factory install
 claims ready on an origin without the grant service; card-button path is the
 default with a plain explanation.
 
-**F13 · in progress (Opus)** · files: `cardLink.js`, `cardTransport.js`, `cardBridge.js`,
+**F13 · done** (`a2db018e`, main via #229 — every transport gate now distinguishes a different card from the same card on new firmware; the identity note is written whole) · files: `cardLink.js`, `cardTransport.js`, `cardBridge.js`,
 `cardWifiHandoff.js`, `cardIdentity.js` — after a preserving update the SAME card
 id with a new firmware build is refused at every transport gate as if it were a
 different card, so Studio stays "Not connected" and the owner re-pairs by hand.
@@ -324,7 +324,7 @@ the gates must route through `isDifferentCardMismatch` / `isStaleFirmwareMismatc
 and persist the whole new identity atomically. Regression:
 `tests/journey-firmware-identity.spec.ts`.
 
-**F14 · open — the LED-count save is not bulletproof** · tier M, Studio + simulator
+**F14 · done** (`1b1b88d2`, main via #230 — a count save that restarts the card is "restarting, verifying", read back, never "Push failed"; simulator mirrors the firmware rule; `tests/journey-count-save.spec.ts` in the smoke lane; Layout names which changes get a light test) · was: tier M, Studio + simulator
 (firmware owner only if the contract is changed). The firmware's rule
 (`LightweaverStorage.cpp`, `runtimeConfigJsonChangesWiring`): GPIO, output
 identity, added/removed outputs or LED type is a rewire → staged light test;
@@ -344,6 +344,13 @@ model the card that exists; (3) Layout's copy says which changes get a light
 test (rewire) and which just save; (4) a firmware contract test pins the rule.
 Regressions: journey-edits count-save case red first; a `firmware/…/tests`
 contract for `runtimeConfigJsonChangesWiring`.
+
+**F15 · open, pre-existing** · `tests/layout-led-count-save.spec.ts` "adding a playlist
+pattern lights Save to card on the footer" fails on plain `main` (lifecycle reports
+`content-mismatch` where the test expects `project-mismatch`, or the reverse — decide
+from `cardLifecycle.js` which label the footer chip should carry for a playlist-only
+change and fix the one that is wrong). This lane (`test:release-ui`) does not run on
+pull requests, which is how it survived; add the spec to `ci:browser-smoke` once green.
 
 ### Phase E — Bench proof (Adrian's eyes, one observation at a time) — **run 2026-09-07**
 

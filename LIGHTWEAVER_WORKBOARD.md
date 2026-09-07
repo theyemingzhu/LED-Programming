@@ -368,3 +368,10 @@ after a config restart + simulator mirrors the firmware rule). Card now holds
 42 px on a 41-LED strip (harmless; set 41 once F14 lands). Deploy still
 blocked by GitHub Actions billing; live is build 1551. Plan Phase G has the
 tickets and the corrected E4 script (rewire, not a count).
+
+Closed the same night: F13 merged (#229, an updated card reconnects without
+re-pairing) and F14 merged (#230, a count save that restarts the card is
+verified by read-back, never "Push failed"). main `fb366c2f`, count 1634;
+unit 2384/2384. Open: F15 (pre-existing playlist-footer chip label, fails on
+main, outside the PR lane) and the E4 re-run with a rewire. Deploy still
+blocked by GitHub Actions billing; live is build 1551.
