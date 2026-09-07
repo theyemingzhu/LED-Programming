@@ -255,3 +255,77 @@ test('LAN connection explains and releases an active USB inspection before any s
   await expect(page.getByTestId('install-card-identity')).toHaveCount(0);
   expect(statusProbes).toBe(0);
 });
+
+// F11 — a browser that remembers a configured card (identity AND the host it
+// last reached, as the card-state-matrix spec's seedKnownCard does) must not
+// headline the destructive factory installer while the card link is still
+// settling a few seconds after e.g. a power cycle. Real bug: Adrian opened
+// #screen=card&section=install while the card was still reconnecting and saw
+// "Install Lightweaver … erases the card's Wi-Fi, its piece and its
+// settings" with "Find connected card" as primary, when the card was in fact
+// about to answer as update-capable.
+const SETTLING_CARD_ID = 'lw-f11-settling';
+
+async function seedRememberedCardWithHost(page: any) {
+  await page.addInitScript(({ id }) => {
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id, name: 'F11 card', hostname: '', address: '',
+      firmwareVersion: '1.0.0', buildId: 'c'.repeat(40), buildNumber: 1,
+      acknowledgedAt: '2026-08-07T00:00:00.000Z',
+    }));
+    // The real storage key `readStoredCardHost` reads is `lw_chip_card_host`
+    // (see src/lib/cardConnection.js CARD_HOST_STORAGE_KEY); `lw_card_host`
+    // is set alongside it to match the matrix spec's seedKnownCard exactly.
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+  }, { id: SETTLING_CARD_ID });
+}
+
+function settlingCardStatus() {
+  return {
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: SETTLING_CARD_ID, bootId: 'boot-f11', projectHead: 'a'.repeat(64), projectFingerprint: 'b'.repeat(64),
+    projectId: 'lwproj-f11', projectRevision: 1,
+    firmwareVersion: '1.0.0', buildId: 'c'.repeat(40), buildNumber: 1,
+    runtimePhase: 'ready', knownGoodProject: true, commandReady: true,
+    outputReady: true, playbackReady: true,
+    capabilities: { firmwareUpdate: { version: 1, network: true, softwareGrant: true } },
+  };
+}
+
+test('a remembered card headlines Checking card while the link settles, then the preserving update once it answers', async ({ page }) => {
+  await seedRememberedCardWithHost(page);
+  const start = Date.now();
+  await page.route(/lightweaver\.local|192\.168\.4\.1/, route => {
+    if (Date.now() - start < 3000) return route.abort();
+    if (route.request().url().includes('/api/status')) return route.fulfill({ json: settlingCardStatus() });
+    return route.abort();
+  });
+
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId('install-checking-card')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Find connected card' })).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText("erases the card's Wi-Fi");
+
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 20_000 });
+});
+
+test('a remembered card offers Try again once the link genuinely cannot reach it', async ({ page }) => {
+  await seedRememberedCardWithHost(page);
+  await page.route(/lightweaver\.local|192\.168\.4\.1/, route => route.abort());
+
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('install-checking-card')).toBeVisible();
+
+  const notice = page.getByTestId('install-remembered-card-unreachable');
+  await expect(notice).toBeVisible({ timeout: 18_000 });
+  await expect(notice).toContainText(SETTLING_CARD_ID);
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  // Factory install stays reachable — it is not the headline of the
+  // settling window, but it is not stranded either.
+  await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Find connected card' })).toBeVisible();
+});

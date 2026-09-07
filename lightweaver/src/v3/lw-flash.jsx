@@ -43,6 +43,7 @@ import {
   resolveInstalledFirmware,
 } from '../lib/firmwareUpdatePlan.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import { CARD_LINK_CONNECT_TIMEOUT_MS } from '../lib/cardLink.js';
 import {
   beginInstallFirmwareVerification,
   clearInstallFirmwareEvidence,
@@ -62,7 +63,7 @@ import { recoverFirmwareUpdate } from '../lib/firmwareUpdateRecovery.js';
 import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { runPreservingUsbBootstrap } from '../lib/preservingUsbBootstrap.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
-import { readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
+import { CARD_HOST_STORAGE_KEY, readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
 import { openOwnerLibrarySignIn, probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } from '../lib/ownerFirmwareUpdateGrant.js';
 import {
   clearActiveUsbInspection,
@@ -1030,6 +1031,40 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const preservingCard = connectedUpdateCard || usbUpdateCard
       || (preservingFixture?.mode === 'usb' ? preservingFixture.card : null)
       || recoveryCard;
+    // A browser that remembers a configured card it has actually reached
+    // before must not headline the destructive factory installer while the
+    // card link is still settling — "Find connected card" over the erase
+    // sentence used to be the FIRST thing shown a few seconds after a power
+    // cycle, while the link was still reconnecting and about to resolve into
+    // the correct preserving update. Bound the wait by the same connect
+    // timeout the link itself uses (CARD_LINK_CONNECT_TIMEOUT_MS).
+    //
+    // Gated on a remembered HOST, not merely a remembered identity: an
+    // identity paired only over USB (or seeded without ever reaching a card
+    // over Wi-Fi) has no address to settle against, so there is nothing
+    // worth a holding screen for — it keeps today's factory-first screen
+    // immediately, unaffected.
+    const rememberedCardIdentity = useMemo(() => readPersistedCardIdentity(), []);
+    const rememberedCardHostKnown = useMemo(() => {
+      try {
+        return typeof window !== 'undefined' && Boolean(window.localStorage.getItem(CARD_HOST_STORAGE_KEY));
+      } catch {
+        return false;
+      }
+    }, []);
+    const [checkRetryToken, setCheckRetryToken] = useState(0);
+    const [rememberedCardLinkTimedOut, setRememberedCardLinkTimedOut] = useState(false);
+    useEffect(() => {
+      if (!rememberedCardIdentity || !rememberedCardHostKnown || preservingFixture) return undefined;
+      setRememberedCardLinkTimedOut(false);
+      const timer = setTimeout(() => setRememberedCardLinkTimedOut(true), CARD_LINK_CONNECT_TIMEOUT_MS);
+      return () => clearTimeout(timer);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [checkRetryToken, Boolean(rememberedCardIdentity)]);
+    const awaitingRememberedCardLink = Boolean(rememberedCardIdentity) && rememberedCardHostKnown
+      && !preservingMode && !rememberedCardLinkTimedOut;
+    const rememberedCardLinkUnreachable = Boolean(rememberedCardIdentity) && rememberedCardHostKnown
+      && !preservingMode && rememberedCardLinkTimedOut;
     const loaderRef = useRef(null);
     const transportRef = useRef(null);
     const inspectionRef = useRef(null);
@@ -1418,6 +1453,28 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       );
     }
 
+    if (awaitingRememberedCardLink) {
+      return (
+        <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
+          <div className="install-task">
+            <CardCommissioningSteps
+              stage={selectedStage}
+              disabled={false}
+              onSelect={stage => { void openStage(stage); }}
+            />
+            <header className="install-intro">
+              <div className="eyebrow">Safe automatic installer</div>
+              <InstallHeading>Checking card…</InstallHeading>
+              <p>Studio remembers a Lightweaver card and is checking whether it is still here before offering to erase anything.</p>
+            </header>
+            <div className="install-release loading" role="status" data-testid="install-checking-card">
+              Checking card…
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const releaseReady = releaseState.state === 'ready';
     return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
@@ -1427,6 +1484,22 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             disabled={installState === 'installing' || installState === 'observing'}
             onSelect={stage => { void openStage(stage); }}
           />
+
+          {rememberedCardLinkUnreachable && (
+            <div className="install-release error" role="status" data-testid="install-remembered-card-unreachable">
+              <p>Studio can’t reach the Lightweaver card it remembers ({rememberedCardIdentity?.id || 'this card'}). It may be off, out of range, or on a different Wi-Fi network.</p>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  setCheckRetryToken(token => token + 1);
+                  onConnectCard?.(cardLink?.host || '');
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          )}
 
           <header className="install-intro">
             <div className="eyebrow">Safe automatic installer</div>
