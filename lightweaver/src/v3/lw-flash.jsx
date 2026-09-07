@@ -24,6 +24,7 @@ import { createBridgeResultChannel, launchBridgeOperation, resumeBridgeReturnCod
 import { saveCurrentProjectToLibraryGuarded } from '../lib/projectStorage.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { CardCommissioningPanel, CardCommissioningSteps } from '../components/card/CardCommissioningPanel.jsx';
+import { ProgressRail } from '../components/ui/ProgressRail.jsx';
 import { readCardProjectEvidence } from '../lib/cardPushClient.js';
 import { readCardWiringCandidateEvidence } from '../lib/cardWiringSafety.js';
 import {
@@ -887,13 +888,21 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             )}
           </div>
         )}
-        {phaseLabel && (
+        {phaseLabel && phase === 'sending' && release ? (
+          <ProgressRail
+            testId="preserving-update-progress"
+            label={phaseLabel}
+            value={release.imageBytes.byteLength > 0
+              ? acknowledgedBytes / release.imageBytes.byteLength
+              : null}
+            caption={`${fmtSize(acknowledgedBytes)} of ${fmtSize(release.imageBytes.byteLength)} acknowledged by the card`}
+          />
+        ) : phaseLabel ? (
           <div className="install-release ready" role="status">
             <strong>{phaseLabel}</strong>
-            {phase === 'sending' && release && <span> · {acknowledgedBytes} of {release.imageBytes.byteLength} bytes acknowledged by the card</span>}
             {phase === 'reconnected' && <span> to Card {card.id} on firmware {targetLabel}</span>}
           </div>
-        )}
+        ) : null}
         {continueDestination && (
           <button
             className="btn-lg"
@@ -962,7 +971,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     }, []);
     // Reading the version stored on the card is a slow serial scan that runs
     // after the card is already found, so the connect step never waits on it.
-    const [usbFirmwareRead, setUsbFirmwareRead] = useState({ state: 'idle', progress: 0 });
+    // `bytesRead`/`totalBytes` ride along so the rail can print the real
+    // figure under the percentage. Studio only ever shows a number it was
+    // given: before the first progress callback there is no size, and the
+    // rail says so by sweeping rather than by claiming 0%.
+    const [usbFirmwareRead, setUsbFirmwareRead] = useState({ state: 'idle', progress: 0, bytesRead: 0, totalBytes: 0 });
     // What the card is running NOW, so the screen can say which direction this
     // install moves it. A live link is the best account; a remembered identity
     // is used only when it belongs to the card actually plugged in.
@@ -1079,30 +1092,42 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     const startFirmwareRead = (loader, hardware) => {
       if (!espCanReportFirmwareIdentity(hardware)) {
-        setUsbFirmwareRead({ state: 'unavailable', progress: 0 });
+        setUsbFirmwareRead({ state: 'unavailable', progress: 0, bytesRead: 0, totalBytes: 0 });
         return;
       }
       const token = firmwareReadRef.current.token + 1;
       firmwareReadRef.current.token = token;
       const live = () => firmwareReadRef.current.token === token && mountedRef.current;
-      setUsbFirmwareRead({ state: 'reading', progress: 0 });
+      setUsbFirmwareRead({ state: 'reading', progress: 0, bytesRead: 0, totalBytes: 0 });
       firmwareReadRef.current.done = readConnectedEspFirmwareIdentity(loader, hardware, {
         shouldStop: () => !live() || installingRef.current,
         onProgress: ({ bytesRead, totalBytes }) => {
-          if (live()) setUsbFirmwareRead({ state: 'reading', progress: totalBytes > 0 ? bytesRead / totalBytes : 0 });
+          if (live()) {
+            setUsbFirmwareRead({
+              state: 'reading',
+              progress: totalBytes > 0 ? bytesRead / totalBytes : 0,
+              bytesRead: Number(bytesRead) || 0,
+              totalBytes: Number(totalBytes) || 0,
+            });
+          }
         },
       }).then(identity => {
         if (!live()) return;
         if (!identity) {
-          setUsbFirmwareRead({ state: 'unavailable', progress: 0 });
+          setUsbFirmwareRead({ state: 'unavailable', progress: 0, bytesRead: 0, totalBytes: 0 });
           return;
         }
         setCardState(previous => (previous.hardware?.cardId === hardware.cardId
           ? { ...previous, hardware: { ...previous.hardware, ...identity } }
           : previous));
-        setUsbFirmwareRead({ state: 'done', progress: 1 });
+        setUsbFirmwareRead(previous => ({
+          state: 'done',
+          progress: 1,
+          bytesRead: previous.totalBytes || previous.bytesRead,
+          totalBytes: previous.totalBytes,
+        }));
       }).catch(() => {
-        if (live()) setUsbFirmwareRead({ state: 'unavailable', progress: 0 });
+        if (live()) setUsbFirmwareRead({ state: 'unavailable', progress: 0, bytesRead: 0, totalBytes: 0 });
       });
     };
 
@@ -1212,7 +1237,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       if (findingRef.current || installingRef.current) return;
       findingRef.current = true;
       setCardState({ state: 'finding', hardware: null, error: '' });
-      setUsbFirmwareRead({ state: 'idle', progress: 0 });
+      setUsbFirmwareRead({ state: 'idle', progress: 0, bytesRead: 0, totalBytes: 0 });
       setEraseConfirmed(false);
       try {
         await stopFirmwareRead();
@@ -1487,7 +1512,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                   <dt>Hardware</dt><dd>ESP32-S3 · 16 MB</dd>
                 </dl>
                 {usbFirmwareRead.state === 'reading' && (
-                  <p data-testid="install-card-installed-firmware">Reading firmware on this card… {Math.round(usbFirmwareRead.progress * 100)}%</p>
+                  <ProgressRail
+                    testId="install-card-installed-firmware"
+                    label="Reading firmware on this card"
+                    value={usbFirmwareRead.totalBytes > 0 ? usbFirmwareRead.progress : null}
+                    caption={usbFirmwareRead.totalBytes > 0
+                      ? `${fmtSize(usbFirmwareRead.bytesRead)} of ${fmtSize(usbFirmwareRead.totalBytes)}`
+                      : 'Waiting for the card to report how much there is to read'}
+                    state={usbFirmwareRead.totalBytes > 0 ? 'active' : 'waiting'}
+                  />
                 )}
               </div>
             )}
@@ -1507,15 +1540,18 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               <div className="install-confirm-action">
                 <button className="btn-lg" type="button" onClick={install} disabled={!eraseConfirmed || installState === 'installing' || installState === 'observing'}>
                   {installState === 'installing'
-                    ? `Installing… ${Math.round(progress * 100)}%`
+                    ? 'Installing…'
                     : installState === 'observing'
                       ? 'Checking how the card restarted…'
                       : 'Erase card and install Lightweaver'}
                 </button>
                 {installState === 'installing' && (
-                  <div className="fl-bar" role="progressbar" aria-label="Installing Lightweaver" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(progress * 100)}>
-                    <div className="fill" style={{ width: `${Math.round(progress * 100)}%` }} />
-                  </div>
+                  <ProgressRail
+                    testId="install-progress"
+                    label="Installing Lightweaver"
+                    value={progress}
+                    caption="Keep the USB cable connected"
+                  />
                 )}
               </div>
             </section>
@@ -1532,8 +1568,16 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                     <span>I understand this factory recovery erases everything currently stored on this card.</span>
                   </label>
                   <button className="btn" type="button" onClick={install} disabled={!eraseConfirmed || installState === 'installing' || installState === 'observing'}>
-                    {installState === 'installing' ? `Factory reinstalling… ${Math.round(progress * 100)}%` : 'Erase card and reinstall'}
+                    {installState === 'installing' ? 'Factory reinstalling…' : 'Erase card and reinstall'}
                   </button>
+                  {installState === 'installing' && (
+                    <ProgressRail
+                      testId="install-factory-progress"
+                      label="Factory reinstalling"
+                      value={progress}
+                      caption="Keep the USB cable connected"
+                    />
+                  )}
                 </div>
               )}
             </details>

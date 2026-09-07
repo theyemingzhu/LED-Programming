@@ -260,6 +260,14 @@ test('preserving update: navigation cannot discard an active update lifecycle or
   await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel).toContainText('Sending signed update');
+  // A percentage inside a sentence is a number; the rail is the thing an owner
+  // can watch move, which is what "is this stuck?" actually asks. It must be a
+  // real progressbar carrying the position, and it must still print the byte
+  // count it is derived from — the rail never shows a figure Studio was not
+  // given.
+  const sending = panel.getByTestId('preserving-update-progress');
+  await expect(sending.getByRole('progressbar')).toHaveAttribute('aria-valuenow', /^\d+$/);
+  await expect(sending).toContainText('acknowledged by the card');
 
   await page.getByRole('button', { name: 'Layout' }).click();
   await expect(page).toHaveURL(/screen=layout/);
