@@ -78,6 +78,8 @@ import { runtimePackageForCardOperation } from '../lib/testStrip.js';
 import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview } from '../lib/cardLiveControl.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
+import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
+import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import {
   cardActionReducer,
   cardActionStatusLabel,
@@ -327,6 +329,12 @@ import { PatternPreview } from './PatternPreview.jsx';
 
   function PatternScreen({ connected, cardLink, cardLifecycle, currentProject, go }) {
     const { workspaceAssets } = useCloudLibrary();
+    // F16: the shared journey is the one place that knows whether the card's
+    // zones report a blackout — read here so the hero status line can say so
+    // and the existing Recover lights button (data-testid="recover-lights",
+    // below) can read as the primary action, without a second control.
+    const patternsJourney = useSetupJourney({ cardLink, cardLifecycle, project: currentProject });
+    const cardBlackedOut = patternsJourney.blackout === true;
     const {
       projectId,
       projectName,
@@ -1872,10 +1880,15 @@ import { PatternPreview } from './PatternPreview.jsx';
           blockPatternCardEffect('project');
           return;
         }
-        await recoverCardLightsVerified(
+        // Wrapped so a finished recovery invalidates the shared journey
+        // evidence (cardJourneyEvidence.js's hardware-operation listener) —
+        // otherwise a cleared blackout would sit unreported until something
+        // else happened to re-read the card (F16: "goes away without a
+        // click").
+        await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
           { patternId: 'warm-white', brightness: 1, syncZones: true },
           { host: cardHost, timeoutMs: 3200, restartCard: true },
-        );
+        ));
         if (sequence !== livePreviewSeq.current) return;
         setStatusKind('');
         setRecoveryConfirmation('pending');
@@ -2151,6 +2164,33 @@ import { PatternPreview } from './PatternPreview.jsx';
       });
     }, [patternCardGate, status, patternGateActionLabel]);
 
+    // F16: the card can be connected and holding the exact project open here
+    // while its zones report every light off — nothing else on this screen
+    // says so. No action on this notice: the existing Recover lights button
+    // in the header (data-testid="recover-lights", styled primary above)
+    // already is the one recovery control; a second button here would be the
+    // second control the fix is explicitly not allowed to add.
+    useEffect(() => {
+      if (!cardBlackedOut) {
+        dismissNoticeKey('pattern-card-blackout');
+        return;
+      }
+      publishNotice({
+        // tone: 'info', not 'error' — role="alert" here would fire on the
+        // matrix's own connection-only assertion (card-state-matrix.spec.ts
+        // expectUnaided: no alert before the owner does anything), which
+        // covers the 'blackout' fixture too. The notice still persists
+        // (info's TTL is null, same as error's) and still carries the one
+        // recovery action via the styled-primary button above; only its
+        // urgency framing changes.
+        key: 'pattern-card-blackout',
+        testId: 'card-blackout-notice',
+        tone: 'info',
+        title: 'Lights are off on the card.',
+        source: 'pattern-blackout',
+      });
+    }, [cardBlackedOut]);
+
     return (
       <div className="screen">
         <div className="screen-scroll">
@@ -2166,7 +2206,7 @@ import { PatternPreview } from './PatternPreview.jsx';
               <div className="pm-actions">
                 <button className="btn primary" title="Install the current look on the card" onClick={savePreviewToCard} disabled={!installGate.allowed}>{I.bolt}{cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
                 {connected &&
-                  <button className="btn" title="Bring the lights back with a warm-white recovery" data-testid="recover-lights" onClick={repairLed} disabled={authorizedPatternCardAccess !== 'ready' || cardSave.conflictsDisabled}>{I.wrench}Recover lights</button>
+                  <button className={"btn" + (cardBlackedOut ? " primary" : "")} title="Bring the lights back with a warm-white recovery" data-testid="recover-lights" onClick={repairLed} disabled={authorizedPatternCardAccess !== 'ready' || cardSave.conflictsDisabled}>{I.wrench}Recover lights</button>
                 }
                 <div className="pm-color-order">
                   <button

@@ -19,6 +19,8 @@ import { getCardWiringStatus } from './cardWiringSafety.js';
 import { readCardStatusEnvelope } from './cardPushClient.js';
 import { isBenchProjectEvidence } from './benchConfig.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT } from './studioHardwareOperation.js';
+import { sendCardBridgeRequest } from './cardBridge.js';
+import { cardHostToUrl } from './cardConnection.js';
 
 export const CARD_JOURNEY_EVIDENCE_EVENT = 'lw-card-journey-evidence';
 
@@ -35,6 +37,22 @@ const EMPTY = Object.freeze({
   evidence: null,
   resolutionKind: 'unknown',
   matchesOpenProject: false,
+  // The card's own zones report — false until a zones read has actually
+  // said otherwise. Card Home's Setup screen re-publishes evidence on its
+  // own richer read (see journeyEvidenceSnapshot below) without knowing
+  // anything about zones, so this field is preserved-by-key rather than
+  // defaulted, or every one of Setup's polls would flicker a real blackout
+  // back to "off" a moment after refreshCardJourneyEvidence learned it.
+  blackout: false,
+  // Whether `blackout` above reflects an actual zones read, as opposed to the
+  // field's own default. `read` is true the moment ANY fact has been read for
+  // this card+boot (status, wiring, or blackout), so it cannot tell a caller
+  // that only wants the blackout fact (useSetupJourney's `refresh: false`
+  // path) whether zones specifically have ever been read — without this, that
+  // caller would see `read: true` the instant Card Home's Setup screen
+  // published its OWN status/wiring read and never attempt the zones read at
+  // all.
+  blackoutKnown: false,
   readAt: 0,
   read: false,
   // A hardware operation finished, so whatever we hold predates it. The
@@ -75,9 +93,25 @@ export function journeyEvidenceSnapshot({
   evidence = null,
   resolutionKind = 'unknown',
   matchesOpenProject = false,
+  blackout,
   readAt = Date.now(),
 } = {}) {
   const key = cardLink ? journeyEvidenceKey(cardLink) : { cardId: text(cardId), bootId: text(bootId), host: text(host) };
+  // `blackout` is spent-then-preserved, not defaulted: a caller that never
+  // reads zones (SetupScreen's own richer publish, below) does not know the
+  // answer and must not assert "false" over whatever the last zones read
+  // said — only for the SAME card and boot the current snapshot names.
+  const sameKey = Boolean(key.cardId)
+    && key.cardId.toLowerCase() === text(current.cardId).toLowerCase()
+    && key.bootId === text(current.bootId);
+  const resolvedBlackout = blackout === undefined
+    ? (sameKey ? current.blackout === true : false)
+    : blackout === true;
+  // A caller that passes `blackout` explicitly just attempted (or reused) a
+  // zones read; a caller that omits it (SetupScreen's own richer publish)
+  // knows nothing new about zones and must not mark the fact known if it
+  // never was.
+  const resolvedBlackoutKnown = blackout !== undefined || (sameKey && current.blackoutKnown === true);
   return Object.freeze({
     ...key,
     projectId: text(projectId),
@@ -86,6 +120,8 @@ export function journeyEvidenceSnapshot({
     evidence: evidence || null,
     resolutionKind: text(resolutionKind) || 'unknown',
     matchesOpenProject: matchesOpenProject === true,
+    blackout: resolvedBlackout,
+    blackoutKnown: resolvedBlackoutKnown,
     readAt: Number(readAt) || 0,
     read: true,
     stale: false,
@@ -160,6 +196,15 @@ export function hasFreshCardJourneyEvidence(cardLink, snapshot = current) {
   return fresh.read === true && fresh.stale !== true;
 }
 
+// The blackout-specific twin of the above (F16). `read` goes true the moment
+// ANY fact has been published for this card+boot, so a `refresh: false`
+// caller that only wants the blackout fact needs its own, narrower question:
+// has zones specifically ever been read, since the last invalidation.
+export function hasFreshCardJourneyBlackout(cardLink, snapshot = current) {
+  const fresh = freshJourneyEvidence(snapshot, cardLink);
+  return fresh.blackoutKnown === true && fresh.stale !== true;
+}
+
 // ── Reading the card ───────────────────────────────────────────────────────
 //
 // One flight per (card, boot) at a time. Four screens can mount at once and
@@ -168,6 +213,43 @@ export function hasFreshCardJourneyEvidence(cardLink, snapshot = current) {
 // handoff loop (THINKING.md, 2026-08-07) is what happens when that is not
 // enforced.
 const inFlight = new Map();
+
+// A minimal, best-effort zones read, mirroring readCardStatusEnvelope's own
+// transport handling (cardPushClient.js) rather than reusing
+// readCardZonesFromCard (cardLiveControl.js) — that wrapper additionally runs
+// an identity-mutation guard meant for the customer-control drawer's actual
+// writes, which this passive fact-gathering read has no business paying for
+// on every journey refresh. Failure here must never surface as an error: a
+// screen asking "what does the journey look like" is not an operation the
+// owner can be shown a failure about (see the allSettled call below).
+async function readCardZonesEnvelope({ host, timeoutMs = 3000, transport } = {}) {
+  if (transport === 'bridge') {
+    return sendCardBridgeRequest('zones', {}, { host, timeoutMs, retryOnTimeout: false });
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${cardHostToUrl(host)}/api/zones`, {
+      method: 'GET', cache: 'no-store', signal: ctrl.signal,
+    });
+    if (!response?.ok) throw new Error('The card did not return a fresh zones envelope.');
+    const result = await response.json().catch(() => null);
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+      throw new Error('The card returned an invalid zones envelope.');
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// The defect this exists to end (F16): a card can hold the open project,
+// answer "Connected", and report a ready runtime while every zone sits
+// blacked out — nothing in the status envelope says so, only /api/zones does.
+function blackoutFromZonesEnvelope(envelope) {
+  const zones = Array.isArray(envelope?.zones) ? envelope.zones : [];
+  return zones.length > 0 && zones[0]?.blackout === true;
+}
 
 // Deliberately NOT an `async function`: an async wrapper mints a fresh promise
 // per call, so a second caller would get a different object back and the
@@ -182,12 +264,14 @@ export function refreshCardJourneyEvidence({ cardLink, reason = '' } = {}) {
   const flight = (async () => {
     const host = key.host;
     const transport = cardLink?.transport;
-    const [statusResult, wiringResult] = await Promise.allSettled([
+    const [statusResult, wiringResult, zonesResult] = await Promise.allSettled([
       readCardStatusEnvelope({ host, transport }),
       getCardWiringStatus({ host, transport }),
+      readCardZonesEnvelope({ host, transport }),
     ]);
     const status = statusResult.status === 'fulfilled' ? statusResult.value : null;
     const wiringStatus = wiringResult.status === 'fulfilled' ? wiringResult.value : null;
+    const zonesEnvelope = zonesResult.status === 'fulfilled' ? zonesResult.value : null;
     // Whatever the previous snapshot knew about the PROJECT question is
     // preserved: resolving a card's project against the saved library is Card
     // Home's work, and this refresh cannot redo it. It can only answer the two
@@ -203,12 +287,54 @@ export function refreshCardJourneyEvidence({ cardLink, reason = '' } = {}) {
       evidence: previous.evidence,
       resolutionKind: bench ? 'bench' : previous.resolutionKind,
       matchesOpenProject: previous.matchesOpenProject,
+      // A failed zones read (dropped request, older firmware) keeps whatever
+      // the last successful read said, same posture as every other fact here
+      // — never asserted false off a read that never happened.
+      blackout: zonesEnvelope ? blackoutFromZonesEnvelope(zonesEnvelope) : previous.blackout,
       reason,
     });
   })()
     .catch(() => current)
     .finally(() => { inFlight.delete(flightKey); });
   inFlight.set(flightKey, flight);
+  return flight;
+}
+
+// A single-fact refresh, for a caller that already does its OWN richer
+// status+wiring read (Card Home's Setup screen, via `publishCardJourneyEvidence`
+// directly — see lw-setup.jsx) and calls `useSetupJourney` with `refresh: false`
+// to avoid a second full conversation with the card. That caller still has no
+// way to learn whether the card's zones are blacked out (F16) — nothing else
+// reads /api/zones for it — so this is the one additional lightweight read
+// `useSetupJourney` runs for a `refresh: false` caller. Kept on its own flight
+// map, separate from `inFlight` above: the two kinds of caller must never wait
+// on each other's request.
+const blackoutInFlight = new Map();
+
+export function refreshCardJourneyBlackout({ cardLink, reason = '' } = {}) {
+  const key = journeyEvidenceKey(cardLink);
+  if (!key.cardId) return Promise.resolve(current);
+  const flightKey = `${key.cardId}:${key.bootId}`;
+  const running = blackoutInFlight.get(flightKey);
+  if (running) return running;
+  const flight = readCardZonesEnvelope({ host: key.host, transport: cardLink?.transport })
+    .then(envelope => {
+      const previous = freshJourneyEvidence(current, cardLink);
+      return publishCardJourneyEvidence({
+        cardLink,
+        projectId: previous.projectId,
+        status: previous.status,
+        wiringStatus: previous.wiringStatus,
+        evidence: previous.evidence,
+        resolutionKind: previous.resolutionKind,
+        matchesOpenProject: previous.matchesOpenProject,
+        blackout: blackoutFromZonesEnvelope(envelope),
+        reason,
+      });
+    })
+    .catch(() => current)
+    .finally(() => { blackoutInFlight.delete(flightKey); });
+  blackoutInFlight.set(flightKey, flight);
   return flight;
 }
 

@@ -122,8 +122,9 @@ test('concurrent refreshes for one card and boot share a single flight', async (
     const first = refreshCardJourneyEvidence({ cardLink: CARD_LINK, reason: 'mount' });
     const second = refreshCardJourneyEvidence({ cardLink: CARD_LINK, reason: 'mount' });
     assert.equal(first, second, 'a second caller joins the flight in progress');
-    // Two reads per flight: the status envelope and the wiring status.
-    assert.equal(calls, 2);
+    // Three reads per flight: the status envelope, the wiring status, and the
+    // zones envelope (F16 — the blackout fact lives only in /api/zones).
+    assert.equal(calls, 3);
     for (const resolve of release) resolve();
     await first;
     // Both card reads failed, so the snapshot records the attempt and nothing
@@ -133,11 +134,58 @@ test('concurrent refreshes for one card and boot share a single flight', async (
     assert.equal(snapshot.read, true);
     assert.equal(snapshot.status, null);
     assert.equal(snapshot.wiringStatus, null);
+    assert.equal(snapshot.blackout, false, 'a failed zones read must not assert a blackout that was never seen');
 
     const third = refreshCardJourneyEvidence({ cardLink: CARD_LINK });
     assert.notEqual(third, first, 'a finished flight does not block the next read');
     for (const resolve of release.splice(0)) resolve();
     await third;
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// F16: Card lw-b0fe81f61b44 held the open project, reported "Connected"/
+// "Card firmware 1548 ✓", yet /api/zones held blackout:true and the strip was
+// dark. Studio never surfaced it because nothing read /api/zones into the
+// shared journey evidence — this is the read, plus the preserve-on-publish
+// contract SetupScreen's own richer publish (which knows nothing about
+// zones) depends on to not clobber it every poll.
+test('a successful zones read publishes blackout, and a plain publish for the same card preserves it', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const href = String(url);
+    if (href.includes('/api/zones')) {
+      return { ok: true, json: async () => ({ zones: [{ id: 'zone-all', blackout: true }] }) };
+    }
+    if (href.includes('/api/status')) {
+      return { ok: true, json: async () => ({ cardId: 'lw-evidence-test', bootId: 'boot-1' }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    await refreshCardJourneyEvidence({ cardLink: CARD_LINK, reason: 'mount' });
+    assert.equal(getCardJourneyEvidence().blackout, true, 'a zones read reporting blackout must be recorded');
+
+    // SetupScreen's own richer read (lw-setup.jsx) re-publishes evidence
+    // directly on every card poll and passes no blackout field at all — it
+    // must not silently clear a real blackout a moment after the zones read
+    // learned it.
+    publishCardJourneyEvidence({ cardLink: CARD_LINK, projectId: 'lotus-gate' });
+    assert.equal(
+      getCardJourneyEvidence().blackout,
+      true,
+      'a plain publish for the same card and boot must preserve the last known blackout fact',
+    );
+
+    // A snapshot for a DIFFERENT boot must never inherit a fact it never read.
+    const otherBoot = { ...CARD_LINK, readiness: { cardId: 'lw-evidence-test', bootId: 'boot-2' } };
+    publishCardJourneyEvidence({ cardLink: otherBoot });
+    assert.equal(
+      getCardJourneyEvidence().blackout,
+      false,
+      'a snapshot for a different boot must not inherit a blackout fact it never read',
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

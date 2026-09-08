@@ -13,6 +13,7 @@ import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../li
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { recoverCardLightsVerified, requireExactReadyCardStatus } from '../lib/cardRecoverLights.js';
+import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
@@ -884,6 +885,35 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   const commissioningFlow = useCommissioningFlow();
   const ladderOwnsPrimary = deriveLadderOwnsPrimary(sharedJourney, commissioningFlow);
 
+  // F16: card lw-b0fe81f61b44 held the open project, reported "Connected"
+  // and a ready runtime, yet /api/zones held blackout:true and the strip was
+  // dark — nothing on Card Home said so. `sharedJourney.blackout` is the one
+  // fact both this page and Patterns read off the shared journey
+  // (setupJourneyInputs.js), so this banner and the working-screen notice in
+  // lw-pattern.jsx say the same thing from the same evidence.
+  const cardBlackedOut = sharedJourney.blackout === true;
+  const [blackoutRecoveryStatus, setBlackoutRecoveryStatus] = useState('idle');
+  const [blackoutRecoveryError, setBlackoutRecoveryError] = useState('');
+  const recoverCardBlackout = async () => {
+    if (blackoutRecoveryStatus === 'pending') return;
+    setBlackoutRecoveryStatus('pending');
+    setBlackoutRecoveryError('');
+    try {
+      // Same request Patterns' own Recover lights sends (repairLed,
+      // lw-pattern.jsx) — reused, not reinvented, and wrapped the same way so
+      // a cleared blackout invalidates the shared journey evidence and this
+      // banner clears itself without a click.
+      await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
+        { patternId: 'warm-white', brightness: 1, syncZones: true },
+        { host: cardLink?.host || cardHost, timeoutMs: 3200, restartCard: true },
+      ));
+      setBlackoutRecoveryStatus('idle');
+    } catch (error) {
+      setBlackoutRecoveryStatus('error');
+      setBlackoutRecoveryError(error?.message || 'Recovery was not verified. Keep the card powered, reconnect, and retry.');
+    }
+  };
+
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
     // a11y behavior), but never on a direct page load — mount-time focus
@@ -917,6 +947,30 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
+      {cardBlackedOut && (
+        // role="status", not "alert": card-state-matrix.spec.ts's own
+        // connection-only invariant (expectUnaided) requires that connecting
+        // to ANY card — including the 'blackout' fixture — raises no alert
+        // before the owner does anything. The message still persists and
+        // still carries the one recovery action; only its urgency framing
+        // changes. A genuine failure of the recovery attempt itself (below)
+        // is a real alert, raised only after the owner presses the button.
+        <div className="card-blackout-banner" role="status" data-testid="card-blackout-notice">
+          <p>Lights are off on the card.</p>
+          <button
+            type="button"
+            className="btn primary"
+            data-testid="recover-lights"
+            disabled={blackoutRecoveryStatus === 'pending'}
+            onClick={() => void recoverCardBlackout()}
+          >
+            {blackoutRecoveryStatus === 'pending' ? 'Sending…' : 'Recover lights'}
+          </button>
+          {blackoutRecoveryStatus === 'error' && blackoutRecoveryError && (
+            <p role="alert">{blackoutRecoveryError}</p>
+          )}
+        </div>
+      )}
       <SetupScreen
         {...cardProps}
         onOpenConnectionCenter={onOpenConnectionCenter}

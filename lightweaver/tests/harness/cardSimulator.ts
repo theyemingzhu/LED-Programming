@@ -674,8 +674,22 @@ export function createCardSimulator(
         return ok(controlAcknowledgement(state, payload));
       case '/api/identify':
         return ok({ ok: true, cardId: state.cardId });
-      case '/api/recover-lights':
-        applyControl(payload);
+      case '/api/recover-lights': {
+        // NOT routed through applyControl. Real firmware's runtimeRecoverLights
+        // (main.cpp) is not constrained by /api/control's known-pattern-list
+        // rule — it unconditionally applies whatever patternId it is given
+        // (rendering a fallback warm frame when the id names nothing it
+        // recognises) and always clears blackout on every zone. Every recovery
+        // call in Studio sends patternId 'warm-white', which is not one of the
+        // matrix fixture's three named patterns (aurora/plasma/fire), so
+        // reusing applyControl's /api/control-shaped restriction here left a
+        // blacked-out simulated card blacked out forever after every recovery
+        // (F16: the real card recovered fine; only this fixture was wrong).
+        state.stateRevision += 1;
+        applyZoneControlFields(payload);
+        const requestedId = String(payload.patternId || '').trim() || 'warm-white';
+        state.currentIndex = state.patterns.findIndex(pattern => pattern.id === requestedId);
+        state.currentId = requestedId;
         return ok({
           ok: true, accepted: true, recovered: true, cardId: state.cardId,
           patternId: state.currentId,
@@ -685,6 +699,7 @@ export function createCardSimulator(
             brightnessByte: 166, brightnessLimit: 255, blackout: false, streaming: false,
           },
         });
+      }
       case '/api/clear-project':
         if (payload.confirm !== 'CLEAR') {
           return { body: { ok: false, error: 'missing confirmation' }, status: 400 };

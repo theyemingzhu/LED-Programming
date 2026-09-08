@@ -4,7 +4,9 @@ import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../l
 import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
 import {
   getCardJourneyEvidence,
+  hasFreshCardJourneyBlackout,
   hasFreshCardJourneyEvidence,
+  refreshCardJourneyBlackout,
   refreshCardJourneyEvidence,
   subscribeCardJourneyEvidence,
 } from '../lib/cardJourneyEvidence.js';
@@ -94,6 +96,19 @@ export function useSetupJourney({
     // immediately, so it converges rather than polls.
     if (hasFreshCardJourneyEvidence(cardLink, evidence)) return;
     void refreshCardJourneyEvidence({ cardLink, reason: 'setup-journey' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh, exact, cardId, bootId, evidence]);
+
+  // F16: a `refresh: false` caller (Card Home's Setup screen does its own
+  // richer status+wiring read and publishes it directly) still has no other
+  // way to learn whether the card's zones are blacked out — nothing else
+  // reads /api/zones for it. Gated on `!refresh` so a `refresh: true` caller
+  // never pays for two reads of the same fact: its own full refresh above
+  // already includes the zones read.
+  useEffect(() => {
+    if (refresh || !exact) return;
+    if (hasFreshCardJourneyBlackout(cardLink, evidence)) return;
+    void refreshCardJourneyBlackout({ cardLink, reason: 'setup-journey-blackout' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, exact, cardId, bootId, evidence]);
 

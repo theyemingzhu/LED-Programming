@@ -479,3 +479,56 @@ test('[J08] a card holding a different project never rewrites open work that has
   expect(spec.projectId, 'fixture sanity: installed-different must actually differ').toBe(OTHER_PROJECT_ID);
   expect(card.unhandled).toEqual([]);
 });
+
+// ---------------------------------------------------------------------------
+// J16 — a card-side blackout (F16, 2026-09-08 bench defect): card
+// lw-b0fe81f61b44 held the open project, Patterns and the footer said
+// "Connected" / "Card firmware 1548 ✓", Tune showed Brightness 100%, and the
+// strip was dark. /api/zones held zones[0].blackout: true and
+// /api/status lwOutput.brightnessByte: 0 — nothing Studio showed said so,
+// because nothing read /api/zones into the shared journey. This must be
+// visible on Card Home and Patterns from the same evidence, with one action
+// (the existing data-testid="recover-lights" control) that clears it.
+// ---------------------------------------------------------------------------
+test('[J16-blackout] a card-side blackout is surfaced on Card Home and Patterns, and Recover lights clears it', async ({ page }) => {
+  const spec = cardState('blackout');
+  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  await waitConnectedUnaided(page, 'J16 card home connect');
+
+  await expect(
+    journeyLocator(page),
+    'a card holding exactly the project it already reports installed must read as setup-complete even while blacked out',
+  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Card Home must say the lights are off on the card',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(
+    page.getByTestId('recover-lights'),
+    'Card Home must offer Recover lights as the action for the blackout it just reported',
+  ).toBeVisible();
+
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J16 patterns entry');
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Patterns must say the same thing Card Home said, from the same shared journey',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  const recoverButton = page.getByTestId('recover-lights');
+  await expect(recoverButton).toBeVisible();
+
+  await recoverButton.click();
+
+  await expect
+    .poll(() => card.requests.some(entry => entry.path === '/api/recover-lights'), {
+      message: 'Recover lights must send the exact request the card accepts to clear a blackout',
+      timeout: CONNECT_BUDGET_MS,
+    })
+    .toBe(true);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'once the card reports blackout false, the message must go away without a further click',
+  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+});
