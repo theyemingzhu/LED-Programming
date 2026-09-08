@@ -380,7 +380,7 @@ test('Playlist overflow blocks clipboard, blob, and download side effects with e
 
   await page.getByRole('button', { name: /Copy chip config/ }).click();
   await expect(page.getByTestId('playlist-card-status')).toBeVisible();
-  expect(await page.getByTestId('playlist-card-status').evaluate(node => node.childNodes[0]?.textContent)).toBe(capacityError.message);
+  expect(await page.getByTestId('playlist-card-status').evaluate(node => node.querySelector('.lw-notice-copy')?.textContent)).toBe(capacityError.message);
   expect(await page.evaluate(() => (window as any).__playlistExportEffects)).toEqual({
     clipboard: 0,
     objectUrl: 0,
@@ -389,7 +389,7 @@ test('Playlist overflow blocks clipboard, blob, and download side effects with e
 
   await page.getByRole('button', { name: 'Download', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toBeVisible();
-  expect(await page.getByTestId('playlist-card-status').evaluate(node => node.childNodes[0]?.textContent)).toBe(capacityError.message);
+  expect(await page.getByTestId('playlist-card-status').evaluate(node => node.querySelector('.lw-notice-copy')?.textContent)).toBe(capacityError.message);
   expect(await page.evaluate(() => (window as any).__playlistExportEffects)).toEqual({
     clipboard: 0,
     objectUrl: 0,
@@ -544,13 +544,22 @@ test('Playlist ignores a stale reset failure after the playlist is edited', asyn
 
 test('Playlist marks a row runtime-applied only after the paired card acknowledges the latest intent', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  await mockConnectedPlaylistCard(page, project, 'lw-playlist-test');
+  const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-test');
   await gotoPlaylist(page, project);
 
+  // Hold the card's reply before clicking. This is the deterministic
+  // replacement for racing Playwright's own click-actionability delay (which
+  // can exceed the simulator's fixed write latency under host load) against
+  // the assertion below: the pending "Sending…" state is now guaranteed
+  // observable regardless of how long the click itself takes, because the
+  // card literally cannot answer until the test releases it.
+  const releaseReply = card.holdNextReply('/api/control');
   const firstRow = page.locator('.pl-row').first();
   await firstRow.getByRole('button', { name: 'Live' }).click();
   await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Sending to Lightweaver');
   await expect(firstRow).not.toHaveClass(/\bis-live\b/);
+
+  releaseReply();
   await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
   await expect(firstRow).toHaveClass(/\bis-live\b/);
 });

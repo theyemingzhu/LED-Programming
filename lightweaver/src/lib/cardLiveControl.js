@@ -508,15 +508,20 @@ async function redeliverRecoveryAfterRestart(host, payload, options = {}) {
   let lastError = null;
   do {
     try {
+      // Use the same budget the rest of the recovery path uses (options.timeoutMs,
+      // default 3000ms) — not a stale 1200ms cap. A card that answers ok but
+      // slower than 1200ms was previously mistaken for a timeout, so this loop
+      // resent a recovery command the card had already accepted: a real
+      // duplicate physical write (F29).
       const response = isMixedContentBlocked()
         ? await sendCardBridgeRequest('recover-lights', payload, {
             host,
-            timeoutMs: Math.min(options.timeoutMs || 3000, 1200),
+            timeoutMs: options.timeoutMs || 3000,
             retryOnTimeout: false,
           })
         : await postRecoverLightsToHost(host, payload, {
             ...options,
-            timeoutMs: Math.min(options.timeoutMs || 3000, 1200),
+            timeoutMs: options.timeoutMs || 3000,
           });
       return requireRecoveryAcknowledgement(response);
     } catch (error) {
