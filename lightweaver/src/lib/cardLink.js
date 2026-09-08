@@ -614,7 +614,10 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (!prev.card?.id) return prev;
       if (event.readiness) return applyStatusEnvelope(prev, event, 'bridge', host);
       if (prev.state !== 'connected-bridge') return prev;
-      if (prev.state === 'connected-bridge' && prev.host === host && prev.missedPings === 0) return prev;
+      if (prev.host === host && prev.missedPings === 0) return prev;
+      // F26: a bare keepalive reply after a tolerated miss resets the count, so
+      // only CONSECUTIVE misses ever reach the limit.
+      if (prev.missedPings > 0) return { ...prev, missedPings: 0 };
       return prev;
     }
     case 'bridge-ping-missed': {
