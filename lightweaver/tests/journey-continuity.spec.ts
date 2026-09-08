@@ -12,7 +12,7 @@
 // failure names the scenario it blocks.
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
+import { createCardSimulator, seedWiringDivergedProject, type CardSimulator } from './harness/cardSimulator';
 import {
   cardState,
   MATRIX_CARD_ID,
@@ -531,4 +531,127 @@ test('[J16-blackout] a card-side blackout is surfaced on Card Home and Patterns,
     page.getByTestId('card-blackout-notice'),
     'once the card reports blackout false, the message must go away without a further click',
   ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+});
+
+// ---------------------------------------------------------------------------
+// J22 — bench 2026-09-08 (F22), the same defect as J16-blackout with one more
+// twist: Adrian's open Studio project carried the SAME project id as the card
+// but an unsaved wiring edit since install, so the structural fingerprint
+// differed. He pressed Off on the card's own page; Patterns (footer:
+// Connected) showed no "Lights are off" message and he could not find Recover
+// lights. `setupJourneyBlackout` (src/lib/setupJourneyInputs.js) used to
+// require an exact wiring match — matchesOpenProject / resolutionKind
+// 'saved-match' — before it would even look at the card's own /api/zones
+// blackout fact, so a real blackout on exactly the project Studio has open
+// went unreported the moment the wiring had drifted. F18's edit-intent
+// handoff already treats id-equality alone as proof the card holds the open
+// project (lw-card.jsx's `cardHoldsOpenProject`); blackout must agree — the
+// LEDs do not care whether Studio's copy of the wiring matches.
+// ---------------------------------------------------------------------------
+test('[J22-blackout-drifted] a card-side blackout is reported for the open project even with an unsaved wiring edit since install', async ({ page }) => {
+  const spec = await seedWiringDivergedProject(page, 'blackout');
+  const card = createCardSimulator(spec);
+  await card.install(page);
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J22 card home connect');
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Card Home must say the lights are off on the card even though the open project has an unsaved wiring edit since install',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(
+    page.getByTestId('recover-lights'),
+    'Card Home must offer an ENABLED Recover lights action for the blackout it just reported, wiring drift or not',
+  ).toBeEnabled();
+
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J22 patterns entry');
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Patterns must say the same thing Card Home said, from the same shared journey',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(
+    page.getByTestId('recover-lights'),
+    'Patterns must offer an ENABLED Recover lights action too — recovering the lights is not a pattern write and must not wait on the install-authorization gate',
+  ).toBeEnabled();
+
+  // Recover lights from Card Home, where the action carries no install/write
+  // authorization gate (lw-card.jsx's recoverCardBlackout calls
+  // recoverCardLightsVerified directly). Patterns' own button is asserted
+  // visible and ENABLED above but is not clicked here — [J22b-patterns-recover]
+  // below is the dedicated coverage for clicking it on Patterns; keeping this
+  // test's own recovery on Card Home keeps this test's assertions unchanged.
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J22 back to card home to recover');
+  const recoverButton = page.getByTestId('recover-lights');
+  await expect(recoverButton).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
+  await recoverButton.click();
+
+  await expect
+    .poll(() => card.requests.some(entry => entry.path === '/api/recover-lights'), {
+      message: 'Recover lights must send the exact request the card accepts to clear a blackout',
+      timeout: CONNECT_BUDGET_MS,
+    })
+    .toBe(true);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'once the card reports blackout false, the message must go away without a further click',
+  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+});
+
+// ---------------------------------------------------------------------------
+// J22b — bench 2026-09-08 (F22b), the return half of J22-blackout-drifted.
+// J22 above proved the button is ENABLED on Patterns for a drifted-wiring
+// blackout but recovered through Card Home, because repairLed
+// (lw-pattern.jsx) routed the click through `currentPatternCardAccess()` →
+// `hasCurrentProjectAuthorization()` → `ensureCardEditAuthorization`
+// (src/lib/cardEditAuthorization.js), the exact-fingerprint pattern-WRITE
+// gate — which refuses the instant Studio's wiring has drifted since
+// install, the same fingerprint mismatch this test seeds. Recovering the
+// lights sends a fixed warm-white frame and asserts nothing about which
+// project is installed; it is not a pattern write and must not need one.
+// Card Home's identical button (recoverCardBlackout) never went through that
+// gate at all. This test proves Patterns' own button now does what Card
+// Home's always did, for a card holding the open project
+// (installedProjectIdFromCardStatus(cardLink?.readiness) === projectId, the
+// same fact F18/F22 use) — including that no pattern-edit-authorization
+// alert (data-testid="pattern-gate-notice") appears along the way.
+// ---------------------------------------------------------------------------
+test('[J22b-patterns-recover] Recover lights on Patterns clears a drifted-wiring blackout for the open project, no authorization alert', async ({ page }) => {
+  const spec = await seedWiringDivergedProject(page, 'blackout');
+  const card = createCardSimulator(spec);
+  await card.install(page);
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J22b card home connect');
+
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J22b patterns entry');
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Patterns must say the lights are off on the card even though the open project has an unsaved wiring edit since install',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+
+  const patternsRecoverButton = page.getByTestId('recover-lights');
+  await expect(patternsRecoverButton).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
+  await patternsRecoverButton.click();
+
+  await expect
+    .poll(() => card.requests.some(entry => entry.path === '/api/recover-lights'), {
+      message: 'Recover lights on Patterns must send the exact request the card accepts to clear a blackout, wiring drift or not',
+      timeout: CONNECT_BUDGET_MS,
+    })
+    .toBe(true);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'once the card reports blackout false, the message must go away without a further click',
+  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+
+  await expect(
+    page.getByTestId('pattern-gate-notice'),
+    'recovering the lights is not a pattern write and must not raise the pattern-edit-authorization refusal ("That tap was not sent to the card.")',
+  ).toHaveCount(0);
 });

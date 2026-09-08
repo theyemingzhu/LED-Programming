@@ -298,6 +298,30 @@ test('blackout is never asserted about a project the card was not read against',
   assert.equal(journey.blackout, false, 'a blackout read about a different project must not carry over to this one');
 });
 
+// F22 — bench 2026-09-08: Adrian's open Studio project had the SAME project
+// id as the card but an unsaved wiring edit, so the structural fingerprint
+// differed. He pressed Off on the card's own page; Patterns and Card Home
+// (footer: Connected) showed no "Lights are off" message. matchesOpenProject
+// and resolutionKind are claims about WIRING match, not about what the LEDs
+// are doing — F18's edit-intent handoff (lw-card.jsx's `cardHoldsOpenProject`)
+// already treats id-equality alone as enough to say "the card holds the open
+// project"; blackout must agree, because a real blackout does not become
+// fake because Studio's copy of the wiring has drifted.
+test('blackout is reported for the open project even with drifted wiring — same project id, no fingerprint match', () => {
+  const cardLink = connectedCard();
+  const project = verifiedProject();
+  const evidence = journeyEvidenceSnapshot({
+    cardLink,
+    status: READY_STATUS,
+    resolutionKind: 'none',
+    matchesOpenProject: false,
+    projectId: project.id,
+    blackout: true,
+  });
+  const journey = bothWays({ cardLink, cardLifecycle: { state: 'ready' }, project, evidence });
+  assert.equal(journey.blackout, true, 'a card-side blackout must be reported for the open project regardless of wiring-fingerprint drift');
+});
+
 // card-state-matrix.spec.ts's own connection-only invariant (expectUnaided)
 // requires that a first-ever, auto-adopted "recognize this card" (the exact
 // shape 'remembers-card' fixtures produce — matchesOpenProject can go true

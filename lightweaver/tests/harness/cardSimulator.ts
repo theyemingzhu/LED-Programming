@@ -18,10 +18,11 @@
 // cardLiveControl.js that reject anything less.
 //
 // See docs/card-state-matrix.md.
+import { expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from '../../src/lib/cardCustomerControlContract.js';
 import type { CardStateSpec, PatternEntry } from './cardStates.js';
-import { MATRIX_CARD_ID } from './cardStates.js';
+import { MATRIX_CARD_ID, MATRIX_FIRMWARE_VERSION, MATRIX_BUILD_ID, cardState } from './cardStates.js';
 
 /** Every host Studio might reach a card on. */
 export const CARD_HOSTS = ['lightweaver.local', '192.168.4.1', '192.168.18.70'];
@@ -1084,4 +1085,96 @@ export function createCardSimulator(
       );
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// F22 fixture — a browser holding the SAME project id the card reports, but
+// with an unsaved wiring edit since install, so the structural fingerprint
+// differs. Copied verbatim from tests/journey-edit-intent.spec.ts's F18
+// fixture (`readyInstallProject` + `seedWiringDivergedProject`, both local to
+// that spec file) per that file's own header convention — spec files in this
+// suite copy each other's fixture recipes instead of importing them — and
+// exported here instead so journey-continuity.spec.ts's F22 blackout test
+// does not have to duplicate the recipe a second time. `seedWiringDivergedProject`
+// gained one parameter (`stateId`, default 'installed-match') so a caller can
+// diverge against any base card state — F22 needs the 'blackout' fixture,
+// which shares 'installed-match''s project id and pixel count and differs
+// only in currentIndex/currentId.
+// ---------------------------------------------------------------------------
+const HARNESS_CONNECT_BUDGET_MS = 15000;
+const HARNESS_INSTALL_ROUTE = '/#screen=card&section=setup&task=install-project';
+
+/**
+ * Boots Studio's own default project directly on the install screen, marks it
+ * verified/locked/color-confirmed, and reloads so the mutated copy —
+ * `portRoles` properly derived from the now-verified wiring — is what the app
+ * actually runs on.
+ */
+export async function readyInstallProject(page: Page, edit?: (project: Record<string, any>) => void) {
+  await page.goto(HARNESS_INSTALL_ROUTE, { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('lw_autosave_v3'))), {
+    timeout: HARNESS_CONNECT_BUDGET_MS,
+  }).toBe(true);
+  await page.waitForTimeout(600);
+  const project = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  project.layout.wiring.verified = true;
+  project.layout.wiring.locked = true;
+  project.layout.wiring.runs.forEach((run: Record<string, any>) => { run.verified = true; });
+  const led = project.devices.standaloneController.led;
+  led.colorOrder = led.colorOrder || 'GRB';
+  led.colorOrderConfirmed = true;
+  led.confirmedColorOrder = led.colorOrder;
+  edit?.(project);
+  await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('commissioning-step')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
+  await expect(page.getByText('Ready to install on the card.')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled({ timeout: HARNESS_CONNECT_BUDGET_MS });
+  return project;
+}
+
+/**
+ * Studio's own default project, relabelled to the given card state's project
+ * id, one output marked `role: 'strip'` so `adoptWiringFromCard` treats the
+ * piece as already described, and the second strip's pixel count rebalanced
+ * so the TOTAL matches the card's — then the card-identity keys and the
+ * ticket's exact lifecycle seed (`dirty: true, installation: null`, a wiring
+ * edit that invalidated the installation entirely) layered on top.
+ */
+export async function seedWiringDivergedProject(page: Page, stateId = 'installed-match') {
+  const spec = cardState(stateId);
+  await readyInstallProject(page, project => {
+    project.id = spec.projectId;
+    project.name = 'Test Strip';
+    const strips = project.layout.strips;
+    const currentTotal = strips.reduce((sum: number, strip: Record<string, any>) => sum + (strip.pixelCount || 0), 0);
+    const delta = currentTotal - spec.pixels;
+    strips[1].pixelCount = Math.max(1, strips[1].pixelCount - delta);
+    project.portRoles = (project.portRoles || []).map((entry: Record<string, any>) => (
+      entry.pin === 16 ? { ...entry, role: 'strip', pixelCount: spec.pixels, controlKind: '' } : entry
+    ));
+  });
+  await page.addInitScript(({ id, firmwareVersion, buildId }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    // The install-screen bootstrap above left a resumable commissioning flow
+    // behind in sessionStorage (it never clicked Install or Cancel) — and
+    // app.jsx's route reconciler forces the URL back to the install route for
+    // as long as `installActiveRef` reads one. This owner has already
+    // finished setup once and is returning to edit.
+    sessionStorage.removeItem('lw_card_commissioning_active_v2');
+    localStorage.removeItem('lw_card_commissioning_registry_v2');
+    localStorage.removeItem('lw_card_commissioning_registry_v2_backup');
+    // The wiring edit invalidated the installation entirely — no verified
+    // record survives it.
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      generation: 2,
+      editedRevision: 2,
+      installedRevision: 1,
+      dirty: true,
+      installation: null,
+    }));
+  }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
+  return spec;
 }
