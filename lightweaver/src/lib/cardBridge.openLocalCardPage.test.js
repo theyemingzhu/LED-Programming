@@ -111,11 +111,17 @@ test('bridge-only acquisition requests a compact passive utility window', () => 
   const { opened } = stubWindow({ openResult: tab });
 
   assert.equal(openCardBridge('192.168.50.28'), tab);
-  assert.deepEqual(opened[0], {
-    url: 'http://192.168.50.28/#studioBridge=1&bridgeUtility=1',
-    name: CARD_BRIDGE_WINDOW_NAME,
-    features: CARD_BRIDGE_UTILITY_WINDOW_FEATURES,
-  });
+  assert.equal(opened[0].name, CARD_BRIDGE_WINDOW_NAME);
+  assert.equal(opened[0].features, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
+  const url = new URL(opened[0].url);
+  assert.equal(url.origin, 'http://192.168.50.28');
+  assert.equal(url.pathname, '/');
+  assert.equal(url.hash, '#studioBridge=1&bridgeUtility=1');
+  // F17-B: every launch carries a fresh query-string attempt token so a
+  // same-named popup already open at a byte-identical URL is forced to
+  // re-navigate instead of only being focused. See
+  // cardBridge.js#buildCardBridgeLaunchUrl.
+  assert.ok(url.searchParams.get('lwBridgeAttempt'), 'a per-attempt token is present');
 });
 
 test('cardBridge reload re-adopts the named card tab when window.opener is absent', async () => {
@@ -707,4 +713,61 @@ test('same correlation can retry through one WindowProxy while stale or changed 
   assert.equal(changedDuplicate.ok, false);
   assert.equal(changedDuplicate.reason, 'stale-correlation');
   assert.equal(assignments, 2, 'rejected correlations cannot navigate the bridge');
+});
+
+// F17-B: a named popup already open at a byte-identical URL is only focused by
+// the browser (a same-document fragment navigation), so a card page that
+// missed its 'ready' handshake -- an earlier tap left the tab open, or Studio
+// reloaded -- could never be reached again. buildCardBridgeLaunchUrl now mints
+// a fresh query-string attempt token on every call so a repeat open forces a
+// real navigation; the launch fragment the card page actually parses stays
+// byte-identical.
+test('openCardBridge issues a distinct navigation URL on a repeat attempt', () => {
+  const tab = fakeCardTab();
+  const { opened } = stubWindow({ openResult: tab });
+
+  openCardBridge('192.168.50.90');
+  openCardBridge('192.168.50.90');
+
+  assert.equal(opened.length, 2);
+  const [first, second] = opened;
+  assert.notEqual(
+    first.url.split('#')[0],
+    second.url.split('#')[0],
+    'a repeat open must mint a distinct pre-fragment URL so a same-named popup re-executes instead of only refocusing',
+  );
+  assert.equal(
+    new URL(first.url).hash,
+    new URL(second.url).hash,
+    'the launch fragment the card page parses must stay byte-identical across attempts',
+  );
+});
+
+// The halfway "nudge" in acquireCardBridgeFromGesture exists to re-navigate a
+// tab that opened but never posted 'ready' (a tab reused by name from an
+// earlier session, with no live window.opener). It called
+// navigateReservedCardBridgeWindow, which refuses to act unless
+// bridgeReservedWindow still equals the target -- but nothing in this
+// (unreserved) acquisition path ever sets bridgeReservedWindow, so the guard
+// always failed and the nudge silently did nothing. This drives the real
+// gesture flow (no reservedWindow) all the way to its timeout and asserts the
+// tracked tab was actually re-navigated partway through.
+test('the unverified-bridge nudge re-navigates the tracked window without requiring a reservation', async () => {
+  const host = '192.168.50.91';
+  const tab = fakeCardTab();
+  const { opened } = stubWindow({ openResult: tab });
+
+  const attempt = acquireCardBridgeFromGesture(host, { timeoutMs: 20 });
+  assert.equal(opened.length, 1, 'the gesture opens the one named tab directly; nothing reserves it');
+  const firstUrl = opened[0].url;
+
+  await assert.rejects(attempt.ready, error => error?.reason === 'bridge-timeout');
+
+  const renavigatedUrl = tab.location.href;
+  assert.notEqual(renavigatedUrl, '', 'the halfway nudge must re-navigate the tab it already opened');
+  assert.notEqual(
+    renavigatedUrl.split('#')[0],
+    firstUrl.split('#')[0],
+    'a dead reservation guard left the nudge unable to touch a window nothing had reserved',
+  );
 });
