@@ -771,3 +771,195 @@ test('the unverified-bridge nudge re-navigates the tracked window without requir
     'a dead reservation guard left the nudge unable to touch a window nothing had reserved',
   );
 });
+
+// F24 — the card's own "Edit in Studio" button used to reload the opener tab
+// (opener.location.href = <studio url>), which lost every bit of Studio's
+// in-memory state. Firmware from bridgeVersion 7 on instead posts an
+// 'open-studio' message to window.opener and Studio must apply the intent IN
+// THIS TAB, without a reload. These tests drive that handler directly against
+// the stubbed window+history used nowhere else in this file, since every
+// other test here has no reason to track location.href assignments or
+// history.replaceState calls.
+//
+// `stubWindow`'s `win.location` starts as a bare `{ search: '' }` object with
+// no `href`/`hash`/`pathname`/`origin` and no `win.history` at all -- this
+// helper adds exactly what applyOpenStudioBridgeMessage touches, and tracks
+// every `location.href` assignment so a test can assert there were none (a
+// reload is precisely the defect this handler exists to prevent).
+function installOpenStudioLocationTracking(win, {
+  origin = 'https://led.mandalacodes.com',
+  pathname = '/',
+  search = '',
+  hash = '#screen=card&section=overview',
+} = {}) {
+  win.location.origin = origin;
+  win.location.pathname = pathname;
+  win.location.search = search;
+  win.location.hash = hash;
+  let hrefAssignments = 0;
+  Object.defineProperty(win.location, 'href', {
+    configurable: true,
+    get() {
+      return `${win.location.origin}${win.location.pathname}${win.location.search}${win.location.hash}`;
+    },
+    set() {
+      hrefAssignments += 1;
+    },
+  });
+  const replaceStateCalls = [];
+  win.history = { replaceState: (state, title, url) => replaceStateCalls.push(url) };
+  return { replaceStateCalls, hrefAssignments: () => hrefAssignments };
+}
+
+test('open-studio from the tracked bridge window at the resolved card origin applies the intent in place, without a reload', () => {
+  const host = '192.168.50.100';
+  const tab = fakeCardTab();
+  const { win, emitMessage } = stubWindow({ openResult: tab });
+  const location = installOpenStudioLocationTracking(win);
+
+  assert.equal(openLocalCardPage(host).ok, true);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 7 },
+  });
+  assert.equal(win.focusCalls, 0);
+
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: {
+      app: 'LightweaverCardBridge', type: 'open-studio', version: 7,
+      editLook: 'combo-aurora', editPattern: '',
+      href: `http://${host}/#studioBridge=1`,
+    },
+  });
+
+  assert.equal(win.location.hash, '#screen=pattern');
+  assert.equal(location.hrefAssignments(), 0, 'location.href must never be assigned — that is a reload');
+  assert.equal(location.replaceStateCalls.length, 1);
+  assert.ok(location.replaceStateCalls[0].includes('editLook=combo-aurora'));
+  assert.equal(win.focusCalls, 1, 'this Studio tab (window), not the card tab, is focused');
+});
+
+test('open-studio from a window other than the tracked bridge is ignored', () => {
+  const host = '192.168.50.101';
+  const tab = fakeCardTab();
+  const impostor = fakeCardTab();
+  const { win, emitMessage } = stubWindow({ openResult: tab });
+  const location = installOpenStudioLocationTracking(win);
+
+  assert.equal(openLocalCardPage(host).ok, true);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 7 },
+  });
+
+  emitMessage({
+    origin: `http://${host}`, source: impostor,
+    data: { app: 'LightweaverCardBridge', type: 'open-studio', version: 7, editLook: 'combo-x', editPattern: '' },
+  });
+
+  assert.equal(win.location.hash, '#screen=card&section=overview', 'an untracked source must not move the screen');
+  assert.equal(location.replaceStateCalls.length, 0);
+  assert.equal(location.hrefAssignments(), 0);
+  assert.equal(win.focusCalls, 0);
+});
+
+test('open-studio from the tracked window but a mismatched origin is ignored', () => {
+  const host = '192.168.50.102';
+  const tab = fakeCardTab();
+  const { win, emitMessage } = stubWindow({ openResult: tab });
+  const location = installOpenStudioLocationTracking(win);
+
+  assert.equal(openLocalCardPage(host).ok, true);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 7 },
+  });
+
+  emitMessage({
+    origin: 'http://192.168.50.199', source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'open-studio', version: 7, editLook: 'combo-x', editPattern: '' },
+  });
+
+  assert.equal(win.location.hash, '#screen=card&section=overview', 'a mismatched origin must not move the screen');
+  assert.equal(location.replaceStateCalls.length, 0);
+  assert.equal(location.hrefAssignments(), 0);
+});
+
+test('open-studio prefers the message\'s own editLook/editPattern fields over a foreign-origin href', () => {
+  const host = '192.168.50.103';
+  const tab = fakeCardTab();
+  const { win, emitMessage } = stubWindow({ openResult: tab });
+  const location = installOpenStudioLocationTracking(win);
+
+  assert.equal(openLocalCardPage(host).ok, true);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 7 },
+  });
+
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: {
+      app: 'LightweaverCardBridge', type: 'open-studio', version: 7,
+      editLook: 'combo-aurora', editPattern: '',
+      href: 'https://evil.example/?editLook=zzz&editPattern=zzz',
+    },
+  });
+
+  assert.equal(win.location.hash, '#screen=pattern');
+  assert.equal(location.replaceStateCalls.length, 1);
+  assert.ok(location.replaceStateCalls[0].includes('editLook=combo-aurora'));
+  assert.ok(!location.replaceStateCalls[0].includes('zzz'), 'the foreign href must never be consulted when the message carries its own field');
+});
+
+test('open-studio falls back to the href\'s own query params only when the message carries neither field directly, and only for a same-origin href', () => {
+  const host = '192.168.50.104';
+  const tab = fakeCardTab();
+  const { win, emitMessage } = stubWindow({ openResult: tab });
+  const location = installOpenStudioLocationTracking(win, { origin: 'https://led.mandalacodes.com' });
+
+  assert.equal(openLocalCardPage(host).ok, true);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 7 },
+  });
+
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: {
+      app: 'LightweaverCardBridge', type: 'open-studio', version: 7,
+      editLook: '', editPattern: '',
+      href: 'https://led.mandalacodes.com/?cardBridge=1&editPattern=fire#screen=card&section=overview',
+    },
+  });
+
+  assert.equal(win.location.hash, '#screen=pattern');
+  assert.equal(location.replaceStateCalls.length, 1);
+  assert.ok(location.replaceStateCalls[0].includes('editPattern=fire'));
+});
+
+test('open-studio with neither a direct field nor a same-origin href carries no intent, but still moves the hash', () => {
+  const host = '192.168.50.105';
+  const tab = fakeCardTab();
+  const { win, emitMessage } = stubWindow({ openResult: tab });
+  const location = installOpenStudioLocationTracking(win, { origin: 'https://led.mandalacodes.com' });
+
+  assert.equal(openLocalCardPage(host).ok, true);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 7 },
+  });
+
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: {
+      app: 'LightweaverCardBridge', type: 'open-studio', version: 7,
+      editLook: '', editPattern: '',
+      href: 'https://evil.example/?editLook=zzz',
+    },
+  });
+
+  assert.equal(win.location.hash, '#screen=pattern');
+  assert.equal(location.replaceStateCalls.length, 0, 'no intent to record, so no replaceState call');
+});
