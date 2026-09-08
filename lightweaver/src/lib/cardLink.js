@@ -632,7 +632,11 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       // live evidence (readiness/card), so Card Home does not flash back to
       // "not installed". Only a second CONSECUTIVE miss (missLimit reached)
       // means the card actually stopped answering.
-      if (prev.state === 'connected-bridge' && missedPings < missLimit) {
+      // An explicit identity error carried by the bridge itself (for example a
+      // correlated 'bridge-timeout' during a Wi-Fi handoff) is a verdict, not
+      // a slow keepalive: it is never tolerated.
+      const explicitIdentityError = Boolean(event.reason) && event.reason !== 'card-stopped-answering';
+      if (prev.state === 'connected-bridge' && missedPings < missLimit && !explicitIdentityError) {
         return { ...prev, missedPings };
       }
       return clearedLiveEvidence(prev, {
