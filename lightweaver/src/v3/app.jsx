@@ -14,7 +14,7 @@ import { ProjectSaveDialog } from '../components/projects/TopBarProjectDialogs.j
 import { OPEN_PROJECTS_PANEL_EVENT, ProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
 import { NoticeLayer } from '../components/NoticeLayer.jsx';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
-import { releaseCardBridge } from '../lib/cardBridge.js';
+import { releaseCardBridge, releaseInheritedBridgeWindowName } from '../lib/cardBridge.js';
 import { bootstrapCardHostFromLocation, canPushDirectlyToCard, readStoredCardHost } from '../lib/cardConnection.js';
 import {
   bootstrapBridgeCallback,
@@ -1106,7 +1106,16 @@ function Shell({ offlineUpdateController = null }) {
     project: lifecycleProject,
     update: firmwareRecoveryState,
   }), [cardLink, firmwareRecoveryState, lifecycleProject]);
-  useEffect(() => { void bootstrapStudioCardConnection(); }, []);
+  useEffect(() => {
+    // F28 — the card page's "Edit in Studio" handoff can leave THIS tab
+    // itself carrying the shared card-bridge window name (see
+    // releaseInheritedBridgeWindowName in cardBridge.js). Release it here,
+    // before the bootstrap below (or anything else this session does) can
+    // ever call window.open(url, CARD_BRIDGE_WINDOW_NAME) and silently
+    // navigate this very tab in place.
+    releaseInheritedBridgeWindowName();
+    void bootstrapStudioCardConnection();
+  }, []);
   useEffect(() => {
     if (!directCardControl) return;
     reportDirectCardStatus({

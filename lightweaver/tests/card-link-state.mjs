@@ -478,20 +478,29 @@ assert.equal(isCardLinkConnected(wrongBridgeCard), false);
 // steady-state pings return the same reference (no re-render churn)
 assert.equal(reduceCardLink(bridged, { type: 'bridge-ping-ok' }), bridged);
 
-// ── reducer: a miss is visible immediately; only full status can recover ────
+// ── reducer: one missed ping is tolerated (F26: a backgrounded bridge pop-up
+// gets throttled by the browser while the card answers in milliseconds); the
+// second consecutive miss demotes, and only full status can recover ────────
 const missOnce = reduceCardLink(bridged, { type: 'bridge-ping-missed' });
-assert.equal(missOnce.state, 'reconnecting-bridge');
+assert.equal(missOnce.state, 'connected-bridge', 'one missed bridge ping keeps the link');
 assert.equal(missOnce.missedPings, 1);
-const recovered = reduceCardLink(missOnce, { type: 'bridge-ping-ok' });
+assert.equal(isCardLinkConnected(missOnce), true);
+const missResets = reduceCardLink(missOnce, { type: 'bridge-ping-ok' });
+assert.equal(missResets.state, 'connected-bridge');
+assert.equal(missResets.missedPings, 0, 'a reply between misses resets the count');
+const missTwice = reduceCardLink(missOnce, { type: 'bridge-ping-missed' });
+assert.equal(missTwice.state, 'reconnecting-bridge', 'the second consecutive miss demotes');
+assert.equal(missTwice.missedPings, 2);
+const recovered = reduceCardLink(missTwice, { type: 'bridge-ping-ok' });
 assert.equal(recovered.state, 'reconnecting-bridge');
-const partialRecovery = reduceCardLink(missOnce, {
+const partialRecovery = reduceCardLink(missTwice, {
   type: 'bridge-ping-ok', host: bridged.host, card: bridged.card,
   expectedCard: bridged.card,
   readiness: { app: 'Lightweaver', cardId: bridged.card.id, firmwareVersion: '1.0.0', buildId: 'old' },
 });
 assert.equal(partialRecovery.state, 'revalidating', 'partial bridge status after misses never restores the link');
 assert.equal(isCardLinkConnected(partialRecovery), false);
-const recoveredWithStatus = reduceCardLink(missOnce, {
+const recoveredWithStatus = reduceCardLink(missTwice, {
   type: 'bridge-ping-ok', host: bridged.host, card: bridged.card,
   expectedCard: bridged.card, readiness: readyEnvelope(bridged.card.id),
 });

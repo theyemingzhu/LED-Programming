@@ -614,13 +614,31 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (!prev.card?.id) return prev;
       if (event.readiness) return applyStatusEnvelope(prev, event, 'bridge', host);
       if (prev.state !== 'connected-bridge') return prev;
-      if (prev.state === 'connected-bridge' && prev.host === host && prev.missedPings === 0) return prev;
+      if (prev.host === host && prev.missedPings === 0) return prev;
+      // F26: a bare keepalive reply after a tolerated miss resets the count, so
+      // only CONSECUTIVE misses ever reach the limit.
+      if (prev.missedPings > 0) return { ...prev, missedPings: 0 };
       return prev;
     }
     case 'bridge-ping-missed': {
       // A missed keepalive only matters for an established bridge link.
       if (prev.state !== 'connected-bridge' && prev.state !== 'reconnecting-bridge' && !(prev.state === 'revalidating' && prev.transport === 'bridge')) return prev;
       const missedPings = prev.missedPings + 1;
+      // F26: honour CARD_LINK_PING_MISS_LIMIT before leaving connected-bridge.
+      // The bridge pop-up is a separate browsing context; when it is
+      // backgrounded, Chrome throttles its timers well past
+      // CARD_LINK_PING_TIMEOUT_MS even though the card itself answers fine.
+      // A single missed ping records the miss without demoting or clearing
+      // live evidence (readiness/card), so Card Home does not flash back to
+      // "not installed". Only a second CONSECUTIVE miss (missLimit reached)
+      // means the card actually stopped answering.
+      // An explicit identity error carried by the bridge itself (for example a
+      // correlated 'bridge-timeout' during a Wi-Fi handoff) is a verdict, not
+      // a slow keepalive: it is never tolerated.
+      const explicitIdentityError = Boolean(event.reason) && event.reason !== 'card-stopped-answering';
+      if (prev.state === 'connected-bridge' && missedPings < missLimit && !explicitIdentityError) {
+        return { ...prev, missedPings };
+      }
       return clearedLiveEvidence(prev, {
         state: 'reconnecting-bridge', reason: 'card-stopped-answering',
         transport: 'bridge', host, missedPings,

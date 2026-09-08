@@ -234,6 +234,45 @@ function browserDocument(owner = browserWindow()) {
   return owner?.document || (typeof document !== 'undefined' ? document : null);
 }
 
+// F28 — the card page's "Edit in Studio" handoff can leave THIS Studio tab
+// itself carrying the shared bridge window name (see the comment on the
+// opener-less fallback in bootstrapCardBridgeFromOpener below). When that
+// happens, any `win.open(url, CARD_BRIDGE_WINDOW_NAME, ...)` resolves to the
+// current browsing context per the HTML "choose a browsing context"
+// algorithm -- the current context is a valid name match -- and, whenever url
+// is non-empty, that self-match navigates this tab SYNCHRONOUSLY, in place,
+// before any caller ever sees a return value. There is no way to detect and
+// undo that after the open() call returns; the only fix is to release an
+// inherited name BEFORE calling open with a real URL, so the self-match can
+// never occur. Every entry point that opens or re-adopts the named bridge tab
+// calls this first.
+export function releaseInheritedBridgeWindowName(win = browserWindow()) {
+  if (!win) return false;
+  try {
+    if (win.name !== CARD_BRIDGE_WINDOW_NAME) return false;
+    win.name = '';
+    return true;
+  } catch {
+    // window.name can be unwritable in some embedded/test hosts; releasing it
+    // is best-effort, and callers still verify the resulting handle below.
+    return false;
+  }
+}
+
+// True when `candidate` is the browsing context we are already running in --
+// this window, or (defensively) its top -- so callers never mistake a
+// self-match for a distinct, navigable card tab.
+function isCurrentBrowsingContext(candidate, win = browserWindow()) {
+  if (!candidate || !win) return false;
+  if (candidate === win) return true;
+  try {
+    if (win.top && candidate === win.top) return true;
+  } catch {
+    /* Cross-origin window.top access can throw; treat as not-current. */
+  }
+  return false;
+}
+
 function clearBridgeHandoffNavigationRetry(expectedWork = null) {
   const work = bridgeHandoffNavigationRetry;
   if (!work || (expectedWork && work !== expectedWork)) return false;
@@ -436,6 +475,13 @@ function reuseActiveBridgeWindow(host, origin) {
 function navigateExistingCardBridgeWindow(host, origin) {
   const target = ownedCardBridgeWindow() || adoptNamedCardBridgeWindow();
   if (!target || bridgeTargetClosed(target)) return null;
+  // Defense in depth: adoptNamedCardBridgeWindow already refuses to hand back
+  // a self-match, but never assign location on this window itself regardless
+  // of how `target` was obtained.
+  if (isCurrentBrowsingContext(target)) {
+    releaseInheritedBridgeWindowName();
+    return null;
+  }
   const url = buildCardBridgeLaunchUrl(host);
   revokeBridgeForNavigation({ host, origin });
   trackNavigatedBridgeWindow(target, { host, origin, persistHost: false });
@@ -1144,6 +1190,16 @@ function adoptNamedCardBridgeWindow() {
   try {
     const source = win.open('', CARD_BRIDGE_WINDOW_NAME);
     if (!source || bridgeTargetClosed(source)) return null;
+    if (isCurrentBrowsingContext(source, win)) {
+      // The name resolved back to THIS window -- there is no separate card
+      // tab to adopt (the card page's handoff can leave this Studio tab
+      // itself carrying the bridge name; see bootstrapCardBridgeFromOpener's
+      // opener-less fallback below). Release the inherited name so nothing
+      // downstream ever treats this window as the bridge target, and report
+      // that no window was found.
+      releaseInheritedBridgeWindowName(win);
+      return null;
+    }
     return source;
   } catch {
     return null;
@@ -1213,11 +1269,21 @@ export function openCardBridge(rawHost = '', {
   const win = browserWindow();
   if (!win?.open) return null;
   attachCardBridgeListener();
+  // Release an inherited bridge name from THIS window BEFORE calling
+  // win.open with a real URL below. window.open(url, CARD_BRIDGE_WINDOW_NAME)
+  // resolves to the current browsing context whenever it already carries
+  // that name, and with a non-empty url that self-match navigates this tab
+  // in place, synchronously -- there is no return-value check that can undo
+  // it after the fact. See releaseInheritedBridgeWindowName above.
+  releaseInheritedBridgeWindowName(win);
   const host = normalizeCardHost(rawHost || readStoredCardHost());
   const origin = cardHostToUrl(host);
   const bridgeUrl = buildCardBridgeLaunchUrl(host, studioUrl);
   const opened = win.open(bridgeUrl, CARD_BRIDGE_WINDOW_NAME, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
-  if (!opened) {
+  if (!opened || isCurrentBrowsingContext(opened, win)) {
+    // Never treat this window as the bridge target, even if some host still
+    // resolves the open back to self after the name was released above.
+    if (opened) releaseInheritedBridgeWindowName(win);
     return reuseActiveBridgeWindow(host, origin) || navigateExistingCardBridgeWindow(host, origin);
   }
   // window.open runs synchronously inside the user gesture. Revoke only after
