@@ -163,3 +163,86 @@ test('the ready banner treats a compatible-but-older release as optional, not re
   await expect(page.getByTestId('setup-open-patterns')).toHaveClass(/\bprimary\b/);
   await expect(page.getByTestId('setup-update-card')).toBeVisible();
 });
+
+// F27 — an owner walk on the live site found "Use this card's project" a
+// silent no-op 2 of 3 times on a fresh reload: zero network calls, zero
+// status text. Root-caused by reading (not reproduced live 4/4 tries here):
+// two of the card readback calls inside the 'reconstruct' strategy sat
+// outside any try, so a throw there — or from building the project skeleton
+// — escaped Promise.allSettled uncaught (it only catches promise REJECTIONS,
+// not a synchronous throw while its argument array is being built) and the
+// owner's click vanished. `cardProjectAdoption.test.js` proves that exact
+// synchronous-throw shape directly, at the unit the defect lives in — a
+// fetch-based network failure in a real browser is always an async
+// rejection, so it cannot exercise that specific line. What these two specs
+// prove instead, end to end in a real browser: (1) a genuine adoption
+// failure the owner triggers is always visible, never silent, and (2) the
+// button cannot be clicked into a rejection during a window where the
+// journey still offers the task but the card link itself is not connected —
+// the "likely real trigger" the investigator named.
+test('a card project adoption failure the owner triggers is always visible, never silent', async ({ page }) => {
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async () => {
+    const { createDefaultProject } = await import('/src/lib/projectModel.js');
+    const project = createDefaultProject();
+    project.id = 'my-other-piece-f27a';
+    project.name = 'My other piece';
+    project.layout.starterPending = false;
+    project.portRoles = [{ pin: 5, role: 'strip', pixelCount: 30, controlKind: '' }];
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expect(page.getByTestId('setup-card-project-note'))
+    .toContainText(/different project|holds the same project/, { timeout: 10000 });
+
+  // The click re-reads /api/status live rather than trusting the connect-time
+  // snapshot. Answer that live read as if the connection dropped mid-read —
+  // the card responds, but with no usable geometry — which is the one
+  // adoption failure this route stub CAN produce (a network abort only ever
+  // rejects a promise; it can't fake the synchronous throw the unit test
+  // covers). What this proves: the failure reaches the owner as text, not as
+  // nothing.
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ...legacyStatus(), outputs: [] }),
+  }));
+
+  await page.getByTestId('setup-start-from-card').click();
+  await expect(page.getByTestId('setup-adoption-error')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('setup-adoption-error')).toContainText('did not report any light outputs');
+  // Not silent, and not stuck: the same action is still there to retry.
+  await expect(page.getByTestId('setup-start-from-card')).toBeEnabled();
+});
+
+test('"Use this card’s project" is disabled while the card link is not connected, not clickable into a rejection', async ({ page }) => {
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async () => {
+    const { createDefaultProject } = await import('/src/lib/projectModel.js');
+    const project = createDefaultProject();
+    project.id = 'my-other-piece-f27b';
+    project.name = 'My other piece';
+    project.layout.starterPending = false;
+    project.portRoles = [{ pin: 5, role: 'strip', pixelCount: 30, controlKind: '' }];
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expect(page.getByTestId('setup-start-from-card')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('setup-start-from-card')).toBeEnabled();
+
+  // `connectBlockers` in setupJourney.js deliberately lets the
+  // load-matching-project task through ahead of the reconnect blocker (its
+  // own comment says why: the saved-match/adopt branches need it to, or the
+  // escape hatch is unreachable). That is what makes the task — and this
+  // button — renderable while `cardLink.state` is not one of the two
+  // connected states. 'revalidating' is the one such state this screen's own
+  // `cardReachable` check treats as still worth reading (same family the
+  // defect names: reconnecting-bridge / revalidating), so it is the
+  // deterministic way to model that window without racing React's own
+  // scheduling.
+  await dispatchCardLink(page, [{ type: 'operation-boundary-lost' }]);
+
+  await expect(page.getByTestId('setup-start-from-card')).toBeDisabled({ timeout: 10000 });
+});
+
