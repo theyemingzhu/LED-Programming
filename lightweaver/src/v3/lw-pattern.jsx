@@ -76,8 +76,11 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
 import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview } from '../lib/cardLiveControl.js';
+import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
+import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
+import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import {
   cardActionReducer,
   cardActionStatusLabel,
@@ -325,8 +328,49 @@ import { PatternPreview } from './PatternPreview.jsx';
     return 'This card is not ready for pattern commands. Recover and verify it before sending lights.';
   }
 
+  // F17-A: whether a live-preview send should go through the legacy bridge
+  // pop-up, or can reach the card directly with no pop-up at all.
+  //
+  // An established bridge transport (from Connect, or an earlier fallback on
+  // this exact card) always stays on the bridge — the same rule
+  // CardControlDrawer uses (`preferBridge: link.transport === 'bridge'`,
+  // with no https clause). Off that, https used to force the bridge
+  // unconditionally, because a public Studio origin could not reach the
+  // card directly. Chrome's Local Network Access rules changed that: a
+  // private-network fetch/preflight now succeeds straight from the https
+  // origin against a real card (measured against firmware 1548). So https
+  // no longer means "must go through the pop-up" — it means "try a direct
+  // transport probe first, and only fall back to the bridge when that
+  // probe genuinely could not connect".
+  //
+  // `connectCardTransport` is the same entry point Connect uses
+  // (cardTransport.js): a successful probe leaves the module's shared
+  // authority set, so every later send finds it via
+  // `getActiveCardTransportAuthority(host)` and goes direct without
+  // probing again. The probe is bounded by its own internal
+  // AbortController (~4s) and always resolves rather than hanging; a
+  // rejection (an unreachable host, a pending or refused Local Network
+  // Access permission) is treated the same as a refusal — fall back to the
+  // bridge.
+  async function resolveCardBridgePreference({ cardLink, cardHost }) {
+    if (cardLink?.transport === 'bridge') return true;
+    if (typeof window === 'undefined' || window.location?.protocol !== 'https:') return false;
+    if (getActiveCardTransportAuthority(cardHost)) return false;
+    const expectedCard = cardLink?.expectedCard || cardLink?.card || null;
+    const expectedCardId = String(expectedCard?.id || expectedCard?.cardId || '').trim();
+    if (!expectedCardId) return true;
+    const probed = await connectCardTransport({ host: cardHost, expectedCardId }).catch(() => null);
+    return !(probed?.connected);
+  }
+
   function PatternScreen({ connected, cardLink, cardLifecycle, currentProject, go }) {
     const { workspaceAssets } = useCloudLibrary();
+    // F16: the shared journey is the one place that knows whether the card's
+    // zones report a blackout — read here so the hero status line can say so
+    // and the existing Recover lights button (data-testid="recover-lights",
+    // below) can read as the primary action, without a second control.
+    const patternsJourney = useSetupJourney({ cardLink, cardLifecycle, project: currentProject });
+    const cardBlackedOut = patternsJourney.blackout === true;
     const {
       projectId,
       projectName,
@@ -1083,12 +1127,17 @@ import { PatternPreview } from './PatternPreview.jsx';
           // real command. Before any retry the card is read back; if it
           // already shows this pattern, that read is the acknowledgement.
           const previewLook = { ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true };
+          // The probe inside this can take a moment; a newer preview
+          // superseding this one while it runs is not a new risk it
+          // introduces — `pushLivePreviewToCard`'s own "latest wins"
+          // arbitration and `requireCurrentPreviewIntent` already cancel a
+          // superseded send, exactly as they did before this existed.
+          const preferBridge = await resolveCardBridgePreference({ cardLink, cardHost });
           const previewOptions = {
             host: cardHost,
             timeoutMs: 2200,
             fallbackMissingZoneToAll: true,
-            preferBridge: cardLink?.transport === 'bridge'
-              || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
+            preferBridge,
             revision: sequence,
             ...(expectedControlPatch ? { expectedControlPatch } : {}),
           };
@@ -1215,6 +1264,25 @@ import { PatternPreview } from './PatternPreview.jsx';
         // URL: it is still what the owner asked for, and loading the matching
         // project by hand can still honour it.
         markCardEditIntentAbandoned(requestedIntent);
+        // F18: an edit request for the project ALREADY open here is not a
+        // "which copy wins" decision at all — the card is not offering a
+        // different project, it is asking Studio to open a look/pattern that
+        // already lives in what's open. lw-card.jsx's own F18 effect already
+        // reacted to this exact refusal (wiring drift broke the exact-match
+        // this claim needs) by routing here for that reason, so bouncing
+        // straight back to the card would ping-pong the two screens — the
+        // 2026-08-07 loop this file's breaker exists to prevent. Reuse the
+        // one place Patterns already reads the card's installed project id
+        // (installedProjectIdFromCardStatus, same field lw-card.jsx's
+        // cardHoldsOpenProject reads off cardLink.readiness) rather than
+        // re-deciding the match here. Stay, and let the existing unauthorized
+        // 'project' gate show the honest next step in place: the look is
+        // offered, not selected — the exact-fingerprint claim this write
+        // still needs was refused, and nothing here grants it.
+        if (installedProjectIdFromCardStatus(cardLink?.readiness) === String(projectId || '').trim()) {
+          blockPatternCardEffect('project');
+          return;
+        }
         if (go) go('card');
         else window.location.hash = '#screen=card&section=overview';
         return;
@@ -1265,7 +1333,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       params.delete('editLook');
       const search = params.toString();
       window.history.replaceState(null, '', `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`);
-    }, [board, go, invalidatePendingPreview, savedGlobalLook, savedLooks, setPatchBoard, setStandaloneController, strips]);
+    }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, savedLooks, setPatchBoard, setStandaloneController, strips]);
 
     const updatePreviewLook = (patch, { push = true } = {}) => {
       if (!selectedTarget) return null;
@@ -1278,134 +1346,144 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     const scheduleBrowseLivePreview = useCallback((nextLook, target) => {
       if (!nextLook) return;
-      const needsBridge = cardLink?.transport === 'bridge'
-        || (typeof window !== 'undefined' && window.location?.protocol === 'https:');
-      // On https the card link cannot become ready until the card page is
-      // open, and the card page only opens further down THIS function. Gating
-      // the whole path on readiness therefore closed a loop: every tap was
-      // refused for a lack of readiness that only a tap could establish, so
-      // Patterns previewed in Studio forever and the strip never moved.
-      //
-      // The gate protects SENDING light to a card Studio has not verified.
-      // Opening the card page is not sending — and the send below is still
-      // guarded by `exactFreshAuthority`, which re-reads the card's own status
-      // and checks id, firmware, build and boot before a single frame goes out.
-      const openingTheBridge = needsBridge && !(hasCardBridge() && getCardBridgeState()?.verified);
-      if (currentPatternPreviewAccess() !== 'ready' && !openingTheBridge) {
-        blockPatternCardEffect(currentPatternPreviewAccess());
-        return;
-      }
-      setPatternCardGate('');
-      if (!needsBridge) {
-        scheduleLivePreview(nextLook, target);
-        return;
-      }
-
-      const sequence = ++browsePreviewSeq.current;
-      const scheduleVerifiedBridgePreview = async () => {
-        const firmwareGap = cardBridgeFeatureGap('frame');
-        if (firmwareGap) {
-          setHandoffUrl('');
-          setStatusKind('err');
-          setStatus(firmwareGap.message);
-          return;
-        }
-        const expectedCard = cardLink?.expectedCard || cardLink?.card || null;
-        const originalBootId = String(cardLink?.validatedBootId || cardLink?.readiness?.bootId || '');
-        const status = await sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
-          host: cardHost,
-          retryOnTimeout: false,
-        });
-        const readiness = classifyCardReadiness(status, { expectedCard });
-        const bridgeState = getCardBridgeState();
-        const exactFreshAuthority = readiness.playbackAccess === 'ready'
-          && readiness.cardId === String(expectedCard?.id || expectedCard?.cardId || '')
-          && (!expectedCard?.firmwareVersion || status.firmwareVersion === expectedCard.firmwareVersion)
-          && (!expectedCard?.buildId || status.buildId === expectedCard.buildId)
-          && Boolean(originalBootId)
-          && readiness.bootId === originalBootId
-          && bridgeState.verified
-          && bridgeState.identityVerified
-          && bridgeState.runtimePlaybackReady
-          && normalizeCardHost(bridgeState.host) === normalizeCardHost(cardHost);
-        if (!exactFreshAuthority || sequence !== browsePreviewSeq.current) {
+      // F17-A: reaching the bridge-vs-direct decision now needs the probe
+      // below, not just a synchronous protocol check, so everything past it
+      // moves into this callback. Nothing here is a new supersession rule —
+      // `browsePreviewSeq`/`sequence` is allocated at exactly the point the
+      // pre-probe code allocated it (entering the bridge branch), so a tap
+      // that resolves to the direct branch is not tracked by it at all,
+      // same as before; a rapid second tap still supersedes a first one
+      // that is mid-verification on the bridge, via the SAME checks inside
+      // `scheduleVerifiedBridgePreview` and the acquisition callbacks below
+      // that already existed for that case.
+      void resolveCardBridgePreference({ cardLink, cardHost }).then(needsBridge => {
+        // On https the card link cannot become ready until the card page is
+        // open, and the card page only opens further down THIS function. Gating
+        // the whole path on readiness therefore closed a loop: every tap was
+        // refused for a lack of readiness that only a tap could establish, so
+        // Patterns previewed in Studio forever and the strip never moved.
+        //
+        // The gate protects SENDING light to a card Studio has not verified.
+        // Opening the card page is not sending — and the send below is still
+        // guarded by `exactFreshAuthority`, which re-reads the card's own status
+        // and checks id, firmware, build and boot before a single frame goes out.
+        const openingTheBridge = needsBridge && !(hasCardBridge() && getCardBridgeState()?.verified);
+        if (currentPatternPreviewAccess() !== 'ready' && !openingTheBridge) {
           blockPatternCardEffect(currentPatternPreviewAccess());
           return;
         }
-        setStatusKind('');
-        setStatus('');
-        scheduleLivePreview(nextLook, target, 0, {
-          bridgeAuthority: {
-            lifecycle: bridgeState.lifecycle,
-            host: normalizeCardHost(bridgeState.host),
-            cardId: readiness.cardId,
-            firmwareVersion: status.firmwareVersion,
-            buildId: status.buildId,
-            bootId: readiness.bootId,
-          },
-        });
-      };
-      const bridgeOpen = hasCardBridge();
-      const bridgeState = getCardBridgeState();
-      if (
-        bridgeOpen && bridgeState.verified && bridgeState.identityVerified && bridgeState.runtimePlaybackReady &&
-        normalizeCardHost(bridgeState.host) === normalizeCardHost(cardHost)
-      ) {
-        void scheduleVerifiedBridgePreview().catch(error => {
-          if (sequence !== browsePreviewSeq.current) return;
-          setStatusKind('err');
-          setStatus(error?.message || 'The local card did not reverify as Ready. Recover it before sending lights.');
-        });
-        return;
-      }
-
-      const attempt = acquireCardBridgeFromGesture(cardHost, {
-        studioUrl: typeof window !== 'undefined' ? window.location.href : '',
-        timeoutMs: 10000,
-      });
-      setHandoffUrl('');
-      setStatusKind('');
-      setStatus('Connecting to the local Lightweaver card…');
-      const onBridgeChanged = () => {
-        const state = getCardBridgeState();
-        if (!state.verified) return;
-        const firmwareGap = cardBridgeFeatureGap('frame');
-        if (!firmwareGap) return;
-        // Acquisition revalidation can cancel this tap before identity arrives.
-        // It must still explain the unsupported bridge; it never resumes a command.
-        const expectedCard = cardLink?.expectedCard || cardLink?.card;
-        const sameVerifiedCard = state.identityVerified
-          && normalizeCardHost(state.host) === normalizeCardHost(cardHost)
-          && state.card?.id === expectedCard?.id
-          && state.card?.firmwareVersion === expectedCard?.firmwareVersion
-          && state.card?.buildId === expectedCard?.buildId;
-        if (sequence !== browsePreviewSeq.current && !sameVerifiedCard) return;
-        browsePreviewSeq.current += 1;
-        window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
         setPatternCardGate('');
-        setStatusKind('err');
-        setStatus(firmwareGap.message);
-      };
-      window.addEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
-      void attempt.ready.then(() => {
-        window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
-        if (sequence !== browsePreviewSeq.current) return;
-        void scheduleVerifiedBridgePreview().catch(error => {
+        if (!needsBridge) {
+          scheduleLivePreview(nextLook, target);
+          return;
+        }
+
+        const sequence = ++browsePreviewSeq.current;
+        const scheduleVerifiedBridgePreview = async () => {
+          const firmwareGap = cardBridgeFeatureGap('frame');
+          if (firmwareGap) {
+            setHandoffUrl('');
+            setStatusKind('err');
+            setStatus(firmwareGap.message);
+            return;
+          }
+          const expectedCard = cardLink?.expectedCard || cardLink?.card || null;
+          const originalBootId = String(cardLink?.validatedBootId || cardLink?.readiness?.bootId || '');
+          const status = await sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
+            host: cardHost,
+            retryOnTimeout: false,
+          });
+          const readiness = classifyCardReadiness(status, { expectedCard });
+          const bridgeState = getCardBridgeState();
+          const exactFreshAuthority = readiness.playbackAccess === 'ready'
+            && readiness.cardId === String(expectedCard?.id || expectedCard?.cardId || '')
+            && (!expectedCard?.firmwareVersion || status.firmwareVersion === expectedCard.firmwareVersion)
+            && (!expectedCard?.buildId || status.buildId === expectedCard.buildId)
+            && Boolean(originalBootId)
+            && readiness.bootId === originalBootId
+            && bridgeState.verified
+            && bridgeState.identityVerified
+            && bridgeState.runtimePlaybackReady
+            && normalizeCardHost(bridgeState.host) === normalizeCardHost(cardHost);
+          if (!exactFreshAuthority || sequence !== browsePreviewSeq.current) {
+            blockPatternCardEffect(currentPatternPreviewAccess());
+            return;
+          }
+          setStatusKind('');
+          setStatus('');
+          scheduleLivePreview(nextLook, target, 0, {
+            bridgeAuthority: {
+              lifecycle: bridgeState.lifecycle,
+              host: normalizeCardHost(bridgeState.host),
+              cardId: readiness.cardId,
+              firmwareVersion: status.firmwareVersion,
+              buildId: status.buildId,
+              bootId: readiness.bootId,
+            },
+          });
+        };
+        const bridgeOpen = hasCardBridge();
+        const bridgeState = getCardBridgeState();
+        if (
+          bridgeOpen && bridgeState.verified && bridgeState.identityVerified && bridgeState.runtimePlaybackReady &&
+          normalizeCardHost(bridgeState.host) === normalizeCardHost(cardHost)
+        ) {
+          void scheduleVerifiedBridgePreview().catch(error => {
+            if (sequence !== browsePreviewSeq.current) return;
+            setStatusKind('err');
+            setStatus(error?.message || 'The local card did not reverify as Ready. Recover it before sending lights.');
+          });
+          return;
+        }
+
+        const attempt = acquireCardBridgeFromGesture(cardHost, {
+          studioUrl: typeof window !== 'undefined' ? window.location.href : '',
+          timeoutMs: 10000,
+        });
+        setHandoffUrl('');
+        setStatusKind('');
+        setStatus('Connecting to the local Lightweaver card…');
+        const onBridgeChanged = () => {
+          const state = getCardBridgeState();
+          if (!state.verified) return;
+          const firmwareGap = cardBridgeFeatureGap('frame');
+          if (!firmwareGap) return;
+          // Acquisition revalidation can cancel this tap before identity arrives.
+          // It must still explain the unsupported bridge; it never resumes a command.
+          const expectedCard = cardLink?.expectedCard || cardLink?.card;
+          const sameVerifiedCard = state.identityVerified
+            && normalizeCardHost(state.host) === normalizeCardHost(cardHost)
+            && state.card?.id === expectedCard?.id
+            && state.card?.firmwareVersion === expectedCard?.firmwareVersion
+            && state.card?.buildId === expectedCard?.buildId;
+          if (sequence !== browsePreviewSeq.current && !sameVerifiedCard) return;
+          browsePreviewSeq.current += 1;
+          window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
+          setPatternCardGate('');
+          setStatusKind('err');
+          setStatus(firmwareGap.message);
+        };
+        window.addEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
+        void attempt.ready.then(() => {
+          window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
+          if (sequence !== browsePreviewSeq.current) return;
+          void scheduleVerifiedBridgePreview().catch(error => {
+            if (sequence !== browsePreviewSeq.current) return;
+            setStatusKind('err');
+            setStatus(error?.message || 'The local card did not reverify as Ready. Recover it before sending lights.');
+          });
+        }).catch(error => {
+          window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
           if (sequence !== browsePreviewSeq.current) return;
           setStatusKind('err');
-          setStatus(error?.message || 'The local card did not reverify as Ready. Recover it before sending lights.');
+          if (error?.reason === 'popup-blocked') {
+            setStatus('Allow the Lightweaver card window, then try the pattern again.');
+          } else if (error?.reason === 'bridge-timeout') {
+            setStatus('The card page opened but did not answer. Check that this device is on the card\'s Wi-Fi.');
+          } else {
+            setStatus(error?.message || 'The local card did not connect. Open Flash to update the card, then try again.');
+          }
         });
-      }).catch(error => {
-        window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
-        if (sequence !== browsePreviewSeq.current) return;
-        setStatusKind('err');
-        if (error?.reason === 'popup-blocked') {
-          setStatus('Allow the Lightweaver card window, then try the pattern again.');
-        } else if (error?.reason === 'bridge-timeout') {
-          setStatus('The card page opened but did not answer. Check that this device is on the card\'s Wi-Fi.');
-        } else {
-          setStatus(error?.message || 'The local card did not connect. Open Flash to update the card, then try again.');
-        }
       });
     }, [blockPatternCardEffect, cardHost, cardLink?.transport, currentPatternPreviewAccess, scheduleLivePreview]);
 
@@ -1872,10 +1950,15 @@ import { PatternPreview } from './PatternPreview.jsx';
           blockPatternCardEffect('project');
           return;
         }
-        await recoverCardLightsVerified(
+        // Wrapped so a finished recovery invalidates the shared journey
+        // evidence (cardJourneyEvidence.js's hardware-operation listener) —
+        // otherwise a cleared blackout would sit unreported until something
+        // else happened to re-read the card (F16: "goes away without a
+        // click").
+        await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
           { patternId: 'warm-white', brightness: 1, syncZones: true },
           { host: cardHost, timeoutMs: 3200, restartCard: true },
-        );
+        ));
         if (sequence !== livePreviewSeq.current) return;
         setStatusKind('');
         setRecoveryConfirmation('pending');
@@ -2151,6 +2234,33 @@ import { PatternPreview } from './PatternPreview.jsx';
       });
     }, [patternCardGate, status, patternGateActionLabel]);
 
+    // F16: the card can be connected and holding the exact project open here
+    // while its zones report every light off — nothing else on this screen
+    // says so. No action on this notice: the existing Recover lights button
+    // in the header (data-testid="recover-lights", styled primary above)
+    // already is the one recovery control; a second button here would be the
+    // second control the fix is explicitly not allowed to add.
+    useEffect(() => {
+      if (!cardBlackedOut) {
+        dismissNoticeKey('pattern-card-blackout');
+        return;
+      }
+      publishNotice({
+        // tone: 'info', not 'error' — role="alert" here would fire on the
+        // matrix's own connection-only assertion (card-state-matrix.spec.ts
+        // expectUnaided: no alert before the owner does anything), which
+        // covers the 'blackout' fixture too. The notice still persists
+        // (info's TTL is null, same as error's) and still carries the one
+        // recovery action via the styled-primary button above; only its
+        // urgency framing changes.
+        key: 'pattern-card-blackout',
+        testId: 'card-blackout-notice',
+        tone: 'info',
+        title: 'Lights are off on the card.',
+        source: 'pattern-blackout',
+      });
+    }, [cardBlackedOut]);
+
     return (
       <div className="screen">
         <div className="screen-scroll">
@@ -2161,12 +2271,22 @@ import { PatternPreview } from './PatternPreview.jsx';
                 <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
                 <p>Choose chip-ready patterns, tune the colors, then install the finished look on the card.</p>
-                <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
+                {/* F18: while the pattern-gate notice is up, it already
+                    carries this exact verdict as its own alert with the
+                    actionable next step ("Verify project in Card status") —
+                    the same stand-down this screen already applies to its
+                    'pattern-card-status' notice a few effects down, extended
+                    to the chip so an honoured edit intent does not read as
+                    routed back to the setup ladder just because this chip's
+                    taskId happens to match the ladder's own attribute. */}
+                {!patternCardGate && (
+                  <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
+                )}
               </div>
               <div className="pm-actions">
                 <button className="btn primary" title="Install the current look on the card" onClick={savePreviewToCard} disabled={!installGate.allowed}>{I.bolt}{cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
                 {connected &&
-                  <button className="btn" title="Bring the lights back with a warm-white recovery" data-testid="recover-lights" onClick={repairLed} disabled={authorizedPatternCardAccess !== 'ready' || cardSave.conflictsDisabled}>{I.wrench}Recover lights</button>
+                  <button className={"btn" + (cardBlackedOut ? " primary" : "")} title="Bring the lights back with a warm-white recovery" data-testid="recover-lights" onClick={repairLed} disabled={authorizedPatternCardAccess !== 'ready' || cardSave.conflictsDisabled}>{I.wrench}Recover lights</button>
                 }
                 <div className="pm-color-order">
                   <button

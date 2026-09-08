@@ -13,6 +13,7 @@ import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../li
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { recoverCardLightsVerified, requireExactReadyCardStatus } from '../lib/cardRecoverLights.js';
+import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
@@ -135,6 +136,11 @@ function CardHomePanels({
   const projectSwitchInFlightRef = useRef(false);
   const cardProjectProbeRef = useRef('');
   const pendingCardProjectProbeRef = useRef(null);
+  // F18: which edit intent (if any) has already been routed to Patterns after
+  // a refused resolved-adoption run, so a re-render carrying the SAME refusal
+  // does not navigate twice. A fresh intent (owner asks for a different look)
+  // is a different value and is allowed through again.
+  const editIntentPatternRouteRef = useRef('');
   const [cardProjectProbeRevision, requestCardProjectProbe] = React.useReducer(value => value + 1, 0);
   resolutionContextRef.current = {
     browserProjects,
@@ -593,6 +599,32 @@ function CardHomePanels({
     if (cardProjectProbeRef.current === signature) return;
     void loadMatchingCardProject({ probeOnly: !autoIntent, autoIntent, probeSignature: signature });
   }, [activeCloudProjects, browserProjects, cardHost, cardLink, cardProjectProbeRevision, loadMatchingCardProject, projectGeneration, ready]);
+  // F18: the run above refuses to resolve/authorize when the open project no
+  // longer matches what the card reports EXACTLY — the common cause is a
+  // wiring edit made in Studio since install, which correctly breaks the
+  // fingerprint match that run requires before it is willing to REPLACE or
+  // PUSH anything onto the card. On refusal it reports an error and routes
+  // nowhere, which left the phase-1 ladder (deriving the identical "wiring
+  // changed" verdict independently, from the persisted lifecycle record) as
+  // the only screen reachable — asking "which copy wins" on a handoff that
+  // never asked that question. An edit intent for the project ALREADY open
+  // here is not a replace/push decision at all: the card is not offering a
+  // different project, it is asking Studio to open a look/pattern that
+  // already lives in what's open. So react to that SAME run's own refusal —
+  // never re-decide whether it should have matched, `cardProjectAdoption.js`
+  // stays the one authority for that — and when project ids agree, continue
+  // to Patterns anyway, intent still in the URL. Every write stays gated
+  // exactly as it is today, downstream, in Patterns' own live authorization;
+  // nothing here grants one.
+  useEffect(() => {
+    if (matchingProjectState.status !== 'error') return;
+    const requestedIntent = cardEditIntent();
+    const autoIntent = isCardEditIntentAbandoned(requestedIntent) ? '' : requestedIntent;
+    if (!autoIntent || !cardHoldsOpenProject) return;
+    if (editIntentPatternRouteRef.current === autoIntent) return;
+    editIntentPatternRouteRef.current = autoIntent;
+    window.location.hash = '#screen=pattern';
+  }, [matchingProjectState, cardHoldsOpenProject]);
   // The presentation is Home's connected-state view: it renders only when a
   // card is actually answering — a verified transport (ready, blank, bench,
   // or still confirming its evidence), an identified card mid-revalidation
@@ -884,6 +916,35 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   const commissioningFlow = useCommissioningFlow();
   const ladderOwnsPrimary = deriveLadderOwnsPrimary(sharedJourney, commissioningFlow);
 
+  // F16: card lw-b0fe81f61b44 held the open project, reported "Connected"
+  // and a ready runtime, yet /api/zones held blackout:true and the strip was
+  // dark — nothing on Card Home said so. `sharedJourney.blackout` is the one
+  // fact both this page and Patterns read off the shared journey
+  // (setupJourneyInputs.js), so this banner and the working-screen notice in
+  // lw-pattern.jsx say the same thing from the same evidence.
+  const cardBlackedOut = sharedJourney.blackout === true;
+  const [blackoutRecoveryStatus, setBlackoutRecoveryStatus] = useState('idle');
+  const [blackoutRecoveryError, setBlackoutRecoveryError] = useState('');
+  const recoverCardBlackout = async () => {
+    if (blackoutRecoveryStatus === 'pending') return;
+    setBlackoutRecoveryStatus('pending');
+    setBlackoutRecoveryError('');
+    try {
+      // Same request Patterns' own Recover lights sends (repairLed,
+      // lw-pattern.jsx) — reused, not reinvented, and wrapped the same way so
+      // a cleared blackout invalidates the shared journey evidence and this
+      // banner clears itself without a click.
+      await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
+        { patternId: 'warm-white', brightness: 1, syncZones: true },
+        { host: cardLink?.host || cardHost, timeoutMs: 3200, restartCard: true },
+      ));
+      setBlackoutRecoveryStatus('idle');
+    } catch (error) {
+      setBlackoutRecoveryStatus('error');
+      setBlackoutRecoveryError(error?.message || 'Recovery was not verified. Keep the card powered, reconnect, and retry.');
+    }
+  };
+
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
     // a11y behavior), but never on a direct page load — mount-time focus
@@ -917,6 +978,30 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
+      {cardBlackedOut && (
+        // role="status", not "alert": card-state-matrix.spec.ts's own
+        // connection-only invariant (expectUnaided) requires that connecting
+        // to ANY card — including the 'blackout' fixture — raises no alert
+        // before the owner does anything. The message still persists and
+        // still carries the one recovery action; only its urgency framing
+        // changes. A genuine failure of the recovery attempt itself (below)
+        // is a real alert, raised only after the owner presses the button.
+        <div className="card-blackout-banner" role="status" data-testid="card-blackout-notice">
+          <p>Lights are off on the card.</p>
+          <button
+            type="button"
+            className="btn primary"
+            data-testid="recover-lights"
+            disabled={blackoutRecoveryStatus === 'pending'}
+            onClick={() => void recoverCardBlackout()}
+          >
+            {blackoutRecoveryStatus === 'pending' ? 'Sending…' : 'Recover lights'}
+          </button>
+          {blackoutRecoveryStatus === 'error' && blackoutRecoveryError && (
+            <p role="alert">{blackoutRecoveryError}</p>
+          )}
+        </div>
+      )}
       <SetupScreen
         {...cardProps}
         onOpenConnectionCenter={onOpenConnectionCenter}

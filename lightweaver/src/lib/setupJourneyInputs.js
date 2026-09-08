@@ -60,6 +60,32 @@ export function setupJourneyWiringStatus({ cardLink, evidence } = {}) {
   return freshJourneyEvidence(evidence, cardLink).wiringStatus || null;
 }
 
+// F16: a card can be connected, holding the exact project Studio has open,
+// and reporting a ready runtime — and still be sitting dark, because
+// blackout lives only in /api/zones, not in the status envelope every other
+// verdict here is built from. A card fact, so — like every other fact in
+// this module — it is spent only against the project it was read about: a
+// blackout reported under a DIFFERENT project than the one open in Studio
+// says nothing about whether THIS project's journey should mention it.
+export function setupJourneyBlackout({ cardLink, project, evidence } = {}) {
+  const fresh = freshJourneyEvidence(evidence, cardLink);
+  if (!fresh.read || fresh.blackout !== true) return false;
+  // A bench/discovery card is EXPECTED dark until a pattern is chosen — the
+  // card-state matrix's own 'provisional' fixture is exactly that, and
+  // showing "lights are off" about a card nobody has finished setting up
+  // yet would be noise, not F16's defect. Excluded the same way every other
+  // provisional-aware verdict in this module is.
+  if (provisionalSetupFrom(fresh, cardLink)) return false;
+  // A runtime that has not yet reported ready (the moment after a boot or a
+  // config write) is also expected to be dark — not a defect either. Every
+  // real status envelope carries this field; a snapshot with none yet (still
+  // connecting) is handled by `fresh.read` above.
+  if (fresh.status && fresh.status.commandReady !== true) return false;
+  const sameProject = String(fresh.projectId || '') === String(project?.id || '');
+  if (!sameProject) return false;
+  return fresh.matchesOpenProject === true || fresh.resolutionKind === 'saved-match';
+}
+
 // Named so a test can state the two call shapes that used to disagree and
 // require them to be the same inputs. Card Home passes more props than a chip
 // does; the journey question is answered from exactly these.
@@ -97,7 +123,7 @@ export function assembleSetupJourney({
   evidence = emptyCardJourneyEvidence(),
   verification,
 } = {}) {
-  return deriveSetupJourney({
+  const journey = deriveSetupJourney({
     cardLink,
     cardLifecycle,
     commissioningFlow,
@@ -106,4 +132,10 @@ export function assembleSetupJourney({
     wiringStatus: setupJourneyWiringStatus({ cardLink, evidence }),
     verification,
   });
+  // Merged onto the journey rather than fed into deriveSetupJourney: blackout
+  // is orthogonal to every completion/task verdict that function already
+  // makes (a blacked-out card can be a fully finished setup — that is
+  // exactly F16), so every consumer of `useSetupJourney` gets it for free
+  // without deriveSetupJourney needing to know it exists.
+  return { ...journey, blackout: setupJourneyBlackout({ cardLink, project, evidence }) };
 }

@@ -262,6 +262,93 @@ test('a readiness that reports the temporary setup is honoured without a card re
   assert.equal(journey.taskId, 'test-and-save');
 });
 
+// F16: a card can be connected, holding the exact project Studio has open,
+// and reporting a ready runtime — a fully complete journey by every existing
+// verdict — and still be sitting dark, because blackout lives only in
+// /api/zones. `assembleSetupJourney` must surface it as an orthogonal fact
+// on the journey object, not as a task or a completion state.
+test('a card holding the open project but blacked out carries blackout: true on an otherwise complete journey', () => {
+  const cardLink = connectedCard();
+  const project = verifiedProject();
+  const evidence = journeyEvidenceSnapshot({
+    cardLink,
+    status: READY_STATUS,
+    resolutionKind: 'matches-current',
+    matchesOpenProject: true,
+    projectId: project.id,
+    blackout: true,
+  });
+  const journey = bothWays({ cardLink, cardLifecycle: { state: 'ready' }, project, evidence });
+  assert.equal(journey.setupComplete, true, 'a blackout must not reopen a finished setup journey');
+  assert.equal(journey.blackout, true);
+});
+
+test('blackout is never asserted about a project the card was not read against', () => {
+  const cardLink = connectedCard();
+  const project = verifiedProject();
+  const evidence = journeyEvidenceSnapshot({
+    cardLink,
+    status: READY_STATUS,
+    resolutionKind: 'matches-current',
+    matchesOpenProject: true,
+    projectId: 'some-other-piece',
+    blackout: true,
+  });
+  const journey = bothWays({ cardLink, cardLifecycle: { state: 'ready' }, project, evidence });
+  assert.equal(journey.blackout, false, 'a blackout read about a different project must not carry over to this one');
+});
+
+// card-state-matrix.spec.ts's own connection-only invariant (expectUnaided)
+// requires that a first-ever, auto-adopted "recognize this card" (the exact
+// shape 'remembers-card' fixtures produce — matchesOpenProject can go true
+// off id-equality alone, with resolutionKind still 'none') raises nothing
+// while the card is provisional or its runtime is not yet reporting ready.
+// Reproduced 2026-09-08 running the real matrix: 'provisional' and
+// 'not-ready' both carry the matrix's `currentId: 'blackout'` sentinel
+// (dark until a pattern is chosen / dark for a moment after boot), and a
+// naive matchesOpenProject-only gate fired on both.
+test('blackout is not reported for a card still holding the temporary find-my-strips setup', () => {
+  const cardLink = connectedCard({ ...READY_STATUS, provisionalSetup: true });
+  const project = verifiedProject();
+  const evidence = journeyEvidenceSnapshot({
+    cardLink,
+    status: { ...READY_STATUS, provisionalSetup: true },
+    resolutionKind: 'bench',
+    matchesOpenProject: true,
+    projectId: project.id,
+    blackout: true,
+  });
+  const journey = bothWays({ cardLink, cardLifecycle: { state: 'discovery-setup', setupTaskId: 'discover-lights' }, project, evidence });
+  assert.equal(journey.blackout, false, 'a bench/discovery card is expected dark — this is not F16');
+});
+
+test('blackout is not reported while the runtime has not yet reported ready', () => {
+  const cardLink = connectedCard();
+  const project = verifiedProject();
+  const evidence = journeyEvidenceSnapshot({
+    cardLink,
+    status: { ...READY_STATUS, commandReady: false },
+    resolutionKind: 'none',
+    matchesOpenProject: true,
+    projectId: project.id,
+    blackout: true,
+  });
+  const journey = bothWays({ cardLink, cardLifecycle: { state: 'ready' }, project, evidence });
+  assert.equal(journey.blackout, false, 'a runtime that has not reported ready is expected dark for a moment — not F16');
+});
+
+test('a card with no evidence at all never reports blackout', () => {
+  const cardLink = connectedCard();
+  const project = verifiedProject();
+  const journey = bothWays({
+    cardLink,
+    cardLifecycle: { state: 'ready' },
+    project,
+    evidence: emptyCardJourneyEvidence(),
+  });
+  assert.equal(journey.blackout, false);
+});
+
 // `ladderOwnsPrimary` used to live only inside lw-setup.jsx and reach Card
 // Home a render late through the now-removed `onPrimaryActionChange` prop
 // callback (blueprint H3). It is a pure function of the same shared journey

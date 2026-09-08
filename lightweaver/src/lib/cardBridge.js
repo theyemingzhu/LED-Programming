@@ -139,6 +139,16 @@ let bridgeIdentityError = '';
 let bridgeLastSeenAt = 0;
 let bridgeSeq = 0;
 let bridgeLifecycle = 0;
+// Every card-bridge launch URL mints one of these into a query param (never
+// the fragment -- see buildCardBridgeLaunchUrl). A named popup already open at
+// a byte-identical URL is only focused by the browser, a same-document
+// fragment-only navigation that never re-executes the page and never re-posts
+// 'ready'. Varying the query on every attempt forces a real navigation.
+let bridgeLaunchAttemptSeq = 0;
+function nextBridgeLaunchAttemptToken() {
+  bridgeLaunchAttemptSeq += 1;
+  return bridgeLaunchAttemptSeq.toString(36);
+}
 // Non-null only while a user-gesture-acquired named window is intentionally
 // blank and waiting for asynchronous discovery to choose its card origin.
 // Messages from the outgoing document carry no authority during this gap.
@@ -1087,9 +1097,18 @@ export function bootstrapCardBridgeFromOpener() {
   return true;
 }
 
-export function buildCardBridgeLaunchUrl(rawHost = '', studioUrl = '') {
+export function buildCardBridgeLaunchUrl(rawHost = '', studioUrl = '', { attemptToken } = {}) {
   const host = normalizeCardHost(rawHost || readStoredCardHost());
   const url = new URL(`${cardHostToUrl(host)}/`);
+  // A fresh query-string token on every call (before the hash is assigned, so
+  // it never touches the launch fragment the card page parses). Every caller
+  // of this function is already about to open or re-navigate the one named
+  // bridge tab -- acquireCardBridgeFromGesture's own early return is what
+  // skips calling it at all when the bridge is already verified -- so minting
+  // one unconditionally here costs nothing and fixes the case that mattered:
+  // a same-named popup left open from an earlier tap or an earlier Studio
+  // load, which a byte-identical URL would only focus, not re-execute.
+  url.searchParams.set('lwBridgeAttempt', attemptToken || nextBridgeLaunchAttemptToken());
   const fragment = new URLSearchParams({ studioBridge: '1', bridgeUtility: '1' });
   const studioOrigin = currentStudioOrigin(studioUrl);
   if (studioOrigin) fragment.set('studioOrigin', studioOrigin);
@@ -1923,12 +1942,20 @@ export function cancelReservedCardBridgeWindow(target) {
   return true;
 }
 
-function navigateReservedCardBridgeWindow(target, host, studioUrl) {
-  if (!target || bridgeReservedWindow !== target) return null;
-  if (bridgeTargetClosed(target) || !isLocalCardHost(host)) {
-    cancelReservedCardBridgeWindow(target);
-    return null;
-  }
+// Re-navigate an already-tracked bridge WindowProxy to a fresh launch URL.
+// Shared by navigateReservedCardBridgeWindow (below, gated on the reservation
+// so only the exact window a caller just reserved can be claimed) and by the
+// halfway nudge in acquireCardBridgeFromGesture (which must re-navigate the
+// window it already opened via openCardBridge -- a window that was never
+// reserved through reserveCardBridgeWindow at all). The nudge used to call
+// navigateReservedCardBridgeWindow directly, whose reservation guard can never
+// pass there: reserveCardBridgeWindow's only current caller clears
+// bridgeReservedWindow the instant that first navigation completes, so by the
+// time the nudge's timer fires several seconds later, bridgeReservedWindow is
+// never still equal to the window being nudged. That made the nudge dead code
+// on every path -- see THINKING.md.
+function renavigateTrackedBridgeWindow(target, host, studioUrl) {
+  if (!target || bridgeTargetClosed(target) || !isLocalCardHost(host)) return null;
   const origin = cardHostToUrl(host);
   const url = buildCardBridgeLaunchUrl(host, studioUrl);
   revokeBridgeForNavigation({ host, origin, preserveReservation: true });
@@ -1943,11 +1970,24 @@ function navigateReservedCardBridgeWindow(target, host, studioUrl) {
       return null;
     }
   }
-  // Navigation has now been initiated with the new origin already installed.
-  // Keep the gate closed through the assignment itself so synchronous straggler
-  // events from the outgoing document cannot regain authority in that gap.
-  bridgeReservedWindow = null;
   return target;
+}
+
+function navigateReservedCardBridgeWindow(target, host, studioUrl) {
+  if (!target || bridgeReservedWindow !== target) return null;
+  if (bridgeTargetClosed(target) || !isLocalCardHost(host)) {
+    cancelReservedCardBridgeWindow(target);
+    return null;
+  }
+  const navigated = renavigateTrackedBridgeWindow(target, host, studioUrl);
+  // Navigation has now been initiated (or definitively failed) with the new
+  // origin already installed. Keep the gate closed through the assignment
+  // itself so synchronous straggler events from the outgoing document cannot
+  // regain authority in that gap. A failed navigation already cleared this via
+  // clearBridgeTarget inside renavigateTrackedBridgeWindow; clearing it again
+  // here is a harmless no-op in that case.
+  bridgeReservedWindow = null;
+  return navigated;
 }
 
 export function acquireCardBridgeFromGesture(rawHost = '', {
@@ -2068,6 +2108,11 @@ export function acquireCardBridgeFromGesture(rawHost = '', {
   // long we wait — silence that looks identical to a slow card. Re-navigating
   // it re-runs the page with a fresh opener and the studioOrigin fragment,
   // which is the whole handshake. Once only, and only if it is still open.
+  // This calls renavigateTrackedBridgeWindow directly (not
+  // navigateReservedCardBridgeWindow) because `opened` here is whatever
+  // openCardBridge just returned, which was never reserved through
+  // reserveCardBridgeWindow -- a reservation guard on this call could never
+  // pass.
   let renavigated = false;
   const halfway = Math.max(0, Number(timeoutMs) || 0) / 2;
   nudgeTimer = setTimeout(() => {
@@ -2075,7 +2120,7 @@ export function acquireCardBridgeFromGesture(rawHost = '', {
     if (getCardBridgeState()?.verified) return;
     renavigated = true;
     try {
-      navigateReservedCardBridgeWindow(opened, host, studioUrl);
+      renavigateTrackedBridgeWindow(opened, host, studioUrl);
     } catch {
       /* A tab we cannot navigate is one the timeout below will report. */
     }
