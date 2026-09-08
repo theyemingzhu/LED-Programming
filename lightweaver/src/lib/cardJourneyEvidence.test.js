@@ -29,6 +29,7 @@ const {
   hasFreshCardJourneyEvidence,
   invalidateCardJourneyEvidence,
   publishCardJourneyEvidence,
+  refreshCardJourneyBlackout,
   refreshCardJourneyEvidence,
   resetCardJourneyEvidence,
   subscribeCardJourneyEvidence,
@@ -186,6 +187,81 @@ test('a successful zones read publishes blackout, and a plain publish for the sa
       false,
       'a snapshot for a different boot must not inherit a blackout fact it never read',
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// F22c — bench 2026-09-08: under load, a hash navigation from Card Home to
+// Patterns can outrun Card Home's own status/wiring/project read entirely, so
+// Patterns' `useSetupJourney(refresh: true)` effect is the FIRST thing ever
+// to call `refreshCardJourneyEvidence` for this card+boot. Before this fix,
+// that refresh always published `projectId: previous.projectId` — and with
+// no previous publish, `previous` is the EMPTY snapshot, so the evidence
+// carried a real `blackout: true` next to an empty `projectId` forever.
+// `setupJourneyBlackout`'s exact-id scoping check then could never match the
+// open project, no matter how many times the store notified subscribers.
+test('a first-ever refresh with no prior publish still tags the evidence with the caller\'s open project', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const href = String(url);
+    if (href.includes('/api/zones')) {
+      return { ok: true, json: async () => ({ zones: [{ id: 'zone-all', blackout: true }] }) };
+    }
+    if (href.includes('/api/status')) {
+      return { ok: true, json: async () => ({ cardId: 'lw-evidence-test', bootId: 'boot-1', projectId: 'lwproj-matrix-piece' }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    assert.equal(getCardJourneyEvidence().read, false, 'nothing has published for this card yet');
+    await refreshCardJourneyEvidence({ cardLink: CARD_LINK, reason: 'setup-journey', openProjectId: 'lwproj-matrix-piece' });
+    const snapshot = getCardJourneyEvidence();
+    assert.equal(snapshot.blackout, true, 'the real zones read must still be recorded');
+    assert.equal(snapshot.projectId, 'lwproj-matrix-piece', 'the caller-supplied open project must not be discarded for lack of a previous publish');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// Same gap, the `refresh: false` sibling path (Card Home / CardScreen). A
+// caller using the blackout-only refresh must not depend on some OTHER
+// component's richer publish having already landed the project tag.
+test('the blackout-only refresh also tags a first-ever read with the caller\'s open project', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const href = String(url);
+    if (href.includes('/api/zones')) {
+      return { ok: true, json: async () => ({ zones: [{ id: 'zone-all', blackout: true }] }) };
+    }
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    assert.equal(getCardJourneyEvidence().read, false, 'nothing has published for this card yet');
+    await refreshCardJourneyBlackout({ cardLink: CARD_LINK, reason: 'setup-journey-blackout', openProjectId: 'lwproj-matrix-piece' });
+    const snapshot = getCardJourneyEvidence();
+    assert.equal(snapshot.blackout, true);
+    assert.equal(snapshot.projectId, 'lwproj-matrix-piece', 'the caller-supplied open project must not be discarded for lack of a previous publish');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// A refresh that does not know the open project (existing callers, existing
+// tests above) must behave exactly as before: preserve whatever the store
+// already had, never assert an empty tag over a real one.
+test('omitting openProjectId still preserves whatever the store already knew', async () => {
+  publishCardJourneyEvidence({ cardLink: CARD_LINK, projectId: 'lotus-gate', blackout: true });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const href = String(url);
+    if (href.includes('/api/zones')) return { ok: true, json: async () => ({ zones: [{ id: 'zone-all', blackout: true }] }) };
+    if (href.includes('/api/status')) return { ok: true, json: async () => ({ cardId: 'lw-evidence-test', bootId: 'boot-1' }) };
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    await refreshCardJourneyEvidence({ cardLink: CARD_LINK, reason: 'mount' });
+    assert.equal(getCardJourneyEvidence().projectId, 'lotus-gate', 'no openProjectId argument must not clobber the known tag');
   } finally {
     globalThis.fetch = originalFetch;
   }

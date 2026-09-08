@@ -255,7 +255,18 @@ function blackoutFromZonesEnvelope(envelope) {
 // per call, so a second caller would get a different object back and the
 // single-flight contract would be unobservable (and untestable) even though the
 // card was only read once.
-export function refreshCardJourneyEvidence({ cardLink, reason = '' } = {}) {
+// F22c: `openProjectId` is the id of whatever project Studio has open AT THE
+// MOMENT the caller asked for this refresh — passed by useSetupJourney, which
+// always has it, never derived from the card's own status read. Card Home's
+// SetupScreen remains the only place that resolves the harder question (does
+// the card's project MATCH the open one, exactly or by saved copy); this is
+// only "which project was open when this evidence was gathered", the same tag
+// Card Home's own publish has always carried. Before this, a caller other
+// than Card Home refreshing first for a card+boot published evidence with no
+// project tag at all (`previous.projectId` was still the EMPTY default), so
+// `setupJourneyBlackout`'s project-scoping check could never match — not a
+// stale value, an ABSENT one, because nobody had ever supplied it yet.
+export function refreshCardJourneyEvidence({ cardLink, reason = '', openProjectId } = {}) {
   const key = journeyEvidenceKey(cardLink);
   if (!key.cardId) return Promise.resolve(current);
   const flightKey = `${key.cardId}:${key.bootId}`;
@@ -272,16 +283,17 @@ export function refreshCardJourneyEvidence({ cardLink, reason = '' } = {}) {
     const status = statusResult.status === 'fulfilled' ? statusResult.value : null;
     const wiringStatus = wiringResult.status === 'fulfilled' ? wiringResult.value : null;
     const zonesEnvelope = zonesResult.status === 'fulfilled' ? zonesResult.value : null;
-    // Whatever the previous snapshot knew about the PROJECT question is
-    // preserved: resolving a card's project against the saved library is Card
-    // Home's work, and this refresh cannot redo it. It can only answer the two
-    // card-shaped questions, and must not erase the third by answering it
-    // wrongly with a default.
+    // The MATCH question (matchesOpenProject / resolutionKind) is still
+    // preserved from whatever Card Home last resolved: this refresh cannot
+    // redo that work. The project TAG itself is not — a caller that knows
+    // which project was open when it asked is authoritative for that, and
+    // must not have its answer discarded in favor of a fact nobody has
+    // published yet.
     const previous = freshJourneyEvidence(current, cardLink);
     const bench = status ? isBenchProjectEvidence(status) : false;
     return publishCardJourneyEvidence({
       cardLink,
-      projectId: previous.projectId,
+      projectId: openProjectId !== undefined ? openProjectId : previous.projectId,
       status,
       wiringStatus,
       evidence: previous.evidence,
@@ -311,7 +323,12 @@ export function refreshCardJourneyEvidence({ cardLink, reason = '' } = {}) {
 // on each other's request.
 const blackoutInFlight = new Map();
 
-export function refreshCardJourneyBlackout({ cardLink, reason = '' } = {}) {
+// F22c: same `openProjectId` tag as `refreshCardJourneyEvidence` above — a
+// `refresh: false` caller's own richer publish (SetupScreen) usually lands
+// the project tag first, but nothing enforces that ordering, and a caller
+// that already knows which project is open must not leave the tag empty
+// for however long that other publish takes to land.
+export function refreshCardJourneyBlackout({ cardLink, reason = '', openProjectId } = {}) {
   const key = journeyEvidenceKey(cardLink);
   if (!key.cardId) return Promise.resolve(current);
   const flightKey = `${key.cardId}:${key.bootId}`;
@@ -322,7 +339,7 @@ export function refreshCardJourneyBlackout({ cardLink, reason = '' } = {}) {
       const previous = freshJourneyEvidence(current, cardLink);
       return publishCardJourneyEvidence({
         cardLink,
-        projectId: previous.projectId,
+        projectId: openProjectId !== undefined ? openProjectId : previous.projectId,
         status: previous.status,
         wiringStatus: previous.wiringStatus,
         evidence: previous.evidence,

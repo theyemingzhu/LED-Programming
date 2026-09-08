@@ -28,6 +28,8 @@ Shipped 2026-09-08: Studio build 1659 (sourceRevision 226d0375), firmware unchan
 
 **F24 · fixed on branch** · Studio side of F23: cardBridge handles open-studio from the verified bridge window only, applies the intent in place (replaceState, hash to Patterns, focus), no reload. Inert on firmware 1548. [J24-open-studio] and [J24-open-studio-ignored]; unit 2399/2399.
 
+**F22c · fixed on branch** · Main went red on the F22 merge (PR #241): CI browser smoke failed [J22-blackout-drifted] three times identically on the Patterns assertion while the same lane was green on the idle Mac. Reproduced on the Mac under 8-core CPU load (with-cpu-load.sh), where [J22b] failed at the same assertion; the trace showed one /api/zones read and then only status polls. Root cause: when Patterns' journey refresh is the FIRST evidence read for a card and boot (a hash navigation from Card Home can outrun Card Home's own read under load), it published projectId from the empty previous snapshot, so the blackout fact was tagged with no project and the same-project gate rejected it. Fixed: the refresh carries the open project id. Regressions: three unit tests on the evidence store; conductor re-ran under load J16+J22 3/0 green and, with the two source files reverted, J22b red again.
+
 Shipped 2026-09-08: Studio build 1662 (sourceRevision 772f65ca), firmware unchanged at 1548. Bench result on 1662, Adrian, Chrome 152, hard reload then a tap within the first second: strip changed right away, no pop-up, no "not ready" message. That is the hardware proof for F17-A (direct path on https), F20 and F21. F19 Studio half therefore holds in Chrome; the pop-up now appears only where the direct probe fails (Safari/iOS untested). F16 and F18 still not exercised on the bench.
 
 ## Ledger
