@@ -778,7 +778,6 @@ function Shell({ offlineUpdateController = null }) {
   const [workspaceEvent, setWorkspaceEvent] = useState(null);
   const [dismissedPersistentKey, setDismissedPersistentKey] = useState('');
   const workspaceEventIdRef = useRef(0);
-  const recoveryAnnouncedRef = useRef(false);
   const fileInputRef = useRef(null);
   const showWorkspaceEvent = useCallback((message, options = {}) => {
     workspaceEventIdRef.current += 1;
@@ -965,11 +964,9 @@ function Shell({ offlineUpdateController = null }) {
     const t = setTimeout(() => setWorkspaceEvent(current => current?.id === id ? null : current), 2200);
     return () => clearTimeout(t);
   }, [workspaceEvent]);
-  useEffect(() => {
-    if (recoveryAnnouncedRef.current || projectLifecycleLabel !== 'Restored from recovery copy') return;
-    recoveryAnnouncedRef.current = true;
-    showWorkspaceEvent('Restored from recovery copy', { kind: 'recovery' });
-  }, [projectLifecycleLabel, showWorkspaceEvent]);
+  // Recovery is told once, by the persistent lifecycle badge
+  // (`lifecycleLabel={projectLifecycleLabel}` below) — a toast repeating the
+  // same words used to fire alongside it and say the same thing twice.
   useEffect(() => {
     if (workspaceEvent?.source === 'cloud-save-waiting' && cloudLibrary.syncState.status === 'saved') {
       setWorkspaceEvent(null);

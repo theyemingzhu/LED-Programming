@@ -334,6 +334,17 @@
   /* One fact per line on a phone: the value has the room to be read, and the
      1px gap keeps drawing the separators. */
   .lw-setup-identity { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  /* A phone-width value ("Same project, not yet verified") is wider than the
+     row and used to ellipsis-truncate to "Same project, not yet verif…" — the
+     one word the owner needed was the one word cut off. The row wraps to a
+     second line instead; padding stays the same so the row is still compact,
+     it just grows downward on the rare long value. */
+  .lw-setup-identity strong {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
   .lw-setup-phase-head { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; }
   .lw-setup-phase-marker { width: 26px; height: 26px; }
   .lw-setup-phase:not(:last-child)::after { left: 24px; }
