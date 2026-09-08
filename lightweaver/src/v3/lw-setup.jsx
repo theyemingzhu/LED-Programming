@@ -132,6 +132,13 @@ export function SetupScreen({
   const [resolution, setResolution] = useState({ kind: 'unknown' });
   const [recheckTick, setRecheckTick] = useState(0);
   const [adoptionError, setAdoptionError] = useState('');
+  // F27: a quiet SIBLING of adoptionError, for the automatic "adopt by
+  // default" attempt below (line ~662) — that attempt must never raise an
+  // alert (the owner did nothing), but a failure there was previously
+  // discarded entirely: reportAdoptionFailure returned early on
+  // !ownerAskedToAdoptRef.current with nothing recorded. role="status", not
+  // role="alert" — a status line, not a warning.
+  const [adoptionNotice, setAdoptionNotice] = useState('');
   const [pairState, setPairState] = useState({ busy: false, message: '' });
   const [ledCountDraft, setLedCountDraft] = useState('');
   const [ledCountState, setLedCountState] = useState({ busy: false, message: '' });
@@ -538,19 +545,31 @@ export function SetupScreen({
   // sees. A silent fall-back to the explicit buttons is the honest outcome —
   // they say what to do, and pressing one reports its failure in full.
   const ownerAskedToAdoptRef = useRef(false);
+  // F27: `void run()` had no `.catch` — a rejected or synchronously thrown
+  // `run` (loadResolvedProject / startFromCard) vanished with zero network
+  // calls and zero status text, and the owner's click looked dead. Wrapping in
+  // an async IIFE turns either failure mode into a rejection this can catch,
+  // whatever `run` does internally.
   const byOwner = run => () => {
     ownerAskedToAdoptRef.current = true;
-    void run();
+    (async () => { await run(); })().catch(error => reportAdoptionFailure('', error));
   };
   const reportAdoptionFailure = (reason, error = null) => {
     if (error) console.warn('Lightweaver card project adoption failed', error);
-    if (!ownerAskedToAdoptRef.current) return;
-    setAdoptionError(ADOPTION_FAILURES[String(reason || '')]
-      || 'Studio could not adopt this card’s project. Read this card again, then try once more.');
+    const message = ADOPTION_FAILURES[String(reason || '')]
+      || 'Could not read the card’s project. Check the connection, then try again.';
+    // Owner-pressed failures are an alert (setAdoptionError, role="alert").
+    // The automatic adopt-by-default attempt below must never raise an alert
+    // — the owner did nothing — but it must not be invisible either: it used
+    // to return here with nothing recorded. adoptionNotice is the quiet
+    // sibling (role="status"), same as ledCountState.message above it.
+    if (ownerAskedToAdoptRef.current) setAdoptionError(message);
+    else setAdoptionNotice(message);
   };
 
   const startFromCard = async () => {
     setAdoptionError('');
+    setAdoptionNotice('');
     // The reconstruction orchestration is the shared 'reconstruct' strategy in
     // lib/cardProjectAdoption.js; this screen keeps ownership of applying the
     // parts and of the failure copy.
@@ -578,6 +597,7 @@ export function SetupScreen({
   const loadResolvedProject = async () => {
     if (!resolution?.resolved?.project) return;
     setAdoptionError('');
+    setAdoptionNotice('');
     if (!cardActions?.adoptCardProject) {
       reportAdoptionFailure('');
       return;
@@ -594,7 +614,14 @@ export function SetupScreen({
       selectionKey: resolvedMatchKey(resolution.resolved),
       flight: setupAdoptionFlightRef.current,
       report: state => {
-        if (state.status === 'error' && ownerAskedToAdoptRef.current) setAdoptionError(state.message);
+        // F27: this fires for the automatic "adopt by default" call at line
+        // ~682 too (ownerAskedToAdoptRef.current false there), and it used to
+        // discard that failure entirely. Same split as reportAdoptionFailure:
+        // owner-pressed is an alert, automatic is the quiet notice — never
+        // nothing.
+        if (state.status !== 'error') return;
+        if (ownerAskedToAdoptRef.current) setAdoptionError(state.message);
+        else setAdoptionNotice(state.message);
       },
       openPatterns: () => {},
     });
@@ -652,14 +679,18 @@ export function SetupScreen({
     autoAdoptedRef.current = attempt;
     // A DIFFERENT saved project that matches the card: load it.
     if (resolution.kind === 'saved-match' && resolution?.resolved && cardActions?.adoptCardProject) {
-      void loadResolvedProject();
+      // F27: this automatic call bypassed `byOwner`, so a rejection here had
+      // no catch anywhere in the chain and vanished — same failure mode as
+      // the button, just unreachable by clicking. reportAdoptionFailure reads
+      // ownerAskedToAdoptRef (false here) and routes to the quiet notice.
+      void loadResolvedProject().catch(error => reportAdoptionFailure('', error));
       return;
     }
     // Otherwise Studio already has this project by id but not at the card's
     // revision — 'matches-current' with exactProject false — so loading the
     // saved copy would load what is already open and change nothing. Rebuild
     // from the card's own read-back instead. That IS "Use the card's copy".
-    void startFromCard();
+    void startFromCard().catch(error => reportAdoptionFailure('', error));
   }, [
     cardLink?.card?.id,
     cardLink?.readiness?.projectId,
@@ -803,6 +834,7 @@ export function SetupScreen({
     const file = event.target.files?.[0];
     if (!file) return;
     setAdoptionError('');
+    setAdoptionNotice('');
     // THE project-file import (lib/projectTransfer.js), through the shell's
     // CardActionsProvider so the association cleanup (browser record, cloud
     // detach, save-block reset) is the app's canonical sequence — identical
@@ -889,7 +921,18 @@ export function SetupScreen({
                   Use the card&rsquo;s copy
                 </button>
               ) : (
-                <button type="button" className="btn primary" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>
+                // F27: `journey.taskId === 'load-matching-project'` is reachable
+                // while `!connectedExactCard(cardLink)` (setupJourney.js's
+                // connectBlockers, the `load-matching-project` branch is
+                // deliberately held ahead of the reconnecting-card blocker) —
+                // so this button could render, and be clicked, during a
+                // reconnecting-bridge / revalidating window with no live
+                // transport to read from. `exactTransport` is the same
+                // connection-health check the identity row's Connection field
+                // already renders live above this button, so disabling on it
+                // adds no new copy — it just stops the click from racing a
+                // connection that is not there yet.
+                <button type="button" className="btn primary" data-testid="setup-start-from-card" disabled={!exactTransport} onClick={byOwner(startFromCard)}>
                   Use this card&rsquo;s project
                 </button>
               )}
@@ -1093,6 +1136,13 @@ export function SetupScreen({
         {adoptionError && (
           <p className="lw-setup-error" role="alert" data-testid="setup-adoption-error">{adoptionError}</p>
         )}
+        {/* F27: the automatic adopt-by-default attempt's failure. Quiet by
+            design (role="status", no error styling) — the owner did nothing,
+            so this is not an alert — but it is on screen, which it never was
+            before this fix. */}
+        {!adoptionError && adoptionNotice && (
+          <p role="status" data-testid="setup-adoption-notice">{adoptionNotice}</p>
+        )}
         {resolution.kind === 'bench' && (
           <section className="card-support-panel lw-setup-banner">
             <h2>Temporary light setup detected</h2>
@@ -1156,7 +1206,7 @@ export function SetupScreen({
             <h2>Resolve this card&rsquo;s project</h2>
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
-              <button type="button" className="btn" data-testid="setup-start-from-card" onClick={byOwner(startFromCard)}>Use this card&rsquo;s project</button>
+              <button type="button" className="btn" data-testid="setup-start-from-card" disabled={!exactTransport} onClick={byOwner(startFromCard)}>Use this card&rsquo;s project</button>
               <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
             </div>
           </section>
