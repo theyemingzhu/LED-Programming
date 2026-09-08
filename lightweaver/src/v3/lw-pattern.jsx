@@ -1967,7 +1967,27 @@ import { PatternPreview } from './PatternPreview.jsx';
     };
 
     const repairLed = async () => {
-      if (currentPatternCardAccess() !== 'ready') {
+      // F22b: recovering the lights sends a fixed warm-white frame and
+      // asserts nothing about which project is installed — it is not a
+      // pattern write and must not need the exact-fingerprint pattern-edit
+      // authorization (`hasCurrentProjectAuthorization`,
+      // `ensureCardEditAuthorization` in cardEditAuthorization.js) that
+      // `currentPatternCardAccess()` demands below. That gate exists for
+      // installs, which persist a structural claim onto the card; it has no
+      // business refusing a recovery just because Studio's wiring has
+      // drifted since install. When the card is reachable and paired
+      // (`patternAccessRef`, the un-demoted playback fact — same evidence
+      // `recoverLightsCardAccess` already enables the button on, F22) and
+      // still holds the project open here right now
+      // (`installedProjectIdFromCardStatus`, the same fact F18/F22 use, and
+      // the same test lw-card.jsx's `cardHoldsOpenProject` makes), send the
+      // recovery the same way Card Home's identical button already does
+      // (recoverCardBlackout) — no evidence match, no authorization.
+      const cardHoldsOpenProjectForRecovery = installedProjectIdFromCardStatus(cardLink?.readiness)
+        === String(projectId || '').trim();
+      const recoveryBypassesProjectAuthorization = patternAccessRef.current === 'ready'
+        && cardHoldsOpenProjectForRecovery;
+      if (!recoveryBypassesProjectAuthorization && currentPatternCardAccess() !== 'ready') {
         blockPatternCardEffect(currentPatternCardAccess());
         return;
       }
@@ -1980,11 +2000,13 @@ import { PatternPreview } from './PatternPreview.jsx';
       setStatusKind('');
       setStatus(`Sending warm-white LED repair to ${cardHostToUrl(cardHost)}...`);
       try {
-        const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
-        if (sequence !== livePreviewSeq.current) return;
-        if (!matchesCurrentCardProjectEvidence(evidence)) {
-          blockPatternCardEffect('project');
-          return;
+        if (!recoveryBypassesProjectAuthorization) {
+          const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
+          if (sequence !== livePreviewSeq.current) return;
+          if (!matchesCurrentCardProjectEvidence(evidence)) {
+            blockPatternCardEffect('project');
+            return;
+          }
         }
         // Wrapped so a finished recovery invalidates the shared journey
         // evidence (cardJourneyEvidence.js's hardware-operation listener) —
