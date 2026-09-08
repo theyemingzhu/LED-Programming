@@ -609,8 +609,13 @@ const wrongBuildDirect = reduceCardLink(direct, {
   expectedCard: { id: 'lw-001122aabbcc', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) },
   readiness: readyEnvelope('lw-001122aabbcc', { buildId: 'b'.repeat(40) }),
 });
-assert.equal(wrongBuildDirect.state, 'disconnected');
-assert.equal(wrongBuildDirect.reason, 'wrong-firmware-build');
+// F13: the same card answering on a build Studio had not written down yet is an
+// update that landed, not a different card — the link stays green and re-learns
+// the build it is actually running. Only a different card id refuses (below).
+assert.equal(wrongBuildDirect.state, 'connected-direct');
+assert.equal(wrongBuildDirect.reason, '');
+assert.equal(wrongBuildDirect.expectedCard.buildId, 'b'.repeat(40), 'the link re-learns the build the card is running');
+assert.equal(wrongBuildDirect.card.buildId, 'b'.repeat(40));
 const wrongDirectCard = reduceCardLink(initial, {
   type: 'direct-status',
   connected: true,
