@@ -11,6 +11,7 @@ import {
   openLocalCardPage,
   reserveCardBridgeWindow,
   releaseCardBridge,
+  releaseInheritedBridgeWindowName,
   retargetCardBridge,
   sendCardBridgeRequest,
 } from './cardBridge.js';
@@ -962,4 +963,91 @@ test('open-studio with neither a direct field nor a same-origin href carries no 
 
   assert.equal(win.location.hash, '#screen=pattern');
   assert.equal(location.replaceStateCalls.length, 0, 'no intent to record, so no replaceState call');
+});
+
+// F28 — "Recover and verify card" then "Find my card" navigated the SAME
+// Studio tab to the card's own address and stranded it (history.length is 1
+// for a window reached this way, so history.back() is a no-op). Root cause:
+// this Studio tab itself can carry window.name === CARD_BRIDGE_WINDOW_NAME
+// (the card page's "Edit in Studio" handoff can leave it behind -- see
+// bootstrapCardBridgeFromOpener's opener-less fallback in cardBridge.js).
+// window.open(url, CARD_BRIDGE_WINDOW_NAME) then resolves to THIS browsing
+// context per the HTML "choose a browsing context" algorithm and, with a
+// real (non-empty) url, navigates it synchronously in place -- returning a
+// truthy handle so nothing downstream notices.
+//
+// This stub models that self-match faithfully: window.open(url, name) that
+// matches win.name resolves to `win` itself, and (matching real browser
+// behavior) only actually mutates win.location.href when url is non-empty.
+function stubWindowWithInheritedBridgeName({ openResult } = {}) {
+  const stub = stubWindow({ openResult });
+  const { win, opened } = stub;
+  win.name = CARD_BRIDGE_WINDOW_NAME;
+  win.location.href = 'https://led.mandalacodes.com/#screen=card&section=overview';
+  win.open = (url, name, features) => {
+    opened.push({ url, name, features });
+    if (name === win.name) {
+      if (url) win.location.href = url;
+      return win;
+    }
+    return openResult;
+  };
+  return stub;
+}
+
+test('a Studio tab that inherited the bridge window name is never navigated in place by openCardBridge', () => {
+  const tab = fakeCardTab();
+  const { win, opened } = stubWindowWithInheritedBridgeName({ openResult: tab });
+  const originalHref = win.location.href;
+
+  const result = openCardBridge('192.168.50.60');
+
+  assert.equal(win.location.href, originalHref,
+    'this Studio tab must never be navigated by its own inherited bridge name');
+  assert.equal(win.name, '', 'the inherited bridge name must be released');
+  assert.equal(result, tab, 'a real, distinct card window is opened once the inherited name is released');
+  assert.ok(opened.length >= 1, 'a real open was attempted');
+  assert.notEqual(opened.at(-1).url, '', 'the attempt that succeeds opens a real navigable URL, not a blank probe');
+  assert.equal(opened.at(-1).name, CARD_BRIDGE_WINDOW_NAME);
+});
+
+test('a Studio tab that inherited the bridge window name is never adopted as a bridge target either', () => {
+  const { win, opened } = stubWindowWithInheritedBridgeName({ openResult: null });
+  win.location.search = '?cardBridge=1&cardHost=192.168.50.61';
+  win.opener = null;
+  win.parent = win;
+
+  // With no separate named card tab left to find (window.open('', name)
+  // resolves to this same, self-named window), bootstrap must report no
+  // opener bridge rather than adopting this window as its own target.
+  // (cardBridge.js keeps module-level bridge state across tests in this
+  // file, so this only asserts the return value and the name release, not
+  // getCardBridgeState().open -- see the file-level comment above.)
+  assert.equal(bootstrapCardBridgeFromOpener(), false);
+  assert.equal(win.name, '', 'the inherited name is released even on the empty-url adoption probe');
+  assert.ok(opened.some(call => call.url === '' && call.name === CARD_BRIDGE_WINDOW_NAME));
+});
+
+test('an ordinary Studio tab (no inherited bridge name) is unaffected: openCardBridge still opens a distinct handle', () => {
+  const tab = fakeCardTab();
+  const { win, opened } = stubWindow({ openResult: tab });
+  assert.equal(win.name, undefined, 'a normal Studio tab carries no bridge name to begin with');
+
+  const result = openCardBridge('192.168.50.62');
+
+  assert.equal(result, tab);
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].name, CARD_BRIDGE_WINDOW_NAME);
+  assert.equal(win.name, undefined, 'a window that never carried the bridge name is left untouched');
+});
+
+test('releaseInheritedBridgeWindowName only clears a window that actually carries the bridge name', () => {
+  const { win } = stubWindow({ openResult: null });
+  win.name = 'some-other-window-name';
+  assert.equal(releaseInheritedBridgeWindowName(win), false);
+  assert.equal(win.name, 'some-other-window-name');
+
+  win.name = CARD_BRIDGE_WINDOW_NAME;
+  assert.equal(releaseInheritedBridgeWindowName(win), true);
+  assert.equal(win.name, '');
 });
