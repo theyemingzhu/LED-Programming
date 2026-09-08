@@ -542,7 +542,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     useEffect(() => {
       if (!softwareGrantAvailable) return undefined;
       if (import.meta.env.DEV) {
-        // The dev server's own /api/library/session is a deliberate "signed
+        // The dev server's own library session route is a deliberate "signed
         // out" 204 stub (see vite.config.js), never the real session JSON —
         // so this origin truthfully has no grant service to reach, the same
         // as the card's own served page. Fixtures opt into a specific probe

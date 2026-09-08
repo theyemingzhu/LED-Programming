@@ -135,7 +135,7 @@ assert.match(testWorkflow, /node scripts\/ci-changed-lanes\.mjs/);
 assert.match(testWorkflow, /npm run ci:source-build/);
 assert.match(testWorkflow, /npm run ci:browser-smoke/);
 assert.doesNotMatch(testWorkflow, /npm run test:release-ui|--shard=/);
-assert.match(pkg.scripts['ci:browser-smoke'], /playwright test tests\/strip-discovery\.spec\.ts --project=chromium --workers=1/);
+assert.match(pkg.scripts['ci:browser-smoke'], /playwright test [^&]*tests\/strip-discovery\.spec\.ts[^&]* --project=chromium --workers=1$/);
 assert.match(pkg.scripts['ci:browser-regression'], /npm run test:show/);
 assert.match(pkg.scripts['ci:browser-regression'], /npm run test:screen-recovery/);
 assert.match(exhaustiveWorkflow, /npm run launch:check/);
