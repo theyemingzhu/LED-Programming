@@ -1264,6 +1264,25 @@ import { PatternPreview } from './PatternPreview.jsx';
         // URL: it is still what the owner asked for, and loading the matching
         // project by hand can still honour it.
         markCardEditIntentAbandoned(requestedIntent);
+        // F18: an edit request for the project ALREADY open here is not a
+        // "which copy wins" decision at all — the card is not offering a
+        // different project, it is asking Studio to open a look/pattern that
+        // already lives in what's open. lw-card.jsx's own F18 effect already
+        // reacted to this exact refusal (wiring drift broke the exact-match
+        // this claim needs) by routing here for that reason, so bouncing
+        // straight back to the card would ping-pong the two screens — the
+        // 2026-08-07 loop this file's breaker exists to prevent. Reuse the
+        // one place Patterns already reads the card's installed project id
+        // (installedProjectIdFromCardStatus, same field lw-card.jsx's
+        // cardHoldsOpenProject reads off cardLink.readiness) rather than
+        // re-deciding the match here. Stay, and let the existing unauthorized
+        // 'project' gate show the honest next step in place: the look is
+        // offered, not selected — the exact-fingerprint claim this write
+        // still needs was refused, and nothing here grants it.
+        if (installedProjectIdFromCardStatus(cardLink?.readiness) === String(projectId || '').trim()) {
+          blockPatternCardEffect('project');
+          return;
+        }
         if (go) go('card');
         else window.location.hash = '#screen=card&section=overview';
         return;
@@ -1314,7 +1333,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       params.delete('editLook');
       const search = params.toString();
       window.history.replaceState(null, '', `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`);
-    }, [board, go, invalidatePendingPreview, savedGlobalLook, savedLooks, setPatchBoard, setStandaloneController, strips]);
+    }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, savedLooks, setPatchBoard, setStandaloneController, strips]);
 
     const updatePreviewLook = (patch, { push = true } = {}) => {
       if (!selectedTarget) return null;
@@ -2252,7 +2271,17 @@ import { PatternPreview } from './PatternPreview.jsx';
                 <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
                 <p>Choose chip-ready patterns, tune the colors, then install the finished look on the card.</p>
-                <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
+                {/* F18: while the pattern-gate notice is up, it already
+                    carries this exact verdict as its own alert with the
+                    actionable next step ("Verify project in Card status") —
+                    the same stand-down this screen already applies to its
+                    'pattern-card-status' notice a few effects down, extended
+                    to the chip so an honoured edit intent does not read as
+                    routed back to the setup ladder just because this chip's
+                    taskId happens to match the ladder's own attribute. */}
+                {!patternCardGate && (
+                  <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
+                )}
               </div>
               <div className="pm-actions">
                 <button className="btn primary" title="Install the current look on the card" onClick={savePreviewToCard} disabled={!installGate.allowed}>{I.bolt}{cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>

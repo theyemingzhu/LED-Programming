@@ -136,6 +136,11 @@ function CardHomePanels({
   const projectSwitchInFlightRef = useRef(false);
   const cardProjectProbeRef = useRef('');
   const pendingCardProjectProbeRef = useRef(null);
+  // F18: which edit intent (if any) has already been routed to Patterns after
+  // a refused resolved-adoption run, so a re-render carrying the SAME refusal
+  // does not navigate twice. A fresh intent (owner asks for a different look)
+  // is a different value and is allowed through again.
+  const editIntentPatternRouteRef = useRef('');
   const [cardProjectProbeRevision, requestCardProjectProbe] = React.useReducer(value => value + 1, 0);
   resolutionContextRef.current = {
     browserProjects,
@@ -594,6 +599,32 @@ function CardHomePanels({
     if (cardProjectProbeRef.current === signature) return;
     void loadMatchingCardProject({ probeOnly: !autoIntent, autoIntent, probeSignature: signature });
   }, [activeCloudProjects, browserProjects, cardHost, cardLink, cardProjectProbeRevision, loadMatchingCardProject, projectGeneration, ready]);
+  // F18: the run above refuses to resolve/authorize when the open project no
+  // longer matches what the card reports EXACTLY — the common cause is a
+  // wiring edit made in Studio since install, which correctly breaks the
+  // fingerprint match that run requires before it is willing to REPLACE or
+  // PUSH anything onto the card. On refusal it reports an error and routes
+  // nowhere, which left the phase-1 ladder (deriving the identical "wiring
+  // changed" verdict independently, from the persisted lifecycle record) as
+  // the only screen reachable — asking "which copy wins" on a handoff that
+  // never asked that question. An edit intent for the project ALREADY open
+  // here is not a replace/push decision at all: the card is not offering a
+  // different project, it is asking Studio to open a look/pattern that
+  // already lives in what's open. So react to that SAME run's own refusal —
+  // never re-decide whether it should have matched, `cardProjectAdoption.js`
+  // stays the one authority for that — and when project ids agree, continue
+  // to Patterns anyway, intent still in the URL. Every write stays gated
+  // exactly as it is today, downstream, in Patterns' own live authorization;
+  // nothing here grants one.
+  useEffect(() => {
+    if (matchingProjectState.status !== 'error') return;
+    const requestedIntent = cardEditIntent();
+    const autoIntent = isCardEditIntentAbandoned(requestedIntent) ? '' : requestedIntent;
+    if (!autoIntent || !cardHoldsOpenProject) return;
+    if (editIntentPatternRouteRef.current === autoIntent) return;
+    editIntentPatternRouteRef.current = autoIntent;
+    window.location.hash = '#screen=pattern';
+  }, [matchingProjectState, cardHoldsOpenProject]);
   // The presentation is Home's connected-state view: it renders only when a
   // card is actually answering — a verified transport (ready, blank, bench,
   // or still confirming its evidence), an identified card mid-revalidation
