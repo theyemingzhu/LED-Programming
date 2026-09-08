@@ -67,7 +67,12 @@ assert.equal(
   'https://led.mandalacodes.com',
   'the card ready handshake receives only the allowlisted opener origin',
 );
-assert.equal(handoff.search, '', 'Studio must not pass an auto-open URL through the card query string');
+assert.deepEqual(
+  [...handoff.searchParams.keys()],
+  ['lwBridgeAttempt'],
+  'the card query string carries only the per-attempt reopen token, never an auto-open URL',
+);
+assert.match(handoff.searchParams.get('lwBridgeAttempt') || '', /^[A-Za-z0-9._-]+$/, 'the reopen token is a plain opaque value');
 assert.equal(handoff.searchParams.has('studioAutoOpen'), false);
 assert.equal(handoff.searchParams.has('studioUrl'), false);
 assert.equal(handoff.href.includes('deployCheck=123'), false, 'arbitrary Studio URL data is never forwarded to the card');
