@@ -1039,7 +1039,7 @@ test('an exact nonzero commissioning flow resumed after reload marks the restore
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('workspace-notice')).toContainText('Restored from recovery copy');
+  await expect(page.getByTestId('project-lifecycle-label')).toContainText('Restored from recovery copy');
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await connectCommissioningCard(page);
   await page.evaluate(async () => {
