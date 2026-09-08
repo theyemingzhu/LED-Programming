@@ -870,6 +870,91 @@ export function cardBridgeAutoPreviewEnabled() {
   return Boolean(params.enabled && params.autoPreview);
 }
 
+// F24 — the card's own "Edit in Studio" button used to reload the opener tab
+// (`opener.location.href = <studio url>`), which lost every bit of Studio's
+// in-memory state (bench defect F18; the Studio side of that reload landed in
+// #237). Firmware from bridgeVersion 7 on instead posts this message to
+// `window.opener` and expects Studio to apply the intent IN THIS TAB, without
+// a reload: move the hash (the URL hash is the only store of the current
+// screen -- studioRoute.js) and record the edit request the same way the
+// URL-boot path already does (cardEditIntent.js reads it straight off
+// `window.location.search`), all without ever assigning `location.href`.
+// A bench card on older firmware (bridgeVersion 6) never sends this message,
+// so this handler is purely additive and inert until a firmware release
+// ships it.
+function applyOpenStudioBridgeMessage(event, data) {
+  // Same two checks the 'ready' handshake and every relay reply already
+  // enforce: this must be the exact tracked bridge window, from the exact
+  // resolved card origin. A message from any other source -- an untracked
+  // window, or a stale target this page no longer tracks -- carries no
+  // authority over this tab's own screen.
+  if (!bridgeWindow || !event.source || event.source !== bridgeWindow) return;
+  if (!bridgeOrigin || event.origin !== bridgeOrigin) return;
+
+  const win = browserWindow();
+  if (!win?.location) return;
+
+  let editLook = typeof data.editLook === 'string' ? data.editLook.trim() : '';
+  let editPattern = typeof data.editPattern === 'string' ? data.editPattern.trim() : '';
+
+  // Fall back to the href's own query params only when the message carried
+  // neither field directly, and only when that href names THIS tab's own
+  // origin -- a foreign href cannot smuggle an intent in through a field
+  // Studio otherwise trusts unconditionally.
+  if (!editLook && !editPattern && typeof data.href === 'string' && data.href) {
+    try {
+      let currentOrigin = win.location.origin || '';
+      if (!currentOrigin) {
+        try { currentOrigin = new URL(String(win.location.href || '')).origin; } catch { /* noop */ }
+      }
+      const hrefUrl = new URL(data.href, win.location.href || currentOrigin || undefined);
+      if (currentOrigin && hrefUrl.origin === currentOrigin) {
+        editLook = String(hrefUrl.searchParams.get('editLook') || '').trim();
+        editPattern = String(hrefUrl.searchParams.get('editPattern') || '').trim();
+      }
+    } catch {
+      /* an unparsable href carries no intent */
+    }
+  }
+
+  if (editLook || editPattern) {
+    // The same storage the URL-boot path reads -- cardEditIntent.js's
+    // readCardEditIntent parses window.location.search directly at every
+    // call site, so writing the params here is the whole "setter". A
+    // replaceState on this document is the only way to move it; a navigation
+    // (location.href, location.search assignment) would reload the tab,
+    // which is the exact defect this handler exists to fix.
+    const params = new URLSearchParams(win.location.search || '');
+    params.delete('editPattern');
+    params.delete('editLook');
+    if (editPattern) params.set('editPattern', editPattern);
+    else params.set('editLook', editLook);
+    const search = params.toString();
+    try {
+      win.history?.replaceState?.(
+        null,
+        '',
+        `${win.location.pathname || ''}${search ? `?${search}` : ''}${win.location.hash || ''}`,
+      );
+    } catch {
+      /* a sandboxed embed may refuse history writes; the hash move below still lands */
+    }
+  }
+
+  // The hash is the only store of the current screen (studioRoute.js) --
+  // moving it, and never assigning location.href, is what keeps this tab's
+  // in-memory state alive across the hand-over. Patterns' own existing
+  // intent-consumption effect (cardEditIntent.js / lw-pattern.jsx) takes it
+  // from here, exactly as it already does after the F18 routing.
+  win.location.hash = '#screen=pattern';
+  try {
+    win.focus?.();
+  } catch {
+    /* focus is best-effort */
+  }
+  dispatchBridgeChange();
+}
+
 function handleBridgeMessage(event) {
   const data = event?.data || {};
   if (data.app !== CARD_BRIDGE_APP) return;
@@ -911,6 +996,11 @@ function handleBridgeMessage(event) {
       // Identity failures are surfaced through bridge state; the ready message
       // handler must never create an unhandled async rejection.
     });
+    return;
+  }
+
+  if (data.type === 'open-studio') {
+    applyOpenStudioBridgeMessage(event, data);
     return;
   }
 
