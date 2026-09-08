@@ -273,3 +273,93 @@
   .lwui-tile-label { font-size: 9px; letter-spacing: .02em; }
   .lwui-tile-value { font-size: 14px; }
 }
+
+/* ---------- ProgressRail ----------
+   The long bar for work in flight. Full width of whatever card it sits in —
+   the one element on these screens that is supposed to span, because its
+   length IS the reading. */
+
+.lwui-rail {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lwui-rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.lwui-rail-label {
+  min-width: 0;
+  color: var(--text-hi);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* Mono tabular, so counting from 0 to 100 never nudges the label. */
+.lwui-rail-pct {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-hi);
+}
+
+.lwui-rail.is-done .lwui-rail-pct { color: var(--ok); }
+.lwui-rail.is-failed .lwui-rail-pct { color: var(--danger); }
+.lwui-rail.is-waiting .lwui-rail-pct { color: var(--text-lo); }
+
+.lwui-rail-track {
+  position: relative;
+  height: 10px;
+  border: 1px solid var(--border-hair);
+  border-radius: 99px;
+  background: var(--bg-elev);
+  overflow: hidden;
+}
+
+.lwui-rail-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: var(--accent);
+}
+
+.lwui-rail.is-done .lwui-rail-fill { background: var(--ok); }
+.lwui-rail.is-failed .lwui-rail-fill { background: var(--danger); }
+
+/* Unknown size: the track sweeps instead of claiming a position. */
+.lwui-rail-track.is-indeterminate .lwui-rail-fill {
+  width: 45%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 50%,
+    transparent 100%);
+}
+
+.lwui-rail-caption {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  letter-spacing: .02em;
+  color: var(--text-lo);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lwui-rail-fill { transition: width .16s linear, background-color .2s ease; }
+  .lwui-rail-track.is-indeterminate .lwui-rail-fill {
+    transition: none;
+    animation: lwui-rail-sweep 1.5s linear infinite;
+  }
+}
+
+@keyframes lwui-rail-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(240%); }
+}

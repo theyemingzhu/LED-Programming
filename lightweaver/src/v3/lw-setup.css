@@ -9,10 +9,14 @@
 
 .lw-setup-lede,
 .lw-setup-phases,
-.lw-setup-identity,
 .lw-setup-body .card-status-area {
   margin-inline: auto;
 }
+
+/* Everything inside the journey column already fills it; the identity row is
+   the deliberate exception — it is as wide as its facts, aligned to the same
+   left edge as the ladder below it. */
+.lw-setup-journey > * { margin-inline: 0; }
 
 .lw-setup-intro {
   max-width: 62ch;
@@ -21,25 +25,37 @@
   line-height: 1.6;
 }
 
+/* Each fact takes the width of its own words, and the strip ends where the
+   facts end — four equal columns was a table shape for four values of very
+   different lengths. The hairline separators are the 1px gap showing through,
+   so they survive a wrap to a second line, which four fixed columns did not. */
 .lw-setup-identity {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, max-content);
+  gap: 1px;
+  width: max-content;
+  max-width: 100%;
   margin-top: 20px;
   overflow: hidden;
   border: 1px solid var(--border-soft);
   border-radius: var(--r-md);
+  background: var(--border-hair);
+}
+
+/* `max-content` tracks, not fractions: each column is as wide as the longest
+   thing in it and the block ends where the facts end. Four equal fractions of
+   the window is what spread these four short values across 1880px with each
+   one alone in an empty third. Measured, not guessed — the four laid inline
+   need 827px, which the 720px Studio column cannot hold, so two lines of two
+   is the honest shape rather than three facts and a stretched orphan. */
+.lw-setup-identity > div {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 8px;
+  padding: 10px 14px;
   background: var(--bg-panel);
 }
-
-.lw-setup-identity > div {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  padding: 11px 13px;
-  border-right: 1px solid var(--border-hair);
-}
-
-.lw-setup-identity > div:last-child { border-right: 0; }
 
 .lw-setup-identity span {
   color: var(--text-mid);
@@ -305,9 +321,6 @@
 
 @media (max-width: 720px) {
   .card-workspace-body.lw-setup-body > * { width: 100%; }
-  .lw-setup-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lw-setup-identity > div:nth-child(2) { border-right: 0; }
-  .lw-setup-identity > div:nth-child(-n + 2) { border-bottom: 1px solid var(--border-hair); }
   .lw-setup-phase { padding-inline: 12px; }
   .lw-setup-phase:not(:last-child)::after { left: 25px; }
   .lw-setup-task { padding-left: 0; }
@@ -318,9 +331,9 @@
 }
 
 @media (max-width: 430px) {
-  .lw-setup-identity { grid-template-columns: 1fr; }
-  .lw-setup-identity > div { border-right: 0; border-bottom: 1px solid var(--border-hair); }
-  .lw-setup-identity > div:last-child { border-bottom: 0; }
+  /* One fact per line on a phone: the value has the room to be read, and the
+     1px gap keeps drawing the separators. */
+  .lw-setup-identity { grid-template-columns: minmax(0, 1fr); width: 100%; }
   .lw-setup-phase-head { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; }
   .lw-setup-phase-marker { width: 26px; height: 26px; }
   .lw-setup-phase:not(:last-child)::after { left: 24px; }

@@ -547,7 +547,9 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 /* What this install does to the card in front of you. Going BACKWARDS is the
    only state coloured as a warning — an ordinary update, a reinstall of the same
    build, and an unknown card are all normal things to be doing. */
-.install-update-plan { box-sizing: border-box; padding: 11px 14px; border-radius: var(--r-sm); border: 1px solid var(--border-soft); background: var(--bg-elev); }
+/* As wide as the two sentences it holds. Spanning the column drew a box
+   around a lot of nothing. */
+.install-update-plan { box-sizing: border-box; width: max-content; max-width: 100%; padding: 11px 14px; border-radius: var(--r-sm); border: 1px solid var(--border-soft); background: var(--bg-elev); }
 .install-update-plan.is-downgrade { border-color: oklch(0.55 0.16 30 / .45); }
 .install-update-headline { margin: 0; color: var(--text-hi); font-size: 13px; line-height: 1.5; }
 .install-update-plan.is-downgrade .install-update-headline { color: var(--danger); }
@@ -557,7 +559,11 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
   height: auto; min-height: 36px; max-width: 240px; padding-block: 8px;
   white-space: normal; text-align: center; line-height: 1.25;
 }
-.install-card-check { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 20px; }
+/* The action belongs beside its sentence, not pinned to the far edge of the
+   card with a gulf between them. The copy stops at a readable measure and the
+   button follows it. */
+.install-card-check { display: grid; grid-template-columns: minmax(0, max-content) auto; justify-content: start; align-items: center; gap: 12px 20px; }
+.install-card-check > .install-action-copy { max-width: 52ch; }
 .install-action-copy { min-width: 0; }
 .preserving-update-panel .card-acknowledged-facts dd {
   text-align: right; font-variant-numeric: tabular-nums;
@@ -594,6 +600,12 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .install-confirm input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--accent); }
 .install-confirm-action { grid-column: 2; grid-row: 1; display: grid; justify-items: end; gap: 10px; }
 .install-confirm-action .fl-bar { width: 100%; min-width: 180px; }
+/* The rail is the one element on this screen that SHOULD span its card: its
+   length is the reading. Inside the found-card block it is a flex child and
+   inside the confirm/recovery blocks a grid child, so each needs saying. */
+.install-check-ok > .lwui-rail { flex: 1 1 100%; margin-top: 5px; }
+.install-confirm-action > .lwui-rail { width: 100%; min-width: 180px; }
+.install-confirm > .lwui-rail { grid-column: 1 / -1; }
 .install-observing { margin: 0 2px; }
 
 .install-task > .card-commissioning-steps {

@@ -1062,15 +1062,18 @@ export function SetupScreen({
   };
 
   return (
-    // `display: contents` — the wrapper exists so the journey's verdict is
-    // readable from ONE element (the same two attributes the working-screen
-    // chip carries), without inserting a box that would change how these
-    // sections lay out inside Card Home.
+    // The wrapper exists so the journey's verdict is readable from ONE element
+    // (the same two attributes the working-screen chip carries). It used to be
+    // `display: contents` to avoid inserting a box — but a box is exactly what
+    // was missing: the setup column cap lands on `.lw-setup-body > *`, which
+    // was this wrapper, and a box-less element passes no width to its children.
+    // Identity row and phase ladder therefore spanned the whole window while
+    // every other Studio screen sat in 720px. It is now the column.
     <div
+      className="lw-setup-journey"
       data-testid="setup-journey"
       data-journey-task={journey.taskId}
       data-journey-complete={journey.setupComplete ? 'true' : 'false'}
-      style={{ display: 'contents' }}
     >
       {/* The lede used to explain the ladder here ("Connect to the card, then
           Studio resumes whatever is still unfinished…"). Phase 1 is that
