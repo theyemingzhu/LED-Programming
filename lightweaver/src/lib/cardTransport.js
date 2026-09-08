@@ -9,6 +9,14 @@ import { classifyCardReadiness, isDifferentCardMismatch } from './cardReadiness.
 import { getSharedCardLink } from './cardLink.js';
 import { allowLanProbes } from './usbInspection.js';
 
+// Re-exported so callers that need to know WHETHER a persisted identity
+// exists (not just pass one through as `expectedCardId`, which
+// `connectCardTransport` already defaults on its own) don't have to import
+// cardIdentity.js directly. lw-pattern.jsx's F20/F21 first-tap probe is the
+// first caller: it needs to tell "no identity to probe with" apart from
+// "haven't asked yet" before deciding whether to force the bridge.
+export { readPersistedCardIdentity };
+
 export const CARD_TRANSPORTS = Object.freeze({
   DIRECT: 'direct-lna',
   LOCAL: 'local-origin',
