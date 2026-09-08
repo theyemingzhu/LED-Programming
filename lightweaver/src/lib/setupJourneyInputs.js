@@ -81,9 +81,16 @@ export function setupJourneyBlackout({ cardLink, project, evidence } = {}) {
   // real status envelope carries this field; a snapshot with none yet (still
   // connecting) is handled by `fresh.read` above.
   if (fresh.status && fresh.status.commandReady !== true) return false;
-  const sameProject = String(fresh.projectId || '') === String(project?.id || '');
-  if (!sameProject) return false;
-  return fresh.matchesOpenProject === true || fresh.resolutionKind === 'saved-match';
+  // F22: blackout is a card fact about the card's own output — whether the
+  // open project's WIRING still matches the card exactly (matchesOpenProject
+  // / resolutionKind) is a different question, the one `cardHoldsOpenProject`
+  // in lw-card.jsx and F18's edit-intent handoff already answer with id
+  // equality alone. A card sitting dark under the project Studio has open,
+  // with an unsaved wiring edit since install, is still dark — the drift
+  // does not un-blacken the strip. Requiring an exact structural match here
+  // hid a real blackout behind a fingerprint mismatch that has nothing to do
+  // with what the LEDs are doing right now.
+  return String(fresh.projectId || '') === String(project?.id || '');
 }
 
 // Named so a test can state the two call shapes that used to disagree and
