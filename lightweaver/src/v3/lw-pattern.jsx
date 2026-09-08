@@ -76,7 +76,7 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
 import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview } from '../lib/cardLiveControl.js';
-import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
+import { connectCardTransport, getActiveCardTransportAuthority, readPersistedCardIdentity } from '../lib/cardTransport.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
 import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
@@ -352,15 +352,41 @@ import { PatternPreview } from './PatternPreview.jsx';
   // rejection (an unreachable host, a pending or refused Local Network
   // Access permission) is treated the same as a refusal — fall back to the
   // bridge.
+  //
+  // F20/F21: the FIRST tap after a hard load can land before `cardLink` has
+  // absorbed a single status read — `readiness === null`, `transport ===
+  // ''`, `expectedCard === null`, exactly `initialCardLinkState()`. Reading
+  // `!expectedCardId` there as "no card to probe" (the old behaviour) is
+  // wrong: it is "no data yet", not "confirmed no identity". A persisted
+  // identity from an earlier session (`lw_card_identity_v1`, synchronous in
+  // localStorage) still names the card this owner expects, so probe with
+  // THAT instead of forcing the pop-up on every fresh load —
+  // `connectCardTransport`'s own `wrong-card` refusal already protects
+  // against a stale persisted id. A card genuinely never paired (no
+  // persisted identity either) still forces the bridge, unchanged.
+  //
+  // Returns `directProbeReady: true` only when THIS call's own probe just
+  // came back connected — the signal `scheduleBrowseLivePreview`'s gate
+  // needs to accept this exact tap without waiting for `cardLink.readiness`
+  // to catch up (the dispatch the probe triggers lands in a later render,
+  // not this microtask).
   async function resolveCardBridgePreference({ cardLink, cardHost }) {
-    if (cardLink?.transport === 'bridge') return true;
-    if (typeof window === 'undefined' || window.location?.protocol !== 'https:') return false;
-    if (getActiveCardTransportAuthority(cardHost)) return false;
+    if (cardLink?.transport === 'bridge') return { needsBridge: true, directProbeReady: false };
+    if (typeof window === 'undefined' || window.location?.protocol !== 'https:') {
+      return { needsBridge: false, directProbeReady: false };
+    }
+    if (getActiveCardTransportAuthority(cardHost)) return { needsBridge: false, directProbeReady: false };
     const expectedCard = cardLink?.expectedCard || cardLink?.card || null;
-    const expectedCardId = String(expectedCard?.id || expectedCard?.cardId || '').trim();
-    if (!expectedCardId) return true;
+    let expectedCardId = String(expectedCard?.id || expectedCard?.cardId || '').trim();
+    if (!expectedCardId) {
+      const bootstrapping = cardLink?.readiness == null && cardLink?.transport === '';
+      const persistedId = bootstrapping ? String(readPersistedCardIdentity()?.id || '').trim() : '';
+      if (!persistedId) return { needsBridge: true, directProbeReady: false };
+      expectedCardId = persistedId;
+    }
     const probed = await connectCardTransport({ host: cardHost, expectedCardId }).catch(() => null);
-    return !(probed?.connected);
+    const connected = Boolean(probed?.connected);
+    return { needsBridge: !connected, directProbeReady: connected };
   }
 
   function PatternScreen({ connected, cardLink, cardLifecycle, currentProject, go }) {
@@ -1132,7 +1158,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           // introduces — `pushLivePreviewToCard`'s own "latest wins"
           // arbitration and `requireCurrentPreviewIntent` already cancel a
           // superseded send, exactly as they did before this existed.
-          const preferBridge = await resolveCardBridgePreference({ cardLink, cardHost });
+          const { needsBridge: preferBridge } = await resolveCardBridgePreference({ cardLink, cardHost });
           const previewOptions = {
             host: cardHost,
             timeoutMs: 2200,
@@ -1356,7 +1382,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       // that is mid-verification on the bridge, via the SAME checks inside
       // `scheduleVerifiedBridgePreview` and the acquisition callbacks below
       // that already existed for that case.
-      void resolveCardBridgePreference({ cardLink, cardHost }).then(needsBridge => {
+      void resolveCardBridgePreference({ cardLink, cardHost }).then(({ needsBridge, directProbeReady }) => {
         // On https the card link cannot become ready until the card page is
         // open, and the card page only opens further down THIS function. Gating
         // the whole path on readiness therefore closed a loop: every tap was
@@ -1368,7 +1394,17 @@ import { PatternPreview } from './PatternPreview.jsx';
         // guarded by `exactFreshAuthority`, which re-reads the card's own status
         // and checks id, firmware, build and boot before a single frame goes out.
         const openingTheBridge = needsBridge && !(hasCardBridge() && getCardBridgeState()?.verified);
-        if (currentPatternPreviewAccess() !== 'ready' && !openingTheBridge) {
+        // F20: `currentPatternPreviewAccess()` reads `patternAccessRef`, which
+        // is only ever updated by a RENDER — and the probe above just
+        // dispatched a fresh readiness envelope into `cardLink` that this
+        // component has not re-rendered against yet (that dispatch's re-render
+        // lands after this microtask, not inside it). Treating that stale ref
+        // as authoritative refused a tap the probe itself had just proven safe
+        // — the "not ready for pattern commands" toast on a card that was, in
+        // fact, ready. `directProbeReady` is the outcome of THIS call's own
+        // probe, not a snapshot, so it is sufficient for THIS tap on its own,
+        // the same way `openingTheBridge` already is for the bridge path.
+        if (currentPatternPreviewAccess() !== 'ready' && !openingTheBridge && !directProbeReady) {
           blockPatternCardEffect(currentPatternPreviewAccess());
           return;
         }
