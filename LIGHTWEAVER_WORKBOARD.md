@@ -9,6 +9,27 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-05: **FLOW-BLUEPRINT proposed** — bounded source audit completed; shared
+journey inputs can disagree about active light-test completion in the newer
+repair checkout (focused synthetic reproduction). Existing update/reconnect
+repairs must be retained, not repeated. [Unified card journey proposal](docs/plans/2026-09-05-unified-card-journey.md)
+defines one primary action, safe automatic continuation, recovery, and integrated
+acceptance scenarios. Planning only; no product edits, release or hardware work.
+Three cheapest-model audits completed; no active file ownership remains for this audit.
+
+Second review expanded the same blueprint with whole-product scope, 14 existing
+implementation entries, backward/reload/concurrency contracts, preservation and
+environment matrices, B0–B6 ownership/dependencies, and J01–J14 completion
+scenarios. Three further cheapest-model source reviews were reconciled against
+active callers; false dead-code claims were rejected. Still planning only.
+
+2026-09-05: **JOURNEY-01–10 queued** — actual firmware update succeeded (card
+1524, Studio 1525), but Studio retains old build evidence and setup does not
+complete; card is on saved Wi-Fi but factory-blank. Diagnosis and three-owner
+repair plan: [update to playback](docs/plans/2026-09-05-update-to-playback-repair.md).
+No implementation or release performed. Older “done” entries below do not close
+these newly observed journey failures.
+
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
@@ -33,7 +54,6 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 | Owner | IDs | Exact files / boundary | Started | Latest evidence |
 | --- | --- | --- | --- | --- |
-| None | — | — | — | CARD-IA-001 on `card-one-action` @ `dad5bc31`; Home compression landed; not pushed |
 
 The primary assigns at most three sub-agents. Two active owners must never name
 the same file or an inseparable behavior boundary.
@@ -56,6 +76,11 @@ this queue when Adrian is available.
 
 ## Bench queue
 
+**BENCH-JOURNEY-2026-09-05 — active repair handoff:** exact card
+`lw-b0fe81f61b44` / firmware 1524 / boot `boot-44bdf529-b0fe81f61b44`
+answers on station Wi-Fi with no project or outputs. This supersedes older
+configured-card assumptions for this card. [Session and one next step](docs/bench-sessions/2026-09-05-lw-b0fe81f61b44-update-to-playback.md).
+
 | ID | Goal | Machine state | Human input still required | Session | Status |
 | --- | --- | --- | --- | --- | --- |
 | BENCH-001 | Restore and re-verify the GPIO 18 bench card after the destructive factory flash | Firmware 1.1.1 build 1198, boot `boot-0bb7a7d8-b0fe81f61b44`, reachable at `192.168.18.70` and USB; Wi-Fi recovered but card is blank with no project/output | Resolve prior 41-pixel RGB evidence versus frozen 44-pixel GRB job, then observe the lights | Prove session `2026-08-10-windowless-offline-studio` | blocked |
@@ -76,6 +101,7 @@ this queue when Adrian is available.
 
 | ID | Outcome | Evidence | Revision / build | Completed |
 | --- | --- | --- | --- | --- |
+| TOOLTIP-001 | Card and Wire hover help renders once: the portal owns the visible tooltip and its duplicate pseudo-tooltip is suppressed in the same scope | Focused Chromium tooltip regression at phone and desktop widths; main Tests run 33968165940; exhaustive run 33969084471; deployed graph 60/60 files | Shipped in PR #218 with release-gate follow-up PR #219; Studio build 1551; firmware build 1548 | 2026-09-05 |
 | WORKFLOW-001 | Proportional glitch/checkpoint/release workflow shipped | PR #96; live no-store marker | Studio build 1201; firmware release build 1198 | 2026-08-09 |
 | WORKFLOW-002 | Inferred Sprint, guided Bench, and explicit Prove system implemented | Seven mode contracts plus resumable Bench/Prove templates | Branch `codex/three-mode-workflow` | 2026-08-09 |
 | WINDOWLESS-001–003 | Windowless/offline Studio implemented across public PWA, card-local Studio, firmware, project storage, encrypted handoff, and release tooling | Unit 1,364/1,364; tooling 8/8; firmware 4/4; Chromium offline 1/1; Pages staging; Vite/card/PlatformIO builds | Local commit on `codex/windowless-offline-studio` | 2026-08-10 |
@@ -95,3 +121,35 @@ this queue when Adrian is available.
    board into a transcript.
 4. Every interrupted Bench or Prove session records one and only one next step.
 5. Completed entries name behavior and evidence, not agent activity.
+
+
+## 2026-09-05 repair checkpoint location
+
+Update-to-playback repairs are **committed locally** as `eacd3c29` on
+`codex/update-to-playback`, in `.worktrees/update-to-playback` (based on
+production Studio 1525). This supersedes the queued diagnosis above.
+2258 unit tests,104 browser cases,26 firmware scripts plus native parser/storage
+check, production build and ESP32-S3 compile passed. The local preview at
+http://127.0.0.1:9212 connects the real card and shows firmware1524 current,
+then light setup. Release, signed preserving update and physical playback remain
+pending. Detailed handoff lives in that worktree's
+`docs/plans/2026-09-05-update-to-playback-repair.md`.
+
+## 2026-09-05 counting UI checkpoint
+
+COUNT-RULER-001 committed locally as `21bc5386` on `codex/update-to-playback`
+in `.worktrees/update-to-playback`, atop the repair checkpoint. Compact setup
+and direct count entry; repeating orange/5, red/10, white/50 physical ruler.
+2,260 unit tests, 20 Chromium discovery tests and production build pass;
+desktop/phone inspected. Physical marker colors remain needs-eyes. Preview:
+http://127.0.0.1:9212/#screen=discovery. Not pushed or deployed.
+
+## Shipment 2026-09-05
+
+TOOLTIP-001 is **shipped**. PR #218 merged the single-tooltip fix and PR #219
+made the Card discovery release checks deterministic for the offline CI
+environment. Terminal `origin/main` is `0e299ff5c464edcdf381205c3d30b8e2daae8966`.
+Main Tests run 33968165940, Deploy site run 33969062196, and Exhaustive launch
+check run 33969084471 all passed on that exact revision. Independent no-store
+production proof verified all 60 staged Studio files, Studio build 1551, and the
+signed firmware release at build 1548.
