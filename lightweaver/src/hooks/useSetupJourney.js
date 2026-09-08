@@ -87,6 +87,7 @@ export function useSetupJourney({
 
   const cardId = String(cardLink?.card?.id || cardLink?.readiness?.cardId || '').trim();
   const bootId = String(cardLink?.readiness?.bootId || '').trim();
+  const openProjectId = String(project?.id || '');
   const exact = connectedExactCard(cardLink);
   useEffect(() => {
     if (!refresh || !exact) return;
@@ -95,9 +96,16 @@ export function useSetupJourney({
     // again. Once the read lands the snapshot is fresh and this returns
     // immediately, so it converges rather than polls.
     if (hasFreshCardJourneyEvidence(cardLink, evidence)) return;
-    void refreshCardJourneyEvidence({ cardLink, reason: 'setup-journey' });
+    // F22c: this hook always knows which project Studio has open — pass it
+    // through so the published evidence carries that tag even when this is
+    // the FIRST refresh for this card+boot (Card Home has not read the card
+    // yet, e.g. a fast hash navigation straight to Patterns under load).
+    // Without it, `setupJourneyBlackout`'s project-scoping check
+    // (setupJourneyInputs.js) compared the card's real blackout against an
+    // empty projectId forever and could never match.
+    void refreshCardJourneyEvidence({ cardLink, openProjectId, reason: 'setup-journey' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, exact, cardId, bootId, evidence]);
+  }, [refresh, exact, cardId, bootId, openProjectId, evidence]);
 
   // F16: a `refresh: false` caller (Card Home's Setup screen does its own
   // richer status+wiring read and publishes it directly) still has no other
@@ -108,16 +116,16 @@ export function useSetupJourney({
   useEffect(() => {
     if (refresh || !exact) return;
     if (hasFreshCardJourneyBlackout(cardLink, evidence)) return;
-    void refreshCardJourneyBlackout({ cardLink, reason: 'setup-journey-blackout' });
+    void refreshCardJourneyBlackout({ cardLink, openProjectId, reason: 'setup-journey-blackout' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, exact, cardId, bootId, evidence]);
+  }, [refresh, exact, cardId, bootId, openProjectId, evidence]);
 
   const journey = useMemo(
     () => assembleSetupJourney({ cardLink, cardLifecycle, commissioningFlow, project, evidence }),
     [cardLink, cardLifecycle, commissioningFlow, project, evidence],
   );
 
-  const projectId = String(project?.id || '');
+  const projectId = openProjectId;
   const commissioningStage = commissioningStageOf(commissioningFlow);
   const evidenceStale = evidence?.stale === true;
   useEffect(() => {
