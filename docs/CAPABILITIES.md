@@ -4,7 +4,7 @@
 > `npx tsx scripts/gen-capabilities-portable.ts`. It reads the code, so it cannot drift.
 > Generated 2026-09-07T04:55:01.660Z.
 
-**At a glance:** 7 commands.
+**At a glance:** 8 commands.
 
 ## Commands (how to use it)
 
@@ -17,6 +17,7 @@
 | `npm run firmware:waiting` | `node scripts/firmware-queue.mjs` |
 | `npm run firmware:park` | `node scripts/firmware-queue.mjs add` |
 | `npm run firmware:release` | `node scripts/firmware-queue.mjs release` |
+| `npm run bench` | `node scripts/bench-check.mjs` |
 
 ---
 
