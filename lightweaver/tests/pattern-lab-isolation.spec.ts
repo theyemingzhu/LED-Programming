@@ -34,24 +34,29 @@ test.beforeEach(async ({ page }) => {
   await page.route('http://192.168.4.1/**', route => route.abort());
 });
 
-test('Pattern Lab is an isolated lazy Studio route', async ({ page }) => {
-  // Lab is routable like Discovery — not a rail destination. Public entrance
-  // is Patterns → Sculpt in Lab (open-pattern-lab), or a direct hash.
+test('Pattern Lab is a lazy Studio route reachable from the rail and from Patterns', async ({ page }) => {
+  // Lab used to be a depth door with no rail entry, on the reading that it is
+  // advanced. It has its own rail button now: it is where looks are MADE, and
+  // burying that behind a button on another screen meant most people never
+  // found it. The Sculpt in Lab door still works, and is still the route that
+  // carries the pattern you were looking at.
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
 
   const patterns = page.getByRole('button', { name: 'Patterns', exact: true });
+  const lab = page.getByRole('button', { name: 'Lab', exact: true });
   await expect(patterns).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Pattern Lab', exact: true })).toHaveCount(0);
+  await expect(lab).toBeVisible();
+  await expect(patterns).toHaveAttribute('aria-current', 'page');
 
   await page.getByTestId('open-pattern-lab').click();
 
   await expect(page).toHaveURL(/screen=pattern-lab/);
   await expect(page.getByTestId('pattern-lab-screen')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Pattern Lab' })).toBeVisible();
-  await expect(patterns).toBeVisible();
-  // No rail item owns Lab, so none is aria-current while Lab is open.
-  await expect(page.locator('.rail-item[aria-current="page"]')).toHaveCount(0);
+  // The rail follows the screen: Lab owns the current page, Patterns lets go.
+  await expect(lab).toHaveAttribute('aria-current', 'page');
   await expect(patterns).not.toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('.rail-item[aria-current="page"]')).toHaveCount(1);
 });
 
 test('Pattern Lab keeps one lazy route descriptor and owns its stylesheet', () => {

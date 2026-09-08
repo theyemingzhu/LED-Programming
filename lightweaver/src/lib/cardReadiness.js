@@ -42,6 +42,16 @@ export function normalizeCardReadiness(raw = {}) {
   const cardId = cleanText(source.cardId ?? source.id, 64);
   const firmwareVersion = cleanText(source.firmwareVersion, 48);
   const buildId = cleanText(source.buildId, 96);
+  // The comparable half of the card's firmware identity — LW_BUILD_NUMBER, on
+  // /api/status and /api/firmware-info alike. It was omitted here while
+  // firmwareVersion and buildId were normalized, so anything re-learning a
+  // card's firmware from a readiness envelope could carry only two of the three
+  // fields forward and left the third still describing the previous build.
+  // 0 means the card predates numbered builds or is a bench build, exactly as
+  // `normalizeCardIdentity` reports it.
+  const buildNumber = Number.isSafeInteger(Number(source.buildNumber)) && Number(source.buildNumber) > 0
+    ? Number(source.buildNumber)
+    : 0;
   const bootId = cleanText(source.bootId, 96);
   const runtimePhase = cleanText(source.runtimePhase, 32).toLowerCase();
   const mode = cleanText(source.mode, 32).toLowerCase();
@@ -88,6 +98,7 @@ export function normalizeCardReadiness(raw = {}) {
     cardId,
     firmwareVersion,
     buildId,
+    buildNumber,
     bootId,
     runtimePhase,
     mode,
@@ -97,6 +108,11 @@ export function normalizeCardReadiness(raw = {}) {
     projectRevision,
     knownGoodProject: explicitBoolean(source.knownGoodProject),
     commandReady: explicitBoolean(source.commandReady),
+    // Firmware updates have their own storage/transport eligibility. A blank
+    // card may truthfully allow updates while command/playback remain locked;
+    // a damaged store can explicitly refuse them without being mistaken for a
+    // playable readiness failure.
+    firmwareUpdateReady: explicitBoolean(source.firmwareUpdateReady),
     // Reported separately from `commandReady` by the firmware. Playback is
     // entirely on-card, so it stays admitted while the radio reassociates.
     // Firmware from before that split omits the field, which normalizes to

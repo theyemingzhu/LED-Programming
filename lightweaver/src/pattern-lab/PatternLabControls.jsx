@@ -92,6 +92,7 @@ export default function PatternLabControls({
   pieceColorHue,
   activeWorkflowStep,
   instrumentResponse,
+  onOpenStep,
 }) {
   const generatorId = PATTERN_LAB_GENERATOR_IDS.includes(recipe?.base?.kind) ? recipe.base.kind : null;
   const selectedPatternSource = !generatorId && recipe?.base?.patternId
@@ -102,6 +103,16 @@ export default function PatternLabControls({
   const palette = Array.isArray(recipe?.palette) ? recipe.palette : [];
   const hue = Math.round(Number.isFinite(pieceColorHue) ? pieceColorHue : 30);
   const showFullPalette = !generatorId && PALETTE_VISIBLE_PATTERNS.has(selectedPatternId);
+
+  // What each step is currently set to, shown on its heading while the step is
+  // closed. Both are read from the draft rather than remembered separately —
+  // a summary that can disagree with the control it summarises is worse than
+  // no summary. The Sculpt count is the real number of controls this pattern
+  // exposes, which is the same list rendered below.
+  const chooseSummary = generatorId
+    ? generatorId.replaceAll('-', ' ')
+    : (selectedPatternSource?.name || (recipe ? 'Custom' : 'Not chosen'));
+  const sculptSummary = recipe ? `${hue}° · ${activeControls.length} controls` : '';
 
   return (
     <div className="plab-control-body">
@@ -122,8 +133,16 @@ export default function PatternLabControls({
               aria-hidden="true"
             />
           )}
+          <button
+            type="button"
+            className="plab-step-open"
+            aria-label="Open Choose"
+            aria-expanded={activeWorkflowStep === 0}
+            onClick={() => onOpenStep?.(0)}
+          />
           <span className="plab-section-index">01</span>
           <h2 id="plab-source-heading">Choose</h2>
+          <span className="plab-step-summary" data-testid="pattern-lab-step-summary-choose">{chooseSummary}</span>
         </div>
         <div className="plab-compact-step-body plab-source-field">
           <PatternTileBrowser
@@ -152,8 +171,16 @@ export default function PatternLabControls({
               aria-hidden="true"
             />
           )}
+          <button
+            type="button"
+            className="plab-step-open"
+            aria-label="Open Sculpt"
+            aria-expanded={activeWorkflowStep === 1}
+            onClick={() => onOpenStep?.(1)}
+          />
           <span className="plab-section-index">02</span>
           <h2 id="plab-sculpt-heading" tabIndex="-1">Sculpt</h2>
+          <span className="plab-step-summary" data-testid="pattern-lab-step-summary-sculpt">{sculptSummary}</span>
         </div>
         <div className="plab-compact-step-body">
           <div className="plab-piece-color">

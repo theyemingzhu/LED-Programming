@@ -25,7 +25,7 @@ import { WiringCordOverlay } from '../wire/WiringCordOverlay.jsx';
 
 export function LayoutCanvas({
   refs,
-  strips, layers, hidden,
+  strips, layers, hidden, pxPerMm,
   starterGhost = null,
   viewBox, computedViewBox, vbScale, svgText, artworkHTML, totalLeds,
   selection,
@@ -674,6 +674,80 @@ export function LayoutCanvas({
                     fontFamily="var(--ui-font, monospace)"
                     fontWeight="600">
                     {displayLabel}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* ── Strip callouts — the drawing labels its own parts ──────────
+                The approved Layout board names each strip ON the artwork with
+                its light count and spacing, the way a measured drawing does,
+                so the canvas can be read without cross-referencing the panel.
+
+                Every visible strip, not just the selected one — that is what
+                makes it a drawing rather than a selection read-out. The label
+                is pushed out along the strip's own normal so it clears the
+                strip it belongs to, and a leader line ties it back.
+
+                Capped: past a dozen strips the labels overlap into noise and
+                the drawing is worse for having them. The panel's schedule
+                carries the same facts for every strip, always. */}
+            {!isEditingGesture && showLeds && strips.filter(s => !hidden[s.id]).length <= 12
+              && strips.filter(s => !hidden[s.id] && s.pixels?.length > 1).map(s => {
+              const pts = s.pixels;
+              const mid = pts[Math.floor(pts.length / 2)];
+              const before = pts[Math.max(0, Math.floor(pts.length / 2) - 1)];
+              const after = pts[Math.min(pts.length - 1, Math.floor(pts.length / 2) + 1)];
+              // Normal to the strip at its midpoint, so the label steps away
+              // from the line rather than sitting on top of it.
+              const dx = after.x - before.x;
+              const dy = after.y - before.y;
+              const len = Math.hypot(dx, dy) || 1;
+              const nx = -dy / len;
+              const ny = dx / len;
+              const reach = selectionVbScale * 46;
+              const tipX = mid.x + nx * reach;
+              const tipY = mid.y + ny * reach;
+              const toRight = nx >= 0;
+              const anchorX = tipX + (toRight ? selectionVbScale * 6 : -selectionVbScale * 6);
+
+              // Spacing is the drawn length shared between the gaps. A strip
+              // with no drawn length has none to state, so it says nothing
+              // rather than a zero.
+              const scale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 3.7795;
+              const lengthMm = Number.isFinite(s.svgLength) && s.svgLength > 0
+                ? s.svgLength / scale
+                : null;
+              const gaps = (s.pixelCount || pts.length) - 1;
+              const pitchMm = lengthMm !== null && gaps >= 1 ? lengthMm / gaps : null;
+              const detail = pitchMm === null
+                ? `${s.pixelCount || pts.length} px`
+                : `${s.pixelCount || pts.length} px · ${pitchMm.toFixed(1)} mm pitch`;
+
+              return (
+                <g key={s.id + '-callout'}
+                   className="lw-strip-callout"
+                   data-testid={`strip-callout-${s.id}`}
+                   style={{ pointerEvents: 'none', userSelect: 'none' }}
+                   opacity={s.id === selStripId ? 1 : 0.66}>
+                  <line x1={mid.x} y1={mid.y} x2={tipX} y2={tipY}
+                        stroke={s.id === selStripId ? s.color : 'oklch(0.52 0.012 75)'}
+                        strokeWidth={selectionVbScale * 0.9}/>
+                  <circle cx={tipX} cy={tipY} r={selectionVbScale * 1.8}
+                          fill={s.id === selStripId ? s.color : 'oklch(0.60 0.012 75)'}/>
+                  <text x={anchorX} y={tipY - selectionVbScale * 1}
+                        textAnchor={toRight ? 'start' : 'end'}
+                        fontFamily="var(--font-mono, monospace)"
+                        fontSize={selectionVbScale * 9}
+                        fill={s.id === selStripId ? 'oklch(0.945 0.006 80)' : 'oklch(0.72 0.009 78)'}>
+                    {s.name}
+                  </text>
+                  <text x={anchorX} y={tipY + selectionVbScale * 10}
+                        textAnchor={toRight ? 'start' : 'end'}
+                        fontFamily="var(--font-mono, monospace)"
+                        fontSize={selectionVbScale * 7.5}
+                        fill="oklch(0.56 0.009 75)">
+                    {detail}
                   </text>
                 </g>
               );

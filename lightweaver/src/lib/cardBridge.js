@@ -7,12 +7,13 @@ import {
 } from './cardConnection.js';
 import {
   adoptExpectedCardIdentity,
+  classifyPairedCardReadiness,
   compareCardIdentity,
   normalizeCardIdentity,
   readPersistedCardIdentity,
   requireExpectedCardIdentity,
 } from './cardIdentity.js';
-import { classifyCardReadiness } from './cardReadiness.js';
+import { isDifferentCardMismatch } from './cardReadiness.js';
 import {
   acceptWifiHandoff,
   clearWifiHandoffRecovery,
@@ -716,8 +717,12 @@ function applyAuthoritativeBridgeStatus(status, host = bridgeHost) {
   }
 
   const expected = readPersistedCardIdentity();
-  const readiness = classifyCardReadiness(status || {}, { expectedCard: expected });
-  if (!expected?.id || ['checking', 'identity-mismatch'].includes(readiness.state)) {
+  // F13: the same card id on firmware Studio had not written down is an updated
+  // card, not a stranger — accept the live firmware, re-learn the note whole,
+  // and classify against it. A different card id still lands in the refusal
+  // below as `wrong-card`.
+  const readiness = classifyPairedCardReadiness(status || {}, { expectedCard: expected });
+  if (!expected?.id || readiness.state === 'checking' || isDifferentCardMismatch(readiness)) {
     bridgeStationIdentityVerified = false;
     bridgeCard = null;
     bridgeIdentityError = readiness.reason === 'unexpected-card' ? 'wrong-card' : 'identity-missing';
@@ -1752,14 +1757,15 @@ async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost) {
     host,
     retryOnTimeout: false,
   });
-  const readiness = classifyCardReadiness(status || {}, { expectedCard: identity });
-  if (readiness.state === 'checking' || readiness.state === 'identity-mismatch') {
+  // `identity` is the card's own discovered read-back, so its firmware differs
+  // from this status only when the card rebooted onto another build between the
+  // two reads — an update landing mid-pair, not a different card. Only a
+  // different id may stop the pairing (F13).
+  const readiness = classifyPairedCardReadiness(status || {}, { expectedCard: identity });
+  if (readiness.state === 'checking' || isDifferentCardMismatch(readiness)) {
     throw bridgeError(
       'Studio could not reverify the full card status before pairing it.',
-      readiness.reason === 'unexpected-card' ? 'wrong-card'
-        : readiness.reason === 'unexpected-firmware-version' ? 'wrong-firmware-version'
-          : readiness.reason === 'unexpected-firmware-build' ? 'wrong-firmware-build'
-            : 'identity-missing',
+      readiness.reason === 'unexpected-card' ? 'wrong-card' : 'identity-missing',
     );
   }
   if (bridgeLifecycle !== lifecycle || normalizeCardHost(bridgeHost) !== host || bridgeDiscoveredCard?.id !== identity.id) {

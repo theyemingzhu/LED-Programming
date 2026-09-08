@@ -1,8 +1,10 @@
 import { test, expect } from './studioTest';
+import type { Page } from '@playwright/test';
 import { createDefaultProject, migrateProject } from '../src/lib/projectModel.js';
 import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 import { prepareCardStoragePayload } from '../src/lib/cardStoragePayload.js';
 import { CARD_PATTERN_BANK } from '../src/lib/cardPatternBank.js';
+import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
 
 function makePlaylistProject({ count = 19, oversized = false } = {}) {
   const project = createDefaultProject();
@@ -48,46 +50,122 @@ async function waitForUiCommit(page) {
   }));
 }
 
-async function mockConnectedPlaylistCard(page, project, cardId = 'lw-playlist-install') {
-  const runtime = preparedForProject(project).config;
+/**
+ * A real card reboot (Recover lights' `restartCard: true`) genuinely changes
+ * the simulator's bootId, so Studio's own connection layer treats the card as
+ * having gone away and briefly reconnects — the old frozen /api/status stub
+ * never modelled a reboot at all, so no test here ever had to wait one out.
+ * Any test that sends live control again after a recovery-with-restart has
+ * to wait for that reconnect first, same technique as journey-continuity's
+ * waitConnectedUnaided.
+ */
+async function waitReconnected(page: Page) {
+  // The link is a state machine that revalidates itself periodically even
+  // once connected (a changed bootId after reboot triggers exactly that
+  // revalidation), so a single "connected-*" read can be one poll tick from
+  // flipping back to 'revalidating'. Require it to hold for several
+  // consecutive reads before trusting it enough to send a command.
+  let consecutiveConnected = 0;
+  await expect.poll(async () => {
+    const state = await page.evaluate(async () => {
+      const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+      return String(getSharedCardLink().getState()?.state || '');
+    });
+    consecutiveConnected = /^connected-(direct|bridge)$/.test(state) ? consecutiveConnected + 1 : 0;
+    return consecutiveConnected;
+  }, { timeout: 15000, intervals: [300] }).toBeGreaterThanOrEqual(4);
+}
+
+// The simulator's own facts, shaped from the exact project under test — same
+// project id, revision, fingerprint, wiring and patterns the card would
+// report if this project had genuinely been installed on it. Every pattern in
+// the bank is loaded onto the card (not just the ones in this playlist) so
+// applyControl() can always resolve a requested pattern id, whatever count
+// the test asked for.
+function stateFromProject(project, overrides: Record<string, unknown> = {}) {
+  const config = preparedForProject(project).config;
+  const outputs = config.led?.outputs || [];
+  const patterns = CARD_PATTERN_BANK.map(pattern => ({ id: pattern.id, label: pattern.label }));
+  const currentId = config.startupPatternId;
+  const currentIndex = patterns.findIndex(pattern => pattern.id === currentId);
+  return {
+    id: 'playlist-storage-card',
+    describe: 'card holding the playlist project under test',
+    projectId: config.piece.id,
+    projectName: config.piece.name,
+    projectRevision: config.projectRevision,
+    projectFingerprint: config.projectFingerprint,
+    provisionalSetup: false,
+    pin: outputs[0]?.pin ?? 18,
+    pixels: config.led.pixels,
+    patterns,
+    currentIndex: currentIndex >= 0 ? currentIndex : 0,
+    currentId,
+    wiringTransactionOpen: false,
+    buildId: 'a'.repeat(40),
+    buildNumber: 1,
+    firmwareVersion: '1.0.0',
+    dropFirstRequests: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * A card holding exactly the project under test, connected before the
+ * Playlist screen loads. `configure` runs on the simulator after it is built
+ * but before its routes are installed — the hook for "the card is not
+ * showing this row yet" (`card.state.currentId = 'blackout'`) and similar
+ * pre-install state changes.
+ */
+async function mockConnectedPlaylistCard(
+  page: Page,
+  project,
+  cardId = 'lw-playlist-install',
+  configure?: (card: CardSimulator) => void,
+): Promise<CardSimulator> {
   await page.addInitScript((identity) => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: identity }));
   }, cardId);
-  await page.route('**/api/firmware-info', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      app: 'Lightweaver',
-      cardId,
-      firmwareVersion: '1.0.0',
-      buildId: 'a'.repeat(40),
-      projectId: runtime.piece.id,
-      projectRevision: runtime.projectRevision,
-      projectFingerprint: runtime.projectFingerprint,
-      outputs: runtime.led.outputs,
-    }),
-  }));
-  await page.route('**/api/status', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({
-      app: 'Lightweaver', provisioningContractVersion: 1,
-      ok: true, cardId, firmwareVersion: '1.0.0', buildId: 'a'.repeat(40),
-      bootId: 'boot-playlist-test', runtimePhase: 'ready', knownGoodProject: true,
-      commandReady: true, outputReady: true, playbackReady: true,
-      projectId: runtime.piece.id,
-      projectRevision: runtime.projectRevision,
-      projectFingerprint: runtime.projectFingerprint,
-      currentPatternId: runtime.startupPatternId,
-      startupPatternId: runtime.startupPatternId,
-      led: { pixels: runtime.led.pixels },
-    }),
-  }));
-  await page.route('**/api/zones', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true, zones: runtime.zones }),
-  }));
+  const card = createCardSimulator(stateFromProject(project), { cardId });
+  if (typeof configure === 'function') configure(card);
+  await card.install(page);
+  return card;
+}
+
+/**
+ * Delay a genuine transport failure (never a card refusal — the card never
+ * answers at all) until the test releases it. route.abort() carries none of
+ * the simulator's own write latency, so the few tests that race an edit
+ * against a lost reply need this explicit gate to stay deterministic.
+ */
+async function gateThenAbort(page: Page, path: string, errorCode = 'timedout') {
+  let release: () => void = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(`**${path}`, async route => {
+    await gate;
+    await route.abort(errorCode);
+  });
+  return () => release();
+}
+
+/** The physical commands a card actually received, in order, card-owned. */
+function physicalCommandsFrom(card: CardSimulator): string[] {
+  let recoveryCount = 0;
+  return card.requests
+    .filter(entry => entry.path === '/api/control' || entry.path === '/api/recover-lights' || entry.path === '/api/reboot')
+    .map(entry => {
+      if (entry.path === '/api/reboot') return 'reboot';
+      if (entry.path === '/api/recover-lights') {
+        recoveryCount += 1;
+        return `recover:${recoveryCount}`;
+      }
+      const body = (entry.body || {}) as Record<string, unknown>;
+      return `control:${body.patternId ?? ''}`;
+    });
+}
+
+function controlRequestCount(card: CardSimulator): number {
+  return card.requests.filter(entry => entry.path === '/api/control').length;
 }
 
 test('Playlist rows expose only compact item-specific controls', async ({ page }) => {
@@ -321,26 +399,14 @@ test('Playlist overflow blocks clipboard, blob, and download side effects with e
 
 test('Playlist install stays pending, fails with Retry, then remains confirmed until the next edit', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  await mockConnectedPlaylistCard(page, project);
-  let configAttempt = 0;
-  let releaseFailure: (() => void) | null = null;
-  await page.route('**/api/config', async route => {
-    configAttempt += 1;
-    if (configAttempt === 1) {
-      await new Promise<void>(resolve => { releaseFailure = resolve; });
-      await route.fulfill({ status: 503, body: 'not ready' });
-      return;
-    }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
-  });
+  const card = await mockConnectedPlaylistCard(page, project);
+  card.refuse('/api/config', { status: 503, body: 'not ready' });
   await gotoPlaylist(page, project);
 
   const install = page.getByRole('button', { name: 'Install playlist on card' });
   await expect(install).toBeEnabled();
   await install.click();
   await expect(page.getByTestId('playlist-card-status')).toContainText('Installing playlist on card…');
-  await expect.poll(() => Boolean(releaseFailure)).toBe(true);
-  releaseFailure?.();
 
   const failure = page.getByTestId('playlist-card-status');
   await expect(failure).toHaveAttribute('role', 'alert');
@@ -356,21 +422,20 @@ test('Playlist install stays pending, fails with Retry, then remains confirmed u
 test('Playlist ignores a stale install success after the playlist is edited', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
   await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-install-success');
-  let releaseInstall: (() => void) | null = null;
-  await page.route('**/api/config', async route => {
-    await new Promise<void>(resolve => { releaseInstall = resolve; });
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
-  });
   await gotoPlaylist(page, project);
 
+  const configRequest = page.waitForRequest(request => request.url().endsWith('/api/config'));
   await page.getByRole('button', { name: 'Install playlist on card' }).click();
-  await expect.poll(() => Boolean(releaseInstall)).toBe(true);
+  await configRequest;
+  // Registered now, before the edit that follows — the simulator answers
+  // this refused/successful request in well under a second, so a listener
+  // set up any later than "the request just landed" risks missing the
+  // response it is waiting for.
+  const configResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
   await page.locator('.pl-row').first().getByRole('button', { name: 'Copy', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
 
-  const installResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
-  releaseInstall?.();
-  await installResponse;
+  await configResponse;
   await waitForUiCommit(page);
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
   await expect(page.locator('.pl-row')).toHaveCount(3);
@@ -378,36 +443,19 @@ test('Playlist ignores a stale install success after the playlist is edited', as
 
 test('Playlist ignores a stale install failure after a newer live preview succeeds', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-install-failure');
-  let releaseInstall: (() => void) | null = null;
-  await page.route('**/api/config', async route => {
-    await new Promise<void>(resolve => { releaseInstall = resolve; });
-    await route.fulfill({ status: 503, body: 'stale install failed' });
-  });
-  await page.route('**/api/control', route => {
-    const request = JSON.parse(route.request().postData() || '{}');
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        cardId: 'lw-playlist-stale-install-failure',
-        patternId: request.patternId,
-        revision: request.revision,
-      }),
-    });
-  });
+  const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-install-failure');
+  card.refuse('/api/config', { status: 503, body: 'stale install failed' });
   await gotoPlaylist(page, project);
 
+  const configRequest = page.waitForRequest(request => request.url().endsWith('/api/config'));
   await page.getByRole('button', { name: 'Install playlist on card' }).click();
-  await expect.poll(() => Boolean(releaseInstall)).toBe(true);
+  await configRequest;
+  const configResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
   const firstRow = page.locator('.pl-row').first();
   await firstRow.getByRole('button', { name: 'Live' }).click();
   await expect(firstRow).toHaveClass(/\bis-live\b/);
 
-  const installResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
-  releaseInstall?.();
-  await installResponse;
+  await configResponse;
   await waitForUiCommit(page);
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
   await expect(firstRow).toHaveClass(/\bis-live\b/);
@@ -416,25 +464,20 @@ test('Playlist ignores a stale install failure after a newer live preview succee
 test('Playlist ignores a stale install completion after the card address changes', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
   await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-install-host');
-  let releaseInstall: (() => void) | null = null;
-  await page.route('**/api/config', async route => {
-    await new Promise<void>(resolve => { releaseInstall = resolve; });
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
-  });
   await gotoPlaylist(page, project);
 
   const install = page.getByRole('button', { name: 'Install playlist on card' });
+  const configRequest = page.waitForRequest(request => request.url().endsWith('/api/config'));
   await install.click();
-  await expect.poll(() => Boolean(releaseInstall)).toBe(true);
+  await configRequest;
+  const configResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
   await expect(page.getByTestId('playlist-card-status')).toContainText('Installing playlist on card…');
 
   await page.getByRole('textbox', { name: 'Card address' }).fill('new-playlist-card.local');
   await expect(page.getByRole('textbox', { name: 'Card address' })).toHaveValue('new-playlist-card.local');
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
 
-  const installResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
-  releaseInstall?.();
-  await installResponse;
+  await configResponse;
   await waitForUiCommit(page);
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
   await expect(install).toContainText('Install playlist on card');
@@ -462,47 +505,20 @@ test('Playlist Reset live failure remains visible and retries the same bounded a
 test('Playlist ignores a stale reset success after a newer live preview succeeds', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
   await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-reset-success');
-  let releaseReset: (() => void) | null = null;
-  await page.route('**/api/control', async route => {
-    const request = JSON.parse(route.request().postData() || '{}');
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        cardId: 'lw-playlist-stale-reset-success',
-        patternId: request.patternId,
-        revision: request.revision,
-      }),
-    });
-  });
-  await page.route('**/api/recover-lights', async route => {
-    const request = JSON.parse(route.request().postData() || '{}');
-    await new Promise<void>(resolve => { releaseReset = resolve; });
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        accepted: true,
-        patternId: request.patternId,
-        diagnostics: { rendered: true, frameSubmitted: true, nonBlackPixels: 44, brightnessByte: 160 },
-      }),
-    });
-  });
   await gotoPlaylist(page, project);
 
   const rows = page.locator('.pl-row');
   await rows.first().getByRole('button', { name: 'Live' }).click();
   await expect(rows.first()).toHaveClass(/\bis-live\b/);
+
+  const recoverRequest = page.waitForRequest(request => request.url().endsWith('/api/recover-lights'));
   await page.getByRole('button', { name: 'Reset live' }).click();
-  await expect.poll(() => Boolean(releaseReset)).toBe(true);
+  await recoverRequest;
+  const recoverResponse = page.waitForResponse(response => response.url().endsWith('/api/recover-lights'));
   await rows.nth(1).getByRole('button', { name: 'Live' }).click();
   await expect(rows.nth(1)).toHaveClass(/\bis-live\b/);
 
-  const resetResponse = page.waitForResponse(response => response.url().endsWith('/api/recover-lights'));
-  releaseReset?.();
-  await resetResponse;
+  await recoverResponse;
   await waitForUiCommit(page);
   await expect(rows.nth(1)).toHaveClass(/\bis-live\b/);
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
@@ -511,20 +527,15 @@ test('Playlist ignores a stale reset success after a newer live preview succeeds
 test('Playlist ignores a stale reset failure after the playlist is edited', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
   await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-reset-failure');
-  let releaseReset: (() => void) | null = null;
-  await page.route('**/api/recover-lights', async route => {
-    await new Promise<void>(resolve => { releaseReset = resolve; });
-    await route.abort('timedout');
-  });
+  const releaseReset = await gateThenAbort(page, '/api/recover-lights');
   await gotoPlaylist(page, project);
 
   await page.getByRole('button', { name: 'Reset live' }).click();
-  await expect.poll(() => Boolean(releaseReset)).toBe(true);
   await page.locator('.pl-row').first().getByRole('button', { name: 'Copy', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
 
   const resetFailure = page.waitForEvent('requestfailed', request => request.url().endsWith('/api/recover-lights'));
-  releaseReset?.();
+  releaseReset();
   await resetFailure;
   await waitForUiCommit(page);
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
@@ -533,37 +544,28 @@ test('Playlist ignores a stale reset failure after the playlist is edited', asyn
 
 test('Playlist marks a row runtime-applied only after the paired card acknowledges the latest intent', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  let releaseControl: (() => void) | null = null;
   await mockConnectedPlaylistCard(page, project, 'lw-playlist-test');
-  await page.route('**/api/control', async route => {
-    const request = JSON.parse(route.request().postData() || '{}');
-    await new Promise<void>(resolve => { releaseControl = resolve; });
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        cardId: 'lw-playlist-test',
-        patternId: request.patternId,
-        revision: request.revision,
-      }),
-    });
-  });
   await gotoPlaylist(page, project);
 
   const firstRow = page.locator('.pl-row').first();
   await firstRow.getByRole('button', { name: 'Live' }).click();
   await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Sending to Lightweaver');
   await expect(firstRow).not.toHaveClass(/\bis-live\b/);
-  await expect.poll(() => Boolean(releaseControl)).toBe(true);
-  releaseControl?.();
   await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
   await expect(firstRow).toHaveClass(/\bis-live\b/);
 });
 
 test('Playlist transport timeout keeps its prior live row and offers a bounded retry', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  await mockConnectedPlaylistCard(page, project, 'lw-playlist-test');
+  // A lost reply is settled by READING the card first (readBackLivePreview):
+  // a card already showing the requested row makes the timeout moot, so this
+  // card must be showing something else (not row one's own pattern) for the
+  // timeout to be a real failure — set before install, per the harness's own
+  // "card is not showing this row yet" convention.
+  await mockConnectedPlaylistCard(page, project, 'lw-playlist-test', card => {
+    card.state.currentId = 'blackout';
+    card.state.currentIndex = -1;
+  });
   await page.route('**/api/control', route => route.abort('timedout'));
   await gotoPlaylist(page, project);
 
@@ -576,37 +578,12 @@ test('Playlist transport timeout keeps its prior live row and offers a bounded r
 
 test('Playlist keeps missing runtime proof visible while recovery runs, then asks for human confirmation', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  let releaseRecovery: (() => void) | null = null;
-  let recoveryCount = 0;
-  await mockConnectedPlaylistCard(page, project, 'lw-playlist-output-test');
-  await page.route('**/api/control', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true, cardId: 'lw-playlist-output-test' }),
-  }));
-  await page.route('**/api/wiring/status', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true, state: 'known-good', currentOutputs: [] }),
-  }));
-  await page.route('**/api/recover-lights', async route => {
-    recoveryCount += 1;
-    if (recoveryCount === 1) await new Promise<void>(resolve => { releaseRecovery = resolve; });
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        accepted: true,
-        diagnostics: { nonBlackPixels: 44, brightnessByte: 180 },
-      }),
-    });
-  });
-  await page.route('**/api/reboot', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true }),
-  }));
+  const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-output-test');
+  // A card that answers ok but never confirms which pattern it applied — the
+  // one ack shape real firmware never sends (it always echoes appliedPatternId
+  // on a successful control write), which is exactly why Studio has to defend
+  // against it: an ambiguous acknowledgement is what routes to Recover lights.
+  card.refuse('/api/control', { status: 200, body: { ok: true, cardId: card.state.cardId } });
   await gotoPlaylist(page, project);
 
   await page.locator('.pl-row').first().getByRole('button', { name: 'Live' }).click();
@@ -615,67 +592,17 @@ test('Playlist keeps missing runtime proof visible while recovery runs, then ask
   const recoverButton = alert.getByRole('button', { name: 'Recover lights' });
   await recoverButton.click();
 
-  await expect.poll(() => Boolean(releaseRecovery)).toBe(true);
   await expect(alert).toContainText('The preview reached the card, but its runtime did not report which pattern or revision it applied.');
   await expect(recoverButton).toBeDisabled();
-  releaseRecovery?.();
 
-  await expect.poll(() => recoveryCount).toBe(2);
   await expect(page.getByTestId('playlist-card-status')).toContainText('Recovery frame sent. Confirm warm white is visible on the physical lights.');
   await expect(page.getByTestId('playlist-card-status')).toHaveAttribute('role', 'status');
 });
 
 test('Playlist serializes card mutations behind recovery so the final physical command matches the live row', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  let releaseRecovery: (() => void) | null = null;
-  let recoveryCount = 0;
-  let controlCount = 0;
-  const physicalCommands: string[] = [];
-  await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-recovery');
-  await page.route('**/api/control', route => {
-    controlCount += 1;
-    const request = JSON.parse(route.request().postData() || '{}');
-    physicalCommands.push(`control:${request.patternId}`);
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(controlCount === 1
-        ? { ok: true, cardId: 'lw-playlist-stale-recovery' }
-        : {
-            ok: true,
-            cardId: 'lw-playlist-stale-recovery',
-            patternId: request.patternId,
-            revision: request.revision,
-          }),
-    });
-  });
-  await page.route('**/api/wiring/status', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true, state: 'known-good', currentOutputs: [] }),
-  }));
-  await page.route('**/api/recover-lights', async route => {
-    recoveryCount += 1;
-    physicalCommands.push(`recover:${recoveryCount}`);
-    if (recoveryCount === 1) await new Promise<void>(resolve => { releaseRecovery = resolve; });
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true,
-        accepted: true,
-        diagnostics: { nonBlackPixels: 44, brightnessByte: 180 },
-      }),
-    });
-  });
-  await page.route('**/api/reboot', route => {
-    physicalCommands.push('reboot');
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ ok: true }),
-    });
-  });
+  const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-stale-recovery');
+  card.refuse('/api/control', { status: 200, body: { ok: true, cardId: card.state.cardId } });
   await gotoPlaylist(page, project);
 
   const rows = page.locator('.pl-row');
@@ -683,46 +610,39 @@ test('Playlist serializes card mutations behind recovery so the final physical c
   const failure = page.getByTestId('playlist-card-status');
   await expect(failure).toContainText('The preview reached the card, but its runtime did not report which pattern or revision it applied.');
   await failure.getByRole('button', { name: 'Recover lights' }).click();
-  await expect.poll(() => Boolean(releaseRecovery)).toBe(true);
 
   await expect(rows.nth(1).getByRole('button', { name: 'Live' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Reset live' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Install playlist on card' })).toBeDisabled();
   await expect(page.getByRole('textbox', { name: 'Card address' })).toBeDisabled();
   await expect(page.locator('.pl-chip').first()).toBeDisabled();
-  expect(controlCount).toBe(1);
+  expect(controlRequestCount(card)).toBe(1);
 
-  releaseRecovery?.();
-  await expect.poll(() => recoveryCount).toBe(2);
   await expect(page.getByTestId('playlist-card-status')).toContainText('Recovery frame sent. Confirm warm white is visible on the physical lights.');
-  expect(physicalCommands.slice(-3)).toEqual(['recover:1', 'reboot', 'recover:2']);
+  expect(physicalCommandsFrom(card).slice(-3)).toEqual(['recover:1', 'reboot', 'recover:2']);
 
+  // The recovery genuinely rebooted the card (a new bootId, matching what
+  // /api/reboot really does) — wait for Studio's own connection layer to
+  // notice it is back before sending another live command.
+  await waitReconnected(page);
   await rows.nth(1).getByRole('button', { name: 'Live' }).click();
   await expect(rows.nth(1)).toHaveClass(/\bis-live\b/);
   await expect(page.getByTestId('playlist-physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
-  expect(physicalCommands.at(-1)).toMatch(/^control:/);
-  expect(physicalCommands.lastIndexOf('recover:2')).toBeLessThan(physicalCommands.length - 1);
+  expect(physicalCommandsFrom(card).at(-1)).toMatch(/^control:/);
+  expect(physicalCommandsFrom(card).lastIndexOf('recover:2')).toBeLessThan(physicalCommandsFrom(card).length - 1);
+  // Recovering from the restart re-acquires the transport ONCE and resends the
+  // same command ONCE. Two controls in the card's whole record — the first
+  // row's, and this one — is what proves the recovery is bounded and never
+  // becomes a second real write.
+  expect(controlRequestCount(card)).toBe(2);
 });
 
 test('Playlist reports a bounded failure when dedicated light recovery is rejected', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
-  await mockConnectedPlaylistCard(page, project, 'lw-playlist-output-test');
-  await page.route('**/api/control', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true, cardId: 'lw-playlist-output-test' }),
-  }));
-  await page.route('**/api/wiring/status', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: true, state: 'known-good', currentOutputs: [] }),
-  }));
-  await page.route('**/api/recover-lights', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ ok: false, accepted: false, privateReason: '<script>unsafe</script>' }),
-  }));
+  const card = await mockConnectedPlaylistCard(page, project, 'lw-playlist-output-test');
+  card.refuse('/api/control', { status: 200, body: { ok: true, cardId: card.state.cardId } });
+  card.refuse('/api/recover-lights', { status: 200, body: { ok: false, accepted: false, privateReason: '<script>unsafe</script>' } });
   await gotoPlaylist(page, project);
 
   await page.locator('.pl-row').first().getByRole('button', { name: 'Live' }).click();

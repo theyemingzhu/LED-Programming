@@ -23,7 +23,9 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
   // Three families separated by space: the direction trio, Kaleidoscope, then
   // Split / Duplicate / Remove. Hide moved onto the strip row itself.
   await expect(actions.getByRole('button')).toHaveCount(7);
-  await expect(actions.getByRole('button').allTextContents()).resolves.toEqual(['↔', '⇄', '◎', '✦', '', '', '×']);
+  await expect(actions.getByRole('button').allTextContents()).resolves.toEqual([
+    '↔Flip', '⇄Data', '◎First', '✦Points', 'Split', 'Copy', '×Remove',
+  ]);
 
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await expect(page.getByTestId('kaleidoscope-summary')).toHaveText('4 points · start LED 1');

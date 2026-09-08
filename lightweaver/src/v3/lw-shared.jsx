@@ -146,7 +146,53 @@ import React from 'react';
   // components/SetupJourneyChip.jsx, which speaks the real four-phase journey
   // (lib/setupJourney.js) and disappears once setup is complete.
 
+
+/* ── The LED bead strand ──────────────────────────────────────────────
+   A palette rendered as lit beads rather than a flat gradient block. It
+   was defined inside lw-pattern.jsx and so only Patterns could draw it,
+   which is why the pattern cards showed real LEDs while the playlist
+   rows beside them showed a smear of colour for the same pattern. Same
+   pattern, two different claims about what it looks like on a strip.
+   Lifted here verbatim so Playlist draws the strand too. */
+
+// colors interpolated across a palette → glowing LED beads
+function ledColors(pal, n) {
+  const rgb = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const p = (i / (n - 1)) * (pal.length - 1), s = Math.floor(p), t = p - s;
+    const a = rgb(pal[s]), b = rgb(pal[Math.min(s + 1, pal.length - 1)]);
+    const c = a.map((v, k) => Math.round(v + (b[k] - v) * t));
+    out.push(`rgb(${c[0]},${c[1]},${c[2]})`);
+  }
+  return out;
+}
+// The same colours, drawn two ways. `ledColors` interpolates a pattern's own
+// palette into n steps; beads paint those steps as discrete lights (what the
+// piece physically is, and it shows the count), a gradient paints them as one
+// continuous ramp (easier to scan across a bank of 132). Neither is authored
+// per pattern — anything with a palette gets both, including looks made in the
+// Lab.
+function LedRow({ pal, n = 9, big = false, wave = false, mode = 'beads' }) {
+  // Callers outside Patterns hand us whatever shape their list carries; a
+  // look saved before palettes were stored has none. Fall back rather than
+  // throw inside a row render.
+  const stops = Array.isArray(pal) && pal.length ? pal : ['#1c2230', '#4e9ec9', '#8ce2d3'];
+  return (
+    <div className={"ledrow" + (big ? " big" : "") + (mode === 'gradient' ? " is-gradient" : "")}>
+      {mode === 'gradient'
+        ? <span
+            className="ledgrad"
+            style={{ background: `linear-gradient(90deg, ${ledColors(stops, n).join(', ')})` }}
+          />
+        : ledColors(stops, n).map((c, i) =>
+          <span key={i} className={"led" + (wave ? " wave" : "")} style={{ background: c, boxShadow: `0 0 ${big ? 9 : 5}px ${c}, 0 0 ${big ? 20 : 11}px ${c}`, animationDelay: wave ? `${i * 0.11}s` : undefined }} />
+        )}
+    </div>);
+}
+
 export {
+  ledColors, LedRow,
   I, PATTERNS, MIXES, PATTERN_CATS, STRIP_TESTS, SWATCHES, GEOMETRY,
   CLIP_COLOR, CLIPS, TRANSITIONS, LANES, CUES, SHOW_DURATION, fmtTime,
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { readCardPatternsFromCard, readCardZonesFromCard, pushLivePreviewToCard } from '../../lib/cardLiveControl.js';
+import { readCardPatternsFromCard, readCardZonesFromCard, pushLivePreviewToCard, readBackLivePreview } from '../../lib/cardLiveControl.js';
 import {
   applyCustomerControlAcknowledgement,
   beginCustomerControl,
@@ -102,7 +102,13 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
     // card that is still starting is waited out rather than reported. The
     // Retry button below stays for a settled refusal — but the owner should
     // never be handed it for a moment that was going to pass anyway.
-    retryWhileTransient(() => pushLivePreviewToCard(look, {
+    //
+    // A reply lost AFTER the card applied the command is the one case where
+    // "the same thing twice" is a second real command. Before any retry the
+    // card is read back; a pattern change the card already shows is settled
+    // by that read (brightness and colour patches come back in the card's
+    // own units and are not read-verifiable, so those still retry).
+    const controlOptions = {
       host,
       expectedCardId: link.card?.id || '',
       preferBridge: link.transport === 'bridge',
@@ -111,7 +117,12 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
       revision: optimistic.command.id,
       exactCardPatternId: look.patternId,
       expectedControlPatch: patch,
-    }), { attempts: 3, delayMs: 350 }).then(response => {
+    };
+    retryWhileTransient(() => pushLivePreviewToCard(look, controlOptions), {
+      attempts: 3,
+      delayMs: 350,
+      readBack: () => readBackLivePreview(look, { ...controlOptions, timeoutMs: 1200 }),
+    }).then(response => {
       setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, response) : current);
     }).catch(error => {
       setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, error) : current);

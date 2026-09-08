@@ -1,9 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Route } from '@playwright/test';
 
 const CARD_ID = 'lw-setup-count';
 const CARD_HOST = 'lightweaver.local';
 const CARD_STATION_IP = '192.168.250.41';
 const BUILD_ID = 'b'.repeat(40);
+let countWrites: any[] = [];
+let recoveryWrites: any[] = [];
 
 function benchStatus() {
   return {
@@ -37,7 +39,9 @@ function benchStatus() {
 
 test.beforeEach(async ({ page }) => {
   const status = benchStatus();
-  const fulfillCard = (route: { request: () => { url: () => string }; fulfill: (response: object) => Promise<void> }) => {
+  countWrites = [];
+  recoveryWrites = [];
+  const fulfillCard = (route: Route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/api/status' || pathname === '/api/firmware-info') {
       return route.fulfill({
@@ -47,6 +51,7 @@ test.beforeEach(async ({ page }) => {
       });
     }
     if (pathname === '/api/recover-lights') {
+      recoveryWrites.push(route.request().postDataJSON());
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -61,6 +66,10 @@ test.beforeEach(async ({ page }) => {
       });
     }
     if (pathname === '/api/config') {
+      const config = route.request().postDataJSON();
+      countWrites.push(config);
+      status.led = { ...status.led, ...config.led };
+      status.outputs = config.led.outputs;
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -116,5 +125,14 @@ test('typed LED count lights the strip and tells the owner to look', async ({ pa
   await expect(page.getByTestId('setup-led-count')).toBeVisible();
   await page.getByTestId('setup-led-count').fill('41');
   await page.getByRole('button', { name: 'Use this count' }).click();
-  await expect(page.getByTestId('setup-led-count-status')).toContainText(/Look at the strip/i);
+  await expect(page.getByTestId('setup-led-count-status')).toBeVisible();
+  await expect(page.getByTestId('setup-led-count-status')).toHaveCount(1);
+  await expect(page.getByTestId('setup-led-count-status')).toContainText(/41 lights are set.*Look at the strip/i);
+  expect(countWrites).toHaveLength(1);
+  expect(countWrites[0].led.outputs).toEqual([expect.objectContaining({ pin: 18, pixels: 41 })]);
+  expect(recoveryWrites).toHaveLength(1);
+  expect(recoveryWrites[0]).toEqual(expect.objectContaining({ patternId: 'warm-white' }));
+  await page.getByTestId('setup-phase-lights').locator('.lw-setup-phase-head').click();
+  await expect(page.getByTestId('setup-led-count-status')).toBeVisible();
+  await expect(page.getByTestId('setup-led-count-status')).toHaveCount(1);
 });

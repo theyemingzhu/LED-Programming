@@ -101,7 +101,7 @@ function renderFrame(canvas, t, p) {
 
   const {
     visibleStrips, normBounds, medianSpacing, pixelCount,
-    activeFn, blendFn, glow, dotSize, bpm, resolvedParams, patternParamsById, paletteNorm,
+    activeFn, blendFn, glow, dotSize, dotCeiling, bpm, resolvedParams, patternParamsById, paletteNorm,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, symOverlay, audioBands, blendAmount, blendType,
     perStripFns, perStripPalettes, vb, heat, motionSmoothing, previousPixels, frameDt,
@@ -197,12 +197,19 @@ function renderFrame(canvas, t, p) {
   // Draw all LEDs as solid dots onto one offscreen canvas, then composite
   // with blur. Gaussian blur of a solid dot ≈ radial gradient, at a fraction
   // of the cost. Two passes: wide halo + tight corona.
+  // Every ceiling below is in absolute pixels, tuned for a preview panel a few
+  // hundred pixels wide. On a canvas the size of Pattern Lab's stage the LEDs
+  // sit ~50px apart and every one of these clamps saturates, so the piece
+  // renders as specks on black — you cannot judge a pattern from it. `ceil`
+  // scales the ceilings with the canvas the caller actually has. It defaults
+  // to 1, so every existing screen renders byte-identically.
+  const ceil = Number.isFinite(dotCeiling) && dotCeiling > 0 ? dotCeiling : 1;
   if (glow > 0) {
-    const sp    = clamp(medianSpacing * scale, 2, 18);
+    const sp    = clamp(medianSpacing * scale, 2, 18 * ceil);
     const TAU   = Math.PI * 2;
-    const dotPx = clamp(sp * dotSize * 0.40, 1.8, 6.8);
-    const wBlur = clamp(sp * glow * 1.08, 3.0, 22).toFixed(1);
-    const tBlur = clamp(sp * glow * 0.36, 1.2, 7.2).toFixed(1);
+    const dotPx = clamp(sp * dotSize * 0.40, 1.8, 6.8 * ceil);
+    const wBlur = clamp(sp * glow * 1.08, 3.0, 22 * ceil).toFixed(1);
+    const tBlur = clamp(sp * glow * 0.36, 1.2, 7.2 * ceil).toFixed(1);
 
     // Reuse offscreen canvas across frames
     if (!canvas._glow || canvas._glow.width !== W || canvas._glow.height !== H) {
@@ -257,10 +264,10 @@ function renderFrame(canvas, t, p) {
     ctx.restore();
   }
 
-  const sp = clamp(medianSpacing * scale, 2, 18);
-  const beadR = clamp(sp * dotSize * 0.28, 1.2, 4.3);
-  const coronaR = clamp(sp * dotSize * 0.42, 2.2, 7.5);
-  const coreR = clamp(sp * dotSize * 0.34, 1.25, 6.5);
+  const sp = clamp(medianSpacing * scale, 2, 18 * ceil);
+  const beadR = clamp(sp * dotSize * 0.28, 1.2, 4.3 * ceil);
+  const coronaR = clamp(sp * dotSize * 0.42, 2.2, 7.5 * ceil);
+  const coreR = clamp(sp * dotSize * 0.34, 1.25, 6.5 * ceil);
   const centerR = clamp(coreR * 0.38, 0.55, 2.1);
   const TAU = Math.PI * 2;
   ctx.save();
@@ -362,7 +369,7 @@ function renderFrame(canvas, t, p) {
 
 export function PatternPreview({
   patternId, playing,
-  glow = 1, dotSize = 2.5, speed = 1,
+  glow = 1, dotSize = 2.5, dotCeiling = 1, speed = 1,
   params = {}, patternParamsById = {}, bpm = 120,
   strips: propStrips, viewBox: propViewBox, svgText,
   masterSpeed = 1, masterBrightness = 1, masterSaturation = 1, masterHueShift = 0,
@@ -503,7 +510,7 @@ export function PatternPreview({
 
   // Refresh propsRef every render — RAF closure always reads fresh values
   propsRef.current = {
-    patternId, playing, speed, glow, dotSize, bpm, resolvedParams, patternParamsById, paletteNorm,
+    patternId, playing, speed, glow, dotSize, dotCeiling, bpm, resolvedParams, patternParamsById, paletteNorm,
     activeFn, blendFn, blendAmount, blendType,
     perStripFns, perStripPalettes, visibleStrips, normBounds, medianSpacing, pixelCount,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,

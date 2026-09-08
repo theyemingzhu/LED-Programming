@@ -2,6 +2,21 @@ import { defineConfig, devices } from '@playwright/test';
 import { testPort as port, testBaseURL } from './tests/testPort.mjs';
 export default defineConfig({
   testDir: './tests',
+  // A flake used to be a hard stop. Because the Tests workflow gates Deploy
+  // site, one wobbling test on main cancelled the deploy silently — the change
+  // was merged, not live, and nothing said so. It happened twice in one day on
+  // three DIFFERENT tests, so waiting to fix every race before shipping is not
+  // a plan.
+  //
+  // On CI a test now gets two retries. A genuine break fails all three attempts
+  // and still stops the lane; a wobble is reported as `flaky` and the run goes
+  // green, so the deploy is not held hostage by one bad sample. Locally there
+  // are no retries, so a race is loud while you are the one writing it.
+  //
+  // `flaky` in the CI summary is not noise to scroll past. It is the register
+  // of races still to fix; the two already fixed (pattern-lab geometry, the
+  // top-bar import Escape) were both found this way.
+  retries: process.env.CI ? 2 : 0,
   timeout: 60_000,
   // The canonical release suite runs hundreds of browser scenarios serially.
   // Keep assertions tolerant of transient host load while individual actions
@@ -22,10 +37,10 @@ export default defineConfig({
     timeout: 30000,
   },
   // Desktop only. A phone profile deliberately does NOT live here: two scripts
-  // in ci:browser-smoke (`test:show`, `test:screen-recovery`) run playwright
+  // in ci:browser-regression (`test:show`, `test:screen-recovery`) run playwright
   // WITHOUT --project, so any project added to this file is picked up
   // implicitly and runs specs never written for it. Adding Pixel 5 here failed
-  // browser smoke on four show-screen tests that click controls sitting behind
+  // browser regression on four show-screen tests that click controls sitting behind
   // the mobile drawer. The phone lens lives in tests/mobile-playwright.config.ts
   // and is run deliberately, never implicitly.
   projects: [

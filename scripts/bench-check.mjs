@@ -1,130 +1,82 @@
 #!/usr/bin/env node
-// Lightweaver — the bench check.
-//
-// Four of eight recorded bug reports on this project were setup failures at
-// the bench, and each one was diagnosed from scratch: is the card even
-// reachable, is it running the firmware you think, why is the handoff looping.
-// This asks those questions once, in order, and prints a verdict.
-//
-// It exists because of one specific incident (2026-08-07): a card flashed
-// before the firmware started reporting its installed project made the
-// card-to-patterns handoff fail permanently, and the symptom was a spinner —
-// ~45 resolutions/second behind a disabled "Verifying project…" button. The
-// cause was one missing field in one response. Check 3 below looks straight
-// at that field, because a spinner is not a diagnosis.
-//
-//   node scripts/bench-check.mjs
-//   node scripts/bench-check.mjs --host 192.168.4.1
-//
-// Exit code is 0 when the card is usable, 1 when it is not.
-
-const argHost = (() => {
-  const i = process.argv.indexOf('--host');
-  return i > -1 ? process.argv[i + 1] : null;
-})();
-
-// The card answers on its mDNS name on a normal LAN and on its own access
-// point address when it is serving its own network. Try both unless told.
-const HOSTS = argHost ? [argHost] : ['lightweaver.local', '192.168.4.1'];
-const TIMEOUT_MS = 4000;
-
-const dim = (s) => `[2m${s}[0m`;
-const ok = (s) => `[32m${s}[0m`;
-const bad = (s) => `[31m${s}[0m`;
-const warn = (s) => `[33m${s}[0m`;
+// Read-only Lightweaver diagnosis. --host accepts a hostname or hostname:port.
+// Exit 0 requires consistent exact-card evidence and reported playback readiness;
+// it never certifies physical light behavior.
+import { pathToFileURL } from 'node:url';
 
 async function get(url) {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ctl.signal });
-    const text = await res.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch { /* not json, keep the text */ }
-    return { ok: res.ok, status: res.status, json, text };
-  } catch (e) {
-    return { ok: false, error: e.name === 'AbortError' ? `no answer in ${TIMEOUT_MS}ms` : e.message };
-  } finally {
-    clearTimeout(t);
+    const response = await fetch(url, { signal: AbortSignal.timeout(4000), cache: 'no-store' });
+    if (!response.ok) return { error: `HTTP ${response.status}` };
+    const data = await response.json();
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return { error: 'invalid JSON object' };
+    return { data };
+  } catch (error) {
+    return { error: error.name === 'TimeoutError' ? 'no answer in 4 seconds' : error.message };
   }
 }
 
-const lines = [];
-const say = (s) => { lines.push(s); console.log(s); };
-let fatal = false;
-
-say('Lightweaver bench check');
-say(dim(`trying ${HOSTS.join(' then ')}`));
-say('');
-
-// 1 — is anything there at all
-let host = null;
-for (const h of HOSTS) {
-  const r = await get(`http://${h}/api/status`);
-  if (r.ok || r.status) { host = h; break; }
+export async function runBenchCheck(hosts, say = console.log) {
+  say('Lightweaver bench check (read-only)');
+  let host, status;
+  for (const candidate of hosts) {
+    const result = await get(`http://${candidate}/api/status`);
+    if (result.data) { host = candidate; status = result.data; break; }
+    say(`${candidate}: ${result.error}`);
+  }
+  if (!host) {
+    say('Verdict: unreachable or incompatible response. Check the card route and network; firmware state is unknown.');
+    return 1;
+  }
+  say(`Card route: ${host}`);
+  const firmware = await get(`http://${host}/api/firmware-info`);
+  if (firmware.error) {
+    say(`Verdict: firmware evidence unavailable (${firmware.error}); readiness unknown.`);
+    return 1;
+  }
+  for (const key of ['cardId', 'bootId', 'firmwareVersion', 'buildId', 'buildNumber']) {
+    if (!status[key] || !firmware.data[key]) {
+      say(`Verdict: incomplete identity (${key}); cannot verify this card's readiness.`);
+      return 1;
+    }
+    if (status[key] !== firmware.data[key]) {
+      say(`Verdict: identity mismatch (${key}). Rerun after the card has finished restarting.`);
+      return 1;
+    }
+  }
+  say(`Card ${status.cardId}; firmware ${status.firmwareVersion}, build ${status.buildNumber}; boot ${status.bootId}`);
+  const updateReady = firmware.data.firmwareUpdateReady;
+  say(updateReady === true ? 'Wi-Fi update: card reports ready; signed-release and authorization checks still apply.'
+    : updateReady === false ? 'Wi-Fi update: card reports not ready.'
+      : 'Wi-Fi update: eligibility unreported by this firmware; do not infer it from connectivity.');
+  if (!Object.hasOwn(status, 'projectId')) {
+    say('Verdict: incompatible project-status response. Inspect firmware compatibility; missing evidence does not prove a flash is needed.');
+    return 1;
+  }
+  if (!status.projectId) {
+    say('Verdict: needs setup. The card is reachable but has no installed project. Continue project and wiring setup in Studio.');
+    return 1;
+  }
+  if (typeof status.projectId !== 'string' || status.configValid !== true || status.commandReady !== true || status.playbackReady !== true) {
+    say(`Verdict: project installed but not ready (runtime ${status.runtimePhase || 'unknown'}). Resolve setup/recovery before playback.`);
+    return 1;
+  }
+  const lights = await get(`http://${host}/json/state`);
+  if (lights.error || typeof lights.data.on !== 'boolean' || !Number.isFinite(lights.data.bri)) {
+    say(`Verdict: light API unavailable or incompatible (${lights.error || 'missing power/brightness'}); playback not verified.`);
+    return 1;
+  }
+  say(`Project: ${status.projectId}; power ${lights.data.on ? 'on' : 'off'}, brightness ${lights.data.bri}.`);
+  say('Verdict: playback-ready according to the card. Physical lights still require observation.');
+  return 0;
 }
 
-if (!host) {
-  say(`${bad('1  card')}        unreachable on ${HOSTS.join(' and ')}`);
-  say('');
-  say('   The card is not answering. In order, the usual causes:');
-  say('   - it is not powered, or the USB cable is charge-only');
-  say('   - you are on a different network than the card');
-  say('   - it is serving its own access point: join that network, then');
-  say('     re-run with --host 192.168.4.1');
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const args = process.argv.slice(2);
+  if (args.length && (args.length !== 2 || args[0] !== '--host' || !/^[a-zA-Z0-9.-]+(?::\d+)?$/.test(args[1]))) {
+    console.error('Usage: node scripts/bench-check.mjs [--host lightweaver.local]');
+    process.exitCode = 2;
+  } else {
+    process.exitCode = await runBenchCheck(args.length ? [args[1]] : ['lightweaver.local', '192.168.4.1']);
+  }
 }
-say(`${ok('1  card')}        answering at ${host}`);
-
-// 2 — what firmware is on it
-const fw = await get(`http://${host}/api/firmware-info`);
-if (!fw.ok) {
-  say(`${warn('2  firmware')}    /api/firmware-info did not answer (${fw.error ?? fw.status})`);
-} else {
-  const v = fw.json?.version ?? fw.json?.build ?? 'unreported';
-  const piece = fw.json?.piece?.id ?? null;
-  say(`${ok('2  firmware')}    ${v}${piece ? dim(`  piece ${piece}`) : ''}`);
-}
-
-// 3 — the field whose absence caused the loop
-const st = await get(`http://${host}/api/status`);
-if (!st.ok) {
-  say(`${bad('3  handoff')}     /api/status did not answer (${st.error ?? st.status})`);
-  fatal = true;
-} else if (!st.json) {
-  say(`${bad('3  handoff')}     /api/status answered but not with JSON`);
-  fatal = true;
-} else if (!st.json.projectId) {
-  fatal = true;
-  say(`${bad('3  handoff')}     /api/status carries no projectId`);
-  say('');
-  say('   This is the 2026-08-07 failure exactly. A card that cannot report');
-  say('   its installed project cannot hand off to Patterns, and older builds');
-  say('   never sent this field. The card needs reflashing with a build from');
-  say('   2026-08-04 or later. Nothing about the Studio will fix it.');
-} else {
-  say(`${ok('3  handoff')}     projectId ${dim(st.json.projectId)}`);
-}
-
-// 4 — the light-driving API itself
-const wled = await get(`http://${host}/json/state`);
-if (!wled.ok) {
-  say(`${warn('4  lights')}      /json/state did not answer (${wled.error ?? wled.status})`);
-} else {
-  const on = wled.json?.on;
-  const bri = wled.json?.bri;
-  say(`${ok('4  lights')}      responding${on === undefined ? '' : dim(`  power ${on ? 'on' : 'off'}, brightness ${bri ?? '?'}`)}`);
-}
-
-// 5 — is the Studio running locally
-const studio = await get('http://127.0.0.1:9999/');
-say(studio.ok
-  ? `${ok('5  studio')}      running on 9999`
-  : `${dim('5  studio')}      not running locally (only needed to design patterns)`);
-
-say('');
-say(fatal
-  ? bad('Verdict: the card is reachable but cannot be worked with. See check 3.')
-  : ok('Verdict: usable. Start from here, not from the symptom.'));
-
-process.exit(fatal ? 1 : 0);

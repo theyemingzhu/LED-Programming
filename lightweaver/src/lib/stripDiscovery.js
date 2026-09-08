@@ -5,18 +5,12 @@
 // step, and it is deliberately a pure, serializable state machine so the whole
 // sequence can be unit-tested without a card, a browser, or a frame stream.
 //
-// The card is written exactly ONCE in this flow (the bench config, installed by
-// the panel through the initial-config authority). Everything after that is
-// live frames, which is why every function here either advances plain session
-// state or returns a full logical frame — never performs I/O.
+// The panel installs a temporary setup and enlarges it if the strip exceeds
+// the current range. This module only advances serializable state or builds
+// live frames; it never performs I/O.
 //
-// Why the sequence is probe -> decade -> end-marker rather than "type in a
-// number": the owner is standing at a physical strip whose length nobody knows.
-// The expanding probe finds the right order of magnitude in a handful of taps
-// (8 -> 16 -> 32 -> ...), the decade read-off turns the strip itself into a
-// ruler so the exact count is read rather than guessed, and the end marker is
-// the single yes/no that proves the number is the LAST pixel and not a pixel
-// somewhere in the middle.
+// After color calibration, show a ruler across the provisioned strip so the
+// owner can enter an observed count directly. One end marker verifies it.
 
 import { COLOR_ORDERS } from './usbLedColorOrder.js';
 
@@ -34,9 +28,10 @@ export const DISCOVERY_FRAME_RATE_WARN_PIXELS = 1100;
 // four distinct hues on a real strip.
 export const DISCOVERY_OFF_COLOR = '000000';
 export const DISCOVERY_PROBE_COLOR = '281400'; // warm — "this pixel is lit"
-export const DISCOVERY_DECADE_COLOR = '003C00'; // every 10th — green
-export const DISCOVERY_FIFTY_COLOR = '00003C'; // every 50th — blue
-export const DISCOVERY_HUNDRED_COLOR = '3C0000'; // every 100th — red
+export const DISCOVERY_FIFTH_COLOR = '3C1800'; // every 5th — orange
+export const DISCOVERY_RULER_BASE_COLOR = '3C3C00'; // yellow intervening LEDs
+export const DISCOVERY_DECADE_COLOR = '3C0000'; // every 10th — red
+export const DISCOVERY_FIFTY_COLOR = '301020'; // every 50th — pink
 export const DISCOVERY_END_MARKER_COLOR = '3C003C'; // the last LED — magenta
 
 export const DISCOVERY_PHASES = Object.freeze([
@@ -95,15 +90,12 @@ export function buildExpandingProbeFrame({ benchLayout = [], pin, litCount = 0 }
   return frame;
 }
 
-// Ordinals are 1-based: the 10th LED is green, the 50th blue, the 100th red.
-// Precedence is 100 > 50 > 10 so the read-off protocol works by counting each
-// tier only since the previous higher tier ("three reds, then one blue, then
-// no greens, then four warm" = 3*100 + 1*50 + 0*10 + 4 = 354).
+// One-based markers; pink overrides red, which overrides orange.
 function decadeColorForOrdinal(ordinal) {
-  if (ordinal % 100 === 0) return DISCOVERY_HUNDRED_COLOR;
   if (ordinal % 50 === 0) return DISCOVERY_FIFTY_COLOR;
   if (ordinal % 10 === 0) return DISCOVERY_DECADE_COLOR;
-  return DISCOVERY_PROBE_COLOR;
+  if (ordinal % 5 === 0) return DISCOVERY_FIFTH_COLOR;
+  return DISCOVERY_RULER_BASE_COLOR;
 }
 
 /**
@@ -149,7 +141,7 @@ function normalizePortSeed(raw, benchLayout) {
     provisioned: entry ? entry.count : 0,
     litCount: 0,
     probedCeiling: 0,
-    count: 0,
+    count: Math.min(intOrZero(raw?.pixelCount), entry?.count || 0),
     probed: false,
     confirmed: false,
     skipped: false,
@@ -250,11 +242,15 @@ export function advance(session, event = {}) {
       const resized = Object.freeze({
         ...withPorts(session, port => {
           const entry = layout.find(item => item.pin === port.pin);
-          return { ...port, provisioned: entry ? entry.count : port.provisioned, needsLargerBench: false };
+          return { ...port, provisioned: entry ? entry.count : port.provisioned, ...(session.phase === 'decade' && entry ? { probedCeiling: entry.count } : {}), needsLargerBench: false };
         }),
         benchLayout: layout.length ? layout : session.benchLayout,
       });
       return resized;
+    }
+    case 'ruler-ready': {
+      if (session.phase !== 'probe') return session;
+      return Object.freeze({ ...withPorts(session, port => port.provisioned > 0 && !port.skipped ? { ...port, probed: true, probedCeiling: port.provisioned } : port), phase: 'decade', activePin: null });
     }
     case 'probe-more': {
       if (session.phase !== 'probe' || pin === null) return session;
@@ -320,10 +316,10 @@ export function advance(session, event = {}) {
     }
     case 'end-marker-no': {
       if (session.phase !== 'end-marker' || pin === null) return session;
-      // The marked pixel was not the end, so the count is wrong. Go back to the
-      // probe for THIS port only — the other ports keep their confirmed work.
+      // Return to the ruler to correct this count. Other ports keep their
+      // confirmed work.
       const reopened = patchPort(session, pin, { probed: false, confirmed: false });
-      return enterProbe(reopened, pin);
+      return Object.freeze({ ...patchPort(reopened, pin, { probed: true }), phase: 'decade', activePin: null });
     }
     case 'recorded':
       return Object.freeze({ ...session, phase: 'done', activePin: null, error: '' });

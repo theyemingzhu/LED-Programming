@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import {
+  CARD_RESTARTED_REASON,
   CARD_TRANSPORTS,
   cardLocalStudioUrl,
   connectCardTransport,
+  getActiveCardTransportAuthority,
+  reacquireCardTransportAuthority,
 } from './cardTransport.js';
 import { initialCardLinkState } from './cardLink.js';
 
@@ -262,4 +265,234 @@ test('Connection Center does not require physical confirmation for ordinary safe
   assert.match(source, /Card verified/);
   assert.doesNotMatch(source, /Open local Studio/);
   assert.doesNotMatch(source, /Studio received no reply from the card/);
+});
+
+// A card that reboots — Recover lights' `restartCard`, a firmware update, a
+// power cycle — comes back with a new bootId, which is exactly the fact an
+// authority pins. These four cases are the whole recovery: name the refusal,
+// re-acquire for the same card, and refuse to adopt anything else.
+
+test('a rebooted card refuses its old authority by name, before anything is sent', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  const calls = [];
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async url => { calls.push(url); return response(status); },
+  });
+  const rebooted = readyStatus({ bootId: 'boot-3' });
+  // A real reboot moves BOTH facts: cardLink mints a fresh operation
+  // generation the moment it sees a changed bootId. The restart is the cause,
+  // so it is the reason that must survive.
+  link.replace({
+    ...link.getState(),
+    readiness: rebooted,
+    validatedBootId: 'boot-3',
+    operationGeneration: authority.operationGeneration + 1,
+  });
+  const sentBefore = calls.length;
+
+  await assert.rejects(
+    () => authority.request('/api/control', { method: 'POST', body: {} }),
+    error => {
+      assert.equal(error.reason, CARD_RESTARTED_REASON);
+      assert.equal(error.requestSent, false);
+      assert.notEqual(error.reason, 'transport-revoked');
+      return true;
+    },
+  );
+  assert.equal(calls.length, sentBefore, 'a refused authority never reaches the card');
+});
+
+test('an authority that lost its claim without a reboot is still an anonymous revocation', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(status),
+  });
+  link.replace({ ...link.getState(), operationGeneration: authority.operationGeneration + 1 });
+
+  await assert.rejects(
+    () => authority.request('/api/control', { method: 'POST', body: {} }),
+    error => {
+      assert.equal(error.reason, 'transport-revoked');
+      assert.notEqual(error.reason, CARD_RESTARTED_REASON);
+      return true;
+    },
+  );
+});
+
+test('re-acquiring after a restart hands back a new authority bound to the new boot', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(status),
+  });
+  const rebooted = readyStatus({ bootId: 'boot-3' });
+  link.replace({ ...link.getState(), readiness: rebooted, validatedBootId: 'boot-3' });
+
+  const reacquired = await reacquireCardTransportAuthority({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(rebooted),
+  });
+
+  assert.equal(reacquired.connected, true);
+  assert.equal(reacquired.cardId, 'lw-card-a');
+  assert.equal(reacquired.bootId, 'boot-3');
+  assert.notEqual(reacquired.bootId, authority.bootId);
+  assert.equal(getActiveCardTransportAuthority('192.168.18.70'), reacquired);
+  assert.equal(reacquired.revoked, false);
+});
+
+test('re-acquiring refuses a different card answering at the same address', async () => {
+  const link = linkFor(readyStatus());
+  const result = await reacquireCardTransportAuthority({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(readyStatus({ cardId: 'lw-other', bootId: 'boot-9' })),
+  });
+
+  assert.equal(result.connected, false);
+  assert.equal(result.reason, 'wrong-card');
+  assert.equal(result.expectedCardId, 'lw-card-a');
+  assert.equal(result.observedCardId, 'lw-other');
+});
+
+test('re-acquiring without an expected card id refuses instead of adopting whoever answers', async () => {
+  let probes = 0;
+  const result = await reacquireCardTransportAuthority({
+    host: '192.168.18.70',
+    expectedCardId: '',
+    fetchImpl: async () => { probes += 1; return response(readyStatus()); },
+  });
+
+  assert.equal(result.connected, false);
+  assert.equal(result.reason, 'identity-missing');
+  assert.equal(probes, 0, 'an unattended re-acquire with no identity never probes');
+});
+
+// revalidate() does its own live /api/status probe (used while re-acquiring a
+// bounced connection, before the shared link has caught up) and must name the
+// same two conditions request() names via snapshotDivergence: a reboot is
+// `card-restarted` (recoverable, same card), a genuine identity change stays
+// on the identity vocabulary already produced for a first connect — never the
+// invented 'identity-changed'.
+
+test('revalidate() rejects a rebooted card with card-restarted, not identity-changed', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  let probeStatus = status;
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(probeStatus),
+  });
+  probeStatus = readyStatus({ bootId: 'boot-3' });
+
+  await assert.rejects(
+    () => authority.revalidate(),
+    error => {
+      assert.equal(error.reason, CARD_RESTARTED_REASON);
+      assert.notEqual(error.reason, 'identity-changed');
+      return true;
+    },
+  );
+  assert.equal(authority.revoked, true);
+});
+
+test('revalidate() rejects a genuine identity change with the existing wrong-card vocabulary', async () => {
+  const status = readyStatus();
+  const link = linkFor(status);
+  let probeStatus = status;
+  const authority = await connectCardTransport({
+    host: '192.168.18.70', expectedCardId: 'lw-card-a', link,
+    fetchImpl: async () => response(probeStatus),
+  });
+  probeStatus = readyStatus({ cardId: 'lw-other', bootId: 'boot-9' });
+
+  await assert.rejects(
+    () => authority.revalidate(),
+    error => {
+      assert.equal(error.reason, 'wrong-card');
+      assert.notEqual(error.reason, 'identity-changed');
+      return true;
+    },
+  );
+  assert.equal(authority.revoked, true);
+});
+
+// ---------------------------------------------------------------------------
+// F13 — a card that came back on a newer signed build is the same card.
+// The transport pins identity, never firmware: `exactStatus` compares the id
+// alone on purpose. What was missing is the other half — proving the new build
+// is the first moment it can be written down, and the note has to move WHOLE.
+// ---------------------------------------------------------------------------
+
+function withMemoryLocalStorage(seed, run) {
+  const values = new Map();
+  if (seed) values.set('lw_card_identity_v1', JSON.stringify(seed));
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: key => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+      removeItem: key => values.delete(key),
+    },
+  });
+  const read = () => JSON.parse(values.get('lw_card_identity_v1') || 'null');
+  return Promise.resolve(run(read)).finally(() => {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else delete globalThis.localStorage;
+  });
+}
+
+const PAIRED_ON_OLD_BUILD = {
+  version: 1,
+  id: 'lw-card-a',
+  name: 'Front Mandala',
+  address: '192.168.18.70',
+  firmwareVersion: '1.1.31',
+  buildId: 'a'.repeat(40),
+  buildNumber: 1524,
+  acknowledgedAt: '2026-09-01T10:00:00.000Z',
+};
+
+test('the paired card connects on a newer build, and its firmware note is rewritten whole', async () => {
+  const status = readyStatus({ firmwareVersion: '1.1.33', buildId: 'c'.repeat(40), buildNumber: 1548 });
+  await withMemoryLocalStorage(PAIRED_ON_OLD_BUILD, async (readIdentity) => {
+    const authority = await connectCardTransport({
+      host: '192.168.18.70',
+      expectedCardId: 'lw-card-a',
+      link: linkFor(status),
+      fetchImpl: async () => response(status),
+    });
+    assert.equal(authority.connected, true,
+      'refusing the paired card because Studio’s own note is out of date is F13');
+    assert.equal(authority.cardId, 'lw-card-a');
+
+    const stored = readIdentity();
+    assert.equal(stored.buildId, 'c'.repeat(40));
+    assert.equal(stored.firmwareVersion, '1.1.33');
+    assert.equal(stored.buildNumber, 1548);
+    assert.equal(stored.id, 'lw-card-a', 'the pairing itself is untouched');
+    assert.equal(stored.name, 'Front Mandala', 'nothing but the firmware note moves');
+  });
+});
+
+test('a different card on a newer build is still refused, and the note is untouched', async () => {
+  const status = readyStatus({
+    cardId: 'lw-someone-elses', firmwareVersion: '1.1.33', buildId: 'c'.repeat(40), buildNumber: 1548,
+  });
+  await withMemoryLocalStorage(PAIRED_ON_OLD_BUILD, async (readIdentity) => {
+    const result = await connectCardTransport({
+      host: '192.168.18.70',
+      expectedCardId: 'lw-card-a',
+      link: linkFor(status),
+      fetchImpl: async () => response(status),
+    });
+    assert.equal(result.connected, false);
+    assert.equal(result.reason, 'wrong-card');
+    assert.deepEqual(readIdentity(), PAIRED_ON_OLD_BUILD);
+  });
 });

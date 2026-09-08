@@ -110,3 +110,76 @@ still reports its failure in full.
 `test.fixme` — see the comment above them and the TODO entry. They are the
 specification of a fix that is waiting on an owner decision, and they turn
 green the moment it lands.
+
+## The simulator's wiring-test lifecycle, and its fault helpers
+
+`tests/harness/cardSimulator.ts` grew a fourth capability beyond state,
+refusal, and offline/online: a truthful wiring-test lifecycle, added so
+`tests/journey-continuity.spec.ts` could put a card into the one state this
+matrix cannot — mid a live light-test probation — and check that every setup
+surface agrees about it (docs/plans/2026-09-05-unified-card-journey.md, J13).
+
+**Before this, `/api/wiring/status` kept answering `staged` forever after
+`/api/wiring/activate`.** Nothing on the write side had told the read side the
+card had rebooted with the candidate live, so no browser test could reach the
+firmware's real `testing` / `awaiting-confirmation` state — the state behind
+`confirm-visible-lights`, the one task the setup journey and the working-screen
+chip most needed to be checked for agreement on.
+
+**`beginWiringTest(options?: { pixels?, pin? })`** puts the card straight into
+that state — as if `/api/wiring/activate` had already run: probation begins
+(`remainingProbationMs` counts down from `LW_WIRING_PROBATION_MS`), the boot id
+changes (a real card reboots to run the candidate), and `/api/wiring/status`
+answers `state: 'testing'`, `candidateState: 'awaiting-confirmation'`,
+`activationId: 'act-matrix-1'`. Call it before `card.install(page)` or after —
+it mutates the simulator's live state object, which every response reads at
+request time, not at install time.
+
+**`expireWiringProbation()`** is the other end: the card's own clock elapsing
+with nobody confirming or rolling back, exactly what firmware does on its own
+when nothing calls `/api/wiring/confirm` before the deadline. It restores the
+pre-test pixels/pin, clears the probation flags, and reboots (a new boot id
+suffix). A test calls this, then reloads or re-reads the card, to prove a
+surface stops asking to confirm a test that has already ended.
+
+The existing `/api/wiring/activate`, `/confirm`, and `/rollback` handlers
+already modeled the full write-side lifecycle (staged → testing → confirmed or
+rolled back); `beginWiringTest`/`expireWiringProbation` are the two states a
+test needs to *start from* without re-driving the whole activate/confirm
+dance through HTTP first.
+
+**Fault helpers already in the simulator, worth knowing before reaching for a
+raw `page.route` override:**
+
+- **`refuse(path, { status, body?, times? })`** — the request is never applied;
+  the card answers with a real firmware refusal (defaults to the HTTP 423
+  "runtime not ready" shape, the commonest real one). Use this for "the card
+  said no."
+- **`respondThenDrop(path, { times? })`** — the opposite failure: the request
+  **is** applied for real (the state mutates), but the HTTP reply is withheld
+  (`route.abort('connectionrefused')`). This is what makes "a lost reply after
+  a successful write" testable at all, and it is the one `journey-continuity.spec.ts`
+  uses to check that Studio does not turn that silence into a duplicate
+  command.
+- **`goOffline()` / `goOnline()`** — every route on every modeled host aborts
+  with `connectionrefused` until `goOnline()`. Models a dropped Wi-Fi or a
+  pulled plug, not a refusal from a card that is still there.
+
+All four compose with the wiring-test lifecycle and with each other on the
+same simulator instance — they are independent knobs on one mutable `state`,
+not separate simulator modes.
+
+**`/api/zones` reports `state.zoneIds`, not a hardcoded `'zone-all'`.** Added
+for `playlist-storage.spec.ts` (A5): the matrix's abstract fixtures never
+declare a project with real zone topology, so `zoneIds` defaults to
+`['zone-all']` and nothing here changes. A real project can hold more than
+one zone (a default project's separate "outer circle" / "inner circle"
+board, for instance), and `syncRuntimePackageToCard`'s save-then-verify
+install (`waitForCardZones`) requires every one of those ids to come back
+from `/api/zones` before it calls the save confirmed. `/api/config`'s
+non-wiring-change apply branch now adopts the *full* id list from the
+pushed project's own `config.zones`, so that verification reads back the
+zones the card genuinely holds instead of a fixture default no pushed
+project ever declared. Ranges are still computed fresh from the current
+pixel count on every call, never snapshotted, so a wiring change that
+resizes the strip can't leave a stale zone shape behind.

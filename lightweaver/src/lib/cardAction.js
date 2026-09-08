@@ -26,6 +26,16 @@ const CARD_ACTION_FAILURES = Object.freeze({
     actionId: 'retry',
     actionLabel: 'Retry',
   }),
+  // A reboot is not silence. Recover lights restarts the card on purpose, and a
+  // firmware update and a power cycle do the same — each gives the card a new
+  // boot identity, which is the exact fact the transport authority pins. Until
+  // this had a name the refusal fell through to the timeout copy and told the
+  // owner their healthy, reachable card had not answered.
+  'card-restarted': Object.freeze({
+    message: 'The card restarted. Studio is reconnecting to it — try the command again.',
+    actionId: 'retry',
+    actionLabel: 'Try again',
+  }),
   'card-rejected': Object.freeze({
     message: 'The card rejected the preview command. Open the card page to inspect the reported problem before retrying.',
     actionId: 'open-card-page',

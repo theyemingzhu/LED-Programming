@@ -6,6 +6,8 @@ import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.js
 import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
 import { SetupScreen } from './lw-setup.jsx';
+import { useSetupJourney, useCommissioningFlow } from '../hooks/useSetupJourney.js';
+import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
@@ -18,6 +20,13 @@ import { normalizeCardHost } from '../lib/cardConnection.js';
 import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
 import { STRIP_DISCOVERY_LABEL } from '../lib/cardAction.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
+import {
+  CARD_LINK_JOURNAL_LIMIT,
+  clearCardLinkJournal,
+  formatCardLinkJournal,
+  readCardLinkJournal,
+  summarizeCardLinkJournal,
+} from '../lib/cardLinkJournal.js';
 
 // navigateStudio (the `go` prop) takes a bare screen key, not the `screen=…`
 // hash fragment that STRIP_DISCOVERY_ROUTE holds — passing the fragment fell
@@ -52,8 +61,23 @@ const SECTION_HEADINGS = Object.freeze({
 });
 
 function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
+  const foldRef = useRef(null);
+  // Opening a section should put you ON it. These folds sit below the whole
+  // setup journey — about 800px down — so arriving at #section=settings used
+  // to land on the ladder with the thing you asked for entirely below the
+  // fold of the window. Bring it to the top of the scroll surface instead.
+  // Scroll position only: nothing about what is rendered or open changes.
+  useEffect(() => {
+    if (!open) return;
+    const node = foldRef.current;
+    if (!node || typeof node.scrollIntoView !== 'function') return;
+    const frame = requestAnimationFrame(() => {
+      node.scrollIntoView({ block: 'start', behavior: 'auto' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   return (
-    <details className="card-page-fold" data-testid={testId} open={open}>
+    <details ref={foldRef} className="card-page-fold" data-testid={testId} open={open}>
       <summary
         onClick={event => {
           event.preventDefault();
@@ -103,6 +127,7 @@ function CardHomePanels({
   onStartNewProject,
   suppressMatchingProject = false,
   yieldPrimary = false,
+  wiringTestActive = false,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
@@ -375,6 +400,14 @@ function CardHomePanels({
         ? presentations.reasonFailure(lifecycleReason)
         : presentations.notConnected();
       break;
+  }
+
+  if (wiringTestActive) {
+    presentation = {
+      tone: 'connecting',
+      redundant: true,
+      message: 'Testing lights. Use the final setup controls above to confirm or restore them.',
+    };
   }
 
   // Connect actions must be visible: prefer the connection center when the
@@ -672,11 +705,11 @@ function CardHomePanels({
           className="card-support-panel card-checks-panel"
           aria-label="Hardware checks and recovery"
           data-testid="card-checks-recovery"
-          open={!ready || benchProject}
+          open={(!ready && !wiringTestActive) || benchProject}
         >
           <summary><h2>Checks &amp; recovery</h2></summary>
           <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
-          {!ready && (
+          {!ready && !wiringTestActive && (
             <p role="status">
               This card is answering but is not reporting a ready runtime. Recover lights is
               the check to run first — the card accepts it in this state.
@@ -700,6 +733,59 @@ function CardHomePanels({
         <span style={{ color: 'var(--text-faint)' }}>Making many cards? </span>
         <button type="button" className="link-btn" onClick={() => onOpenSection('workshop')}>Batch production</button>
       </p>
+    </div>
+  );
+}
+
+// The answer to "it keeps disconnecting" arriving hours after it happened.
+// Studio records every connection change as it goes; this is where an owner
+// reads them back and copies them into a message without opening a console.
+function ConnectionLogPanel() {
+  const [entries, setEntries] = useState(() => readCardLinkJournal());
+  const [copied, setCopied] = useState('');
+  const refresh = () => { setEntries(readCardLinkJournal()); setCopied(''); };
+  const summary = summarizeCardLinkJournal(entries);
+  const text = formatCardLinkJournal(entries);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied('Copied. Paste it into a message.');
+    } catch {
+      // Clipboard access is not guaranteed; the text is on screen either way.
+      setCopied('Could not copy — select the log below and copy it by hand.');
+    }
+  };
+  return (
+    <div className="card-support-panel" data-testid="connection-log-panel">
+      <h2>Connection log</h2>
+      <p>
+        Every time Studio&rsquo;s connection to the card changed, with the reason and how long
+        it lasted. It survives a reload, keeps the most recent {CARD_LINK_JOURNAL_LIMIT} changes, and
+        never leaves this browser.
+      </p>
+      <p data-testid="connection-log-summary">
+        {entries.length === 0
+          ? 'Nothing recorded yet — the connection has not changed since this browser last cleared its data.'
+          : `${summary.drops} drop${summary.drops === 1 ? '' : 's'} across ${entries.length} change${entries.length === 1 ? '' : 's'}${summary.spanHours >= 0.05 ? ` over ${summary.spanHours.toFixed(1)} hours` : ''}${summary.lastReason ? ` · most recent reason: ${summary.lastReason}` : ''}`}
+      </p>
+      <div className="set-actions">
+        <button type="button" className="btn primary" onClick={copy} disabled={!entries.length}>Copy log</button>
+        <button type="button" className="btn" onClick={refresh}>Refresh</button>
+        <button
+          type="button"
+          className="btn ghost-sm"
+          disabled={!entries.length}
+          onClick={() => { clearCardLinkJournal(); refresh(); }}
+        >Clear</button>
+      </div>
+      {copied && <p data-testid="connection-log-copied">{copied}</p>}
+      <textarea
+        className="set-json"
+        data-testid="connection-log-text"
+        aria-label="Connection log"
+        readOnly
+        value={text}
+      />
     </div>
   );
 }
@@ -747,6 +833,9 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
         <button type="button" aria-label="Deployment check" className={tool === 'deployment' ? 'selected' : ''} aria-pressed={tool === 'deployment'} onClick={() => setTool('deployment')}>
           <strong>Deployment check</strong><span>Verify this site's signed release from the browser — no install needed.</span>
         </button>
+        <button type="button" aria-label="Connection log" className={tool === 'connection-log' ? 'selected' : ''} aria-pressed={tool === 'connection-log'} onClick={() => setTool('connection-log')}>
+          <strong>Connection log</strong><span>Every connection change, with its reason — for reporting a drop after it happened.</span>
+        </button>
         <button type="button" aria-label="Batch production" onClick={() => onOpenSection('workshop')}>
           <strong>Batch production</strong><span>Signed-job manufacturing flow with identity binding and pass records.</span>
         </button>
@@ -759,6 +848,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
           {tool === 'json' && <SettingsScreen embedded mode="advanced" {...cardProps} />}
           {tool === 'recovery' && <RecoverySupport onConnectCard={cardProps.onConnectCard} onOpenConnectionCenter={onOpenConnectionCenter} />}
           {tool === 'deployment' && <DeploymentCheckPanel />}
+          {tool === 'connection-log' && <ConnectionLogPanel />}
         </div>
       )}
     </div>
@@ -772,10 +862,27 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // Load for this card's project — the Matching-card-project panel below
   // suppresses its duplicate offer while it is (one project, one Load).
   const [setupLoadOffer, setSetupLoadOffer] = useState(false);
+  const sharedJourney = useSetupJourney({
+    cardLink,
+    cardLifecycle,
+    project: currentProject,
+    refresh: false,
+  });
+  // The card is mid light-test. Read straight from the SHARED journey (the
+  // same one the Patterns/Playlist chip and the shell's task router read),
+  // so this page's panels stand down for a test that any screen can see. No
+  // longer OR-ed with a Setup screen prop callback (blueprint H3) — Setup and
+  // Card Home compute `wiringTestActive` from the identical journey, so
+  // there is nothing the callback told this page that the journey did not
+  // already carry.
+  const wiringTestActive = sharedJourney.taskId === 'confirm-visible-lights';
   // Whether the Setup ladder is currently offering the page's primary action.
   // While it is, every surface below it renders secondary controls — one
-  // primary per page. See the comment on `ladderOwnsPrimary` in lw-setup.jsx.
-  const [ladderOwnsPrimary, setLadderOwnsPrimary] = useState(false);
+  // primary per page. Derived the same way Setup derives it — a pure function
+  // of the shared journey plus the commissioning flow — instead of learning it
+  // a render late through the now-removed `onPrimaryActionChange` callback.
+  const commissioningFlow = useCommissioningFlow();
+  const ladderOwnsPrimary = deriveLadderOwnsPrimary(sharedJourney, commissioningFlow);
 
   useEffect(() => {
     // Focus the section heading after in-app section navigation (required
@@ -795,7 +902,17 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
     || !['install', 'workshop', 'preferences'].includes(route.section);
+  const installIntentOpen = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   let content;
+  const installAction = installIntentOpen ? (
+    <CardInstallAction
+      connected={connected}
+      cardHost={cardHost}
+      yieldPrimary={ladderOwnsPrimary}
+      onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+    />
+  ) : null;
   // Card Home: the guided journey, the one install action, evidence panels,
   // then Hardware and Advanced folded underneath.
   if (home) content = (
@@ -810,18 +927,21 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
-        onPrimaryActionChange={setLadderOwnsPrimary}
+        installAction={installAction}
       />
-      <CardInstallAction
-        connected={connected}
-        cardHost={cardHost}
-        yieldPrimary={ladderOwnsPrimary}
-        onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
-      />
+      {!installIntentOpen && (
+        <CardInstallAction
+          connected={connected}
+          cardHost={cardHost}
+          yieldPrimary={ladderOwnsPrimary}
+          onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+        />
+      )}
       <CardHomePanels
         {...cardProps}
         suppressMatchingProject={setupLoadOffer}
         yieldPrimary={ladderOwnsPrimary}
+        wiringTestActive={wiringTestActive}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onOpenSection={onOpenSection}
         go={go}

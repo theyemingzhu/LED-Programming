@@ -482,7 +482,10 @@
     color 180ms cubic-bezier(.22, 1, .36, 1);
 }
 
-.plab-compact-step-heading > :not(.plab-local-ack) {
+/* The open-step affordance is excluded: it is a transparent button covering
+   the whole heading, and being lifted into this stacking level would put it
+   over the row's own controls instead of under them. */
+.plab-compact-step-heading > :not(.plab-local-ack):not(.plab-step-open) {
   position: relative;
   z-index: 1;
 }
@@ -1617,3 +1620,406 @@
   .plab-preview-response,
   .plab-local-ack { display: none; }
 }
+
+/* ── The ladder: one step open at a time ──────────────────────────────────
+   Above 900px the inspector is a fixed-height column beside the artwork, so
+   four open steps meant a scroller where the thing you were adjusting was
+   usually off screen. Only the open step shows its body now; the others keep
+   their heading and gain the value they are currently set to, so the column
+   reads as a summary of the whole design rather than a list of collapsed
+   boxes. Below 900px the inspector is a sheet that already scrolls, and
+   collapsing there would hide controls a phone reaches by scrolling — so this
+   is deliberately desktop-only. */
+@media (min-width: 901px) {
+  .plab-control-section.plab-compact-step[data-active="false"] > .plab-compact-step-body {
+    display: none;
+  }
+
+  /* The whole heading row opens its step. The row is not a button — the
+     Evolve heading carries the Long Evolution checkbox, and a control inside
+     a control is neither valid nor operable — so the affordance is a
+     transparent button UNDER the heading's content, with the content passing
+     pointer events through to it. Genuine controls opt back in below. */
+  .plab-compact-step-heading { cursor: pointer; }
+  .plab-control-section.plab-compact-step[data-active="true"] > .plab-compact-step-heading {
+    cursor: default;
+  }
+  /* Genuine controls are excluded here rather than re-enabled in a later
+     rule: a `pointer-events: auto` written as a descendant selector is LESS
+     specific than this one and loses, which is how the Long Evolution
+     checkbox first became unclickable. */
+  .plab-compact-step-heading > :not(.plab-local-ack):not(.plab-step-open):not(.plab-evolution-toggle) {
+    pointer-events: none;
+  }
+}
+
+.plab-step-open {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.plab-step-open:focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: -2px;
+}
+
+/* The value a collapsed step is set to. It sits where the eye already is —
+   on the heading row — so the column answers "what is this design" without
+   opening anything. */
+.plab-step-summary {
+  margin-left: auto;
+  max-width: 46%;
+  overflow: hidden;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--text-lo);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.plab-control-section.plab-compact-step[data-active="true"] .plab-step-summary { display: none; }
+.plab-evolution .plab-step-summary { margin-left: 0; }
+
+/* ── The journey: full width, only while Evolve is open ─────────────────── */
+/* Ladder in column 1, piece and journey stacked in column 2 — the board's
+   orientation. These were written the other way round when the inspector was
+   still on the right, and being :has()-qualified they outranked the plain
+   placement rules that came later. */
+.plab-workspace:has(.plab-journey) { grid-template-rows: minmax(0, 1fr) auto; }
+.plab-workspace:has(.plab-journey) > .plab-preview { grid-row: 1; grid-column: 2; }
+.plab-workspace:has(.plab-journey) > .plab-journey { grid-row: 2; grid-column: 2; }
+.plab-workspace:has(.plab-journey) > .plab-controls { grid-row: 1 / -1; grid-column: 1; }
+
+.plab-journey {
+  min-width: 0;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--border-soft);
+  border-right: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+}
+
+.plab-journey-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.plab-journey-head h2 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.plab-journey-meta {
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.plab-journey-clock { margin-left: auto; }
+.plab-journey-clock {
+  min-width: 96px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--accent-hi);
+  text-align: right;
+}
+
+.plab-journey-body { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 0 10px; }
+.plab-journey-keys { display: grid; grid-template-rows: 20px repeat(3, 34px); }
+.plab-journey-key {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  border-bottom: 1px solid var(--border-hair);
+}
+.plab-journey-key:last-child { border-bottom: 0; }
+
+.plab-journey-track {
+  position: relative;
+  touch-action: none;
+  cursor: ew-resize;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-hair);
+}
+.plab-journey-ruler { position: relative; height: 20px; border-bottom: 1px solid var(--border-hair); }
+.plab-journey-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-hair); }
+.plab-journey-tick b {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-lo);
+}
+.plab-journey-lane { height: 34px; border-bottom: 1px solid var(--border-hair); }
+.plab-journey-lane:last-of-type { border-bottom: 0; }
+.plab-journey-lane svg { display: block; width: 100%; height: 100%; }
+.plab-journey-curve { fill: none; stroke: var(--accent-hi); stroke-width: 1.5; }
+.plab-journey-flat {
+  display: block;
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg, transparent 0 5px, var(--border-hair) 5px 6px
+  );
+  opacity: .5;
+}
+
+/* The playhead marks where in the journey the preview is. */
+.plab-journey-head-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent-hi);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  pointer-events: none;
+}
+.plab-journey-head-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -3.5px;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-hi);
+}
+.plab-journey-off { margin-top: 8px; font-size: 12px; color: var(--text-lo); }
+
+@media (max-width: 900px) {
+  .plab-workspace:has(.plab-journey) { grid-template-rows: none; }
+  .plab-workspace:has(.plab-journey) > .plab-preview,
+  .plab-workspace:has(.plab-journey) > .plab-journey,
+  .plab-workspace:has(.plab-journey) > .plab-controls {
+    grid-row: auto;
+    grid-column: auto;
+  }
+  .plab-journey { border-right: 0; }
+}
+
+
+/* ── Match the board: ladder left, piece right ────────────────────────────
+   The design puts the four numbered steps down a 320px column on the LEFT and
+   gives everything else to the piece, with the journey full-width beneath it.
+   What shipped was mirrored — inspector right, piece left — which reads as a
+   different screen even when every part is present. */
+@media (min-width: 901px) and (min-height: 820px) {
+  .plab-workspace { grid-template-columns: 320px minmax(0, 1fr); }
+  .plab-workspace > .plab-controls { grid-column: 1; grid-row: 1 / -1; border-right: 1px solid var(--border-soft); }
+  .plab-workspace > .plab-preview { grid-column: 2; grid-row: 1; border-right: 0; }
+  .plab-workspace:has(.plab-journey) > .plab-journey { grid-column: 2; grid-row: 2; border-right: 0; }
+}
+
+/* ── Masthead kicker + the pinned card verdict ───────────────────────────── */
+.plab-kicker {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  white-space: nowrap;
+}
+
+.plab-verdict {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-hair);
+  background: var(--bg-canvas);
+  box-shadow: inset 0 -2px 0 var(--warn);
+}
+.plab-verdict[data-classification="live-on-card"] { box-shadow: inset 0 -2px 0 var(--ok); }
+.plab-verdict[data-classification="studio-only"] { box-shadow: inset 0 -2px 0 var(--danger); }
+
+.plab-verdict-tag {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.plab-verdict[data-classification="live-on-card"] .plab-verdict-tag { border-color: var(--ok); color: var(--ok); }
+.plab-verdict[data-classification="studio-only"] .plab-verdict-tag { border-color: var(--danger); color: var(--danger); }
+
+.plab-verdict p {
+  min-width: 0;
+  color: var(--text-mid);
+  font-size: 12.5px;
+}
+.plab-verdict-nums { display: flex; gap: 22px; margin-left: auto; flex: 0 0 auto; }
+.plab-verdict-nums dt {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.plab-verdict-nums dd {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-hi);
+}
+
+@media (max-width: 900px) {
+  .plab-kicker { display: none; }
+  .plab-verdict { flex-wrap: wrap; gap: 8px; }
+  .plab-verdict-nums { margin-left: 0; gap: 16px; }
+}
+
+/* .plab-scroll defines exactly two rows — toolbar, workspace. The verdict is
+   a third child, so it landed in an implicit row and was clipped to nothing
+   behind the toolbar. */
+.plab-scroll:has(.plab-verdict) { grid-template-rows: auto auto minmax(0, 1fr); }
+
+/* ── All four rungs stay in view ──────────────────────────────────────────
+   The board's ladder always shows 01–04 with their values; only the open
+   step's body takes the remaining height. What shipped let the whole column
+   scroll, so opening Evolve pushed Choose and Sculpt off the top and the
+   ladder stopped being a ladder — you could no longer see what the design was
+   set to, which is the entire reason the closed rungs carry their values. */
+@media (min-width: 901px) and (min-height: 820px) {
+  /* The column still scrolls — it carries the diagnostics fold, the drafts
+     library and the action bar below the four steps. What must not happen is
+     a rung leaving the screen, so every step heading sticks. Stacking them at
+     increasing offsets keeps 01 above 02 above 03 as you scroll past, which is
+     what makes it read as a ladder rather than a list.
+     A first attempt gave the open step flex:1 inside a non-scrolling column;
+     the trailing sections then ate the height and Evolve's body collapsed to
+     one visible field. */
+  .plab-controls { overflow-y: auto; }
+  .plab-compact-step-heading {
+    position: sticky;
+    z-index: 4;
+    background: var(--plab-panel, var(--bg-panel));
+  }
+  [data-workflow-step="0"] > .plab-compact-step-heading { top: 0; }
+  [data-workflow-step="1"] > .plab-compact-step-heading { top: 42px; }
+  [data-workflow-step="2"] > .plab-compact-step-heading { top: 84px; }
+  /* The open body gets the room it needs and scrolls past it, rather than
+     pushing the rungs below it out of reach. */
+  .plab-control-section.plab-compact-step[data-active="true"] > .plab-compact-step-body {
+    max-height: 44vh;
+    overflow-y: auto;
+  }
+}
+
+/* Masthead lede and the way back to Patterns. */
+.plab-lede {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border-hair);
+  color: var(--text-lo);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plab-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-mid);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.plab-back:hover { color: var(--text-hi); background: var(--bg-elev); }
+.plab-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.plab-toolbar .plab-workflow { margin-left: 10px; }
+@media (max-width: 1200px) { .plab-lede { display: none; } }
+
+/* Below the wide layout the toolbar goes back to what it was — mark, title,
+   private dot, the four step icons. The lede and the way back are the first
+   things to yield: at 793px and under they squeezed the title out entirely,
+   and the title is the one thing that must survive every width. */
+@media (max-width: 1000px) {
+  .plab-back { display: none; }
+}
+
+.plab-private-library.plab-compact-step { padding: 0; }
+.plab-compact-step-heading.plab-library-heading {
+  justify-content: flex-start;
+  gap: 8px;
+}
+.plab-compact-step-heading.plab-library-heading h2 {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+}
+
+/* An error never hides in a fold. If private-draft storage is unavailable or
+   could not be recovered, that has to be readable whether or not Save happens
+   to be the open rung — a warning you cannot see is worse than no warning,
+   and collapsing the rung had just buried both of them. */
+@media (min-width: 901px) and (min-height: 820px) {
+}
+
+.plab-library-alert {
+  margin: 0;
+  padding: 8px 18px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* ── Piece / Strip ────────────────────────────────────────────────────────
+   A segmented pair under the artwork, in the console's key-well idiom: the
+   chosen one is named in amber, because it is what you are looking at now. */
+.plab-views {
+  display: flex;
+  gap: 3px;
+  margin: 0;
+  padding: 3px;
+  border-top: 1px solid var(--border-hair);
+  background: var(--bg-canvas);
+}
+.plab-views button {
+  flex: 1;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.plab-views button:hover { color: var(--text-hi); }
+.plab-views button.on { border-color: var(--accent); color: var(--accent-hi); }
+.plab-views button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* .plab-preview declares two rows — bar, stage. The Piece/Strip row is a third
+   child, so it landed in an implicit row: squeezed to nothing and sitting over
+   the stage, where it could swallow a click meant for the retry button inside
+   a failed preview. Exactly the mistake the verdict strip made against
+   .plab-scroll, one container down. */
+.plab-preview:has(.plab-views) { grid-template-rows: auto minmax(0, 1fr) auto; }

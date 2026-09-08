@@ -43,7 +43,9 @@ import {
   resolveInstalledFirmware,
 } from '../lib/firmwareUpdatePlan.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import { CARD_LINK_CONNECT_TIMEOUT_MS } from '../lib/cardLink.js';
 import {
+  beginInstallFirmwareVerification,
   clearInstallFirmwareEvidence,
   reportInstallFirmwareEvidence,
 } from '../lib/installFirmwareEvidence.js';
@@ -58,14 +60,16 @@ import {
   saveFirmwareUpdateSession,
 } from '../lib/cardFirmwareUpdater.js';
 import { recoverFirmwareUpdate } from '../lib/firmwareUpdateRecovery.js';
+import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { runPreservingUsbBootstrap } from '../lib/preservingUsbBootstrap.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
-import { readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
+import { CARD_HOST_STORAGE_KEY, readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
 import { openOwnerLibrarySignIn, probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } from '../lib/ownerFirmwareUpdateGrant.js';
 import {
   clearActiveUsbInspection,
   registerActiveUsbInspection,
 } from '../lib/usbInspection.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
   const STEPS = [
     { n: 1, label: "Hold BOOT", sub: "GPIO0 pin", kbd: "BOOT ↓" },
@@ -144,6 +148,35 @@ import {
         onFallback: setChromeFallback,
       });
     };
+
+    // Only the FAILURE half of this banner belongs in the layer.
+    //
+    // "This browser cannot flash — open it in Chrome" is a screen-scoped
+    // warning: it appears on a condition, it blocks the screen's whole
+    // purpose, and it carries a recovery action. It floats.
+    //
+    // Its `hasWebSerial` counterpart is not a notice at all. "Use this only
+    // for blank ESP32-S3 boards" is standing context for the tool, true for
+    // as long as the screen is open. Floating it would park a permanent card
+    // in the corner for the entire visit and spend one of only three visible
+    // slots on something that never changes. A banner that is ALWAYS present
+    // reserves its space once and never reflows, so it causes none of the
+    // movement this layer exists to remove — the region-scoped case, left
+    // exactly where it is.
+    useEffect(() => {
+      if (hasWebSerial) return undefined;
+      publishNotice({
+        key: 'technician-flash-webserial',
+        tone: 'warning',
+        title: 'Open this page in Chrome to flash your card.',
+        // The result of pressing "Open in Chrome" rides along as the body so
+        // it stays attached to the same message instead of a second box.
+        body: chromeFallback,
+        source: 'technician-flash',
+        actions: [{ label: 'Open in Chrome', onSelect: launchInChrome, testId: 'flash-open-in-chrome' }],
+      });
+      return () => dismissNoticeKey('technician-flash-webserial');
+    }, [hasWebSerial, chromeFallback]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const connect = async () => {
       if (connected) {
@@ -270,19 +303,14 @@ import {
               <TechnicianHeading className="flash-screen-title">Manual firmware tools</TechnicianHeading>
               <p className="flash-screen-intro">Manual firmware files, offsets, erase controls, and the serial log are kept here for trained repair work.</p>
             </div>
-            <div className={"fl-warn " + (hasWebSerial ? "ok" : "warn")}>
-              <span style={ICON16}>{I.info}</span>
-              {hasWebSerial ? (
+            {/* Standing context for the tool, not an event: always present, so
+                it reserves its space once and never pushes anything. */}
+            {hasWebSerial && (
+              <div className="fl-warn ok">
+                <span style={ICON16}>{I.info}</span>
                 <div>The card ships pre-flashed with Lightweaver firmware. Use this only for blank ESP32-S3 boards or a firmware replacement.</div>
-              ) : (
-                <div className="fl-warn-copy">
-                  <span>Open this page in Chrome to flash your card.</span>
-                  <button className="btn primary" type="button" onClick={launchInChrome}>Open in Chrome</button>
-                  {chromeFallback && <span className="fl-warn-feedback" role="status">{chromeFallback}</span>}
-                </div>
-              )}
-            </div>
-
+              </div>
+            )}
             <div>
               <div className="sec-h"><span className="t">Bootloader mode</span><span className="m">do this before connecting</span><span className="line" /></div>
               <div className="boot-steps">
@@ -514,9 +542,14 @@ import {
     useEffect(() => {
       if (!softwareGrantAvailable) return undefined;
       if (import.meta.env.DEV) {
-        // The dev server has no owner-protected library; probing it would
-        // misreport. Fixtures opt into a specific probe answer.
-        setGrantService(window.__LW_GRANT_PROBE_RESULT_FOR_TEST__ || { state: 'ready', reason: '' });
+        // The dev server's own library session route is a deliberate "signed
+        // out" 204 stub (see vite.config.js), never the real session JSON —
+        // so this origin truthfully has no grant service to reach, the same
+        // as the card's own served page. Fixtures opt into a specific probe
+        // answer; absent one, the truthful default is "no service", not
+        // "ready" (F12 — offering software authorization here used to lead
+        // straight into a bare "API route not found").
+        setGrantService(window.__LW_GRANT_PROBE_RESULT_FOR_TEST__ || { state: 'unavailable', reason: 'no-session-service' });
         return undefined;
       }
       let active = true;
@@ -526,6 +559,14 @@ import {
     const softwareGrantBlocked = grantService.state === 'sign-in-required' || grantService.state === 'unavailable';
     const useSoftwareAuthorization = softwareGrantAvailable && !forcePhysicalAuthorization && !softwareGrantBlocked;
     const actionLabel = mode === 'wifi' ? 'Update over Wi-Fi' : 'Update once over USB';
+    // Once the card is verified back on the target build, the one continue
+    // button goes where the owner was when the update interrupted them
+    // (recorded by the footer chip, Connection Center and Setup through
+    // rememberCardReturnIntent), else the journey's own destination, else
+    // Patterns. Pressed, never automatic; the label names the destination.
+    const continueDestination = phase === 'reconnected'
+      ? cardReturnDestination({ cardId: card.id, resumeDestination: 'patterns' })
+      : null;
     const phaseLabel = mode === 'usb' && phase === 'verifying'
       ? 'Upload complete · checking the saved update'
       : UPDATE_PHASE_LABELS[phase] || '';
@@ -830,9 +871,11 @@ import {
                 {softwareGrantAvailable && mode === 'wifi' && (softwareGrantBlocked ? (
                   <div className="install-release" role="status" data-testid="software-grant-blocked">
                     <span>
-                      {grantService.state === 'sign-in-required'
-                        ? 'Software authorization needs the owner sign-in for this Studio site. The card-button update above works without it.'
-                        : 'Studio cannot reach its software authorization service right now. The card-button update above works without it.'}
+                      {grantService.reason === 'no-session-service'
+                        ? 'This Studio has no software authorisation service (local or card-hosted). Use the card button.'
+                        : grantService.state === 'sign-in-required'
+                          ? 'Software authorization needs the owner sign-in for this Studio site. The card-button update above works without it.'
+                          : 'Studio cannot reach its software authorization service right now. The card-button update above works without it.'}
                     </span>
                     {grantService.reason === 'owner-access' && (
                       <button className="btn" type="button" onClick={() => openOwnerLibrarySignIn()}>Open owner sign-in</button>
@@ -859,6 +902,19 @@ import {
             {phase === 'reconnected' && <span> to Card {card.id} on firmware {targetLabel}</span>}
           </div>
         )}
+        {continueDestination && (
+          <button
+            className="btn-lg"
+            type="button"
+            data-testid="preserving-update-continue"
+            onClick={() => {
+              clearCardReturnIntent();
+              window.location.hash = continueDestination.hash;
+            }}
+          >
+            {continueDestination.label}
+          </button>
+        )}
         {error && <div className="install-check-error" role="alert">{error}</div>}
         {rollback && (
           <div className="install-check-error" role="alert">
@@ -882,9 +938,15 @@ import {
     const [installState, setInstallState] = useState('idle');
     const [releaseAttempt, setReleaseAttempt] = useState(0);
     const [commissioning, setCommissioning] = useState(readCardCommissioning);
+    // Only a flow present at mount represents an interrupted install. A new
+    // flow written by this mounted installer must retain its active USB UI.
+    const [interruptedInstallFlowId] = useState(() => {
+      const flow = readCardCommissioning();
+      return flow?.source === 'web-serial' && flow.stage === 'install-safely' ? flow.flowId : '';
+    });
     const [selectedStage, setSelectedStage] = useState(() => {
       const stage = readCardCommissioning()?.stage;
-      return stage === 'set-up-card' || stage === 'check-lights' ? stage : 'connect-card';
+      return interruptedInstallFlowId || stage === 'set-up-card' || stage === 'check-lights' ? stage : 'connect-card';
     });
     // `selectedStage` was read from the stored flow ONCE, at mount, and then
     // never again — a second store of the flow's own stage, reconciled never.
@@ -925,9 +987,10 @@ import {
     // already printed, including through the USB write — inspection is cleared
     // when flashing starts, but the card on the desk has not become unknown.
     useEffect(() => {
-      reportInstallFirmwareEvidence(cardState.state === 'ready' ? installedFirmware : null);
+      if (cardState.state === 'ready') reportInstallFirmwareEvidence(installedFirmware);
+      else clearInstallFirmwareEvidence({ preserveVerification: true });
     }, [cardState.state, installedFirmware]);
-    useEffect(() => () => clearInstallFirmwareEvidence(), []);
+    useEffect(() => () => clearInstallFirmwareEvidence({ preserveVerification: true }), []);
     const updateReadiness = preservingFixture?.readiness || cardLink?.readiness || null;
     const connectedCardCandidate = preservingFixture?.card || cardLink?.card || null;
     // A card already running the published release has nothing to update TO.
@@ -975,6 +1038,40 @@ import {
     const preservingCard = connectedUpdateCard || usbUpdateCard
       || (preservingFixture?.mode === 'usb' ? preservingFixture.card : null)
       || recoveryCard;
+    // A browser that remembers a configured card it has actually reached
+    // before must not headline the destructive factory installer while the
+    // card link is still settling — "Find connected card" over the erase
+    // sentence used to be the FIRST thing shown a few seconds after a power
+    // cycle, while the link was still reconnecting and about to resolve into
+    // the correct preserving update. Bound the wait by the same connect
+    // timeout the link itself uses (CARD_LINK_CONNECT_TIMEOUT_MS).
+    //
+    // Gated on a remembered HOST, not merely a remembered identity: an
+    // identity paired only over USB (or seeded without ever reaching a card
+    // over Wi-Fi) has no address to settle against, so there is nothing
+    // worth a holding screen for — it keeps today's factory-first screen
+    // immediately, unaffected.
+    const rememberedCardIdentity = useMemo(() => readPersistedCardIdentity(), []);
+    const rememberedCardHostKnown = useMemo(() => {
+      try {
+        return typeof window !== 'undefined' && Boolean(window.localStorage.getItem(CARD_HOST_STORAGE_KEY));
+      } catch {
+        return false;
+      }
+    }, []);
+    const [checkRetryToken, setCheckRetryToken] = useState(0);
+    const [rememberedCardLinkTimedOut, setRememberedCardLinkTimedOut] = useState(false);
+    useEffect(() => {
+      if (!rememberedCardIdentity || !rememberedCardHostKnown || preservingFixture) return undefined;
+      setRememberedCardLinkTimedOut(false);
+      const timer = setTimeout(() => setRememberedCardLinkTimedOut(true), CARD_LINK_CONNECT_TIMEOUT_MS);
+      return () => clearTimeout(timer);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [checkRetryToken, Boolean(rememberedCardIdentity)]);
+    const awaitingRememberedCardLink = Boolean(rememberedCardIdentity) && rememberedCardHostKnown
+      && !preservingMode && !rememberedCardLinkTimedOut;
+    const rememberedCardLinkUnreachable = Boolean(rememberedCardIdentity) && rememberedCardHostKnown
+      && !preservingMode && rememberedCardLinkTimedOut;
     const loaderRef = useRef(null);
     const transportRef = useRef(null);
     const inspectionRef = useRef(null);
@@ -984,6 +1081,34 @@ import {
     const firmwareReadRef = useRef({ token: 0, done: Promise.resolve() });
     const browserAssociationRef = useRef(null);
     const InstallHeading = embedded ? 'h2' : 'h1';
+
+    // Both screen-scoped: neither is about one field, both are about the
+    // whole install/update run. They used to be static `.install-check-error`
+    // boxes stacked in the flow, pushing whatever came after them (the card
+    // lookup button, the identity panel) down whenever a check failed.
+    // Cleanup dismisses on every re-run so leaving this screen — or the
+    // condition clearing on retry — never strands a floating notice.
+    useEffect(() => {
+      if (!preservingMode || updateReleaseState.state !== 'error') return undefined;
+      publishNotice({
+        key: 'automatic-install-update-release-error',
+        tone: 'error',
+        title: `Signed preserving update unavailable. ${updateReleaseState.error}`,
+        source: 'automatic-install-update-release',
+      });
+      return () => dismissNoticeKey('automatic-install-update-release-error');
+    }, [preservingMode, updateReleaseState.state, updateReleaseState.error]);
+
+    useEffect(() => {
+      if (cardState.state !== 'error') return undefined;
+      publishNotice({
+        key: 'automatic-install-card-error',
+        tone: 'error',
+        title: cardState.error,
+        source: 'automatic-install-card',
+      });
+      return () => dismissNoticeKey('automatic-install-card-error');
+    }, [cardState.state, cardState.error]);
 
     // A read and a write cannot share the USB line, so every path that takes
     // the card back — installing, or letting the card go — waits for an
@@ -1224,6 +1349,14 @@ import {
         transportRef.current = null;
         installingRef.current = false;
         setProgress(1);
+        beginInstallFirmwareVerification({
+          cardId: cardState.hardware.cardId,
+          buildNumber: releaseState.release.manifest.buildNumber,
+          buildId: releaseState.release.manifest.buildId,
+          previousBuildId: cardState.hardware.buildId,
+          previousBootId: cardLink?.readiness?.bootId,
+        });
+        setCardState(previous => ({ state: 'verifying', hardware: previous.hardware, error: '' }));
         // Flashing does not always clear NVS. A card whose saved Wi-Fi survives
         // boots onto the LAN and never raises a setup hotspot, so Studio has to
         // observe what actually happened instead of asserting AP mode. This
@@ -1308,7 +1441,8 @@ import {
       setSelectedStage(stage);
     };
 
-    const showCommissioningPanel = selectedStage === 'set-up-card' || selectedStage === 'check-lights';
+    const showCommissioningPanel = selectedStage === 'set-up-card' || selectedStage === 'check-lights'
+      || (selectedStage === 'install-safely' && interruptedInstallFlowId === commissioning?.flowId);
     if (showCommissioningPanel) {
       return (
         <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
@@ -1326,6 +1460,28 @@ import {
       );
     }
 
+    if (awaitingRememberedCardLink) {
+      return (
+        <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
+          <div className="install-task">
+            <CardCommissioningSteps
+              stage={selectedStage}
+              disabled={false}
+              onSelect={stage => { void openStage(stage); }}
+            />
+            <header className="install-intro">
+              <div className="eyebrow">Safe automatic installer</div>
+              <InstallHeading>Checking card…</InstallHeading>
+              <p>Studio remembers a Lightweaver card and is checking whether it is still here before offering to erase anything.</p>
+            </header>
+            <div className="install-release loading" role="status" data-testid="install-checking-card">
+              Checking card…
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const releaseReady = releaseState.state === 'ready';
     return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
@@ -1335,6 +1491,22 @@ import {
             disabled={installState === 'installing' || installState === 'observing'}
             onSelect={stage => { void openStage(stage); }}
           />
+
+          {rememberedCardLinkUnreachable && (
+            <div className="install-release error" role="status" data-testid="install-remembered-card-unreachable">
+              <p>Studio can’t reach the Lightweaver card it remembers ({rememberedCardIdentity?.id || 'this card'}). It may be off, out of range, or on a different Wi-Fi network.</p>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  setCheckRetryToken(token => token + 1);
+                  onConnectCard?.(cardLink?.host || '');
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          )}
 
           <header className="install-intro">
             <div className="eyebrow">Safe automatic installer</div>
@@ -1370,10 +1542,6 @@ import {
               onFirmwareSession={session => { if (session) setRecoverySession(session); }}
             />
           )}
-          {preservingMode && updateReleaseState.state === 'error' && (
-            <div className="install-check-error" role="alert">Signed preserving update unavailable. {updateReleaseState.error}</div>
-          )}
-
           {/* Explain exactly what this install does to the connected card. */}
           {!preservingMode && updatePlan.headline && (
             <div className={`install-update-plan is-${updatePlan.state}`} data-testid="install-update-plan" role="status">
@@ -1403,7 +1571,6 @@ import {
                 )}
               </div>
             )}
-            {cardState.state === 'error' && <div className="install-check-error" role="alert">{cardState.error}</div>}
           </section>
           )}
 

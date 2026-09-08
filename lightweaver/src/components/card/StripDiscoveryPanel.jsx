@@ -22,6 +22,7 @@ import {
   waitForClearedCard,
 } from '../../lib/benchInstall.js';
 import { clearCardProject } from '../../lib/cardClearProject.js';
+import { dismissNoticeKey, publishNotice } from '../../lib/noticeLayer.js';
 import { isTransientCardFailure, retryWhileTransient } from '../../lib/cardTransientFailure.js';
 import { clearDanglingWiringTransaction } from '../../lib/cardSetupDeploy.js';
 import { getCardBridgeState } from '../../lib/cardBridge.js';
@@ -546,6 +547,7 @@ export function StripDiscoveryPanel({
         step: channelProof.stage,
       });
     }
+    if (session?.phase === 'decade' && channelProof.stage === 'skipped') return discoveryFrame(session)?.map(color => color === '000000' ? color : '080808');
     return correctFrameForChannelMap(discoveryFrame(session), channelProof.map);
   }, [session, channelProof]);
 
@@ -603,6 +605,10 @@ export function StripDiscoveryPanel({
     });
   };
 
+  useEffect(() => {
+    if (session?.phase === 'probe' && ['done', 'skipped'].includes(channelProof.stage)) dispatch({ type: 'ruler-ready' });
+  }, [session?.phase, channelProof.stage, dispatch]);
+
   const skipChannelProof = () => setChannelProof({ stage: 'skipped', firstSeen: '', map: null, retry: false });
 
   // Explicit "show me again": re-push the current phase's frame and clear the
@@ -617,11 +623,9 @@ export function StripDiscoveryPanel({
   }, [outgoingFrame]);
   relightRef.current = relight;
 
-  const setPortRole = (pin, role) => setPortRoles(current => normalizePortRoles(
-    current.map(entry => (entry.pin === pin ? { ...entry, role } : entry)),
-  ));
-
-  const startDiscovery = async ({ clearedAlready = false } = {}) => {
+  const startDiscovery = async ({ clearedAlready = false, selectedRoles = portRoles } = {}) => {
+    const selectedBench = buildBenchConfig(selectedRoles, { pixelsPerPort: Object.fromEntries(selectedRoles.filter(entry => entry.role === PORT_ROLE_STRIP).map(entry => [entry.pin, Math.max(entry.pixelCount || 0, DISCOVERY_BENCH_HEADROOM)])), maxPixels: cardMaxPixels });
+    setPortRoles(selectedRoles);
     setBusy(true);
     setFailure('');
     setFailureDetail('');
@@ -634,7 +638,7 @@ export function StripDiscoveryPanel({
     // A fresh run replaces whatever interrupted run was stored (ui-repair B2).
     clearDiscoveryRun();
     setInterruptedRun(null);
-    const next = createStripDiscoverySession({ portRoles, benchLayout: bench.layout });
+    const next = createStripDiscoverySession({ portRoles: selectedRoles, benchLayout: selectedBench.layout });
     setSession(next);
     try {
       // installBenchConfig only resolves once the card has applied the config,
@@ -644,7 +648,7 @@ export function StripDiscoveryPanel({
       // that cannot light a pixel.
       await installBenchConfig({
         host,
-        config: bench.config,
+        config: selectedBench.config,
         flowId: flowIdRef.current,
         initial: true,
         transport: cardLink?.transport,
@@ -683,7 +687,7 @@ export function StripDiscoveryPanel({
           await clearCardProject({ host }).catch(() => null);
           await waitForClearedCard({ host }).catch(() => null);
           setBusy(false);
-          await startDiscovery({ clearedAlready: true });
+          await startDiscovery({ clearedAlready: true, selectedRoles });
           return;
         } catch (clearError) {
           const clearMessage = clearError?.message || 'Studio could not clear the card.';
@@ -699,7 +703,7 @@ export function StripDiscoveryPanel({
       setFailureReason(error?.reason || '');
       // Size numbers explain a size refusal; on the existing-project cause
       // they would only bury the one action that helps.
-      if (error?.reason === 'refused') setFailureDetail(benchSizeSentence(bench, cardMaxPixels));
+      if (error?.reason === 'refused') setFailureDetail(benchSizeSentence(selectedBench, cardMaxPixels));
       setSession(current => advance(current, { type: 'bench-failed', error: message }));
     } finally {
       setBusy(false);
@@ -727,7 +731,7 @@ export function StripDiscoveryPanel({
     }
   };
 
-  const extendBench = async () => {
+  const extendBench = async (pin = session.activePin) => {
     // The card is Ready by now, so this is an ORDINARY commissioned config
     // write — no one-shot authority involved.
     setBusy(true);
@@ -736,7 +740,7 @@ export function StripDiscoveryPanel({
     setBenchNotice('');
     let larger = null;
     try {
-      const activePin = session.activePin;
+      const activePin = pin;
       const pixelsPerPort = Object.fromEntries(session.ports
         .filter(port => port.role !== PORT_ROLE_CONTROL)
         .map(port => [port.pin, port.pin === activePin
@@ -914,55 +918,212 @@ export function StripDiscoveryPanel({
     return () => window.removeEventListener('beforeunload', warn);
   }, [phaseIsPastIdle, phase]);
 
+  // ── Screen-scoped notices ─────────────────────────────────────────────────
+  // Everything below used to sit in document flow (`.lw-card-banner.is-inline`
+  // / `.card-connection-failure`), so it pushed the rest of this panel down
+  // every time a poll or a probe changed the condition it reported. Each one
+  // here is about the card, the connection, or the run as a whole — never
+  // about a single port row, which is why it floats instead of living beside
+  // that row. Every condition below carries a stable `key` because this
+  // screen polls hard (stream health up to 18/s); without one, every poll
+  // would stack another notice.
+
+  // The stream's own health. `failing` and `idle` (no frame sent yet) are
+  // mutually exclusive branches of one verdict, so they share a key; the
+  // plain "lights are on" state never pushed anything and stays in flow
+  // (discovery-stream-live, above).
+  useEffect(() => {
+    if (!lighting) { dismissNoticeKey('discovery-stream-status'); return; }
+    if (streamHealth?.failing) {
+      publishNotice({
+        key: 'discovery-stream-status',
+        testId: 'discovery-stream-failing',
+        tone: 'error',
+        body: `Studio is not lighting the strip right now — ${streamFailureText(streamHealth.reason)}`
+          + `${streamHealth.failingForSeconds > 0 ? ` (${streamHealth.failingForSeconds}s)` : ''}. `
+          + 'A dark strip does not mean anything until this clears, so do not answer yet.',
+        source: 'strip-discovery',
+      });
+      return;
+    }
+    if (streamHealth?.sentFrames === 0) {
+      publishNotice({
+        key: 'discovery-stream-status',
+        testId: 'discovery-stream-idle',
+        tone: 'progress',
+        body: 'Studio has not sent a frame to the card yet. Wait for the lights before answering.',
+        source: 'strip-discovery',
+      });
+      return;
+    }
+    dismissNoticeKey('discovery-stream-status');
+  }, [lighting, streamHealth]);
+
+  // Frame truncation is additive — it can be true at the same time as the
+  // stream is otherwise healthy — so it gets its own key rather than sharing
+  // discovery-stream-status.
+  useEffect(() => {
+    if (!lighting || !streamHealth?.truncated) { dismissNoticeKey('discovery-stream-truncated'); return; }
+    publishNotice({
+      key: 'discovery-stream-truncated',
+      testId: 'discovery-stream-truncated',
+      tone: 'warning',
+      body: streamHealth.truncatedReason === 'bridge-frame-cap'
+        ? `This card's firmware can only be sent ${FRAME_CHUNK_MAX_PIXELS} LEDs at a time, so anything past
+                   LED ${FRAME_CHUNK_MAX_PIXELS} stays dark no matter how long the strip is. Update the card
+                   firmware to walk the whole run.`
+        : `Only part of each frame is reaching the card, so anything past the first
+                   ${FRAME_CHUNK_MAX_PIXELS} LEDs stays dark. Treat the far end as unmeasured.`,
+      source: 'strip-discovery',
+    });
+  }, [lighting, streamHealth]);
+
+  // A restart mid-question means the strip may have changed while the owner
+  // was looking. relight() clears cardRestartedDuringLook once the lights are
+  // back on, which retracts this by the same key.
+  useEffect(() => {
+    if (!cardRestartedDuringLook) { dismissNoticeKey('discovery-card-restarted'); return; }
+    publishNotice({
+      key: 'discovery-card-restarted',
+      testId: 'discovery-card-restarted',
+      tone: 'error',
+      body: 'The card restarted while you were looking, so what the strip showed may have changed. '
+        + 'The answer buttons are paused — light it again and take another look first.',
+      source: 'strip-discovery',
+    });
+  }, [cardRestartedDuringLook]);
+
+  // A probe result — the card refused to light a port, or lighting it failed
+  // outright. probePort() clears probeError itself before every new attempt.
+  useEffect(() => {
+    if (!probeError) { dismissNoticeKey('discovery-probe-error'); return; }
+    publishNotice({
+      key: 'discovery-probe-error',
+      testId: 'discovery-probe-error',
+      tone: 'error',
+      body: probeError,
+      source: 'strip-discovery',
+    });
+  }, [probeError]);
+
+  // The 4-output silicon ceiling is about the run's whole port selection,
+  // never about one row — each skipped port still keeps its own line in the
+  // list that stays in flow below.
+  useEffect(() => {
+    const overLimit = phase === 'idle' && (overOutputLimit
+      || (selectedPort !== null && probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs
+        && !probeTargets.some(port => port.pin === selectedPort)));
+    if (!overLimit) { dismissNoticeKey('discovery-output-limit'); return; }
+    publishNotice({
+      key: 'discovery-output-limit',
+      testId: 'discovery-output-limit',
+      tone: 'error',
+      body: `This card can drive ${CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs at once`
+        + (outputLimitSkips.length > 0
+          ? `, so ${outputLimitSkips.map(entry => `GPIO ${entry.pin}`).join(', ')} will not be lit`
+          : '')
+        + `. Pick at most ${CARD_HARDWARE_CONTRACT.maxOutputs}, or use a second card for the rest.`,
+      source: 'strip-discovery',
+    });
+  }, [phase, overOutputLimit, selectedPort, probeTargets, outputLimitSkips]);
+
+  useEffect(() => {
+    const noOutputs = phase === 'idle' && probeTargets.length > 0 && !bench.config;
+    if (!noOutputs) { dismissNoticeKey('discovery-no-outputs'); return; }
+    publishNotice({
+      key: 'discovery-no-outputs',
+      testId: 'discovery-no-outputs',
+      tone: 'error',
+      body: 'None of the ports you picked can be set up as an LED output, so there is nothing for '
+        + 'Studio to light. Pick a port from the list above that is not in use by the controls.',
+      source: 'strip-discovery',
+    });
+  }, [phase, probeTargets, bench.config]);
+
+  // About the card's own power ceiling, not any one port — previously buried
+  // in a collapsed Details disclosure, where an owner who never opened it
+  // never saw it at all.
+  useEffect(() => {
+    if (maxMilliampsSource !== 'default') { dismissNoticeKey('discovery-power-warning'); return; }
+    publishNotice({
+      key: 'discovery-power-warning',
+      testId: 'discovery-power-warning',
+      tone: 'info',
+      body: `The card uses its default ${DEFAULT_PRODUCTION_MAX_MILLIAMPS} mA power limit. Counting runs `
+        + `dim at ${BENCH_MAX_MILLIAMPS} mA; set your supply during installation.`,
+      source: 'strip-discovery',
+    });
+  }, [maxMilliampsSource]);
+
+  // The final install onto the card. Its two recovery buttons stay in flow
+  // with their own testids (discovery-install-takeover,
+  // discovery-install-clear-and-retry) — see the render below.
+  useEffect(() => {
+    if (!installError) { dismissNoticeKey('discovery-install-failed'); return; }
+    publishNotice({
+      key: 'discovery-install-failed',
+      testId: 'discovery-install-failed',
+      tone: 'error',
+      body: installError,
+      source: 'strip-discovery',
+    });
+  }, [installError]);
+
+  // The general run failure. The "never twice" guard — skip it when the
+  // bench-install screen is already showing this exact sentence as
+  // discovery-install-error — is now the condition this effect checks, rather
+  // than a render-time comparison.
+  useEffect(() => {
+    const showFailure = Boolean(failure) && !(phase === 'bench-install' && failure === session?.error);
+    if (!showFailure) { dismissNoticeKey('discovery-failure'); return; }
+    publishNotice({
+      key: 'discovery-failure',
+      testId: 'discovery-failure',
+      tone: 'error',
+      title: failure,
+      // Size is never the reason discovery stops for good, so the numbers
+      // sit under the card's own words rather than replacing them.
+      body: failureDetail || '',
+      source: 'strip-discovery',
+    });
+  }, [failure, failureDetail, phase, session?.error]);
+
+  // This screen's own notices must not outlive it — a floating "output limit"
+  // or "card restarted" verdict would otherwise still be on screen after the
+  // owner has navigated away to a different one entirely.
+  useEffect(() => () => {
+    [
+      'discovery-stream-status', 'discovery-stream-truncated', 'discovery-card-restarted',
+      'discovery-probe-error', 'discovery-output-limit', 'discovery-no-outputs',
+      'discovery-power-warning', 'discovery-install-failed', 'discovery-failure',
+    ].forEach(dismissNoticeKey);
+  }, []);
+
   return (
     <div className={`${embedded ? '' : 'screen '}strip-discovery${embedded ? ' is-embedded' : ''}`} data-testid="strip-discovery">
-      <header className="panel-head">
-        {!embedded && <span className="ttl">Find my strips</span>}
-        <span className="meta">{host || 'no card host'} · physical light setup · outputs use GPIO labels</span>
-      </header>
-
-      {maxMilliampsSource === 'default' && (
-        <p className="lw-card-banner is-inline" data-testid="discovery-power-warning" role="status">
-          No power limit was ever set on this card, so it is using its built-in {DEFAULT_PRODUCTION_MAX_MILLIAMPS} mA
-          fallback and will quietly dim the LEDs to stay under it. Set the real supply during commissioning.
-          Nothing here is blocked by it — discovery runs at {BENCH_MAX_MILLIAMPS} mA on purpose.
-        </p>
-      )}
+      <details className="strip-discovery-details">
+        <summary>Details</summary>
+        <p>{host || 'No card connected'} · Ports use the GPIO labels printed on the card.</p>
+        {/* Moved to the notice layer (discovery-power-warning) — it is about
+            the card's own power ceiling, not this Details row, and living
+            inside a collapsed disclosure meant an owner who never opened it
+            never saw it. */}
+        <p>Up to {CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs. Ports used by controls are unavailable.</p>
+      </details>
 
       {/* Whether Studio is actually driving the strip right now. Without this a
           strip receiving nothing looks exactly like a strip that ends where the
           light stops, and every answer the owner gives from here on is a guess. */}
       {lighting && (
         <div className="strip-discovery-stream" data-testid="discovery-stream-health">
-          {streamHealth?.failing ? (
-            <p className="lw-card-banner is-inline" role="alert" data-testid="discovery-stream-failing">
-              Studio is not lighting the strip right now — {streamFailureText(streamHealth.reason)}
-              {streamHealth.failingForSeconds > 0 ? ` (${streamHealth.failingForSeconds}s)` : ''}.
-              A dark strip does not mean anything until this clears, so do not answer yet.
-            </p>
-          ) : streamHealth?.sentFrames === 0 ? (
-            <p className="lw-card-banner is-inline" role="status" data-testid="discovery-stream-idle">
-              Studio has not sent a frame to the card yet. Wait for the lights before answering.
-            </p>
-          ) : (
+          {/* failing/idle moved to the notice layer (discovery-stream-status,
+              below) — a dark strip is a card-connection verdict, not a note
+              about this row, and it was recomputed on every health poll. Only
+              the quiet "lights are on" line, which never pushed anything,
+              stays in flow. */}
+          {!streamHealth?.failing && streamHealth?.sentFrames !== 0 && (
             <p className="strip-discovery-note" role="status" data-testid="discovery-stream-live">
-              Studio is driving the strip. Whatever is dark on it is dark because the LEDs end there.
-            </p>
-          )}
-          {streamHealth?.truncated && (
-            <p className="lw-card-banner is-inline" role="status" data-testid="discovery-stream-truncated">
-              {streamHealth.truncatedReason === 'bridge-frame-cap'
-                ? `This card's firmware can only be sent ${FRAME_CHUNK_MAX_PIXELS} LEDs at a time, so anything past
-                   LED ${FRAME_CHUNK_MAX_PIXELS} stays dark no matter how long the strip is. Update the card
-                   firmware to walk the whole run.`
-                : `Only part of each frame is reaching the card, so anything past the first
-                   ${FRAME_CHUNK_MAX_PIXELS} LEDs stays dark. Treat the far end as unmeasured.`}
-            </p>
-          )}
-          {cardRestartedDuringLook && (
-            <p className="lw-card-banner is-inline" role="alert" data-testid="discovery-card-restarted">
-              The card restarted while you were looking, so what the strip showed may have changed.
-              The answer buttons are paused — light it again and take another look first.
+              Test lights are on.
             </p>
           )}
           <button type="button" className="btn" data-testid="discovery-relight" onClick={relight}>
@@ -988,25 +1149,11 @@ export function StripDiscoveryPanel({
               </button>
             </div>
           )}
-          <h3>Which outputs should Studio check?</h3>
-          <p>
-            An output can carry lights, a knob or slider, or nothing. Studio checks only the outputs you
-            leave set to lights. Pick up to {CARD_HARDWARE_CONTRACT.maxOutputs} — that is how many
-            light outputs this card can drive at once. GPIO is the small technical label on the card.
-          </p>
-          {probePorts?.available && (
-            <p className="strip-discovery-note" data-testid="discovery-probe-hint">
-              Not sure which port your strip is on? Press <b>Light it</b> and look — the card lights
-              {' '}{probePorts.pixelsPerPort || BENCH_DEFAULT_PORT_PIXELS} LEDs on that port straight
-              away. It stays dim and short until the setup below is written, because the card does
-              not know your strip length or your power supply yet.
-            </p>
-          )}
-          {probeError && (
-            <p className="lw-card-banner is-inline" role="alert" data-testid="discovery-probe-error">
-              {probeError}
-            </p>
-          )}
+          <h3>Find your strip</h3>
+          <p>Tap a port to light its first few LEDs.</p>
+          {/* probeError moved to the notice layer (discovery-probe-error) —
+              it is a probe result, about the card's answer to the last port
+              pressed, not about any one row in the grid below. */}
           {/* Every port, as buttons. Click one and it lights, so the owner looks at
               the strip instead of reading a list. Under the grid, one check: is a
               light actually installed on the port you just lit. */}
@@ -1035,31 +1182,18 @@ export function StripDiscoveryPanel({
               );
             })}
           </div>
-          {portRoles.some(entry => BENCH_RESERVED_CONTROL_PINS.includes(entry.pin)) && (
-            <p className="strip-discovery-note" data-testid="discovery-control-pins">
-              The other outputs are held by the knobs and buttons.
-            </p>
-          )}
-          {selectedPort !== null && (
-            <label className="strip-discovery-pick strip-discovery-pick-block" data-testid="discovery-pick-row">
-              <input
-                type="checkbox"
-                data-testid={`discovery-claim-${selectedPort}`}
-                checked={portRoles.find(entry => entry.pin === selectedPort)?.role === PORT_ROLE_STRIP}
-                onChange={event => setPortRole(selectedPort, event.target.checked ? PORT_ROLE_STRIP : PORT_ROLE_UNUSED)}
-              />
-              <span>Lights are installed on GPIO {selectedPort}</span>
-            </label>
-          )}
-          {overOutputLimit && (
-            <p className="lw-card-banner is-inline" role="alert" data-testid="discovery-output-limit">
-              This card can drive {CARD_HARDWARE_CONTRACT.maxOutputs} strip outputs at once
-              {outputLimitSkips.length > 0
-                ? `, so ${outputLimitSkips.map(entry => `GPIO ${entry.pin}`).join(', ')} will not be lit`
-                : ''}. Pick at most
-              {' '}{CARD_HARDWARE_CONTRACT.maxOutputs}, or use a second card for the rest.
-            </p>
-          )}
+          {selectedPort !== null && <div className="strip-discovery-confirm">
+            <h3>Did your strip light up?</h3>
+            <p className="strip-discovery-note" data-testid="discovery-start-note">Counting saves a temporary setup on the card, kept after restart until you install your project.</p>
+            <div className="strip-discovery-actions">
+              <button type="button" className="btn primary" data-testid="discovery-start" disabled={busy || Boolean(probeBusy) || overOutputLimit || (probeTargets.length >= CARD_HARDWARE_CONTRACT.maxOutputs && !probeTargets.some(port => port.pin === selectedPort))} onClick={() => void startDiscovery({ selectedRoles: normalizePortRoles(portRoles.map(entry => entry.pin === selectedPort ? { ...entry, role: PORT_ROLE_STRIP } : entry)) })}>{busy ? 'Setting up…' : 'Yes, count this strip'}</button>
+              <button type="button" className="btn" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another port</button>
+            </div>
+          </div>}
+          {/* discovery-output-limit and discovery-no-outputs moved to the
+              notice layer — both are about the run's whole port selection,
+              never about one row (each skipped port keeps its own line in
+              the list below). */}
           {otherSkips.length > 0 && (
             <ul className="strip-discovery-skipped" data-testid="discovery-skipped">
               {otherSkips.map(entry => (
@@ -1069,37 +1203,6 @@ export function StripDiscoveryPanel({
               ))}
             </ul>
           )}
-          {probeTargets.length > 0 && !bench.config && (
-            <p className="lw-card-banner is-inline" role="alert" data-testid="discovery-no-outputs">
-              None of the ports you picked can be set up as an LED output, so there is nothing for
-              Studio to light. Pick a port from the list above that is not in use by the controls.
-            </p>
-          )}
-          {/* The one state where the primary button is disabled and nothing on
-              screen said why. An owner who has already pressed a port, watched
-              their strip light up, and can see the answer is right there ends
-              up pressing a dead button instead. Name the missing step. */}
-          {probeTargets.length === 0 && !busy && (
-            <p className="lw-card-banner is-inline" role="status" data-testid="discovery-needs-port">
-              {selectedPort === null
-                ? 'Pick the port your lights are plugged into. Press a GPIO above — the card lights that port straight away — then tick “Lights are installed on GPIO …”.'
-                : `Tick “Lights are installed on GPIO ${selectedPort}” above to confirm that is the port, then Studio can start.`}
-            </p>
-          )}
-          <button
-            type="button"
-            className="btn primary"
-            data-testid="discovery-start"
-            onClick={startDiscovery}
-            disabled={busy || probeTargets.length === 0 || overOutputLimit || !bench.config}
-          >
-            {busy ? 'Setting the card up…' : 'Start finding lights'}
-          </button>
-          <p className="strip-discovery-note" data-testid="discovery-start-note">
-            This writes one temporary setup to the card — {DISCOVERY_BENCH_HEADROOM} lights per chosen
-            output — so it can light the connected run at all. The card keeps playing that setup, even after a
-            restart, until your own project replaces it at the end.
-          </p>
         </section>
       )}
 
@@ -1139,22 +1242,14 @@ export function StripDiscoveryPanel({
 
       {phase === 'probe' && activePort && (
         <section className="strip-discovery-step" data-testid="discovery-probe">
-          <h3>{portLabel(activePort)} — how far do the lights go?</h3>
-          <p>
-            Studio lit the first <strong data-testid="discovery-lit-count">{activePort.litCount}</strong> LEDs
-            on this port. Look at the strip.
-          </p>
-          {benchNotice && (
-            <p className="lw-card-banner is-inline" role="status" data-testid="discovery-bench-maxed">
-              {benchNotice}
-            </p>
-          )}
+          <h3>What color are the lights?</h3>
+          <p>{portLabel(activePort)} · Two quick checks make the counting colors accurate.</p>
           {(channelProof.stage === 'first' || channelProof.stage === 'second') && (
             <div className="lw-card-banner is-inline" role="status" data-testid="discovery-color-proof">
               <p>
                 {channelProof.stage === 'first'
-                  ? 'First, a quick colour check so every colour used later can be trusted: the lit LEDs are all showing ONE colour right now. What colour do you see?'
-                  : 'One more: Studio changed the lit LEDs to a different colour. What colour do you see now?'}
+                  ? 'Look at the strip and choose its color.'
+                  : 'And now?'}
               </p>
               {channelProof.retry && (
                 <p role="alert" data-testid="discovery-color-proof-retry">
@@ -1163,36 +1258,13 @@ export function StripDiscoveryPanel({
                 </p>
               )}
               <div className="strip-discovery-actions">
-                <button type="button" className="btn" data-testid="discovery-color-red" onClick={() => answerChannelProof('red')}>Red</button>
-                <button type="button" className="btn" data-testid="discovery-color-green" onClick={() => answerChannelProof('green')}>Green</button>
-                <button type="button" className="btn" data-testid="discovery-color-blue" onClick={() => answerChannelProof('blue')}>Blue</button>
-                <button type="button" className="btn btn-ghost" data-testid="discovery-color-skip" onClick={skipChannelProof}>
+                <button type="button" className="btn" data-testid="discovery-color-red" disabled={cardRestartedDuringLook} onClick={() => answerChannelProof('red')}>Red</button>
+                <button type="button" className="btn" data-testid="discovery-color-green" disabled={cardRestartedDuringLook} onClick={() => answerChannelProof('green')}>Green</button>
+                <button type="button" className="btn" data-testid="discovery-color-blue" disabled={cardRestartedDuringLook} onClick={() => answerChannelProof('blue')}>Blue</button>
+                <button type="button" className="btn btn-ghost" data-testid="discovery-color-skip" disabled={cardRestartedDuringLook} onClick={skipChannelProof}>
                   I can’t tell — skip this
                 </button>
               </div>
-            </div>
-          )}
-          {activePort.needsLargerBench ? (
-            <>
-              <p className="lw-card-banner is-inline" role="status" data-testid="discovery-bench-ceiling">
-                This strip runs past the {activePort.provisioned} LEDs the card is currently set up for.
-                Extend the setup and keep going — length is never a problem here.
-              </p>
-              <button type="button" className="btn primary" onClick={extendBench} disabled={busy}>
-                {busy ? 'Extending…' : 'Extend and keep looking'}
-              </button>
-            </>
-          ) : (
-            <div className="strip-discovery-actions">
-              <button type="button" className="btn primary" data-testid="discovery-more" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'probe-more' })}>
-                There are more lights past the end
-              </button>
-              <button type="button" className="btn" data-testid="discovery-enough" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'probe-enough' })}>
-                The lit part covers the whole strip
-              </button>
-              <button type="button" className="btn btn-ghost" data-testid="discovery-skip" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'probe-skip' })}>
-                Nothing lit up on this port
-              </button>
             </div>
           )}
         </section>
@@ -1201,10 +1273,12 @@ export function StripDiscoveryPanel({
       {phase === 'decade' && (
         <section className="strip-discovery-step" data-testid="discovery-decade">
           <h3>Read the count off the strip</h3>
-          <p>
-            Every 10th LED is green, every 50th blue, every 100th red. Count the reds, then the blues
-            after the last red, then the greens after that, then the plain warm ones on the end.
-          </p>
+          {channelProof.stage !== 'skipped' && <div className="strip-discovery-legend" aria-label="Counting markers">
+            <span><i className="is-orange" />Every 5 · orange</span><span><i className="is-red" />Every 10 · red</span><span><i className="is-pink" />Every 50 · pink</span>
+          </div>}
+          {channelProof.stage !== 'skipped' && <p>Count the markers, then the yellow lights at the end. Enter your total.</p>}
+          {channelProof.stage === 'skipped' && <p role="status">Colors are unverified. Enter a count you know, or <button type="button" className="btn" onClick={() => { setChannelProof({ stage: 'first', firstSeen: '', map: null, retry: false }); setSession(current => ({ ...current, phase: 'probe', activePin: current.ports.find(port => port.probed)?.pin })); }}>Check colors</button>.</p>}
+          {benchNotice && <p role="status" data-testid="discovery-bench-maxed">{benchNotice}</p>}
           <ul className="strip-discovery-counts">
             {session.ports.filter(port => port.probed && !port.skipped).map(port => (
               <li key={port.pin}>
@@ -1217,15 +1291,18 @@ export function StripDiscoveryPanel({
                     inputMode="numeric"
                     aria-label={`${portLabel(port)} LED count`}
                     data-testid={`discovery-count-${port.pin}`}
-                    value={port.count}
+                    disabled={busy || cardRestartedDuringLook}
+                    value={port.count || ''}
+                    placeholder="Count"
                     onFocus={event => event.target.select()}
                     onChange={event => dispatch({ type: 'set-count', pin: port.pin, count: event.target.value })}
                   />
                 </label>
+                <button type="button" className="btn btn-ghost" data-testid={`discovery-ruler-extend-${port.pin}`} disabled={busy || cardRestartedDuringLook} onClick={() => void extendBench(port.pin)}>{busy ? 'Extending…' : `Strip goes past ${port.provisioned}? Light more`}</button>
               </li>
             ))}
           </ul>
-          <button type="button" className="btn primary" data-testid="discovery-counts-done" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'counts-entered' })}>
+          <button type="button" className="btn primary" data-testid="discovery-counts-done" disabled={busy || cardRestartedDuringLook || session.ports.some(port => port.probed && !port.skipped && port.count < 1)} onClick={() => dispatch({ type: 'counts-entered' })}>
             Check the last LED
           </button>
         </section>
@@ -1243,7 +1320,7 @@ export function StripDiscoveryPanel({
               Yes, that is the last one
             </button>
             <button type="button" className="btn" data-testid="discovery-end-no" disabled={cardRestartedDuringLook} onClick={() => dispatch({ type: 'end-marker-no' })}>
-              No, there are more
+              Adjust my count
             </button>
           </div>
         </section>
@@ -1259,6 +1336,7 @@ export function StripDiscoveryPanel({
               </li>
             ))}
           </ul>
+          <button type="button" className="btn" data-testid="discovery-add-strip" onClick={() => { setPortRoles(current => normalizePortRoles(current.map(entry => { const found = session.ports.find(port => port.pin === entry.pin); return found?.confirmed ? { ...entry, role: PORT_ROLE_STRIP, pixelCount: found.count } : entry; }))); setSelectedPort(null); setSession(null); }}>Add another strip</button>
           <button type="button" className="btn primary" data-testid="discovery-record-save" onClick={record}>
             Save what we found
           </button>
@@ -1326,32 +1404,31 @@ export function StripDiscoveryPanel({
               </button>
             </>
           )}
-          {installError && (
-            <div className="card-connection-failure" role="alert" data-testid="discovery-install-failed">
-              <p>{installError}</p>
-              {installErrorReason === 'project-mismatch' && (
-                <button
-                  type="button"
-                  className="btn primary"
-                  data-testid="discovery-install-takeover"
-                  disabled={busy}
-                  onClick={() => void installOnCard(true)}
-                >
-                  Use this card for this piece
-                </button>
-              )}
-              {installErrorReason === 'staged-existing-project' && (
-                <button
-                  type="button"
-                  className="btn"
-                  data-testid="discovery-install-clear-and-retry"
-                  disabled={busy}
-                  onClick={() => void clearCardAndRetry()}
-                >
-                  Clear the card and start over
-                </button>
-              )}
-            </div>
+          {/* The message itself moved to the notice layer (discovery-install-failed,
+              testid preserved there). Its two recovery buttons stay in flow —
+              they are real, separately-tested controls, and the layer's action
+              slot is a single unlabelled button with no test hook of its own. */}
+          {installError && installErrorReason === 'project-mismatch' && (
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="discovery-install-takeover"
+              disabled={busy}
+              onClick={() => void installOnCard(true)}
+            >
+              Use this card for this piece
+            </button>
+          )}
+          {installError && installErrorReason === 'staged-existing-project' && (
+            <button
+              type="button"
+              className="btn"
+              data-testid="discovery-install-clear-and-retry"
+              disabled={busy}
+              onClick={() => void clearCardAndRetry()}
+            >
+              Clear the card and start over
+            </button>
           )}
         </section>
       )}
@@ -1373,18 +1450,10 @@ export function StripDiscoveryPanel({
         </p>
       )}
 
-      {/* Not when the install-failure block above is already showing this exact
-          sentence with the action beside it. The same words appeared twice on
-          one screen — once as the explanation, once again as a red alert
-          underneath — which reads as two separate problems. */}
-      {failure && !(phase === 'bench-install' && failure === session?.error) && (
-        <div className="card-connection-failure" role="alert" data-testid="discovery-failure">
-          <p>{failure}</p>
-          {/* Size is never the reason discovery stops for good, so the numbers
-              sit under the card's own words rather than replacing them. */}
-          {failureDetail && <p data-testid="discovery-failure-size">{failureDetail}</p>}
-        </div>
-      )}
+      {/* Moved to the notice layer (discovery-failure) — a run failure is
+          about the card/run as a whole, and the same "never twice" guard
+          (skip it when the bench-install screen is already showing this exact
+          sentence) is now the condition the publishing effect checks. */}
     </div>
   );
 }

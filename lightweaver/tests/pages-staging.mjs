@@ -125,7 +125,7 @@ assert.equal(
 );
 assert.equal(pkg.scripts['test:screen-recovery'], 'playwright test tests/screen-recovery.spec.ts');
 assert.equal(pkg.scripts['test:production'], 'playwright test tests/production-setup.spec.ts tests/production-physical-unmount.spec.ts --project=chromium --workers=1');
-assert.match(pkg.scripts['launch:source'], /npm run test:prod-deploy && npm run test:build-graph && npm run test:studio-release && npm run test:show && npm run test:screen-recovery && npm run test:production/);
+assert.match(pkg.scripts['launch:source'], /npm run test:prod-deploy && npm run test:build-graph && npm run test:studio-release && npm run ci:browser-regression && npm run test:production/);
 assert.match(pkg.scripts['launch:source'], /^npm run test:core:source/);
 assert.equal(pkg.scripts['launch:check'], 'npm run launch:source && npm run firmware:check-bin');
 assert.match(testWorkflow, /packages\/installer-core\/\*\*/);
@@ -135,8 +135,9 @@ assert.match(testWorkflow, /node scripts\/ci-changed-lanes\.mjs/);
 assert.match(testWorkflow, /npm run ci:source-build/);
 assert.match(testWorkflow, /npm run ci:browser-smoke/);
 assert.doesNotMatch(testWorkflow, /npm run test:release-ui|--shard=/);
-assert.match(pkg.scripts['ci:browser-smoke'], /npm run test:show/);
-assert.match(pkg.scripts['ci:browser-smoke'], /npm run test:screen-recovery/);
+assert.match(pkg.scripts['ci:browser-smoke'], /playwright test [^&]*tests\/strip-discovery\.spec\.ts[^&]* --project=chromium --workers=1$/);
+assert.match(pkg.scripts['ci:browser-regression'], /npm run test:show/);
+assert.match(pkg.scripts['ci:browser-regression'], /npm run test:screen-recovery/);
 assert.match(exhaustiveWorkflow, /npm run launch:check/);
 assert.match(pkg.scripts['launch:source'], /npm run test:release-ui/);
 assert.match(testWorkflow, /npm run ci:cloud/);
@@ -145,11 +146,11 @@ assert.match(testWorkflow, /npm run ci:firmware-sensitive/);
 assert.match(testWorkflow, /npm run ci:artifact/);
 assert.doesNotMatch(testWorkflow, /npm run launch:(?:source|check)/);
 assert.match(testWorkflow, /wrangler d1 migrations apply PROJECTS_DB[\s\S]*?--config wrangler\.local\.toml[\s\S]*?--local/);
-assert.match(testWorkflow, /CI_BASE_SHA:\s*\$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.event\.before \}\}/);
-assert.match(testWorkflow, /CI_HEAD_SHA:\s*\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.event\.merge_group\.head_sha \|\| github\.sha \}\}/);
-assert.match(testWorkflow, /needs: \[classify, source, browser, cloud, production, firmware, artifact\]/);
-assert.match(testWorkflow, /if: \$\{\{ always\(\) \}\}/);
-assert.match(testWorkflow, /if \[ "\$result" = "failure" \] \|\| \[ "\$result" = "cancelled" \]/);
+assert.doesNotMatch(testWorkflow, /^\s{2}pull_request:/m);
+assert.match(testWorkflow, /CI_BASE_SHA:\s*\$\{\{ github\.event\.merge_group\.base_sha \|\| github\.event\.before \}\}/);
+assert.match(testWorkflow, /CI_HEAD_SHA:\s*\$\{\{ github\.event\.merge_group\.head_sha \|\| github\.sha \}\}/);
+assert.doesNotMatch(testWorkflow, /^  gate:/m);
+assert.doesNotMatch(testWorkflow, /Require every selected lane/);
 
 assert.match(
   workflow,

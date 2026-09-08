@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { getCardLinkState, subscribeCardLink } from '../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { useProject } from '../../state/ProjectContext.jsx';
@@ -6,11 +6,8 @@ import { normalizePatchBoard } from '../../lib/patchBoard.js';
 import { CardPushControl } from '../layout/shared/CardPushControl.jsx';
 import { WireHoverDescription } from '../layout/shared/WireHoverDescription.jsx';
 import { WiringPreflight } from '../layout/wire/WiringPreflight.jsx';
-import { WiringBenchTest } from '../layout/wire/WiringBenchTest.jsx';
-import { StripColorOrderCheck } from '../layout/wire/StripColorOrderCheck.jsx';
 import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
 import { STRIP_DISCOVERY_BLANK_MESSAGE, STRIP_DISCOVERY_LABEL, STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../lib/cardAction.js';
-import { planAdjacentStripBoundary, planOutputPixelCountAdjustment } from '../../lib/wiringChase.js';
 import '../../styles/lw-wire.css';
 
 // Guided find-strips / finish-wire / LED check / color-order / install flow.
@@ -34,18 +31,8 @@ export function CardInstallAction({
   const cta = yieldPrimary ? 'btn lww-cta' : 'btn primary lww-cta';
   const {
     wiring, updateWiring, compiledWiring, patchBoard,
-    projectId, projectName, standaloneController, setStandaloneController, confirmedCardLook,
-    strips, setStrips,
+    projectId, projectName, standaloneController, strips,
   } = useProject();
-  // True while the guided LED check owns the primary flow area — the bench
-  // wizard runs first, then the color quiz presents itself as the next question.
-  const [checkFlowOpen, setCheckFlowOpen] = useState(false);
-  // The wiring check asks the owner to judge by COLOUR ("first blue, last red,
-  // green in between") but the colour order is only verified afterwards. When
-  // the order is wrong that step is unanswerable — the strip shows the wrong
-  // colours and the only trouble option offered was the LED count, which is not
-  // the fault. This lets the colour check jump the queue and hand back.
-  const [colorCheckFirst, setColorCheckFirst] = useState(false);
   const stripsById = useMemo(() => new Map(strips.map(strip => [strip.id, strip])), [strips]);
   const runsById = useMemo(() => new Map(wiring.runs.map(run => [run.id, run])), [wiring.runs]);
   // CardPushControl still accepts the legacy transport shape. Build that shape
@@ -77,62 +64,6 @@ export function CardInstallAction({
       segments: output.segments,
     })),
   }), [standaloneController, compiledWiring.outputs]);
-  const adjustableRunIds = useMemo(() => wiring.outputs.flatMap(output => output.runIds.filter((runId, index) => {
-    const run = runsById.get(runId);
-    if (run?.type !== 'strip') return false;
-    return runsById.get(output.runIds[index + 1])?.type === 'strip' || runsById.get(output.runIds[index - 1])?.type === 'strip';
-  })), [wiring.outputs, runsById]);
-  const adjustableOutputIds = useMemo(() => wiring.outputs
-    .filter(output => output.runIds.some(runId => runsById.get(runId)?.type === 'strip'))
-    .map(output => output.id), [wiring.outputs, runsById]);
-
-  const applyStripCountUpdates = updates => {
-    const validationStrips = strips.map(strip => {
-      const update = updates.find(item => item.stripId === strip.id);
-      return update ? { ...strip, pixelCount: update.count } : strip;
-    });
-    const result = updateWiring(draft => {
-      for (const update of updates) {
-        const run = draft.runs.find(item => item.id === update.runId);
-        if (!run || run.type !== 'strip') continue;
-        run.source.from = 0;
-        run.source.to = update.count - 1;
-        if (run.seamLed != null && run.seamLed > run.source.to) run.seamLed = run.source.to;
-      }
-    }, { changeKind: 'seam', runIds: updates.map(item => item.runId), strips: validationStrips });
-    if (!result.ok) return result;
-    setStrips(current => current.map(strip => {
-      const update = updates.find(item => item.stripId === strip.id);
-      return update ? { ...strip, pixelCount: update.count } : strip;
-    }), { recordHistory: false });
-    return result;
-  };
-  const adjustRunBoundary = (runId, delta) => {
-    if (onAdjustBoundary) return onAdjustBoundary(runId, delta);
-    const output = wiring.outputs.find(item => item.runIds.includes(runId));
-    if (!output) return { ok: false, error: 'Run is not assigned to an output.' };
-    try {
-      return applyStripCountUpdates(planAdjacentStripBoundary(
-        wiring,
-        Object.fromEntries(strips.map(strip => [strip.id, strip.pixelCount])),
-        { outputId: output.id, runId, delta },
-      ));
-    } catch (error) {
-      return { ok: false, error: error.message };
-    }
-  };
-  const adjustOutputCount = (outputId, delta) => {
-    if (onAdjustOutput) return onAdjustOutput(outputId, delta);
-    try {
-      return applyStripCountUpdates([planOutputPixelCountAdjustment(
-        wiring,
-        Object.fromEntries(strips.map(strip => [strip.id, strip.pixelCount])),
-        { outputId, delta },
-      )]);
-    } catch (error) {
-      return { ok: false, error: error.message };
-    }
-  };
 
   const stripIds = new Set(strips.map(strip => strip.id));
   const mappedStripIds = new Set(wiring.runs.filter(run => run.type === 'strip' && stripIds.has(run.source.stripId)).map(run => run.source.stripId));
@@ -142,7 +73,6 @@ export function CardInstallAction({
   // Shared with the Playlist install gate so the two screens can never
   // disagree about what counts as a commissioned card (src/lib/cardInstallGate.js).
   const commissioning = readCardCommissioningVerification({ wiring, standaloneController });
-  const physicallyVerified = commissioning.physicallyVerified;
   const commissioningVerified = commissioning.verified;
   // What the card itself reports it is holding. LayoutScreen passes only
   // `connected`/`cardHost`, so the readiness evidence is read from the shared
@@ -165,8 +95,14 @@ export function CardInstallAction({
   const installGate = evaluateCardInstallGate({
     cardAccess,
     wiringAffecting: true,
-    wiringSendReady: compiledWiring.sendReady,
+    // Valid mapped wiring can enter CardPushControl's staged transaction even
+    // before it has its final verification flags. The card keeps its working
+    // setup until that control's real-light confirmation succeeds.
+    wiringSendReady: compiledWiring.ok,
     commissioningVerified,
+    // CardPushControl owns the card's staged wiring transaction and does not
+    // commit it until the owner confirms the real lights there.
+    stagedWiringConfirmation: true,
     requiresLiveLink: false,
   });
   useEffect(() => {
@@ -188,13 +124,15 @@ export function CardInstallAction({
   // discovery has and loop the owner between the two screens forever.
   const cardNeedsStripDiscovery = needsStripDiscovery({ readinessState: cardReadinessState });
   const openStripDiscovery = () => { window.location.hash = STRIP_DISCOVERY_ROUTE; };
-  const unlockWiring = () => {
-    updateWiring(draft => {
-      draft.locked = false;
-      draft.verified = false;
-      draft.runs.forEach(run => { run.verified = false; });
-    }, { changeKind: null });
-  };
+  const cardRoute = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.hash.slice(1))
+    : new URLSearchParams();
+  const continueToPatterns = cardRoute.get('next') === 'patterns';
+  const installTaskOpen = cardRoute.get('task') === 'install-project';
+
+  // While Setup owns the next step, it also owns the only button. Its Open
+  // Patterns action remounts this surface with an explicit install intent.
+  if (yieldPrimary && !installTaskOpen) return null;
 
   return (
     <WireHoverDescription className="lww-flow" data-testid="commissioning-step" aria-label="Check and install on this card">
@@ -226,77 +164,9 @@ export function CardInstallAction({
           <WiringPreflight compiled={compiledWiring} mutationError={mutationError} />
           <button type="button" className={cta} title="Open the Wire workspace to assign GPIOs and arrange the physical LED order." data-tooltip="Open the Wire workspace to assign GPIOs and arrange the physical LED order." onClick={onEditInWire}>Edit in Wire</button>
         </>
-      ) : !commissioningVerified ? (
-        wiring.locked ? (
-          // REACHABLE, despite the note that used to sit here saying it was a
-          // loaded state only: a light test the owner declines to confirm
-          // restores the card and clears the verification, leaving the wiring
-          // locked and unchecked. This is the LAST step of the whole setup,
-          // and it used to hand back a sentence pointing at a control inside a
-          // collapsed "Advanced installation tools" section — the owner is
-          // told where to go hunting instead of being given the thing to press.
-          <>
-            <p className="lww-flow-message">This wiring has not been checked on the real lights yet.</p>
-            <button
-              type="button"
-              className={cta}
-              data-testid="unlock-and-check"
-              title="Reopen the wiring and start the check that lights the real LEDs."
-              data-tooltip="Reopen the wiring and start the check that lights the real LEDs."
-              onClick={() => { unlockWiring(); setCheckFlowOpen(true); }}
-            >Start LED check</button>
-          </>
-        ) : checkFlowOpen && colorCheckFirst ? (
-          <>
-            <p className="lww-flow-message">The wiring check is judged by colour, so the colour order has to be right first.</p>
-            <StripColorOrderCheck
-              autoStart
-              cardHost={cardHost}
-              controller={standaloneController}
-              setController={setStandaloneController}
-            />
-            <button type="button" className={cta} data-testid="color-check-done" title="Return to the wiring check with the corrected colour order." data-tooltip="Return to the wiring check with the corrected colour order." onClick={() => setColorCheckFirst(false)}>Back to the light check</button>
-          </>
-        ) : checkFlowOpen && !physicallyVerified ? (
-          <WiringBenchTest
-            wiring={wiring}
-            compiled={compiledWiring}
-            updateWiring={updateWiring}
-            priorConfirmedLook={confirmedCardLook}
-            cardHost={cardHost}
-            strips={strips}
-            adjustableRunIds={adjustableRunIds}
-            onAdjustBoundary={adjustRunBoundary}
-            adjustableOutputIds={adjustableOutputIds}
-            onAdjustOutput={adjustOutputCount}
-            onDefer={() => setCheckFlowOpen(false)}
-            onColorProblem={() => setColorCheckFirst(true)}
-          />
-        ) : checkFlowOpen ? (
-          <>
-            <StripColorOrderCheck
-              autoStart
-              cardHost={cardHost}
-              controller={standaloneController}
-              setController={setStandaloneController}
-            />
-            <button type="button" className="btn btn-ghost" title="Leave the color check for now; the LED color order remains unconfirmed." data-tooltip="Leave the color check for now; the LED color order remains unconfirmed." onClick={() => setCheckFlowOpen(false)}>Do this later</button>
-          </>
-        ) : (
-          <>
-            {!connected && (
-              <p className="lw-card-banner is-inline">
-                This check lights the real LEDs — use <b>Connect Lightweaver</b> in the footer first.
-              </p>
-            )}
-            <button type="button" className={cta} data-testid="start-led-check" title="Begin or resume the guided check that lights the real LEDs to verify each run." data-tooltip="Begin or resume the guided check that lights the real LEDs to verify each run." onClick={() => setCheckFlowOpen(true)}>
-              {physicallyVerified ? 'Finish the LED check' : 'Start LED check'}
-            </button>
-          </>
-        )
       ) : (
         <>
-          <p className="lww-install-ready" role="status">Checked ✓ — install it on the card.</p>
+          <p className="lww-install-ready" role="status">Ready to install on the card.</p>
           <section className="lw-wire-finish">
             <CardPushControl
               connected={connected}
@@ -308,6 +178,8 @@ export function CardInstallAction({
               projectName={projectName}
               standaloneController={installController}
               disabled={!installGate.allowed}
+              autoStart={continueToPatterns}
+              onInstalled={continueToPatterns ? () => { window.location.hash = '#screen=pattern'; } : undefined}
             />
           </section>
         </>

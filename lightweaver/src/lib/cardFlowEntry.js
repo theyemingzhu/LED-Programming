@@ -11,6 +11,7 @@
 
 import { setupTaskRoute } from './setupJourney.js';
 import { readCardCommissioning } from './cardCommissioningFlow.js';
+import { rememberCardReturnIntent } from './cardReturnIntent.js';
 
 // The Connection Center lives in the app shell. Screens used to open it by
 // document.querySelector('[data-testid="card-link-status"]').click() — a DOM
@@ -132,6 +133,19 @@ export function hasResumableCommissioning(flow = readCardCommissioning()) {
   return RESUMABLE_COMMISSIONING_STAGES.has(flow?.stage ?? flow?.flow?.stage ?? '');
 }
 
+// Intents that TAKE the owner away from what they were doing to deal with the
+// card. Entering one from a working screen records where they were, so the
+// completed setup can offer them the way back instead of always landing them on
+// Patterns. A `connect` or a `batch` is not on this list: those are asked FROM
+// the card surface, so there is nothing to return to.
+const RETURN_INTENT_INTENTS = new Set([
+  'fix',
+  'push',
+  'install-project',
+  'recover-lights',
+  'recover-operation',
+]);
+
 export function openCardFlow(intent, context = {}) {
   // The resolver stays pure: commissioning state is an input. Callers that
   // already know it pass it; everyone else gets it read here, at call time.
@@ -140,6 +154,15 @@ export function openCardFlow(intent, context = {}) {
     ? { ...context, resumableCommissioning: hasResumableCommissioning() }
     : context;
   const resolution = resolveCardIntent(intent, enriched);
+  // Only when the owner is actually being moved. `proceed` keeps them where
+  // they are, so there is no interruption to come back from — and recording one
+  // would leave a stale destination for the next completed setup to honour.
+  if (RETURN_INTENT_INTENTS.has(intent) && resolution.action !== 'proceed') {
+    rememberCardReturnIntent({
+      hash: typeof window !== 'undefined' ? window.location?.hash : '',
+      cardId: context.cardId || '',
+    });
+  }
   if (resolution.action === 'route') {
     window.location.hash = resolution.hash;
   } else if (resolution.action === 'connect-panel') {

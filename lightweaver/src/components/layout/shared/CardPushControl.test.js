@@ -16,3 +16,10 @@ test('final card verification combines project identity with fresh runtime readi
   assert.match(source, /readCardProjectEvidence/);
   assert.match(source, /readCardStatusEnvelope/);
 });
+
+test('a resumed or expiring wiring test re-reads the exact card and clears stale confirmation controls', () => {
+  assert.match(source, /resume-physical-test[\s\S]*expiresAt/);
+  assert.match(source, /wiringTestState !== 'testing'[\s\S]*getCardWiringStatus/);
+  assert.match(source, /status\.cardId === expectedCardId/);
+  assert.match(source, /setWiringCandidate\(null\)[\s\S]*dispatchAction\(\{ type: 'fail'/);
+});

@@ -4,7 +4,7 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 // The card state matrix — see docs/card-state-matrix.md.
 //
 // Its own config for the same reason the phone lens has one: two scripts in
-// ci:browser-smoke run playwright WITHOUT --project, so anything declared in
+// ci:browser-regression run playwright WITHOUT --project, so anything declared in
 // the root config runs implicitly. The matrix is deliberate, never implicit.
 //
 // The live tier (tests/live-card-states.spec.ts) is EXCLUDED here — it writes
@@ -12,6 +12,22 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 //
 //   npx playwright test --config tests/matrix-playwright.config.ts
 export default defineConfig({
+  // A flake used to be a hard stop. Because the Tests workflow gates Deploy
+  // site, one wobbling test on main cancelled the deploy silently — the change
+  // was merged, not live, and nothing said so. It happened twice in one day on
+  // three DIFFERENT tests, so waiting to fix every race before shipping is not
+  // a plan.
+  //
+  // On CI a test now gets two retries. A genuine break fails all three attempts
+  // and still stops the lane; a wobble is reported as `flaky` and the run goes
+  // green, so the deploy is not held hostage by one bad sample. Locally there
+  // are no retries, so a race is loud while you are the one writing it.
+  //
+  // `flaky` in the CI summary is not noise to scroll past. It is the register
+  // of races still to fix; the two already fixed (pattern-lab geometry, the
+  // top-bar import Escape) were both found this way.
+  retries: process.env.CI ? 2 : 0,
+
   testDir: '.',
   testMatch: /card-state-matrix\.spec\.ts/,
   // Each cell drives a whole entry-to-connected journey plus a pattern play.

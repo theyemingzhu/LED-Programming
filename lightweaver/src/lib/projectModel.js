@@ -45,6 +45,25 @@ const FOREIGN_PROJECT_FORMATS = new Set([
   'lightweaver.mapper-project',
 ]);
 
+// Defect C1b: the provenance marker `reconstructInstalledCardState` (in
+// cardProjectAdoption.js) writes onto a project rebuilt from a card's own
+// /api/status readback — `{ kind: 'card-partial', cardId, at }`. Kept to a
+// tight, defensively-normalized shape (never trusted verbatim from saved
+// JSON) so a hand-edited or corrupt save can't smuggle an unexpected shape
+// past `projectCopyLabel.js`'s `projectCopyKind`, the one place it is read.
+// `null` means "no provenance to report" — the ordinary case for every
+// project that was drawn, imported, or opened from a real save.
+function normalizeProjectOrigin(value) {
+  if (!value || typeof value !== 'object') return null;
+  const kind = String(value.kind || '').trim();
+  if (!kind) return null;
+  return {
+    kind,
+    cardId: String(value.cardId || '').trim(),
+    at: Number.isFinite(Number(value.at)) ? Number(value.at) : 0,
+  };
+}
+
 export function createProjectId() {
   const random = Math.random().toString(36).slice(2, 10);
   return `lwproj-${Date.now().toString(36)}-${random}`;
@@ -138,6 +157,9 @@ export function createDefaultProject() {
     version: PROJECT_VERSION,
     id: createProjectId(),
     name: 'Untitled Project',
+    // Provenance marker (defect C1b) — see normalizeProjectOrigin above.
+    // null for every ordinary project; only a card reconstruction sets it.
+    origin: null,
     // What each of the card's four physical ports carries — strip, control, or
     // nothing. Top-level rather than inside `layout` because it describes the
     // card's hardware, not the artwork, and discovery records it before any
@@ -413,6 +435,10 @@ export function migrateProject(data) {
       ...base,
       ...data,
       id: normalizeProjectId(data.id || data.projectId, base.id),
+      // Defect C1b: normalized explicitly (not left to the `...data` spread
+      // above) so a hand-edited or corrupt save can never carry an
+      // unrecognized shape into projectCopyKind's `origin.kind` check.
+      origin: normalizeProjectOrigin(data.origin),
       // Normalized rather than spread through, so every loaded project is
       // guaranteed one complete entry per contract pin even when the save
       // predates the field or was hand-edited.
@@ -441,7 +467,9 @@ export function migrateProject(data) {
       version: PROJECT_VERSION,
       id: normalizeProjectId(data.id || data.projectId, base.id),
       name: data.name || data.projectName || base.name,
-      // v1/v2 saves predate port roles entirely, so this lands on defaults.
+      // v1/v2 saves predate both port roles and the origin marker (defect
+      // C1b) entirely, so both land on defaults.
+      origin: null,
       portRoles: normalizePortRoles(data.portRoles),
       layout: {
         ...base.layout,

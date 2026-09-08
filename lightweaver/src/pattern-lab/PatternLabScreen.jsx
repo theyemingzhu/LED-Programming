@@ -35,12 +35,14 @@ import {
 } from '../lib/patternLabDraftActions.js';
 import { PATTERN_LAB_WORKER_BUDGETS } from '../lib/patternLabWorkerProtocol.js';
 import { isBuiltInPattern, listPatterns } from '../lib/patternRegistry.js';
+import { flattenToStripView } from '../lib/patternLabStripView.js';
 import { useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import PatternLabControls from './PatternLabControls.jsx';
 import PatternLabDiagnostics from './PatternLabDiagnostics.jsx';
 import PatternLabEvolution from './PatternLabEvolution.jsx';
 import PatternLabExport from './PatternLabExport.jsx';
+import PatternLabJourney from './PatternLabJourney.jsx';
 import PatternLabPreview from './PatternLabPreview.jsx';
 import './pattern-lab.css';
 
@@ -90,6 +92,27 @@ const PROMOTED_ACTION_HINTS = {
   'simplify-for-card': 'Opens a simplified copy you can create below. Your current design stays unchanged.',
   'studio-only': 'This design can’t reach the piece yet. See Card compatibility & diagnostics below for why.',
 };
+
+const BUDGET_SHORT_LABELS = {
+  pixelCount: 'Pixels',
+  fps: 'FPS',
+  operationsPerFrame: 'Ops / frame',
+  stateBytes: 'State',
+  framebufferBytes: 'Framebuffer',
+  nativeConfigBytes: 'Config',
+  lwseqBytes: 'Baked',
+  microSdBytes: 'microSD',
+};
+
+// Two numbers on one line, from whatever the compatibility check actually
+// measured — never a figure this screen made up to fill the strip.
+function formatBudgetUsage(value) {
+  const used = Number(value?.used ?? value?.value);
+  const limit = Number(value?.limit ?? value?.max);
+  const fmt = n => (Number.isFinite(n) ? new Intl.NumberFormat().format(Math.round(n)) : '—');
+  if (!Number.isFinite(limit)) return fmt(used);
+  return `${fmt(used)} / ${fmt(limit)}`;
+}
 
 function compatibilityBadge(compatibility) {
   if (!compatibility) return null;
@@ -486,6 +509,25 @@ export default function PatternLabScreen() {
   //            anyway and a focus trap is then the honest behaviour.
   const [sheetDetent, setSheetDetent] = useState('closed');
   const [activeWorkflowStep, setActiveWorkflowStep] = useState(0);
+  // Which step the ladder holds OPEN, which is not always the step the toolbar
+  // is highlighting. Saving a draft moves the band to Save (step 3), and Save
+  // is a library plus an action bar rather than a step with a body — so
+  // following the band there would collapse Choose, Sculpt AND Evolve and
+  // leave the inspector showing three headings and nothing else. It keeps the
+  // last content step instead, so saving does not take away what you were
+  // working on.
+  const [openInspectorStep, setOpenInspectorStep] = useState(0);
+  // Piece or strip. Two views of one frame: the artwork as the room sees it,
+  // or the same lights straightened into the order the card addresses them.
+  const [previewView, setPreviewView] = useState('piece');
+  // Whether the preview is currently telling the owner it could not render.
+  // In that state the stage is an error with a Retry, and offering Piece /
+  // Strip beneath it is noise stacked on a problem — worse, the row sat in the
+  // same corner of the screen as the retry control.
+  const [previewFailed, setPreviewFailed] = useState(false);
+  useEffect(() => {
+    if (activeWorkflowStep >= 0 && activeWorkflowStep <= 2) setOpenInspectorStep(activeWorkflowStep);
+  }, [activeWorkflowStep]);
   const [instrumentResponse, setInstrumentResponse] = useState({
     sequence: 0,
     kind: null,
@@ -662,6 +704,14 @@ export default function PatternLabScreen() {
     project.motionSmoothing,
   ]);
 
+  // The strip view is the same geometry with the lights moved onto a line, so
+  // the preview renders it through exactly the same path as the piece — one
+  // renderer, one frame, two arrangements.
+  const shownGeometry = useMemo(
+    () => (previewView === 'strip' ? flattenToStripView(geometry) : geometry),
+    [previewView, geometry],
+  );
+
   useEffect(() => {
     const root = previewStageRef.current;
     const recipeId = previewRecipe?.id ?? null;
@@ -821,6 +871,15 @@ export default function PatternLabScreen() {
   }
 
   function activateInspectorStep(event) {
+    // Headings are exempt, on both the pointer and the focus path. Once only
+    // the open step shows its body, changing the step from a heading re-flows
+    // the column while the press is still in progress — pressing the Long
+    // Evolution checkbox in Evolve's heading opened Evolve, which moved the
+    // checkbox out from under the pointer, so the toggle never flipped.
+    // Opening a step is what the heading's own button is for; this handler is
+    // for the controls INSIDE a body, where working in them genuinely does
+    // mean that step is the one in hand.
+    if (event.target.closest?.('.plab-compact-step-heading')) return;
     const section = event.target.closest?.('[data-workflow-step]');
     const step = Number(section?.dataset.workflowStep);
     if (Number.isInteger(step) && step >= 0 && step <= 2) setActiveWorkflowStep(step);
@@ -892,6 +951,7 @@ export default function PatternLabScreen() {
   // the tap has been answered and the tile stops saying it is working.
   function handlePreviewRenderStatus(status) {
     if (status?.hasFrame || status?.failure) setPendingPatternId(null);
+    setPreviewFailed(Boolean(status?.failure));
   }
 
   function choosePattern(patternId) {
@@ -1436,6 +1496,11 @@ export default function PatternLabScreen() {
               <path d="M9 3h6M10 3v5l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/>
               <path d="M7.8 15h8.4"/>
             </svg>
+            {/* The board leads with a kicker and a sentence saying what this
+                screen is: a private workspace that changes nothing until you
+                send a look back. Without it the Lab opened on a bare title and
+                never said the one thing that makes it safe to experiment in. */}
+            <span className="plab-kicker">Studio · Patterns · Lab</span>
             <h1>Pattern Lab</h1>
             <span
               className="plab-private-status"
@@ -1448,6 +1513,21 @@ export default function PatternLabScreen() {
               <span aria-hidden="true" />
             </span>
           </div>
+          {/* The board's masthead says what this screen is before it says what
+              you can do in it — "your project stays exactly as it is" is the
+              sentence that makes the Lab safe to experiment in, and it was
+              nowhere on the shipped screen. The way back out belongs here too;
+              the Lab is entered from Patterns and had no marked exit. */}
+          <p className="plab-lede">A private workspace — your project stays exactly as it is until you send a look back to it.</p>
+          <button
+            type="button"
+            className="plab-back"
+            data-testid="pattern-lab-back"
+            onClick={() => { window.location.hash = '#screen=pattern'; }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+            Back to Patterns
+          </button>
           <nav className="plab-workflow" aria-label="Pattern Lab workflow">
             {WORKFLOW.map(([title, description, tooltip, icon], index) => (
               <button
@@ -1466,6 +1546,37 @@ export default function PatternLabScreen() {
             ))}
           </nav>
         </header>
+
+        {/* The card verdict, pinned under the masthead as the board has it.
+            It used to live inside the "Card compatibility & diagnostics" fold
+            at the bottom of the inspector, which meant you could sculpt for
+            twenty minutes before finding out the piece cannot play it. The
+            copy is the same map the promoted button reads, so the two cannot
+            drift. */}
+        {draft && compatibility && (
+          <div
+            className="plab-verdict"
+            data-classification={compatibility.classification}
+            data-testid="pattern-lab-verdict"
+          >
+            <span className="plab-verdict-tag">
+              {(COMPATIBILITY_OUTCOMES.find(([id]) => id === compatibility.classification) || [null, 'Checking'])[1]}
+            </span>
+            <p>{compatibilityBadge(compatibility)}</p>
+            <dl className="plab-verdict-nums">
+              {Object.entries(compatibility.budgets || {}).slice(0, 2).map(([key, value]) => (
+                <div key={key}>
+                  <dt>{BUDGET_SHORT_LABELS[key] || key}</dt>
+                  <dd>{formatBudgetUsage(value)}</dd>
+                </div>
+              ))}
+              <div>
+                <dt>Attention</dt>
+                <dd>{(compatibility.reasons || []).length || 'none'}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
 
         <section className="plab-workspace" aria-label="Pattern authoring workspace" ref={workspaceRef}>
           <div className="plab-preview" inert={sheetModal ? '' : undefined}>
@@ -1536,7 +1647,7 @@ export default function PatternLabScreen() {
                     recipe={previewRecipe}
                     previewTime={previewTime}
                     playing={playing}
-                    geometry={geometry}
+                    geometry={shownGeometry}
                     fallbackLook={project.standaloneController?.defaultLook}
                     onRenderStatus={handlePreviewRenderStatus}
                   />
@@ -1569,7 +1680,47 @@ export default function PatternLabScreen() {
                 />
               )}
             </div>
+
+            {/* The board's view row, under the artwork. Two entries, not five:
+                Piece and Strip are two arrangements of the frame the renderer
+                already makes. Grid, Coordinates and "Why is this dark?" are on
+                the board too and are deliberately NOT here — nothing in the
+                app answers them yet, and five buttons where two work is worse
+                than two. */}
+            {draft && !previewFailed && (
+              <div className="plab-views" role="group" aria-label="Preview view" data-testid="pattern-lab-views">
+                <button
+                  type="button"
+                  className={previewView === 'piece' ? 'on' : undefined}
+                  aria-pressed={previewView === 'piece'}
+                  onClick={() => setPreviewView('piece')}
+                  title="The lights where they physically sit"
+                >Piece</button>
+                <button
+                  type="button"
+                  className={previewView === 'strip' ? 'on' : undefined}
+                  aria-pressed={previewView === 'strip'}
+                  onClick={() => setPreviewView('strip')}
+                  title="The same lights in the order the card addresses them"
+                >Strip</button>
+              </div>
+            )}
           </div>
+
+          {/* The journey appears under the artwork only while Evolve is the
+              open step. It is the one control in the Lab that genuinely needs
+              width, and a permanent strip would have cost the artwork a third
+              of its height for the three quarters of the time you are not
+              building a journey. On a phone the sheet already owns the bottom
+              of the screen, so there is nowhere for this to go and Evolve
+              keeps its own scrub. */}
+          {!mobileDrawer && openInspectorStep === 2 && draft && (
+            <PatternLabJourney
+              recipe={draft}
+              previewTime={previewTime}
+              onPreviewTime={changePreviewTime}
+            />
+          )}
 
           {sheetModal && (
             <button className="plab-drawer-backdrop" type="button" aria-label="Dismiss pattern controls" onClick={closeDrawer} />
@@ -1631,8 +1782,9 @@ export default function PatternLabScreen() {
                 pieceColorHue={draft ? paletteBaseHue(draft.palette) : 30}
                 onAdvancedChange={changeAdvanced}
                 onParamChange={changeParam}
-                activeWorkflowStep={activeWorkflowStep}
+                activeWorkflowStep={openInspectorStep}
                 instrumentResponse={instrumentResponse}
+                onOpenStep={openWorkflowStep}
               />
             </div>
             <PatternLabEvolution
@@ -1641,9 +1793,11 @@ export default function PatternLabScreen() {
               onEvolutionChange={changeEvolution}
               onPreviewTime={changePreviewTime}
               onAudioAnalysis={changeAudioAnalysis}
-              activeWorkflowStep={activeWorkflowStep}
+              activeWorkflowStep={openInspectorStep}
               instrumentResponse={instrumentResponse}
+              onOpenStep={openWorkflowStep}
             />
+
 
             {draft && (
               <details
@@ -1704,6 +1858,7 @@ export default function PatternLabScreen() {
                 >Keep both copies</button>
               </div>
             )}
+
 
             <section className="plab-private-library" aria-labelledby="plab-private-heading">
               <div className="plab-library-heading">

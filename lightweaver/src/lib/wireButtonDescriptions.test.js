@@ -76,6 +76,10 @@ function attributeValue(tag, name) {
 
 function assertDescriptionTag(tag, file) {
   assert.match(tag, /\bdata-tooltip\s*=/, `${file}: button needs data-tooltip`);
+  if (/data-testid=["']layout-send-to-card["']/.test(tag)) {
+    assert.doesNotMatch(tag, /\btitle\s*=/, `${file}: the install button must not show a duplicate native tooltip`);
+    return;
+  }
   assert.match(tag, /\btitle\s*=/, `${file}: button needs title`);
   assert.equal(attributeValue(tag, 'title'), attributeValue(tag, 'data-tooltip'), `${file}: title and data-tooltip must match`);
 }

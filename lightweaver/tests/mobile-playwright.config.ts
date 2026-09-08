@@ -9,7 +9,7 @@ import { testPort as port, testBaseURL } from './testPort.mjs';
 // scrollWidth stayed clean, so the standard overflow assertion never saw it.
 // See todo/plans/patternlab-rebuild.md §7 Phase 1.
 //
-// It lives in its own config because `ci:browser-smoke` runs `test:show` and
+// It lives in its own config because `ci:browser-regression` runs `test:show` and
 // `test:screen-recovery` WITHOUT `--project`, so every project declared in the main
 // config runs implicitly. A phone profile there doubles desktop-era specs onto a
 // device they were never written for. Same pattern as windowless-playwright.config.ts.
@@ -30,6 +30,21 @@ export default defineConfig({
   // a green run should mean "the converted set genuinely works on a phone".
   testMatch: /(pattern-lab-(isolation|stateful|handoff|live-preview|naming|sleeping-phone|tap-feedback)|setup-phone)\.spec\.ts/,
   timeout: 60_000,
+  // A flake used to be a hard stop. Because the Tests workflow gates Deploy
+  // site, one wobbling test on main cancelled the deploy silently — the change
+  // was merged, not live, and nothing said so. It happened twice in one day on
+  // three DIFFERENT tests, so waiting to fix every race before shipping is not
+  // a plan.
+  //
+  // On CI a test now gets two retries. A genuine break fails all three attempts
+  // and still stops the lane; a wobble is reported as `flaky` and the run goes
+  // green, so the deploy is not held hostage by one bad sample. Locally there
+  // are no retries, so a race is loud while you are the one writing it.
+  //
+  // `flaky` in the CI summary is not noise to scroll past. It is the register
+  // of races still to fix; the two already fixed (pattern-lab geometry, the
+  // top-bar import Escape) were both found this way.
+  retries: process.env.CI ? 2 : 0,
   expect: { timeout: 15_000 },
   use: {
     baseURL: testBaseURL,

@@ -111,6 +111,32 @@ export function correlateCardDeploymentReadinessEvidence(project = {}, status = 
   };
 }
 
+// A second write attempting to install exactly the project the card already
+// holds and already reports ready. Verified through the same identity fields
+// `correlateCardDeploymentReadinessEvidence` trusts (card, build, project
+// revision, project fingerprint, all exact) plus the same readiness flags
+// `verifyCardDeployment`'s `requireReady` branch requires — never project
+// evidence alone, so a blank or mid-boot card can never read as "already
+// current". Used by the install preflight (CardPushControl.pushToCard) to
+// skip a redundant `/api/config` POST when the card has nothing left to
+// apply. The caller is responsible for also checking there is no outstanding
+// wiring candidate: a staged or testing candidate is a real, separate
+// decision that this function has no visibility into.
+export function isCardAlreadyCurrent(prepared, status = {}) {
+  if (!prepared?.cardId) return false;
+  const config = prepared.config || {};
+  const exactIdentity = exactText(prepared.cardId, status.cardId)
+    && exactText(prepared.buildId, status.buildId)
+    && exactNumber(config.projectRevision, status.projectRevision)
+    && exactText(config.projectFingerprint, status.projectFingerprint);
+  if (!exactIdentity) return false;
+  return status.knownGoodProject === true
+    && status.commandReady === true
+    && status.runtimePhase === 'ready'
+    && status.playbackReady === true
+    && status.outputReady === true;
+}
+
 export function classifyCardChanges(previousConfig, nextConfig) {
   if (!previousConfig) return { kind: 'hardware', requiresPhysicalTest: true, groups: ['Wiring'] };
   const previous = hardwareFacts(previousConfig);

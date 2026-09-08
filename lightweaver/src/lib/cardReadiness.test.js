@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   classifyCardReadiness,
   normalizeCardReadiness,
+  isDifferentCardMismatch,
+  isStaleFirmwareMismatch,
 } from './cardReadiness.js';
 
 const CARD_ID = 'lw-aabbccddeeff';
@@ -35,6 +37,7 @@ test('normalizes readiness evidence without inventing boolean or identity values
     runtimePhase: ' ready ',
     knownGoodProject: 'true',
     commandReady: 1,
+    firmwareUpdateReady: true,
     outputReady: false,
   });
 
@@ -43,6 +46,7 @@ test('normalizes readiness evidence without inventing boolean or identity values
   assert.equal(normalized.runtimePhase, 'ready');
   assert.equal(normalized.knownGoodProject, null);
   assert.equal(normalized.commandReady, null);
+  assert.equal(normalized.firmwareUpdateReady, true);
   assert.equal(normalized.outputReady, false);
   assert.equal(normalized.identityValid, true);
   assert.equal(Object.isFrozen(normalized), true);
@@ -303,6 +307,50 @@ test('exact expected firmware and build are part of live readiness', () => {
   }).reason, 'unexpected-firmware-build');
 });
 
+// A card whose firmware advanced since Studio last connected (a Studio-driven
+// update, or a bench reflash) reports the SAME card id with a DIFFERENT
+// firmwareVersion/buildId than the persisted `expectedCard` record — i.e. the
+// card is ahead of what this Studio instance remembers. C2 asked whether the
+// classifier conflates that with either "a different card answered" or
+// "firmware too old"/"pair again from scratch". It does not: `isDifferentCardMismatch`
+// stays false (a stranger's card is the only thing that flag guards — see the
+// 2026-08-19 THINKING.md entry), `isStaleFirmwareMismatch` is exactly the
+// caller-facing signal for this case (benchInstall.js already relearns the
+// identity and keeps going on it rather than erroring), and the reason is
+// always one of the two explained `unexpected-firmware-*` strings — never
+// `firmware-too-old` or `identity-missing`, the two reasons that push a card
+// into cardLifecycle's `update-required` state. Writes still fail closed
+// (`patternAccess: 'recovery'`, matching `playbackReady never widens access
+// past an identity or contract failure` below) — this only proves the drift is
+// distinguishable and explained, not that it unlocks control.
+test('firmware that advanced past what Studio remembers is distinguished from a different card, never firmware-too-old', () => {
+  const status = readyEnvelope({ playbackReady: true });
+
+  const aheadFirmware = classifyCardReadiness(status, {
+    expectedCard: { id: status.cardId, firmwareVersion: '0.9.0', buildId: status.buildId },
+  });
+  assert.equal(aheadFirmware.state, 'identity-mismatch');
+  assert.equal(aheadFirmware.reason, 'unexpected-firmware-version');
+  assert.notEqual(aheadFirmware.reason, 'firmware-too-old');
+  assert.equal(isDifferentCardMismatch(aheadFirmware), false);
+  assert.equal(isStaleFirmwareMismatch(aheadFirmware), true);
+  assert.equal(aheadFirmware.patternAccess, 'recovery');
+
+  const aheadBuild = classifyCardReadiness(status, {
+    expectedCard: { id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: 'c'.repeat(40) },
+  });
+  assert.equal(aheadBuild.reason, 'unexpected-firmware-build');
+  assert.equal(isDifferentCardMismatch(aheadBuild), false);
+  assert.equal(isStaleFirmwareMismatch(aheadBuild), true);
+
+  // A genuinely different card must not read as mere firmware drift.
+  const wrongCard = classifyCardReadiness(status, {
+    expectedCard: { id: 'lw-112233445566', firmwareVersion: status.firmwareVersion, buildId: status.buildId },
+  });
+  assert.equal(isDifferentCardMismatch(wrongCard), true);
+  assert.equal(isStaleFirmwareMismatch(wrongCard), false);
+});
+
 // ── playbackReady (firmware reports playback admission separately) ───────────
 // main.cpp folds the WiFi transition into commandReady AND runtimePhase, but
 // not into playbackReady, because patterns/brightness/scenes run entirely
@@ -545,4 +593,27 @@ test('normalizes the installed project revision alongside the rest of the projec
     classifyCardReadiness(readyEnvelope({ projectRevision: 4 }), { expectedCardId: CARD_ID }).projectRevision,
     4,
   );
+});
+
+// F13. `firmwareVersion` and `buildId` were normalized here and `buildNumber`
+// was not, so anything re-learning a card's firmware from a readiness envelope
+// could carry only two of the three fields and left the third describing the
+// previous build — which is precisely the half-updated record found on the real
+// card on 2026-09-07.
+test('normalized readiness carries the whole firmware identity, build number included', () => {
+  const withNumber = normalizeCardReadiness({
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.33', buildId: 'c'.repeat(40),
+    buildNumber: 1548, bootId: 'boot-9',
+  });
+  assert.equal(withNumber.firmwareVersion, '1.1.33');
+  assert.equal(withNumber.buildId, 'c'.repeat(40));
+  assert.equal(withNumber.buildNumber, 1548);
+
+  // A bench build reports no number. 0 is the same "no comparable number" that
+  // normalizeCardIdentity reports, never a stale number from another build.
+  assert.equal(normalizeCardReadiness({ buildNumber: 0 }).buildNumber, 0);
+  assert.equal(normalizeCardReadiness({}).buildNumber, 0);
+  assert.equal(normalizeCardReadiness({ buildNumber: -4 }).buildNumber, 0);
+  assert.equal(normalizeCardReadiness({ buildNumber: '1548' }).buildNumber, 1548);
 });

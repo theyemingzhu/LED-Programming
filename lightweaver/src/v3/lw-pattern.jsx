@@ -6,7 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
-import { I, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
+import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -75,7 +75,7 @@ import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardP
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview } from '../lib/cardLiveControl.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
 import {
@@ -84,6 +84,7 @@ import {
   classifyCardActionFailure,
   createCardActionState,
 } from '../lib/cardAction.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { createProjectPreviewStrip } from '../lib/previewVisuals.js';
 import {
   buildPatternPreviewSegments,
@@ -97,9 +98,8 @@ import {
   cardBridgeFeatureGap,
   getCardBridgeState,
   hasCardBridge,
-  readLocalChipDefault,
   sendCardBridgeRequest,
-  writeLocalChipDefault, openLocalCardPage } from '../lib/cardBridge.js';
+  openLocalCardPage } from '../lib/cardBridge.js';
 import { computeSymmetryFit } from '../lib/symmetry.js';
 import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderCheck.jsx';
 import { PatternPreview } from './PatternPreview.jsx';
@@ -119,11 +119,18 @@ import { PatternPreview } from './PatternPreview.jsx';
     return 'none';
   }
 
-  function Slider({ k, v, value, min, max, step, onChange, testId }) {
+  // Label left, bar right. The name and its one-line hint explain the control
+  // on the left of the row; the fader and the number it is currently reading
+  // sit together on the right, because the value belongs to the bar and not to
+  // the word. The readout keeps its `-readout` test id where it moved to.
+  function Slider({ k, hint, v, value, min, max, step, onChange, testId }) {
     return (
       <div className="slider-row">
-        <div className="lab"><span className="k">{k}</span><span className="v" data-testid={testId ? `${testId}-readout` : undefined}>{v}</span></div>
-        <input className="lw" type="range" min={min} max={max} step={step} value={value} data-testid={testId ? `${testId}-slider` : undefined} onChange={(e) => onChange(parseFloat(e.target.value))} />
+        <div className="lab"><span className="k">{k}</span>{hint ? <span className="hint">{hint}</span> : null}</div>
+        <div className="sl-bar">
+          <input className="lw" type="range" min={min} max={max} step={step} value={value} data-testid={testId ? `${testId}-slider` : undefined} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          <span className="v" data-testid={testId ? `${testId}-readout` : undefined}>{v}</span>
+        </div>
       </div>);
 
   }
@@ -204,26 +211,8 @@ import { PatternPreview } from './PatternPreview.jsx';
 
   }
 
-  // colors interpolated across a palette → glowing LED beads
-  function ledColors(pal, n) {
-    const rgb = (h) => { h = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const p = (i / (n - 1)) * (pal.length - 1), s = Math.floor(p), t = p - s;
-      const a = rgb(pal[s]), b = rgb(pal[Math.min(s + 1, pal.length - 1)]);
-      const c = a.map((v, k) => Math.round(v + (b[k] - v) * t));
-      out.push(`rgb(${c[0]},${c[1]},${c[2]})`);
-    }
-    return out;
-  }
-  function LedRow({ pal, n = 9, big = false, wave = false }) {
-    return (
-      <div className={"ledrow" + (big ? " big" : "")}>
-        {ledColors(pal, n).map((c, i) =>
-          <span key={i} className={"led" + (wave ? " wave" : "")} style={{ background: c, boxShadow: `0 0 ${big ? 9 : 5}px ${c}, 0 0 ${big ? 20 : 11}px ${c}`, animationDelay: wave ? `${i * 0.11}s` : undefined }} />
-        )}
-      </div>);
-  }
+  // ledColors + LedRow moved to lw-shared.jsx so Playlist can draw the same
+  // bead strand for the same pattern instead of a flat gradient block.
   // Resolve a card-bank pattern id to the real library pattern that actually
   // has runnable per-pixel code. Card ids either match a library pattern
   // directly (sparkle, aurora…) or point at one via previewPatternId/preset.
@@ -376,7 +365,6 @@ import { PatternPreview } from './PatternPreview.jsx';
     // ── browse / ui state ───────────────────────────────────────────────
     const [q, setQ] = useState("");
     const [cat, setCat] = useState("all");
-    const [localCard, setLocalCard] = useState(readLocalChipDefault);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const menuRef = useRef(null);
@@ -389,6 +377,23 @@ import { PatternPreview } from './PatternPreview.jsx';
     // preview on narrow screens). Resets whenever the filter or search changes.
     const PATTERN_PAGE = 24;
     const [visibleCount, setVisibleCount] = useState(PATTERN_PAGE);
+    // Beads or gradient for the bank's swatches. Same colours either way —
+    // ledColors interpolates each pattern's own palette — so this is a
+    // rendering choice, not two sets of artwork. Remembered per browser
+    // because it is a preference about how you read the bank, not a property
+    // of the project.
+    const [ledMode, setLedMode] = useState(() => {
+      // Gradient is the default because it is what the board draws — the
+      // bank reads as colour you scan across, and at 132 cells that is the
+      // job. Beads stay one click away for anyone who wants to see the
+      // individual lights.
+      try { return localStorage.getItem('lw_led_mode') === 'beads' ? 'beads' : 'gradient'; }
+      catch { return 'gradient'; }
+    });
+    const chooseLedMode = mode => {
+      setLedMode(mode);
+      try { localStorage.setItem('lw_led_mode', mode); } catch { /* private mode */ }
+    };
     const patternSentinelRef = useRef(null);
     useEffect(() => { setVisibleCount(PATTERN_PAGE); }, [cat, q]);
     useEffect(() => {
@@ -428,8 +433,6 @@ import { PatternPreview } from './PatternPreview.jsx';
     const [previewAction, dispatchPreviewAction] = useReducer(cardActionReducer, undefined, createCardActionState);
     const [previewFailure, setPreviewFailure] = useState(null);
     const [patternCardGate, setPatternCardGate] = useState('');
-    const [patternCardGateSeq, setPatternCardGateSeq] = useState(0);
-    const patternGateNoticeRef = useRef(null);
     const [handoffUrl, setHandoffUrl] = useState("");
     const [selectedTargetId, setSelectedTargetId] = useState(ALL_SECTIONS_TARGET_ID);
     const [draftLooks, setDraftLooks] = useState({});
@@ -439,6 +442,10 @@ import { PatternPreview } from './PatternPreview.jsx';
     const savedComboSeq = useRef(0);
     const cardReturnConsumed = useRef(false);
     const latestPreviewIntent = useRef(null);
+    // The preview currently on its way to the card, by intent. A second tap on
+    // the same tile while the first is in flight is one owner intent, not two
+    // commands: it joins the pending send instead of issuing another.
+    const inFlightPreview = useRef(null);
     const syncedPreviewSelectionRef = useRef('');
     const installIntentRef = useRef(null);
 
@@ -512,6 +519,14 @@ import { PatternPreview } from './PatternPreview.jsx';
     const patternAccessRef = useRef(patternCardAccess);
     patternAccessRef.current = patternCardAccess;
     const previousPatternAccessRef = useRef(patternCardAccess);
+    const patternPreviewAuthorityKey = [
+      patternCardAccess,
+      cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '',
+      cardLink?.readiness?.firmwareVersion || cardLink?.card?.firmwareVersion || '',
+      cardLink?.readiness?.buildId || cardLink?.card?.buildId || '',
+      cardLink?.readiness?.bootId || cardLink?.validatedBootId || '',
+    ].join('|');
+    const previousPatternAuthorityKeyRef = useRef(patternPreviewAuthorityKey);
 
     // Live, un-retained card evidence for `ensureCardEditAuthorization`. This
     // deliberately reads `cardLink.readiness` directly rather than the
@@ -624,22 +639,16 @@ import { PatternPreview } from './PatternPreview.jsx';
     const blockPatternCardEffect = useCallback((access = patternAccessRef.current) => {
       invalidatePendingPreview();
       setPatternCardGate(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery');
-      // The hero status sits far above the pattern grid, so on a scrolled page
-      // a refused tap looked like nothing happened at all. Bump this on every
-      // refusal (not just when the reason changes) so the same repeated block
-      // still brings its explanation back into view.
-      setPatternCardGateSeq(seq => seq + 1);
       setHandoffUrl('');
       setStatusKind('err');
       setStatus(patternGateMessage(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery'));
     }, [invalidatePendingPreview]);
 
-    useEffect(() => {
-      if (!patternCardGateSeq || !patternCardGate) return;
-      const notice = patternGateNoticeRef.current;
-      if (typeof notice?.scrollIntoView !== 'function') return;
-      notice.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, [patternCardGate, patternCardGateSeq]);
+    // Was: a scrollIntoView effect keyed on patternCardGateSeq, bringing the
+    // in-flow refusal notice back into view on a repeated tap because the
+    // hero status sits far above the pattern grid. The refusal now floats in
+    // the notice layer (see the 'pattern-gate-notice' publish effect), so it
+    // is always visible and never needs scrolling to.
 
     useEffect(() => {
       // Every readiness poll that still reports the exact bound card, boot,
@@ -661,6 +670,11 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (hasCurrentProjectAuthorization()) refreshPatternAuthorization();
     }, [currentInstallation, hasCurrentProjectAuthorization, liveCardEvidence, patternCardAccess, projectAuthorizationCurrent]);
 
+    // Read inside async callbacks, where the closed-over value is whatever it
+    // was when the request was ISSUED — which is exactly the thing a stale
+    // response must not act on.
+    const projectAuthorizationRef = useRef(projectAuthorizationCurrent);
+    projectAuthorizationRef.current = projectAuthorizationCurrent;
     const previousProjectAuthorizationRef = useRef(projectAuthorizationCurrent);
     useEffect(() => {
       const previous = previousProjectAuthorizationRef.current;
@@ -702,13 +716,22 @@ import { PatternPreview } from './PatternPreview.jsx';
         && classifyCardReadiness(cardLink.readiness, { expectedCard: cardLink?.expectedCard || null }).playbackAccess !== 'ready';
       if (patternCardAccess !== 'ready' && previousAccess === 'ready'
         && (explicitReadinessLoss || !transitionalBridgeCheck)) {
+        previousPatternAuthorityKeyRef.current = patternPreviewAuthorityKey;
         setColorOrderOpen(false);
         blockPatternCardEffect(patternCardAccess);
         return;
       }
-      if (!transitionalBridgeCheck) invalidatePendingPreview();
+      // Routine status polling replaces the readiness envelope even when it
+      // confirms the same exact card and boot. Cancelling on every replacement
+      // erased the 80 ms pattern-send timer, so a tap changed Studio while the
+      // strip did nothing. Only an actual authority change invalidates a send.
+      if (!transitionalBridgeCheck
+        && previousPatternAuthorityKeyRef.current !== patternPreviewAuthorityKey) {
+        previousPatternAuthorityKeyRef.current = patternPreviewAuthorityKey;
+        invalidatePendingPreview();
+      }
       if (patternCardAccess !== 'ready' && !transitionalBridgeCheck) setHandoffUrl('');
-    }, [blockPatternCardEffect, cardLink?.expectedCard, cardLink?.readiness, cardLink?.state, invalidatePendingPreview, patternCardAccess]);
+    }, [blockPatternCardEffect, cardLink?.expectedCard, cardLink?.readiness, cardLink?.state, invalidatePendingPreview, patternCardAccess, patternPreviewAuthorityKey]);
 
     // Warm default so first load reads warm (Lava Lamp-like) like the mockup,
     // unless a real saved default look exists.
@@ -893,11 +916,40 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (q && !p.label.toLowerCase().includes(q.toLowerCase())) return false;
       return true;
     });
+    // Page in the next block when the reader ARRIVES at the end of the list —
+    // not merely whenever we happen to be observing while already there.
+    //
+    // IntersectionObserver reports the current state the moment you observe, and
+    // this effect re-observes on every change to `filtered.length`. Saving a look
+    // changes that length, so the re-observe reported "still intersecting" and
+    // paged in another 24 for an action that has nothing to do with scrolling.
+    // The sentinel only came within the 600px margin at rest once the design
+    // target moved below the bank and the grid rose up the page; before that the
+    // bug was simply out of reach.
+    //
+    // So: fire on the EDGE, not the level. A first report is remembered, never
+    // acted on; paging happens when the sentinel goes from out of range to in.
+    // The "Show more" and "Show all" buttons remain for anyone already at the
+    // end, so nothing is unreachable without scrolling.
     useEffect(() => {
       const node = patternSentinelRef.current;
       if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+      // An observer reports the current state the instant you observe, and this
+      // effect re-observes on every change to `filtered.length`. Saving a look
+      // changes that length, so the re-observe answered "you are at the end" and
+      // paged in another 24 for an action that involved no scrolling at all.
+      // That only became reachable once the design target moved below the bank
+      // and the grid rose into the 600px margin; the bug predates the move.
+      //
+      // The opening report describes where the reader already is, not somewhere
+      // they have arrived, so it is recorded and never acted on. Every later
+      // report is a real scroll. "Show more" and "Show all" stay for anyone
+      // sitting at the end already, so nothing needs scrolling to be reached.
+      let primed = false;
       const observer = new IntersectionObserver(entries => {
-        if (entries.some(entry => entry.isIntersecting)) {
+        const atEnd = entries.some(entry => entry.isIntersecting);
+        if (!primed) { primed = true; return; }
+        if (atEnd) {
           setVisibleCount(count => Math.min(filtered.length, count + PATTERN_PAGE));
         }
       }, { rootMargin: '600px 0px' });
@@ -981,8 +1033,16 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
       setPatternCardGate('');
       setHandoffUrl('');
+      const zoneForIntent = target?.kind === 'section' ? target.zoneId || target.id : '';
+      const intentSignature = JSON.stringify({ look: nextLook, zone: zoneForIntent, patch: expectedControlPatch || null });
+      if (inFlightPreview.current && inFlightPreview.current.signature === intentSignature) return;
       if (livePreviewTimer.current) clearTimeout(livePreviewTimer.current);
       const sequence = ++livePreviewSeq.current;
+      inFlightPreview.current = { signature: intentSignature, sequence };
+      // The world this request was issued into. If the project authorization
+      // changes before it lands, the response describes a world that no longer
+      // exists and must not speak for the present — see the status write below.
+      const authorizationAtRequest = projectAuthorizationRef.current;
       latestPreviewIntent.current = { look: nextLook, target, expectedControlPatch };
       dispatchPreviewAction({ type: 'start', revision: sequence });
       setPreviewFailure(null);
@@ -990,6 +1050,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       livePreviewTimer.current = setTimeout(async () => {
         setHandoffUrl('');
         if (!hasCurrentAuthority()) {
+          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
           blockPatternCardEffect(currentPatternPreviewAccess());
           return;
         }
@@ -1016,17 +1077,32 @@ import { PatternPreview } from './PatternPreview.jsx';
           // Safe to repeat: setting THIS pattern means the same thing twice,
           // and a newer tap makes the intent check throw a non-transient error,
           // which stops the retry immediately rather than fighting it.
-          const response = await retryWhileTransient(() => pushLivePreviewToCard(
-            { ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true },
+          //
+          // But a reply LOST after the card applied the command is not a card
+          // that never heard it, and sending again in that case is a second
+          // real command. Before any retry the card is read back; if it
+          // already shows this pattern, that read is the acknowledgement.
+          const previewLook = { ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true };
+          const previewOptions = {
+            host: cardHost,
+            timeoutMs: 2200,
+            fallbackMissingZoneToAll: true,
+            preferBridge: cardLink?.transport === 'bridge'
+              || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
+            revision: sequence,
+            ...(expectedControlPatch ? { expectedControlPatch } : {}),
+          };
+          const response = await retryWhileTransient(
+            () => pushLivePreviewToCard(previewLook, previewOptions),
             {
-              host: cardHost,
-              timeoutMs: 2200,
-              fallbackMissingZoneToAll: true,
-              preferBridge: localCard || (typeof window !== 'undefined' && window.location?.protocol === 'https:'),
-              revision: sequence,
-              ...(expectedControlPatch ? { expectedControlPatch } : {}),
+              attempts: 3,
+              delayMs: 350,
+              readBack: () => (sequence === livePreviewSeq.current
+                ? readBackLivePreview(previewLook, { ...previewOptions, timeoutMs: 1200 })
+                : null),
             },
-          ), { attempts: 3, delayMs: 350 });
+          );
+          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
           if (sequence === livePreviewSeq.current && hasCurrentAuthority()) {
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
             setPreviewFailure(null);
@@ -1035,12 +1111,25 @@ import { PatternPreview } from './PatternPreview.jsx';
             // failure — but the owner is looking at a section tab and the whole
             // piece just changed, so say which one actually happened.
             const usedFallback = previewResponseUsedZoneFallback(response);
-            setStatusKind(usedFallback ? 'ok' : '');
-            setStatus(usedFallback
-              ? `The card has no “${targetLabel(target)}” section yet, so this played on the whole piece. Install to give the card your sections.`
-              : '');
+            // Only speak if the authorization has not moved under us. Losing it
+            // raises "verify that this exact Studio project is still installed
+            // before sending lights" — and this branch used to overwrite that,
+            // with the section note or with an empty string, because a preview
+            // issued BEFORE the loss can land up to a second after it (the send
+            // retries three times, 350ms apart). Measured, the warning appeared
+            // at 22ms and was gone at 61ms, roughly one run in forty: the owner
+            // was then told nothing and would send lights believing the card
+            // still matched. A routine note is not worth a safety warning, so
+            // when the world has changed this response says nothing at all.
+            if (projectAuthorizationRef.current === authorizationAtRequest) {
+              setStatusKind(usedFallback ? 'ok' : '');
+              setStatus(usedFallback
+                ? `The card has no “${targetLabel(target)}” section yet, so this played on the whole piece. Install to give the card your sections.`
+                : '');
+            }
           }
         } catch (error) {
+          if (inFlightPreview.current?.sequence === sequence) inFlightPreview.current = null;
           if (error?.reason === 'superseded') {
             return;
           }
@@ -1056,7 +1145,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           }
         }
       }, delayMs);
-    }, [blockPatternCardEffect, cardHost, currentPatternPreviewAccess, localCard, markCardLookConfirmed, selectedTarget]);
+    }, [blockPatternCardEffect, cardHost, cardLink?.transport, currentPatternPreviewAccess, markCardLookConfirmed, selectedTarget]);
 
     const retryLatestPreview = useCallback(() => {
       const latest = latestPreviewIntent.current;
@@ -1189,9 +1278,8 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     const scheduleBrowseLivePreview = useCallback((nextLook, target) => {
       if (!nextLook) return;
-      const needsBridge = Boolean(
-        localCard || (typeof window !== 'undefined' && window.location?.protocol === 'https:')
-      );
+      const needsBridge = cardLink?.transport === 'bridge'
+        || (typeof window !== 'undefined' && window.location?.protocol === 'https:');
       // On https the card link cannot become ready until the card page is
       // open, and the card page only opens further down THIS function. Gating
       // the whole path on readiness therefore closed a loop: every tap was
@@ -1279,13 +1367,22 @@ import { PatternPreview } from './PatternPreview.jsx';
       setStatusKind('');
       setStatus('Connecting to the local Lightweaver card…');
       const onBridgeChanged = () => {
-        if (sequence !== browsePreviewSeq.current) return;
         const state = getCardBridgeState();
         if (!state.verified) return;
         const firmwareGap = cardBridgeFeatureGap('frame');
         if (!firmwareGap) return;
+        // Acquisition revalidation can cancel this tap before identity arrives.
+        // It must still explain the unsupported bridge; it never resumes a command.
+        const expectedCard = cardLink?.expectedCard || cardLink?.card;
+        const sameVerifiedCard = state.identityVerified
+          && normalizeCardHost(state.host) === normalizeCardHost(cardHost)
+          && state.card?.id === expectedCard?.id
+          && state.card?.firmwareVersion === expectedCard?.firmwareVersion
+          && state.card?.buildId === expectedCard?.buildId;
+        if (sequence !== browsePreviewSeq.current && !sameVerifiedCard) return;
         browsePreviewSeq.current += 1;
         window.removeEventListener(CARD_BRIDGE_CHANGED_EVENT, onBridgeChanged);
+        setPatternCardGate('');
         setStatusKind('err');
         setStatus(firmwareGap.message);
       };
@@ -1310,7 +1407,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           setStatus(error?.message || 'The local card did not connect. Open Flash to update the card, then try again.');
         }
       });
-    }, [blockPatternCardEffect, cardHost, currentPatternPreviewAccess, localCard, scheduleLivePreview]);
+    }, [blockPatternCardEffect, cardHost, cardLink?.transport, currentPatternPreviewAccess, scheduleLivePreview]);
 
     // Clicking a target tab pushes that target's current look to its zone
     // (debounced) so the physical strip follows the selection.
@@ -1484,6 +1581,11 @@ import { PatternPreview } from './PatternPreview.jsx';
         return;
       }
       if (installIntentRef.current) return;
+      // The world this save was started in. Everything below is a long chain of
+      // awaits — a deployment verification, an evidence read, and a live
+      // preview push with a 2.2s timeout — so by the time it finishes, the
+      // authorization it began under may be gone. See the clear at the end.
+      const authorizationAtSave = projectAuthorizationRef.current;
       const installIntent = {};
       installIntentRef.current = installIntent;
       let packageForCard = null;
@@ -1576,8 +1678,18 @@ import { PatternPreview } from './PatternPreview.jsx';
             ).catch(() => null);
           }
         }
-        setStatusKind('');
-        setStatus('');
+        // "Finished, so nothing to report" is only true if nothing happened
+        // while we were working. Losing the project authorization mid-save
+        // raises "Open Hardware and verify that this exact Studio project is
+        // still installed before sending lights", and this clear used to wipe
+        // it about 12ms after it appeared — leaving the owner with no warning
+        // at all and a card that may no longer hold their project. A finished
+        // save may report its own success; it may not erase someone else's
+        // warning.
+        if (projectAuthorizationRef.current === authorizationAtSave) {
+          setStatusKind('');
+          setStatus('');
+        }
       } catch (error) {
         dispatchCardSave({ type: 'fail', error: error?.message });
         if (error?.reason === 'mixed-content') {
@@ -1778,7 +1890,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           openConnectionCenter();
           setStatus('Pair this Lightweaver card before sending lights — tap Connect in the card panel.');
         } else {
-          setStatus(error?.message || `LED repair could not reach ${cardHostToUrl(cardHost)}. Check power and WiFi, then turn on Use local card.`);
+          setStatus(error?.message || `LED repair could not reach ${cardHostToUrl(cardHost)}. Check power and WiFi, then try again.`);
         }
       }
     };
@@ -1850,20 +1962,6 @@ import { PatternPreview } from './PatternPreview.jsx';
           setStatus(error?.message || `Could not apply split preview to the card at ${cardHostToUrl(cardHost)}.`);
         }
       }
-    };
-
-    const toggleLocalCard = () => {
-      const next = !localCard;
-      if (!next) invalidatePendingPreview();
-      writeLocalChipDefault(next);
-      setLocalCard(next);
-      if (next) {
-        setStatusKind('ok');
-        setStatus('Local preview is on. Your next pattern tap will connect to the card automatically.');
-        return;
-      }
-      setStatusKind('ok');
-      setStatus('Local card is off. Studio will use direct local access when the browser allows it.');
     };
 
     const openCardPage = () => {
@@ -1958,6 +2056,101 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
     };
 
+    // ── screen-scoped messages into the notice layer ───────────────────────
+    // The hero status used to be a static box in document flow, pushing the
+    // pattern grid down every time it appeared. Three exceptions stay in the
+    // old in-flow markup, deliberately, because the notice layer's `action`
+    // is a single button and these need more than that:
+    //   - recoveryConfirmation 'pending'/'dark' is a two-button yes/no
+    //     confirmation ("Yes, warm white is visible" / "No, lights are still
+    //     dark"), both real, both tested
+    //     (tests/patterns-v3.spec.ts: 'Recover lights asks for physical
+    //     confirmation…'). Collapsing to one action would silently drop the
+    //     "No" answer, which is exactly what constraint 6 forbids.
+    // Everything else — the plain info/success/error hero messages, the
+    // firmware-gap "Open Flash" case, the mixed-content "Open card installer"
+    // case, and the single-button preview-failure recovery case — moves.
+    const isPatternRecoveryConfirmFlow = recoveryConfirmation === 'pending' || recoveryConfirmation === 'dark';
+    useEffect(() => {
+      // While the pattern-gate notice (below) is up, it already carries this
+      // exact refusal text as its own alert (blockPatternCardEffect sets both
+      // `status` and `patternCardGate` to the same message). The old markup
+      // solved the resulting double-announcement by downgrading this box's
+      // role from 'alert' to 'status' while still showing both boxes; here
+      // there is no role to downgrade, so this notice simply stands down and
+      // lets the gate notice own the announcement — same fix, no duplicate.
+      if (!status || isPatternRecoveryConfirmFlow || patternCardGate) {
+        dismissNoticeKey('pattern-card-status');
+        return;
+      }
+      const isSendingStatus = /(…|\.\.\.)$/.test(status);
+      const tone = statusKind === 'err' ? 'error' : statusKind === 'ok' ? 'success' : isSendingStatus ? 'progress' : 'info';
+      // Priority when more than one would have rendered (handoffUrl and
+      // hasPreviewFailureAction can co-occur on a mixed-content failure —
+      // untested in combination, so this follows the boxes' own top-to-bottom
+      // order): Open card installer > Open Flash > the preview failure's own
+      // recovery action. Nothing here is ever dropped silently in a tested
+      // combination — only the untested mixed-content pairing loses its
+      // second button.
+      let action = null;
+      if (handoffUrl) {
+        action = { label: 'Open card installer', onSelect: () => { void openCardInstaller(); } };
+      } else if (showFlashAction) {
+        action = { label: 'Open Flash', onSelect: () => { window.location.hash = '#screen=flash'; } };
+      } else if (hasPreviewFailureAction) {
+        action = { label: previewFailure.actionLabel, onSelect: runPreviewFailureAction };
+      }
+      publishNotice({
+        key: 'pattern-card-status',
+        testId: 'pattern-card-status',
+        tone,
+        title: status,
+        source: 'pattern-status',
+        action,
+      });
+    }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
+
+    useEffect(() => {
+      if (!hardwareConfigurationIssue) {
+        dismissNoticeKey('hardware-configuration-warning');
+        return;
+      }
+      // Two buttons existed in the old box: "Fix automatically" (one-click,
+      // only offered when the fix is unambiguous) and "Fix wiring" (always
+      // offered, navigates to Layout). When both are available the automatic
+      // fix is strictly better, so it is the notice's action and "Fix wiring"
+      // is dropped — tests/patterns-v3.spec.ts's own duplicate-encoder test
+      // only exercises the case where "Fix automatically" is ABSENT, so
+      // "Fix wiring" stays the action in that (tested) case.
+      publishNotice({
+        key: 'hardware-configuration-warning',
+        testId: 'hardware-configuration-warning',
+        tone: 'error',
+        title: 'Hardware setup needs attention.',
+        body: `${hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.`,
+        source: 'pattern-hardware',
+        action: canRemoveDuplicateAlternatePress
+          ? { label: 'Fix automatically', onSelect: removeDuplicateAlternatePress }
+          : { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
+      });
+    }, [hardwareConfigurationIssue, canRemoveDuplicateAlternatePress]);
+
+    useEffect(() => {
+      if (!patternCardGate) {
+        dismissNoticeKey('pattern-gate-notice');
+        return;
+      }
+      publishNotice({
+        key: 'pattern-gate-notice',
+        testId: 'pattern-gate-notice',
+        tone: 'error',
+        title: 'That tap was not sent to the card.',
+        body: status || patternGateMessage(patternCardGate),
+        source: 'pattern-gate',
+        action: { label: patternGateActionLabel, onSelect: runPatternGateAction },
+      });
+    }, [patternCardGate, status, patternGateActionLabel]);
+
     return (
       <div className="screen">
         <div className="screen-scroll">
@@ -1965,6 +2158,7 @@ import { PatternPreview } from './PatternPreview.jsx';
             {/* hero */}
             <header className="pm-hero">
               <div className="pm-title">
+                <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
                 <p>Choose chip-ready patterns, tune the colors, then install the finished look on the card.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
@@ -2021,7 +2215,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                   }
                 </div>
                 <div className="ag-conn">
-                  <button className={"btn" + (localCard ? " toggled" : "")} aria-pressed={localCard} onClick={toggleLocalCard}>{localCard ? "Using local card" : "Use local card"}</button>
                   <button className="btn" onClick={openCardPage}>{I.open}Open card page</button>
                 </div>
                 <div className="pm-menu">
@@ -2042,33 +2235,19 @@ import { PatternPreview } from './PatternPreview.jsx';
               </div>
             </header>
 
-            {/* When the grid's refusal notice is up it carries this exact
-                sentence plus the action, so keeping this an `alert` too made a
-                screen reader announce the same refusal twice and gave the page
-                two matching alert roles. The notice owns the announcement
-                while it is showing; this stays visible, quietly. */}
-            {status &&
-              <div className={"pmx-status" + (statusKind === 'ok' ? ' is-ok' : statusKind === 'err' ? ' is-err' : '')} role={statusKind === 'err' && !patternCardGate ? 'alert' : 'status'} aria-live="polite">
+            {/* Two states of this same physical-recovery confirmation stay in
+                document flow, unmigrated: the notice layer's `action` is one
+                button, and "Yes, warm white is visible" / "No, lights are
+                still dark" are both real, both tested
+                (tests/patterns-v3.spec.ts: 'Recover lights asks for physical
+                confirmation…'). Everything else this box used to show —
+                plain info/success/error, the firmware-gap and mixed-content
+                cases, the single-button preview-failure recovery — is
+                published to the notice layer instead (see the
+                'pattern-card-status' effect above). */}
+            {status && isPatternRecoveryConfirmFlow &&
+              <div className={"pmx-status" + (statusKind === 'ok' ? ' is-ok' : statusKind === 'err' ? ' is-err' : '')} role={statusKind === 'err' ? 'alert' : 'status'} aria-live="polite">
                 {status}
-                {handoffUrl &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={openCardInstaller}>Open card installer</button>
-                  </div>
-                }
-                {showFlashAction &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={() => { window.location.hash = '#screen=flash'; }}>Open Flash</button>
-                  </div>
-                }
-                {/* The gate's action button is NOT here: it lives in the
-                    notice beside the pattern grid, which is where the owner is
-                    looking when a tap is refused. Two copies of the same button
-                    would also make "the" button ambiguous to click. */}
-                {hasPreviewFailureAction &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={runPreviewFailureAction}>{previewFailure.actionLabel}</button>
-                  </div>
-                }
                 {recoveryConfirmation === 'pending' &&
                   <div className="pmx-status-actions" aria-label="Confirm physical recovery">
                     <button type="button" className="btn primary" onClick={() => {
@@ -2091,66 +2270,33 @@ import { PatternPreview } from './PatternPreview.jsx';
               </div>
             }
 
-            {hardwareConfigurationIssue &&
-              <div className="pmx-status is-err" role="alert" data-testid="hardware-configuration-warning">
-                <strong>Hardware setup needs attention.</strong> {hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.
-                <div className="pmx-status-actions">
-                  {canRemoveDuplicateAlternatePress &&
-                    <button type="button" className="btn primary" onClick={removeDuplicateAlternatePress}>Fix automatically</button>
-                  }
-                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Fix wiring</button>
-                </div>
-              </div>
-            }
-
             <div className="pm-grid">
               {/* MAIN */}
               <section className="pm-main">
-                <div className="sec-h"><span className="t">Tap a pattern to preview</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready + {realMixes.length} mixes / {playlistSize} in playlist</span><span className="line" /></div>
-
-                {/* Was: a "Preview taps on the LED card" checkbox. There is no
-                    moment in this screen's job where a tap should not reach the
-                    card — it is the scratchpad for trying patterns on the real
-                    strip — and an off checkbox only produced taps that looked
-                    broken. Every tap sends. */}
-                <div className="pm-livebar">
-                  <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
-                </div>
-
-                {/* design target */}
-                <div className="pm-target">
-                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
-                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
-                  {sectionTargets.length > 1 &&
-                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
-                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
-                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
-                      )}
-                    </div>
-                  }
-                  <div className="pm-mixbar">
-                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
-                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
-                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
-                  </div>
-                  <div className="pm-targetcard">
-                    <div className="tc-head">
-                      <button className="tc-all on">ALL</button>
-                      <div className="tc-name"><span className="lab">Target</span><strong>{selectedTargetName}</strong></div>
-                      <div className="tc-total"><span className="lab">Total</span><strong>{targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                    <div className="tc-layer">
-                      <span className="tc-num">1</span>
-                      <div className="tc-name"><span className="lab">Layer</span><strong>{selectedTarget?.kind === 'section' ? targetLabel(selectedTarget) : 'Strip 1'}</strong></div>
-                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
-                      <div className="tc-pat"><span className="lab">Pattern</span><span className="tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span></div>
-                    </div>
-                  </div>
-                </div>
-
                 {/* browse */}
                 <div className="pm-browse" style={{ margin: "5px 0px 0px" }}>
+                  {/* One header bar for the whole module: the light, the name,
+                      and the counts pushed right. The counts are read with a
+                      single separator so the bar scans as one sentence rather
+                      than a sum and a fraction. */}
+                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready · {realMixes.length} mixes · {playlistSize} in playlist</span>
+                    <div className="pm-ledmode" role="group" aria-label="Swatch style">
+                      <button type="button" aria-pressed={ledMode === 'beads'}
+                              className={ledMode === 'beads' ? 'on' : undefined}
+                              onClick={() => chooseLedMode('beads')}>Beads</button>
+                      <button type="button" aria-pressed={ledMode === 'gradient'}
+                              className={ledMode === 'gradient' ? 'on' : undefined}
+                              onClick={() => chooseLedMode('gradient')}>Gradient</button>
+                    </div><span className="line" /></div>
+
+                  {/* Was: a "Preview taps on the LED card" checkbox. There is no
+                      moment in this screen's job where a tap should not reach the
+                      card — it is the scratchpad for trying patterns on the real
+                      strip — and an off checkbox only produced taps that looked
+                      broken. Every tap sends. */}
+                  <div className="pm-livebar">
+                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
+                  </div>
                   <div className="search" style={{ maxWidth: "none", marginBottom: 10 }}>{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
                   <div className="pt-tools" style={{ padding: "0px", margin: "0px 0px 10px" }}>
                     <div className="chips">
@@ -2158,25 +2304,10 @@ import { PatternPreview } from './PatternPreview.jsx';
                     </div>
                     <span className="pt-count">{Math.min(visibleCount, filtered.length)} of {filtered.length} shown</span>
                   </div>
-                  {/* The hero status is often scrolled off by the time anyone
-                      is tapping patterns, so a refused tap repeats its reason
-                      and its one-click fix right here, next to the grid. */}
-                  {patternCardGate &&
-                    <div
-                      ref={patternGateNoticeRef}
-                      className="pmx-status is-err"
-                      role="alert"
-                      data-testid="pattern-gate-notice"
-                      style={{ margin: "0 0 10px" }}
-                    >
-                      <strong>That tap was not sent to the card.</strong> {status || patternGateMessage(patternCardGate)}
-                      <div className="pmx-status-actions">
-                        <button type="button" className="btn primary" onClick={runPatternGateAction}>
-                          {patternGateActionLabel}
-                        </button>
-                      </div>
-                    </div>
-                  }
+                  {/* This refusal now floats (see the 'pattern-gate-notice'
+                      effect above) instead of living in document flow here,
+                      so it no longer needs scrolling into view when the hero
+                      status is off-screen — it is always visible. */}
                   <div className="pm-cards">
                     {filtered.slice(0, visibleCount).map((p) => {
                       const cardInPlaylist = inPlaylist(p.id);
@@ -2188,11 +2319,16 @@ import { PatternPreview } from './PatternPreview.jsx';
                             Speed is a property of the preview you are looking
                             at, the star is the action — each now sits where it
                             belongs. */}
-                        <div className="pmcard-led"><LedRow pal={p.pal} n={9} /><span className="pmcard-sp">{p.sp}</span></div>
+                        {/* The tempo used to ride the tile's top-right corner. It reads
+                            as a caption on the pattern, not a label on the picture, so it
+                            sits with the name alongside the mood the pattern is filed
+                            under — the two facts you sort by. */}
+                        <div className="pmcard-led"><LedRow pal={p.pal} n={11} mode={ledMode} /></div>
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
                           {p.mix && <span className="mixtag">mix</span>}
                         </div>
+                        <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
                       </button>
                         {/* Rides the top-right corner of the card's LED window
                             instead of a full-width row underneath it. Same tap
@@ -2228,6 +2364,63 @@ import { PatternPreview } from './PatternPreview.jsx';
                     </div>
                   }
                 </div>
+
+                {/* design target */}
+                <div className="pm-target">
+                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
+                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
+                  {sectionTargets.length > 1 &&
+                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
+                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
+                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
+                      )}
+                    </div>
+                  }
+                  {/* Three facts on one line, not two rows that said the same
+                      thing twice. The old card printed Target above Layer and
+                      Pattern above Pattern — the same section name and the same
+                      pattern name, one under the other, with a decorative "ALL"
+                      key and a layer number that did nothing. What is left is
+                      what the target actually IS: which section, how many
+                      pixels it drives, and what is on the card.
+
+                      The pixel tile keeps its `tc-layer` / `tc-total` element
+                      and its label-then-value DOM order, because that is the
+                      readout card-workspace.spec reads back after a project
+                      switch. Only the painting order is flipped, so a reader
+                      sees "27 LEDs" and a machine still reads "LEDs27". */}
+                  <div className="pm-targetcard">
+                    <div className="tc-stat">
+                      <span className="tc-stat-k">Section</span>
+                      <strong className="tc-stat-v">{selectedTargetName}</strong>
+                    </div>
+                    <div className="tc-stat tc-layer">
+                      <span className="tc-stat-k">Pixels driven</span>
+                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
+                    </div>
+                    {/* Amber is reserved for what the card is doing right now,
+                        so it lights only once the runtime has confirmed the
+                        send. Until then this names the pattern being driven,
+                        in the neutral ink, and the bank's status line above
+                        says whether it has landed. */}
+                    <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
+                      <span className="tc-stat-k">{previewAction.status === 'confirmed'
+                        ? 'On the card now'
+                        : previewAction.status === 'pending'
+                          ? 'Sending to card'
+                          : 'Selected in Studio'}</span>
+                      <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
+                    </div>
+                  </div>
+                  {/* Naming and storing the mix has nowhere to go inside a row
+                      of readouts, so it keeps its own row directly beneath. */}
+                  <div className="pm-mixbar">
+                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
+                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
+                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
+                  </div>
+                </div>
+
               </section>
 
               {/* ASIDE */}
@@ -2321,15 +2514,21 @@ import { PatternPreview } from './PatternPreview.jsx';
                 </div>
 
                 <div className="card pm-pane pm-tune-pane">
+                  {/* Every panel in this vocabulary opens with a header bar and
+                      a status light — that is what makes it read as a module
+                      rather than a stack of controls. The tuning pane was the
+                      one panel on this screen with no head at all, so four
+                      faders floated between two headed modules. */}
+                  <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
                     <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
                     <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
                     <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   </div>
-                  <Slider k="Saturation" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
-                  <Slider k="Brightness" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
-                  <Slider k="Speed" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
+                  <Slider k="Saturation" hint="How much colour" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
+                  <Slider k="Brightness" hint="Overall output level" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />
+                  <Slider k="Speed" hint="How fast it moves" v={`${spd.toFixed(2)}×`} value={speedSlider} min={LOOK_SPEED_SLIDER_MIN} max={LOOK_SPEED_SLIDER_MAX} step={1} testId="look-speed" onChange={(position) => updatePreviewLook({ speed: sliderValueToLookSpeed(position) })} />
                   <button
                     type="button"
                     className="btn"
@@ -2363,11 +2562,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                         <label><input type="checkbox" checked={look.customDrift} onChange={(e) => updatePreviewLook({ customDrift: e.target.checked })} /> Drift</label>
                       </div>
                       {look.customBreathe && <div className="pmx-breathe-controls">
-                        <Slider k="Lower brightness" v={`${look.breatheLowerPct}%`} value={look.breatheLowerPct} min={0} max={look.breatheUpperPct} step={1} testId="breathe-lower" onChange={(breatheLowerPct) => updatePreviewLook({ breatheLowerPct })} />
-                        <Slider k="Upper brightness" v={`${look.breatheUpperPct}%`} value={look.breatheUpperPct} min={look.breatheLowerPct} max={100} step={1} testId="breathe-upper" onChange={(breatheUpperPct) => updatePreviewLook({ breatheUpperPct })} />
-                        <Slider k="Cycle" v={`${look.breatheCycleSeconds}s`} value={look.breatheCycleSeconds} min={4} max={30} step={1} testId="breathe-cycle" onChange={(breatheCycleSeconds) => updatePreviewLook({ breatheCycleSeconds })} />
+                        <Slider k="Lower brightness" hint="Dimmest point" v={`${look.breatheLowerPct}%`} value={look.breatheLowerPct} min={0} max={look.breatheUpperPct} step={1} testId="breathe-lower" onChange={(breatheLowerPct) => updatePreviewLook({ breatheLowerPct })} />
+                        <Slider k="Upper brightness" hint="Brightest point" v={`${look.breatheUpperPct}%`} value={look.breatheUpperPct} min={look.breatheLowerPct} max={100} step={1} testId="breathe-upper" onChange={(breatheUpperPct) => updatePreviewLook({ breatheUpperPct })} />
+                        <Slider k="Cycle" hint="Seconds per breath" v={`${look.breatheCycleSeconds}s`} value={look.breatheCycleSeconds} min={4} max={30} step={1} testId="breathe-cycle" onChange={(breatheCycleSeconds) => updatePreviewLook({ breatheCycleSeconds })} />
                       </div>}
-                      <Slider k="Hue shift" v={String(look.hueShift)} value={look.hueShift} min={-128} max={128} step={1} testId="look-hue-shift" onChange={(hueShift) => updatePreviewLook({ hueShift })} />
+                      <Slider k="Hue shift" hint="Rotates the palette" v={String(look.hueShift)} value={look.hueShift} min={-128} max={128} step={1} testId="look-hue-shift" onChange={(hueShift) => updatePreviewLook({ hueShift })} />
                     </div>
                   </details>
                 </div>
@@ -2414,13 +2613,13 @@ import { PatternPreview } from './PatternPreview.jsx';
                               <button key={c} className={(symSettings.count || 8) === c ? "on" : ""} data-testid={`geo-petals-${c}`} onClick={() => patchGeo({ type: "radial", count: c })}>{c}</button>
                             ))}
                           </div>
-                          <Slider k="Rotate" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "radial", phase: pct / 100 })} />
+                          <Slider k="Rotate" hint="Turns the symmetry" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "radial", phase: pct / 100 })} />
                         </>
                       )}
                       {geo === "kaleido" && (
                         <>
-                          <Slider k="Petals" v={String(symSettings.slices || 6)} value={symSettings.slices || 6} min={2} max={16} step={1} testId="geo-slices" onChange={(s) => patchGeo({ type: "kaleido", slices: Math.round(s) })} />
-                          <Slider k="Rotate" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "kaleido", phase: pct / 100 })} />
+                          <Slider k="Petals" hint="Mirrored slices" v={String(symSettings.slices || 6)} value={symSettings.slices || 6} min={2} max={16} step={1} testId="geo-slices" onChange={(s) => patchGeo({ type: "kaleido", slices: Math.round(s) })} />
+                          <Slider k="Rotate" hint="Turns the symmetry" v={`${Math.round((symSettings.phase || 0) * 100)}%`} value={Math.round((symSettings.phase || 0) * 100)} min={0} max={100} step={1} testId="geo-rotate" onChange={(pct) => patchGeo({ type: "kaleido", phase: pct / 100 })} />
                         </>
                       )}
                       <div className="geo-fit">

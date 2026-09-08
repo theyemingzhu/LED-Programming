@@ -499,6 +499,15 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   const [bpm,              setBpm]              = useState(120);
   const [projectId,        setProjectId]        = useState(defaults.id);
   const [projectName,      setProjectName]      = useState('Untitled Project');
+  // Defect C1c: `origin` marks a project reconstructed from a card's own
+  // readback (Setup's "Use this card's project") as not-a-complete-copy — see
+  // projectCopyLabel.js's `projectCopyKind`, the one place this is read back
+  // into a display label. Tracked here (not derived) so it survives exactly
+  // like every other project field: set from the loaded project in
+  // `applyProject`, emitted by `serializeProject`, and cleared to `null` the
+  // moment `projectCopyKind`'s own artwork check stops treating it as partial
+  // (no separate clearing action needed — see projectCopyLabel.js).
+  const [origin,           setOrigin]           = useState(null);
   const [motionSmoothing,  setMotionSmoothing]  = useState(defaults.pattern.motionSmoothing);
 
   // ── Timeline / show ──────────────────────────────────────────────────────
@@ -749,6 +758,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     const restoredStrips = restoreStripPixels(sourceStrips);
     setProjectId(data.id || defaults.id);
     setProjectName(data.name || defaults.name);
+    setOrigin(data.origin ?? null);
     // Reset the whole layout slice AND clear undo history — loading a project is
     // not undoable back into the previous project.
     dispatchLayout({
@@ -881,6 +891,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       version: PROJECT_VERSION,
       id: projectId,
       name: projectName,
+      origin,
       portRoles,
       layout: {
         strips, starterPending, viewBox, svgText, hidden, projectWarnings,
@@ -932,7 +943,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
     return project;
   }, [
-    projectId, projectName, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
+    projectId, projectName, origin, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
     layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, layoutLayerOrder,
     activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
     masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
@@ -1159,6 +1170,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       bpm,             setBpm,
       projectId, setProjectId,
       projectName,     setProjectName,
+      origin,          setOrigin,
       motionSmoothing, setMotionSmoothing,
       // Timeline
       showClips,       setShowClips,

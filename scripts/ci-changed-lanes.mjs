@@ -21,6 +21,9 @@ const GENERATED_RELEASE_PATHS = Object.freeze([
 
 const isPath = (path, prefix) => path === prefix || path.startsWith(`${prefix}/`);
 const isAnyPath = (path, prefixes) => prefixes.some(prefix => isPath(path, prefix));
+const isReleaseNeutralCiControlPath = path => path === '.github/workflows/test.yml'
+  || path === 'scripts/ci-changed-lanes.mjs'
+  || path === 'scripts/ci-changed-lanes.test.mjs';
 
 export function isGeneratedReleaseChange(paths) {
   return paths.length > 0
@@ -125,9 +128,22 @@ export function classifyChangedPaths(paths, {
       continue;
     }
 
+    // Studio source selects the cloud lane too. That lane's specs drive the
+    // real Studio UI — the projects panel, the workspace-asset sync, the
+    // Pattern Lab drafts list — so a change under src/ can break them. It
+    // could not select them before: these two rules matched first and
+    // `continue`d past the cloud rule below, which only fires for functions/,
+    // migrations/ and files literally named cloud-* or library-*.
+    //
+    // That is how a Pattern Lab change shipped a regression where a synced
+    // draft could not be opened: the lane that owns that flow skipped on the
+    // pull request, and only ran later because an unrelated package.json edit
+    // happened to reclassify the change. The lane costs about two and a half
+    // minutes; a regression reaching a customer costs more.
     if (isPath(path, 'lightweaver/src/lib')) {
       lanes.source = true;
       lanes.browser = true;
+      lanes.cloud = true;
       if (studioFirmware) lanes.firmware = true;
       continue;
     }
@@ -135,6 +151,7 @@ export function classifyChangedPaths(paths, {
     if (isPath(path, 'lightweaver/src')) {
       lanes.source = true;
       lanes.browser = true;
+      lanes.cloud = true;
       if (studioFirmware) lanes.firmware = true;
       continue;
     }
@@ -231,17 +248,22 @@ function parseArguments(argv) {
 // (a hard firmware path) triggers on demand.
 //
 // The firmware TEST lane is unaffected — Studio changes still compile against
-// the card, so a bundle that no longer fits is caught on the pull request
-// rather than twenty minutes into a release.
+// the card, so a bundle that no longer fits is caught by the exact main gate
+// rather than twenty minutes into a release. CI controls also select that
+// conservative test lane, but do not by themselves turn an otherwise
+// bundle-only diff into a signed release.
 export function firmwareBundleOnly(paths, {
   conservative = false,
   generatedRelease = false,
 } = {}) {
   if (conservative) return false;
   const options = { conservative, generatedRelease };
-  const withBundle = classifyChangedPaths(paths, { ...options, cardBundleUnchanged: false });
+  const releasePaths = (paths || [])
+    .map(path => String(path || '').trim().replace(/^\.\//, ''))
+    .filter(path => path && !isReleaseNeutralCiControlPath(path));
+  const withBundle = classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: false });
   if (!withBundle.firmware) return false;
-  return classifyChangedPaths(paths, { ...options, cardBundleUnchanged: true }).firmware === false;
+  return classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: true }).firmware === false;
 }
 
 function writeOutputs(lanes, paths, outputPath, signedRelease = false, bundleOnly = false) {

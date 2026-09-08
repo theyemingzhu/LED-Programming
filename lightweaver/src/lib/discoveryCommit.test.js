@@ -110,6 +110,19 @@ test('an absent colour proof leaves the colour order empty, not a guess', () => 
   assert.equal(parts.colorOrder, '');
 });
 
+// F1: StripDiscoveryPanel.jsx's own channelProof state is
+// { stage, firstSeen, map, retry } — record() passes that object straight
+// into discoveryProjectParts. This fixture is shaped exactly like the panel's
+// real state (not the `{ channelMap }` shorthand the other fixtures in this
+// file hand-construct) so a regression on the field name discoveryCommit.js
+// actually reads is caught here, not just in the hand-built fixtures above.
+test('discoveryProjectParts reads the colour map out of the panel\'s own channelProof shape', () => {
+  const panelChannelProof = { stage: 'confirmed', firstSeen: 'green', map: { red: 1, green: 0, blue: 2 }, retry: false };
+  const parts = discoveryProjectParts(discoveredSession(), panelChannelProof);
+  assert.equal(parts.colorOrder, 'RGB', 'the measured map resolves to the strip’s true order from the panel\'s real shape');
+  assert.equal(Boolean(parts.colorOrder), true, 'a truthy colorOrder is what record() uses to set colorOrderConfirmed: true');
+});
+
 test('discoveryProjectParts is safe for a session that has not been walked', () => {
   const fresh = createStripDiscoverySession({ portRoles, benchLayout });
   const parts = discoveryProjectParts(fresh, { channelMap: null });
@@ -134,6 +147,25 @@ test('projectSkeletonFromCardStatus maps a real status blob into a project skele
   ]);
   assert.equal(skeleton.portRoles.find(entry => entry.pin === 16).role, 'strip');
   assert.equal(skeleton.portRoles.find(entry => entry.pin === 16).pixelCount, 300);
+});
+
+// F7: adoptWiringFromCard's shortcut hands this skeleton straight to
+// applyCardParts with no button press. Without a `card-partial` origin on
+// the skeleton itself, the automatic path never marks the project as a card
+// reconstruction — projectCopyLabel.js's projectCopyKind only recognizes
+// project.origin.kind, so ProjectsPanel silently claimed "Not saved yet"
+// instead of "Card copy (partial — no artwork)".
+test('projectSkeletonFromCardStatus marks the skeleton as a card-partial reconstruction when the status carries outputs', () => {
+  const skeleton = projectSkeletonFromCardStatus({
+    cardId: 'lw-b0fe81f61b44',
+    outputs: [
+      { id: 'bench-16', name: 'Bench GPIO 16', pin: 16, pixels: 300, direction: 'forward' },
+    ],
+    outputColor: { colorOrder: 'BGR' },
+  });
+  assert.equal(skeleton.origin?.kind, 'card-partial');
+  assert.equal(skeleton.origin?.cardId, 'lw-b0fe81f61b44');
+  assert.equal(typeof skeleton.origin?.at, 'number');
 });
 
 test('Find-my-strips 256 headroom is not a locked install, even when the card says it is known-good', () => {

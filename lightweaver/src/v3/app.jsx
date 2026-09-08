@@ -12,7 +12,8 @@ import { CardStatusControl } from '../components/card/CardStatusControl.jsx';
 import { useFirmwareReleaseIdentity } from '../hooks/useFirmwareReleaseIdentity.js';
 import { ProjectSaveDialog } from '../components/projects/TopBarProjectDialogs.jsx';
 import { OPEN_PROJECTS_PANEL_EVENT, ProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
-import { WorkspaceNotice } from '../components/projects/WorkspaceNotice.jsx';
+import { NoticeLayer } from '../components/NoticeLayer.jsx';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { releaseCardBridge } from '../lib/cardBridge.js';
 import { bootstrapCardHostFromLocation, canPushDirectlyToCard, readStoredCardHost } from '../lib/cardConnection.js';
 import {
@@ -24,7 +25,7 @@ import {
   readStoredBridgeResult,
 } from '../lib/bridgeLaunch.js';
 import { classifyFooterFirmwareStatus, resolveFooterFirmwareInstalled } from '../lib/footerFirmwareStatus.js';
-import { getInstallFirmwareEvidence, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
+import { getInstallFirmwareEvidence, settleInstallFirmwareVerification, subscribeInstallFirmwareEvidence } from '../lib/installFirmwareEvidence.js';
 import {
   connectCardLink,
   getCardLinkState,
@@ -41,10 +42,13 @@ import {
   listProjectLibraryRecords,
   readActiveProjectLibraryRecordId,
   readProjectLibraryRecordSnapshot,
+  readProjectLifecycleRecord,
+  readStorageJsonWithBackup,
   saveCurrentProjectToLibraryGuarded,
   setProjectLibrarySaveBlocked,
   writeActiveProjectLibraryRecordId,
 } from '../lib/projectStorage.js';
+import { PROJECT_AUTOSAVE_BACKUP_KEY, PROJECT_AUTOSAVE_KEY } from '../lib/indexedDbProjectRepository.js';
 import {
   adoptBrowserRecordAssociation,
   adoptCloudProjectAssociation,
@@ -74,6 +78,7 @@ import {
 import { LayoutScreen } from './lw-layout.jsx';
 import { markCardSectionNavigation } from './cardWorkspaceRoute.js';
 import {
+  bareRouteFor,
   canonicalStudioHash,
   cardRouteFromHash,
   createStudioRouteStore,
@@ -89,8 +94,11 @@ import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
-import { CONNECTED_CARD_LINK_STATES, deriveSetupJourney } from '../lib/setupJourney.js';
+import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
+import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
+import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
+import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
@@ -121,6 +129,7 @@ const STUDIO_SCREENS = [
   { id: 'card', label: 'Card', Component: CardScreen },
   { id: 'layout', label: 'Layout', Component: LayoutScreen },
   { id: 'pattern', label: 'Patterns', Component: PatternScreen },
+  { id: 'pattern-lab', label: 'Lab', Component: PatternLabScreen },
   { id: 'playlist', label: 'Playlist', Component: PlaylistScreen },
   { id: 'show', label: 'Show', Component: ShowScreen },
 ];
@@ -128,8 +137,9 @@ const STUDIO_SCREENS = [
 // - discovery — strip discovery is where a blank card is SENT, not a place
 //   the owner browses to. Entrances: connection center, Layout/Wire, card
 //   overview, Setup lights phase.
-// - pattern-lab — depth door off Patterns (Sculpt in Lab / hash). Same extra-
-//   key shape as discovery; keep SCREEN_BY_ID mapped or the hash blanks out.
+// (pattern-lab used to live here too, as a depth door off Patterns. It is in
+//  the rail now: it is where looks are MADE, and burying the making of them
+//  behind a button on another screen meant most people never found it.)
 const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery', 'pattern-lab'];
 // Screens that actually render a light preview the short-strip control changes.
 const PREVIEW_SCREENS = new Set(['layout', 'pattern', 'pattern-lab', 'playlist', 'show']);
@@ -299,13 +309,29 @@ function viewOptions() {
 // downstream route decision reading from one place — the URL — instead of
 // special-casing an empty hash in the view state, the card route and the
 // hash-sync effect.
+//
+// Which section of Card Home a bare hash lands on is decided from the
+// journey (`bareRouteFor`), not a completion flag: a returning owner whose
+// saved project is already complete for the card Studio remembers should see
+// the overview, not be walked back through the setup ladder just because
+// Studio reopened. Reading `lw_autosave_v3` / `lw_project_lifecycle_v1` /
+// `lw_card_identity_v1` here — the same synchronous localStorage reads
+// ProjectContext.jsx and cardIdentity.js make at their own boot — keeps this
+// a pure function of the same evidence the journey later re-derives from a
+// live connection; nothing here is a second store of that verdict.
 function bootstrapFirstRunSetupRoute() {
   try {
     if (window.location.hash) return;
+    const rememberedCard = readPersistedCardIdentity();
+    const savedProjectRaw = readStorageJsonWithBackup(PROJECT_AUTOSAVE_KEY, PROJECT_AUTOSAVE_BACKUP_KEY);
+    const lifecycleRecord = readProjectLifecycleRecord();
+    const savedProject = savedProjectRaw
+      ? { layout: savedProjectRaw.layout, installation: lifecycleRecord?.installation || null }
+      : null;
     window.history.replaceState(
       null,
       '',
-      `${window.location.pathname}${window.location.search}#screen=card&section=${FIRST_RUN_CARD_SECTION}`,
+      `${window.location.pathname}${window.location.search}${bareRouteFor({ savedProject, rememberedCard })}`,
     );
   } catch {
     // No hash rewrite is possible without history; the ordinary fallback
@@ -1117,6 +1143,13 @@ function Shell({ offlineUpdateController = null }) {
     getInstallFirmwareEvidence,
     getInstallFirmwareEvidence,
   );
+  useEffect(() => {
+    if (!isCardTransportConnected(cardLink) || !cardLink?.card) return;
+    settleInstallFirmwareVerification({
+      ...cardLink.card,
+      bootId: cardLink.readiness?.bootId,
+    });
+  }, [cardLink]);
   const firmwareStatus = useMemo(() => classifyFooterFirmwareStatus(
     resolveFooterFirmwareInstalled({
       transportConnected: isCardTransportConnected(cardLink),
@@ -1124,17 +1157,21 @@ function Shell({ offlineUpdateController = null }) {
       usbInspectedFirmware,
     }),
     firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null,
-    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) },
+    { checking: CARD_LINK_SETTLING_STATES.has(cardLink?.state) || usbInspectedFirmware?.verification === 'restarting' },
   ), [cardLink, firmwareReleaseIdentity.manifest, firmwareReleaseIdentity.state, usbInspectedFirmware]);
   const openSetupTask = useCallback(taskId => {
     if (installActiveRef.current) return;
     markCardSectionNavigation();
     flushProjectAutosave();
-    const journey = deriveSetupJourney({
+    // The same evidence Card Home and the working-screen chip decide from. This
+    // used to call deriveSetupJourney with a reduced subset, so the task the
+    // shell routed to could name a different step than the screen it landed on.
+    const journey = assembleSetupJourney({
       cardLink,
       cardLifecycle,
       commissioningFlow: inspectCardCommissioning().flow,
       project: serializeProject(),
+      evidence: getCardJourneyEvidence(),
     });
     routeStore.replace(`#screen=card&section=setup&task=${encodeURIComponent(taskId || journey.taskId)}`);
   }, [cardLifecycle, cardLink, flushProjectAutosave, routeStore, serializeProject]);
@@ -1561,19 +1598,29 @@ function Shell({ offlineUpdateController = null }) {
       || !/^[a-f0-9]{16,64}$/.test(String(evidence?.projectFingerprint || ''))) {
       return { ok: false, reason: 'exact-installation-evidence-required' };
     }
+    // Bind the normalized Studio snapshot that actually replaced the project.
+    // A signed production restore can gain current schema defaults; its live
+    // structure need not hash to the card's installed package fingerprint.
+    const snapshot = latestProjectSaveStateRef.current;
+    if (!isProjectLifecycleMarkerCurrent(expectedMarker)
+      || snapshot?.marker?.generation !== expectedMarker.generation
+      || snapshot?.marker?.revision !== expectedMarker.revision) {
+      return { ok: false, reason: 'superseded' };
+    }
     const next = markProjectInstalled({
       generation: expectedMarker.generation,
       revision: expectedMarker.revision,
       cardId: evidence.cardId,
       projectRevision: evidence.projectRevision,
       projectFingerprint: evidence.projectFingerprint,
+      studioFingerprint: cardProjectFingerprint(snapshot.project),
       verified: true,
     });
     return next?.installedRevision === expectedMarker.revision
       && next?.installation?.verified === true
       ? { ok: true }
       : { ok: false, reason: 'superseded' };
-  }, [markProjectInstalled]);
+  }, [isProjectLifecycleMarkerCurrent, markProjectInstalled]);
   const openBrowserProject = useCallback(async project => {
     const recordId = String(project?.id || '');
     const recordSnapshot = readProjectLibraryRecordSnapshot(recordId);
@@ -1661,6 +1708,68 @@ function Shell({ offlineUpdateController = null }) {
   }, [persistentNotice?.key]);
   const visiblePersistentNotice = persistentNotice?.key === dismissedPersistentKey ? null : persistentNotice;
   const visibleWorkspaceNotice = visiblePersistentNotice || workspaceEvent;
+
+  // ── Workspace events into the notice layer ──────────────────────────────
+  // These used to be two fixed-position `<aside>`s, the second pinned under
+  // the first with a hardcoded `top: 122px`. The layer stacks them properly,
+  // and — the point of the whole change — they are no longer the ONLY two
+  // messages in Studio that decline to shove the interface down.
+  //
+  // The lifecycle stays exactly where it was (workspaceEvent state, the
+  // 2200ms timer, dismissedPersistentKey). This only changes where the
+  // message is drawn, so every existing test assertion still holds.
+  const workspaceNoticeTone = (kind) => {
+    if (kind === 'conflict' || kind === 'error') return 'error';
+    if (kind === 'offline') return 'warning';
+    if (kind === 'success') return 'success';
+    return 'info';
+  };
+  useEffect(() => {
+    if (!visibleWorkspaceNotice) {
+      dismissNoticeKey('workspace-event');
+      return;
+    }
+    publishNotice({
+      key: 'workspace-event',
+      testId: 'workspace-notice',
+      tone: workspaceNoticeTone(visibleWorkspaceNotice.kind),
+      // Kept verbatim: specs assert on this text with toContainText.
+      title: visibleWorkspaceNotice.message,
+      source: visibleWorkspaceNotice.source || 'workspace',
+      action: visibleWorkspaceNotice.review
+        ? { label: 'Review', onSelect: () => openCardSection('preferences') }
+        : null,
+      onDismiss: () => {
+        if (visiblePersistentNotice) setDismissedPersistentKey(visiblePersistentNotice.key);
+        else setWorkspaceEvent(null);
+      },
+    });
+  }, [
+    visibleWorkspaceNotice?.id,
+    visibleWorkspaceNotice?.key,
+    visibleWorkspaceNotice?.message,
+    visibleWorkspaceNotice?.kind,
+    visibleWorkspaceNotice?.review,
+    visiblePersistentNotice?.key,
+    openCardSection,
+  ]);
+
+  useEffect(() => {
+    if (!projectAssociationSaveBlocked) {
+      dismissNoticeKey('association-save-blocked');
+      return;
+    }
+    publishNotice({
+      key: 'association-save-blocked',
+      testId: 'association-save-blocked',
+      tone: 'error',
+      title: 'Saving is paused — Studio could not establish a safe place to keep this project.',
+      source: 'association-save',
+      // No ×: this notice IS the only sign that work is not being kept.
+      dismissible: false,
+      action: { label: 'Retry', onSelect: () => { void retryAssociationSaveBlock(); } },
+    });
+  }, [projectAssociationSaveBlocked, retryAssociationSaveBlock]);
 
   return (
     // Mounted ONCE, unconditionally, above the screen switch: the provider's
@@ -1750,29 +1859,7 @@ function Shell({ offlineUpdateController = null }) {
         </Suspense>
       )}
 
-      <WorkspaceNotice
-        notice={visibleWorkspaceNotice}
-        onDismiss={() => {
-          if (visiblePersistentNotice) setDismissedPersistentKey(visiblePersistentNotice.key);
-          else setWorkspaceEvent(null);
-        }}
-        onReview={() => openCardSection('preferences')}
-      />
-
-      {projectAssociationSaveBlocked && (
-        <aside
-          className="workspace-notice workspace-notice-error association-save-banner"
-          data-testid="association-save-blocked"
-          role="alert"
-          aria-live="assertive"
-          aria-label="Saving blocked"
-        >
-          <span>Saving is paused — Studio could not establish a safe place to keep this project.</span>
-          <div className="workspace-notice-actions">
-            <button type="button" onClick={() => void retryAssociationSaveBlock()}>Retry</button>
-          </div>
-        </aside>
-      )}
+      <NoticeLayer />
 
       <StatusBar
         link={cardLink}
@@ -1783,7 +1870,13 @@ function Shell({ offlineUpdateController = null }) {
         firmwareStatus={firmwareStatus}
         firmwareRelease={firmwareReleaseIdentity.manifest}
         firmwareReleaseError={firmwareReleaseIdentity.error}
-        onOpenFirmwareUpdate={() => openCardSection('install')}
+        onOpenFirmwareUpdate={() => {
+          // Where the owner was before the update took the screen — the
+          // preserving update's continue button reads this back to send them
+          // home instead of always to Patterns (cardReturnDestination).
+          rememberCardReturnIntent({ hash: window.location.hash, cardId: cardLink.card?.id || cardLink.readiness?.cardId });
+          openCardSection('install');
+        }}
         offlineUpdateState={offlineUpdateState}
         onActivateOfflineUpdate={() => offlineUpdateController?.activateUpdate?.()}
         testStrip={testStrip}
@@ -1812,6 +1905,7 @@ function Shell({ offlineUpdateController = null }) {
         firmwareStatus={firmwareStatus}
         firmwareRelease={firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null}
         onOpenFirmwareUpdate={() => {
+          rememberCardReturnIntent({ hash: window.location.hash, cardId: cardLink.card?.id || cardLink.readiness?.cardId });
           closeConnectionCenter();
           openCardSection('install');
         }}

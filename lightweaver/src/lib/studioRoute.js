@@ -23,7 +23,7 @@ const CARD_SECTION_KEYS = new Set(['setup', 'overview', 'install', 'settings', '
 const SETUP_TASK_KEYS = new Set([
   'connect-card', 'pair-card', 'reconnect-card', 'recover-operation',
   'update-firmware', 'configure-wifi', 'install-project', 'discover-lights',
-  'place-lights', 'verify-direction', 'test-and-save', 'confirm-visible-lights',
+  'place-lights', 'test-and-save', 'confirm-visible-lights',
   'load-matching-project', 'open-patterns',
 ]);
 
@@ -45,6 +45,37 @@ function routeParams(hash) {
 
 export function isCardSection(section) {
   return CARD_SECTION_KEYS.has(section);
+}
+
+// Where a bare URL (no hash at all) lands, decided from the journey instead
+// of a flag. A returning owner whose saved project is already complete for
+// the card Studio remembers should never be forced back through the setup
+// ladder just because they reopened Studio — "Existing installation verified
+// → Open patterns; do not rerun setup merely because Studio reopened." Card
+// Home is still the landing screen either way (the owner sees the connection
+// before anything else), but a finished project lands on the overview, not
+// the ladder.
+//
+// Pure and synchronous so it can run at bootstrap, before the card is ever
+// probed: `savedProject` is the raw autosave payload's `layout` plus the
+// persisted installation record (`{ layout, installation }` — see
+// setupJourney.js's `layoutProgress` for the identical placement check, and
+// projectLifecycle.js's `markInstalled`/`lifecycleRecordFromState` for the
+// installation record shape). `rememberedCard` is the persisted card identity
+// (`readPersistedCardIdentity` in cardIdentity.js). Deliberately NOT the
+// `SETUP_SKIP_STORAGE_KEY` completion flag — that key records that Setup once
+// finished, not that the project it finished for is still the one open and
+// still bound to this exact card.
+export function bareRouteFor({ savedProject, rememberedCard } = {}) {
+  const cardId = String(rememberedCard?.id || '').trim();
+  const layout = savedProject?.layout;
+  const placementDone = layout?.starterPending === false
+    && Array.isArray(layout.strips)
+    && layout.strips.length > 0;
+  const installedForThisCard = Boolean(cardId)
+    && String(savedProject?.installation?.cardId || '').trim() === cardId;
+  const complete = Boolean(cardId) && placementDone && installedForThisCard;
+  return `#screen=card&section=${complete ? DEFAULT_CARD_SECTION : FIRST_RUN_CARD_SECTION}`;
 }
 
 export function isBridgeCallbackHash(hash) {

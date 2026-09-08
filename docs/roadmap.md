@@ -102,9 +102,9 @@ current step and one clear next action. Apply these ownership rules:
    browser library, file import, and file export into one clearly named project
    area. Keep one canonical project extension while continuing to import legacy
    `.lw.json`, `.lwproj.json`, and plain JSON files.
-3. **One auxiliary local-card tab.** Keep the local card/Bridge context required
-   by the HTTPS-to-local command path, but reuse it for install handoffs instead
-   of opening a second installer tab.
+3. **Local card path in the same tab.** Keep the local card/Bridge context required
+   by the HTTPS-to-local command path, but reuse it for install handoffs without
+   opening a separate window or second tab.
 4. **Batch production is a separate mode.** Move Workshop setup out of the
    normal Card journey and label it **Batch production**. Preserve
    `#screen=production`, production job deep links, and the former

@@ -869,11 +869,30 @@ test('Set first LED binds the 1 marker to the strip whose button was armed', asy
   const strips = page.locator('[data-strip-id]');
   await expect(strips).toHaveCount(2);
   const firstStrip = strips.first();
-  await expect(strips.nth(1).locator('.la-strip-row')).toHaveClass(/sel/);
+  const secondStrip = strips.nth(1);
+
+  // Adding a strip selects it, and the Selected strip panel follows the strip
+  // you chose — so the second strip's panel is the one on screen.
+  await expect(secondStrip.locator('.la-strip-row')).toHaveClass(/sel/);
+  await expect(secondStrip.locator('.la-strip-detail')).toHaveCount(1);
+  await expect(firstStrip.locator('.la-strip-detail')).toHaveCount(0);
+
+  // This used to arm the FIRST strip while the second was selected, which only
+  // worked because that strip's panel was left open behind the selection —
+  // adding a strip moved the selection and left the previous panel on screen.
+  // One panel, for the strip you chose, so reaching the first strip's controls
+  // now means choosing it.
+  await firstStrip.locator('.la-strip-row').click();
+  await expect(firstStrip.locator('.la-strip-detail')).toHaveCount(1);
+  await expect(secondStrip.locator('.la-strip-detail')).toHaveCount(0);
+
   await firstStrip.getByRole('button', { name: 'Set first LED' }).click();
 
+  // What this test is really for: arming binds the 1 marker to the strip whose
+  // button was pressed, and to no other.
   await expect(firstStrip.locator('.la-strip-row')).toHaveClass(/sel/);
   await expect(firstStrip.getByRole('button', { name: 'Cancel first LED selection' })).toBeVisible();
+  await expect(secondStrip.getByRole('button', { name: 'Cancel first LED selection' })).toHaveCount(0);
 });
 
 test('Free draw keeps the existing manual path workflow', async ({ page }) => {

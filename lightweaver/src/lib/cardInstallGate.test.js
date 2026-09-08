@@ -64,6 +64,18 @@ test('a wiring-affecting install is refused without bench proof, wherever it is 
   );
 });
 
+test('the shared card installer may defer wiring proof to its staged real-light confirmation', () => {
+  assert.equal(evaluateCardInstallGate(layoutFacts({
+    commissioningVerified: false,
+    stagedWiringConfirmation: true,
+  })).allowed, true);
+  assert.equal(evaluateCardInstallGate(layoutFacts({
+    wiringSendReady: false,
+    commissioningVerified: false,
+    stagedWiringConfirmation: true,
+  })).reason, 'wiring-incomplete');
+});
+
 test('installs that cannot change wiring do not carry the commissioning requirement', () => {
   // The card refuses a layout change unless the caller passes
   // allowLayoutChange, which neither of these does.

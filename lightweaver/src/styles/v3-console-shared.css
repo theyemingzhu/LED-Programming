@@ -1,0 +1,68 @@
+/* ============================================================
+   Light Weaver v3 — Console vocabulary, shared token layer
+   ------------------------------------------------------------
+   The Card page and Settings each declared their own copy of the
+   --lw-* console tokens, scoped to .card-workspace-screen and
+   .set. Patterns, Playlist, Show and Layout now speak the same
+   vocabulary, so the declaration lives once, here, and lists
+   every scope that uses it.
+
+   The two existing blocks are deliberately NOT removed: they are
+   part of shipped, tested screens, and duplicating a token is
+   cheaper than a merge conflict with whatever is mid-flight on
+   the Card page. This file only ADDS the four new scopes.
+
+   Tokens only, so the Daylight theme keeps working. The one fixed
+   value is --lw-on-live, the dark ink that sits on the amber
+   "live" fill — amber is light in both themes, so it needs dark
+   ink in both.
+
+   Two amber tokens, not one, and they are not interchangeable:
+     --lw-live      a LIT FILL. A block of amber carrying dark ink.
+     --lw-live-ink  the same idea as TEXT or a thin stroke. On the
+                    Daylight panel light amber is unreadable, so
+                    there it drops to a bronze of the same hue.
+   Never use --lw-live for text.
+   ============================================================ */
+
+.pm,
+.sh,
+.la {
+  --lw-live: var(--layer-1);
+  --lw-live-ink: var(--layer-1);
+  --lw-on-live: oklch(0.185 0.030 68);
+  --lw-well: var(--bg-canvas);
+  --lw-inset: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
+  --lw-inset-deep: inset 0 1px 4px oklch(0.03 0 0 / 0.7);
+  --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.07);
+  --lw-lift: 0 3px 8px oklch(0.05 0.005 60 / 0.38);
+  --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 12px 26px oklch(0.05 0.005 60 / 0.32);
+  /* The schematic layer: a faint measured field behind a panel body. */
+  --lw-graph: oklch(1 0 0 / 0.030);
+  --lw-graph-step: 26px;
+}
+
+/* --lw-on-live and --lw-mod are declared but unused by the four layers that
+   load this file, and that is on purpose: the block declares the COMPLETE
+   console vocabulary, the same set .set and .card-workspace-screen carry, so
+   a rule can be moved between console scopes without silently losing its
+   shadow or its ink. Pruning to current usage would make that move a bug. */
+
+:root[data-theme="daylight"] .pm,
+:root[data-theme="daylight"] .sh,
+:root[data-theme="daylight"] .la {
+  --lw-live-ink: oklch(0.520 0.120 62);
+  --lw-inset: inset 0 1px 3px oklch(0.30 0.010 75 / 0.20);
+  --lw-inset-deep: inset 0 1px 4px oklch(0.30 0.010 75 / 0.26);
+  --lw-raise: inset 0 1px 0 oklch(1 0 0 / 0.55);
+  --lw-lift: 0 2px 5px oklch(0.40 0.010 75 / 0.14);
+  --lw-mod: inset 0 1px 0 oklch(1 0 0 / 0.6), 0 8px 20px oklch(0.40 0.010 75 / 0.10);
+  --lw-graph: oklch(0.30 0.010 75 / 0.055);
+}
+
+/* The status light is a ::before on whichever head carries it — .sec-h on
+   Patterns and Playlist, .panel-head on Layout — because those heads already
+   exist and adding an element to them would mean editing four components to
+   change a colour. Each screen's layer declares its own; there is no shared
+   .lw-led class, and an earlier draft's unused one has been removed rather
+   than left to look like an API. */

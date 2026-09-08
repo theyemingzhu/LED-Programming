@@ -37,10 +37,10 @@ test('footer firmware status treats a same-number different revision as an avail
   });
 });
 
-test('footer firmware status offers a release to numbered-build legacy cards with a valid revision', () => {
+test('footer firmware status offers a release to unnumbered legacy cards with a different valid revision', () => {
   for (const installed of [
-    { buildNumber: 0, buildId: BUILD_ID },
-    { buildId: BUILD_ID },
+    { buildNumber: 0, buildId: OTHER_BUILD_ID },
+    { buildId: OTHER_BUILD_ID },
   ]) {
     assert.deepEqual(classifyFooterFirmwareStatus(installed, RELEASE), {
       state: 'legacy',
@@ -50,6 +50,16 @@ test('footer firmware status offers a release to numbered-build legacy cards wit
       actionable: true,
     });
   }
+});
+
+test('an exact release revision is current even when USB cannot recover its build number', () => {
+  assert.deepEqual(classifyFooterFirmwareStatus({ buildId: BUILD_ID }, RELEASE), {
+    state: 'current',
+    installedBuildNumber: null,
+    releaseBuildNumber: 1154,
+    label: 'Card firmware 1154 ✓',
+    actionable: false,
+  });
 });
 
 test('footer firmware status identifies newer card builds without offering a downgrade', () => {
@@ -152,4 +162,35 @@ test('the footer uses USB-found firmware when the Wi-Fi link is down', () => {
     resolveFooterFirmwareInstalled({ transportConnected: false, usbInspectedFirmware: null }),
     null,
   );
+});
+
+test('post-write verification suppresses stale same-card transport evidence until the target revision answers', () => {
+  const stale = { id: 'lw-b0fe81f61b44', buildNumber: 1446, buildId: OTHER_BUILD_ID };
+  const restarted = { id: 'lw-b0fe81f61b44', buildNumber: 1154, buildId: BUILD_ID };
+  const verification = {
+    verification: 'restarting', cardId: 'lw-b0fe81f61b44',
+    expectedBuildNumber: 1154, expectedBuildId: BUILD_ID,
+  };
+  assert.equal(resolveFooterFirmwareInstalled({
+    transportConnected: true, connectedCard: stale, usbInspectedFirmware: verification,
+  }), null);
+  assert.equal(resolveFooterFirmwareInstalled({
+    transportConnected: true, connectedCard: restarted, usbInspectedFirmware: verification,
+  }), restarted);
+});
+
+
+test('expired verification asks for reconnect without reviving stale firmware or endless checking', () => {
+  const marker = { verification: 'reconnect-needed', cardId: 'lw-card', expectedBuildId: BUILD_ID };
+  for (const transportConnected of [false, true]) {
+    const installed = resolveFooterFirmwareInstalled({
+      usbInspectedFirmware: marker, transportConnected,
+      connectedCard: { id: 'lw-card', buildId: OTHER_BUILD_ID, buildNumber: 1446 },
+    });
+    const status = classifyFooterFirmwareStatus(installed, RELEASE, { checking: true });
+    assert.equal(status.state, 'reconnect-needed');
+    assert.equal(status.label, 'Reconnect card to verify firmware');
+    assert.equal(status.actionable, false);
+    assert.equal(status.installedBuildNumber, null);
+  }
 });

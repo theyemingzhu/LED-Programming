@@ -249,7 +249,6 @@ test('Layout is required before final test and save', () => {
   assert.equal(phaseMap(journey).layout.status, 'done');
   assert.deepEqual(phaseMap(journey).layout.progress, [
     { id: 'placement', status: 'done' },
-    { id: 'direction', status: 'done' },
   ]);
   assert.equal(phaseMap(journey).verify.status, 'current');
   assert.equal(journey.currentPhaseId, 'verify');
@@ -257,7 +256,7 @@ test('Layout is required before final test and save', () => {
   assert.equal(journey.route, '#screen=card&section=setup&task=test-and-save');
 });
 
-test('placed artwork stays in Layout until canonical wiring direction is physically verified', () => {
+test('placed artwork advances to the card test without a second direction acknowledgement', () => {
   const project = discoveredProject();
   project.layout = {
     starterPending: false,
@@ -270,12 +269,35 @@ test('placed artwork stays in Layout until canonical wiring direction is physica
   };
   const journey = deriveSetupJourney({ cardLink: connectedCard(READY_STATUS), project });
 
-  assert.equal(journey.currentPhaseId, 'layout');
+  assert.equal(journey.currentPhaseId, 'verify');
   assert.deepEqual(phaseMap(journey).layout.progress, [
     { id: 'placement', status: 'done' },
-    { id: 'direction', status: 'current' },
   ]);
-  assert.equal(journey.nextAction.id, 'verify-direction');
+  assert.equal(journey.nextAction.id, 'test-and-save');
+});
+
+test('an exact card testing staged wiring stays on the final phase while its runtime restarts', () => {
+  const project = verifiedProject();
+  const journey = deriveSetupJourney({
+    cardLink: {
+      ...connectedCard(READY_STATUS),
+      state: 'revalidating',
+      readiness: { ...READY_STATUS, runtimePhase: 'recovering', commandReady: false },
+    },
+    cardLifecycle: { state: 'verifying', setupTaskId: 'reconnect-card' },
+    project,
+    wiringStatus: {
+      state: 'testing',
+      candidateState: 'awaiting-confirmation',
+      activationId: 'candidate-41',
+      cardId: 'lw-setup-test',
+      buildId: 'build-setup-test',
+    },
+  });
+
+  assert.equal(journey.currentPhaseId, 'verify');
+  assert.equal(journey.taskId, 'confirm-visible-lights');
+  assert.deepEqual(journey.blockers, []);
 });
 
 test('API success and exact readback still require visible confirmation', () => {

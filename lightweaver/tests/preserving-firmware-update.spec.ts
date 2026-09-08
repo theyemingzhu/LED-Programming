@@ -6,7 +6,14 @@ const TARGET_BUILD = '2'.repeat(40);
 const HEAD = 'a'.repeat(64);
 const FINGERPRINT = 'b'.repeat(64);
 
-async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 'progress', capabilityShape = 'current') {
+// grantProbe stands in for `probeFirmwareUpdateGrantService`'s answer. Every
+// scenario here defaults to 'ready' so existing assertions about the
+// software-authorization path keep exercising it exactly as before; F12's
+// own scenario passes 'blocked' to get the truthful default this fixture
+// would otherwise short-circuit past — see lw-flash.jsx's DEV branch, which
+// never performs a real fetch under `npx vite` and so cannot be driven by
+// mocking /api/library/session directly.
+async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 'progress', capabilityShape = 'current', { returnHash = '', grantProbe = 'ready' }: { returnHash?: string, grantProbe?: 'ready' | 'blocked' } = {}) {
   if (outcome === 'reload-disconnected' || outcome === 'in-place-disconnect') {
     const exactRestartedStatus = {
       app: 'Lightweaver', provisioningContractVersion: 1,
@@ -19,9 +26,19 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
     await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: exactRestartedStatus }));
     await page.route('http://lightweaver.local/api/update/status', route => route.fulfill({ json: { phase: 'idle' } }));
   }
-  await page.addInitScript(({ mode, outcome, capabilityShape, cardId, oldBuild, targetBuild, head, fingerprint }) => {
+  await page.addInitScript(({ mode, outcome, capabilityShape, cardId, oldBuild, targetBuild, head, fingerprint, returnHash, grantProbe }) => {
     localStorage.clear();
     sessionStorage.clear();
+    (window as any).__LW_GRANT_PROBE_RESULT_FOR_TEST__ = grantProbe === 'blocked'
+      ? { state: 'unavailable', reason: 'no-session-service' }
+      : { state: 'ready', reason: '' };
+    // Stands in for whatever real surface (footer chip, Connection Center,
+    // Setup) took the owner into this update: those callers call
+    // rememberCardReturnIntent before routing here, and this fixture models
+    // that already having happened for the working screen under test.
+    if (returnHash) {
+      sessionStorage.setItem('lw_card_return_intent_v1', JSON.stringify({ hash: returnHash, cardId }));
+    }
     const imageBytes = new Uint8Array([0xe9, 1, 2]);
     const recovering = outcome === 'reload-valid';
     const disconnectedRecovery = outcome === 'reload-disconnected';
@@ -33,6 +50,7 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
         cardId, bootId: recovering ? 'boot-new' : 'boot-old', projectHead: head, projectFingerprint: fingerprint,
         firmwareVersion: recovering ? '1.2.0' : '1.1.1', buildId: recovering ? targetBuild : oldBuild,
         firmwareUpdate: { phase: recovering ? 'valid' : 'idle', rollbackReason: '' },
+        ...(outcome === 'blank-ready' ? { runtimePhase: 'factory', configValid: false, knownGoodProject: false, commandReady: false, playbackReady: false, firmwareUpdateReady: true, projectId: '', projectHead: '', projectFingerprint: '' } : {}),
         ...(capabilityShape === 'current'
           ? { capabilities: { firmwareUpdate: { version: 1, network: mode === 'wifi', softwareGrant: mode === 'wifi' } } }
           : capabilityShape === 'network-physical'
@@ -101,7 +119,7 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
       },
       });
     };
-  }, { mode, outcome, capabilityShape, cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, head: HEAD, fingerprint: FINGERPRINT });
+  }, { mode, outcome, capabilityShape, cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, head: HEAD, fingerprint: FINGERPRINT, returnHash, grantProbe });
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', {
     name: capabilityShape === 'legacy' ? 'Install Lightweaver' : 'Update Lightweaver',
@@ -165,6 +183,44 @@ test('preserving update: a software-capable card keeps the physical fallback ava
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible();
 });
 
+// F12: a Studio origin with no grant service at all — the dev server's own
+// GET /api/library/session answers a deliberate 204 stub and its
+// POST /api/library/firmware-update-grant answers 404 {"error":{"code":
+// "not_found", ...}} (the same shape a card-hosted Studio's unmatched routes
+// return). The panel must never offer software authorization as if it could
+// work here — the card-button path is the only one shown, already primary,
+// with a truthful explanation instead of a dead "Start secure Wi-Fi update"
+// button that would fail with a bare "API route not found".
+test('preserving update: an origin with no grant service defaults to the card-button path, not a dead software offer', async ({ page }) => {
+  await openPreservingFixture(page, 'wifi', 'progress', 'current', { grantProbe: 'blocked' });
+  const panel = page.getByTestId('preserving-update-panel');
+  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
+
+  // The card-button path is offered immediately and is the primary action —
+  // never gated behind a "Use card button instead" click, because there is
+  // no working software alternative to fall back from.
+  await expect(panel).toContainText('Briefly press BOOT/control once');
+  const primaryAction = panel.getByRole('button', { name: 'Start preserving update' });
+  await expect(primaryAction).toBeVisible();
+  await expect(primaryAction).toHaveClass(/btn-lg/);
+
+  // The software path is not offered at all — not as the primary action,
+  // and not as a "use it instead" fallback button either.
+  await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Use secure software authorization' })).toHaveCount(0);
+
+  const blocked = panel.getByTestId('software-grant-blocked');
+  await expect(blocked).toBeVisible();
+  await expect(blocked).toContainText('no software authorisation service');
+  await expect(blocked).toContainText('local or card-hosted');
+  await expect(blocked).toContainText('card button');
+  // This is not the owner-sign-in copy — signing in would not fix a route
+  // that does not exist, and offering that button here would be a lie.
+  await expect(blocked).not.toContainText('owner sign-in');
+  await expect(blocked.getByRole('button', { name: 'Open owner sign-in' })).toHaveCount(0);
+  await expect(blocked.getByRole('button', { name: 'Check again' })).toBeVisible();
+});
+
 test('preserving update: Wi-Fi panel surfaces the card response detail for a rejected request', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'http-400');
   const panel = page.getByTestId('preserving-update-panel');
@@ -189,6 +245,33 @@ test('preserving update: reload resumes redacted state and shows valid only afte
   await openPreservingFixture(page, 'wifi', 'reload-valid');
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
+});
+
+test('preserving update: the continue button returns the owner to the task an update interrupted', async ({ page }) => {
+  // The owner was on Playlist when they entered this update (from the footer
+  // chip, Connection Center, or Setup — every one of those callers records
+  // this before routing here). Once the card is verified back on the target
+  // build, the panel offers exactly one button, and it must go home instead
+  // of always defaulting to Patterns.
+  await openPreservingFixture(page, 'wifi', 'reload-valid', 'current', { returnHash: '#screen=playlist' });
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
+  const continueButton = panel.getByTestId('preserving-update-continue');
+  await expect(continueButton).toHaveText('Back to Playlist');
+  await continueButton.click();
+  await expect(page).toHaveURL(/#screen=playlist$/);
+  // Pressed once, spent once: a second visit to this update must not still
+  // offer a stale destination from the last interruption.
+  expect(await page.evaluate(() => sessionStorage.getItem('lw_card_return_intent_v1'))).toBeNull();
+});
+
+test('preserving update: with nothing remembered, the continue button falls back to Patterns', async ({ page }) => {
+  await openPreservingFixture(page, 'wifi', 'reload-valid');
+  const panel = page.getByTestId('preserving-update-panel');
+  const continueButton = panel.getByTestId('preserving-update-continue');
+  await expect(continueButton).toHaveText('Open Patterns');
+  await continueButton.click();
+  await expect(page).toHaveURL(/#screen=pattern$/);
 });
 
 test('preserving update: a Wi-Fi reboot self-heals from exact runtime-known-good evidence', async ({ page }) => {
@@ -331,4 +414,14 @@ test('preserving update: USB reset ends with an actionable bounded reconnect fai
   await expect(panel.getByRole('alert')).toContainText(/could not verify the restarted card/i);
   await expect(panel).not.toContainText('Restarting card');
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('lw_firmware_update_session_v1') || 'null')?.phase)).toBe('restarting');
+});
+
+
+test('preserving update: a blank card with explicit update readiness can start without a project', async ({ page }) => {
+  await openPreservingFixture(page, 'wifi', 'blank-ready');
+  const panel = page.getByTestId('preserving-update-panel');
+  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
+  await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
+  await expect(panel).toContainText('Restarting card');
+  await expect(panel.getByRole('alert')).toHaveCount(0);
 });

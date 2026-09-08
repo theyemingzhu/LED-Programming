@@ -568,6 +568,7 @@ test('an opened setup tab that never reaches the card explains why instead of sp
   const alert = page.locator('.card-commissioning [role="alert"]').first();
   await expect(alert).toContainText('never answered at 192.168.4.1', { timeout: 15000 });
   await expect(alert).toContainText('Lightweaver-EEFF');
+  await expect(page.locator('.card-commissioning')).not.toContainText('the card is already on your Wi-Fi');
   await expect(page.getByTestId('setup-joined-station-reconnect')).toBeVisible();
   // The tab the owner opened is theirs; Studio must not close or navigate it.
   await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toBeVisible();
@@ -597,7 +598,7 @@ test('once 192.168.4.1 is gone Studio continues on the remembered home-network a
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   await page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i }).click();
 
-  await expect(page.locator('.card-commissioning')).toContainText('connecting to the card on your Wi-Fi', { timeout: 15000 });
+  await expect(page.locator('.card-commissioning')).toContainText('The setup address stopped answering.', { timeout: 15000 });
   await expect.poll(async () => {
     const openedStation = await page.evaluate(() => ((window as any).__LW_OPENED_URLS__ || []).some(
       (url: string) => url.includes('192.168.18.70'),
@@ -806,9 +807,10 @@ test('Card overview delegates resumable install and test work to exact Setup tas
   await connectCommissioningCard(page);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  // Card Home renders check + install in place (the old "Install project on
-  // card" jump is gone).
-  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  // The resumable Setup task owns the action; a fresh project installer
+  // must not compete with restoration of this exact saved transaction.
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
   // "delegates to exact Setup tasks" is what this test is named for: the card
   // was flashed and its saved project is waiting to go back on it, so the
   // ladder's active task carries that door. It used to assert the commissioning
@@ -1215,6 +1217,17 @@ test('Hardware loads the verified production project that matches the paired car
   await expect.poll(() => page.evaluate(() => (
     JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null')?.installation?.projectRevision
   ))).toBe(job.project.revision);
+  await expect.poll(() => page.evaluate(async () => {
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    const installation = JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null')?.installation;
+    return Boolean(project && installation?.studioFingerprint === cardProjectFingerprint(project));
+  })).toBe(true);
+  const binding = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || 'null')?.installation);
+  expect(binding).toMatchObject({
+    cardId: 'lw-bench-fixture', projectRevision: job.project.revision,
+    projectFingerprint: job.project.fingerprint,
+  });
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
   await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
   const savedProjects = await page.evaluate(() => {
@@ -2765,4 +2778,23 @@ test('HTTPS Studio reload proves an ambiguous initial config without replaying e
   expect(identityHandoff.accepted.id).toBe('lw-cccccccccccc');
   expect(identityHandoff.priorReason).toBe('wrong-card');
   await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
+
+test('updated factory-blank station card advances to project setup without another flash', async ({ page }) => {
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'wifi', { state: 'station', stationIp: '192.168.18.70' });
+  const blank = {
+    ...readyStatus('lw-aabbccddeeff', { firmwareVersion: '1.2.3' }),
+    buildNumber: 1524, runtimePhase: 'factory', runtimeSource: 'defaults', knownGoodProject: false,
+    configValid: false, commandReady: false, playbackReady: false, outputReady: false,
+    projectOutputReady: false, outputDriverReady: true,
+    projectId: '', projectRevision: 0, projectFingerprint: '', outputs: [],
+    wifi: { configured: true, transport: 'station', transition: 'station',
+      transitionPending: false, apActive: false, stationIp: '192.168.18.70', ip: '192.168.18.70' },
+  };
+  await page.route('**/api/status', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(blank) }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toHaveCount(0);
 });

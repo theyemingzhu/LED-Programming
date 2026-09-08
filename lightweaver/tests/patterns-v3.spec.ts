@@ -90,6 +90,28 @@ async function issueRegisteredPatternAuthorization(page, intent = '') {
   await expect(page.locator('.pm')).toBeVisible();
 }
 
+// A bridge scenario must own the shared link as a bridge. The removed local
+// card preference no longer overrides an already verified direct connection.
+async function useReadyBridgeTransport(page) {
+  await expect.poll(() => page.evaluate(async () => {
+    const { getCardLinkState } = await import('/src/lib/cardLink.js');
+    return getCardLinkState().readiness?.commandReady;
+  })).toBe(true);
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const link = getSharedCardLink();
+    const current = link.getState();
+    link.dispatch({
+      type: 'card-verified', via: 'bridge', host: current.host,
+      card: current.card, expectedCard: current.expectedCard,
+      readiness: current.readiness, bridgeLifecycle: current.bridgeLifecycle,
+    });
+  });
+  await expect.poll(() => page.evaluate(async () => (
+    (await import('/src/lib/cardLink.js')).getCardLinkState().transport
+  ))).toBe('bridge');
+}
+
 async function gotoFreshPatterns(page) {
   await mockDefaultCardZones(page);
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
@@ -684,6 +706,18 @@ test('an edit made during verification remains a draft above the installed snaps
   releaseVerification?.();
   await expect(install).toBeDisabled();
   await expect(page.getByRole('alert')).toContainText('verify that this exact Studio project is still installed');
+  // ...and it is still there once everything in flight has landed. The install
+  // started before the authorization was lost and finishes about a second
+  // later, after a deployment verification, an evidence read and a preview
+  // push; it used to end with "clear the status", which wiped this warning
+  // roughly 12ms after it appeared. The owner was then told nothing at all and
+  // would send lights believing the card still held their project. A finished
+  // save may report its own success; it may not erase someone else's warning.
+  // Matched by text, not by role: the element's role flips between alert and
+  // status as other state settles, which is not what this is about.
+  await page.waitForTimeout(1200);
+  await expect(page.getByText(/verify that this exact Studio project is still installed/))
+    .toBeVisible();
   await page.waitForTimeout(300);
 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').dirty)).toBe(true);
@@ -1099,12 +1133,28 @@ test('Studio preview changes immediately while runtime application waits for the
     });
   });
   await gotoFreshPatterns(page);
+  const cardReadout = page.locator('.tc-stat.tc-live');
+  await expect(cardReadout).toContainText('Selected in Studio');
+  await expect(page.getByRole('button', { name: /Use local card/i })).toHaveCount(0);
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
+  // The shared link polls status in the background. A fresh report for the
+  // same exact ready card must not cancel the click's short send timer.
+  await page.evaluate(async () => {
+    const cardLink = await import('/src/lib/cardLink.js');
+    const current = cardLink.getCardLinkState();
+    cardLink.reportCardStatusEnvelope({
+      host: current.host,
+      status: { ...current.readiness },
+      transport: current.transport,
+    });
+  });
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
   await expect(page.getByTestId('physical-preview-status')).toHaveText('Sending to Lightweaver');
+  await expect(cardReadout).toContainText('Sending to card');
   await expect.poll(() => Boolean(releaseControl)).toBe(true);
   releaseControl?.();
   await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
+  await expect(cardReadout).toContainText('On the card now');
 });
 
 test('an old card keeps the Studio selection and offers a card software update', async ({ page }) => {
@@ -1137,6 +1187,7 @@ test('an invalid preview response stays bounded and does not render the card res
   await expect(alert).toBeVisible();
   await expect(alert).not.toContainText('PRIVATE-CARD-RESPONSE');
   await expect(alert).toContainText(/could not be verified|did not answer in time/i);
+  await expect(page.locator('.tc-stat.tc-live')).toContainText('Selected in Studio');
 });
 
 test('missing runtime state proof recovers the card before asking for visible confirmation', async ({ page }) => {
@@ -1332,13 +1383,13 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('lw_local_chip_default', '1');
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({
       version: 1, id: 'lw-identity-race', firmwareVersion: '1.0.0', buildId: 'identity-race-build',
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
+  await useReadyBridgeTransport(page);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
   await page.evaluate(() => {
@@ -1362,7 +1413,8 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
     (window as any).__identityAuthorityLost = true;
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     getSharedCardLink().dispatch({
-      type: 'direct-status', connected: true, host: 'lightweaver.local',
+      type: 'bridge-ping-ok', host: 'lightweaver.local',
+      bridgeLifecycle: getSharedCardLink().getState().bridgeLifecycle,
       card: {
         id: 'lw-identity-race', firmwareVersion: '1.0.0', buildId: 'identity-race-build',
       },
@@ -1488,10 +1540,10 @@ test('blocked automatic card window gives one concrete recovery action', async (
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('lw_local_chip_default', '1');
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
+  await useReadyBridgeTransport(page);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
 
@@ -1502,23 +1554,48 @@ test('blocked automatic card window gives one concrete recovery action', async (
 
 test('an older card bridge points to the single Flash recovery action', async ({ page }) => {
   await pairReadyPatternCard(page, 'lw-older-bridge-test');
-  await page.addInitScript(() => {
-    const bridge = { closed: false, postMessage: () => {} };
-    window.open = (() => bridge as any) as typeof window.open;
-  });
+  const fixture = patternAuthorizationFixtures.get(page)!;
+  await page.addInitScript(({ projectId, projectFingerprint }) => {
+    (window as any).__olderBridgeMessages = [];
+    const originalOpen = window.open.bind(window);
+    window.open = ((_url?: string | URL, name?: string) => {
+      const popup = originalOpen('about:blank', name);
+      (window as any).__olderBridgePopup = popup;
+      if (popup) Object.defineProperty(popup, 'postMessage', {
+        configurable: true,
+        value(message: any, targetOrigin: string) {
+          (window as any).__olderBridgeMessages.push(message);
+          // This card answers identity/status but predates versioned bridge
+          // features. Silence would instead model an unreachable card.
+          queueMicrotask(() => window.dispatchEvent(new MessageEvent('message', {
+            origin: targetOrigin, source: popup,
+            data: { app: 'LightweaverCardBridge', id: message.id, ok: true, response: {
+              app: 'Lightweaver', provisioningContractVersion: 1,
+              cardId: 'lw-older-bridge-test', firmwareVersion: '1.0.0', buildId: 'lw-older-bridge-test-build',
+              bootId: 'lw-older-bridge-test-boot', runtimePhase: 'ready', knownGoodProject: true,
+              commandReady: true, outputReady: true, playbackReady: true,
+              projectId, piece: { id: projectId }, projectRevision: 0, projectFingerprint,
+            } },
+          })));
+        },
+      });
+      return popup;
+    }) as typeof window.open;
+  }, { projectId: fixture.project.id, projectFingerprint: fixture.projectFingerprint });
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem('lw_local_chip_default', '1');
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
+  await useReadyBridgeTransport(page);
   await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await page.evaluate(() => {
     window.dispatchEvent(new MessageEvent('message', {
       origin: 'http://lightweaver.local',
+      source: (window as any).__olderBridgePopup,
       data: {
         app: 'LightweaverCardBridge',
         type: 'ready',
@@ -1530,6 +1607,8 @@ test('an older card bridge points to the single Flash recovery action', async ({
   await expect(page.getByRole('alert')).toContainText(
     "This card is running older firmware that can't do this yet. Open Flash to update the card, then try again.",
   );
+  expect(await page.evaluate(() => (window as any).__olderBridgeMessages
+    .filter((message: any) => message.type === 'control'))).toEqual([]);
 });
 
 test('a legacy bridge lifecycle change blocks the next pattern before sending it', async ({ page }) => {
@@ -1924,9 +2003,11 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
 
   await page.getByTestId('save-current-combo').click();
 
-  // A new mix card (tagged 'mix') appears in the grid.
+  // A new mix card (tagged 'mix') appears in the grid. The catalog sentinel
+  // may concurrently reveal its next batch, so saving must not shrink the
+  // visible catalog but does not own an exact rendered-card count.
   await expect(page.locator('.pm-cards .pmcard .mixtag')).toHaveCount(1);
-  await expect(page.locator('.pm-cards .pmcard')).toHaveCount(before);
+  expect(await page.locator('.pm-cards .pmcard').count()).toBeGreaterThanOrEqual(before);
 });
 
 test('the mirror geometry control switches the active geometry', async ({ page }) => {

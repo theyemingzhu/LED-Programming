@@ -6,6 +6,11 @@
 // but no fingerprint could ever match, so Setup stayed on phase 1 offering the
 // same buttons forever.
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+
+// The real signed release this Studio ships — read, not hardcoded, so the
+// assertion below stays true across releases without editing this file.
+const release = JSON.parse(await readFile(new URL('../public/firmware/release-manifest.json', import.meta.url), 'utf8'));
 
 const CARD_ID = 'lw-legacy-fp-card';
 const PROJECT_ID = 'lwproj-legacy-piece';
@@ -45,6 +50,12 @@ test.beforeEach(async ({ page }) => {
         body: JSON.stringify({ ...status, bridgeVersion: 6 }),
       });
     }
+    if (url.pathname === '/api/wiring/status') {
+      // A missing fingerprint does not imply a missing wiring safety API.
+      // Automatic adoption requires independent proof that no candidate exists.
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, state: 'known-good', hasCandidate: false, outputs: status.outputs }) });
+    }
     // Patterns/zones readback is optional for adoption; a legacy card without
     // them must still adopt from the status skeleton alone.
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' });
@@ -71,7 +82,7 @@ async function expectSetupComplete(page) {
   // paragraph of its own; Card Home was compressed to one status, so this
   // asserts the banner is present and lets the row and the ladder say it once.
   await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
+  await expect(page.getByTestId('setup-progress')).toHaveText(/^Setup complete(?: · Viewing phase [1-4])?$/);
   await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
   await expect(page.getByTestId('setup-adoption-error')).toHaveCount(0);
   await expect(page.getByTestId('setup-open-patterns')).toBeVisible();
@@ -86,7 +97,7 @@ test('a fresh Studio adopts the legacy card project and finishes Setup by itself
   // against the same legacy evidence rather than demoting back to phase 1.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 10000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText(/^Setup complete(?: · Viewing phase [1-4])?$/, { timeout: 10000 });
   await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
 });
 
@@ -113,4 +124,42 @@ test('"Use this card’s project" visibly finishes Setup when another project is
     .toContainText(/different project|holds the same project/, { timeout: 10000 });
   await page.getByTestId('setup-start-from-card').click();
   await expectSetupComplete(page);
+});
+
+// A truly older card without this API still has an explicit adoption path;
+// unknown candidate state must never silently replace the open project.
+test('missing wiring safety readback requires explicit adoption even in a fresh Studio', async ({ page }) => {
+  await page.route('http://lightweaver.local/api/wiring/status', route =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' }));
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
+  await expect(page.getByTestId('setup-card-ready')).toHaveCount(0);
+  await page.getByTestId('setup-start-from-card').click();
+  await expectSetupComplete(page);
+});
+
+// legacyStatus() reports a real signed build (1306) that is genuinely older
+// than this Studio's release, verified against the actual public manifest —
+// not a mocked one. Ticket B2: that state is maintenance, not a blocker, and
+// the banner must say so instead of reusing the "update before relying on
+// it" sentence reserved for a card whose firmware cannot run the installed
+// project (cardLifecycle state 'update-required').
+test('the ready banner treats a compatible-but-older release as optional, not required', async ({ page }) => {
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expectSetupComplete(page);
+
+  const banner = page.getByTestId('setup-card-ready');
+  await expect(banner).toContainText('A newer card release is available');
+  await expect(banner).toContainText(
+    new RegExp(`Your lights keep working on 1306\\. Update to ${release.buildNumber} when convenient\\.`),
+  );
+  await expect(banner).not.toContainText('This card’s software is behind');
+  await expect(banner).not.toContainText('Update the card software before relying on it.');
+
+  // Same one-primary rule as the rest of Card Home: the optional wording must
+  // not demote Open Patterns to make room for a louder warning.
+  await expect(page.getByTestId('setup-open-patterns')).toHaveClass(/\bprimary\b/);
+  await expect(page.getByTestId('setup-update-card')).toBeVisible();
 });

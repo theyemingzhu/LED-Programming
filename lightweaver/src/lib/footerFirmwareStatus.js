@@ -39,6 +39,9 @@ function result(state, installedBuildNumber, releaseBuildNumber, label, actionab
 // must never turn a loosely formatted card response into a firmware action.
 export function classifyFooterFirmwareStatus(installed, verifiedRelease, { checking = false } = {}) {
   const release = validRelease(verifiedRelease);
+  if (installed?.verification === 'reconnect-needed') {
+    return result('reconnect-needed', null, release?.buildNumber ?? null, 'Reconnect card to verify firmware', false);
+  }
   if (installed === null || installed === undefined) {
     // A card that is mid-restart has not stopped being known — it is simply not
     // answering this second. Saying "Card firmware unknown" through every reboot
@@ -69,6 +72,14 @@ export function classifyFooterFirmwareStatus(installed, verifiedRelease, { check
     );
   }
 
+  // USB can recover the exact signed revision from the application image even
+  // when that older image predates the embedded numeric build. Revision
+  // equality is still exact release evidence; use the release's known number
+  // for the owner-facing label without claiming USB read that number.
+  if (card.buildNumber === null && card.buildId === release.buildId) {
+    return result('current', card.buildNumber, release.buildNumber, `Card firmware ${release.buildNumber} ✓`, false);
+  }
+
   if (card.buildNumber === null) {
     return result('legacy', null, release.buildNumber, `Card firmware ${installedName(card)} → ${release.buildNumber}`, true);
   }
@@ -89,6 +100,16 @@ export function resolveFooterFirmwareInstalled({
   connectedCard = null,
   usbInspectedFirmware = null,
 } = {}) {
+  if (usbInspectedFirmware?.verification === 'reconnect-needed') return usbInspectedFirmware;
+  if (usbInspectedFirmware?.verification === 'restarting') {
+    if (!transportConnected || !connectedCard) return null;
+    const expectedCardId = String(usbInspectedFirmware.cardId || '').trim().toLowerCase();
+    const connectedCardId = String(connectedCard.id || connectedCard.cardId || '').trim().toLowerCase();
+    const expectedBuildId = String(usbInspectedFirmware.expectedBuildId || '').trim();
+    const connectedBuildId = String(connectedCard.buildId || '').trim();
+    if (expectedCardId && connectedCardId === expectedCardId && connectedBuildId !== expectedBuildId) return null;
+  }
   if (transportConnected) return connectedCard || null;
+  if (usbInspectedFirmware?.verification === 'restarting') return null;
   return usbInspectedFirmware || null;
 }

@@ -270,10 +270,17 @@ export function WirePlanTools({ state, cardHost }) {
 
   return (
     <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-tools">
-      <div className="panel-head lww-plan-head">
-        <span className="ttl">Wire plan</span>
-        <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
-      </div>
+      {/* Two different kinds of panel used to be one. The wire PLAN is a
+          read-out — a count of strips and lights you can look at but not
+          operate — so it folds, and its head carries the whole summary when
+          shut. The wire TOOLS below are the opposite: every row is a control
+          that changes the design, so they are their own panel with their own
+          head, no longer a disclosure buried inside a read-out. */}
+      <details className="lww-plan" data-testid="wire-plan" open>
+        <summary className="panel-head lww-plan-head">
+          <span className="ttl">Wire plan</span>
+          <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
+        </summary>
       {(showCapacityFact || mismatchedOutputs.length > 0) && !cardNeedsStripDiscovery && (
         <section className="wire-discovered-list" aria-label="What is plugged in right now">
           {showCapacityFact && (
@@ -313,8 +320,13 @@ export function WirePlanTools({ state, cardHost }) {
         </p>
       )}
 
-      <details className="lww-advanced-tools" data-testid="advanced-installation-tools">
-        <summary>Wire tools</summary>
+      </details>
+
+      <section className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wire tools">
+        <div className="panel-head">
+          <span className="ttl">Wire tools</span>
+          <span className="meta">changes the design</span>
+        </div>
         <div className="lww-advanced-tools-body">
           <div className="la-led-chipset-row" data-testid="project-led-chipset">
             <LedChipsetSelect value={ledType} onChange={setLedType}/>
@@ -459,7 +471,7 @@ export function WirePlanTools({ state, cardHost }) {
             {pinError && <p className="lw-wiring-error">{pinError}</p>}
           </details>
         </div>
-      </details>
+      </section>
     </WireHoverDescription>
   );
 }

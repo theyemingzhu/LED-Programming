@@ -100,15 +100,18 @@ async function prepareCardHomeInstall(page, cardId: string) {
     link.dispatch(event);
   }, { id: cardId });
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
-  await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
+  // Setup now offers one test-and-save action; capacity is checked before
+  // any candidate can be sent, independent of the old separate LED check.
+  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
+  await expect(page.getByText('Ready to install on the card.')).toBeVisible();
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
 }
 
 test('Settings renders an oversized project and reports exact capacity on save', async ({ page }) => {
   const project = makeOversizedProject();
   capacityErrorForProject(project);
-  const requests: string[] = [];
-  page.on('request', request => requests.push(request.url()));
+  const requests: { url: string; method: string }[] = [];
+  page.on('request', request => requests.push({ url: request.url(), method: request.method() }));
 
   await gotoSavedProject(page, project, 'settings');
   await prepareCardHomeInstall(page, 'lw-card-storage-ui-settings');
@@ -119,7 +122,11 @@ test('Settings renders an oversized project and reports exact capacity on save',
   await expect(page.locator('.la-card-push-banner')).toHaveText(
     /Card configuration is \d+ bytes, exceeding the 3968-byte flash storage limit\./,
   );
-  expect(requests.slice(requestsBefore).filter(url => url.includes('/api/config') || url.includes('/api/firmware-info'))).toHaveLength(0);
+  // Setup refreshes identity after every operation, including a rejected one.
+  // Capacity rejection must prevent config access and every card mutation.
+  const cardRequests = requests.slice(requestsBefore).filter(request => request.url.startsWith('http://lightweaver.local/'));
+  expect(cardRequests.filter(request => request.url.includes('/api/config'))).toHaveLength(0);
+  expect(cardRequests.filter(request => !['GET', 'OPTIONS'].includes(request.method))).toHaveLength(0);
 });
 
 // Patterns gates its Install button on a card that classifies as ready and on

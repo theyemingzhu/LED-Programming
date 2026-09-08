@@ -1,0 +1,597 @@
+/* ============================================================
+   Light Weaver v3 — Patterns, "Schematic" treatment
+   ------------------------------------------------------------
+   The pattern bank, its cells, the design target and the
+   colour + geometry controls beside them.
+
+   Split out of v3-pm-console.css so Patterns and Playlist can be
+   worked on at the same time without two people editing one file.
+   Anything BOTH screens use stays in v3-pm-console.css; changing
+   that file changes both, so it is edited deliberately and not as
+   a side effect of a change to one screen.
+   ============================================================ */
+
+/* the head of a panel carries a light; a bare section head does not,
+   because there is no module for it to report on */
+.pm .pm-browse > .sec-h::before,
+.pm .pm-pane > .sec-h::before,
+.pm .pm-target > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+
+
+/* ── the pattern bank: schematic cells ───────────────────── */
+
+.pm .pm-cards { gap: 8px; counter-reset: patcell; }
+.pm .pmcard-wrap { position: relative; counter-increment: patcell; }
+.pm .pmcard {
+  gap: 7px;
+  border-radius: 2px;
+  border-color: var(--border-hair);
+  background: var(--lw-well);
+  transition: border-color .12s, background .12s;
+}
+.pm .pmcard:hover { border-color: var(--border-soft); }
+
+/* An index down the left of the bank, mirroring the tempo chip on the right.
+   It is not a slot number and does not survive filtering — it is the reading
+   order of what is on screen, which is what a schedule numbers. */
+.pm .pmcard-wrap::before {
+  content: counter(patcell, decimal-leading-zero);
+  position: absolute;
+  z-index: 1;
+  top: 13px;
+  left: 14px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.pm .pmcard-wrap:has(.pmcard.on)::before { color: var(--lw-live-ink); }
+.pm .pmcard-nm {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+.pm .pmcard-sp { letter-spacing: 0.1em; }
+/* selection is amber — this pattern is what the card is playing.
+   in-playlist stays clay, because that is a stored decision, not a
+   live state. */
+.pm .pmcard.on {
+  border-color: var(--lw-live-ink);
+  background: color-mix(in srgb, var(--lw-live) 7%, var(--bg-panel));
+  box-shadow: none;
+}
+.pm .pmcard.on .pmcard-nm { color: var(--lw-live-ink); }
+.pm .pmcard.in-playlist:not(.on) {
+  background: var(--bg-panel);
+  border-color: var(--accent-line);
+  box-shadow: none;
+}
+
+/* segmented keys: outlined, not filled. The chosen key is named by an
+   amber stroke, which leaves the clay fill free to mean "writes". */
+.pm .geo-seg {
+  border-radius: 2px;
+  background: var(--lw-well);
+  border-color: var(--border-hair);
+  box-shadow: var(--lw-inset-deep);
+}
+.pm .geo-seg button {
+  height: 28px;
+  border-radius: 1px;
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+.pm .geo-seg button.on {
+  background: transparent;
+  border-color: var(--lw-live-ink);
+  color: var(--lw-live-ink);
+  font-weight: 500;
+}
+/* "Save look" stores a look in the browser; it does not touch the card.
+   Wearing clay it read as a second primary action on a screen whose actual
+   hardware write is "Install on card", and the two sat 400px apart doing
+   very different things in the same colour. Neutral raised key. */
+.pm .pm-save {
+  border-radius: 3px;
+  color: var(--text-hi);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--lw-raise);
+}
+.pm .pm-save:hover { background: var(--bg-sel); border-color: var(--border); }
+.pm .pm-reset { border-radius: 3px; border-color: var(--border-hair); }
+
+/* the "previewing in Studio" strip reports what is happening now */
+.pm .pm-saved { color: var(--lw-live-ink); }
+
+/* ── design target: a readout, not an action ─────────────── */
+/* It arrived wearing accent-soft fills and an accent border, which put a
+   large clay slab directly above the clay "Install on card" button and
+   made the page look like it had two primary actions. Clay means "this
+   writes to the card"; nothing in here does. Neutral surfaces, and the
+   live selection named in amber like every other current state. */
+
+.pm .pm-targetcard {
+  border-radius: 2px;
+  border-color: var(--border-hair);
+}
+.pm .tc-total strong,
+.pm .tc-patval { font-family: var(--font-mono); font-weight: 400; }
+
+/* ── the design target reads as three stat tiles ──────────── */
+/* Three facts across one strip: which section is being designed, how many
+   pixels that section drives, and what is on the card. Each tile is a cell
+   of the same module, divided by a hairline rather than boxed on its own —
+   the readout is one instrument with three windows, not three cards.
+
+   .tc-layer and .tc-total are kept on the middle tile deliberately: they
+   are the readback card-workspace.spec asserts ("LEDs44"), so the DOM order
+   stays label-then-value and only the paint order is flipped. */
+
+.pm .pm-targetcard {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--lw-well);
+  overflow: hidden;
+}
+.pm .pm-targetcard .tc-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* .tc-layer still carries v3-screens' `align-items: center`, which centres a
+     column tile's own text. Named here so the middle tile reads left like the
+     two beside it. */
+  align-items: stretch;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 0;
+  border-left: 1px solid var(--border-hair);
+}
+.pm .pm-targetcard .tc-stat:first-child { border-left: 0; }
+.pm .pm-targetcard .tc-stat-k {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm .pm-targetcard .tc-stat-v {
+  display: block;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--text-hi);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the number leads and its unit follows it, while the DOM keeps the unit
+   first so the installed-project readback still reads "LEDs44" */
+.pm .pm-targetcard .tc-total {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+}
+.pm .pm-targetcard .tc-total strong {
+  order: 1;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-hi);
+}
+.pm .pm-targetcard .tc-total .lab {
+  order: 2;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+/* the pattern tile carries a swatch, so that one value stays a row */
+.pm .pm-targetcard .tc-patval {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+/* amber only once the runtime has confirmed the send — it means "the card is
+   doing this right now", and it must not be spent on an intention */
+.pm .pm-targetcard .tc-live.is-live .tc-stat-v { color: var(--lw-live-ink); }
+
+@media (max-width: 760px) {
+  .pm .pm-targetcard { grid-template-columns: 1fr; }
+  .pm .pm-targetcard .tc-stat {
+    border-left: 0;
+    border-top: 1px solid var(--border-hair);
+  }
+  .pm .pm-targetcard .tc-stat:first-child { border-top: 0; }
+}
+
+/* ── the other "Save look" ───────────────────────────────── */
+/* There are two buttons with this exact label on this screen: one beside the
+   layer-mix name, one in the Colour panel head. De-claying only the second
+   left the same word in two colours a few hundred pixels apart. Neither
+   touches the card — both write a look into the browser — so neither wears
+   the colour that means "this changes the hardware". */
+.pm .pm-target .btn.primary {
+  color: var(--text-hi);
+  background: var(--bg-elev-2);
+  border-color: var(--border);
+  box-shadow: var(--lw-raise);
+}
+.pm .pm-target .btn.primary:hover { background: var(--bg-sel); border-color: var(--accent-line); }
+
+
+/* ═══════════════════════════════════════════════════════════
+   The chosen layout: every region is a module with a header bar
+   -----------------------------------------------------------
+   Skinning the old arrangement was not the direction that was
+   picked. In it, each region of this screen is a bordered module
+   with a filled header bar carrying a status light, an uppercase
+   mono label and its count pushed right — the pattern bank, the
+   design target, and each panel down the right.
+
+   Two structural moves came with it, in lw-pattern.jsx: the bank's
+   head moved inside .pm-browse so the module has something to be,
+   and the design target now follows the bank instead of sitting
+   above it — you pick a pattern, then you say where it goes.
+   ═══════════════════════════════════════════════════════════ */
+
+.pm .pm-browse,
+.pm .pm-target,
+.pm .pm-pane {
+  border: 1px solid var(--border-hair);
+  border-radius: 2px;
+  background-color: var(--bg-panel);
+  box-shadow: none;
+  overflow: hidden;
+}
+.pm .pm-browse { padding: 0 14px 14px; }
+.pm .pm-target { padding: 0 14px 14px; margin-top: 14px; margin-bottom: 0; }
+
+/* the header bar breaks out of the module's own padding */
+.pm .pm-browse > .sec-h,
+.pm .pm-target > .sec-h,
+.pm .pm-pane > .sec-h {
+  margin: 0 -14px 12px;
+  padding: 12px 14px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+/* a bar does not need a rule across it, and the count belongs at the end */
+.pm .pm-browse > .sec-h .line,
+.pm .pm-target > .sec-h .line,
+.pm .pm-pane > .sec-h .line { display: none; }
+.pm .pm-browse > .sec-h .m,
+.pm .pm-target > .sec-h .m,
+.pm .pm-pane > .sec-h .m { margin-left: auto; }
+.pm .pm-pane > .sec-h .pm-save { margin-left: auto; }
+
+/* the measured field belongs to the module body, not under its bar */
+.pm .pm-browse,
+.pm .pm-target,
+.pm .pm-pane {
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+}
+
+/* ── tiles: four across, the strand large enough to read ──── */
+
+.pm .pm-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pm .pmcard { padding: 8px; gap: 8px; }
+/* 44px and edge-to-edge: the board's cell art is a band of colour the width
+   of the cell, not a strip floating inside 9px of padding. The padding was
+   there for the bead row, which needs breathing room; a gradient does not,
+   and inset it read as a smaller, weaker swatch than the design. */
+.pm .pmcard-led {
+  height: 44px;
+  padding: 0 9px;
+}
+.pm .pmcard-led:has(.ledrow.is-gradient) { padding: 0; }
+.pm .pmcard-led .ledrow { gap: 6px; }
+.pm .pmcard-led .led { width: 8px; height: 8px; }
+.pm .pmcard-sub {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+.pm .pmcard-sub .pmcard-cat { color: var(--text-faint); }
+.pm .pmcard.on .pmcard-sub .pmcard-sp { color: var(--lw-live-ink); }
+/* the index sits over the tile's top-left, where the tempo used to sit right */
+.pm .pmcard-wrap::before { top: 15px; left: 16px; }
+
+/* ── the design target reads as three facts, then its controls ── */
+/* naming and saving the mix is the one thing in here that is not a readout,
+   so it sits under the tiles rather than above them */
+
+.pm .pm-target .pm-mixbar { margin: 12px 0 0; }
+.pm .pm-targetcard { border-radius: 2px; }
+
+/* ── faders: name and hint left, bar and value right ─────── */
+/* v3-pm-console.css already splits the row into a label column and a bar
+   column. What it left behind was the number, which sat at the end of the
+   LABEL — so the word and the reading were together and the bar answered to
+   neither. The value belongs to the bar: they move together, so they are
+   read together. The freed room under the name carries the one line that
+   says what the control does. */
+
+.pm .pm-pane .slider-row {
+  /* the bar column now carries the number too, so it needs the room for it */
+  grid-template-columns: minmax(0, 1fr) clamp(148px, 54%, 230px);
+  align-items: center;
+  margin-bottom: 12px;
+}
+.pm .pm-pane .slider-row .lab {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+.pm .pm-pane .slider-row .lab .k {
+  font-size: 12px;
+  color: var(--text-mid);
+  line-height: 1.25;
+}
+.pm .pm-pane .slider-row .lab .hint {
+  font-size: 11px;
+  line-height: 1.3;
+  letter-spacing: 0.005em;
+  color: var(--text-faint);
+}
+.pm .pm-pane .slider-row .sl-bar {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.pm .pm-pane .slider-row .sl-bar input[type=range] {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.pm .pm-pane .slider-row .sl-bar .v {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-hi);
+  min-width: 42px;
+}
+
+/* A 6px-high input is a 6px-high target. On a finger the row keeps the same
+   hairline track but grows a 44px grab area around it, by moving the paint
+   off the element and onto its track pseudo-element. */
+@media (pointer: coarse) {
+  .pm .pm-pane .slider-row .sl-bar input[type=range].lw {
+    height: 44px;
+    background: none;
+    box-shadow: none;
+  }
+  .pm .pm-pane .slider-row .sl-bar input[type=range].lw::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 2px;
+    background: var(--lw-well);
+    box-shadow: var(--lw-inset-deep);
+  }
+  .pm .pm-pane .slider-row .sl-bar input[type=range].lw::-moz-range-track {
+    height: 6px;
+    border-radius: 2px;
+    background: var(--lw-well);
+    box-shadow: var(--lw-inset-deep);
+  }
+  .pm .pm-pane .slider-row .sl-bar input[type=range].lw::-webkit-slider-thumb {
+    margin-top: -7px;
+  }
+}
+
+.pm .pmcard-sub .pmcard-dot { color: var(--text-faint); opacity: .7; }
+/* the live status strip sits inside the bank now; it is one line, not a band */
+.pm .pm-browse > .pm-livebar {
+  padding: 0;
+  margin: -4px 0 10px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* ── Design target belongs under the bank, not below the fold ─────────────
+   The board put the pattern bank and Design target on screen together: the
+   bank a bounded module with its own scroll, the three tiles fixed beneath
+   it. What shipped let the bank grow to its content — 1000px of cells — so
+   the tiles sat 267px past the bottom of a 900px window and nobody ever saw
+   which section they were designing for, how many pixels it drives, or what
+   is on the card right now.
+
+   Desktop only, AND only when the window is tall enough to hold both. At
+   720px the bank collapsed to 62px — a single row of cards — and a card
+   scrolled into view inside that stub landed under the search box, where it
+   could not be clicked at all. Below either threshold the page scroll is the
+   right model: Design target sits under a full-height bank and you reach it
+   by scrolling, which is worse than seeing it but far better than a bank you
+   cannot use. */
+@media (min-width: 901px) and (min-height: 820px) {
+  /* .pm is a column: whatever sits above the grid (the masthead, the live
+     bar) takes its natural height and the grid takes the rest. Giving the
+     grid `height: 100%` instead measured it against the whole scroller and
+     overshot by exactly the height of those two. */
+  .pm {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pm .pm-grid { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+  .pm .pm-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* The bank takes what is left and scrolls its own cells. min-height:0 is
+     load-bearing: without it a flex child refuses to shrink below its content
+     and the overflow never engages. */
+  .pm .pm-main > .pm-browse {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .pm .pm-main > .pm-browse > .pm-cards {
+    flex: 1 1 auto;
+    /* Three rows or it does not bound at all — a floor the flex parent cannot
+       squeeze past, so the column overflows to the page scroll instead of
+       crushing the bank into a letterbox. */
+    min-height: 260px;
+    overflow-y: auto;
+    align-content: start;
+  }
+  .pm .pm-main > .pm-target { flex: 0 0 auto; }
+}
+
+/* ── The preview well ─────────────────────────────────────────────────────
+   Checked against the F board: there the piece sits in a sunken well on
+   measured graph paper, warm-toned and square-cornered, so it reads as a
+   drawing of the piece. What shipped was a plain cool-black box with 7px
+   corners — the same dark rectangle any app would draw, and the one panel
+   on this screen that is supposed to look like a schematic. */
+.pm .pm-piece-stage {
+  border-radius: 2px;
+  border-color: var(--lw-border-hair, var(--border-hair));
+  background-color: var(--lw-bg-canvas, var(--bg-canvas));
+  background-image:
+    linear-gradient(var(--lw-graph) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
+  background-size: var(--lw-graph-step) var(--lw-graph-step);
+  box-shadow: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
+}
+
+/* The preview header squeezed the pattern name to "L…" — and that name is the
+   answer to "what am I looking at", asserted by four specs. Splitting it onto
+   two rows was the obvious fix and the WRONG one: `preview toolbar is one
+   compact desktop row` exists to keep this a single 44px row, deliberately.
+   So the row is rebalanced instead. The name gets a real floor; the target
+   select gives up the width, because the section it names is now also spelled
+   out in Design target directly below — the one place it was unreadable was
+   the only place it had to be. */
+.pm .pm-preview-controls {
+  /* The pattern name is what this module is showing you, and four specs read
+     it from here — it gets the floor. The target select yields, because the
+     section it names is spelled out again in Design target directly below,
+     and the two arrows step through the same list. */
+  grid-template-columns: minmax(132px, 1fr) 24px minmax(38px, .5fr) 24px auto;
+  gap: 4px;
+}
+
+/* Beads / Gradient — a rendering switch on the same interpolated palette. */
+.pm .pm-ledmode {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-left: 10px;
+  padding: 2px;
+  border: 1px solid var(--lw-border-hair, var(--border-hair));
+  border-radius: 2px;
+  background: var(--lw-bg-canvas, var(--bg-canvas));
+}
+.pm .pm-ledmode button {
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 1px;
+  background: transparent;
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pm .pm-ledmode button.on {
+  border-color: var(--lw-live, var(--accent));
+  color: var(--lw-live, var(--accent));
+}
+/* .ledrow shrink-wraps its beads, so with a single child it collapsed to zero
+   width and painted nothing — the gradient was correct and invisible. */
+.pm .ledrow.is-gradient {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.pm .ledrow.is-gradient .ledgrad {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 34px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14);
+}
+
+/* The preview pane's control row IS its header bar — the board's "● PREVIEW …
+   PLAYING". Styling it as one, rather than as a toolbar floating above the
+   well, is what makes the right column read as three modules in a row. */
+.pm .pm-preview-pane > .pm-preview-controls {
+  /* No padding at all: horizontal padding narrowed the row's own grid until
+     the toggle clipped to "On my piec", and vertical padding took it to 61px
+     against the 44px cap that `preview toolbar is one compact desktop row`
+     exists to hold. The rule is the border and the spacing under it. */
+  margin: 0 0 10px;
+  padding: 0;
+  /* A shadow, not a border — a 1px border took the row to 45px against a 44px
+     cap. This draws the same hairline and adds no height. */
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--lw-border-hair, var(--border-hair));
+  background: transparent;
+}
+.pm .pm-preview-meta::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--lw-live, var(--accent));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--lw-live, var(--accent)) 70%, transparent);
+}
+.pm .pm-preview-meta .t {
+  font-family: var(--font-mono);
+  letter-spacing: .2em;
+  color: var(--text-lo);
+}
+
+/* ── The index gets its own column, as the board draws it ─────────────────
+   The counter was overlaid on the cell art. That was legible while the art
+   was a bead strand on a dark bed; against a full-bleed gradient it lands on
+   whatever colour happens to be at the top-left — white on Sparkle, pale
+   green on Aurora — and disappears. The board never had it there: the number
+   sits in its own narrow column beside the art, in the cell's own ground. */
+.pm .pmcard { padding-left: 26px; }
+.pm .pmcard-wrap::before {
+  top: 11px;
+  left: 9px;
+  z-index: 2;
+  color: var(--text-lo);
+}

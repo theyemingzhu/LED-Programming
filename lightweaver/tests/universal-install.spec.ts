@@ -126,8 +126,11 @@ test('a blocked card-page popup on the install-to-card handoff shows visible pop
 test('technician controls remain separately labelled outside install mode', async ({ page }) => {
   await page.goto('/#screen=flash');
   await expect(page.getByText('Technician diagnostics', { exact: true })).toBeVisible();
-  await expect(page.locator('details')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Browse \.bin/i })).toBeVisible();
+  // The legacy route embeds these tools in Setup's Advanced section.
+  // The technician controls themselves remain expanded, without another disclosure.
+  const technician = page.locator('.technician-disclosure');
+  await expect(technician.locator('details')).toHaveCount(0);
+  await expect(technician.getByRole('button', { name: /Browse \.bin/i })).toBeVisible();
   await expect(page.getByText('Address', { exact: true })).toBeVisible();
   await expect(page.locator('textarea.fl-log')).toBeVisible();
 });

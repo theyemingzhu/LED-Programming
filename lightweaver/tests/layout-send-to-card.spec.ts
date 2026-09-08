@@ -19,32 +19,39 @@ const TEST_BUILD_ID = 'a'.repeat(40);
 async function mockLocalCard(page: any, options: any = {}) {
   const card = {
     savedConfig: null as any,
-    candidateConfig: null as any,
+    candidateConfig: options.existingCandidate || null as any,
     attemptedConfigs: [] as any[],
     operations: [] as string[],
     activationId: 'card-issued-layout-1',
+    activationSequence: 1,
     testing: false,
+    bootId: 'initial-boot',
   };
   await page.route('http://lightweaver.local/**', async (route: any) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (pathname === '/api/status') {
-      const outputs = card.savedConfig?.led?.outputs || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }];
+      const runtimeConfig = options.exposeCandidateRuntime && card.testing ? card.candidateConfig : card.savedConfig;
+      const runtimeReady = !(options.testingRuntimeNotReady && card.testing);
+      const outputs = runtimeConfig?.led?.outputs || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }];
       await route.fulfill({ json: {
         app: 'Lightweaver',
+        provisioningContractVersion: 1,
         ok: true,
         cardId: TEST_CARD_ID,
         firmwareVersion: '1.0.0',
         buildId: TEST_BUILD_ID,
-        runtimePhase: 'ready',
+        bootId: card.bootId,
+        runtimePhase: runtimeReady ? 'ready' : 'recovering',
         knownGoodProject: true,
-        commandReady: true,
-        outputReady: true,
-        playbackReady: true,
-        projectId: card.savedConfig?.piece?.id || '',
-        projectRevision: card.savedConfig?.projectRevision ?? 0,
-        projectFingerprint: card.savedConfig?.projectFingerprint ?? '',
-        led: card.savedConfig?.led || {
+        commandReady: runtimeReady,
+        outputReady: runtimeReady,
+        playbackReady: runtimeReady,
+        ...(options.exposeCandidateRuntime ? { wiringProbation: { active: card.testing } } : {}),
+        projectId: runtimeConfig?.piece?.id || '',
+        projectRevision: runtimeConfig?.projectRevision ?? 0,
+        projectFingerprint: runtimeConfig?.projectFingerprint ?? '',
+        led: runtimeConfig?.led || {
           pixels: 44,
           maxMilliamps: 1500,
           colorOrder: 'RGB',
@@ -65,9 +72,11 @@ async function mockLocalCard(page: any, options: any = {}) {
         json: {
           ok: true,
           app: 'Lightweaver',
+          provisioningContractVersion: 1,
           cardId: TEST_CARD_ID,
           firmwareVersion: '1.0.0',
           buildId: TEST_BUILD_ID,
+          bootId: card.bootId,
           pixels: 44,
           outputs: options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }],
           projectRevision: card.savedConfig?.projectRevision ?? 0,
@@ -78,18 +87,31 @@ async function mockLocalCard(page: any, options: any = {}) {
     }
     if (pathname === '/api/config') {
       card.operations.push('config');
-      card.attemptedConfigs.push(JSON.parse(request.postData() || '{}'));
+      const incoming = JSON.parse(request.postData() || '{}');
+      card.attemptedConfigs.push(incoming);
       if (options.delayConfig) await new Promise(resolve => setTimeout(resolve, options.delayConfig));
       if (options.failConfig) {
         await route.fulfill({ status: 500, json: { ok: false, error: 'boom' } });
         return;
       }
-      card.savedConfig = JSON.parse(request.postData() || '{}');
+      if (options.forceStagedConfig) {
+        card.activationId = `card-issued-layout-${++card.activationSequence}`;
+        card.candidateConfig = incoming;
+        await route.fulfill({ json: {
+          ok: true,
+          state: 'staged',
+          activationId: card.activationId,
+          currentOutputs: incoming?.led?.outputs || [],
+        } });
+        return;
+      }
+      card.savedConfig = incoming;
       await route.fulfill({ json: { ok: true, requiresReboot: false } });
       return;
     }
     if (pathname === '/api/wiring/candidate') {
       card.operations.push('candidate');
+      card.activationId = `card-issued-layout-${++card.activationSequence}`;
       card.candidateConfig = JSON.parse(request.postData() || '{}').candidate;
       await route.fulfill({ json: {
         ok: true,
@@ -102,6 +124,13 @@ async function mockLocalCard(page: any, options: any = {}) {
     if (pathname === '/api/wiring/activate') {
       card.operations.push('activate');
       card.testing = true;
+      card.bootId = 'candidate-boot';
+      if (options.autoExpireProbationMs) {
+        setTimeout(() => {
+          card.testing = false;
+          card.candidateConfig = null;
+        }, options.autoExpireProbationMs);
+      }
       if (options.ambiguousActivate && !options.activationDropped) {
         options.activationDropped = true;
         await route.abort('connectionrefused');
@@ -141,7 +170,7 @@ async function mockLocalCard(page: any, options: any = {}) {
         nextStep: hasCandidate
           ? (card.testing ? 'confirm-or-rollback' : 'activate')
           : 'stage-candidate',
-        remainingProbationMs: card.testing ? 84000 : 0,
+        remainingProbationMs: card.testing ? (options.autoExpireProbationMs || 84000) : 0,
         currentOutputs: (card.savedConfig?.led?.outputs || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }]),
         ...(hasCandidate ? { candidateOutputs: card.candidateConfig?.led?.outputs || [] } : {}),
       } });
@@ -162,6 +191,11 @@ async function mockLocalCard(page: any, options: any = {}) {
       await route.fulfill({ json: { ok: true, state: 'known-good', activationId: card.activationId } });
       return;
     }
+    if (pathname === '/api/control') {
+      card.operations.push('control');
+      await route.fulfill({ json: { ok: true } });
+      return;
+    }
     await route.fulfill({ json: { ok: true } });
   });
   return card;
@@ -172,14 +206,16 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
     localStorage.clear();
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId }));
   }, TEST_CARD_ID);
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  const seedUrl = verified && url.includes('&next=patterns') ? url.replace('&next=patterns', '') : url;
+  await page.goto(seedUrl, { waitUntil: 'domcontentloaded' });
   if (!verified) {
-    // Unverified wiring exposes no install control — only the LED-check CTA.
-    await expect(page.getByTestId('start-led-check')).toBeVisible();
+    await expect(page.getByTestId('commissioning-step')).toBeVisible();
+    await expect(page.getByText('Ready to install on the card.')).toBeVisible();
+    await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
     return;
   }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lightweaver-send-ready-'));
+  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('lw_autosave_v3')))).toBe(true);
   await page.waitForTimeout(600);
   const project = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   project.layout.wiring.verified = true;
@@ -193,13 +229,114 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   const ready = path.join(tmp, 'ready.json');
   fs.writeFileSync(ready, JSON.stringify(project));
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  if (seedUrl === url) await page.reload({ waitUntil: 'domcontentloaded' });
+  else await page.goto(url, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
   // The seeded project is fully verified, so the primary flow area settles on
   // the install control. Wait for the enabled state instead of sampling early.
-  await expect(page.getByText('Checked ✓ — install it on the card.')).toBeVisible();
-  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
+  if (url.includes('&next=patterns')) await expect(page.getByTestId('setup-install-slot')).toBeVisible();
+  else {
+    await expect(page.getByText('Ready to install on the card.')).toBeVisible();
+    await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
+  }
 }
+
+test('Open Patterns starts the guarded install and can replace an unrelated unfinished test', async ({ page }) => {
+  const card = await mockLocalCard(page, {
+    existingCandidate: {
+      piece: { id: 'old-test', name: 'Old test' },
+      projectRevision: 99,
+      projectFingerprint: 'f'.repeat(64),
+      led: { pixels: 44, outputs: [{ id: 'out1', pin: 16, pixels: 44 }], colorOrder: 'RGB' },
+    },
+  });
+  await gotoWire(page, {
+    verified: true,
+    url: '/#screen=card&section=setup&task=install-project&next=patterns',
+  });
+
+  const recover = page.getByTestId('discard-candidate-and-retry');
+  await expect(recover).toBeVisible({ timeout: 10000 });
+  expect(card.operations).not.toContain('candidate');
+
+  await recover.click();
+  await expect(page).toHaveURL(/#screen=pattern/, { timeout: 10000 });
+  expect(card.operations).toContain('rollback');
+  expect(card.operations).toContain('config');
+});
+
+test('Open Patterns starts an exact staged light test and keeps confirmation in phase 4', async ({ page }) => {
+  const card = await mockLocalCard(page, {
+    currentOutputs: [{ id: 'bench', pin: 18, pixels: 256 }],
+    forceStagedConfig: true,
+    testingRuntimeNotReady: true,
+  });
+  await gotoWire(page, {
+    verified: true,
+    transformProject(project: any) {
+      const outer = project.layout.strips[0];
+      const outerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === outer.id);
+      outer.pixelCount = 26;
+      outer.pixels = outer.pixels.slice(0, 26).map((pixel: any, index: number) => ({ ...pixel, index }));
+      outerRun.source.to = 25;
+      outerRun.seamLed = Math.min(Number(outerRun.seamLed) || 25, 25);
+      project.layout.wiring.outputs[0].pin = 17;
+    },
+  });
+
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
+  await page.evaluate(() => {
+    window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns';
+  });
+
+  await expect(page).not.toHaveURL(/#screen=pattern$/);
+  const verifyPhase = page.getByTestId('setup-phase-verify');
+  await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeVisible({ timeout: 10000 });
+  await page.getByTestId('setup-phase-lights').locator('.lw-setup-phase-head').click();
+  await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeHidden();
+  expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
+  await verifyPhase.locator('.lw-setup-phase-head').click();
+  await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+  await expect(page.getByTestId('setup-progress')).toContainText('Phase 4');
+  await expect(page.getByTestId('setup-identity-row')).toContainText('Testing lights');
+  await expect(page.getByText(/Recover lights is the check to run first/)).toHaveCount(0);
+  await verifyPhase.getByRole('button', { name: 'The lights look correct' }).click();
+
+  await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 10000 });
+  const published = await page.evaluate(async () => {
+    const { getCardLinkState } = await import('/src/lib/cardLink.js');
+    return getCardLinkState();
+  });
+  expect(published.readiness?.playbackReady).toBe(true);
+  expect(published.readiness?.projectFingerprint).toBeTruthy();
+  await expect(page.getByTestId('pattern-gate-notice')).toHaveCount(0);
+  await page.locator('.pmcard').nth(1).click();
+  await expect.poll(() => card.operations.filter(operation => operation === 'control').length).toBeGreaterThan(0);
+  expect(card.operations).toEqual(expect.arrayContaining(['candidate', 'activate', 'confirm']));
+  expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
+});
+
+test('an expired Open Patterns light test retries with a fresh automatically activated candidate', async ({ page }) => {
+  const card = await mockLocalCard(page, { autoExpireProbationMs: 2000, forceStagedConfig: true });
+  await gotoWire(page, {
+    verified: true,
+    url: '/#screen=card&section=setup&task=install-project&next=patterns',
+    transformProject(project: any) {
+      project.layout.wiring.outputs[0].pin = 17;
+    },
+  });
+
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+
+  await expect(page.getByRole('region', { name: 'Wiring safety check' })).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator('.la-card-push-banner')).toContainText('light test expired');
+  const retry = page.getByRole('button', { name: 'Retry' });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+  expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(2);
+});
 
 async function proxyStudioOverHttps(page: any) {
   await page.route('https://led.mandalacodes.com/**', async (route: any) => {
@@ -227,16 +364,14 @@ async function proxyStudioOverHttps(page: any) {
   });
 }
 
-test('unverified wiring exposes no install control and makes no request', async ({ page }) => {
+test('valid unverified wiring enters the staged card flow without a duplicate LED check', async ({ page }) => {
   const card = await mockLocalCard(page);
   await gotoWire(page);
 
-  // The install surface only exists after the LED check verifies the wiring.
-  // No install control or alternate export path is available yet.
-  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
   await expect(page.getByTestId('layout-export-ledmap')).toHaveCount(0);
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
-  expect(card.operations).toEqual([]);
+  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
+  expect(card.operations.filter(operation => operation !== 'status')).toEqual([]);
 });
 
 test('a successful push is pending until acknowledgement and records the exact installed revision', async ({ page }) => {
@@ -265,29 +400,31 @@ test('candidate test locks conflicting saves, recovers an ambiguous activation, 
   await gotoWire(page, {
     verified: true,
     transformProject(project: any) {
-      const outer = project.layout.strips.find((strip: any) => strip.name === 'Outer circle');
+      const outer = project.layout.strips[0];
       const outerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === outer.id);
       outer.pixelCount = 26;
       outer.pixels = outer.pixels.slice(0, 26).map((pixel: any, index: number) => ({ ...pixel, index }));
       outerRun.source.to = 25;
       outerRun.seamLed = Math.min(Number(outerRun.seamLed) || 25, 25);
-      project.layout.wiring.outputs[0].pin = 17;
+      project.layout.strips = [outer];
+      project.layout.wiring.runs = [outerRun];
+      project.layout.wiring.outputs = [{ ...project.layout.wiring.outputs[0], pin: 17, runIds: [outerRun.id] }];
     },
   });
 
   await page.getByTestId('layout-send-to-card').click();
   await expect(page.getByRole('region', { name: 'Wiring safety check' })).toBeVisible();
-  await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();
-  expect(card.candidateConfig.led.pixels).toBe(43);
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  expect(card.candidateConfig.led.pixels).toBe(26);
   expect(card.candidateConfig.led.outputs).toEqual([
-    expect.objectContaining({ pin: 17, pixels: 43 }),
+    expect.objectContaining({ pin: 17, pixels: 26 }),
   ]);
 
   await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByText('Last look — do the lights still look right?')).toBeVisible();
   await expect(page.getByRole('button', { name: /The lights look correct/ })).toBeVisible();
   expect(card.operations).toContain('status');
-  await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'No, restore working setup' }).click();
   const banner = page.locator('.la-card-push-banner');
@@ -355,4 +492,38 @@ test('mixed-content recovery copies JSON, opens the installer, and retries the s
   await page.evaluate(() => { (window as any).__copiedPayload = ''; });
   await recovery.getByRole('button', { name: 'Copy payload' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__copiedPayload)).toBe(firstPayload);
+});
+
+
+test('candidate runtime readback cannot replace an open project with no port roles during confirmation', async ({ page }) => {
+  const card = await mockLocalCard(page, {
+    currentOutputs: [], forceStagedConfig: true, exposeCandidateRuntime: true,
+  });
+  await gotoWire(page, {
+    verified: true,
+    transformProject(project: any) { project.portRoles = []; },
+  });
+  const before = await page.evaluate(async () => {
+    const { readProjectLifecycleRecord } = await import('/src/lib/projectStorage.js');
+    return readProjectLifecycleRecord();
+  });
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; });
+  const confirm = page.getByRole('button', { name: 'The lights look correct', exact: true });
+  await expect(confirm).toBeVisible({ timeout: 10000 });
+  // Activation's completion triggers Setup's background read. Its response
+  // now contains the probationary geometry, just as the physical card does.
+  await expect(page.getByTestId('setup-identity-row')).toContainText('Testing lights');
+  const during = await page.evaluate(async () => {
+    const { readProjectLifecycleRecord } = await import('/src/lib/projectStorage.js');
+    return readProjectLifecycleRecord();
+  });
+  expect(before.installation).toBeNull();
+  expect(during.installation).toBeNull();
+  expect(during.dirty).toBe(before.dirty);
+  expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(0);
+  await confirm.click();
+  await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 10000 });
+  expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'rollback')).toHaveLength(0);
 });

@@ -18,6 +18,15 @@ import './styles/v3-layout-modes.css';
 // advanced JSON disclosure) in the v3 token idiom. The six mockup cards still
 // use the mockup's own .set-* classes; these only style genuinely live-only UI.
 import './styles/v3-settings-extra.css';
+// The "Console" visual treatment for Settings: machined modules with a status
+// LED, physical-feeling controls, amber for what the card is doing right now.
+// Scoped entirely under .set, tokens only, so no other screen and neither
+// theme is affected. Loads after the extras so it can override them.
+import './styles/v3-settings-console.css';
+// The same treatment across the rest of the Card page — identity strip, phase
+// ladder, evidence panels, support tiles, folds — so the screen reads as one
+// instrument instead of two designs meeting halfway down.
+import './styles/v3-card-console.css';
 // Live-only Patterns controls (connection/repair status strip, multi-section
 // target tabs, Advanced disclosure, live card summary, load-more / empty state)
 // — the .pmx-*/.tc-* classes lw-pattern.jsx emits that the static mockup has no
@@ -25,6 +34,30 @@ import './styles/v3-settings-extra.css';
 import './styles/v3-patterns-extra.css';
 // Live-only Playlist controls (.pl-* status / row extras) in the v3 token idiom.
 import './styles/v3-playlist-extra.css';
+// ── The console vocabulary, carried past the Card page ──────────────
+// Card and Settings got the "console" treatment first, which left every
+// other screen speaking a different language. These four layers finish
+// the job: one shared token block, then one dressing layer per screen.
+// All of them are CSS over the existing markup, scoped to that screen's
+// root class, tokens only, so both themes keep working.
+import './styles/v3-console-shared.css';
+// Patterns and Playlist both render under .pm and share their parts. The
+// chrome they genuinely share lives in one file; each screen's own furniture
+// lives in its own, so the two can be worked on at the same time without two
+// people editing the same stylesheet. Load shared first — the per-screen
+// layers are written to override it.
+import './styles/v3-pm-console.css';
+import './styles/v3-patterns-console.css';
+import './styles/v3-playlist-console.css';
+// Show: chrome only — its selectable chips are drawn by an inline
+// chipStyle() in lw-show.jsx, which no stylesheet can reach.
+import './styles/v3-show-console.css';
+// Layout: physical chrome from the Console candidate, measured register
+// from the Blueprint one. The canvas renderer is deliberately untouched.
+import './styles/v3-layout-console.css';
+// The notice layer loads last so its floating stack wins the cascade over
+// every screen stylesheet that used to draw its own in-flow message box.
+import './styles/lw-notice.css';
 import App from './v3/app.jsx';
 import { createOfflineUpdateController } from './lib/offlineUpdate.js';
 import { detectRuntimeMode } from './lib/runtimeMode.js';

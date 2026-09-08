@@ -4,7 +4,7 @@
    from the SAMPLE arrays to the live app's real playlist, real pattern bank,
    and real card handlers. No visual structure was altered. */
 import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
-import { I } from './lw-shared.jsx';
+import { I, LedRow } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { openLocalCardPage } from '../lib/cardBridge.js';
 import { deriveCardAccess } from '../lib/cardAccess.js';
@@ -33,6 +33,7 @@ import {
   buildSavedLookPlaylistPreviewTargets,
 } from '../lib/playlistLivePreview.js';
 import {
+  CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isImplicitDefaultPatternPlaylist,
   makeComboPlaylistItem,
@@ -41,6 +42,7 @@ import {
   playlistContainsCombo,
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
+import { currentInstallation } from '../lib/projectLifecycle.js';
 import {
   cardHostToUrl,
   readStoredCardHost,
@@ -68,6 +70,7 @@ import {
   classifyCardActionFailure,
   createCardActionState,
 } from '../lib/cardAction.js';
+import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
 function downloadJson(filename, content) {
   const blob = new Blob([content], { type: 'application/json' });
@@ -700,12 +703,118 @@ function realPatternShape(patternId) {
       .map((p) => realPatternShape(p.id));
     const mixesRemaining = savedLooks.some((look) => !playlistContainsCombo(playlist, look.id));
 
+    // ── "On the card now": three figures, each from state already here ────
+    // Nothing on this panel is inferred. The card's readiness envelope does
+    // NOT report a playlist length or a playing look (see normalizeCardReadiness
+    // — it carries identity, capacity and readiness flags and nothing about the
+    // playlist), so the only truthful sources are Studio's own install record
+    // and its own confirmed live push.
+    //
+    // installedRecord is the install record ONLY while the open project is
+    // still the one that was installed (currentInstallation). One edit since
+    // the install and the card holds a different playlist whose length this
+    // screen cannot know — so the tile says so with an em-dash rather than
+    // printing the edited count as if it were on the card.
+    const installedRecord = currentInstallation(projectLifecycle);
+    const installedLooks = installedRecord ? playlist.length : null;
+    const installedLooksNote = installedRecord
+      ? (installedRecord.verified === true ? 'read back from card' : 'sent, not read back')
+      : (projectLifecycle.installation ? 'edited since install' : 'not installed yet');
+    // `live` is set only after pushLivePreviewToCard resolved, so it is the one
+    // look this screen can honestly say the card is showing right now.
+    const playingItem = live ? playlist.find((item) => item.id === live) || null : null;
+    const slotsLeft = Math.max(0, CARD_PLAYLIST_LIMIT - playlist.length);
+    // The card's own id, and deliberately NOT the address: the address is a
+    // field 300px above this bar, and printing it twice would make this panel
+    // repeat the screen instead of adding to it. Empty when no card has ever
+    // identified itself, which is a truthful blank rather than a stand-in.
+    const cardNowMeta = installedRecord?.cardId || cardLink?.readiness?.cardId || '';
+
+    // ── screen-scoped messages into the notice layer ───────────────────────
+    React.useEffect(() => {
+      if (!hardwareConfigurationIssue) {
+        dismissNoticeKey('playlist-hardware-warning');
+        return;
+      }
+      publishNotice({
+        key: 'playlist-hardware-warning',
+        testId: 'playlist-hardware-warning',
+        tone: 'error',
+        title: 'Hardware setup needs attention.',
+        body: `${hardwareConfigurationIssue} You can still add, remove, copy, and reorder every look. Only card setup actions are paused.`,
+        source: 'playlist-hardware',
+        action: { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
+      });
+    }, [hardwareConfigurationIssue]);
+
+    // The physicalPreview branch (live-preview / reset-live / recover-lights
+    // failures) deliberately stays in the old in-flow markup below, not
+    // migrated. Its primary button carries `disabled={recoveryPending}` —
+    // tests/playlist-storage.spec.ts's 'Playlist keeps missing runtime proof
+    // visible while recovery runs…' asserts `toBeDisabled()` on that exact
+    // button mid-recovery. The notice layer's `action` is label+onSelect
+    // only; it has no disabled state (NoticeLayer.jsx renders a plain
+    // `<button>` with no disabled/aria-disabled wiring), and adding one is
+    // out of scope here (this migration touches lw-playlist.jsx/lw-pattern.jsx
+    // only). Collapsing that distinction would make a real, currently-green
+    // spec fail, so this one case is left exactly as it was.
+    React.useEffect(() => {
+      if (!playlistStatus || playlistStatus.physicalPreview) {
+        dismissNoticeKey('playlist-card-status');
+        return;
+      }
+      const tone = playlistStatus.kind === 'ok' ? 'success'
+        : playlistStatus.kind === 'err' ? 'error'
+        : playlistStatus.kind === 'pending' ? 'progress'
+        : 'info';
+      // Priority when more than one button would have rendered — the
+      // reconcile action ("Set card to X & load" / "Recommission card &
+      // load") > Retry > Open card installer > Open card page (the last is
+      // the generic fallback, offered whenever nothing more specific
+      // applies — including the plain pending/success states, matching what
+      // the old box always rendered there too). "Open card installer" ranks
+      // above the generic fallback because it is the specific fix a
+      // mixed-content/bridge-* message explicitly names. No test exercises
+      // these combinations directly (checked against
+      // tests/playlist-storage.spec.ts and tests/workflow.spec.ts), so
+      // nothing tested is lost — only ever the untested "Adjust LED count"
+      // secondary button (always paired with the reconcile action) and
+      // whichever of {Retry, Open card installer, Open card page} loses this
+      // priority race.
+      let action = null;
+      if (playlistStatus.action) {
+        action = {
+          label: playlistStatus.action.label,
+          onSelect: () => { void loadPlaylistToCard({
+            allowLayoutChange: playlistStatus.action.kind === 'allow-layout-change',
+            allowProjectChange: playlistStatus.action.kind === 'allow-project-change',
+          }); },
+        };
+      } else if (playlistStatus.retry === 'playlist') {
+        action = { label: 'Retry', onSelect: () => { void loadPlaylistToCard(); } };
+      } else if (playlistStatus.handoffUrl) {
+        action = { label: 'Open card installer', onSelect: openCardInstaller };
+      } else {
+        action = { label: 'Open card page', onSelect: openCard };
+      }
+      publishNotice({
+        key: 'playlist-card-status',
+        testId: 'playlist-card-status',
+        tone,
+        title: playlistStatus.message,
+        body: playlistStatus.action?.hint || '',
+        source: 'playlist-status',
+        action,
+      });
+    }, [playlistStatus, playlistSyncing]);
+
     return (
       <div className="screen">
         <div className="screen-scroll">
           <div className="pm">
             <header className="pm-hero">
               <div className="pm-title">
+                <span className="pm-kicker">Studio · Playlist</span>
                 <h1>Playlist</h1>
                 <p>The order the dial press cycles through on the card. The first look starts on boot.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
@@ -728,16 +837,15 @@ function realPatternShape(patternId) {
               </div>
             </header>
 
-            {hardwareConfigurationIssue &&
-              <div className="pmx-status is-err" role="alert" data-testid="playlist-hardware-warning">
-                <strong>Hardware setup needs attention.</strong> {hardwareConfigurationIssue} You can still add, remove, copy, and reorder every look. Only card setup actions are paused.
-                <div className="pmx-status-actions">
-                  <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Fix wiring</button>
-                </div>
-              </div>
-            }
-
-            {playlistStatus &&
+            {/* The hardware-configuration warning and most of the playlist
+                card status now publish to the notice layer (see the two
+                effects above this component's JSX). One branch stays here,
+                deliberately: a physicalPreview failure (live preview / reset
+                live / recover lights) whose primary button is disabled while
+                `recoveryPending` — the notice layer's action has no disabled
+                state, and tests/playlist-storage.spec.ts asserts
+                `toBeDisabled()` on this exact button mid-recovery. */}
+            {playlistStatus && playlistStatus.physicalPreview &&
               <div
                 className={"pmx-status" + (playlistStatus.kind === 'ok' ? ' is-ok' : playlistStatus.kind === 'err' ? ' is-err' : '')}
                 data-testid="playlist-card-status"
@@ -745,42 +853,9 @@ function realPatternShape(patternId) {
                 aria-live="polite"
               >
                 {playlistStatus.message}
-                {playlistStatus.action?.hint &&
-                  <div className="pmx-status-hint">{playlistStatus.action.hint}</div>
-                }
                 <div className="pmx-status-actions">
-                  {playlistStatus.physicalPreview && previewFailureHandler &&
+                  {previewFailureHandler &&
                     <button className="btn primary" disabled={recoveryPending} onClick={previewFailureHandler}>{playlistStatus.failure.actionLabel}</button>
-                  }
-                  {playlistStatus.action &&
-                    <button
-                      className="btn primary"
-                      // Only the allow-layout-change escalation can rewrite the
-                      // physical output layout, so only it carries the shared
-                      // wiring-install proof. The other kinds send no layout
-                      // change and keep their existing precondition.
-                      disabled={playlistSyncing || recoveryPending
-                        || (playlistStatus.action.kind === 'allow-layout-change' && !layoutChangeInstallGate.allowed)}
-                      title={playlistStatus.action.kind === 'allow-layout-change' && !layoutChangeInstallGate.allowed
-                        ? layoutChangeInstallGate.message
-                        : undefined}
-                      onClick={() => loadPlaylistToCard({
-                        allowLayoutChange: playlistStatus.action.kind === 'allow-layout-change',
-                        allowProjectChange: playlistStatus.action.kind === 'allow-project-change',
-                      })}
-                    >
-                      {playlistSyncing ? 'Loading…' : playlistStatus.action.label}
-                    </button>
-                  }
-                  {playlistStatus.action?.kind === 'allow-layout-change' &&
-                    <button className="btn" disabled={playlistSyncing || recoveryPending} onClick={adjustLedCounts}>Adjust LED count</button>
-                  }
-                  {playlistStatus.retry === 'playlist' &&
-                    <button className="btn primary" disabled={playlistSyncing || recoveryPending} onClick={() => loadPlaylistToCard()}>Retry</button>
-                  }
-                  {!playlistStatus.physicalPreview && <button className="btn" onClick={openCard}>{I.open}Open card page</button>}
-                  {handoffUrl &&
-                    <button type="button" className="btn primary" onClick={openCardInstaller}>Open card installer</button>
                   }
                 </div>
               </div>
@@ -791,11 +866,18 @@ function realPatternShape(patternId) {
                 <div className="pl-hostrow">
                   <span className="sf-l">Card address</span>
                   <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
-                  <span className="pl-count">{playlist.length} looks · dial press to advance</span>
                   <span className="pl-count" data-testid="playlist-physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
                 </div>
 
                 <div className="pl-list">
+                  {/* The list is a module, so it says what it is and how many, in
+                      its own bar. The count used to float in the card-address row
+                      above, where it described something two elements away. */}
+                  <div className="sec-h">
+                    <span className="t">Playlist order</span>
+                    <span className="m">{playlist.length} looks · dial press advances</span>
+                    <span className="line" />
+                  </div>
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>
@@ -842,7 +924,7 @@ function realPatternShape(patternId) {
                           <strong>{String(i + 1).padStart(2, "0")}</strong>
                           <span>{i === 0 ? "startup" : "press"}</span>
                         </div>
-                        <span className="pl-art" style={{ background: p.grad }} />
+                        <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>
                         <div className="pl-copy">
                           <strong>{item.label}{item.type === 'combo' && <span className="mixtag">look</span>}</strong>
                           <span>{item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
@@ -863,6 +945,40 @@ function realPatternShape(patternId) {
                     );
                   })}
                 </div>
+
+                {/* What the card is carrying, under the order that produced it.
+                    Same idiom as the order above: filled head bar, status
+                    light, name, right-aligned meta — body is three figures. */}
+                <div className="pl-cardnow" data-testid="playlist-card-now">
+                  <div className={"sec-h" + (playingItem ? " is-live" : "")}>
+                    <span className="t">On the card now</span>
+                    <span className="m">{cardNowMeta}</span>
+                    <span className="line" />
+                  </div>
+                  <div className="pl-stats">
+                    <div
+                      className={"pl-stat" + (installedRecord?.verified === true ? " is-ok" : "")}
+                      data-testid="playlist-stat-installed"
+                    >
+                      <span className="k">Looks installed</span>
+                      <strong className="v">{installedLooks === null ? '—' : installedLooks}</strong>
+                      <span className="n">{installedLooksNote}</span>
+                    </div>
+                    <div
+                      className={"pl-stat" + (playingItem ? " is-live" : "")}
+                      data-testid="playlist-stat-playing"
+                    >
+                      <span className="k">Playing</span>
+                      <strong className="v">{playingItem ? playingItem.label : '—'}</strong>
+                      <span className="n">{playingItem ? 'live preview confirmed' : 'no live look sent'}</span>
+                    </div>
+                    <div className="pl-stat" data-testid="playlist-stat-slots">
+                      <span className="k">Card slots left</span>
+                      <strong className="v">{slotsLeft}</strong>
+                      <span className="n">of {CARD_PLAYLIST_LIMIT}</span>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               <aside className="pm-aside">
@@ -872,7 +988,7 @@ function realPatternShape(patternId) {
                     const added = playlistContainsCombo(playlist, m.id);
                     return (
                       <button key={m.id} className="pl-source" onClick={() => addCombo(savedLookById.get(m.id))} disabled={added || recoveryPending}>
-                        <span className="pl-src-art" style={{ background: m.grad }} />
+                        <span className="pl-src-art"><LedRow pal={m.pal} n={5} /></span>
                         <span className="pl-src-nm">{m.label}<span className="mixtag">look</span></span>
                         <span className="pl-src-add">{added ? I.check : I.plus}</span>
                       </button>
@@ -887,7 +1003,7 @@ function realPatternShape(patternId) {
                   <div className="pl-pool">
                     {pool.map((p) => (
                       <button key={p.id} className="pl-chip" disabled={recoveryPending} onClick={() => addPattern(p.id)} title={`Add ${p.label}`}>
-                        <span className="pl-chip-art" style={{ background: p.grad }} />
+                        <span className="pl-chip-art"><LedRow pal={p.pal} n={4} /></span>
                         <span className="pl-chip-nm">{p.label}</span>
                         <span className="pl-chip-add">{I.plus}</span>
                       </button>

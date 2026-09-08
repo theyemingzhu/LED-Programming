@@ -121,7 +121,11 @@ test('Recover lights on a bench card is honest that the setup is untouched (ui-r
   }]);
 
   await page.getByRole('button', { name: 'Recover lights', exact: true }).click();
-  const note = page.locator('section[aria-label="Hardware checks and recovery"] [role="status"]');
+  // Pinned by testid, not by element type: Checks & recovery is a <details>
+  // now (it folds itself away for a healthy card and opens itself for the
+  // cards the Patterns gate sends here), and a selector that names the tag
+  // breaks on a change that does not alter what this test is about.
+  const note = page.getByTestId('card-checks-recovery').locator('[role="status"]');
   await expect(note).toContainText('still running the temporary Find-my-strips setup', { timeout: 30000 });
   await expect(note).toContainText('Clear temporary setup');
   await expect(note).not.toContainText('acknowledged');
