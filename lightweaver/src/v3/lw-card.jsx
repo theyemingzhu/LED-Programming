@@ -1080,7 +1080,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
   const workshop = route.section === 'workshop';
-  const heading = SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
+  // The heading follows the shared journey: once setup is done, "Set up
+  // your Lightweaver" is a stale instruction for a card that already works.
+  // Only Home's four sections carry that instruction at all — install,
+  // workshop and preferences keep their own static heading regardless.
+  const heading = home && sharedJourney.setupComplete
+    ? 'Your Lightweaver'
+    : SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
   return (
     <div className="screen card-workspace-screen">
       <div className="card-workspace">

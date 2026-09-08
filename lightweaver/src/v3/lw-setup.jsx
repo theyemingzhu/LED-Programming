@@ -1080,8 +1080,16 @@ export function SetupScreen({
     return (
       <div className="lw-setup-task" data-testid="setup-active-task">
         <dl className="lw-setup-summary">
-          <div><dt>Card</dt><dd>{exactCardName(cardLink, cardHost)}</dd></div>
-          <div><dt>Project</dt><dd>{currentProject?.name || currentProject?.id || 'Untitled project'}</dd></div>
+          {/* Card and Project drop once setup is complete: the identity row
+              directly above the phase ladder already states both, and this
+              table used to repeat them a third and fourth time on the one
+              screen that had just been compressed to end repeated tellings. */}
+          {!journey.setupComplete && (
+            <>
+              <div><dt>Card</dt><dd>{exactCardName(cardLink, cardHost)}</dd></div>
+              <div><dt>Project</dt><dd>{currentProject?.name || currentProject?.id || 'Untitled project'}</dd></div>
+            </>
+          )}
           <div><dt>Outputs</dt><dd>{evidence.outputs.length || 'None'}</dd></div>
           <div><dt>Lights</dt><dd>{evidence.count || 'None counted'}</dd></div>
           <div><dt>Color</dt><dd>{evidence.colorOrder || 'Not confirmed'}</dd></div>
@@ -1180,8 +1188,11 @@ export function SetupScreen({
               {/* Same one-primary rule as the rest of Card Home. This banner
                   can render while the ladder still has an active task (an
                   exact project match during a `confirming` lifecycle, for
-                  one), and two primaries then ask the owner to arbitrate. */}
-              <button type="button" className={journey.setupComplete ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>{journey.setupComplete ? returnDestination.label : 'Open Patterns'}</button>
+                  one), and two primaries then ask the owner to arbitrate.
+                  Also stands down while the card is blacked out: the F16
+                  banner's "Recover lights" is the page's one primary then,
+                  so this button styles as secondary until the card is lit. */}
+              <button type="button" className={journey.setupComplete && !journey.blackout ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>{journey.setupComplete ? returnDestination.label : 'Open Patterns'}</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
               {firmwareBehind && (
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
