@@ -238,3 +238,10 @@ number is derived from (self-inflicted, not a defect); one connection-center
 case is the documented contention flake. Isolated rerun of exactly those six:
 `{"expected":6,"unexpected":0}`. Windowless config: `{"expected":2,"unexpected":0}`.
 Unit 2361/2361; production build. No hardware, deploy or push.
+
+## Physical observations (Adrian, card lw-b0fe81f61b44 at 192.168.18.70, 2026-09-07, Studio main at localhost:9999)
+
+- J11 physical: **passed** — Aurora, Ocean, Stop each changed the strip.
+- J12/J02 physical power cycle: **passed** — reconnected with no click, "Installed project matches".
+- J03 physical preserving update 1524 → 1548: **card passed** (app1, config kept, patterns play); **Studio reconnect failed** — stayed "Not connected", owner re-paired by hand (F13, in progress). Two more defects on the way in: F11 and F12 (fixed, main #227).
+- J06/J07 physical count save: **failed on the Studio side** — a LED-count change is "save and reboot" on the firmware, not a staged light test; Studio reported "Push failed" for a write that landed and offered Retry (F14, open). The expiry contract itself remains **physical pending** and needs a rewire (GPIO change) to exercise.

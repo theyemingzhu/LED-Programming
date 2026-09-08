@@ -306,7 +306,65 @@ names `card-restarted`; one vocabulary.
 "colorOrderConfirmed never set" chip after F1 had already fixed it here
 (`74906d02`). If that session opens a PR, close it in favour of this branch.
 
-### Phase E — Bench proof (Adrian's eyes, one observation at a time)
+### Phase G — defects found at the bench on 2026-09-07 (real card lw-b0fe81f61b44)
+
+**F11 · done** (`a8e2bfed`, main via #227): the install screen shows "Checking card…"
+while a remembered card's link settles instead of headlining the factory installer.
+
+**F12 · done** (`bab16c4c`, main via #227): the software-authorisation probe never
+claims ready on an origin without the grant service; card-button path is the
+default with a plain explanation.
+
+**F13 · done** (`a2db018e`, main via #229 — every transport gate now distinguishes a different card from the same card on new firmware; the identity note is written whole) · files: `cardLink.js`, `cardTransport.js`, `cardBridge.js`,
+`cardWifiHandoff.js`, `cardIdentity.js` — after a preserving update the SAME card
+id with a new firmware build is refused at every transport gate as if it were a
+different card, so Studio stays "Not connected" and the owner re-pairs by hand.
+`cardReadiness.js` already names `unexpected-firmware-build` as the update case;
+the gates must route through `isDifferentCardMismatch` / `isStaleFirmwareMismatch`
+and persist the whole new identity atomically. Regression:
+`tests/journey-firmware-identity.spec.ts`.
+
+**F14 · done** (`1b1b88d2`, main via #230 — a count save that restarts the card is "restarting, verifying", read back, never "Push failed"; simulator mirrors the firmware rule; `tests/journey-count-save.spec.ts` in the smoke lane; Layout names which changes get a light test) · was: tier M, Studio + simulator
+(firmware owner only if the contract is changed). The firmware's rule
+(`LightweaverStorage.cpp`, `runtimeConfigJsonChangesWiring`): GPIO, output
+identity, added/removed outputs or LED type is a rewire → staged light test;
+a changed LENGTH on the same outputs is "save and reboot", no candidate, no
+probation. Studio and `tests/harness/cardSimulator.ts` assume any pixel change
+is staged. Observed twice on the real card: "Check and install on the card"
+after a count edit → the card saved and rebooted at once → the request died with
+the restart → Studio printed "Push failed: signal is aborted without reason" with
+a Retry, while the footer said "Card restarted — verifying". The first run
+(41 → 42) landed; the second (42 → 41) rebooted but the card still reports 42
+(unexplained; take a serial log). Required: (1) a config save that answers with
+a restart is *verification pending*: read the card back after the reboot
+(same rule as F3 for `/api/control`), show "Saved, card restarting…", never
+"Push failed", and never offer a blind Retry; (2) the simulator mirrors the
+real rule (count-only change → `requiresReboot`, not `staged`) so J06/J07
+model the card that exists; (3) Layout's copy says which changes get a light
+test (rewire) and which just save; (4) a firmware contract test pins the rule.
+Regressions: journey-edits count-save case red first; a `firmware/…/tests`
+contract for `runtimeConfigJsonChangesWiring`.
+
+**F15 · open, pre-existing** · `tests/layout-led-count-save.spec.ts` "adding a playlist
+pattern lights Save to card on the footer" fails on plain `main` (lifecycle reports
+`content-mismatch` where the test expects `project-mismatch`, or the reverse — decide
+from `cardLifecycle.js` which label the footer chip should carry for a playlist-only
+change and fix the one that is wrong). This lane (`test:release-ui`) does not run on
+pull requests, which is how it survived; add the spec to `ci:browser-smoke` once green.
+
+### Phase E — Bench proof (Adrian's eyes, one observation at a time) — **run 2026-09-07**
+
+1. Patterns A → B → Stop: **passed**.
+2. Power cycle → reconnect with no click, "Installed project matches": **passed**.
+3. Preserving Wi-Fi update 1524 → 1548 (card button): **firmware passed** (slot app1,
+   Wi-Fi, project and 41 px kept, patterns play); **Studio reconnect failed** → F13.
+   Also found: factory installer headlined while the link settled (F11), bare
+   "API route not found" on the dev origin (F12).
+4. Unconfirmed light test expiring: **not testable with a count change** (the
+   firmware saves and reboots instead of staging; Studio reported "Push failed"
+   for a write that landed) → F14. Re-run next bench with a rewire (change the
+   GPIO in Layout, install, start the light test, answer nothing for 90 s; the
+   card must restore GPIO 18 and the strip must light again).
 
 Not a model ticket. The primary asks these in order, each as one question, on
 card `lw-b0fe81f61b44` at 192.168.18.70:

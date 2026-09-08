@@ -162,3 +162,63 @@ test('an exact operation lease loss demotes only the lifecycle that failed', (t)
   assert.equal(invalidateCardLinkOperationLease(lease, { link, reason: 'stale-operation' }), false);
   assert.equal(link.getState(), revalidated, 'an old operation cannot demote a newer card lifecycle');
 });
+
+// ---------------------------------------------------------------------------
+// F13 — the readiness reducer is the gate that told Adrian "Not connected"
+// about a card that was answering, healthy, on the build the official updater
+// had just installed. `identity-mismatch` covers three findings and only one of
+// them is a stranger; this reducer used to treat all three as one.
+// ---------------------------------------------------------------------------
+
+const PAIRED_ON_OLD_BUILD = {
+  id: CARD_ID,
+  firmwareVersion: '1.1.31',
+  buildId: 'a'.repeat(40),
+  buildNumber: 1524,
+};
+
+function updatedEnvelope(overrides = {}) {
+  return readyEnvelope({
+    firmwareVersion: '1.1.33',
+    buildId: 'c'.repeat(40),
+    buildNumber: 1548,
+    bootId: 'boot-after-update',
+    ...overrides,
+  });
+}
+
+test('a card that came back on a newer build connects, and the link re-learns its firmware', () => {
+  const state = reduceCardLink(initialCardLinkState('lightweaver.local'), {
+    type: 'direct-status',
+    connected: true,
+    host: 'lightweaver.local',
+    card: { id: CARD_ID, firmwareVersion: '1.1.33', buildId: 'c'.repeat(40), buildNumber: 1548 },
+    expectedCard: PAIRED_ON_OLD_BUILD,
+    readiness: updatedEnvelope(),
+  });
+  assert.equal(state.state, 'connected-direct');
+  assert.equal(state.reason, '');
+  // The link's own expectation must move with it, or every later reader of
+  // `link.expectedCard` — the Patterns live-preview authority among them —
+  // keeps comparing the card against a note already replaced, and refuses it.
+  assert.equal(state.expectedCard.buildId, 'c'.repeat(40));
+  assert.equal(state.expectedCard.firmwareVersion, '1.1.33');
+  assert.equal(state.expectedCard.buildNumber, 1548);
+  assert.equal(state.expectedCard.id, CARD_ID, 'the pairing itself is untouched');
+});
+
+test('a different card id at the same address is still refused as the wrong card', () => {
+  const state = reduceCardLink(initialCardLinkState('lightweaver.local'), {
+    type: 'direct-status',
+    connected: true,
+    host: 'lightweaver.local',
+    card: { id: 'lw-someone-elses' },
+    expectedCard: PAIRED_ON_OLD_BUILD,
+    readiness: updatedEnvelope({ cardId: 'lw-someone-elses' }),
+  });
+  assert.equal(state.state, 'disconnected');
+  assert.equal(state.reason, 'wrong-card');
+  assert.equal(state.card, null);
+  assert.equal(state.expectedCard.buildId, 'a'.repeat(40),
+    'a stranger’s firmware must never be adopted as this card’s note');
+});

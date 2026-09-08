@@ -1,6 +1,11 @@
 import { cardHostToUrl, isLocalCardHost, normalizeCardHost, rememberCardHost, writeStoredCardHost } from './cardConnection.js';
-import { normalizeCardIdentity, persistCardIdentity, readPersistedCardIdentity } from './cardIdentity.js';
-import { classifyCardReadiness } from './cardReadiness.js';
+import {
+  normalizeCardIdentity,
+  persistCardIdentity,
+  readPersistedCardIdentity,
+  refreshExpectedCardFirmware,
+} from './cardIdentity.js';
+import { classifyCardReadiness, isDifferentCardMismatch } from './cardReadiness.js';
 import { getSharedCardLink } from './cardLink.js';
 import { allowLanProbes } from './usbInspection.js';
 
@@ -105,7 +110,10 @@ function exactStatus(status, { expectedCardId = '', host = '' } = {}) {
   const classified = classifyCardReadiness(status || {}, {
     expectedCard: expectedCardId ? { id: expectedCardId } : null,
   });
-  if (classified.state === 'identity-mismatch') return { ok: false, reason: 'wrong-card', observedCardId, observedCard };
+  // Only a DIFFERENT card id is a wrong card. The expectation above carries the
+  // id alone on purpose — this transport pins identity, never firmware — so a
+  // card that came back on a newer build is the same card and connects (F13).
+  if (isDifferentCardMismatch(classified)) return { ok: false, reason: 'wrong-card', observedCardId, observedCard };
   if (!classified.contractSupported || !classified.identityValid || !classified.bootId) {
     return {
       ok: false,
@@ -339,6 +347,14 @@ async function connectCardTransportOnce({
       persistCardIdentity(exact.card, { acknowledgedAt });
       rememberCardHost(normalizedHost);
       writeStoredCardHost(normalizedHost);
+    } else if (expectedCardId && exact.card?.id) {
+      // The remembered card answered on firmware Studio may not have written
+      // down — the ordinary state after an official update (F13). This is the
+      // first moment the new build is proven, so the note is brought current
+      // WHOLE here: firmwareVersion, buildId and buildNumber together, or not
+      // at all. A different id never reaches this line (exactStatus refuses it
+      // as `wrong-card`), and a card whose firmware has not moved is a no-op.
+      refreshExpectedCardFirmware(exact.card, { acknowledgedAt });
     }
     link?.dispatch?.({
       type: 'direct-status', connected: true, host: normalizedHost,

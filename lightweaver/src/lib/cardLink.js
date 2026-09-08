@@ -25,6 +25,7 @@ import {
 } from './cardBridge.js';
 import { cardHostToUrl, normalizeCardHost, readStoredCardHost, rememberCardHost, writeStoredCardHost } from './cardConnection.js';
 import {
+  classifyPairedCardReadiness,
   compareCardIdentity,
   normalizeCardIdentity,
   persistCardIdentity,
@@ -32,7 +33,7 @@ import {
   verifyExpectedCardAtHost,
 } from './cardIdentity.js';
 import { isCardLinkConnected as isFreshCardLinkConnected, isCardTransportConnected } from './cardConnectionFlow.js';
-import { classifyCardReadiness } from './cardReadiness.js';
+import { classifyCardReadiness, isDifferentCardMismatch } from './cardReadiness.js';
 import { recordCardLinkTransition } from './cardLinkJournal.js';
 import {
   acceptWifiHandoff,
@@ -165,11 +166,42 @@ function readinessReason(classified = {}) {
   return classified.reason || '';
 }
 
+// The paired card answered with firmware Studio had not written down yet.
+// `classifyPairedCardReadiness` has already re-learned the PERSISTED note; this
+// carries the same re-learning into the link's own in-memory expectation, or
+// every later reader of `link.expectedCard` — the Patterns live-preview
+// authority in lw-pattern.jsx among them — keeps comparing the card against a
+// note that has already been replaced, and refuses it.
+//
+// Only ever for the same card id, and only from an identity the card itself
+// proved valid. A different id is untouched here and still fails the gate below.
+function relearnedExpectedCard(expectedCard, classified) {
+  if (!expectedCard || classified?.identityValid !== true) return expectedCard;
+  const expectedId = String(expectedCard.id || expectedCard.cardId || '').trim();
+  if (!expectedId || expectedId !== classified.cardId) return expectedCard;
+  if (expectedCard.firmwareVersion === classified.firmwareVersion
+    && expectedCard.buildId === classified.buildId) {
+    return expectedCard;
+  }
+  return {
+    ...expectedCard,
+    firmwareVersion: classified.firmwareVersion,
+    buildId: classified.buildId,
+    buildNumber: classified.buildNumber,
+  };
+}
+
 function applyStatusEnvelope(prev, event, transport, host) {
-  const expectedCard = event.expectedCard || prev.expectedCard || null;
+  const rememberedCard = event.expectedCard || prev.expectedCard || null;
   const card = event.card || normalizeCardIdentity(event.readiness || {}, host);
   const readiness = event.readiness ?? null;
-  const classified = classifyCardReadiness(readiness || {}, { expectedCard });
+  // F13: a same-id firmware difference is an updated card, not a stranger. This
+  // accepts the live firmware, rewrites the remembered identity whole, and
+  // re-classifies against it, so blank/safe-mode/boot/runtime verdicts below
+  // are reached exactly as they would have been with a current note. A
+  // different card id still classifies as `unexpected-card` and still stops.
+  const classified = classifyPairedCardReadiness(readiness || {}, { expectedCard: rememberedCard });
+  const expectedCard = relearnedExpectedCard(rememberedCard, classified);
   const exactFailure = readinessReason(classified);
   if (classified.state === 'identity-mismatch') {
     return clearedLiveEvidence(prev, {
@@ -1718,8 +1750,13 @@ export async function adoptDiscoveredDirectCard({ fetchImpl, link = getSharedCar
   // stay the last thing before dispatch) so the paired card renders with the
   // correct cardBlank immediately instead of flashing green for one poll.
   const readiness = await probeDirectCardReadiness(state.host, fetchImpl);
-  const classified = classifyCardReadiness(readiness || {}, { expectedCard: verified });
-  if (classified.state === 'checking' || classified.state === 'identity-mismatch') {
+  // `verified` is the card's OWN live read-back, so its firmware always agrees
+  // with this probe unless the card rebooted onto a different build between the
+  // two reads — an update landing mid-pair, not a different card. Only a
+  // different card id may stop a pairing here; the firmware note is re-learned
+  // (F13) and the card is paired on the build it is actually running.
+  const classified = classifyPairedCardReadiness(readiness || {}, { expectedCard: verified });
+  if (classified.state === 'checking' || isDifferentCardMismatch(classified)) {
     const error = new Error('Studio could not reverify the full card status before pairing.');
     error.reason = readinessReason(classified) || 'identity-missing';
     throw error;
