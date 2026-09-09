@@ -520,6 +520,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     reconnectHost = '',
     onFirmwareRecoveryState,
     onFirmwareSession,
+    canWebSerialInstall = false,
+    onSwitchToUsb,
   }) {
     const [confirming, setConfirming] = useState(false);
     const [physicalConfirmed, setPhysicalConfirmed] = useState(false);
@@ -560,6 +562,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const softwareGrantBlocked = grantService.state === 'sign-in-required' || grantService.state === 'unavailable';
     const useSoftwareAuthorization = softwareGrantAvailable && !forcePhysicalAuthorization && !softwareGrantBlocked;
     const actionLabel = mode === 'wifi' ? 'Update over Wi-Fi' : 'Update once over USB';
+    // F40 (Adrian: "I tried to look for where you're talking about, I don't
+    // quite see it"): a card that genuinely cannot take a Wi-Fi update yet
+    // (F34/F35's `firmwareUpdateReady: false` bit) still resolves this panel
+    // to `mode === 'wifi'`, because the door is capability-and-connection
+    // gated, not readiness-gated — correctly, since the card CAN take a
+    // network update once the bit clears. What was missing is a door OUT: the
+    // one-time USB path (`runPreservingUsbBootstrap`) was never offered from
+    // here, so a card in this state looked like a dead end.
+    const cardCannotTakeWifiUpdate = mode === 'wifi' && readiness?.firmwareUpdateReady === false;
     // Once the card is verified back on the target build, the one continue
     // button goes where the owner was when the update interrupted them
     // (recorded by the footer chip, Connection Center and Setup through
@@ -845,12 +856,43 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             <dd className="preserving-update-target">
               <span>{targetLabel}</span>
               {!confirming && phase === 'idle' && (
-                <button className="btn preserving-update-inline-action" type="button" disabled={!release} onClick={() => setConfirming(true)}>{actionLabel}</button>
+                <button
+                  className="btn preserving-update-inline-action"
+                  type="button"
+                  disabled={!release}
+                  data-testid={mode === 'wifi'
+                    ? (cardCannotTakeWifiUpdate ? 'preserving-update-secondary-action' : 'preserving-update-primary-action')
+                    : undefined}
+                  onClick={() => setConfirming(true)}
+                >
+                  {actionLabel}
+                </button>
               )}
             </dd>
             {readiness?.projectHead && <><dt>Project head</dt><dd>{readiness.projectHead}</dd></>}
           </dl>
         </div>
+        {mode === 'wifi' && !confirming && phase === 'idle' && (
+          <div className="install-confirm-action preserving-update-wifi-or-usb">
+            {cardCannotTakeWifiUpdate && (
+              <p className="preserving-update-notice" role="status" data-testid="preserving-update-usb-required-notice">
+                This card cannot take a Wi-Fi update yet. Use USB once; after that, Wi-Fi works.
+              </p>
+            )}
+            {canWebSerialInstall ? (
+              <button
+                className={cardCannotTakeWifiUpdate ? 'btn-lg' : 'btn'}
+                type="button"
+                data-testid={cardCannotTakeWifiUpdate ? 'preserving-update-primary-action' : 'preserving-update-secondary-action'}
+                onClick={onSwitchToUsb}
+              >
+                Update once over USB instead
+              </button>
+            ) : (
+              <p className="preserving-update-usb-unavailable">USB update needs Chrome or Edge on a computer.</p>
+            )}
+          </div>
+        )}
         {confirming && phase === 'idle' && (
           <div className="install-confirm-action">
             {useSoftwareAuthorization ? (
@@ -946,6 +988,10 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const [progress, setProgress] = useState(0);
     const [installState, setInstallState] = useState('idle');
     const [releaseAttempt, setReleaseAttempt] = useState(0);
+    // F40: an explicit "Update once over USB instead" choice from the
+    // preserving panel wins over the wifi/usb resolution below, for as long
+    // as this screen stays mounted. See `preservingMode` further down.
+    const [preferUsbUpdate, setPreferUsbUpdate] = useState(false);
     const [commissioning, setCommissioning] = useState(readCardCommissioning);
     // Only a flow present at mount represents an interrupted install. A new
     // flow written by this mounted installer must retain its active USB UI.
@@ -1083,9 +1129,10 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         })
       : null;
     const preservingMode = preservingFixture?.mode
-      || (connectedUpdateCard ? 'wifi'
-        : usbUpdateCard && updateReleaseState.state === 'ready' ? 'usb'
-          : recoveryCard ? (recoverySession.mode === 'usb' ? 'usb' : 'wifi') : '');
+      || (preferUsbUpdate && (connectedUpdateCard || usbUpdateCard) ? 'usb'
+        : connectedUpdateCard ? 'wifi'
+          : usbUpdateCard && updateReleaseState.state === 'ready' ? 'usb'
+            : recoveryCard ? (recoverySession.mode === 'usb' ? 'usb' : 'wifi') : '');
     const preservingCard = connectedUpdateCard || usbUpdateCard
       || (preservingFixture?.mode === 'usb' ? preservingFixture.card : null)
       || recoveryCard;
@@ -1604,6 +1651,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               release={updateReleaseState.state === 'ready' ? updateReleaseState.release : null}
               loaderRef={loaderRef}
               transportRef={transportRef}
+              canWebSerialInstall={capabilities.canWebSerialInstall}
+              onSwitchToUsb={() => setPreferUsbUpdate(true)}
               onUsbReleased={() => setCardState(previous => ({
                 state: 'reconnecting', hardware: previous.hardware, error: '',
               }))}
