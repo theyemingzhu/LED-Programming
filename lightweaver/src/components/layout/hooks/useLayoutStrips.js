@@ -13,7 +13,13 @@ import {
 import { scaleStripGeometry } from '../../../lib/stripScale.js';
 import { moveStripRowsInChain } from '../../../lib/patchBoard.js';
 import { reprojectStripKaleidoscope, reverseKaleidoscope } from '../../../lib/kaleidoscope.js';
-import { nextSplitName, planStripSplitCounts, splitStripPaths } from '../../../lib/stripSplit.js';
+import {
+  nextSplitName,
+  nextSplitNames,
+  planStripSplitCounts,
+  splitStripPaths,
+  splitStripPathsN,
+} from '../../../lib/stripSplit.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 
 // scaleStrip clamps: never shrink a strip's path below this length (px)…
@@ -334,6 +340,124 @@ export function useLayoutStrips(ctx) {
   }, [strips, wiring, updateWiring, nextColor, densityFor, stripCountOverrides,
       setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
+  // Divide one strip into 2..MAX_SPLIT_SECTIONS named strips that stay
+  // adjacent on the same output — the general form of splitStripInTwo above,
+  // for an owner who wants several independently-patterned zones out of one
+  // drawn reel (each new strip becomes its own zone once compiled — see
+  // wiringCompiler.js — so no wiring/contract change is needed here).
+  //
+  // Kept as its own function rather than built on splitStripInTwo: that
+  // function's single-click behaviour and its naming (the first half keeps
+  // the strip's own name, only the second half is suffixed) are asserted
+  // byte-for-byte by tests/layout-strip-split.spec.ts for the existing
+  // "Split into two" control. This function powers a separate "Divide"
+  // control with its own owner-picked section count and its own naming rule
+  // (nextSplitNames — every piece suffixed 1..N, including piece 1).
+  const divideStripIntoSections = useCallback((id, sections) => {
+    if (wiring.locked) return null;
+    const source = strips.find(st => st.id === id);
+    if (!source) return null;
+    const counts = planStripSplitCounts(source.pixelCount, sections);
+    if (!counts || counts.counts.length < 2) return null;
+    const paths = splitStripPathsN(source.pathData, counts, source.reversed);
+    if (!paths || paths.length !== counts.counts.length) return null;
+    // A strip already cut into several runs in Advanced wiring has no single
+    // run to divide; those boundaries are edited there instead.
+    const sourceRuns = wiring.runs.filter(run => run.type === 'strip' && run.source?.stripId === id);
+    if (sourceRuns.length > 1) return null;
+
+    const x = source.x || 0;
+    const y = source.y || 0;
+    const partOf = (pathData, pixelCount) => ({
+      ...source,
+      pathData,
+      pixelCount,
+      svgLength: svgPathLength(pathData),
+      pixels: sampleStripPixels(pathData, pixelCount, source.reversed, x, y),
+      // Reflection points are placed against a whole run; a cut invalidates them.
+      kaleidoscope: undefined,
+      mergedFrom: undefined,
+      // No piece covers the artwork layer on its own any more, so none of
+      // them claims it (same rule "Combine into one strip" applies).
+      sourceLayerId: null,
+      sourcePathId: null,
+    });
+
+    // Allocate one fresh id per new piece (the first piece keeps `id`),
+    // walking nextStripId forward so two pieces never collide.
+    let pool = strips;
+    const newIds = [];
+    for (let index = 1; index < counts.counts.length; index += 1) {
+      const newId = nextStripId(pool);
+      newIds.push(newId);
+      pool = [...pool, { id: newId }];
+    }
+    const names = nextSplitNames(source.name, counts.counts.length, strips.map(st => st.name));
+
+    const pieces = counts.counts.map((pixelCount, index) => {
+      const piece = partOf(paths[index], pixelCount);
+      return index === 0
+        ? { ...piece, id, name: names[0] }
+        : { ...piece, id: newIds[index - 1], name: names[index], color: nextColor() };
+    });
+
+    pushLayoutHistory();
+    setStrips(prev => prev.flatMap(st => (st.id === id ? pieces : [st])));
+    setStripDensities(prev => {
+      const next = { ...prev };
+      const sourceDensity = densityFor(id);
+      newIds.forEach(newId => { next[newId] = sourceDensity; });
+      return next;
+    });
+    // A hand-pinned count on the original means every piece is hand-set too,
+    // so a later resize does not silently recount them.
+    if (stripCountOverrides?.[id]) {
+      setStripCountOverrides(prev => {
+        const next = { ...prev, [id]: true };
+        newIds.forEach(newId => { next[newId] = true; });
+        return next;
+      });
+    }
+    updateWiring(draft => {
+      const existing = draft.runs.find(run => run.type === 'strip' && run.source?.stripId === id);
+      if (existing) {
+        existing.source = { ...existing.source, from: 0, to: Math.max(0, counts.counts[0] - 1) };
+        existing.seamLed = null;
+        existing.verified = false;
+      }
+      const host = draft.outputs.find(output => existing && output.runIds.includes(existing.id));
+      // Land each new piece immediately after the one before it on its own
+      // output, so the list keeps reading in the order the data travels.
+      let previousRunId = existing?.id;
+      newIds.forEach((newId, index) => {
+        const pieceIndex = index + 1;
+        const run = {
+          id: `run-${newId}`,
+          type: 'strip',
+          source: { stripId: newId, from: 0, to: Math.max(0, counts.counts[pieceIndex] - 1) },
+          directionPolicy: existing?.directionPolicy || 'flexible',
+          physicalDirection: existing?.physicalDirection || 'source-forward',
+          seamLed: null,
+          verified: false,
+        };
+        let suffix = 2;
+        while (draft.runs.some(item => item.id === run.id)) run.id = `run-${newId}-${suffix++}`;
+        draft.runs.push(run);
+        if (host && previousRunId) {
+          const at = host.runIds.indexOf(previousRunId);
+          host.runIds.splice(at + 1, 0, run.id);
+        } else {
+          (draft.outputs[0] || {}).runIds?.push(run.id);
+        }
+        previousRunId = run.id;
+      });
+    }, { changeKind: 'route' });
+    selectStrips([id, ...newIds]);
+    scrollToStrip(newIds.at(-1) || id);
+    return newIds;
+  }, [strips, wiring, updateWiring, nextColor, densityFor, stripCountOverrides,
+      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrips, scrollToStrip]);
+
   const createStripGroupFromIds = useCallback((stripIds, nameOverride = '') => {
     const uniqueIds = [...new Set(stripIds)].filter(Boolean);
     const picked = strips.filter(s => uniqueIds.includes(s.id));
@@ -492,6 +616,7 @@ export function useLayoutStrips(ctx) {
     renameStrip,
     duplicateStrip,
     splitStripInTwo,
+    divideStripIntoSections,
     addPrimitiveStrip,
     scaleStrip,
     createStripGroupFromIds,

@@ -1,0 +1,27 @@
+/* "Divide into" — Draw mode's N-way generalisation of "Split into two".
+   Lives as a field in the Selected-strip physical grid (`.lw-sel-grid`,
+   defined in v3-layout-console.css), not as a button in the actions row: that
+   row's total width is a locked budget (tests/layout-strip-caption.spec.ts —
+   "every control added to this panel competes for one fixed width"), and the
+   grid's `minmax(0, 1fr)` columns are the one place a new field wraps to its
+   own row instead of forcing the panel wider. */
+
+.la-divide-select {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-app);
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.la-divide-preview {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
