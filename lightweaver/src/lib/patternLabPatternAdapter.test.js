@@ -354,7 +354,9 @@ test('actual worker agrees with direct Lab frames for centered line patterns and
     await import('../pattern-lab/patternLab.worker.js');
     globalThis.onmessage({ data: { type: 'initialize', requestId: 1, payload: { generation: 1, geometry: compact } } });
     let requestId = 1;
-    for (const recipe of [recipeFromPattern('mandelbrot'), recipeFromPattern('lotus'), createSlowColorDriftRecipe()]) {
+    const { recipeFromLook } = await import('./patternLabFromLook.js');
+    const imported = recipeFromLook({ patternId: 'rainbow', customHue: 180, customSaturation: 0, customBreathe: true });
+    for (const recipe of [recipeFromPattern('mandelbrot'), recipeFromPattern('lotus'), createSlowColorDriftRecipe(), imported]) {
       replies = [];
       globalThis.onmessage({ data: { type: 'render', requestId: ++requestId, payload: { generation: 1, mode: 'final', layerCount: 0, time: 75, recipe, renderOptions } } });
       await new Promise(resolve => setImmediate(resolve));
@@ -367,5 +369,25 @@ test('actual worker agrees with direct Lab frames for centered line patterns and
   } finally {
     globalThis.postMessage = oldPost;
     globalThis.onmessage = oldMessage;
+  }
+});
+
+test('Lab rendering carries imported look saturation, hue, Drift and Breathe through the same post-pass as Patterns', async () => {
+  const { recipeFromLook } = await import('./patternLabFromLook.js');
+  const { applyLookColorModifiers } = await import('./previewColorModifiers.js');
+  const strips = [{ id: 'strip', pts: Array.from({ length: 41 }, (_, i) => ({ x: i, y: 0, p: i / 40 })) }];
+  for (const patternId of ['rainbow', 'blocks']) for (const modifiers of [
+    { customHue: 32, customSaturation: 0 },
+    { customHue: 110, customSaturation: 210, hueShift: 45 },
+    { customHue: 32, customSaturation: 230, customDrift: true, speed: 2 },
+    { customHue: 32, customSaturation: 230, customBreathe: true, breatheLowerPct: 15, breatheUpperPct: 80, breatheCycleSeconds: 9 },
+  ]) {
+    const look = { patternId, brightness: 1, speed: 1, ...modifiers };
+    const recipe = recipeFromLook(look, { palette: FIXED_PALETTE });
+    for (const elapsed of [0, 4, 12]) {
+      const expected = applyLookColorModifiers(renderPixelFrame({ strips, t: elapsed, patternId, masterSpeed: look.speed, paletteNorm: normalizePalette(FIXED_PALETTE) }).pixels, elapsed * 1000, look);
+      const actual = renderPatternLabRecipeFrame(recipe, { strips, t: elapsed * look.speed }).pixels;
+      assert.deepEqual(actual, expected, JSON.stringify({ modifiers, elapsed }));
+    }
   }
 });

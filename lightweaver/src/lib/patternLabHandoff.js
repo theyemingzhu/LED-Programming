@@ -1,5 +1,5 @@
+import { resolvePatternLabVisualLook } from './patternLabLookColor.js';
 import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
-import { hexToCardColor, normalizeCardVisualLook } from './cardVisualLook.js';
 import {
   MAX_PATTERN_LAB_LWSEQ_BYTES,
   canonicalPatternLabBakeJson,
@@ -8,7 +8,6 @@ import {
   PATTERN_LAB_COMPATIBILITY_CLASSIFICATIONS,
   PATTERN_LAB_COMPATIBILITY_VERSION,
 } from './patternLabCompatibility.js';
-import { resolvePatternLabMacros } from './patternLabMacros.js';
 import { normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { isBuiltInPattern } from './patternRegistry.js';
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
@@ -105,23 +104,10 @@ function validBudget(value, storage = false) {
 }
 
 export function lookFromRecipe(recipe) {
-  const technical = resolvePatternLabMacros(recipe);
-  const paletteColor = recipe.palette[Math.min(recipe.palette.length - 1, Math.floor(recipe.palette.length / 2))];
-  const color = hexToCardColor(paletteColor);
   const source = recipe.sourceLook;
   const selectedSource = source?.sectionLooks?.[source?.selectedTargetId] || source?.defaultLook;
   const exactSource = selectedSource?.patternId === recipe.base.patternId ? selectedSource : null;
-  const paletteChanged = !exactSource || JSON.stringify(recipe.palette) !== JSON.stringify(recipe.sourceLookBaseline?.palette);
-  const colorMacroChanged = !exactSource || recipe.macros?.color !== recipe.sourceLookBaseline?.macros?.color;
-  const defaultLook = normalizeCardVisualLook({
-    ...(exactSource || {}),
-    patternId: recipe.base.patternId,
-    brightness: recipe.playback.brightness,
-    speed: recipe.playback.speed,
-    ...(!exactSource || colorMacroChanged ? { hueShift: Math.round(technical.color.warmth * 18) } : {}),
-    ...(paletteChanged ? { customHue: color.customHue, customSaturation: color.customSaturation } : {}),
-    ...(colorMacroChanged ? { customSaturation: Math.round(technical.color.saturation * 255) } : {}),
-  });
+  const defaultLook = resolvePatternLabVisualLook(recipe);
   const sectionLooks = exactSource && source.sectionLooks ? clone(source.sectionLooks) : Object.fromEntries((recipe.targets || [])
     .filter(target => target?.kind === 'section' && String(target.id || '').trim())
     .map(target => [slug(target.id), defaultLook]));

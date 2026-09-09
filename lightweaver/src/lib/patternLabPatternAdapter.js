@@ -1,3 +1,4 @@
+import { applyPatternLabLookColor, patternLabBasePalette, patternLabHasSourceLook } from './patternLabLookColor.js';
 import { sampleColorJourney } from './colorJourney.js';
 import { PALETTE_DEFAULT } from '../data.js';
 import {
@@ -192,6 +193,7 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     ...context,
     masterBrightness: 1,
     gammaLUT: null,
+    ...(patternLabHasSourceLook(normalized) ? { masterSaturation: 1, masterHueShift: 0 } : {}),
   };
   if ((renderContext.strips || []).some(strip => Array.isArray(strip?.pixels))) {
     renderContext.strips = normalizeProjectRenderStrips(renderContext.strips, {
@@ -218,7 +220,7 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
       masterSaturation: 1, masterHueShift: 0,
     } : {}),
     params: normalized.base.params,
-    paletteNorm: normalizePalette(normalized.palette),
+    paletteNorm: normalizePalette(patternLabBasePalette(normalized)),
   });
   for (const layer of normalized.layers) {
     const rendered = renderRecipeLayer(layer, renderContext, normalized.palette);
@@ -242,5 +244,6 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
       }),
     };
   }
+  applyPatternLabLookColor(frame.pixels, normalized, context.t);
   return finalizeFrame(frame, finalOptions);
 }

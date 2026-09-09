@@ -1961,8 +1961,8 @@
 /* Effortless color composition ------------------------------------------------ */
 .plab-creative {
   display: grid;
-  gap: 18px;
-  padding: 22px 18px 24px;
+  gap: 14px;
+  padding: 20px 18px 22px;
   border-bottom: 1px solid var(--border-soft);
   background:
     radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
@@ -1983,17 +1983,17 @@
 .plab-creative-welcome > p:not(.plab-creative-kicker) { max-width: 38ch; margin: 0; color: var(--text-mid); font-size: 12px; line-height: 1.55; }
 .plab-composition-start,
 .plab-keep-look {
-  min-height: 48px;
-  padding: 0 18px;
+  min-height: 40px;
+  padding: 0 14px;
   border: 0;
   border-radius: var(--r-md);
   background: var(--text-hi);
   color: var(--bg-app);
-  font: 700 13px/1 var(--font-sans);
+  font: 700 11px/1 var(--font-sans);
   cursor: pointer;
   transition: transform 180ms cubic-bezier(.22, 1, .36, 1), opacity 180ms ease;
 }
-.plab-composition-start { width: min(100%, 260px); margin-top: 6px; }
+.plab-composition-start { width: fit-content; margin-top: 4px; }
 .plab-composition-start:active,
 .plab-keep-look:active,
 .plab-variation-trigger:active,
@@ -2062,7 +2062,7 @@
 .plab-palette-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .plab-palette-choices button {
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   display: grid;
   grid-template-columns: 38px 1fr;
   align-items: center;
@@ -2076,7 +2076,7 @@
   cursor: pointer;
 }
 .plab-palette-choices button:hover { border-color: var(--border-soft); background: var(--bg-elev); }
-.plab-palette-choices button > span { width: 38px; height: 28px; border-radius: 8px; }
+.plab-palette-choices button > span { width: 38px; height: 24px; border-radius: 7px; }
 .plab-palette-choices b { overflow: hidden; font-size: 10px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 
 .plab-creative-dials { display: grid; gap: 16px; }
@@ -2109,7 +2109,8 @@
 .plab-arc-overview span:last-child { text-align: right; }
 .plab-arc-overview i { height: 4px; border-radius: 4px; }
 .plab-rehearsal {
-  min-height: 38px;
+  width: fit-content;
+  min-height: 34px;
   padding: 0 11px;
   border: 1px solid var(--border-soft);
   border-radius: var(--r-sm);
@@ -2124,8 +2125,8 @@
 .plab-variation-trigger,
 .plab-creative-undo,
 .plab-save-copy {
-  min-height: 42px;
-  padding: 0 13px;
+  min-height: 36px;
+  padding: 0 11px;
   border: 1px solid var(--border-soft);
   border-radius: var(--r-sm);
   background: var(--bg-elev);
@@ -2133,14 +2134,15 @@
   font: 650 10px/1 var(--font-sans);
   cursor: pointer;
 }
-.plab-variation-trigger { flex: 1; }
+.plab-variation-trigger { flex: 0 0 auto; }
 .plab-variations { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(176px, 82%); gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x mandatory; }
-.plab-variations button { min-height: 116px; display: grid; align-content: start; gap: 7px; padding: 8px; border: 1px solid var(--border-soft); border-radius: var(--r-md); background: var(--bg-elev); color: var(--text-hi); text-align: left; cursor: pointer; scroll-snap-align: start; }
-.plab-variation-ribbon { height: 50px; border-radius: 13px; }
+.plab-variations button { min-height: 94px; display: grid; align-content: start; gap: 6px; padding: 7px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-hi); text-align: left; cursor: pointer; scroll-snap-align: start; }
+.plab-variation-ribbon { height: 36px; border-radius: 9px; }
 .plab-variations b { font-size: 11px; }
 .plab-variations small { color: var(--text-mid); font-size: 9px; line-height: 1.35; }
-.plab-keep-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.plab-save-copy { min-height: 48px; }
+.plab-keep-row { display: flex; align-items: center; gap: 8px; }
+.plab-keep-look { width: fit-content; }
+.plab-save-copy { min-height: 40px; }
 .plab-kept-looks { display: grid; gap: 8px; padding-top: 2px; }
 .plab-kept-looks > span { color: var(--text-mid); font: 600 9px/1 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
 .plab-kept-looks > div { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px; }
@@ -2161,6 +2163,31 @@
 .plab-fine-tune-body { border-top: 1px solid var(--border-hair); }
 .plab-working-copy-error { margin: 0; padding: 10px 18px; color: var(--danger); font-size: 10px; line-height: 1.4; }
 
+/* The physical-preview action sits over the art, so it should read as a
+   compact transport control rather than a second page-level call to action. */
+.plab-live-preview.plab-live-preview-headline {
+  left: 16px !important;
+  right: auto !important;
+  bottom: 16px !important;
+  width: min(300px, calc(100% - 32px));
+  padding: 9px !important;
+  gap: 5px !important;
+  border-radius: var(--r-sm);
+}
+.plab-live-preview.plab-live-preview-headline .plab-live-preview-action {
+  align-self: flex-start;
+  width: auto !important;
+  min-height: 36px !important;
+  padding: 0 12px;
+  font-size: 11px !important;
+  font-weight: 680 !important;
+}
+.plab-live-preview.plab-live-preview-headline > span {
+  max-width: 36ch;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
 @media (max-width: 640px) {
   .plab-creative { padding: 18px 16px 20px; }
   .plab-color-ribbon { height: 82px; border-radius: 22px; }
@@ -2171,6 +2198,29 @@
   .plab-character-control button { min-height: 44px; font-size: 8.5px; }
   .plab-creative-intro { align-items: start; }
   .plab-creative-save-state { max-width: 92px; }
+  .plab-composition-start,
+  .plab-keep-look,
+  .plab-save-copy,
+  .plab-rehearsal,
+  .plab-variation-trigger,
+  .plab-creative-undo,
+  .plab-palette-choices button { min-height: 44px; }
+  .plab-keep-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .plab-keep-look { width: 100%; }
+  .plab-variation-trigger { flex: 1; }
+  .plab-live-preview.plab-live-preview-headline {
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    width: auto;
+    padding: 10px !important;
+  }
+  .plab-live-preview.plab-live-preview-headline .plab-live-preview-action {
+    align-self: stretch;
+    width: 100% !important;
+    min-height: 44px !important;
+    font-size: 13px !important;
+  }
 }
 
 /* Below the wide layout the toolbar goes back to what it was — mark, title,

@@ -51,7 +51,7 @@ export function recipeFromLook(look = {}, context = {}) {
     sourceLook: { id: saved.id || '', label: saved.label || recipe.name, defaultLook: normalizeCardVisualLook(saved.defaultLook || look), sectionLooks: structuredClone(saved.sectionLooks || {}), ...(saved.selectedTargetId ? { selectedTargetId: saved.selectedTargetId } : {}) },
   };
   if (saved.selectedTargetId && saved.selectedTargetId !== 'all') result.targets = [{ kind: 'section', id: saved.selectedTargetId }];
-  result.sourceLookBaseline = { palette: structuredClone(result.palette), macros: structuredClone(result.macros) };
+  result.sourceLookBaseline = { renderPalette: structuredClone(recipe.palette), palette: structuredClone(result.palette), macros: structuredClone(result.macros) };
   return result;
 }
 

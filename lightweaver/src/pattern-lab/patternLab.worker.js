@@ -1,3 +1,4 @@
+import { applyPatternLabLookColor, patternLabBasePalette, patternLabHasSourceLook } from '../lib/patternLabLookColor.js';
 import { createColorJourneyPattern, patternLabSamplingBounds } from '../lib/patternLabPatternAdapter.js';
 import {
   buildGammaLut,
@@ -205,6 +206,7 @@ async function renderRequest(requestId, payload) {
   const recipe = payload.recipe || {};
   const options = payload.renderOptions || {};
   const stateful = statefulPattern({ ...recipe, time: payload.time }, indices, options);
+  const hasSourceLook = patternLabHasSourceLook(recipe);
   const isColorJourney = recipe.base?.kind === 'color-journey';
   const activeFn = isColorJourney
     ? createColorJourneyPattern(recipe.journey, payload.time)
@@ -234,12 +236,12 @@ async function renderRequest(requestId, payload) {
     patternId: recipe.base?.patternId,
     activeFn,
     params: recipe.base?.params || {},
-    paletteNorm: normalizePalette(recipe.palette),
+    paletteNorm: normalizePalette(patternLabBasePalette(recipe)),
     bpm: geometry.bpm,
     masterSpeed: options.masterSpeed,
     masterBrightness: 1,
-    masterSaturation: isColorJourney ? 1 : options.masterSaturation,
-    masterHueShift: isColorJourney ? 0 : options.masterHueShift,
+    masterSaturation: isColorJourney || hasSourceLook ? 1 : options.masterSaturation,
+    masterHueShift: isColorJourney || hasSourceLook ? 0 : options.masterHueShift,
     gammaLUT: null,
     symSettings: geometry.symSettings,
     audioBands: geometry.audioBands,
@@ -267,8 +269,8 @@ async function renderRequest(requestId, payload) {
       bpm: geometry.bpm,
       masterSpeed: options.masterSpeed,
       masterBrightness: 1,
-      masterSaturation: isColorJourney ? 1 : options.masterSaturation,
-      masterHueShift: isColorJourney ? 0 : options.masterHueShift,
+      masterSaturation: isColorJourney || hasSourceLook ? 1 : options.masterSaturation,
+      masterHueShift: isColorJourney || hasSourceLook ? 0 : options.masterHueShift,
       gammaLUT: null,
       symSettings: geometry.symSettings,
       audioBands: geometry.audioBands,
@@ -291,6 +293,7 @@ async function renderRequest(requestId, payload) {
       );
     });
   }
+  applyPatternLabLookColor(renderedPixels, recipe, payload.time);
   renderedPixels = finalizePatternLabColors(renderedPixels, {
     masterBrightness: options.masterBrightness,
     gammaLUT: buildGammaLut(geometry.gammaEnabled, geometry.gammaValue),

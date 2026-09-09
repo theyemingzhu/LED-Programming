@@ -9,6 +9,16 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-09 follow-up: compact desktop Lab actions, preserved mobile44px targets;
+actual screen inspected. Fixed imported-look color pipeline: Lab now applies
+Patterns hue/saturation/Drift/Breathe exactly once and preserves the source palette.
+Checkpoint2,466/2,466 units + build;13 focused browser checks passed. Native and
+streamed output share RGB decode/calibration in installed firmware f25430dc.
+Adrian's physical Rosewater journey hue mismatch is NOT yet resolved/proven:
+project gamma is off, no channel-order mutation found, card direct read timed out.
+Pending observation: physical strip hue when Lab preview is pink/red. Do not
+claim that imported-look modifier repair proves this separate journey symptom.
+
 2026-09-09: **PATTERN-EDIT-MANAGER implemented locally** — Slow color drift has
 visual colors/reordering, locks, Pace, Character, three variations, Undo, rehearsal,
 Keep/reopen and unsaved recovery. Patterns updates/renames retain identity; deletion

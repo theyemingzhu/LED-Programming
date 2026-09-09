@@ -80,3 +80,13 @@ test('an unkept color edit survives reload without pretending it was saved', asy
   await expect.poll(() => page.getByTestId('color-journey-ribbon').locator('[data-color]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-color')))).toEqual(colors);
   await expect(page.getByTestId('color-journey-save-state')).toContainText('Unsaved changes');
 });
+
+test('desktop actions stay compact instead of stretching across the preview', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
+  for (const label of ['Live preview', 'Keep this look', 'Try a variation', 'Quick rehearsal']) {
+    const box = await page.getByRole('button', { name: label, exact: true }).boundingBox();
+    expect(box?.width, label).toBeLessThanOrEqual(320);
+    expect(box?.height, label).toBeLessThanOrEqual(40);
+  }
+});
