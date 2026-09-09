@@ -24,6 +24,7 @@ import {
 } from './harness/cardStates';
 import { installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
+import { CARD_LINK_DIRECT_PING_INTERVAL_MS } from '../src/lib/cardLink.js';
 
 // ---------------------------------------------------------------------------
 // Shared boot/read helpers — same conventions as card-state-matrix.spec.ts,
@@ -231,7 +232,12 @@ async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardState
       name: 'Matrix piece',
       layout: {
         starterPending: false,
-        strips: [{ id: 'strip-1', pixels: project.pixels, pin: project.pin }],
+        // pixelCount (a number), not pixels: a plain scalar there crashes
+        // PatternScreen's preview strip builder (previewVisuals.js expects
+        // strip.pixels to be the ARRAY of {x,y,index} positions, same shape
+        // createDefaultProject() emits) — the array is empty here because no
+        // test in this file inspects rendered pixel positions.
+        strips: [{ id: 'strip-1', pixels: [], pixelCount: project.pixels, pin: project.pin }],
         wiring: {
           verified: true,
           runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
@@ -832,10 +838,17 @@ test('[J33-card-home-recover-https] Card Home Recover lights reaches a direct li
   // journey's /api/zones poll.
   card.outOfBandBlackout(true);
 
+  // F36: found flaky while proving J33b green — this shares the exact same
+  // race (see the comment on J33b's equivalent wait below): the shared
+  // journey only learns of an out-of-band blackout once cardLink.js's direct
+  // keepalive tick (CARD_LINK_DIRECT_PING_INTERVAL_MS, 20s cadence from
+  // connect) refreshes cardLink.readiness.lwOutput and useSetupJourney's F30
+  // effect notices the brightness bytes moved. A 20000ms wait races that
+  // cadence with zero margin for the round trip after it lands.
   await expect(
     page.getByTestId('card-blackout-notice'),
     'Card Home must report the blackout over https the same way it does on http',
-  ).toBeVisible({ timeout: 20000 });
+  ).toBeVisible({ timeout: CARD_LINK_DIRECT_PING_INTERVAL_MS + 15000 });
 
   const recoverButton = page.getByTestId('recover-lights');
   await expect(recoverButton).toBeVisible();
@@ -903,8 +916,19 @@ test('[J33b-patterns-recover-https] Patterns toolbar Recover lights reaches a di
   // shared journey's /api/zones poll.
   card.outOfBandBlackout(true);
 
+  // Patterns mounts with `refresh: true` (useSetupJourney), so — unlike Card
+  // Home's `refresh: false` SetupScreen, which does its own richer read —
+  // it has no other trigger to notice a card-side-only blackout: the shared
+  // evidence only goes stale when useSetupJourney's own F30 effect sees
+  // cardLink.readiness.lwOutput's brightness bytes change, and that readiness
+  // only updates on cardLink.js's direct keepalive tick
+  // (CARD_LINK_DIRECT_PING_INTERVAL_MS, 20s from connect, not reset by this
+  // out-of-band flip). A 20000ms wait races that exact cadence with zero
+  // margin for the round trip after it lands; this test found that the hard
+  // way (see the TODO.md resume entry this test replaces). Wait a full cycle
+  // plus a real margin instead of the interval itself.
   await expect(recoverButton, 'Patterns must report the blackout over https the same way it does on http')
-    .toHaveClass(/primary/, { timeout: 20000 });
+    .toHaveClass(/primary/, { timeout: CARD_LINK_DIRECT_PING_INTERVAL_MS + 15000 });
   await expect(recoverButton).toBeVisible();
   await expect(recoverButton).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
   await recoverButton.click();
