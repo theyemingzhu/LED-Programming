@@ -50,6 +50,7 @@ import {
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
 import {
+  cardConnectionOptionsFor,
   cardHostToUrl,
   discoverCardStatus,
   isLocalCardHost,
@@ -2013,6 +2014,16 @@ import { PatternPreview } from './PatternPreview.jsx';
         // otherwise a cleared blackout would sit unreported until something
         // else happened to re-read the card (F16: "goes away without a
         // click").
+        //
+        // F33b: this was the one hardware-reaching call in this file that
+        // never forwarded `transport` — it built a bare `{ host: cardHost }`
+        // instead of the shared `cardConnectionOptionsFor()` that Card
+        // Home's identical Recover lights button already used (F33). On the
+        // live site (https) that meant `recoveryUsesBridge` in
+        // cardLiveControl.js fell back to guessing "bridge" from the page
+        // protocol — always true on https — even holding a genuine direct
+        // link with no card-page bridge tab open, so the request had
+        // nothing to answer it and timed out. Same fix, same shared builder.
         await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
           { patternId: 'warm-white', brightness: 1, syncZones: true },
           { host: cardHost, timeoutMs: 3200, restartCard: true },
