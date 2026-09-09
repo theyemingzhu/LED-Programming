@@ -17,7 +17,7 @@ import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
-import { normalizeCardHost } from '../lib/cardConnection.js';
+import { cardConnectionOptionsFor, normalizeCardHost } from '../lib/cardConnection.js';
 import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
 import { STRIP_DISCOVERY_LABEL } from '../lib/cardAction.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
@@ -95,18 +95,6 @@ function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
 
 function cardEditIntent() {
   return readCardEditIntent(window.location.search);
-}
-
-// W1-6 (b6a9bfa9): every call that reaches the card must route by the link it
-// actually holds, not by guessing "bridge" from the page protocol. Module-
-// level (not a hook inside either component below) because CardHomePanels'
-// Checks & recovery panel and CardScreen's blackout banner are two separate
-// components that both reach the card — F33 found the banner had drifted
-// from this because a first attempt at sharing this scoped the builder
-// inside CardHomePanels only, which CardScreen's recoverCardBlackout cannot
-// see. One function both can call is the only shape that cannot drift again.
-function cardConnectionOptionsFor(cardLink, cardHost) {
-  return { host: cardLink?.host || cardHost, transport: cardLink?.transport };
 }
 
 // Card Home's evidence panels — formerly the whole "Card status" overview.
@@ -432,11 +420,13 @@ function CardHomePanels({
   // shell provides it, and fall back to the background probe otherwise.
   const openConnection = () => (onOpenConnectionCenter ? onOpenConnectionCenter() : onConnectCard?.());
   const requireExactReadyStatus = (status) => requireExactReadyCardStatus(status, cardLink?.card?.id);
-  // W1-6 (b6a9bfa9) / F33: every call that reaches the card must route by the
-  // link it actually holds, not by guessing "bridge" from the page protocol —
-  // see the module-level `cardConnectionOptionsFor` above for why this is a
-  // plain function outside both components rather than a hook scoped to
-  // this one.
+  // W1-6 (b6a9bfa9) / F33 / F33b: every call that reaches the card must route
+  // by the link it actually holds, not by guessing "bridge" from the page
+  // protocol — see `cardConnectionOptionsFor` in cardConnection.js (F33b
+  // moved it there so lw-pattern.jsx's Patterns screen, and F35's install
+  // screen, could share it too) for why every card-reaching call goes
+  // through one shared builder instead of a plain function or hook scoped to
+  // one file.
   const cardConnectionOptions = () => cardConnectionOptionsFor(cardLink, cardHost);
   const verifyHardware = async () => {
     if (hardwareActionState.status === 'loading') return;
@@ -961,9 +951,9 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       // even when the link this banner was reporting Connected on was a
       // genuine direct link and no card-page bridge tab was open — the
       // request had nothing to reach and timed out. Same fix as the other
-      // three, and the module-level helper (not CardHomePanels' own
-      // `cardConnectionOptions`) because this button lives in CardScreen, a
-      // different component.
+      // three, and the shared import from cardConnection.js (not
+      // CardHomePanels' own `cardConnectionOptions`) because this button
+      // lives in CardScreen, a different component.
       await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
         { patternId: 'warm-white', brightness: 1, syncZones: true },
         { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 3200, restartCard: true },

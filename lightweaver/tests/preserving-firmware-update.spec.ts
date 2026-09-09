@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { createCardSimulator } from './harness/cardSimulator';
+import { cardState, type CardStateSpec } from './harness/cardStates';
+import { installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { testBaseURL } from './testPort.mjs';
 
 const CARD_ID = 'lw-b0fe81f61b44';
 const OLD_BUILD = '1'.repeat(40);
@@ -432,4 +436,107 @@ test('preserving update: a blank card with explicit update readiness can start w
   await panel.getByRole('button', { name: 'Start secure Wi-Fi update' }).click();
   await expect(panel).toContainText('Restarting card');
   await expect(panel.getByRole('alert')).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// F34/F35 — Adrian, live site, 2026-09-09, Studio build 1777, card
+// lw-b0fe81f61b44 firmware 1548. The identity row and the footer chip both
+// read Connected with an exact "1548 → 1759" build diff, and pressing
+// "Update card" still opened on "Studio can't reach the Lightweaver card it
+// remembers" stacked above the destructive USB eraser — never the preserving
+// Wi-Fi panel. "This is the problem. I'm often on the wrong doors... When I
+// open it up and click card, I should always be on the right door."
+//
+// Root cause, confirmed against the real card with `curl` (both direct-read
+// and, separately, through the app): `cardSupportsNetworkFirmwareUpdate`
+// (firmwareUpdatePlan.js) additionally requires the live
+// `readiness.firmwareUpdateReady !== false` bit — the real card answers this
+// false while otherwise `runtimePhase: 'ready'`, `commandReady: true`,
+// `knownGoodProject: true` and fully commissioned, so the preserving door
+// never resolved and the timeout gate further down eventually printed a
+// false "can't reach" over a card the footer, at the same instant, correctly
+// called Connected. No fixture had this shape — every existing card
+// simulator response omits `firmwareUpdateReady` entirely (reads as `true`)
+// — so this suite's own default left the gap invisible.
+//
+// This runs on the https lane (same technique as journey-continuity.spec.ts's
+// J33/J33b) so `canPushDirectlyToCard()` is genuinely false and the only way
+// the screen can resolve without a false "can't reach" is by reading the
+// SAME connectedness the footer chip reads, over the SAME direct link.
+// ---------------------------------------------------------------------------
+async function seedKnownRealCard(page: import('@playwright/test').Page) {
+  await page.addInitScript(({ id }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id, firmwareVersion: '1.1.32', buildId: 'f'.repeat(40),
+    }));
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+  }, { id: CARD_ID });
+}
+
+/** Models the real lw-b0fe81f61b44 exactly as it answered live on 2026-09-09:
+ * fully ready and commissioned, but `firmwareUpdateReady: false`. */
+function realCardOlderBuildSpec(): CardStateSpec & { firmwareUpdateReady: boolean } {
+  return {
+    ...cardState('installed-match'),
+    firmwareUpdateReady: false,
+  };
+}
+
+test('[F34-one-door] a connected, capable card opens straight on the preserving Wi-Fi update panel, never the USB eraser', async ({ page }) => {
+  const crashes: string[] = [];
+  page.on('pageerror', error => crashes.push(String(error.message)));
+
+  const spec = realCardOlderBuildSpec();
+  const card = createCardSimulator(spec, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await seedKnownRealCard(page);
+
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+  expect(page.url().startsWith(STUDIO_ORIGIN), 'the page did not actually land on the https origin').toBe(true);
+
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(
+    panel,
+    'a connected, capable card must open straight on the preserving Wi-Fi panel, not the destructive USB installer',
+  ).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByRole('heading', { name: 'Update this card over Wi-Fi' })).toBeVisible();
+
+  await expect(
+    page.getByRole('button', { name: 'Find connected card' }),
+    'the erase installer must not be rendered at all on this path',
+  ).toHaveCount(0);
+  await expect(page.getByText('Erase card and install Lightweaver')).toHaveCount(0);
+  await expect(page.getByTestId('install-remembered-card-unreachable')).toHaveCount(0);
+
+  expect(crashes, 'the screen crashed').toEqual([]);
+});
+
+test('[F35-reach] a card the footer calls Connected is never reported unreachable on the install screen', async ({ page }) => {
+  const spec = realCardOlderBuildSpec();
+  const card = createCardSimulator(spec, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await seedKnownRealCard(page);
+
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15000 });
+
+  await expect(
+    page.getByTestId('install-remembered-card-unreachable'),
+    'no "can\'t reach" copy while the link this screen holds is genuinely connected',
+  ).toHaveCount(0);
+  await expect(page.getByText(/can.t reach the Lightweaver card/i)).toHaveCount(0);
+  await expect(page.getByTestId('install-checking-card')).toHaveCount(0);
+
+  // The screen's own read of this card's status must have gone out over the
+  // direct route this link actually holds — proof the underlying connect/poll
+  // never fell back to guessing a bridge tab that was never opened.
+  await expect
+    .poll(() => card.requests.some(entry => entry.method === 'GET' && entry.path === '/api/status'), {
+      message: 'the install screen\'s status read must reach the card via the direct route it holds, not a bridge with nothing to answer it',
+      timeout: 15000,
+    })
+    .toBe(true);
 });
