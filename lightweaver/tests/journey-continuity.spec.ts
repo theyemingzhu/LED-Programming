@@ -655,3 +655,72 @@ test('[J22b-patterns-recover] Recover lights on Patterns clears a drifted-wiring
     'recovering the lights is not a pattern write and must not raise the pattern-edit-authorization refusal ("That tap was not sent to the card.")',
   ).toHaveCount(0);
 });
+
+// ---------------------------------------------------------------------------
+// J30 — bench 2026-09-08 (F30), the second-walk defect on top of J16/F16:
+// with Studio already Connected and "Installed project matches", the walker
+// pressed the Off button on the CARD'S OWN PAGE (no Studio request at all —
+// GET /api/zones then showed blackout: true). Card Home kept showing "Card
+// ready" / Open Patterns for 18s; Patterns showed no blackout notice.
+// Recover lights still cleared it once found — only DETECTION was dead.
+//
+// Root cause: useSetupJourney (src/hooks/useSetupJourney.js) reads
+// /api/zones once per (card, boot, project) and caches the answer until
+// something marks it stale — and the only thing that ever did was a
+// Studio-initiated hardware operation finishing
+// (STUDIO_HARDWARE_OPERATION_EVENT, cardJourneyEvidence.js). An out-of-band
+// press on the card's own page fires no such event, so the cached "blackout
+// false" from before the press lived forever.
+//
+// The fix reuses the status poll Studio already runs every keepalive tick
+// (cardLink.js) for a fact it was already carrying for free:
+// `readiness.lwOutput.requestedBrightnessByte` / `brightnessByte` both drop
+// to 0 the instant ANY blackout engages, from any source
+// (LightweaverStorage.cpp runtimeStatusJson; composeOutputBrightness). A
+// change in either byte between polls now stales the cached blackout fact
+// (useSetupJourney.js), so the very next poll's freshness check re-reads
+// /api/zones instead of trusting the stale snapshot.
+// ---------------------------------------------------------------------------
+test('[J30-blackout-out-of-band] a blackout switched on the card\'s own page reaches Studio within one status poll', async ({ page }) => {
+  const spec = cardState('installed-match');
+  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  await waitConnectedUnaided(page, 'J30 card home connect');
+
+  await expect(
+    journeyLocator(page),
+    'a card holding exactly the project it already reports installed must read as setup-complete',
+  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'sanity: the card has not been blacked out yet, so Card Home must not report one',
+  ).toHaveCount(0);
+
+  // The card's OWN page flips its global blackout. No Studio request is
+  // involved — nothing in this line touches cardLink or the shared journey.
+  card.outOfBandBlackout(true);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'an out-of-band blackout must reach Card Home within one status poll, not stay cached from before it happened',
+  ).toBeVisible({ timeout: 20000 });
+  await expect(
+    page.getByTestId('recover-lights'),
+    'Card Home must offer Recover lights the moment it reports the blackout',
+  ).toBeVisible();
+
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await waitConnectedUnaided(page, 'J30 patterns entry');
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Patterns must read the same already-fresh evidence Card Home caught, not re-cache a stale answer of its own',
+  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+
+  // Clear it out of band too — the same detection must work in both
+  // directions, per the fix (a change in either byte, either direction).
+  card.outOfBandBlackout(false);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'clearing the blackout out of band must also reach Studio within one status poll',
+  ).toHaveCount(0, { timeout: 20000 });
+});
