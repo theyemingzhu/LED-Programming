@@ -9,6 +9,14 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-09 color-picker follow-up: Adrian reports choosing pure red while strip
+looks fuchsia/behind. Reproduced journey-phase cause: editing a stop retained the
+current fade time (red→violet at90s yielded RGB147,56,147). Picker edits now seek
+the edited stop's start, preserving playing/paused state and saved hold/fade timing.
+Actual emitted-frame browser regression confirms pure-red bytes after editing a
+noncurrent stop;11 focused browser scenarios + production build passed. User's
+physical recheck remains unobserved; no channel-order/firmware changes.
+
 2026-09-09 follow-up: compact desktop Lab actions, preserved mobile44px targets;
 actual screen inspected. Fixed imported-look color pipeline: Lab now applies
 Patterns hue/saturation/Drift/Breathe exactly once and preserves the source palette.

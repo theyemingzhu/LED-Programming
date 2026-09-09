@@ -1098,8 +1098,18 @@ export default function PatternLabScreen() {
     signalInstrumentResponse(0, 'pattern');
   }
 
-  function changeCreativeRecipe(next) {
-    setDraft(normalizePatternLabRecipe(next));
+  function changeCreativeRecipe(next, intent = null) {
+    const normalized = normalizePatternLabRecipe(next);
+    setDraft(normalized);
+    if (intent?.previewStopId && normalized.journey?.stops) {
+      const stopIndex = normalized.journey.stops.findIndex(stop => stop.id === intent.previewStopId);
+      if (stopIndex >= 0) {
+        const stopStartMs = normalized.journey.stops
+          .slice(0, stopIndex)
+          .reduce((total, stop) => total + stop.holdMs + stop.fadeMs, 0);
+        setPreviewTime(stopStartMs / 1000);
+      }
+    }
     setCreativeVariations([]);
     setMessage('');
     signalInstrumentResponse(1);

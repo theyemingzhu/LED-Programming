@@ -59,14 +59,14 @@ export default function ColorJourneyComposer({
   const journey = recipe?.journey ? normalizeColorJourney(recipe.journey) : null;
   const colors = journey?.stops.map(stop => stop.color) || [];
 
-  function updateJourney(nextJourney) {
+  function updateJourney(nextJourney, intent) {
     const normalized = normalizeColorJourney(nextJourney);
     onRecipeChange?.({
       ...recipe,
       base: { kind: 'color-journey', id: 'slow-color-drift', params: {} },
       journey: normalized,
       palette: normalized.stops.map(stop => stop.color),
-    });
+    }, intent);
   }
 
   function moveColor(from, to) {
@@ -78,10 +78,11 @@ export default function ColorJourneyComposer({
   }
 
   function changeColor(index, color) {
+    const previewStopId = journey.stops[index]?.id;
     updateJourney({
       ...journey,
       stops: journey.stops.map((stop, stopIndex) => stopIndex === index ? { ...stop, color } : stop),
-    });
+    }, { previewStopId });
   }
 
   function toggleLock(index) {

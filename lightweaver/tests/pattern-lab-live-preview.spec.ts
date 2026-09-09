@@ -156,3 +156,23 @@ test('Live preview keeps following native, Mandelbrot and Lotus selections until
   await expect(page.getByRole('button', { name: 'Live preview', exact: true })).toBeVisible();
   await expect.poll(() => controls.some(body => body.cancelStream)).toBe(true);
 });
+
+test('editing a journey color immediately streams that color instead of the previous fade', async ({ page }) => {
+  await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
+  await page.getByLabel('Choose color 2', { exact: true }).evaluate(input => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, '#ff0000');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const message = JSON.parse(window.__patternLabFrames.at(-1) || '{}');
+    const colors = (message.seg?.[0]?.i || []).filter(value => typeof value === 'string');
+    return colors.length > 0 && colors.every(value => /^[0-9a-f]{2}0000$/i.test(value)) && colors.some(value => !/^000000$/i.test(value));
+  }), { timeout: 3000 }).toBe(true);
+  await expect(page.getByTestId('color-journey-ribbon').locator('[data-color]').nth(1)).toHaveAttribute('data-color', '#ff0000');
+});
