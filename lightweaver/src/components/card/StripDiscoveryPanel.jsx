@@ -26,7 +26,7 @@ import { dismissNoticeKey, publishNotice } from '../../lib/noticeLayer.js';
 import { isTransientCardFailure, retryWhileTransient } from '../../lib/cardTransientFailure.js';
 import { clearDanglingWiringTransaction } from '../../lib/cardSetupDeploy.js';
 import { getCardBridgeState } from '../../lib/cardBridge.js';
-import { cardHostToUrl, normalizeCardHost, readStoredCardHost } from '../../lib/cardConnection.js';
+import { cardConnectionOptionsFor, cardHostToUrl, normalizeCardHost, readStoredCardHost } from '../../lib/cardConnection.js';
 import { prepareCardDeployment } from '../../lib/cardDeployment.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
 import { readPersistedCardIdentity } from '../../lib/cardIdentity.js';
@@ -412,7 +412,7 @@ export function StripDiscoveryPanel({
       }
       // Fast path 2: the card is already driving this port, so just send light
       // to it. No rewrite, no reboot, no waiting.
-      const status = await readCardStatusEnvelope({ host }).catch(error => {
+      const status = await readCardStatusEnvelope(cardConnectionOptionsFor(cardLink, host)).catch(error => {
         if (isTransientCardFailure(error)) throw error;
         return null;
       });
@@ -869,7 +869,7 @@ export function StripDiscoveryPanel({
       // still spoken for and stops below with the clear-and-retry way out.
       let ownScratchSetup = false;
       try {
-        ownScratchSetup = isBenchProjectEvidence(await readCardProjectEvidence({ host }));
+        ownScratchSetup = isBenchProjectEvidence(await readCardProjectEvidence(cardConnectionOptionsFor(cardLink, host)));
       } catch { /* cannot tell; fall through to the refusal path */ }
       await deploySetupToCard(prepared.runtimePackage, host, {
         onProgress: setInstallProgress,

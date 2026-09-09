@@ -35,6 +35,7 @@ import {
 } from '../lib/cardConnection.js';
 import { readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { pushLiveHardwareToCard } from '../lib/cardLiveControl.js';
+import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
 import { getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { saveProjectToCardFromGesture } from '../lib/cardProjectSave.js';
 import { createProjectEnvelope } from '../lib/projectRepository.js';
@@ -312,12 +313,12 @@ const SettingsFieldContext = createContext(null);
       const seq = ++liveHardwareSeq.current;
       setStatusKind('');
       setStatus(`Previewing ${colorOrder} color order on ${cardHostToUrl(cardHost)}...`);
-      pushLiveHardwareToCard({ colorOrder }, { host: cardHost, timeoutMs: 2000 })
+      pushLiveHardwareToCard({ colorOrder }, { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 2000 })
         .then(async response => {
           if (response?.ok !== true || !Number.isSafeInteger(response?.stateRevision)) {
             throw new Error('The card did not return a card-owned hardware acknowledgement.');
           }
-          const readback = await readCardStatusEnvelope({ host: cardHost, timeoutMs: 2000 });
+          const readback = await readCardStatusEnvelope({ ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 2000 });
           if (!response.cardId || readback?.cardId !== response.cardId || readback?.led?.colorOrder !== colorOrder) {
             throw new Error('The card hardware readback did not match the requested color order.');
           }
@@ -537,6 +538,7 @@ const SettingsFieldContext = createContext(null);
                   </Row>
                   <StripColorOrderCheck
                     cardHost={cardHost}
+                    cardLink={cardLink}
                     controller={standaloneController}
                     setController={setStandaloneController}
                     autoStart={openColorOrderTest}

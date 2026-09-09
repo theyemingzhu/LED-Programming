@@ -48,10 +48,16 @@ export function validateCardPushAttempt(attempt, projectLifecycle) {
   }
 }
 
-async function readReadyDeploymentEvidence(host) {
+// F36: every read here used to omit `transport`, so on a hosted https Studio
+// with a genuine direct link (isMixedContentBlocked() always true there) this
+// guessed the card-page bridge even when a plain fetch would have answered.
+// Default to the shared link's own transport, same source app.jsx builds the
+// cardLink prop from everywhere else, so a caller with a fresher hint can
+// still override it.
+async function readReadyDeploymentEvidence(host, transport = getCardLinkState().transport) {
   const [project, status] = await Promise.all([
-    readCardProjectEvidence({ host }),
-    readCardStatusEnvelope({ host }),
+    readCardProjectEvidence({ host, transport }),
+    readCardStatusEnvelope({ host, transport }),
   ]);
   return { ...correlateCardDeploymentReadinessEvidence(project, status), readiness: status };
 }
@@ -85,14 +91,15 @@ async function publishVerifiedReadiness(prepared, host) {
 }
 
 async function waitForCardAfterCandidateRollback(host, expected = {}) {
+  const transport = getCardLinkState().transport; // F36: same guess-avoidance as readReadyDeploymentEvidence above
   let lastError = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {
     if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 500));
     try {
       const [project, status, wiringStatus] = await Promise.all([
-        readCardProjectEvidence({ host }),
-        readCardStatusEnvelope({ host }),
-        getCardWiringStatus({ host }),
+        readCardProjectEvidence({ host, transport }),
+        readCardStatusEnvelope({ host, transport }),
+        getCardWiringStatus({ host }), // transport: n/a (cardWiringSafety.js is out of F36 scope — not one of the three named lib files, and getCardWiringStatus does not consult a transport option)
       ]);
       const cardId = project.cardId || status.cardId;
       const buildId = project.buildId || status.buildId;
@@ -220,9 +227,9 @@ export function CardPushControl({
         let handoffOnly = false;
         try {
           [before, status, wiringStatus] = await Promise.all([
-            readCardProjectEvidence({ host: cleanHost }),
-            readCardStatusEnvelope({ host: cleanHost }),
-            getCardWiringStatus({ host: cleanHost }),
+            readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport }),
+            readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport }),
+            getCardWiringStatus({ host: cleanHost }), // transport: n/a (cardWiringSafety.js is out of F36 scope — not one of the three named lib files, and getCardWiringStatus does not consult a transport option; also literal-matched by cardPushControlResume.test.js's ordering check, do not change the string shape)
           ]);
           assertCardDeploymentPreflightIdentity(before, status);
         } catch (preflightError) {
@@ -305,14 +312,14 @@ export function CardPushControl({
         deploymentStart = await orchestrateCardDeploymentStart(
           attempt.prepared,
           {
-            readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host }),
-            readStatus: () => readCardStatusEnvelope({ host: attempt.host }),
-            readWiringStatus: () => getCardWiringStatus({ host: attempt.host }),
+            readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport }),
+            readStatus: () => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport }),
+            readWiringStatus: () => getCardWiringStatus({ host: attempt.host }), // transport: n/a (cardWiringSafety.js is out of F36 scope)
             config: async () => {
               assertCurrentAttempt(attempt);
               setPushStatus(`Sending revision ${attempt.revision} to ${cleanHost}...`);
               configPushAttempted = true;
-              return pushConfigToCard(attempt.pkg, { host: attempt.host, allowLayoutChange: true });
+              return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport, allowLayoutChange: true });
             },
           },
         );

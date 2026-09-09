@@ -49,6 +49,7 @@ export function WiringBenchTest({
   const makeSession = () => createWiringChaseSession({
     host: cardHost,
     priorLook: priorConfirmedLook,
+    // transport: n/a (WiringBenchTest.jsx is not imported/rendered anywhere in src/ or tests/ — dead code, no cardLink prop reaches it; flagged for F36 follow-up rather than threading a prop nothing renders)
     restoreLook: look => pushLivePreviewToCard(look, { host: cardHost, latestOnly: false }),
   });
 
@@ -168,6 +169,7 @@ export function WiringBenchTest({
     const session = sessionRef.current;
     sessionRef.current = null;
     await session?.stop().catch(() => {});
+    // transport: n/a (same dead-code note as makeSession above — this component is unreferenced)
     await recoverCardLights(
       { patternId: 'blackout', brightness: 0, syncZones: true },
       { host: cardHost, timeoutMs: 3200 },

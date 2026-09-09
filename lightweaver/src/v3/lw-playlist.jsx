@@ -334,7 +334,7 @@ function realPatternShape(patternId) {
           if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current) return;
         }
         const confirmedLook = buildPatternPlaylistPreview(patternId);
-        await pushLivePreviewToCard(confirmedLook, { host, timeoutMs: 2200, revision: sequence });
+        await pushLivePreviewToCard(confirmedLook, { host, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, revision: sequence });
         if (sequence === previewSequence.current && actionGeneration === cardActionGeneration.current) {
           dispatchPreviewAction({ type: 'confirm', revision: sequence });
           markCardLookConfirmed(confirmedLook);
@@ -370,7 +370,7 @@ function realPatternShape(patternId) {
           const confirmedLook = { ...normalizeCardVisualLook(savedLook.defaultLook || {}), syncZones: true };
           await pushLivePreviewToCard(
             confirmedLook,
-            { host, timeoutMs: 2600, revision: sequence },
+            { host, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2600, revision: sequence },
           );
           if (sequence === previewSequence.current && actionGeneration === cardActionGeneration.current) {
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
@@ -393,7 +393,7 @@ function realPatternShape(patternId) {
         if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current) return;
         await pushSectionPreviewToCard(
           targets,
-          { host, timeoutMs: 2600, revision: sequence },
+          { host, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2600, revision: sequence },
         );
         if (sequence === previewSequence.current && actionGeneration === cardActionGeneration.current) {
           dispatchPreviewAction({ type: 'confirm', revision: sequence });
@@ -432,7 +432,7 @@ function realPatternShape(patternId) {
       setPlaylistControlPending(true);
       setPlaylistControlError('');
       try {
-        await postPlaylistControlToCard(verb, { host });
+        await postPlaylistControlToCard(verb, { host, transport: cardLink?.transport });
       } catch (error) {
         setPlaylistControlError(error?.message || 'The card did not confirm the playlist command.');
       } finally {
@@ -503,7 +503,7 @@ function realPatternShape(patternId) {
       try {
         await recoverCardLightsVerified(
           { patternId: 'warm-white', brightness: 1, syncZones: true },
-          { host, timeoutMs: 3200, restartCard: true },
+          { host, transport: cardLink?.transport, timeoutMs: 3200, restartCard: true },
         );
         if (!recoveryIsCurrent()) return;
         dispatchPreviewAction({ type: 'reset' });
@@ -566,7 +566,7 @@ function realPatternShape(patternId) {
         // its short wiring package here.
         packageForCard = runtimePackageForCardOperation(validRuntimePackage, { operation: 'save' });
         prepareCardStoragePayload(packageForCard);
-        const before = await readCardProjectEvidence({ host });
+        const before = await readCardProjectEvidence({ host, transport: cardLink?.transport });
         const response = await syncRuntimePackageToCard({
           host,
           runtimePackage: packageForCard,
@@ -577,7 +577,7 @@ function realPatternShape(patternId) {
         const exactPrepared = { ...runtimeBuild.prepared, cardId: before.cardId };
         const verification = await waitForCardDeploymentVerification(
           exactPrepared,
-          { readEvidence: () => readCardProjectEvidence({ host }) },
+          { readEvidence: () => readCardProjectEvidence({ host, transport: cardLink?.transport }) },
         );
         markProjectInstalled({
           revision: projectLifecycle.editedRevision,

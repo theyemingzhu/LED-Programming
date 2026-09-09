@@ -18,7 +18,7 @@ const COLOR_TESTS = [
 
 const testForChannel = channel => COLOR_TESTS.find(test => test.channel === channel) || COLOR_TESTS[0];
 
-export function StripColorOrderCheck({ cardHost, controller, setController, autoStart = false, quick = false }) {
+export function StripColorOrderCheck({ cardHost, cardLink = null, controller, setController, autoStart = false, quick = false }) {
   const [open, setOpen] = useState(autoStart || quick);
   // '' before the first question, 'R' during the red question, 'G' during the
   // green one, 'done' once the order is solved.
@@ -51,14 +51,14 @@ export function StripColorOrderCheck({ cardHost, controller, setController, auto
     const test = testForChannel(channel);
     await recoverCardLights(
       { patternId: test.patternId, brightness: test.brightness, syncZones: true },
-      { host: cardHost, timeoutMs: 3200 },
+      { host: cardHost, transport: cardLink?.transport, timeoutMs: 3200 },
     );
   };
 
   // Applying the saved order first is what makes the questions answerable: the
   // card and Studio have to agree on the order before the answers mean anything.
   const applyOrder = async order => {
-    const response = await pushLiveHardwareToCard({ colorOrder: order }, { host: cardHost, timeoutMs: 2200 });
+    const response = await pushLiveHardwareToCard({ colorOrder: order }, { host: cardHost, transport: cardLink?.transport, timeoutMs: 2200 });
     return normalizeUsbLedColorOrder(response?.colorOrder || order, order);
   };
 
@@ -135,7 +135,7 @@ export function StripColorOrderCheck({ cardHost, controller, setController, auto
   useEffect(() => () => {
     if (!startedRef.current) return;
     requestRef.current += 1;
-    void stopCardLights({ host: cardHost, timeoutMs: 3200 }).catch(() => {});
+    void stopCardLights({ host: cardHost, transport: cardLink?.transport, timeoutMs: 3200 }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup
   }, []);
 

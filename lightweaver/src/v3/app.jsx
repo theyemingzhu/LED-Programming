@@ -572,7 +572,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
     try {
       await withStudioHardwareOperation('recover-lights', () => cardActions.recoverLights(
         { patternId: 'warm-white', brightness: 1, syncZones: true },
-        { host: link?.host || cardHost, timeoutMs: 3200, restartCard: true },
+        { host: link?.host || cardHost, transport: link?.transport, timeoutMs: 3200, restartCard: true },
       ));
     } catch {
       // The chip has no room to write out an error; Card Home's own banner
@@ -1358,7 +1358,7 @@ function Shell({ offlineUpdateController = null }) {
         });
         prepareCardStoragePayload(prepared.runtimePackage);
         const packageForCard = runtimePackageForCardOperation(prepared.runtimePackage, { operation: 'save' });
-        const before = await readCardProjectEvidence({ host });
+        const before = await readCardProjectEvidence({ host, transport: cardLink.transport });
         await syncRuntimePackageToCard({
           host,
           runtimePackage: packageForCard,
@@ -1367,7 +1367,7 @@ function Shell({ offlineUpdateController = null }) {
         const exactPrepared = { ...prepared, cardId: before.cardId };
         const verification = await waitForCardDeploymentVerification(
           exactPrepared,
-          { readEvidence: () => readCardProjectEvidence({ host }) },
+          { readEvidence: () => readCardProjectEvidence({ host, transport: cardLink.transport }) },
         );
         markProjectInstalled({
           generation: projectLifecycle.generation,

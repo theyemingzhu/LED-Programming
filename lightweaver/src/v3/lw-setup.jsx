@@ -15,6 +15,7 @@ import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
+import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
@@ -761,7 +762,7 @@ export function SetupScreen({
           return;
         }
         try {
-          await recoverCardLights({ patternId: 'warm-white', brightness: 0.55 }, { host });
+          await recoverCardLights({ patternId: 'warm-white', brightness: 0.55 }, cardConnectionOptionsFor(cardLink, host));
         } catch {
           setLedCountState({
             busy: false,
