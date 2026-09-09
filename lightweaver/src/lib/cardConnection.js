@@ -63,17 +63,18 @@ export function cardHostToUrl(rawHost = '') {
   return `http://${normalizeCardHost(rawHost)}`;
 }
 
-// W1-6 (b6a9bfa9) / F33 / F33b: every call that reaches the card must route
-// by the link it actually holds, not by guessing "bridge" from the page
+// W1-6 (b6a9bfa9) / F33 / F33b / F35: every call that reaches the card must
+// route by the link it actually holds, not by guessing "bridge" from the page
 // protocol (recoveryUsesBridge in cardLiveControl.js falls back to
 // isMixedContentBlocked(), which is always true on https). F33 fixed Card
 // Home's Recover lights by building this options object from cardLink
-// instead of a hand-rolled { host } — but the fix started life scoped inside
-// one component (see the F33 commit message), which the sibling component
-// in the same file could not see, and Patterns' own Recover lights
-// (lw-pattern.jsx's repairLed) never adopted it at all. One shared function,
-// imported everywhere a screen reaches the card on the owner's behalf, is
-// the only shape that cannot drift a fourth time.
+// instead of a hand-rolled `{ host }` — but the fix started life scoped
+// inside one component, which a sibling component in the same file could not
+// see, and F33b found Patterns' own Recover lights had the identical gap and
+// had never adopted it at all. Moved here (out of lw-card.jsx) so every
+// screen that reaches the card on the owner's behalf — Card Home, Patterns,
+// and now the Install/Update screen (F35) — imports the identical function
+// instead of each carrying (or failing to carry) its own copy.
 export function cardConnectionOptionsFor(cardLink, cardHost) {
   return { host: cardLink?.host || cardHost, transport: cardLink?.transport };
 }

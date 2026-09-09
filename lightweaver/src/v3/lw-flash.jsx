@@ -37,14 +37,14 @@ import {
 } from '../lib/cardCommissioningFlow.js';
 import { observePostFlashNetwork } from '../lib/cardPostFlashNetwork.js';
 import {
-  cardSupportsNetworkFirmwareUpdate,
   cardSupportsSoftwareFirmwareUpdateGrant,
   describeFirmwareUpdate,
   normalizeFirmwareUpdateCard,
   resolveInstalledFirmware,
 } from '../lib/firmwareUpdatePlan.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
-import { CARD_LINK_CONNECT_TIMEOUT_MS } from '../lib/cardLink.js';
+import { CARD_LINK_CONNECT_TIMEOUT_MS, isCardLinkConnected } from '../lib/cardLink.js';
+import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
 import {
   beginInstallFirmwareVerification,
   clearInstallFirmwareEvidence,
@@ -1016,7 +1016,45 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       publishedManifest?.buildId
       && String(updateReadiness?.buildId || '').trim() === String(publishedManifest.buildId).trim(),
     );
-    const connectedUpdateCard = cardSupportsNetworkFirmwareUpdate(updateReadiness)
+    // F34/F35 (Adrian, 2026-09-09, Studio build 1777, card lw-b0fe81f61b44
+    // firmware 1548): the identity row and the footer chip both read
+    // Connected, with an exact "1548 → 1759" build diff — a genuine, reached
+    // card that advertises `capabilities.firmwareUpdate.network: true` — and
+    // pressing "Update card" still opened on "Studio can't reach the
+    // Lightweaver card it remembers" stacked above the destructive USB
+    // eraser, never the preserving Wi-Fi panel.
+    //
+    // Root cause: `cardSupportsNetworkFirmwareUpdate` (firmwareUpdatePlan.js)
+    // additionally requires `readiness.firmwareUpdateReady !== false` — a
+    // LIVE bit meaning "a write is safe to start this instant" (firmware:
+    // LightweaverProvisioningPolicy.h `firmwareUpdateReady`, gated on
+    // `storageReadable`), not "can this card ever be offered the door". The
+    // real card answers this bit false while otherwise `runtimePhase:
+    // 'ready'`, `commandReady: true`, `knownGoodProject: true` and fully
+    // commissioned (verified live via `curl` against 192.168.18.70, both
+    // before and after this fix — the bit is genuinely false on this
+    // hardware, not stale bridge-relayed data). Gating the WHOLE preserving
+    // door on that transient bit silently dropped a reachable, connected,
+    // capable card into the one-time destructive reinstall instead — and
+    // because `preservingMode` below never resolved, the "awaiting
+    // remembered card" timer (further down) eventually timed out and
+    // printed a false "can't reach" over a card the footer, at the very same
+    // instant, correctly called Connected.
+    //
+    // The fix: the door is capability-and-connection gated, not
+    // readiness-gated. "This card CAN take a network update, and Studio is
+    // genuinely connected to it" is the durable fact that decides which
+    // panel renders; PreservingUpdatePanel already has its own path for "not
+    // authorized to write yet" (the physical-button / software-authorization
+    // choice), so a card that is capable but not immediately ready still
+    // lands on the correct door and finds out why from the card itself
+    // (a real preflight failure), instead of never seeing the door at all.
+    const cardAdvertisesNetworkUpdate = Boolean(
+      updateReadiness?.capabilities?.firmwareUpdate?.version === 1
+      && updateReadiness.capabilities.firmwareUpdate.network === true,
+    );
+    const cardLinkIsConnected = Boolean(preservingFixture) || isCardLinkConnected(cardLink);
+    const connectedUpdateCard = cardAdvertisesNetworkUpdate && cardLinkIsConnected
       && connectedCardCandidate && !alreadyOnPublishedFirmware
       ? { ...connectedCardCandidate, bootId: updateReadiness.bootId, projectHead: updateReadiness.projectHead }
       : null;
@@ -1081,10 +1119,18 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       return () => clearTimeout(timer);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [checkRetryToken, Boolean(rememberedCardIdentity)]);
+    // F35: a card the link Studio holds already calls Connected must never
+    // be reported unreachable on this screen, whatever `preservingMode`
+    // resolved to (a connected card that genuinely lacks the network-update
+    // capability still falls through to the USB installer below — correctly
+    // — but silently, not behind a false "can't reach" banner). Read the
+    // same connectedness the footer chip reads (`isCardLinkConnected`), not
+    // a fresh guess, so this screen can never disagree with the identity row
+    // sitting right above it.
     const awaitingRememberedCardLink = Boolean(rememberedCardIdentity) && rememberedCardHostKnown
-      && !preservingMode && !rememberedCardLinkTimedOut;
+      && !preservingMode && !cardLinkIsConnected && !rememberedCardLinkTimedOut;
     const rememberedCardLinkUnreachable = Boolean(rememberedCardIdentity) && rememberedCardHostKnown
-      && !preservingMode && rememberedCardLinkTimedOut;
+      && !preservingMode && !cardLinkIsConnected && rememberedCardLinkTimedOut;
     const loaderRef = useRef(null);
     const transportRef = useRef(null);
     const inspectionRef = useRef(null);
@@ -1525,7 +1571,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                 type="button"
                 onClick={() => {
                   setCheckRetryToken(token => token + 1);
-                  onConnectCard?.(cardLink?.host || '');
+                  onConnectCard?.(cardConnectionOptionsFor(cardLink, cardLink?.host).host || '');
                 }}
               >
                 Try again

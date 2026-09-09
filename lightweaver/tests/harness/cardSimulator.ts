@@ -271,6 +271,17 @@ function statusBody(state: CardSimulator['state']) {
       kaleidoscopeReflectionPoints: 1,
       firmwareUpdate: { version: 1, network: true, softwareGrant: true },
     },
+    // F35: real firmware reports this live bit separately from the
+    // capability object above — LightweaverProvisioningPolicy.h's
+    // `firmwareUpdateReady` answers "is a write safe to start this instant"
+    // (gated on `storageReadable`), not "can this card ever take one". The
+    // real lw-b0fe81f61b44 card (build 1548) answers this false while
+    // otherwise `runtimePhase: 'ready'`, fully commissioned and reachable —
+    // no fixture had that shape until F35's own test set it explicitly via
+    // an override property on the spec object (not a new named CardStateSpec
+    // field, since cardStates.ts is out of this ticket's scope). Every
+    // existing test leaves the override unset and keeps getting `true`.
+    firmwareUpdateReady: (state as { firmwareUpdateReady?: boolean }).firmwareUpdateReady ?? true,
     firmwareUpdate: {
       phase: 'idle', receivedBytes: 0, expectedBytes: 0, expectedBuildId: '',
       activeSlot: 'app0', pendingSlot: '', lastError: '', rollbackReason: '',

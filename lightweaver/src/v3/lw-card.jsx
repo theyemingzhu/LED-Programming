@@ -423,10 +423,10 @@ function CardHomePanels({
   // W1-6 (b6a9bfa9) / F33 / F33b: every call that reaches the card must route
   // by the link it actually holds, not by guessing "bridge" from the page
   // protocol — see `cardConnectionOptionsFor` in cardConnection.js (F33b
-  // moved it there so lw-pattern.jsx's Patterns screen could share it too,
-  // after F33's own module-level copy still left that screen's Recover
-  // lights guessing) for why every card-reaching call goes through one
-  // shared builder instead of a plain function or hook scoped to one file.
+  // moved it there so lw-pattern.jsx's Patterns screen, and F35's install
+  // screen, could share it too) for why every card-reaching call goes
+  // through one shared builder instead of a plain function or hook scoped to
+  // one file.
   const cardConnectionOptions = () => cardConnectionOptionsFor(cardLink, cardHost);
   const verifyHardware = async () => {
     if (hardwareActionState.status === 'loading') return;
@@ -953,9 +953,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       // request had nothing to reach and timed out. Same fix as the other
       // three, and the shared import from cardConnection.js (not
       // CardHomePanels' own `cardConnectionOptions`) because this button
-      // lives in CardScreen, a different component — F33b moved the builder
-      // out of this file entirely so lw-pattern.jsx's Patterns screen, which
-      // had the same gap, could import the identical function.
+      // lives in CardScreen, a different component.
       await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
         { patternId: 'warm-white', brightness: 1, syncZones: true },
         { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 3200, restartCard: true },
