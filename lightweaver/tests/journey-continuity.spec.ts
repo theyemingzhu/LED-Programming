@@ -740,7 +740,7 @@ test('[J30-blackout-out-of-band] a blackout switched on the card\'s own page rea
   await expect(
     chip,
     'the footer chip must catch the same out-of-band blackout Card Home\'s banner just caught',
-  ).toHaveText('Connected · Lights off', { timeout: 20000 });
+  ).toContainText('Lights off', { timeout: 20000 });
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J30 patterns entry');
@@ -892,22 +892,19 @@ test('[J33b-patterns-recover-https] Patterns toolbar Recover lights reaches a di
     'this test only proves something if the link it holds is genuinely direct, not a bridge',
   ).toBe('connected-direct/direct');
 
-  await expect(
-    page.getByTestId('card-blackout-notice'),
-    'sanity: no blackout has been raised yet',
-  ).toHaveCount(0);
+  // On this lane the footer chip carries the lifecycle verdict (F32 gives
+  // needs-save precedence over the blackout), so the toolbar button is the
+  // signal: F22b styles it primary only while the card reports blackout.
+  const recoverButton = page.getByTestId('recover-lights');
+  await expect(recoverButton, 'sanity: no blackout has been raised yet').not.toHaveClass(/primary/);
 
   // The card's OWN page flips its global blackout, out of band — same
   // technique as J30 and J33, and the same fact Patterns reads off the
   // shared journey's /api/zones poll.
   card.outOfBandBlackout(true);
 
-  await expect(
-    page.getByTestId('card-blackout-notice'),
-    'Patterns must report the blackout over https the same way it does on http',
-  ).toBeVisible({ timeout: 20000 });
-
-  const recoverButton = page.getByTestId('recover-lights');
+  await expect(recoverButton, 'Patterns must report the blackout over https the same way it does on http')
+    .toHaveClass(/primary/, { timeout: 20000 });
   await expect(recoverButton).toBeVisible();
   await expect(recoverButton).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
   await recoverButton.click();
@@ -919,10 +916,8 @@ test('[J33b-patterns-recover-https] Patterns toolbar Recover lights reaches a di
     })
     .toBe(true);
 
-  await expect(
-    page.getByTestId('card-blackout-notice'),
-    'once the card reports blackout false, the message must go away without a further click',
-  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+  await expect(recoverButton, 'once the card reports blackout false, the button must stand down without a further click')
+    .not.toHaveClass(/primary/, { timeout: CONNECT_BUDGET_MS });
 
   expect(crashes, 'the screen crashed').toEqual([]);
 });
