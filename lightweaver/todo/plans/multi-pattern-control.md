@@ -26,7 +26,7 @@ Survey: [Four Sections, One Strip](https://claude.ai/code/artifact/129b9bf9-75d8
 | 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | Shipped 2026-09-09, PR #252, firmware 1.1.33 build 1724 (carries the parked card-page change); hardware behaviour unverified until a card takes the update |
 | 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | Shipped with 1.1.33, screenshots checked at 390px; unverified on a real phone |
 | S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | Merged 2026-09-09, PR #250 (114 net lines removed) |
-| 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | F2 (firmware, 1.1.34) and S3 (Studio) dispatched 2026-09-09 in parallel against the contract below |
+| 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | Firmware side merged 2026-09-09 as PR #255 (release 1.1.34, signer pending; 16-entry playlist measures 2653 of 3968 bytes; fade dips to a 6% floor and back); Studio side (S3) in progress |
 
 Constraint for 3 and 4: the 3968-byte NVS budget. F1 measures a real 4-zone project's byte size and reports it in its PR.
 
