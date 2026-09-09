@@ -10,7 +10,7 @@ import { fingerprintCommissioningProject } from './cardCommissioningFlow.js';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 import { normalizeWiring } from './wiringModel.js';
 import { normalizeSavedLooks } from './sectionLookModel.js';
-import { normalizeCardPlaylist } from './cardPlaylist.js';
+import { MAX_PLAYLIST_FADE_MS, MIN_PLAYLIST_FADE_MS, normalizeCardPlaylist } from './cardPlaylist.js';
 import { MAX_PRODUCTION_PHYSICAL_BOUNDARIES } from './productionLimits.js';
 import { assignProductionWiringIdentity, productionWiringDigest } from './productionWiringIdentity.js';
 import { validateKaleidoscope } from './kaleidoscope.js';
@@ -56,6 +56,14 @@ const LED_OUTPUT_KEYS = ['id', 'name', 'pin', 'pixels'];
 const RUNTIME_LED_OUTPUT_KEYS = ['direction', 'id', 'name', 'pin', 'pixels', 'segments'];
 const RUNTIME_SEGMENT_KEYS = ['count', 'direction', 'id'];
 const CONTROL_KEYS = ['blackout', 'brightness', 'encoder', 'next', 'previous', 'statusLed'];
+// `controls.playlist` (the timed-playlist fade/enabled settings — see
+// cardPlaylist.js's normalizePlaylistTiming doc comment for why they live
+// here rather than as a bare standaloneController field) is optional: a
+// project that has never touched the Playlist screen's Fade/"Play on the
+// card" controls carries no such key, and an old restore snapshot predates
+// the field entirely.
+const CONTROL_OPTIONAL_KEYS = ['playlist'];
+const CONTROL_PLAYLIST_KEYS = ['enabled', 'fadeMs'];
 const ENCODER_KEYS = ['a', 'alternatePress', 'b', 'brightnessStep', 'press', 'rotateDirection'];
 const ENCODER_OPTIONAL_KEYS = ['patternCycleIds'];
 const INDEX_KEYS = ['jobs', 'schemaVersion'];
@@ -72,8 +80,13 @@ const STANDALONE_LED_REQUIRED_KEYS = ['brightnessLimit', 'colorOrder', 'type'];
 const STANDALONE_LED_OPTIONAL_KEYS = ['maxMilliamps', ...OUTPUT_COLOR_KEYS];
 const VISUAL_LOOK_REQUIRED_KEYS = ['brightness', 'customBreathe', 'customDrift', 'customHue', 'customSaturation', 'hueShift', 'patternId', 'speed'];
 const VISUAL_LOOK_OPTIONAL_KEYS = ['breatheCycleSeconds', 'breatheLowerPct', 'breatheUpperPct'];
+// dwellSeconds is optional on input — "Normalisation tolerates old entries
+// without these fields" (cardPlaylist.js): a restore snapshot saved before
+// the timed-playlist feature existed carries no dwellSeconds at all, and
+// that stays valid forever, not just through a migration window.
 const PLAYLIST_PATTERN_KEYS = ['createdAt', 'enabled', 'id', 'label', 'patternId', 'type'];
 const PLAYLIST_COMBO_KEYS = ['createdAt', 'enabled', 'id', 'label', 'lookId', 'type'];
+const PLAYLIST_ITEM_OPTIONAL_KEYS = ['dwellSeconds'];
 const KALEIDOSCOPE_KEYS = ['enabled', 'offsets', 'pointCount', 'startLed'];
 
 function isObject(value) {
@@ -261,7 +274,14 @@ function validateRestoreSnapshot(snapshot) {
   exactRequiredAndOptionalKeys(standalone, STANDALONE_REQUIRED_KEYS, STANDALONE_OPTIONAL_KEYS, 'restore snapshot standalone controller');
   if (!Array.isArray(standalone.outputs) || standalone.outputs.length === 0) throw new Error('Restore snapshot standalone outputs are required');
   standalone.outputs.forEach(output => exactKeys(output, LED_OUTPUT_KEYS, 'restore snapshot standalone output'));
-  exactKeys(standalone.controls, CONTROL_KEYS, 'restore snapshot controls');
+  exactRequiredAndOptionalKeys(standalone.controls, CONTROL_KEYS, CONTROL_OPTIONAL_KEYS, 'restore snapshot controls');
+  if (standalone.controls.playlist !== undefined) {
+    exactKeys(standalone.controls.playlist, CONTROL_PLAYLIST_KEYS, 'restore snapshot playlist timing');
+    if (typeof standalone.controls.playlist.enabled !== 'boolean') throw new Error('Restore snapshot playlist timing enabled must be a boolean');
+    if (!Number.isSafeInteger(standalone.controls.playlist.fadeMs) || standalone.controls.playlist.fadeMs < MIN_PLAYLIST_FADE_MS || standalone.controls.playlist.fadeMs > MAX_PLAYLIST_FADE_MS) {
+      throw new Error('Restore snapshot playlist timing fadeMs is invalid');
+    }
+  }
   exactRequiredAndOptionalKeys(standalone.controls.encoder, ENCODER_KEYS, ENCODER_OPTIONAL_KEYS, 'restore snapshot encoder controls');
   exactRequiredAndOptionalKeys(standalone.led, STANDALONE_LED_REQUIRED_KEYS, STANDALONE_LED_OPTIONAL_KEYS, 'restore snapshot LED settings');
   validateOutputColorSettings(standalone.led, 'Restore snapshot LED settings');
@@ -274,11 +294,18 @@ function validateRestoreSnapshot(snapshot) {
   if (!Array.isArray(standalone.looks || []) || stableJson(normalizeSavedLooksForValidation(standalone.looks)) !== stableJson(standalone.looks)) throw new Error('Restore snapshot saved looks contain unsupported fields or non-canonical values');
   if (!Array.isArray(standalone.playlist)) throw new Error('Restore snapshot playlist is invalid');
   standalone.playlist.forEach(item => {
-    if (item?.type === 'pattern') exactKeys(item, PLAYLIST_PATTERN_KEYS, 'restore snapshot pattern playlist item');
-    else if (item?.type === 'combo') exactKeys(item, PLAYLIST_COMBO_KEYS, 'restore snapshot combo playlist item');
+    if (item?.type === 'pattern') exactRequiredAndOptionalKeys(item, PLAYLIST_PATTERN_KEYS, PLAYLIST_ITEM_OPTIONAL_KEYS, 'restore snapshot pattern playlist item');
+    else if (item?.type === 'combo') exactRequiredAndOptionalKeys(item, PLAYLIST_COMBO_KEYS, PLAYLIST_ITEM_OPTIONAL_KEYS, 'restore snapshot combo playlist item');
     else throw new Error('Restore snapshot playlist item type is invalid');
   });
-  if (stableJson(normalizeCardPlaylist(standalone.playlist, { savedLooks: standalone.looks, allowEmpty: true })) !== stableJson(standalone.playlist)) throw new Error('Restore snapshot playlist contains unsupported fields or non-canonical values');
+  // A snapshot item that omits dwellSeconds entirely is compared against the
+  // SAME default normalizeCardPlaylist would inject for it — an old entry
+  // missing the field is canonical, not drift. An item that DOES declare
+  // dwellSeconds still has to match the normalized (clamped) value exactly.
+  const comparablePlaylist = standalone.playlist.map(item => (
+    Object.hasOwn(item, 'dwellSeconds') ? item : { ...item, dwellSeconds: 30 }
+  ));
+  if (stableJson(normalizeCardPlaylist(standalone.playlist, { savedLooks: standalone.looks, allowEmpty: true })) !== stableJson(comparablePlaylist)) throw new Error('Restore snapshot playlist contains unsupported fields or non-canonical values');
 }
 
 function rebuildRuntime(job, productionJobDigest) {

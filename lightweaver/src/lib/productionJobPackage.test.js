@@ -607,6 +607,10 @@ test('verifies the pinned production-job key against its immutable signed fixtur
   job.digest = createHash('sha256').update(canonicalProductionJobBytes(job, { omitDigest: true })).digest('hex');
   job.configuration.config.productionJobDigest = job.digest;
   const bytes = canonicalProductionJobBytes(job);
+  if (process.env.LW_DEBUG_PINNED) {
+    console.log('DEBUG_BYTES_LEN', bytes.length);
+    console.log('DEBUG_BYTES', Buffer.from(bytes).toString('utf8'));
+  }
   const signature = {
     keyId: 'lightweaver-production-job-2026-01',
     algorithm: PRODUCTION_JOB_SIGNATURE_ALGORITHM,
