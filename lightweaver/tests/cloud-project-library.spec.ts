@@ -1658,7 +1658,7 @@ test('workspace notice shows explicit browser-save success, supports dismissal, 
   await expect(notice).toHaveCount(0, { timeout: 3500 });
 });
 
-test('workspace notice reports recovery briefly without surfacing passive lifecycle labels', async ({ page }) => {
+test('recovery is told once by the lifecycle badge, never by a notice or a passive Unsaved label', async ({ page }) => {
   const fixture = new LibraryFixture(null);
   await page.addInitScript(project => {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
@@ -1667,10 +1667,12 @@ test('workspace notice reports recovery briefly without surfacing passive lifecy
   await fixture.install(page);
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
 
-  const notice = page.getByTestId('workspace-notice');
-  await expect(notice).toContainText('Restored from recovery copy');
+  // Card Home compact pass (U1): the persistent lifecycle badge is the one
+  // place the restore is told. The "Restored from recovery copy" toast is
+  // gone, so a notice carrying that text is a regression, not a courtesy.
+  await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Restored from recovery copy');
   await expect(page.locator('body')).not.toContainText('Unsaved changes');
-  await expect(notice).toHaveCount(0, { timeout: 3500 });
+  await expect(page.getByTestId('workspace-notice').filter({ hasText: 'Restored from recovery copy' })).toHaveCount(0);
 });
 
 test('conflict notice persists until dismissed and offers Preferences review', async ({ page }) => {
