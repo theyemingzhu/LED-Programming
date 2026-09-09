@@ -1,4 +1,15 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": []
+  "waiting": [
+    {
+      "id": "fw-lights-switch",
+      "what": "The card page's lights control is now a real on/off switch instead of a text button.",
+      "why": "Small visitor-page polish, not worth a signed card release on its own.",
+      "added": "2026-09-09",
+      "source": {
+        "kind": "branch",
+        "branch": "round2/fw-lights-switch"
+      }
+    }
+  ]
 }
