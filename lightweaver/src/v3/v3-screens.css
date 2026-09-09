@@ -740,6 +740,15 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .pm-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-mid); cursor: pointer; white-space: nowrap; }
 .pm-saved { font-size: 11.5px; font-family: var(--font-mono); color: var(--ok); white-space: nowrap; }
 
+/* Field-scoped refusal, reserved in flow above the Design target card —
+   was an absolutely-positioned float over `.pm-target` that hid Pixels
+   driven and the Save look row underneath it. Per noticeLayer.js's own
+   scope rule this notice is about the target card, not the whole screen,
+   so it pushes content down instead of covering it. */
+.pattern-gate-inline { background: var(--bg-panel); border: 1px solid var(--danger, #c0392b); border-radius: var(--r-lg); padding: 10px 12px; margin-bottom: 12px; }
+.pattern-gate-inline-title { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--text-hi); }
+.pattern-gate-inline-body { margin: 0 0 8px; font-size: 12.5px; color: var(--text-mid); }
+
 /* design target */
 .pm-target { background: var(--bg-panel); border: 1px solid var(--border-soft); border-radius: var(--r-lg); padding: 10px 12px 12px; margin-bottom: 12px; }
 .pm-mixbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
@@ -927,7 +936,15 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
     background: var(--bg);
     padding-bottom: 8px;
   }
-  .pm-aside > .card.pm-pane { order: -1; }
+  /* Was: `.pm-aside > .card.pm-pane { order: -1; }` — a descendant-class
+     selector that matched every direct aside card on BOTH screens. On
+     Patterns that's harmless (the live preview already floats via
+     `.pm-instrument`'s own order above); on Playlist it floated Saved
+     looks and Pattern pool — two panels for ADDING to the playlist — above
+     the playlist itself and the On-the-card-now stats, which is the one
+     thing this screen exists to show first. Scoped to the pane that is
+     actually meant to float, so Playlist's aside stays in document order. */
+  .pm-preview-pane { order: -1; }
   .pm-main { order: 0; }
   .pm-preview-pane { position: static; }
   .pm-instrument .pm-piece-stage { height: 160px; }

@@ -201,11 +201,31 @@ test('Playlist touch handle reorders on a coarse pointer', async ({ browser }) =
   const context = await browser.newContext({
     hasTouch: true,
     isMobile: true,
-    viewport: { width: 320, height: 800 },
+    // U2-build item 2 moved the playlist itself higher up this short
+    // fixture's page (no longer floated below Saved looks / Pattern pool on
+    // a phone, which is the change this ticket wants), so `.pm-main` no
+    // longer starts as far down the inner scroll container as it used to.
+    // At a 800px-tall viewport that shifted where `scrollIntoViewIfNeeded`
+    // settles closely enough that Aurora's row and Plasma's row could not
+    // both land on screen at once. A taller viewport (comfortably above one
+    // three-item playlist's rendered height) keeps both rows on screen
+    // without depending on exactly where the surrounding chrome happens to
+    // put the fold.
+    viewport: { width: 320, height: 1400 },
   });
   const page = await context.newPage();
   try {
     await gotoPlaylist(page, makePlaylistProject({ count: 3 }));
+    // The ambient "Restored from recovery copy" workspace notice (unrelated
+    // to anything under test here; it fires whenever no lifecycle record is
+    // persisted) docks bottom-left and can still land on interactive content
+    // at some viewport heights. Dismiss it before the drag so this test
+    // measures the drag, not an incidental notice landing on top of it.
+    const workspaceNotice = page.getByTestId('workspace-notice');
+    if (await workspaceNotice.isVisible().catch(() => false)
+      || await workspaceNotice.waitFor({ state: 'visible', timeout: 3000 }).then(() => true).catch(() => false)) {
+      await workspaceNotice.getByRole('button', { name: 'Dismiss notice' }).click();
+    }
 
     const reorderAurora = page.getByRole('button', { name: 'Reorder Aurora', exact: true });
     await reorderAurora.scrollIntoViewIfNeeded();

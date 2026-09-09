@@ -829,9 +829,11 @@ function realPatternShape(patternId) {
                 >
                   {I.bolt}{playlistSyncing ? 'Sending…' : 'Install playlist on card'}
                 </button>
-                <div className="pm-menu">
-                  <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
-                </div>
+                {/* Was wrapped in a `.pm-menu` div — the class Patterns uses
+                    for its real "Card tools" dropdown, but here with no
+                    popover, no aria-haspopup, no chevron: leftover markup
+                    from that other screen's real menu, not one of its own. */}
+                <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
                 <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
                 <button className="btn" onClick={openCard}>{I.open}Open card page</button>
               </div>
@@ -970,7 +972,13 @@ function realPatternShape(patternId) {
                     >
                       <span className="k">Playing</span>
                       <strong className="v">{playingItem ? playingItem.label : '—'}</strong>
-                      <span className="n">{playingItem ? 'live preview confirmed' : 'no live look sent'}</span>
+                      {/* Was a fourth, boolean-only vocabulary for "has this
+                          reached the card" ("live preview confirmed" / "no
+                          live look sent"). Same underlying state
+                          (`previewAction`) the Card address row above already
+                          reads with `cardActionStatusLabel` — one phrase for
+                          the fact, wherever it is shown. */}
+                      <span className="n">{cardActionStatusLabel(previewAction)}</span>
                     </div>
                     <div className="pl-stat" data-testid="playlist-stat-slots">
                       <span className="k">Card slots left</span>
