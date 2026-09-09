@@ -64,7 +64,10 @@ async function postClearProjectDirect({ host, timeoutMs, fetchImpl, guardImpl })
 export async function clearCardProject({
   host,
   timeoutMs = 8000,
-  direct = canPushDirectlyToCard(),
+  // The established link's transport wins over the page-protocol guess; see
+  // recoveryUsesBridge in cardLiveControl.js for why the two can disagree.
+  transport,
+  direct = transport === 'direct' ? true : transport === 'bridge' ? false : canPushDirectlyToCard(),
   fetchImpl,
   guardImpl = guardDirectCardMutation,
   bridgeRequestImpl = sendCardBridgeRequest,

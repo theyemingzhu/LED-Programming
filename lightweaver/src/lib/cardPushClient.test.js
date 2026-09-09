@@ -580,3 +580,24 @@ test('an uncounted Find-my-strips bench can take the typed length without provis
     else globalThis.window = originalWindow;
   }
 });
+
+// W1-6: Card Home's Verify hardware reads the status envelope over the link it
+// actually holds. On an https page whose browser allows the plain-http card
+// fetch that link is direct, and the page-protocol guess ("bridge") is wrong.
+test('explicit direct status transport is honored on an HTTPS Studio page', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('https:');
+  try {
+    const status = { app: 'Lightweaver', cardId: 'lw-aabbccddeeff', runtimePhase: 'ready' };
+    const urls = [];
+    const result = await readCardStatusEnvelope({
+      host: '192.168.18.70',
+      transport: 'direct',
+      fetchImpl: async url => { urls.push(String(url)); return response(status); },
+    });
+    assert.deepEqual(result, status);
+    assert.deepEqual(urls, ['http://192.168.18.70/api/status']);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
