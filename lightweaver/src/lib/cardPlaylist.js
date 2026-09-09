@@ -2,7 +2,50 @@ import { DEFAULT_CARD_PATTERN_BANK } from './cardRuntimeContract.js';
 
 export const CARD_PLAYLIST_LIMIT = 32;
 
+// The card firmware's timed-playlist entry cap — distinct from CARD_PLAYLIST_LIMIT
+// above, which bounds the dial's pattern-cycle list. F2 (the firmware lane
+// building this same contract) adds `maxPlaylistEntries` to
+// packages/lightweaver-contract/card-hardware.json; until that key exists on
+// this base, 16 is hardcoded here and must be kept in step with it by hand.
+export const CARD_PLAYLIST_ENTRY_LIMIT = 16;
+
+export const DEFAULT_PLAYLIST_DWELL_SECONDS = 30;
+export const MIN_PLAYLIST_DWELL_SECONDS = 1;
+export const MAX_PLAYLIST_DWELL_SECONDS = 3600;
+
+export const DEFAULT_PLAYLIST_FADE_MS = 1500;
+export const MIN_PLAYLIST_FADE_MS = 0;
+export const MAX_PLAYLIST_FADE_MS = 10000;
+
 const PATTERN_BY_ID = new Map(DEFAULT_CARD_PATTERN_BANK.map(pattern => [pattern.id, pattern]));
+
+function clampDwellSeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_PLAYLIST_DWELL_SECONDS;
+  return Math.max(MIN_PLAYLIST_DWELL_SECONDS, Math.min(MAX_PLAYLIST_DWELL_SECONDS, Math.round(n)));
+}
+
+function clampFadeMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_PLAYLIST_FADE_MS;
+  return Math.max(MIN_PLAYLIST_FADE_MS, Math.min(MAX_PLAYLIST_FADE_MS, Math.round(n)));
+}
+
+// The playlist-wide "played on the card" settings (fadeMs, enabled) live
+// beside the per-entry array, not inside it — a bare array has nowhere to
+// carry them that survives JSON round-tripping. They are stored at
+// `standaloneController.controls.playlist` (see lw-playlist.jsx): `controls`
+// is spread through untouched by defaultStandaloneController's overrides
+// merge (projectModel.js), so an extra key there — unlike a bare top-level
+// `standaloneController` field — round-trips through save/load without
+// projectModel.js needing to know its shape.
+export function normalizePlaylistTiming(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  return {
+    enabled: source.enabled === true,
+    fadeMs: clampFadeMs(source.fadeMs),
+  };
+}
 
 export function normalizeCardPlaylist(playlist = [], {
   savedLooks = [],
@@ -27,6 +70,7 @@ export function normalizeCardPlaylist(playlist = [], {
       patternId,
       label: String(item.label || pattern.label || titleFromId(patternId)),
       enabled: item.enabled !== false,
+      dwellSeconds: clampDwellSeconds(item.dwellSeconds),
       createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : index,
     });
   };
@@ -43,6 +87,7 @@ export function normalizeCardPlaylist(playlist = [], {
       lookId,
       label: String(item.label || savedLook.label || titleFromId(lookId)),
       enabled: item.enabled !== false,
+      dwellSeconds: clampDwellSeconds(item.dwellSeconds),
       createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : index,
     });
   };
@@ -110,6 +155,27 @@ export function derivePlaylistLookIds(playlist = []) {
     .map(item => item.id));
 }
 
+// The card-facing timed-playlist contract block:
+//   { enabled, fadeMs, entries: [{ patternId, dwellSeconds }] }
+// `entries[].patternId` is derived the same way derivePlaylistLookIds already
+// derives the dial's patternCycleIds — each entry's own `id`, which is the
+// installed look id a combo entry produces or the built-in pattern id a
+// pattern entry names. Only enabled entries reach the card, in playlist
+// order, capped at CARD_PLAYLIST_ENTRY_LIMIT (the dial's own 32-entry
+// CARD_PLAYLIST_LIMIT is unrelated and untouched by this cap).
+export function buildCardPlaylistConfig(playlist = [], savedLooks = [], timing = {}) {
+  const { enabled, fadeMs } = normalizePlaylistTiming(timing);
+  const normalized = normalizeCardPlaylist(playlist, { savedLooks, allowEmpty: true });
+  const entries = normalized
+    .filter(item => item.enabled !== false)
+    .slice(0, CARD_PLAYLIST_ENTRY_LIMIT)
+    .map(item => ({
+      patternId: item.id,
+      dwellSeconds: clampDwellSeconds(item.dwellSeconds),
+    }));
+  return { enabled, fadeMs, entries };
+}
+
 export function playlistContainsPattern(playlist = [], patternId = '') {
   const id = sanitizeId(patternId);
   return (Array.isArray(playlist) ? playlist : [])
@@ -139,6 +205,7 @@ export function makePatternPlaylistItem(patternId = '') {
     patternId: id,
     label: pattern.label || titleFromId(id),
     enabled: true,
+    dwellSeconds: DEFAULT_PLAYLIST_DWELL_SECONDS,
     createdAt: Date.now(),
   };
 }
@@ -152,6 +219,7 @@ export function makeComboPlaylistItem(savedLook = {}) {
     lookId,
     label: savedLook.label || titleFromId(lookId),
     enabled: true,
+    dwellSeconds: DEFAULT_PLAYLIST_DWELL_SECONDS,
     createdAt: Date.now(),
   };
 }
