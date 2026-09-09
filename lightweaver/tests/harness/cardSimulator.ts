@@ -71,6 +71,18 @@ export type CardSimulator = {
   goOffline(): void;
   /** Answer again. Pass a new host to model the card returning on a new address. */
   goOnline(): void;
+  /**
+   * F30: the card's OWN page or physical button engages/clears its global
+   * blackout with NO Studio request involved at all. Real firmware's
+   * `blackedOut` (main.cpp) is set by the customer control page and the
+   * hardware button the same way it is set by Studio's own `/api/control`
+   * POST — `composeOutputBrightness` (LightweaverOutputPolicy.h) returns 0
+   * for every zone once it is true, from any source. This mutates the same
+   * underlying state `/api/status`, `/api/zones` and `lwOutput` already
+   * derive from, but — unlike `applyControl` — records no request, so a
+   * test can prove Studio learns about a change it never asked for.
+   */
+  outOfBandBlackout(on: boolean): void;
 
   // ── Wiring test lifecycle ─────────────────────────────────────────────────
   /**
@@ -1039,6 +1051,17 @@ export function createCardSimulator(
     },
     goOffline() { offline = true; },
     goOnline() { offline = false; },
+    outOfBandBlackout(on) {
+      state.stateRevision += 1;
+      if (on) {
+        state.currentIndex = -1;
+        state.currentId = 'blackout';
+        return;
+      }
+      const fallback = state.patterns[0]?.id || 'warm-white';
+      state.currentIndex = state.patterns.findIndex(pattern => pattern.id === fallback);
+      state.currentId = fallback;
+    },
     beginWiringTest(options = {}) {
       state.preTestPixels = state.pixels;
       state.preTestPin = state.pin;

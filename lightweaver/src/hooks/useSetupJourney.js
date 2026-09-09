@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
@@ -6,6 +6,7 @@ import {
   getCardJourneyEvidence,
   hasFreshCardJourneyBlackout,
   hasFreshCardJourneyEvidence,
+  invalidateCardJourneyEvidence,
   refreshCardJourneyBlackout,
   refreshCardJourneyEvidence,
   subscribeCardJourneyEvidence,
@@ -119,6 +120,49 @@ export function useSetupJourney({
     void refreshCardJourneyBlackout({ cardLink, openProjectId, reason: 'setup-journey-blackout' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, exact, cardId, bootId, openProjectId, evidence]);
+
+  // F30 (bench 2026-09-08): a blackout switched on FROM THE CARD'S OWN PAGE —
+  // no Studio request involved at all — is invisible to both effects above.
+  // Nothing marks the cached blackout fact stale except a Studio-initiated
+  // hardware operation (cardJourneyEvidence.js's own
+  // STUDIO_HARDWARE_OPERATION_EVENT listener), so an out-of-band press is
+  // cached as "not blacked out" forever, exactly like F16 before it — only
+  // this time no Studio write ever happens for the invalidation to hang off.
+  //
+  // The card's status envelope already answers the question every keepalive
+  // tick already pays for: LightweaverStorage.cpp's runtimeStatusJson reports
+  // `lwOutput.requestedBrightnessByte` / `brightnessByte`, and
+  // composeOutputBrightness (LightweaverOutputPolicy.h) returns 0 for BOTH
+  // the instant the card's global blackout engages, from any source. So a
+  // change in either byte, in either direction, since the last envelope THIS
+  // hook instance saw for the same card+boot, is out-of-band evidence the
+  // light output moved without Studio's own knowledge — stale the cached
+  // blackout fact so the two effects above re-read `/api/zones` on their very
+  // next run, instead of trusting a snapshot from before the change.
+  //
+  // Deliberately not a blackout verdict on its own — brightness legitimately
+  // reaches 0 from an owner's own dimmer, and zones stay the one source of
+  // truth for `blackout` itself (setupJourneyInputs.js). Deliberately not
+  // gated on `refresh`: Card Home/Setup (refresh: false) and Patterns
+  // (refresh: true) all read the ONE shared evidence store this invalidates,
+  // so whichever screen happens to be mounted when the card changes catches
+  // it for every screen.
+  const lastObservedCardOutputRef = useRef({ key: '', requested: null, actual: null });
+  const lwOutput = cardLink?.readiness?.lwOutput;
+  const requestedBrightnessByte = lwOutput ? Number(lwOutput.requestedBrightnessByte) : null;
+  const actualBrightnessByte = lwOutput ? Number(lwOutput.brightnessByte) : null;
+  useEffect(() => {
+    if (!exact || !lwOutput) return;
+    const key = `${cardId}:${bootId}`;
+    const last = lastObservedCardOutputRef.current;
+    if (
+      last.key === key
+      && (last.requested !== requestedBrightnessByte || last.actual !== actualBrightnessByte)
+    ) {
+      invalidateCardJourneyEvidence();
+    }
+    lastObservedCardOutputRef.current = { key, requested: requestedBrightnessByte, actual: actualBrightnessByte };
+  }, [exact, cardId, bootId, lwOutput, requestedBrightnessByte, actualBrightnessByte]);
 
   const journey = useMemo(
     () => assembleSetupJourney({ cardLink, cardLifecycle, commissioningFlow, project, evidence }),
