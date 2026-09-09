@@ -105,6 +105,17 @@ export type CardSimulator = {
    * click-actionability delay against the fixed mock latency.
    */
   holdNextReply(path: string): () => void;
+
+  // ── Timed playlist (F2/F26 contract) ─────────────────────────────────────
+  /**
+   * Advance the playlist's own virtual dwell clock by `ms`, without a real
+   * wait. Only moves anything while the card reports the playlist as
+   * playing — a no-op on a paused or unconfigured playlist, exactly like the
+   * card's own dwell timer would be. Crossing one or more dwell boundaries
+   * within a single call advances entryIndex (wrapping) that many times, the
+   * same way the real firmware's timer would tick through them.
+   */
+  advancePlaylistClock(ms: number): void;
 };
 
 const ZONE_ID = 'zone-all';
@@ -334,6 +345,20 @@ function statusBody(state: CardSimulator['state']) {
     frameSource: 'internal',
     maxMilliamps: 2000,
     maxMilliampsSource: 'default',
+    // Timed playlist (F2/F26 contract) — field-for-field with
+    // normalizeCardReadiness's playlist block in src/lib/cardReadiness.js.
+    // entryIndex/patternId report -1/'' when nothing is configured, never a
+    // stale value from before the last /api/config clear it.
+    playlist: {
+      configured: state.playlistEntries.length > 0,
+      playing: state.playlistPlaying === true,
+      entryIndex: state.playlistEntries.length ? state.playlistEntryIndex : -1,
+      entryCount: state.playlistEntries.length,
+      patternId: state.playlistEntries.length && state.playlistEntryIndex >= 0
+        ? state.playlistEntries[state.playlistEntryIndex].patternId
+        : '',
+      remainingSeconds: state.playlistEntries.length ? Math.max(0, Math.round(state.playlistRemainingSeconds)) : 0,
+    },
   };
 }
 
@@ -514,6 +539,22 @@ export function createCardSimulator(
     // The one GPIO the factory beacon is currently holding lit, or null. Only
     // meaningful before a real project exists (see /api/beacon/port above).
     beaconPinned: null as number | null,
+    // ── Timed playlist (F2/F26 contract) ────────────────────────────────
+    // What the card was TOLD to hold — set only by a /api/config `playlist`
+    // block (applyConfigProjectFields). Empty entries means "not configured",
+    // field-for-field with what a card running pre-F2 firmware reports by
+    // omitting the block entirely.
+    playlistEntries: [] as { patternId: string; dwellSeconds: number }[],
+    playlistFadeMs: 1500,
+    // Whether an install should start the card playing on its own — the
+    // config's own `enabled` flag, distinct from `playlistPlaying` below
+    // (the LIVE transport state, which /api/control's play/pause/next/
+    // previous verbs move and which — per the contract — survives a
+    // power-cycle on its own, unlike currentId/currentIndex).
+    playlistEnabled: false,
+    playlistPlaying: false,
+    playlistEntryIndex: -1,
+    playlistRemainingSeconds: 0,
   };
   const requests: CardRequest[] = [];
   const unhandled: string[] = [];
@@ -564,12 +605,57 @@ export function createCardSimulator(
     }
   }
 
+  /** Set currentId/currentIndex to a playlist entry's pattern, the same way a
+   * direct /api/control patternId write does — an unknown id (a look the
+   * card does not hold) is ignored, not invented. */
+  function applyPlaylistPatternById(patternId: string) {
+    const index = state.patterns.findIndex(pattern => pattern.id === patternId);
+    if (index < 0) return;
+    state.currentIndex = index;
+    state.currentId = patternId;
+  }
+
+  /** POST { playlist: 'play' | 'pause' | 'next' | 'previous' } — the F2/F26
+   * transport contract. A verb against an unconfigured playlist (no entries)
+   * is a no-op, the same as a real card with nothing to play. */
+  function applyPlaylistVerb(verb: string) {
+    const entries = state.playlistEntries;
+    if (!entries.length) return;
+    if (verb === 'play') {
+      state.playlistPlaying = true;
+      if (state.playlistEntryIndex < 0) state.playlistEntryIndex = 0;
+      state.playlistRemainingSeconds = entries[state.playlistEntryIndex].dwellSeconds;
+      applyPlaylistPatternById(entries[state.playlistEntryIndex].patternId);
+      return;
+    }
+    if (verb === 'pause') {
+      state.playlistPlaying = false;
+      return;
+    }
+    if (verb === 'next' || verb === 'previous') {
+      const direction = verb === 'next' ? 1 : -1;
+      const from = state.playlistEntryIndex < 0 ? 0 : state.playlistEntryIndex;
+      const nextIndex = (from + direction + entries.length) % entries.length;
+      state.playlistEntryIndex = nextIndex;
+      state.playlistRemainingSeconds = entries[nextIndex].dwellSeconds;
+      state.playlistPlaying = true;
+      applyPlaylistPatternById(entries[nextIndex].patternId);
+    }
+  }
+
   function applyControl(body: Record<string, unknown>) {
     state.stateRevision += 1;
     applyZoneControlFields(body);
+    const playlistVerb = typeof body.playlist === 'string' ? body.playlist : '';
+    if (playlistVerb) {
+      applyPlaylistVerb(playlistVerb);
+      return;
+    }
     if (body.blackout === true) {
       state.currentIndex = -1;
       state.currentId = 'blackout';
+      // Any manual look change — blackout included — pauses the playlist.
+      state.playlistPlaying = false;
       return;
     }
     const requested = String(body.patternId || '').trim();
@@ -577,6 +663,7 @@ export function createCardSimulator(
     if (requested === 'blackout') {
       state.currentIndex = -1;
       state.currentId = 'blackout';
+      state.playlistPlaying = false;
       return;
     }
     const index = state.patterns.findIndex(pattern => pattern.id === requested);
@@ -585,6 +672,9 @@ export function createCardSimulator(
     if (index < 0) return;
     state.currentIndex = index;
     state.currentId = requested;
+    // Any manual look change pauses the playlist on the card (F2/F26
+    // contract) — a direct pattern write is not a playlist verb.
+    state.playlistPlaying = false;
   }
 
   /**
@@ -627,6 +717,36 @@ export function createCardSimulator(
     const pushedZones = (payload.zones || []) as { id?: string }[];
     const pushedZoneIds = pushedZones.map(zone => String(zone?.id || '').trim()).filter(Boolean);
     if (pushedZoneIds.length) state.zoneIds = pushedZoneIds;
+
+    // Timed playlist (F2/F26 contract): absent or disabled means the config
+    // carried no `playlist` key at all — field-for-field with
+    // buildCardPlaylistConfig, which omits the key rather than sending
+    // `enabled: false`. A save that stops sending the block genuinely clears
+    // whatever the card was holding, the same way it clears any other field
+    // this function applies from a fresh payload.
+    const playlistPayload = (payload.playlist || {}) as {
+      enabled?: boolean; fadeMs?: number;
+      entries?: { patternId?: string; dwellSeconds?: number }[];
+    };
+    const nextEntries = Array.isArray(playlistPayload.entries)
+      ? playlistPayload.entries
+          .map(entry => ({
+            patternId: String(entry?.patternId || '').trim(),
+            dwellSeconds: Math.max(1, Math.min(3600, Math.round(Number(entry?.dwellSeconds) || 30))),
+          }))
+          .filter(entry => entry.patternId)
+      : [];
+    state.playlistEntries = nextEntries;
+    state.playlistFadeMs = Number.isFinite(Number(playlistPayload.fadeMs)) ? Number(playlistPayload.fadeMs) : 1500;
+    state.playlistEnabled = playlistPayload.enabled === true && nextEntries.length > 0;
+    // A fresh config write is a new thing to hold, not an instruction to
+    // play it — `enabled` alone decides whether THIS install starts playing.
+    state.playlistEntryIndex = nextEntries.length ? 0 : -1;
+    state.playlistPlaying = state.playlistEnabled;
+    state.playlistRemainingSeconds = nextEntries.length ? nextEntries[0].dwellSeconds : 0;
+    if (state.playlistPlaying && nextEntries.length) {
+      applyPlaylistPatternById(nextEntries[0].patternId);
+    }
   }
 
   /** Restore the project identity a wiring-change activation is about to
@@ -1104,6 +1224,27 @@ export function createCardSimulator(
       const answer = respond(route.method, route.path, payload);
       if (answer.status >= 400) return { ok: false, reason: 'http', error: `HTTP ${answer.status}` };
       return { ok: true, response: answer.body };
+    },
+    advancePlaylistClock(ms: number) {
+      if (!state.playlistPlaying || !state.playlistEntries.length) return;
+      let remainingMs = Math.max(0, ms);
+      let moved = false;
+      while (remainingMs > 0) {
+        const remainingCurrentMs = state.playlistRemainingSeconds * 1000;
+        if (remainingMs < remainingCurrentMs) {
+          state.playlistRemainingSeconds -= remainingMs / 1000;
+          remainingMs = 0;
+        } else {
+          remainingMs -= remainingCurrentMs;
+          const nextIndex = (state.playlistEntryIndex + 1) % state.playlistEntries.length;
+          state.playlistEntryIndex = nextIndex;
+          const nextEntry = state.playlistEntries[nextIndex];
+          state.playlistRemainingSeconds = nextEntry.dwellSeconds;
+          applyPlaylistPatternById(nextEntry.patternId);
+          moved = true;
+        }
+      }
+      if (moved) state.stateRevision += 1;
     },
     async waitForPlaying(id: string, timeoutMs = 5000) {
       const deadline = Date.now() + timeoutMs;
