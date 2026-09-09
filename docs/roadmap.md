@@ -316,7 +316,7 @@ These cannot be done by agents. See `docs/hardware-setup.md` for step-by-step.
 - [ ] Rename the controller and reserve MAC `ac:a7:04:e2:ec:e0` as `192.168.18.66` or the chosen install IP
 - [ ] Back up current `/presets.json` before installing Lightweaver presets
 - [ ] Configure & test Madrix Art-Net output → WLED (universes, 510 ch/universe, 30–44 Hz, WiFi sleep disabled)
-- [ ] Define WLED segments matching laser-cut zones — fill in zone IDs in `docs/segments.md`
+- [x] ~~Define WLED segments matching laser-cut zones — fill in zone IDs in `docs/segments.md`~~ Superseded 2026-09-09: `docs/segments.md` is a stock-WLED era template no code reads; the live card derives zones from compiled wiring (`wiringCompiler.js`), one zone per strip.
 - [ ] Capture per-device record: MAC, post-STA IP, segment JSON dump
 - [ ] Run the real-artwork physical wiring acceptance gate: output identity, first pixel, direction/order, jumper routing, reserved addresses, color order, brightness cap, and archived locked wiring/assembly map
 - [ ] Rehearse the complete Production Setup runbook with a workshop worker who did not build the software; retain the exported CSV and JSON pass records.
