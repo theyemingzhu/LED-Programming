@@ -97,6 +97,14 @@ export type CardSimulator = {
    * command.
    */
   respondThenDrop(path: string, options?: { times?: number }): void;
+  /**
+   * Hold the next reply to `path`: the write still lands and the fixed
+   * write-latency timer still runs, but `route.fulfill` waits for the
+   * returned function to be called. Use this to assert an intermediate
+   * "sending" UI state deterministically, instead of racing Playwright's
+   * click-actionability delay against the fixed mock latency.
+   */
+  holdNextReply(path: string): () => void;
 };
 
 const ZONE_ID = 'zone-all';
@@ -521,6 +529,16 @@ export function createCardSimulator(
   // Requests whose mutation is applied for real, but whose HTTP reply is
   // withheld — a lost reply after a successful write, not a refusal.
   const dropRepliesAfterApply = new Map<string, number>();
+  // A one-shot gate on the next reply to a path: the mutation still lands
+  // and the fixed write-latency timer still runs, but `route.fulfill` waits
+  // for the test to call the release function `holdNextReply` returns. This
+  // exists so a test asserting an intermediate "sending" UI state does not
+  // have to race Playwright's own click-actionability delay against
+  // CARD_LATENCY_MS.write — under load the actionability wait can exceed the
+  // mock latency, and the pending state has already resolved by the time the
+  // test looks for it. Holding the reply makes the pending state observable
+  // on every run, fast host or busy one, without touching the real clock.
+  const heldReplyGates = new Map<string, Promise<void>>();
 
   /** `body.zone` names one zone; an absent/empty zone means every zone the
    * card currently answers under — the same rule `controlAcknowledgement`
@@ -974,6 +992,15 @@ export function createCardSimulator(
       return route.abort('connectionrefused');
     }
 
+    // The write and its fixed latency timer already ran above — a test
+    // holding this path is waiting on the UI's pending state, not on the
+    // card. Hold the reply itself, one-shot, until released.
+    const heldGate = heldReplyGates.get(path);
+    if (heldGate) {
+      heldReplyGates.delete(path);
+      await heldGate;
+    }
+
     return route.fulfill({
       status: answer.status,
       contentType: 'application/json',
@@ -1038,6 +1065,12 @@ export function createCardSimulator(
     respondThenDrop(path, options = {}) {
       const times = options.times ?? 1;
       dropRepliesAfterApply.set(path, (dropRepliesAfterApply.get(path) || 0) + times);
+    },
+    holdNextReply(path) {
+      let release: () => void = () => {};
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      heldReplyGates.set(path, gate);
+      return () => release();
     },
     async install(page: Page) {
       for (const host of CARD_HOSTS) {

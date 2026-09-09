@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
+import { recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
 
 // zoneConfirmsLivePreviewIntent is the pure comparison readBackLivePreview
 // leans on to decide whether a card's own `/api/zones` report already shows a
@@ -55,4 +55,99 @@ test('zoneConfirmsLivePreviewIntent: false without a usable payload or zone', ()
 
 test('zoneConfirmsLivePreviewIntent: an empty payload confirms trivially (nothing was asked)', () => {
   assert.equal(zoneConfirmsLivePreviewIntent({}, { brightness: 0.1 }), true);
+});
+
+// F29 — recoverCardLights({ restartCard: true }) redelivers the recovery
+// command after the card reboots. That post-restart redeliver used to budget
+// each attempt (both the identity guard and the fetch itself) at
+// Math.min(options.timeoutMs || 3000, 1200) instead of the same 3000ms budget
+// used everywhere else in the recovery path. A card that answers ok but slow
+// (here: 1500ms, comfortably inside the real 3000ms budget) looked like a
+// timeout under the stale 1200ms cap, so the retry loop resent a command the
+// card had already accepted — a real duplicate physical write. This harness
+// simulates the card over a mocked global fetch: the pre-restart send
+// resolves immediately, the reboot resolves immediately, and the wiring
+// -status probe is unsupported (as on real legacy firmware) so it falls
+// through the try/catch untouched. Only the first post-restart recover-lights
+// POST is slow; if the retry loop honours the full budget it never needs a
+// second one.
+function abortAwareDelay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (!signal) return;
+    if (signal.aborted) {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+    }, { once: true });
+  });
+}
+
+function jsonResponse(body) {
+  return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+}
+
+function recoverLightsOkBody() {
+  return {
+    ok: true,
+    accepted: true,
+    diagnostics: { rendered: true, frameSubmitted: true, nonBlackPixels: 5, brightnessByte: 120 },
+  };
+}
+
+async function runSimulatedRestartRecovery({ slowPostRestartDelayMs = 1500 } = {}) {
+  const originalFetch = globalThis.fetch;
+  let totalRecoverLightsCalls = 0;
+  let postRestartRecoverLightsCalls = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    const target = String(url);
+    if (target.endsWith('/api/wiring/status')) {
+      // Real legacy firmware has no wiring-safety API; recoverCardLights
+      // catches this and continues without a rollback.
+      throw new Error('simulated legacy firmware: no wiring-safety API');
+    }
+    if (target.endsWith('/api/reboot')) return jsonResponse({ ok: true });
+    if (target.endsWith('/api/recover-lights')) {
+      totalRecoverLightsCalls += 1;
+      if (totalRecoverLightsCalls > 1) {
+        postRestartRecoverLightsCalls += 1;
+        if (postRestartRecoverLightsCalls === 1) {
+          await abortAwareDelay(slowPostRestartDelayMs, init.signal);
+        }
+      }
+      return jsonResponse(recoverLightsOkBody());
+    }
+    throw new Error(`unexpected fetch to ${target} in simulated restart recovery`);
+  };
+  try {
+    const response = await recoverCardLights(
+      { patternId: 'warm-white', brightness: 1 },
+      {
+        host: 'lightweaver.local',
+        restartCard: true,
+        timeoutMs: 3000,
+        restartSettleMs: 5,
+        restartRetryMs: 20,
+        restartTimeoutMs: 5000,
+        reclaimFrameStreams: async () => {},
+      },
+    );
+    return { response, totalRecoverLightsCalls, postRestartRecoverLightsCalls };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+test('F29: a post-restart recovery that answers ok but slow is not resent', async () => {
+  const { response, postRestartRecoverLightsCalls } = await runSimulatedRestartRecovery({ slowPostRestartDelayMs: 1500 });
+  assert.equal(response.restarted, true);
+  assert.equal(
+    postRestartRecoverLightsCalls,
+    1,
+    'the post-restart redeliver phase must send exactly one /api/recover-lights POST when the card answers ok within the 3000ms budget',
+  );
 });
