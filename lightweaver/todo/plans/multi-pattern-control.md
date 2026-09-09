@@ -26,7 +26,7 @@ Survey: [Four Sections, One Strip](https://claude.ai/code/artifact/129b9bf9-75d8
 | 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | Shipped 2026-09-09, PR #252, firmware 1.1.33 build 1724 (carries the parked card-page change); hardware behaviour unverified until a card takes the update |
 | 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | Shipped with 1.1.33, screenshots checked at 390px; unverified on a real phone |
 | S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | Merged 2026-09-09, PR #250 (114 net lines removed) |
-| 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | F2 (firmware, 1.1.34) and S3 (Studio) dispatched 2026-09-09 in parallel against the contract below |
+| 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | Shipped 2026-09-09. Firmware 1.1.34 build 1747 (PR #255 plus the #257 fix; 16-entry playlist measures 2653 of 3968 bytes; fade dips to a 6% floor and back). Studio PR #256 shipped as build 1760, and firmware 1.1.35 build 1759 carries the playlist UI into the card bundle (PR #258 bump, needed because #256 touched the release schema after 1.1.34 was signed). Hardware sequencing, fade timing and power-cycle resume unverified until a card takes 1.1.35 |
 
 Constraint for 3 and 4: the 3968-byte NVS budget. F1 measures a real 4-zone project's byte size and reports it in its PR.
 
@@ -40,9 +40,17 @@ Status: `GET /api/status` gains `"playlist": { "configured", "playing", "entryIn
 
 Persistence: the definition lives in the project and reaches the card only through Install; play state and entry index ride inside the `liveLook` NVS record from 1.1.33, so a power-cycle resumes a playing playlist. Cross-fade uses the card's existing fade path with `fadeMs`; the strip is never black between entries.
 
+## Incident 2026-09-09: #255 turned main red
+
+The Tests workflow runs only on push to main, so #255 was the first CI run of its own code. The provisioning-status contract test extracts the control handler's body by counting braces and stopped at a `'}'` char literal the playlist branch added, hiding the colour-order rejection; its next assertion required every rejection to precede any revision advance inside that one function. Fixed the same hour: the extractor skips literals and comments (with a fixture), and the playlist verb moved to its own handler. Lesson for briefs: name the CI lane scripts (`test:core:source`, `ci:firmware-sensitive`), not a list of individual tests.
+
 ## Every brief carries
 
 Exact files owned and no other file touched; the defect's citation; the locked UI conventions (word labels, one status and one primary action, sliders in reach, phone first, never fully black, no em-dashes); for firmware the byte cap and the measured config size; the acceptance test to add, with red-then-green evidence and verbatim counts; a VERSION bump for any firmware change.
+
+## What is left
+
+Hardware verification only, and it needs Adrian's card: take 1.1.35 (Studio update panel with a BOOT press, or `bash scripts/firmware-dev.sh` over USB), then on the card page confirm the Section row and a per-section pattern change, set a speed from the phone and unplug and replug the card, and in Studio build a 3-entry playlist with 10-second dwells, press Play, watch two advances, unplug mid-entry and replug and check the Playlist status line resumes. The sliders-in-reach plan (Patterns as the sampling surface) is its own lane and untouched.
 
 ## Resume point
 

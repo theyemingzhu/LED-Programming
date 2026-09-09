@@ -102,8 +102,10 @@ plan is a reference library, not one large job to execute.
 
 ## Soon
 
-- [ ] Four sections on one strip, each with its own pattern, speed and colour, saved and sequenced _(band: agent-runnable)_ _(effort: deep)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)
-  Survey of 2026-09-09 found the card and Studio already do most of this; the plan carries the five changes, the lane split, and what has landed.
+- [ ] Verify the four-sections build on a real card: Section row, power-cycle resume, and the timed playlist on firmware 1.1.35 _(band: you-required)_ _(effort: quick)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)
+  All five changes shipped 2026-09-09 (Studio builds 1708, 1714, 1760; firmware 1.1.33 to 1.1.35). Only the bench check remains; the plan lists the exact steps.
+- [ ] Playlist screen shows two filled primaries at once, "Install playlist on card" and "Pause"; make the transport state read as state, not a second primary _(band: agent-runnable)_ _(effort: quick)_
+  Seen in the 390px screenshot from PR #256. One status, one primary action is the locked rule; Play/Pause should look like a toggle with word labels, not compete with Install.
 
 - [ ] **Find out why an SVG import does not complete on the build server.** _(band: agent-runnable)_ _(effort: moderate)_ Blocking the ready-and-waiting card update (PR #169), and possibly a real defect rather than a test one. The zoom check fails there on every run while passing locally on every run. Two genuine races in that check were found and fixed (#170, #171) and it passes on `main`; on the release branch it still fails — and it now fails at the *wait* both fixes added, meaning the view never moves off its pre-import framing at all. So the import does not merely land late on a slow host: **it does not complete.** Ruled out by experiment, not reasoning: the six extra browser checks were removed from that branch and it still failed, so lane length is not the cause. There is no application-code difference between that branch and `main` — only the lane classifier, the version number and its pinned literal, none of which touch the app. Not reproducible locally (8/8 green, repeatedly). Note `main` itself went red on this same lane at `fc27ce3b`, so "it passed once" is not evidence. **Do not resolve this by re-running until green** — it gates a signed update to cards in customers' homes.
 
