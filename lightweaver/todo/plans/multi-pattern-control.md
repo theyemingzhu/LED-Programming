@@ -25,7 +25,7 @@ Survey: [Four Sections, One Strip](https://claude.ai/code/artifact/129b9bf9-75d8
 | 2 | "Divide into N" on Layout (41 into 4 gives 11, 10, 10, 10), cap 12 | S1b, Studio | stripSplit.js, DrawModePanel.jsx, useLayoutStrips.js, layout-divide.spec.ts | In progress |
 | 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | In progress |
 | 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | In progress |
-| S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | In progress |
+| S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | Merged 2026-09-09, PR #250 (114 net lines removed) |
 | 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | Not started; F2 waits for F1 to merge, S3 waits for F2's JSON keys and S2 |
 
 Constraint for 3 and 4: the 3968-byte NVS budget. F1 measures a real 4-zone project's byte size and reports it in its PR.
