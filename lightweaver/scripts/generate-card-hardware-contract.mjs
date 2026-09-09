@@ -25,6 +25,7 @@ const LIMIT_CEILINGS = {
   maxZones: 0xff,
   maxRangesPerZone: 0xff,
   configCapacityBytes: 0xffff,
+  maxPlaylistEntries: 0xff,
 };
 
 function boundedInteger(value, label, ceiling) {
@@ -65,6 +66,7 @@ export function validateCardHardwareManifest(manifest) {
       maxZones: boundedInteger(limits.maxZones, 'limits.maxZones', LIMIT_CEILINGS.maxZones),
       maxRangesPerZone: boundedInteger(limits.maxRangesPerZone, 'limits.maxRangesPerZone', LIMIT_CEILINGS.maxRangesPerZone),
       configCapacityBytes: boundedInteger(limits.configCapacityBytes, 'limits.configCapacityBytes', LIMIT_CEILINGS.configCapacityBytes),
+      maxPlaylistEntries: boundedInteger(limits.maxPlaylistEntries, 'limits.maxPlaylistEntries', LIMIT_CEILINGS.maxPlaylistEntries),
     },
   };
   if (normalized.outputPins.length < normalized.limits.maxOutputs) {
@@ -76,7 +78,7 @@ export function validateCardHardwareManifest(manifest) {
 export function generateCardHardwareHeader(manifest) {
   const contract = validateCardHardwareManifest(manifest);
   const { limits } = contract;
-  return `#pragma once\n\n// Generated from packages/lightweaver-contract/card-hardware.json. Do not edit.\n\n#include <cstddef>\n#include <cstdint>\n\nconstexpr uint8_t LW_CARD_HARDWARE_CONTRACT_VERSION = ${contract.contractVersion};\nconstexpr uint8_t LW_CARD_HARDWARE_OUTPUT_GPIOS[] = {${contract.outputPins.join(', ')}};\nconstexpr size_t LW_CARD_HARDWARE_OUTPUT_GPIO_COUNT =\n    sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS) / sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS[0]);\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_OUTPUTS = ${limits.maxOutputs};\nconstexpr uint16_t LW_CARD_HARDWARE_MAX_PIXELS = ${limits.maxPixels};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_ZONES = ${limits.maxZones};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE = ${limits.maxRangesPerZone};\nconstexpr uint16_t LW_CARD_HARDWARE_CONFIG_CAPACITY_BYTES = ${limits.configCapacityBytes};\n`;
+  return `#pragma once\n\n// Generated from packages/lightweaver-contract/card-hardware.json. Do not edit.\n\n#include <cstddef>\n#include <cstdint>\n\nconstexpr uint8_t LW_CARD_HARDWARE_CONTRACT_VERSION = ${contract.contractVersion};\nconstexpr uint8_t LW_CARD_HARDWARE_OUTPUT_GPIOS[] = {${contract.outputPins.join(', ')}};\nconstexpr size_t LW_CARD_HARDWARE_OUTPUT_GPIO_COUNT =\n    sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS) / sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS[0]);\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_OUTPUTS = ${limits.maxOutputs};\nconstexpr uint16_t LW_CARD_HARDWARE_MAX_PIXELS = ${limits.maxPixels};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_ZONES = ${limits.maxZones};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE = ${limits.maxRangesPerZone};\nconstexpr uint16_t LW_CARD_HARDWARE_CONFIG_CAPACITY_BYTES = ${limits.configCapacityBytes};\nconstexpr uint8_t LW_CARD_HARDWARE_MAX_PLAYLIST_ENTRIES = ${limits.maxPlaylistEntries};\n`;
 }
 
 export async function writeCardHardwareHeader({ source = manifestPath, target = headerPath } = {}) {

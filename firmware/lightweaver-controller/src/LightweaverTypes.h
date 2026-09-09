@@ -26,6 +26,15 @@ constexpr uint8_t LW_MAX_LOOKS = 32;
 constexpr uint8_t LW_MAX_PATTERN_IDS = 32;
 constexpr uint8_t LW_MAX_ZONES = 12;
 constexpr uint8_t LW_MAX_RANGES_PER_ZONE = 6;
+// Timed playlist (dwell + cross-fade auto-advance — see PlaylistConfig
+// below). Mirrors LW_CARD_HARDWARE_MAX_PLAYLIST_ENTRIES; the static_assert
+// below this file's other contract asserts keeps the two from drifting.
+constexpr uint8_t LW_MAX_PLAYLIST_ENTRIES = 16;
+constexpr uint16_t LW_PLAYLIST_MIN_DWELL_SECONDS = 1;
+constexpr uint16_t LW_PLAYLIST_MAX_DWELL_SECONDS = 3600;
+constexpr uint16_t LW_PLAYLIST_DEFAULT_DWELL_SECONDS = 30;
+constexpr uint16_t LW_PLAYLIST_MAX_FADE_MS = 10000;
+constexpr uint16_t LW_PLAYLIST_DEFAULT_FADE_MS = 1500;
 // Deliberately DECOUPLED from LW_MAX_PIXELS and fixed at 1024. Three reasons,
 // all of which survive the buffers going dynamic:
 //   1. These two arrays live INSIDE RuntimeConfig (below), so they multiply per
@@ -47,6 +56,8 @@ static_assert(LW_MAX_ZONES == LW_CARD_HARDWARE_MAX_ZONES,
               "zone capacity must match the generated hardware contract");
 static_assert(LW_MAX_RANGES_PER_ZONE == LW_CARD_HARDWARE_MAX_RANGES_PER_ZONE,
               "zone range capacity must match the generated hardware contract");
+static_assert(LW_MAX_PLAYLIST_ENTRIES == LW_CARD_HARDWARE_MAX_PLAYLIST_ENTRIES,
+              "playlist entry capacity must match the generated hardware contract");
 constexpr uint8_t LW_MAX_ARTNET_UNIVERSES = 8;
 constexpr size_t LW_PROJECT_FINGERPRINT_MAX_LENGTH = 64;
 constexpr size_t LW_PRODUCTION_JOB_ID_MAX_LENGTH = 96;
@@ -198,6 +209,29 @@ struct LookConfig {
   lightweaver::NativeRecipe nativeRecipe;
 };
 
+// One entry in the timed playlist (project JSON's "playlist.entries"). Not
+// persisted separately from the project — it lives inside RuntimeConfig like
+// looks[]/zones[] and is parsed by applyJsonToConfig() (LightweaverStorage.cpp)
+// via the Arduino-free decodePlaylistRecord() (LightweaverStorage.h), so the
+// cap-at-LW_MAX_PLAYLIST_ENTRIES / drop-the-rest behavior is unit tested
+// natively (see test/test_playlist) against the exact function production
+// calls, not a reimplementation of it.
+struct PlaylistEntryConfig {
+  // Resolved exactly as POST /api/control's patternId is today: an installed
+  // look id first, then a built-in compiled/preset pattern id. A patternId
+  // that does not currently resolve to anything is never rejected here —
+  // only skipped at PLAY time (see runtimeServicePlaylist() in main.cpp).
+  String patternId;
+  uint16_t dwellSeconds = LW_PLAYLIST_DEFAULT_DWELL_SECONDS;  // 1..3600
+};
+
+struct PlaylistConfig {
+  bool enabled = false;
+  uint16_t fadeMs = LW_PLAYLIST_DEFAULT_FADE_MS;  // 0..10000, cross-fade between entries
+  PlaylistEntryConfig entries[LW_MAX_PLAYLIST_ENTRIES];
+  uint8_t entryCount = 0;
+};
+
 struct WifiConfig {
   String ssid;
   String password;
@@ -311,6 +345,7 @@ struct RuntimeConfig {
   uint8_t outputCount = 0;
   LookConfig looks[LW_MAX_LOOKS];
   uint8_t lookCount = 0;
+  PlaylistConfig playlist;
   ControlsConfig controls;
   WifiConfig wifi;
   WifiRuntimeState wifiRuntime;

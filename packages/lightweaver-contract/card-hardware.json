@@ -6,6 +6,7 @@
     "maxPixels": 65535,
     "maxZones": 12,
     "maxRangesPerZone": 6,
-    "configCapacityBytes": 3968
+    "configCapacityBytes": 3968,
+    "maxPlaylistEntries": 16
   }
 }
