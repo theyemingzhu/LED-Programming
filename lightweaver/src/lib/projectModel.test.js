@@ -257,3 +257,51 @@ test('a v1/v2 legacy save never fabricates an origin marker it never had', () =>
   });
   assert.equal(migrated.origin, null);
 });
+
+// ── retired show-timeline model (clips/transitions/cues/autoLanes) ────────
+// The timeline UI never shipped a reader for these; only makeDefaultRotaryCycleIds
+// read showClips, and it now reads the card playlist instead. A saved envelope
+// from before the removal may still carry all four keys — migrateProject must
+// load it without throwing, drop the keys, and never write them back out.
+
+test('a current-format envelope carrying the retired show-timeline keys loads without them and never resaves them', () => {
+  const legacyEnvelope = {
+    ...createDefaultProject(),
+    show: {
+      duration: 600,
+      clips: [{ id: 'c1', track: 0, patternId: 'calm', start: 0, end: 10, label: 'Calm' }],
+      transitions: [{ id: 't1', clipA: 'c1', clipB: 'c1', start: 0, end: 1, type: 'crossfade', curve: 'linear' }],
+      cues: [{ t: 0, name: 'Start', kbd: 'Q1' }],
+      autoLanes: [{ id: 'a1', label: 'Hue shift', color: '#c84a8a', param: 'hueShift', keys: [[0, 0.1]] }],
+    },
+  };
+
+  const migrated = migrateProject(jsonRoundTrip(legacyEnvelope));
+
+  assert.ok(migrated);
+  assert.equal(migrated.show.duration, 600);
+  assert.equal('clips' in migrated.show, false);
+  assert.equal('transitions' in migrated.show, false);
+  assert.equal('cues' in migrated.show, false);
+  assert.equal('autoLanes' in migrated.show, false);
+});
+
+test('a v1/v2 legacy save carrying showClips/showTransitions/showCues/autoLanes loads without them', () => {
+  const migrated = migrateProject({
+    version: 2,
+    projectId: 'legacy-timeline',
+    strips: [],
+    showClips: [{ id: 'c1', track: 0, patternId: 'calm', start: 0, end: 10 }],
+    showTransitions: [{ id: 't1', clipA: 'c1', clipB: 'c1', start: 0, end: 1, type: 'crossfade', curve: 'linear' }],
+    showCues: [{ t: 0, name: 'Start', kbd: 'Q1' }],
+    autoLanes: [{ id: 'a1', label: 'Hue shift', color: '#c84a8a', param: 'hueShift', keys: [[0, 0.1]] }],
+    showDuration: 450,
+  });
+
+  assert.ok(migrated);
+  assert.equal(migrated.show.duration, 450);
+  assert.equal('clips' in migrated.show, false);
+  assert.equal('transitions' in migrated.show, false);
+  assert.equal('cues' in migrated.show, false);
+  assert.equal('autoLanes' in migrated.show, false);
+});

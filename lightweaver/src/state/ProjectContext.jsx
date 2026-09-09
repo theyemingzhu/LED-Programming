@@ -4,12 +4,6 @@ import { useUsbLed } from '../hooks/useUsbLed.js';
 import { samplePath } from '../lib/mapper.js';
 import { normalizeStripPixelCount, shouldRebuildStripPixels } from '../lib/stripPixels.js';
 import {
-  DEFAULT_AUTO_LANES,
-  DEFAULT_CLIPS,
-  DEFAULT_CUES,
-  DEFAULT_TRANSITIONS,
-} from './ProjectDefaults.js';
-import {
   createDefaultProject,
   DEFAULT_SYM_SETTINGS,
   defaultStandaloneController,
@@ -17,7 +11,6 @@ import {
   PROJECT_VERSION,
   resolveStartupProject,
 } from '../lib/projectModel.js';
-import { recordLivePattern as buildLiveRecording } from '../lib/liveRecorder.js';
 import { defaultPortRoles, normalizePortRoles } from '../lib/portRoles.js';
 import { easeCrossfade } from '../lib/motionSmoothing.js';
 import { PATTERNS } from '../lib/patterns-library.js';
@@ -511,60 +504,9 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   const [motionSmoothing,  setMotionSmoothing]  = useState(defaults.pattern.motionSmoothing);
 
   // ── Timeline / show ──────────────────────────────────────────────────────
-  const [showClips,        setShowClipsRaw]     = useState(DEFAULT_CLIPS);
-  const [showTransitions,  setShowTransitionsRaw] = useState(DEFAULT_TRANSITIONS);
-  const [showCues,         setShowCues]         = useState(DEFAULT_CUES);
-  const [autoLanes,        setAutoLanes]        = useState(DEFAULT_AUTO_LANES);
   const [showDuration,     setShowDuration]     = useState(600);
   const [timelinePlaying,  setTimelinePlaying]  = useState(false);
   const [timelinePlayhead, setTimelinePlayhead] = useState(52);
-
-  // ── Timeline undo/redo ────────────────────────────────────────────────────
-  const historyRef = useRef({ past: [], future: [] });
-  const skipHistoryRef = useRef(false);
-
-  const pushHistory = useCallback((clips, trans) => {
-    if (skipHistoryRef.current) return;
-    historyRef.current.past.push({ clips, trans });
-    if (historyRef.current.past.length > 40) historyRef.current.past.shift();
-    historyRef.current.future = [];
-  }, []);
-
-  const setShowClips = useCallback((fn) => {
-    setShowClipsRaw(prev => {
-      const next = typeof fn === 'function' ? fn(prev) : fn;
-      setShowTransitionsRaw(t => { pushHistory(prev, t); return t; });
-      return next;
-    });
-  }, [pushHistory]);
-
-  const setShowTransitions = useCallback((fn) => {
-    setShowTransitionsRaw(prev => {
-      const next = typeof fn === 'function' ? fn(prev) : fn;
-      setShowClipsRaw(c => { pushHistory(c, prev); return c; });
-      return next;
-    });
-  }, [pushHistory]);
-
-  const undoTimeline = useCallback(() => {
-    const entry = historyRef.current.past.pop();
-    if (!entry) return;
-    setShowClipsRaw(c => { historyRef.current.future.push({ clips: c, trans: entry.trans }); return c; });
-    skipHistoryRef.current = true;
-    setShowClipsRaw(entry.clips);
-    setShowTransitionsRaw(entry.trans);
-    setTimeout(() => { skipHistoryRef.current = false; }, 0);
-  }, []);
-
-  const redoTimeline = useCallback(() => {
-    const entry = historyRef.current.future.pop();
-    if (!entry) return;
-    setShowClipsRaw(c => { historyRef.current.past.push({ clips: c, trans: entry.trans }); return c; });
-    skipHistoryRef.current = true;
-    setShowClipsRaw(entry.clips);
-    setShowTransitionsRaw(entry.trans);
-    setTimeout(() => { skipHistoryRef.current = false; }, 0);
-  }, []);
 
   // ── Live recording ────────────────────────────────────────────────────────
   const [liveRecording, setLiveRecording] = useState(false);
@@ -657,7 +599,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         event,
         currentBrightness: brightnessCursor,
         currentPatternId: patternCursor,
-        showClips,
+        playlist: standaloneController.playlist,
         physicalControls,
         knownPatternIds,
         requireEnabled: false,
@@ -677,7 +619,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     physicalControls,
     setActivePatternId,
     setMasterBrightness,
-    showClips,
+    standaloneController.playlist,
     usbLedStatus?.inputEvents,
   ]);
 
@@ -699,43 +641,6 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     }, 250);
     return () => clearTimeout(timer);
   }, [strips, usbLedApplyPixelCount, usbLedConnected, usbLedStatus?.maxPixels]);
-
-  // ── Live clip stamping ────────────────────────────────────────────────────
-  const stampClip = useCallback((patternId, durationSecs = 10) => {
-    let start = timelinePlayhead;
-    if (liveQuantize === 'beat') {
-      const beatSecs = 60 / bpm;
-      start = Math.round(timelinePlayhead / beatSecs) * beatSecs;
-    } else if (liveQuantize === 'bar') {
-      const barSecs = (60 / bpm) * 4;
-      start = Math.round(timelinePlayhead / barSecs) * barSecs;
-    }
-    const end = Math.min(showDuration, start + durationSecs);
-    const id = 'live_' + Date.now();
-    setShowClips(prev => [
-      // Remove any existing recorded clip that overlaps
-      ...prev.filter(c => !(c.track === 0 && c.recorded && c.start < end && c.end > start)),
-      { id, track: 0, patternId, start, end, label: patternId, recorded: true },
-    ]);
-  }, [liveRecording, liveQuantize, bpm, timelinePlayhead, showDuration]);
-
-  const recordLivePattern = useCallback((patternId, { crossfadeSecs = 3, at = timelinePlayhead } = {}) => {
-    if (!patternId) return;
-    const recorded = buildLiveRecording({
-      clips: showClips,
-      transitions: showTransitions,
-      patternId,
-      at,
-      bpm,
-      quantize: liveQuantize,
-      crossfadeSecs,
-      showDuration,
-    });
-    if (recorded.clips === showClips && recorded.transitions === showTransitions) return;
-    pushHistory(showClips, showTransitions);
-    setShowClipsRaw(recorded.clips);
-    setShowTransitionsRaw(recorded.transitions);
-  }, [bpm, liveQuantize, pushHistory, showClips, showDuration, showTransitions, timelinePlayhead]);
 
   // ── Auto-save state ───────────────────────────────────────────────────────
   const [lastSaved, setLastSaved] = useState(null);
@@ -793,10 +698,6 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     setPatternParams(pattern.patternParams || {});
     setBpm(pattern.bpm || defaults.pattern.bpm);
     setMotionSmoothing(pattern.motionSmoothing || defaults.pattern.motionSmoothing);
-    setShowClipsRaw(show.clips || defaults.show.clips);
-    setShowTransitionsRaw(show.transitions || defaults.show.transitions);
-    setShowCues(show.cues || defaults.show.cues);
-    setAutoLanes(show.autoLanes || defaults.show.autoLanes);
     setShowDuration(show.duration || defaults.show.duration);
     setLiveRecording(!!live.recording);
     setLiveQuantize(live.quantize || defaults.live.quantize);
@@ -808,7 +709,6 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     setStandaloneControllerRaw(defaultStandaloneController(devices.standaloneController));
     setPortRolesRaw(normalizePortRoles(data.portRoles));
     setWledIp(devices.wledIp || '');
-    historyRef.current = { past: [], future: [] };
     setProjectRevision(v => v + 1);
     return true;
   }, [setWledIp]);
@@ -912,10 +812,6 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         motionSmoothing,
       },
       show: {
-        clips: showClips,
-        transitions: showTransitions,
-        cues: showCues,
-        autoLanes,
         duration: showDuration,
       },
       live: {
@@ -948,7 +844,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
     masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
     motionSmoothing,
-    showClips, showTransitions, showCues, autoLanes, showDuration,
+    showDuration,
     liveRecording, liveQuantize, wledIp, wledSegmentMap, physicalControls, controllerProfiles, activeControllerId, standaloneController,
     portRoles,
   ]);
@@ -1173,20 +1069,12 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       origin,          setOrigin,
       motionSmoothing, setMotionSmoothing,
       // Timeline
-      showClips,       setShowClips,
-      showTransitions, setShowTransitions,
-      showCues,        setShowCues,
-      autoLanes,       setAutoLanes,
       showDuration,    setShowDuration,
       timelinePlaying, setTimelinePlaying,
       timelinePlayhead, setTimelinePlayhead,
       // Live recording
       liveRecording,   setLiveRecording,
       liveQuantize,    setLiveQuantize,
-      stampClip,
-      recordLivePattern,
-      // Timeline undo/redo
-      undoTimeline,    redoTimeline,
       // Symmetry
       symSettings,     setSymSettings,
       // Audio

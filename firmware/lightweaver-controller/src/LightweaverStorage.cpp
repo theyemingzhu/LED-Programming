@@ -49,6 +49,10 @@ constexpr const char* NVS_WIFI_KEY = "wifi";
 // keep the two spellings in sync.
 constexpr const char* NVS_PIECE_NAME_KEY = "pieceName";
 constexpr const char* NVS_SD_AUTORUN_SUPPRESSED_KEY = "sdAutorunOff";
+// Live per-zone tweak resume record (see LiveLookRecord in LightweaverStorage.h).
+// Its own key, deliberately separate from every project-config key above —
+// a live tweak must never touch the fingerprinted project JSON or its budget.
+constexpr const char* NVS_LIVE_LOOK_KEY = "liveLook";
 constexpr size_t NVS_STRING_LIMIT = 3968;
 
 uint16_t clampPixels(int value) {
@@ -1933,6 +1937,11 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
   config.knownGoodProject = true;
   config.runtimePhase = ProvisioningPhase::Ready;
   synchronizeNativeRecipes(config);
+  // A newly saved project — even a re-save of the same project at a bumped
+  // revision — invalidates any live-tweak record: liveLookRecordMatchesProject
+  // would already reject it on the next boot (revision no longer matches),
+  // but clearing it here means a stale record never lingers on flash.
+  clearPersistedLiveLookRecord();
   message = cleanupOk
       ? "saved to internal flash"
       : "saved to internal flash; cleanup warning: legacy recovery metadata may need service";
@@ -1979,6 +1988,10 @@ bool clearRuntimeProjectStorage(String& message) {
     NVS_PREVIOUS_KNOWN_GOOD_KEY,
     NVS_LEGACY_CONFIG_KEY,
     NVS_KNOWN_GOOD_CONFIG_KEY,
+    // A cleared project cannot leave a live-tweak record behind: nothing
+    // installed after this could ever match its project id/revision, but an
+    // orphaned key is still bytes on flash for no reason.
+    NVS_LIVE_LOOK_KEY,
   };
   for (const char* key : orderedKeys) {
     if (prefs.isKey(key) && !prefs.remove(key)) ok = false;
@@ -1992,6 +2005,51 @@ bool clearRuntimeProjectStorage(String& message) {
   }
   message = "project cleared; wifi and piece name preserved";
   return true;
+}
+
+// ---- Live-look resume record NVS persistence ----
+// See LiveLookRecord in LightweaverStorage.h for the data model and its
+// Arduino-free encode/decode/match functions. This is only the flash I/O.
+
+bool persistLiveLookRecord(const LiveLookRecord& record, String& message) {
+  char buffer[LW_LIVE_LOOK_RECORD_MAX_BYTES];
+  size_t written = encodeLiveLookRecord(record, buffer, sizeof(buffer));
+  if (written == 0) {
+    // Cannot happen with LW_LIVE_LOOK_MAX_ZONES zones at LW_LIVE_LOOK_ID_BYTES
+    // each (see test_live_look's worst-case-fits assertion), but a record
+    // this function cannot safely encode must never be written half-formed.
+    message = "live-look record too large to persist";
+    return false;
+  }
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) {
+    message = "nvs live-look write open failed";
+    return false;
+  }
+  bool ok = prefs.putString(NVS_LIVE_LOOK_KEY, buffer) > 0;
+  prefs.end();
+  message = ok ? "live tweaks saved" : "nvs live-look write failed";
+  return ok;
+}
+
+bool loadPersistedLiveLookRecord(LiveLookRecord& outRecord) {
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+  if (!prefs.isKey(NVS_LIVE_LOOK_KEY)) {
+    prefs.end();
+    return false;
+  }
+  String json = prefs.getString(NVS_LIVE_LOOK_KEY, "");
+  prefs.end();
+  if (json.length() == 0) return false;
+  return decodeLiveLookRecord(json.c_str(), json.length(), outRecord);
+}
+
+void clearPersistedLiveLookRecord() {
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) return;
+  if (prefs.isKey(NVS_LIVE_LOOK_KEY)) prefs.remove(NVS_LIVE_LOOK_KEY);
+  prefs.end();
 }
 
 bool stageRuntimeConfigJson(const String& json, String& activationId, String& message) {
@@ -2488,6 +2546,10 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["outputInitialization"]["message"] = runtimeOutputInitializationMessage();
   doc["configValid"] = config.configValid;
   doc["knownGoodProject"] = config.knownGoodProject;
+  // True only when a persisted live-tweak record (owner brightness/hue/scene
+  // changes made from this page, previously lost at power-cycle) matched this
+  // boot's project and was applied on top of the installed look's defaults.
+  doc["resumedLiveLook"] = runtimeResumedLiveLook();
   // True while the card is running Find-my-strips scaffolding rather than a
   // project the owner chose — Studio reads this to say "unfinished setup"
   // instead of presenting the bench project as commissioned.

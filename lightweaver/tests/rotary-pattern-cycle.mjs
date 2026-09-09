@@ -17,15 +17,39 @@ assert.deepEqual(
 assert.deepEqual(
   makeDefaultRotaryCycleIds({
     activePatternId: 'fire',
-    showClips: [
-      { patternId: 'candle' },
-      { patternId: 'unknown' },
-      { patternId: 'fire' },
-      { patternId: 'aurora' },
+    playlist: [
+      { type: 'pattern', patternId: 'candle', enabled: true },
+      { type: 'pattern', patternId: 'unknown', enabled: true },
+      { type: 'pattern', patternId: 'fire', enabled: true },
+      { type: 'pattern', patternId: 'aurora', enabled: true },
     ],
     knownPatternIds,
   }),
   ['fire', 'candle', 'aurora'],
+);
+
+// An empty card playlist leaves the dial on just the active pattern.
+assert.deepEqual(
+  makeDefaultRotaryCycleIds({
+    activePatternId: 'fire',
+    playlist: [],
+    knownPatternIds,
+  }),
+  ['fire'],
+);
+
+// Three enabled looks in the playlist give a four-id cycle, in order.
+assert.deepEqual(
+  makeDefaultRotaryCycleIds({
+    activePatternId: 'fire',
+    playlist: [
+      { type: 'pattern', patternId: 'candle', enabled: true },
+      { type: 'pattern', patternId: 'aurora', enabled: true },
+      { type: 'pattern', patternId: 'breathe', enabled: true },
+    ],
+    knownPatternIds,
+  }),
+  ['fire', 'candle', 'aurora', 'breathe'],
 );
 
 assert.deepEqual(

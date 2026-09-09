@@ -156,6 +156,24 @@ String runtimeNetworkIdentity();
 // on a physical card control. Same-origin HTTP reachability is never enough.
 bool runtimeOwnerPairingAuthorized();
 
+// Live per-zone tweak persistence (power-cycle resume). The data model and
+// its NVS-backed load/save/clear live in LightweaverStorage.h/.cpp; these are
+// the hooks the runtime layer (main.cpp) drives them through.
+// Arms the debounce timer — call after any zone mutation (brightness, speed,
+// hue, pattern, breathe/drift, blackout, syncZones) or a look/scene switch.
+// The actual NVS write happens later, from runtimeServiceLiveLookPersist(),
+// never synchronously on the request that triggered it.
+void runtimeMarkLiveLookDirty();
+// Call once per loop() tick. Flushes a dirty record to flash ~2s after the
+// last change, never more often, and never mid-fade (fadeTo() blocks the
+// loop task, so this can only run between ticks, after any fade in the same
+// tick already completed).
+void runtimeServiceLiveLookPersist();
+// True for the rest of this boot once a persisted live-tweak record matched
+// this project and was applied on top of the installed look's defaults.
+// Surfaced on GET /api/status as resumedLiveLook.
+bool runtimeResumedLiveLook();
+
 uint8_t runtimeOutputRequestedBrightnessByte();
 uint8_t runtimeOutputBrightnessByte();
 float runtimeOutputBrightnessScale();
