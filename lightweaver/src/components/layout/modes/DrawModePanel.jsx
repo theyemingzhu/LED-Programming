@@ -1563,7 +1563,7 @@ export function DrawModePanel({
                                 own zone once compiled, so this needs no wiring
                                 change of its own. */}
                             <span className="k">Divide into</span>
-                            <div className="lw-sel-pair">
+                            <div className="lw-sel-pair la-divide-pair">
                               <select className="la-divide-select"
                                       data-testid={`divide-sections-${s.id}`}
                                       aria-label={`Number of sections to divide ${s.name} into`}

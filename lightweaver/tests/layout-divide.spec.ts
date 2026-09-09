@@ -82,6 +82,7 @@ test('the Patterns screen lists one section target per divided piece', async ({ 
   await createOneStrip(page);
   await setStripLedCount(page, 41);
   await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
 
@@ -145,6 +146,14 @@ test('the Divide control fits at 390px wide with no horizontal overflow', async 
   expect(overflow).toBe(false);
 
   await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+
+  // The counts are the point of the preview: on a phone they must read in
+  // full, never clipped to "11, 10,…".
+  const preview = page.locator('[data-testid^="divide-preview-"]');
+  await expect(preview).toHaveText('11, 10, 10, 10 LEDs');
+  const clipped = await preview.evaluate(el => el.scrollWidth > el.clientWidth + 1);
+  expect(clipped).toBe(false);
+  await page.screenshot({ path: 'test-results/layout-divide-390.png' });
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
 

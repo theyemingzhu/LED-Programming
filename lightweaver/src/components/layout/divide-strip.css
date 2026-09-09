@@ -18,10 +18,14 @@
   font-size: 11px;
 }
 
+.la-divide-pair {
+  /* The counts preview is the point of the control, so it never shrinks or
+     truncates: when the row is too narrow (a phone at 390px) it wraps onto
+     its own line instead. On a desktop panel it stays inline. */
+  flex-wrap: wrap;
+}
+
 .la-divide-preview {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
