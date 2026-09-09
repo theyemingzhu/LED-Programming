@@ -12,7 +12,7 @@ import {
 } from '../shared/InspectorPrimitives.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
-import { planStripSplitCounts } from '../../../lib/stripSplit.js';
+import { MAX_SPLIT_SECTIONS, planStripSplitCounts } from '../../../lib/stripSplit.js';
 import {
   STRIP_COLORS,
   DENSITY_OPTIONS,
@@ -43,6 +43,7 @@ import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../.
 // strip must not measure it a second, slightly different way.
 import { stripPitchMm } from '../../../lib/wireBuildSheet.js';
 import '../../../styles/lw-draw.css';
+import '../divide-strip.css';
 
 // Metres formatter for the physical readouts: 2 decimals under 10 m, 1 above.
 function startedFromDragHandle(e) {
@@ -122,6 +123,7 @@ export function DrawModePanel({
     getLedCount, resampleStrip, stripDensity, setStripPhysical, setStripCount,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
+    divideStripIntoSections,
     addPrimitiveStrip, scaleStrip,
     addStripsToGroup, groupSelectedStrips, mergeSelectedStrips,
     usbLedConnected,
@@ -384,6 +386,35 @@ export function DrawModePanel({
   const splitPreview = strip => {
     const counts = planStripSplitCounts(strip?.pixelCount);
     return counts ? `${counts.head} LEDs + ${counts.tail} LEDs` : '';
+  };
+
+  // The owner-picked section count per strip. Lives in the same always-open
+  // "Selected strip" register as LED count and Size (a field in the physical
+  // grid, not a disclosure) rather than in the tight actions-button row: that
+  // row's total width is a locked budget (tests/layout-strip-caption.spec.ts
+  // — "every control added to this panel competes for one fixed width"), and
+  // a fourth icon button there overflowed it. The 2-up physical grid uses
+  // `minmax(0, 1fr)` columns, so a new field wraps to its own row instead of
+  // forcing the panel wider.
+  const [divideSections, setDivideSections] = useState({}); // stripId → N
+
+  // The most sections a given strip could usefully be divided into: never
+  // more zones than the card can address, and never more pieces than LEDs.
+  const divideSectionsCap = strip => Math.max(2, Math.min(MAX_SPLIT_SECTIONS, Math.trunc(Number(strip?.pixelCount) || 0)));
+
+  // Why Divide is unavailable, said the way the owner would say it. Empty
+  // string means the control is live. Shares its reasons with Split — both
+  // controls change how many strips a run is cut into.
+  const divideBlockedReason = (strip, alreadySplit) => {
+    if (wiring.locked) return 'Wiring is locked — unlock it in Test & Install.';
+    if (alreadySplit) return 'Already divided into runs in Advanced wiring.';
+    if (!planStripSplitCounts(strip?.pixelCount, 2)) return 'Needs at least 2 LEDs to divide.';
+    return '';
+  };
+  // "11, 10, 10, 10 LEDs" — the answer to "what will I get?" before committing.
+  const dividePreview = (strip, sections) => {
+    const counts = planStripSplitCounts(strip?.pixelCount, sections);
+    return counts ? `${counts.counts.join(', ')} LEDs` : '';
   };
 
   // The visible Wire editor owns reconciliation. Test & Install only reports
@@ -1313,6 +1344,16 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
+                // The section count the "Divide into" select currently shows
+                // for this strip: the owner's own pick if they made one,
+                // clamped to what this strip can still hold (a resize can
+                // shrink the cap below a previous choice), else 4 — the count
+                // named in the task brief's own example (41 → 11,10,10,10).
+                const divideCap = divideSectionsCap(s);
+                const divideSectionsValue = Math.max(2, Math.min(
+                  divideCap,
+                  divideSections[s.id] || Math.min(4, divideCap),
+                ));
                 // Read-outs for the Selected strip module. Each is derived from
                 // state the project already holds; where a fact is not knowable
                 // the field shows an em-dash rather than a confident guess.
@@ -1512,6 +1553,41 @@ export function DrawModePanel({
                                   ))}
                                 </select>
                               </div>
+                            </div>
+                          </div>
+                          <div className="la-strip-physical-field lw-sel-wide">
+                            {/* The general form of Split (below): an owner who
+                                wants several independently-patterned zones out
+                                of one reel picks how many, sees the resulting
+                                counts, then commits. Each new strip becomes its
+                                own zone once compiled, so this needs no wiring
+                                change of its own. */}
+                            <span className="k">Divide into</span>
+                            <div className="lw-sel-pair la-divide-pair">
+                              <select className="la-divide-select"
+                                      data-testid={`divide-sections-${s.id}`}
+                                      aria-label={`Number of sections to divide ${s.name} into`}
+                                      value={divideSectionsValue}
+                                      disabled={!!divideBlockedReason(s, isSplit)}
+                                      onChange={event => setDivideSections(prev => ({ ...prev, [s.id]: Number(event.target.value) }))}>
+                                {Array.from({ length: Math.max(0, divideCap - 1) }, (_, index) => index + 2).map(n => (
+                                  <option key={n} value={n}>{n} sections</option>
+                                ))}
+                              </select>
+                              <span className="lw-sel-v la-divide-preview" data-testid={`divide-preview-${s.id}`}>
+                                {dividePreview(s, divideSectionsValue)}
+                              </span>
+                              <button type="button" className="btn"
+                                      data-testid={`divide-commit-${s.id}`}
+                                      aria-label={`Divide ${s.name} into ${divideSectionsValue} sections`}
+                                      data-caption={divideBlockedReason(s, isSplit)
+                                        || 'Divide into several sections, each with its own pattern'}
+                                      title={divideBlockedReason(s, isSplit)
+                                        || 'Divide into several sections, each with its own pattern'}
+                                      disabled={!!divideBlockedReason(s, isSplit)}
+                                      onClick={() => divideStripIntoSections(s.id, divideSectionsValue)}>
+                                Divide
+                              </button>
                             </div>
                           </div>
                         </div>
