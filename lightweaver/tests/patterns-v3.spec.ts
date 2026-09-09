@@ -762,7 +762,13 @@ test('v3 patterns mounts the mockup shell with a chip-ready catalog', async ({ p
 
   // The catalog starts with one exact 24-card batch.
   await expect(page.locator('.pm-cards .pmcard')).toHaveCount(24);
-  await expect(page.locator('.sec-h .m').first()).toContainText(`of ${REAL_PATTERNS.length} chip-ready`);
+  // U2-build item 3: the header's own "N shown of M chip-ready" count could
+  // read as MORE shown than exist the moment a saved look or custom pattern
+  // was on the bank (filtered.length counted across mixes + custom patterns
+  // + real patterns, divided against real patterns alone). It was dropped;
+  // the correctly-scoped count lives in `pt-count`, next to the category
+  // chips, and is asserted there instead.
+  await expect(page.locator('.pt-count')).toContainText(`of ${REAL_PATTERNS.length} shown`);
 });
 
 test('Advanced exposes a gentle bounded breathing envelope', async ({ page }) => {
@@ -1088,8 +1094,12 @@ test('blank and checking Pattern tools cannot acquire a card page or mutate hard
   await expect(page.getByRole('button', { name: 'Install on card' })).toBeDisabled();
 
   await page.getByRole('button', { name: 'Open card page' }).click();
-  await page.getByRole('button', { name: 'Card tools' }).click();
-  await page.getByRole('menuitem', { name: 'Repair LED' }).click();
+  // U2-build item 5: "Repair LED" is gone from Card tools — Recover lights
+  // (toolbar) is the one remaining control for this job. It renders
+  // whenever a card is paired (this fixture persists a card identity) but
+  // disables rather than vanishing while the card cannot act, so the no-leak
+  // guarantee this test is about is that the disabled control does nothing.
+  await expect(page.getByTestId('recover-lights')).toBeDisabled();
   await page.getByRole('button', { name: 'Card tools' }).click();
   await page.getByRole('menuitem', { name: 'Send split preview' }).click();
 
@@ -1134,7 +1144,11 @@ test('Studio preview changes immediately while runtime application waits for the
   });
   await gotoFreshPatterns(page);
   const cardReadout = page.locator('.tc-stat.tc-live');
-  await expect(cardReadout).toContainText('Selected in Studio');
+  // U2-build item 1: the Design target card now reads the same shared
+  // send-status vocabulary as the bank's own status line and Playlist
+  // (cardActionStatusLabel), instead of its own "Selected in Studio /
+  // Sending to card / On the card now".
+  await expect(cardReadout).toContainText('Previewing in Studio');
   await expect(page.getByRole('button', { name: /Use local card/i })).toHaveCount(0);
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   // The shared link polls status in the background. A fresh report for the
@@ -1150,11 +1164,11 @@ test('Studio preview changes immediately while runtime application waits for the
   });
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
   await expect(page.getByTestId('physical-preview-status')).toHaveText('Sending to Lightweaver');
-  await expect(cardReadout).toContainText('Sending to card');
+  await expect(cardReadout).toContainText('Sending to Lightweaver');
   await expect.poll(() => Boolean(releaseControl)).toBe(true);
   releaseControl?.();
   await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
-  await expect(cardReadout).toContainText('On the card now');
+  await expect(cardReadout).toContainText('Applied by Lightweaver runtime');
 });
 
 test('an old card keeps the Studio selection and offers a card software update', async ({ page }) => {
@@ -1187,7 +1201,8 @@ test('an invalid preview response stays bounded and does not render the card res
   await expect(alert).toBeVisible();
   await expect(alert).not.toContainText('PRIVATE-CARD-RESPONSE');
   await expect(alert).toContainText(/could not be verified|did not answer in time/i);
-  await expect(page.locator('.tc-stat.tc-live')).toContainText('Selected in Studio');
+  // U2-build item 1: shared send-status vocabulary (see the test above).
+  await expect(page.locator('.tc-stat.tc-live')).toContainText('Previewing in Studio');
 });
 
 test('missing runtime state proof recovers the card before asking for visible confirmation', async ({ page }) => {

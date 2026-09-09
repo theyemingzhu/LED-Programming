@@ -2188,6 +2188,21 @@ import { PatternPreview } from './PatternPreview.jsx';
     // src/lib/cardAccess.js) — so it enables on drift the same way Card
     // Home's does. Outside a blackout the install-level gate is unchanged.
     const recoverLightsCardAccess = cardBlackedOut ? patternCardAccess : authorizedPatternCardAccess;
+    // Whether Studio has a specific card in mind at all — the same
+    // expectedCard-or-persisted-identity read used elsewhere in this file
+    // (resolveCardBridgePreference above, the wrong-card checks below). This
+    // is deliberately weaker than `connected`: a card can be paired and
+    // reachable-in-principle while the command gate is shut (a WiFi
+    // reassociation, a boot, a mismatch being resolved) — exactly the
+    // uncertain states where Recover lights used to disappear instead of
+    // offering the recovery it exists for.
+    const pairedCardIdentity = cardLink?.expectedCard || cardLink?.card || null;
+    const paired = Boolean(String(pairedCardIdentity?.id || pairedCardIdentity?.cardId || '').trim());
+    const recoverLightsDisabledReason = (access) => {
+      if (access === 'blank') return 'This card has no strips recorded yet. Find its strips before recovering lights.';
+      if (access === 'recovery') return 'This card is not confirmed reachable right now. Reconnect it before recovering lights.';
+      return 'This card cannot take a recovery command right now.';
+    };
     const runPreviewFailureAction = () => {
       switch (previewFailure?.actionId) {
         case 'update-card':
@@ -2289,21 +2304,14 @@ import { PatternPreview } from './PatternPreview.jsx';
       });
     }, [hardwareConfigurationIssue, canRemoveDuplicateAlternatePress]);
 
-    useEffect(() => {
-      if (!patternCardGate) {
-        dismissNoticeKey('pattern-gate-notice');
-        return;
-      }
-      publishNotice({
-        key: 'pattern-gate-notice',
-        testId: 'pattern-gate-notice',
-        tone: 'error',
-        title: 'That tap was not sent to the card.',
-        body: status || patternGateMessage(patternCardGate),
-        source: 'pattern-gate',
-        action: { label: patternGateActionLabel, onSelect: runPatternGateAction },
-      });
-    }, [patternCardGate, status, patternGateActionLabel]);
+    // Was: published to the floating notice layer, which meant an
+    // absolutely-positioned box over `.pm-target` — hiding Pixels driven and
+    // the Save look row underneath it. This notice is about ONE tap on ONE
+    // card, not the whole screen, so per noticeLayer.js's own scope rule
+    // (screen-scoped floats, field-scoped reserves ground beside the thing
+    // it is about) it renders in flow, directly above the Design target
+    // card, instead. Content and single action are unchanged; only the
+    // layout moved. See the render below (`pattern-gate-inline`).
 
     // F16: the card can be connected and holding the exact project open here
     // while its zones report every light off — nothing else on this screen
@@ -2356,8 +2364,24 @@ import { PatternPreview } from './PatternPreview.jsx';
               </div>
               <div className="pm-actions">
                 <button className="btn primary" title="Install the current look on the card" onClick={savePreviewToCard} disabled={!installGate.allowed}>{I.bolt}{cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
-                {connected &&
-                  <button className={"btn" + (cardBlackedOut ? " primary" : "")} title="Bring the lights back with a warm-white recovery" data-testid="recover-lights" onClick={repairLed} disabled={recoverLightsCardAccess !== 'ready' || cardSave.conflictsDisabled}>{I.wrench}Recover lights</button>
+                {/* Renders whenever a card is paired, not only while
+                    `connected` — the uncertain states (reassociating,
+                    booting, a mismatch resolving) are exactly when an owner
+                    needs this button, and it used to vanish there and leave
+                    only the buried "Repair LED" menu item as a way back. It
+                    disables with a reason instead of disappearing. */}
+                {paired &&
+                  <button
+                    className={"btn" + (cardBlackedOut ? " primary" : "")}
+                    title={recoverLightsCardAccess !== 'ready'
+                      ? recoverLightsDisabledReason(recoverLightsCardAccess)
+                      : cardSave.conflictsDisabled
+                        ? 'Studio is busy sending another command to the card.'
+                        : 'Bring the lights back with a warm-white recovery'}
+                    data-testid="recover-lights"
+                    onClick={repairLed}
+                    disabled={recoverLightsCardAccess !== 'ready' || cardSave.conflictsDisabled}
+                  >{I.wrench}Recover lights</button>
                 }
                 <div className="pm-color-order">
                   <button
@@ -2414,7 +2438,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                   <>
                       <div className="pm-menu-backdrop" aria-hidden="true" onClick={() => setMenuOpen(false)} />
                       <div ref={menuRef} className="pm-menu-pop" role="menu" aria-label="Card tools">
-                        <button role="menuitem" className="pm-menu-item" onClick={() => { setMenuOpen(false); repairLed(); }}>{I.wrench}Repair LED</button>
+                        {/* "Repair LED" removed: it called the identical
+                            repairLed() handler as the toolbar's own
+                            "Recover lights" button (now rendered whenever a
+                            card is paired, see above) — one job, one name,
+                            one control. */}
                         <button role="menuitem" className="pm-menu-item" onClick={() => { setMenuOpen(false); sendSplitPreview(); }}>{I.target}Send split preview</button>
                         <div className="pm-menu-sep" />
                         <button role="menuitem" className="pm-menu-item" onClick={() => { setMenuOpen(false); copyConfig(); }}>{I.copy}Copy setup</button>
@@ -2470,7 +2498,16 @@ import { PatternPreview } from './PatternPreview.jsx';
                       and the counts pushed right. The counts are read with a
                       single separator so the bar scans as one sentence rather
                       than a sum and a fraction. */}
-                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{filtered.length} shown of {REAL_PATTERNS.length} chip-ready · {realMixes.length} mixes · {playlistSize} in playlist</span>
+                  {/* Was: "{filtered.length} shown of {REAL_PATTERNS.length}
+                      chip-ready" — filtered.length counts across mixes +
+                      custom patterns + real patterns, divided against real
+                      patterns alone, so it could read as MORE shown than
+                      exist the moment a saved look or custom pattern is on
+                      the bank. The correct, differently-scoped count already
+                      sits a few lines down (`pt-count`, next to the category
+                      chips); this header keeps only the two facts nothing
+                      else on the panel states. */}
+                  <div className="sec-h"><span className="t">Pattern bank</span><span className="m">{realMixes.length} mixes · {playlistSize} in playlist</span>
                     <div className="pm-ledmode" role="group" aria-label="Swatch style">
                       <button type="button" aria-pressed={ledMode === 'beads'}
                               className={ledMode === 'beads' ? 'on' : undefined}
@@ -2556,6 +2593,19 @@ import { PatternPreview } from './PatternPreview.jsx';
                   }
                 </div>
 
+                {/* Reserved ground above the Design target card: this used to
+                    float over `.pm-target` (see the removed effect above) and
+                    hide Pixels driven and the Save look row underneath it.
+                    Content and single action are unchanged; it now pushes the
+                    card down instead of covering it. */}
+                {patternCardGate &&
+                  <div className="pattern-gate-inline lw-field" data-testid="pattern-gate-notice" role="alert" aria-live="assertive">
+                    <p className="pattern-gate-inline-title">That tap was not sent to the card.</p>
+                    <p className="pattern-gate-inline-body">{status || patternGateMessage(patternCardGate)}</p>
+                    <button type="button" className="btn primary" onClick={runPatternGateAction}>{patternGateActionLabel}</button>
+                  </div>
+                }
+
                 {/* design target */}
                 <div className="pm-target">
                   <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
@@ -2595,11 +2645,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                         in the neutral ink, and the bank's status line above
                         says whether it has landed. */}
                     <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
-                      <span className="tc-stat-k">{previewAction.status === 'confirmed'
-                        ? 'On the card now'
-                        : previewAction.status === 'pending'
-                          ? 'Sending to card'
-                          : 'Selected in Studio'}</span>
+                      {/* One vocabulary for "has this reached the card" —
+                          the same three words the bank's own status line and
+                          Playlist use, so the phrase does not change meaning
+                          moving between panels and screens. */}
+                      <span className="tc-stat-k">{cardActionStatusLabel(previewAction)}</span>
                       <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
                     </div>
                   </div>
