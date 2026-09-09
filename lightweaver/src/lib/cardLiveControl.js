@@ -35,6 +35,18 @@ function isMixedContentBlocked() {
   return typeof window !== 'undefined' && !canPushDirectlyToCard(window.location.protocol);
 }
 
+// Recovery routes by the transport the caller has ACTUALLY established when it
+// says so, and only falls back to the page-protocol guess when it does not.
+// The two disagree in the world: a Studio page served over https whose browser
+// allows the plain-http card fetch holds a connected-direct link, and routing
+// its recovery to a card-page bridge that was never opened fails with "Open
+// the card page once…" against a card that is answering directly (W1-6).
+function recoveryUsesBridge(options = {}) {
+  if (options.transport === 'bridge') return true;
+  if (options.transport === 'direct') return false;
+  return isMixedContentBlocked();
+}
+
 const COLOR_ORDER_OPTIONS = new Set(['RGB', 'GRB', 'BRG', 'BGR', 'RBG', 'GBR']);
 const MIRRORED_REPAIR_OUTPUT_PIN = 16;
 const MIRRORED_REPAIR_DEFAULT_PIXELS = 44;
@@ -513,7 +525,7 @@ async function redeliverRecoveryAfterRestart(host, payload, options = {}) {
       // slower than 1200ms was previously mistaken for a timeout, so this loop
       // resent a recovery command the card had already accepted: a real
       // duplicate physical write (F29).
-      const response = isMixedContentBlocked()
+      const response = recoveryUsesBridge(options)
         ? await sendCardBridgeRequest('recover-lights', payload, {
             host,
             timeoutMs: options.timeoutMs || 3000,
@@ -540,7 +552,7 @@ async function redeliverRecoveryAfterRestart(host, payload, options = {}) {
 async function finishRecovery(host, payload, response, options = {}) {
   const acknowledged = requireRecoveryAcknowledgement(response);
   if (options.restartCard !== true) return acknowledged;
-  if (isMixedContentBlocked()) {
+  if (recoveryUsesBridge(options)) {
     await sendCardBridgeRequest('reboot', {}, { host, timeoutMs: Math.min(options.timeoutMs || 3000, 1200) });
   } else {
     await requestCardReboot(host, options);
@@ -1475,7 +1487,11 @@ export async function identifyCardLights(options = {}) {
 
 export async function recoverCardLights(look = {}, options = {}) {
   const host = options.host || readStoredCardHost();
-  if (!isMixedContentBlocked()) {
+  const useBridge = recoveryUsesBridge(options);
+  // The wiring-safety reads below take the same route as the recovery send;
+  // they used to guess from the page protocol on their own.
+  const wiring = { host, transport: options.transport, fetchImpl: options.fetchImpl };
+  if (!useBridge) {
     await guardDirectCardMutation(host, { fetchImpl: options.fetchImpl, timeoutMs: options.timeoutMs || 3000 });
   }
   const payload = buildRecoverLightsPayload(look);
@@ -1490,36 +1506,36 @@ export async function recoverCardLights(look = {}, options = {}) {
   // prevents recovery from faithfully lighting the same wrong GPIO candidate.
   let safety = null;
   try {
-    safety = await getCardWiringStatus({ host, timeoutMs: Math.min(options.timeoutMs || 3000, 1200) });
+    safety = await getCardWiringStatus({ ...wiring, timeoutMs: Math.min(options.timeoutMs || 3000, 1200) });
   } catch {
     // Older firmware has no wiring-safety API. Continue to the dedicated
     // recovery endpoint, which preserves backward-compatible recovery.
   }
   if (safety?.activationId && (safety.state === 'staged' || safety.state === 'testing')) {
-    await rollbackCardWiringCandidate(safety.activationId, { host, timeoutMs: options.timeoutMs || 3000 });
+    await rollbackCardWiringCandidate(safety.activationId, { ...wiring, timeoutMs: options.timeoutMs || 3000 });
     const deadline = Date.now() + (options.restartTimeoutMs || 15000);
     await waitForRecoveryRetry(options.restartSettleMs ?? 800, options.setTimeoutImpl);
     while (Date.now() < deadline) {
       try {
-        const restored = await getCardWiringStatus({ host, timeoutMs: 1200 });
+        const restored = await getCardWiringStatus({ ...wiring, timeoutMs: 1200 });
         if (restored.state === 'known-good' || restored.state === 'rolled-back') break;
       } catch { /* card may be between reboot and WiFi reconnect */ }
       await waitForRecoveryRetry(options.restartRetryMs ?? 500, options.setTimeoutImpl);
     }
   }
   if (safety?.raw?.discovery?.active) {
-    await discoverCardWiring({ stop: true }, { host, timeoutMs: options.timeoutMs || 3000 });
+    await discoverCardWiring({ stop: true }, { ...wiring, timeoutMs: options.timeoutMs || 3000 });
     const deadline = Date.now() + (options.restartTimeoutMs || 15000);
     await waitForRecoveryRetry(options.restartSettleMs ?? 800, options.setTimeoutImpl);
     while (Date.now() < deadline) {
       try {
-        const restored = await getCardWiringStatus({ host, timeoutMs: 1200 });
+        const restored = await getCardWiringStatus({ ...wiring, timeoutMs: 1200 });
         if (!restored.raw?.discovery?.active) break;
       } catch { /* rebooting */ }
       await waitForRecoveryRetry(options.restartRetryMs ?? 500, options.setTimeoutImpl);
     }
   }
-  if (isMixedContentBlocked()) {
+  if (useBridge) {
     try {
       const response = await sendCardBridgeRequest('recover-lights', payload, { host, timeoutMs: options.timeoutMs || 3000 });
       return await finishRecovery(host, payload, response, options);

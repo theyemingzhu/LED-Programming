@@ -151,3 +151,65 @@ test('F29: a post-restart recovery that answers ok but slow is not resent', asyn
     'the post-restart redeliver phase must send exactly one /api/recover-lights POST when the card answers ok within the 3000ms budget',
   );
 });
+
+// ---------------------------------------------------------------------------
+// W1-6: Recover lights takes the transport the caller has established. On an
+// https Studio page whose browser allows the plain-http card fetch, the link
+// is connected-direct; routing the recovery to a card-page bridge that was
+// never opened failed with "Open the card page once…" against a card that
+// was answering directly. With transport 'direct' every request — the
+// identity guard, the wiring-safety read, the recovery itself — goes over
+// fetch, and the bridge is never consulted.
+// ---------------------------------------------------------------------------
+
+function httpsBrowserWithIdentity() {
+  const values = new Map([
+    ['lw_card_identity_v1', JSON.stringify({ version: 1, id: 'lw-b0fe81f61b44' })],
+  ]);
+  return {
+    location: { protocol: 'https:' },
+    localStorage: {
+      getItem: name => values.get(name) ?? null,
+      setItem: (name, value) => values.set(name, value),
+      removeItem: name => values.delete(name),
+    },
+  };
+}
+
+test('recoverCardLights honours an explicit direct transport on an https page', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  const answer = (body, ok = true, status = 200) => ({ ok, status, json: async () => body, text: async () => JSON.stringify(body) });
+  const fetchImpl = async url => {
+    const path = new URL(String(url)).pathname;
+    urls.push(path);
+    if (path === '/api/firmware-info' || path === '/api/status') {
+      return answer({ app: 'Lightweaver', cardId: 'lw-b0fe81f61b44', runtimePhase: 'ready', commandReady: true });
+    }
+    if (path === '/api/wiring-status') return answer({ error: 'not found' }, false, 404);
+    if (path === '/api/recover-lights') {
+      return answer({ ok: true, accepted: true, diagnostics: { rendered: true, frameSubmitted: true, nonBlackPixels: 41, brightnessByte: 90 } });
+    }
+    return answer({ error: `unexpected ${path}` }, false, 404);
+  };
+  globalThis.window = httpsBrowserWithIdentity();
+  globalThis.fetch = fetchImpl;
+  try {
+    const response = await recoverCardLights(
+      { patternId: 'warm-white', brightness: 0.35, syncZones: true },
+      {
+        host: '192.168.18.70',
+        transport: 'direct',
+        fetchImpl,
+        autoDiscover: false,
+        reclaimFrameStreams: async () => {},
+      },
+    );
+    assert.equal(response.accepted, true);
+    assert.ok(urls.includes('/api/recover-lights'), `recovery must be posted directly; saw ${urls.join(', ')}`);
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.fetch = originalFetch;
+  }
+});

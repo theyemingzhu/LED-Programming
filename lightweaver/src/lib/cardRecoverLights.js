@@ -49,7 +49,7 @@ export async function recoverCardLightsVerified(look = {}, options = {}) {
   const response = await recoverImpl(look, recoverOptions);
   if (verifyReadback) {
     requireExactReadyCardStatus(
-      await readStatusImpl({ host: recoverOptions.host }),
+      await readStatusImpl({ host: recoverOptions.host, transport: recoverOptions.transport }),
       verifyReadback.expectedCardId,
     );
   }

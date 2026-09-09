@@ -79,3 +79,19 @@ test('verified recovery reads back the same host and requires the expected card'
     /A different card answered the hardware check/,
   );
 });
+
+// W1-6: the verifying read must take the same route as the send. Card Home
+// holds a connected-direct link on an https page whose browser allows the
+// plain-http card fetch; a read that re-guessed from the page protocol went
+// to a card-page bridge that was never opened.
+test('verified recovery reads status over the same transport as the send', async () => {
+  const reads = [];
+  await recoverCardLightsVerified({}, {
+    host: '192.168.18.70',
+    transport: 'direct',
+    verifyReadback: { expectedCardId: 'lw-recover-test' },
+    recoverImpl: async () => ({ ok: true }),
+    readStatusImpl: async options => { reads.push(options); return { ...READY_STATUS }; },
+  });
+  assert.deepEqual(reads, [{ host: '192.168.18.70', transport: 'direct' }]);
+});
