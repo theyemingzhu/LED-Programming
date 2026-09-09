@@ -785,6 +785,11 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .card-status-control.is-found-pair { background: var(--bg-sel); border-color: var(--accent-line); }
 .card-status-control.is-needs-project .card-status-dot,
 .card-status-control.is-found-pair .card-status-dot { background: var(--warn); }
+/* F32: still Connected — the dot stays, tinted amber, while the shared
+   journey reports the card's lights off. Same treatment as the two rules
+   above, not a new one: this chip status is also "actionable, not all good". */
+.card-status-control.is-connected-lights-off { background: var(--bg-sel); border-color: var(--accent-line); }
+.card-status-control.is-connected-lights-off .card-status-dot { background: var(--warn); }
 .card-status-copy {
   min-width: 0; max-width: 100%; overflow: hidden; flex: 1 1 auto;
   display: inline-flex; align-items: center; gap: 7px;

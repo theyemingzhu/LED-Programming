@@ -2324,32 +2324,16 @@ import { PatternPreview } from './PatternPreview.jsx';
     // card, instead. Content and single action are unchanged; only the
     // layout moved. See the render below (`pattern-gate-inline`).
 
-    // F16: the card can be connected and holding the exact project open here
-    // while its zones report every light off — nothing else on this screen
-    // says so. No action on this notice: the existing Recover lights button
-    // in the header (data-testid="recover-lights", styled primary above)
-    // already is the one recovery control; a second button here would be the
-    // second control the fix is explicitly not allowed to add.
-    useEffect(() => {
-      if (!cardBlackedOut) {
-        dismissNoticeKey('pattern-card-blackout');
-        return;
-      }
-      publishNotice({
-        // tone: 'info', not 'error' — role="alert" here would fire on the
-        // matrix's own connection-only assertion (card-state-matrix.spec.ts
-        // expectUnaided: no alert before the owner does anything), which
-        // covers the 'blackout' fixture too. The notice still persists
-        // (info's TTL is null, same as error's) and still carries the one
-        // recovery action via the styled-primary button above; only its
-        // urgency framing changes.
-        key: 'pattern-card-blackout',
-        testId: 'card-blackout-notice',
-        tone: 'info',
-        title: 'Lights are off on the card.',
-        source: 'pattern-blackout',
-      });
-    }, [cardBlackedOut]);
+    // F32 (2026-09-09): this used to publish a floating 'pattern-card-blackout'
+    // notice here — "Lights are off on the card." sitting over `.pm-target`,
+    // half hidden under the Connect dialog. Adrian: "yes it says it.. find
+    // better place to say it". The fact now lives in the footer connection
+    // chip (CardStatusControl.jsx), which is on every screen and already the
+    // one authority for card state, and its one click runs the same recovery
+    // this screen's toolbar button sends. The toolbar's Recover lights button
+    // (data-testid="recover-lights", styled primary below) is unchanged and
+    // stays the primary action while blacked out — only the floating notice
+    // is gone.
 
     return (
       <div className="screen">
