@@ -1,15 +1,4 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": [
-    {
-      "id": "fw-card-page",
-      "what": "The card page's blackout button now labels itself Lights on/off (and keeps aria-pressed in sync), and Edit in Studio hands the open Studio tab a message instead of reloading it (bridge v7).",
-      "why": "Bench/USB-only label and messaging fix with no wiring, safety, or protocol-breaking change — doesn't need a customer-facing signed release on its own.",
-      "added": "2026-09-08",
-      "source": {
-        "kind": "branch",
-        "branch": "round2/fw-card-page"
-      }
-    }
-  ]
+  "waiting": []
 }

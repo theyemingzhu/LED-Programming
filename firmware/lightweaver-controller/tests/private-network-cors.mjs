@@ -24,9 +24,17 @@ const openScriptStart = web.indexOf('String studioOpenScript()');
 const openScriptEnd = web.indexOf('String studioBridgeScript()', openScriptStart);
 assert.notEqual(openScriptStart, -1, 'firmware should define the card-page Studio opener');
 assert.notEqual(openScriptEnd, -1, 'firmware should bound the card-page Studio opener script');
-const emittedOpenScript = [...web.slice(openScriptStart, openScriptEnd).matchAll(/"(?:\\.|[^"\\])*"/g)]
-  .map(match => JSON.parse(match[0]))
-  .join('');
+// studioOpenScript() splices `script += bridgeVersion;` into the middle of its
+// otherwise-literal script (F23b, the open-studio message's version field) —
+// join the literal runs on each side of that splice with the real constant
+// value rather than treating the whole function body as one string of quotes.
+const openScriptBridgeVersionMatch = web.match(/constexpr int LW_BRIDGE_VERSION = (\d+);/);
+assert.ok(openScriptBridgeVersionMatch, 'LightweaverWeb.cpp must pin the bridge protocol version constant');
+const emittedOpenScript = web
+  .slice(openScriptStart, openScriptEnd)
+  .split('script += bridgeVersion;')
+  .map(part => [...part.matchAll(/"(?:\\.|[^"\\])*"/g)].map(match => JSON.parse(match[0])).join(''))
+  .join(openScriptBridgeVersionMatch[1]);
 const bridgeLaunchEnd = web.indexOf('"const lwBridgeReadyOrigin', bridgeStart);
 assert.notEqual(bridgeLaunchEnd, -1, 'bridge should validate its launch fragment before ready handling');
 const emittedBridgeLaunch = [...web.slice(bridgeStart, bridgeLaunchEnd).matchAll(/"(?:\\.|[^"\\])*"/g)]
@@ -357,13 +365,17 @@ assert.match(
   'the card page should give concise, actionable help when the Studio popup is blocked',
 );
 {
+  // F23b: a verified, bridge-launched opener must be MESSAGED, never
+  // reloaded — a reload discards whatever Studio had in memory.
   const openCalls = [];
   const alerts = [];
+  const posts = [];
   const opener = {
     closed: false,
     location: { href: 'https://led.mandalacodes.com/#screen=production' },
     focusCalls: 0,
     focus() { this.focusCalls += 1; },
+    postMessage(message, targetOrigin) { posts.push({ message, targetOrigin }); },
   };
   const context = {
     URL,
@@ -388,17 +400,29 @@ assert.match(
   assert.equal(prevented, 1);
   assert.equal(opener.focusCalls, 1,
     'a card page opened by Studio should focus that exact installer/commissioning tab');
-  assert.equal(opener.location.href,
+  assert.equal(posts.length, 1,
+    'commissioning handoff must message the verified opener instead of reloading it');
+  assert.equal(posts[0].targetOrigin, 'https://led.mandalacodes.com',
+    "the open-studio message must target the validated studioOrigin, never '*'");
+  assert.equal(posts[0].message.app, 'LightweaverCardBridge');
+  assert.equal(posts[0].message.type, 'open-studio');
+  assert.equal(posts[0].message.href,
     'https://led.mandalacodes.com/?cardBridge=1&cardHost=192.168.4.1#screen=layout',
-    'commissioning handoff must navigate the verified opener to the requested safe Layout route');
-  opener.location.href = 'https://led.mandalacodes.com/#screen=production';
+    'commissioning handoff must carry the requested safe Layout route in the posted message');
+  assert.equal(opener.location.href, 'https://led.mandalacodes.com/#screen=production',
+    'the verified opener tab must never be reloaded — its in-memory state must survive the handoff');
   assert.equal(context.openStudio({ preventDefault() { prevented += 1; } },
     'https://led.mandalacodes.com/?cardBridge=1&cardHost=192.168.4.1&editPattern=calm#screen=card&section=overview'), false);
   assert.equal(prevented, 2);
   assert.equal(opener.focusCalls, 2);
-  assert.equal(opener.location.href,
+  assert.equal(posts.length, 2);
+  assert.equal(posts[1].message.href,
     'https://led.mandalacodes.com/?cardBridge=1&cardHost=192.168.4.1&editPattern=calm#screen=card&section=overview',
-    'Edit in Studio must preserve the bounded pattern intent when navigating the verified opener');
+    'Edit in Studio must preserve the bounded pattern intent in the posted message');
+  assert.equal(posts[1].message.editPattern, 'calm',
+    'the posted message must carry the pattern id separately for Studio to feature-detect');
+  assert.equal(opener.location.href, 'https://led.mandalacodes.com/#screen=production',
+    'the opener tab must still never be reloaded on the second handoff');
   assert.deepEqual(openCalls, [],
     'a live Studio opener must be reused without opening or targeting another Studio window');
   assert.deepEqual(alerts, []);
