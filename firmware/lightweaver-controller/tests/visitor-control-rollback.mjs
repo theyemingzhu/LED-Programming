@@ -250,6 +250,8 @@ for (const [name, initial, next] of [
   const blackoutContext = {
     $: id => (id === 'off-btn' ? offBtn : null),
     controlPost: async () => ({ ok: true }),
+    // The page's zone helper: whole piece unless a Section is selected.
+    zoneField: () => ({}),
     showControlError() {},
     clearControlError() {},
   };
