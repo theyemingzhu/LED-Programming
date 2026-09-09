@@ -33,12 +33,14 @@ import {
   buildSavedLookPlaylistPreviewTargets,
 } from '../lib/playlistLivePreview.js';
 import {
+  CARD_PLAYLIST_ENTRY_LIMIT,
   CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isImplicitDefaultPatternPlaylist,
   makeComboPlaylistItem,
   makePatternPlaylistItem,
   normalizeCardPlaylist,
+  normalizePlaylistTiming,
   playlistContainsCombo,
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
@@ -54,6 +56,7 @@ import {
 } from '../lib/cardSectionSync.js';
 import {
   decideLiveControlProjectAuthority,
+  postPlaylistControlToCard,
   pushLivePreviewToCard,
   pushSectionPreviewToCard,
   resetLiveOutputOnCard,
@@ -162,6 +165,15 @@ function realPatternShape(patternId) {
       ? []
       : standaloneController?.playlist;
     const playlist = normalizeCardPlaylist(rawPlaylist, { savedLooks, allowEmpty: true });
+    // The playlist-wide "played on the card" settings — fade between looks,
+    // and whether the card auto-plays it — live at controls.playlist (see
+    // cardPlaylist.js's normalizePlaylistTiming doc comment for why they are
+    // stored there rather than as a bare standaloneController field).
+    const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
+    const enabledPlaylistCount = playlist.filter((item) => item.enabled !== false).length;
+    const playlistOverflow = Math.max(0, enabledPlaylistCount - CARD_PLAYLIST_ENTRY_LIMIT);
+    const [playlistControlPending, setPlaylistControlPending] = useState(false);
+    const [playlistControlError, setPlaylistControlError] = useState('');
 
     const runtimeBuild = useMemo(() => {
       try {
@@ -241,6 +253,33 @@ function realPatternShape(patternId) {
       next.splice(toIndex, 0, item);
       writePlaylist(next);
     };
+
+    // ── timed playlist: dwell (per row) + fade/enabled (playlist-wide) ────
+    // Changing any of the three marks the project edited the same way
+    // reordering does today — all three go through setStandaloneController,
+    // which is what the project's dirty-tracking watches (ProjectContext.jsx
+    // serializes the whole standaloneController on every change).
+    const setItemDwellSeconds = (itemId, rawValue) => {
+      const next = playlist.map((item) => (
+        item.id === itemId ? { ...item, dwellSeconds: rawValue } : item
+      ));
+      writePlaylist(next);
+    };
+
+    const setPlaylistTiming = (patch) => {
+      setStandaloneController((prev) => {
+        const current = prev || {};
+        return {
+          ...current,
+          controls: {
+            ...(current.controls || {}),
+            playlist: normalizePlaylistTiming({ ...playlistTiming, ...patch }),
+          },
+        };
+      });
+    };
+    const setPlaylistFadeSeconds = (rawSeconds) => setPlaylistTiming({ fadeMs: Math.round(Number(rawSeconds) * 1000) });
+    const setPlaylistEnabled = (nextEnabled) => setPlaylistTiming({ enabled: nextEnabled === true });
 
     React.useEffect(() => {
       const itemId = pendingReorderFocus.current;
@@ -382,6 +421,23 @@ function realPatternShape(patternId) {
 
     const retryLatestPreview = () => {
       if (latestLiveItem.current) void setLiveItem(latestLiveItem.current);
+    };
+
+    // ── timed playlist transport (play/pause/next/previous on the card) ───
+    // The card's own status (polled the same way cardLink already is,
+    // upstream of this screen) is the source of truth for what the playlist
+    // is doing — this only sends the verb and surfaces a failure.
+    const sendPlaylistControl = async (verb) => {
+      if (recoveryPendingRef.current || playlistControlPending) return;
+      setPlaylistControlPending(true);
+      setPlaylistControlError('');
+      try {
+        await postPlaylistControlToCard(verb, { host });
+      } catch (error) {
+        setPlaylistControlError(error?.message || 'The card did not confirm the playlist command.');
+      } finally {
+        setPlaylistControlPending(false);
+      }
     };
 
     const openConnectionCenter = useCallback(() => {
@@ -703,6 +759,28 @@ function realPatternShape(patternId) {
       .map((p) => realPatternShape(p.id));
     const mixesRemaining = savedLooks.some((look) => !playlistContainsCombo(playlist, look.id));
 
+    // ── timed playlist: what the card itself reports right now ────────────
+    // cardLink.readiness is the same normalized envelope this screen already
+    // reads playbackReady/cardId from — polled upstream, not by this screen,
+    // so reading .playlist off it here needs no second poller.
+    const cardPlaylistStatus = connected ? cardLink?.readiness?.playlist : null;
+    const cardPlaylistEntryLabel = (() => {
+      if (!cardPlaylistStatus?.patternId) return '';
+      const matched = playlist.find((item) => item.id === cardPlaylistStatus.patternId);
+      return matched?.label || cardPlaylistStatus.patternId;
+    })();
+    const playlistStatusLine = (() => {
+      if (!cardPlaylistStatus) return '';
+      if (!cardPlaylistStatus.configured) return 'Playlist not on the card yet, Install to send it.';
+      const label = cardPlaylistEntryLabel || '—';
+      if (cardPlaylistStatus.playing) {
+        const position = cardPlaylistStatus.entryIndex === null ? '' : `entry ${cardPlaylistStatus.entryIndex + 1} of ${cardPlaylistStatus.entryCount}, `;
+        const remaining = cardPlaylistStatus.remainingSeconds === null ? '' : `, ${cardPlaylistStatus.remainingSeconds} s left`;
+        return `Playing ${position}${label}${remaining}`;
+      }
+      return `Paused on ${label}`;
+    })();
+
     // ── "On the card now": three figures, each from state already here ────
     // Nothing on this panel is inferred. The card's readiness envelope does
     // NOT report a playlist length or a playing look (see normalizeCardReadiness
@@ -871,6 +949,28 @@ function realPatternShape(patternId) {
                   <span className="pl-count" data-testid="playlist-physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
                 </div>
 
+                {connected && cardPlaylistStatus &&
+                  <div className="pl-transport" data-testid="playlist-card-transport">
+                    <span className="pl-transport-status" data-testid="playlist-card-transport-status">{playlistStatusLine}</span>
+                    {cardPlaylistStatus.configured &&
+                      <div className="pl-transport-actions">
+                        <button
+                          className="btn primary"
+                          disabled={playlistControlPending || recoveryPending}
+                          onClick={() => sendPlaylistControl(cardPlaylistStatus.playing ? 'pause' : 'play')}
+                        >
+                          {cardPlaylistStatus.playing ? 'Pause' : 'Play'}
+                        </button>
+                        <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('previous')}>Previous</button>
+                        <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('next')}>Next</button>
+                      </div>
+                    }
+                    {playlistControlError &&
+                      <p className="pl-transport-error" role="alert" data-testid="playlist-card-transport-error">{playlistControlError}</p>
+                    }
+                  </div>
+                }
+
                 <div className="pl-list">
                   {/* The list is a module, so it says what it is and how many, in
                       its own bar. The count used to float in the card-address row
@@ -880,6 +980,38 @@ function realPatternShape(patternId) {
                     <span className="m">{playlist.length} looks · dial press advances</span>
                     <span className="line" />
                   </div>
+                  <div className="pl-timing">
+                    <label className="pl-timing-field">
+                      <span className="sf-l">Fade</span>
+                      <input
+                        type="number"
+                        className="pm-input pl-timing-input"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={(playlistTiming.fadeMs / 1000).toFixed(1)}
+                        onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
+                        aria-label="Fade seconds between looks"
+                        data-testid="playlist-fade-seconds"
+                      />
+                      <span className="pl-timing-unit">s</span>
+                    </label>
+                    <label className="pl-timing-switch">
+                      <button
+                        type="button"
+                        aria-pressed={playlistTiming.enabled}
+                        className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")}
+                        onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
+                        data-testid="playlist-enabled-toggle"
+                      />
+                      <span>Play on the card</span>
+                    </label>
+                  </div>
+                  {playlistOverflow > 0 &&
+                    <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
+                      Only the first {CARD_PLAYLIST_ENTRY_LIMIT} looks reach the card. {playlistOverflow} more {playlistOverflow === 1 ? 'is' : 'are'} in the order but will not play there.
+                    </p>
+                  }
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>
@@ -932,6 +1064,21 @@ function realPatternShape(patternId) {
                           <span>{item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
                         </div>
                         <div className="pl-actions">
+                          <label className="pl-dwell">
+                            <span className="sf-l">Dwell</span>
+                            <input
+                              type="number"
+                              className="pm-input pl-dwell-input"
+                              min="1"
+                              max="3600"
+                              step="1"
+                              value={item.dwellSeconds}
+                              onChange={(e) => setItemDwellSeconds(id, e.target.value)}
+                              aria-label={`Dwell seconds for ${item.label}`}
+                              data-testid={`playlist-dwell-${id}`}
+                            />
+                            <span className="pl-dwell-unit">s</span>
+                          </label>
                           <button className={"plbtn" + (live === id ? " on" : "")} aria-pressed={live === id} disabled={recoveryPending} onClick={() => setLiveItem(item)}>Live</button>
                           <button className="plbtn" onClick={() => dup(i)}>Copy</button>
                           <button

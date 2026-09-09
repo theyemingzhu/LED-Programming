@@ -89,12 +89,122 @@
   border-color: var(--border-hair);
   background: var(--bg-panel);
 }
-.pm .pl-hostrow .sf-l {
+.pm .pl-hostrow .sf-l,
+.pm .pl-timing .sf-l,
+.pm .pl-dwell .sf-l {
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-lo);
+}
+
+/* ── Timed playlist: dwell (per row) and the playlist-wide transport ─────── */
+
+/* Dwell lives INSIDE .pl-actions (v3-playlist-extra.css already makes that
+   container flex-wrap and shrink to fit any width, including the 640px and
+   pointer:coarse row layouts) rather than as a new .pl-row grid column —
+   .pl-row's own column widths are owned by v3-playlist-extra.css (76px/88px
+   index columns for mouse vs touch) and re-declaring them here would silently
+   re-fight that touch-target sizing every time it changes. */
+.pm .pl-dwell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-right: 4px;
+}
+.pm .pl-dwell-input {
+  width: 52px;
+  height: 30px;
+  padding: 0 6px;
+  text-align: right;
+  font-family: var(--font-mono);
+  flex: 0 0 auto;
+}
+.pm .pl-dwell-unit {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Fade + "Play on the card" sit in the playlist's own header bar, not per
+   row — they describe how the WHOLE order behaves on the card, the same
+   altitude as the "N looks · dial press advances" line beside them. */
+.pm .pl-timing {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin: 0 -14px 4px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-hair);
+}
+.pm .pl-timing-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pm .pl-timing-input {
+  width: 56px;
+  height: 30px;
+  padding: 0 6px;
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.pm .pl-timing-unit {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.pm .pl-timing-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-mid);
+}
+.pm .pl-timing-overflow {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border-hair);
+}
+
+/* The card's own transport — status line plus play/pause/next/previous.
+   Same hairline-panel idiom as the card-address row directly above it, so
+   the two read as one column of "about the card" fields. */
+.pm .pl-transport {
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border-hair);
+  background: var(--bg-panel);
+}
+.pm .pl-transport-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-mid);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pm .pl-transport-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pm .pl-transport-error {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
 }
 
 /* The index is a machined disc, and the look the card boots into is the one

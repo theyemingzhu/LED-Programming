@@ -6,10 +6,12 @@ import { applySavedLookToPatchBoard, normalizeSavedLooks } from './sectionLookMo
 import { chainAddressCount } from './patchBoard.js';
 import { compileWiring } from './wiringCompiler.js';
 import {
+  buildCardPlaylistConfig,
   derivePlaylistLookIds,
   isDefaultPatternCycle,
   isImplicitDefaultPatternPlaylist,
   normalizeCardPlaylist,
+  normalizePlaylistTiming,
 } from './cardPlaylist.js';
 
 export function totalProjectPixels(strips = []) {
@@ -75,6 +77,12 @@ export function buildCardRuntimePackageFromProject({
       ...legacyCycleIds,
     ],
   });
+  // The playlist-wide "played on the card" settings (fadeMs, whether the card
+  // auto-plays it) live at controls.playlist — see cardPlaylist.js's
+  // normalizePlaylistTiming doc comment for why they are stored there rather
+  // than as a bare standaloneController field.
+  const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
+  const playlistConfig = buildCardPlaylistConfig(playlist, savedLooks, playlistTiming);
   const zones = compiled?.zones || (patchBoard ? patchBoardToZones(patchBoard, strips) : []);
   const runtimeZones = zones.length ? applyVisualLookDefaultsToZones(zones, patchBoard, visualLook) : [{
     id: 'full-piece',
@@ -143,6 +151,7 @@ export function buildCardRuntimePackageFromProject({
     zones: runtimeZones,
     kaleidoscopeMappings: compiled?.kaleidoscopeMappings,
     syncZones: runtimeZones.length <= 1,
+    playlist: playlistConfig,
   });
 }
 
