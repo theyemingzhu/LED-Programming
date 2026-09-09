@@ -685,6 +685,22 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 }
 .sb-freshness .sb-dot.warn { background: var(--warn); box-shadow: none; }
 .sb-freshness.is-unknown { color: var(--text-lo); }
+
+/* F39 — one Studio tab per browser. The quiet tab renders only this: a
+   full-screen, low-stimulus notice, no card status, no controls beneath it. */
+.studio-tab-notice {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; background: var(--bg-app); color: var(--text-hi);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+.studio-tab-notice p { margin: 0; font-size: 15px; color: var(--text-mid); }
+.studio-tab-notice button {
+  min-height: 36px; padding: 0 18px; border-radius: 8px;
+  border: 1px solid var(--accent-line); background: var(--bg-sel); color: var(--accent-hi);
+  font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.studio-tab-notice button:hover { background: var(--bg-elev-2); color: var(--text-hi); }
 .sb-right { display: flex; align-items: center; gap: 0; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
 .sb-right .sb-fact .fv { color: var(--text-lo); }
 .sb-right .kbd { color: var(--text-faint); }

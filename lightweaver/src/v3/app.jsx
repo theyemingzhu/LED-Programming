@@ -92,6 +92,7 @@ import {
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { clearScreenFailure, rememberScreenFailure } from '../lib/screenRecoveryDiagnostics.js';
 import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
+import { getStudioTabLock } from '../lib/studioTabLock.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
@@ -486,7 +487,15 @@ function freshnessPresentation(runningRelease, freshness) {
   if (freshness.status === 'current') return { dot: 'on', title: `Studio is current. ${running}` };
   if (freshness.status === 'update-ready') {
     const target = `Build ${freshness.buildNumber} · revision ${freshness.buildId}.`;
-    return { dot: 'warn', title: `Studio ${running} Update ready: ${target} Refresh waits for the active card operation to finish. Reason: ${freshness.reason || 'operation-active'}.` };
+    // F39: this tab reloads itself the moment it is idle — no card
+    // operation, no dialog open, no edit in the last few seconds. Before 60
+    // seconds of never finding that moment, the wording still names what it
+    // is waiting on; after 60 seconds it stops explaining why and just says
+    // what happens next.
+    const waiting = freshness.reason === 'idle-wait'
+      ? 'New Studio ready, reload when you pause.'
+      : `Reloads automatically once idle. Reason: ${freshness.reason || 'operation-active'}.`;
+    return { dot: 'warn', title: `Studio ${running} Update ready: ${target} ${waiting}` };
   }
   if (freshness.status === 'unknown') return { dot: 'warn', title: `Studio freshness could not be verified. Running ${running} Reason: ${freshness.reason || 'unknown'}.` };
   return { dot: 'off', title: `Checking the current production Studio build. Running ${running}` };
@@ -675,6 +684,9 @@ function applyStoredStudioTheme() {
 }
 
 const DISABLED_OFFLINE_UPDATE_STATE = Object.freeze({ status: 'disabled', registration: null });
+// F39: how long a project snapshot has to sit unchanged before a superseded
+// Studio tab treats it as "no edit in progress" and reloads.
+const STUDIO_FRESHNESS_EDIT_IDLE_MS = 5_000;
 const subscribeDisabledOfflineUpdate = () => () => {};
 
 function Shell({ offlineUpdateController = null }) {
@@ -746,6 +758,13 @@ function Shell({ offlineUpdateController = null }) {
   const freshnessMonitorRef = useRef(null);
   const flushProjectAutosaveRef = useRef(flushProjectAutosave);
   flushProjectAutosaveRef.current = flushProjectAutosave;
+  // F39: the freshness monitor's isEditIdle() reads these — a snapshot
+  // changing is "an edit just happened", and STUDIO_FRESHNESS_EDIT_IDLE_MS
+  // (5s) has to pass with no further change before a superseded tab reloads.
+  const serializeProjectRef = useRef(serializeProject);
+  serializeProjectRef.current = serializeProject;
+  const lastProjectSnapshotRef = useRef('');
+  const lastProjectEditAtRef = useRef(0);
   const cloudLibrary = useCloudLibrary();
   const browserAssociationRef = useRef(null);
   const latestProjectSaveStateRef = useRef(null);
@@ -872,14 +891,55 @@ function Shell({ offlineUpdateController = null }) {
     return () => window.removeEventListener(STUDIO_HARDWARE_OPERATION_EVENT, onHardwareOperationActive);
   }, []);
   useEffect(() => {
+    // F39: "idle" for the purpose of an automatic reload — no dialog on
+    // screen, and no project edit in roughly the last 5 seconds. Polled by
+    // studioFreshness's own idle-watch loop rather than driven by events, so
+    // it needs no wiring beyond these two reads.
+    const hasOpenDialog = () => {
+      const nodes = document.querySelectorAll('[role="dialog"]');
+      for (const node of nodes) {
+        if (node.hidden) continue;
+        const style = window.getComputedStyle?.(node);
+        if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
+        if (node.getClientRects?.().length === 0) continue;
+        return true;
+      }
+      return false;
+    };
+    const isEditIdle = () => {
+      // serializeProject() returns a fresh object every call — comparing by
+      // reference would never converge (every tick looks like a new edit).
+      // Stringify so the comparison is by content.
+      let snapshot = '';
+      try { snapshot = JSON.stringify(serializeProjectRef.current()); } catch { snapshot = ''; }
+      const at = Date.now();
+      if (snapshot !== lastProjectSnapshotRef.current) {
+        lastProjectSnapshotRef.current = snapshot;
+        lastProjectEditAtRef.current = at;
+        return false;
+      }
+      return (at - lastProjectEditAtRef.current) >= STUDIO_FRESHNESS_EDIT_IDLE_MS;
+    };
     const monitor = createStudioFreshnessMonitor({
       release: runningStudioReleaseRef.current,
       fetchImpl: window.fetch.bind(window),
       flushAutosave: () => flushProjectAutosaveRef.current(),
+      hasOpenDialog,
+      isEditIdle,
       reload: () => {
         const testReload = window.__LW_STUDIO_RELOAD_FOR_TEST__;
-        if (typeof testReload === 'function') testReload();
-        else window.location.reload();
+        if (typeof testReload === 'function') { testReload(); return; }
+        // F39: tell a waiting service worker to take over before reloading —
+        // activateUpdate() posts SKIP_WAITING and reloads itself once the new
+        // worker actually controls the page. If there is nothing waiting (or
+        // its own guards refuse), fall through to a plain reload; the fresh
+        // release marker we just verified still lands via the network-first
+        // navigation fetch either way.
+        const activated = offlineUpdateController?.getState?.().registration?.waiting
+          ? offlineUpdateController.activateUpdate()
+          : false;
+        if (activated) return;
+        window.location.reload();
       },
       storage: window.sessionStorage,
       locationOrigin: window.location.origin,
@@ -901,9 +961,13 @@ function Shell({ offlineUpdateController = null }) {
     };
   }, []);
   useEffect(() => {
-    void freshnessMonitorRef.current?.setOperationActive(
-      installActive || hardwareOperationActive || commissioningActive,
-    );
+    const busy = installActive || hardwareOperationActive || commissioningActive;
+    void freshnessMonitorRef.current?.setOperationActive(busy);
+    // F39: the same signal that defers a superseded tab's reload also holds
+    // the one-Studio-tab lock — a running USB install, card write, or
+    // commissioning flow refuses a takeover request instead of being
+    // quieted mid-operation.
+    getStudioTabLock().setBusy(busy);
   }, [commissioningActive, hardwareOperationActive, installActive]);
   useEffect(() => {
     applyStoredStudioTheme();
@@ -2005,13 +2069,57 @@ function Shell({ offlineUpdateController = null }) {
   );
 }
 
+// F39: one active Studio tab per browser. A quiet tab renders only this
+// notice and never mounts ProjectProvider/CloudLibraryProvider/Shell — every
+// card poll, bridge launch and write lives inside those, so nothing left
+// unmounted means nothing left running. The card's own page and the card
+// bridge popup are a different origin entirely (buildCardBridgeLaunchUrl
+// points at the card host), so they never load this module and are outside
+// the lock structurally, not by a special case here.
+function StudioTabGate({ children }) {
+  const lockRef = useRef(null);
+  const [state, setState] = useState({ status: 'pending', reason: '', busy: false });
+
+  useEffect(() => {
+    // Shared with Shell (see the setBusy effect near the freshness monitor's
+    // setOperationActive effect) — the composed install/hardware-operation/
+    // commissioning "busy" signal is Shell-local state, and Shell only
+    // mounts when this gate is active, so Shell is where setBusy is actually
+    // called; this effect only owns start/stop/subscribe.
+    const lock = getStudioTabLock();
+    lockRef.current = lock;
+    const unsubscribe = lock.subscribe(setState);
+    lock.start();
+    setState(lock.getState());
+    return () => {
+      unsubscribe();
+      lock.stop();
+      lockRef.current = null;
+    };
+  }, []);
+
+  if (state.status === 'quiet') {
+    const moved = state.reason === 'moved';
+    return (
+      <div className="studio-tab-notice" role="alert" data-testid="studio-tab-notice" data-reason={state.reason || ''}>
+        <p>{moved ? 'Studio moved to another tab.' : 'Studio is open in another tab.'}</p>
+        <button type="button" onClick={() => lockRef.current?.requestTakeover()}>Use this tab</button>
+      </div>
+    );
+  }
+  if (state.status !== 'active') return null;
+  return children;
+}
+
 function App({ projectRepository = null, initialProjectEnvelope = null, offlineUpdateController = null }) {
   return (
-    <ProjectProvider repository={projectRepository} initialProjectEnvelope={initialProjectEnvelope}>
-      <CloudLibraryProvider>
-        <Shell offlineUpdateController={offlineUpdateController} />
-      </CloudLibraryProvider>
-    </ProjectProvider>
+    <StudioTabGate>
+      <ProjectProvider repository={projectRepository} initialProjectEnvelope={initialProjectEnvelope}>
+        <CloudLibraryProvider>
+          <Shell offlineUpdateController={offlineUpdateController} />
+        </CloudLibraryProvider>
+      </ProjectProvider>
+    </StudioTabGate>
   );
 }
 

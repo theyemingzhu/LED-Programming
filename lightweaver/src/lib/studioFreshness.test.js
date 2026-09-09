@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import {
+  STUDIO_FRESHNESS_IDLE_DEADLINE_MS,
+  STUDIO_FRESHNESS_IDLE_WATCH_MS,
   STUDIO_FRESHNESS_POLL_MS,
   STUDIO_FRESHNESS_TIMEOUT_MS,
   STUDIO_REFRESH_ATTEMPT_KEY,
@@ -119,6 +121,9 @@ function monitorHarness(options = {}) {
       return new AbortController().signal;
     }),
     timers,
+    ...(options.hasOpenDialog ? { hasOpenDialog: options.hasOpenDialog } : {}),
+    ...(options.isEditIdle ? { isEditIdle: options.isEditIdle } : {}),
+    ...(options.now ? { now: options.now } : {}),
     ...browser,
   });
   return { monitor, running, storage, calls, timers, ...browser };
@@ -454,4 +459,93 @@ test('a matching production build clears stale reload-loop protection', async ()
   await harness.monitor.checkNow();
   assert.equal(storage.getItem(STUDIO_REFRESH_ATTEMPT_KEY), null);
   assert.equal(harness.monitor.getState().status, 'current');
+});
+
+test('F39: a superseded tab waits for an open dialog to close before reloading', async () => {
+  const running = release('a');
+  const remote = release('b');
+  let dialogOpen = true;
+  let reloads = 0;
+  const harness = monitorHarness({
+    release: running,
+    fetchImpl: readyReleaseFetch(remote),
+    reload: () => { reloads += 1; },
+    hasOpenDialog: () => dialogOpen,
+  });
+  await harness.monitor.checkNow();
+  assert.equal(reloads, 0);
+  assert.equal(harness.monitor.getState().status, 'update-ready');
+  assert.equal(harness.monitor.getState().reason, 'awaiting-idle');
+
+  await harness.timers.advance(STUDIO_FRESHNESS_IDLE_WATCH_MS);
+  assert.equal(reloads, 0, 'still open, no reload yet');
+
+  dialogOpen = false;
+  await harness.timers.advance(STUDIO_FRESHNESS_IDLE_WATCH_MS);
+  assert.equal(reloads, 1);
+  harness.monitor.stop();
+});
+
+test('F39: a superseded tab waits out an in-progress edit, then reloads once idle', async () => {
+  const running = release('a');
+  const remote = release('b');
+  let editing = true;
+  let reloads = 0;
+  const harness = monitorHarness({
+    release: running,
+    fetchImpl: readyReleaseFetch(remote),
+    reload: () => { reloads += 1; },
+    isEditIdle: () => !editing,
+  });
+  await harness.monitor.checkNow();
+  assert.equal(reloads, 0);
+
+  await harness.timers.advance(STUDIO_FRESHNESS_IDLE_WATCH_MS * 3);
+  assert.equal(reloads, 0, 'edit still in progress');
+
+  editing = false;
+  await harness.timers.advance(STUDIO_FRESHNESS_IDLE_WATCH_MS);
+  assert.equal(reloads, 1);
+  harness.monitor.stop();
+});
+
+test('F39: after 60 seconds never idle, the surfaced reason switches to idle-wait', async () => {
+  const running = release('a');
+  const remote = release('b');
+  let clock = 0;
+  const harness = monitorHarness({
+    release: running,
+    fetchImpl: readyReleaseFetch(remote),
+    hasOpenDialog: () => true,
+    now: () => clock,
+  });
+  await harness.monitor.checkNow();
+  assert.equal(harness.monitor.getState().reason, 'awaiting-idle');
+
+  clock += STUDIO_FRESHNESS_IDLE_DEADLINE_MS + 1;
+  await harness.timers.advance(STUDIO_FRESHNESS_IDLE_WATCH_MS);
+  assert.equal(harness.monitor.getState().status, 'update-ready');
+  assert.equal(harness.monitor.getState().reason, 'idle-wait');
+  harness.monitor.stop();
+});
+
+test('F39: a hardware operation still takes priority over dialog/edit reasons', async () => {
+  const running = release('a');
+  const remote = release('b');
+  let reloads = 0;
+  const harness = monitorHarness({
+    release: running,
+    fetchImpl: readyReleaseFetch(remote),
+    reload: () => { reloads += 1; },
+  });
+  await harness.monitor.setOperationActive(true);
+  await harness.monitor.checkNow();
+  assert.equal(harness.monitor.getState().reason, 'operation-active');
+
+  await harness.timers.advance(STUDIO_FRESHNESS_IDLE_WATCH_MS * 2);
+  assert.equal(reloads, 0);
+
+  await harness.monitor.setOperationActive(false);
+  assert.equal(reloads, 1);
+  harness.monitor.stop();
 });
