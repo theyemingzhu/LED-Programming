@@ -23,8 +23,8 @@ Survey: [Four Sections, One Strip](https://claude.ai/code/artifact/129b9bf9-75d8
 |---|---|---|---|---|
 | 1 | Playlist previews stop pushing config (and rebooting) on wired projects; zone-identity node specs join the PR lane | S1, Studio | playlistLivePreview.js, lw-playlist.jsx, playlist-live-preview.mjs, test.yml, package.json | Shipped 2026-09-09, PR #248, Studio build 1708 |
 | 2 | "Divide into N" on Layout (41 into 4 gives 11, 10, 10, 10), cap 12 | S1b, Studio | stripSplit.js, DrawModePanel.jsx, useLayoutStrips.js, layout-divide.spec.ts | Shipped 2026-09-09, PR #251, Studio build 1714 |
-| 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | PR #252 merged 2026-09-09 as release 1.1.33 (carries the parked card-page change); signed release + hardware check pending |
-| 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | In PR #252, screenshots checked at 390px |
+| 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | Shipped 2026-09-09, PR #252, firmware 1.1.33 build 1724 (carries the parked card-page change); hardware behaviour unverified until a card takes the update |
+| 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | Shipped with 1.1.33, screenshots checked at 390px; unverified on a real phone |
 | S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | Merged 2026-09-09, PR #250 (114 net lines removed) |
 | 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | F2 (firmware, 1.1.34) and S3 (Studio) dispatched 2026-09-09 in parallel against the contract below |
 
