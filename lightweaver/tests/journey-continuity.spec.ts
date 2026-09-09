@@ -508,29 +508,42 @@ test('[J16-blackout] a card-side blackout is surfaced on Card Home and Patterns,
     page.getByTestId('recover-lights'),
     'Card Home must offer Recover lights as the action for the blackout it just reported',
   ).toBeVisible();
+  // F32: the footer chip is on every screen and is the one place the fact
+  // now lives beside the screen's own banner — Card Home keeps the banner
+  // above AND must show the same thing through the chip.
+  const chip = page.getByTestId('card-link-status');
+  await expect(
+    chip,
+    'the footer chip must say the same thing Card Home\'s own banner says, from the same shared journey',
+  ).toHaveText('Connected · Lights off', { timeout: CONNECT_BUDGET_MS });
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J16 patterns entry');
+  // F32: the floating Patterns notice is gone — the footer chip is the one
+  // place this fact lives on Patterns now (the toolbar Recover lights button
+  // stays, unaffected, and is covered elsewhere: tests/patterns-v3.spec.ts).
   await expect(
     page.getByTestId('card-blackout-notice'),
-    'Patterns must say the same thing Card Home said, from the same shared journey',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  const recoverButton = page.getByTestId('recover-lights');
-  await expect(recoverButton).toBeVisible();
+    'the floating Patterns notice must be gone; Card Home\'s own banner is a different screen and is untouched',
+  ).toHaveCount(0);
+  await expect(
+    chip,
+    'Patterns must say the lights are off through the same footer chip Card Home used',
+  ).toHaveText('Connected · Lights off', { timeout: CONNECT_BUDGET_MS });
 
-  await recoverButton.click();
+  await chip.click();
 
   await expect
     .poll(() => card.requests.some(entry => entry.path === '/api/recover-lights'), {
-      message: 'Recover lights must send the exact request the card accepts to clear a blackout',
+      message: 'Clicking the footer chip while the card is blacked out must send the exact request the card accepts to clear it',
       timeout: CONNECT_BUDGET_MS,
     })
     .toBe(true);
 
   await expect(
-    page.getByTestId('card-blackout-notice'),
-    'once the card reports blackout false, the message must go away without a further click',
-  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+    chip,
+    'once the card reports blackout false, the chip must read Connected again without a further click',
+  ).toHaveText('Connected', { timeout: CONNECT_BUDGET_MS });
 });
 
 // ---------------------------------------------------------------------------
@@ -564,13 +577,23 @@ test('[J22-blackout-drifted] a card-side blackout is reported for the open proje
     page.getByTestId('recover-lights'),
     'Card Home must offer an ENABLED Recover lights action for the blackout it just reported, wiring drift or not',
   ).toBeEnabled();
+  // F32: this fixture's wiring has drifted since install, so the footer
+  // chip's OWN state is "Save to card" — that precedence is deliberate
+  // (CardStatusControl.jsx: needing a save is more pressing than the
+  // lights, and the chip stays one status) and unrelated to the blackout
+  // fact this test is about, so it is not asserted here. Card Home's own
+  // banner above already proved the blackout is reported and recoverable.
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J22 patterns entry');
+  // F32: the floating Patterns notice is gone. It is not replaced by the
+  // footer chip in THIS fixture (see the "Save to card" note above); Card
+  // Home's own banner and this screen's toolbar button (below) remain the
+  // detection and recovery surfaces for a card whose wiring has drifted.
   await expect(
     page.getByTestId('card-blackout-notice'),
-    'Patterns must say the same thing Card Home said, from the same shared journey',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+    'the floating Patterns notice must be gone; Card Home\'s own banner is a different screen and is untouched',
+  ).toHaveCount(0);
   await expect(
     page.getByTestId('recover-lights'),
     'Patterns must offer an ENABLED Recover lights action too — recovering the lights is not a pattern write and must not wait on the install-authorization gate',
@@ -578,10 +601,10 @@ test('[J22-blackout-drifted] a card-side blackout is reported for the open proje
 
   // Recover lights from Card Home, where the action carries no install/write
   // authorization gate (lw-card.jsx's recoverCardBlackout calls
-  // recoverCardLightsVerified directly). Patterns' own button is asserted
-  // visible and ENABLED above but is not clicked here — [J22b-patterns-recover]
-  // below is the dedicated coverage for clicking it on Patterns; keeping this
-  // test's own recovery on Card Home keeps this test's assertions unchanged.
+  // recoverCardLightsVerified directly). Patterns' own toolbar button is
+  // asserted visible and ENABLED above but is not clicked here —
+  // [J22b-patterns-recover] below is the dedicated coverage for clicking it
+  // on Patterns.
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J22 back to card home to recover');
   const recoverButton = page.getByTestId('recover-lights');
@@ -629,10 +652,15 @@ test('[J22b-patterns-recover] Recover lights on Patterns clears a drifted-wiring
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J22b patterns entry');
+  // F32: the floating Patterns notice is gone. This fixture's wiring has
+  // drifted since install, so the footer chip's own state is "Save to card"
+  // (CardStatusControl.jsx's deliberate precedence — see [J22-blackout-drifted]),
+  // unrelated to the blackout this test is about; the toolbar Recover lights
+  // button below remains the detection+recovery surface here.
   await expect(
     page.getByTestId('card-blackout-notice'),
-    'Patterns must say the lights are off on the card even though the open project has an unsaved wiring edit since install',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+    'the floating Patterns notice must be gone',
+  ).toHaveCount(0);
 
   const patternsRecoverButton = page.getByTestId('recover-lights');
   await expect(patternsRecoverButton).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
@@ -644,11 +672,6 @@ test('[J22b-patterns-recover] Recover lights on Patterns clears a drifted-wiring
       timeout: CONNECT_BUDGET_MS,
     })
     .toBe(true);
-
-  await expect(
-    page.getByTestId('card-blackout-notice'),
-    'once the card reports blackout false, the message must go away without a further click',
-  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
 
   await expect(
     page.getByTestId('pattern-gate-notice'),
@@ -694,6 +717,11 @@ test('[J30-blackout-out-of-band] a blackout switched on the card\'s own page rea
     page.getByTestId('card-blackout-notice'),
     'sanity: the card has not been blacked out yet, so Card Home must not report one',
   ).toHaveCount(0);
+  const chip = page.getByTestId('card-link-status');
+  await expect(
+    chip,
+    'sanity: the footer chip must not say lights-off before the card ever went dark',
+  ).toHaveText('Connected', { timeout: CONNECT_BUDGET_MS });
 
   // The card's OWN page flips its global blackout. No Studio request is
   // involved — nothing in this line touches cardLink or the shared journey.
@@ -707,20 +735,30 @@ test('[J30-blackout-out-of-band] a blackout switched on the card\'s own page rea
     page.getByTestId('recover-lights'),
     'Card Home must offer Recover lights the moment it reports the blackout',
   ).toBeVisible();
+  await expect(
+    chip,
+    'the footer chip must catch the same out-of-band blackout Card Home\'s banner just caught',
+  ).toHaveText('Connected · Lights off', { timeout: 20000 });
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J30 patterns entry');
+  // F32: the floating Patterns notice is gone — the footer chip is where
+  // Patterns shows this now.
   await expect(
     page.getByTestId('card-blackout-notice'),
+    'the floating Patterns notice must be gone',
+  ).toHaveCount(0);
+  await expect(
+    chip,
     'Patterns must read the same already-fresh evidence Card Home caught, not re-cache a stale answer of its own',
-  ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  ).toHaveText('Connected · Lights off', { timeout: CONNECT_BUDGET_MS });
 
   // Clear it out of band too — the same detection must work in both
   // directions, per the fix (a change in either byte, either direction).
   card.outOfBandBlackout(false);
 
   await expect(
-    page.getByTestId('card-blackout-notice'),
+    chip,
     'clearing the blackout out of band must also reach Studio within one status poll',
-  ).toHaveCount(0, { timeout: 20000 });
+  ).toHaveText('Connected', { timeout: 20000 });
 });

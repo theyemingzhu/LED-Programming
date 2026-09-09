@@ -9,6 +9,7 @@ import { CardConnectionCenter } from '../components/card/CardConnectionCenter.js
 import { CardControlDrawer } from '../components/card/CardControlDrawer.jsx';
 import { cardEditIntentForPattern } from '../lib/cardCustomerControlContract.js';
 import { CardStatusControl } from '../components/card/CardStatusControl.jsx';
+import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import { useFirmwareReleaseIdentity } from '../hooks/useFirmwareReleaseIdentity.js';
 import { ProjectSaveDialog } from '../components/projects/TopBarProjectDialogs.jsx';
 import { OPEN_PROJECTS_PANEL_EVENT, ProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
@@ -58,7 +59,7 @@ import {
   retryAssociationHandoff,
 } from '../lib/projectAssociation.js';
 import { runProjectSwitchSaveBarrier } from '../lib/projectSwitchSaveBarrier.js';
-import { CardActionsProvider } from './CardActionsProvider.jsx';
+import { CardActionsProvider, useCardActions } from './CardActionsProvider.jsx';
 import { formatBrowserProjectSaveLabel } from '../lib/studioActionStatus.js';
 import {
   CARD_COMMISSIONING_CHANGED_EVENT,
@@ -555,7 +556,34 @@ function OfflineStatusControl({ state, onActivate }) {
   return <span className={`sb-firmware sb-offline is-${state.status}`} data-testid="offline-update-status" role="status">{label}</span>;
 }
 
-function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false }) {
+function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onOpenCardControl, firmwareStatus, firmwareRelease, firmwareReleaseError, onOpenFirmwareUpdate, offlineUpdateState, onActivateOfflineUpdate, testStrip, onToggleTestStrip, onTestStripLengthChange, showTestStrip = true, runningStudioRelease, freshness, cardSavePending = false, cardBlackedOut = false, cardHost = '' }) {
+  // F32: the chip's own recovery — the same request Card Home's banner and
+  // the Patterns toolbar button already send, reused through the shell's
+  // CardActionsProvider (`recoverLights` wraps
+  // lib/cardRecoverLights.recoverCardLightsVerified) instead of a third
+  // implementation living here. `useCardActions` reads the nearest
+  // provider up the TREE, not the text position of this function, and
+  // StatusBar always renders inside <CardActionsProvider> (app.jsx's Shell).
+  const cardActions = useCardActions();
+  const [recoveryPending, setRecoveryPending] = useState(false);
+  const recoverLights = useCallback(async () => {
+    if (recoveryPending || !cardActions) return;
+    setRecoveryPending(true);
+    try {
+      await withStudioHardwareOperation('recover-lights', () => cardActions.recoverLights(
+        { patternId: 'warm-white', brightness: 1, syncZones: true },
+        { host: link?.host || cardHost, timeoutMs: 3200, restartCard: true },
+      ));
+    } catch {
+      // The chip has no room to write out an error; Card Home's own banner
+      // and the Patterns toolbar button still carry the detailed retry path
+      // (wire discovery, "still dark") if this first automatic frame is not
+      // enough.
+    } finally {
+      setRecoveryPending(false);
+    }
+  }, [recoveryPending, cardActions, link?.host, cardHost]);
+
   return (
     <footer className="status-bar">
       <div className="sb-card">
@@ -566,6 +594,9 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
           open={connectionCenterOpen || cardControlOpen}
           dialogId={cardSurfaceForLifecycle(lifecycle) === 'card-control' ? 'card-control-drawer' : 'card-connection-center'}
           savePending={cardSavePending}
+          blackout={cardBlackedOut}
+          onRecoverLights={recoverLights}
+          recoveryPending={recoveryPending}
         />
       </div>
 
@@ -1103,6 +1134,19 @@ function Shell({ offlineUpdateController = null }) {
     project: lifecycleProject,
     update: firmwareRecoveryState,
   }), [cardLink, firmwareRecoveryState, lifecycleProject]);
+  // F32: the footer chip is on every screen, so it reads the blackout fact
+  // off the same shared journey Card Home's banner and the Patterns toolbar
+  // already read (useSetupJourney.js) instead of adding a fourth place that
+  // samples /api/zones. `refresh: false` — whichever screen is actually
+  // mounted (Card Home or Patterns) already freshens this; the footer only
+  // subscribes to the shared evidence store, it does not poll the card.
+  const footerJourney = useSetupJourney({
+    cardLink,
+    cardLifecycle,
+    project: serializeProject(),
+    refresh: false,
+  });
+  const cardBlackedOut = footerJourney.blackout === true;
   useEffect(() => {
     // F28 — the card page's "Edit in Studio" handoff can leave THIS tab
     // itself carrying the shared card-bridge window name (see
@@ -1892,6 +1936,8 @@ function Shell({ offlineUpdateController = null }) {
         runningStudioRelease={runningStudioReleaseRef.current}
         freshness={freshness}
         cardSavePending={cardSavePending}
+        cardBlackedOut={cardBlackedOut}
+        cardHost={cardLink.host || cardStatus.host}
       />
       <CardConnectionCenter
         open={connectionCenterOpen}
