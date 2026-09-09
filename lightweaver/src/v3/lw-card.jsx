@@ -7,7 +7,13 @@ import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
 import { SetupScreen } from './lw-setup.jsx';
 import { useSetupJourney, useCommissioningFlow } from '../hooks/useSetupJourney.js';
-import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
+import {
+  ladderOwnsPrimary as deriveLadderOwnsPrimary,
+  cardHomePrimaryAction,
+} from '../lib/setupJourneyInputs.js';
+import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
+import { useProject } from '../state/ProjectContext.jsx';
+import { hasUnsavedChanges } from '../lib/projectLifecycle.js';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
@@ -924,6 +930,29 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   const commissioningFlow = useCommissioningFlow();
   const ladderOwnsPrimary = deriveLadderOwnsPrimary(sharedJourney, commissioningFlow);
 
+  // F41: one primary action per page, once setup is complete. "Studio has
+  // changes the card does not" is `hasUnsavedChanges` on the project
+  // lifecycle — the same edited-revision signal Setup's own auto-adopt guard
+  // already reads (lw-setup.jsx) to know when it must NOT silently resync
+  // from the card. The install-verified `matchesOpenProject` fact answers a
+  // narrower question ("does the card's last verified install still agree
+  // with itself") that Studio's own auto-adopt effect actively heals the
+  // moment it drifts with nothing unsaved open — so it is never the signal
+  // for "there is real, unsaved work the Install panel should push".
+  const { readProjectLifecycle } = useProject();
+  const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
+  const cardHomePrimary = cardHomePrimaryAction({
+    journey: sharedJourney,
+    hasChangesPendingInstall: hasUnsavedChanges(readProjectLifecycle()),
+    firmwareUpdateAvailable: Boolean(firmwareBannerCopy),
+  });
+  // Before setup completes, the ladder's own primary-ownership rule stands —
+  // unchanged by this ticket. Once it is complete, the priority above decides
+  // instead: the Install panel is primary only when it is the chosen action.
+  const installPanelYieldsPrimary = sharedJourney.setupComplete
+    ? cardHomePrimary !== 'install'
+    : ladderOwnsPrimary;
+
   // F16: card lw-b0fe81f61b44 held the open project, reported "Connected"
   // and a ready runtime, yet /api/zones held blackout:true and the strip was
   // dark — nothing on Card Home said so. `sharedJourney.blackout` is the one
@@ -1041,7 +1070,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         <CardInstallAction
           connected={connected}
           cardHost={cardHost}
-          yieldPrimary={ladderOwnsPrimary}
+          yieldPrimary={installPanelYieldsPrimary}
           onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
         />
       )}

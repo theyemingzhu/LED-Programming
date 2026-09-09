@@ -433,3 +433,70 @@ test('ladderOwnsPrimary: install-project outside the connect phase is unaffected
     true,
   );
 });
+
+// ── F41: cardHomePrimaryAction — one primary at a time on a finished Card
+// Home, in Adrian's stated priority order (recorded 2026-09-09): dark
+// lights outrank everything; changes the card does not hold outrank a
+// maintenance update; a newer release is offered only once nothing more
+// urgent is pending; otherwise there is no primary at all.
+import { cardHomePrimaryAction } from './setupJourneyInputs.js';
+
+test('cardHomePrimaryAction: no primary at all before setup is complete, whatever else is true', () => {
+  assert.equal(
+    cardHomePrimaryAction({
+      journey: { setupComplete: false, blackout: true },
+      hasChangesPendingInstall: true,
+      firmwareUpdateAvailable: true,
+    }),
+    null,
+  );
+});
+
+test('cardHomePrimaryAction: blackout outranks a pending install and a pending update', () => {
+  assert.equal(
+    cardHomePrimaryAction({
+      journey: { setupComplete: true, blackout: true },
+      hasChangesPendingInstall: true,
+      firmwareUpdateAvailable: true,
+    }),
+    'recover-lights',
+  );
+});
+
+test('cardHomePrimaryAction: a pending install outranks a pending update', () => {
+  assert.equal(
+    cardHomePrimaryAction({
+      journey: { setupComplete: true, blackout: false },
+      hasChangesPendingInstall: true,
+      firmwareUpdateAvailable: true,
+    }),
+    'install',
+  );
+});
+
+test('cardHomePrimaryAction: a pending update is offered only once nothing more urgent is pending', () => {
+  assert.equal(
+    cardHomePrimaryAction({
+      journey: { setupComplete: true, blackout: false },
+      hasChangesPendingInstall: false,
+      firmwareUpdateAvailable: true,
+    }),
+    'update',
+  );
+});
+
+test('cardHomePrimaryAction: a finished, healthy, up-to-date card has no primary at all', () => {
+  assert.equal(
+    cardHomePrimaryAction({
+      journey: { setupComplete: true, blackout: false },
+      hasChangesPendingInstall: false,
+      firmwareUpdateAvailable: false,
+    }),
+    null,
+  );
+});
+
+test('cardHomePrimaryAction: every input defaults false/absent — a journey with nothing set carries no primary', () => {
+  assert.equal(cardHomePrimaryAction({ journey: { setupComplete: true } }), null);
+  assert.equal(cardHomePrimaryAction(), null);
+});

@@ -122,6 +122,28 @@ export function ladderOwnsPrimary(journey, commissioningFlow) {
       && !hasResumableCommissioning(commissioningFlow));
 }
 
+// F41: once setup is complete, Card Home can render up to three surfaces that
+// each believe they are the page's one next step — the F16 blackout banner,
+// the ready banner's firmware update, and the install action below it. Only
+// one may show as primary at a time, chosen in Adrian's stated order (recorded
+// 2026-09-09): dark lights outrank everything else, because nothing on this
+// screen matters while the piece is not lit; an install the card does not yet
+// hold outranks a maintenance update, because an update can always wait and a
+// stale install cannot; a newer release is offered only once nothing more
+// urgent is pending; and with nothing outstanding there is no primary at all —
+// a finished, healthy, up-to-date card has nothing left to ask the owner for.
+export function cardHomePrimaryAction({
+  journey,
+  hasChangesPendingInstall = false,
+  firmwareUpdateAvailable = false,
+} = {}) {
+  if (!journey?.setupComplete) return null;
+  if (journey.blackout) return 'recover-lights';
+  if (hasChangesPendingInstall) return 'install';
+  if (firmwareUpdateAvailable) return 'update';
+  return null;
+}
+
 export function assembleSetupJourney({
   cardLink,
   cardLifecycle,
