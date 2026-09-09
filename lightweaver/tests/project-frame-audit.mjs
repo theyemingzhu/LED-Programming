@@ -1296,8 +1296,7 @@ assert.ok(compatibilitySummary.gates[PATTERN_COMPATIBILITY_GATES.COMPUTER_RENDER
 
 const basicPatternIds = collectWledBasicPatternIds({
   activePatternId: 'candle',
-  showClips: [{ patternId: 'heartbeat' }, { patternId: 'aurora' }],
-  strips: [{ patternId: 'twinkle' }],
+  strips: [{ patternId: 'heartbeat' }, { patternId: 'aurora' }, { patternId: 'twinkle' }],
   minBankSize: 4,
 });
 assert.deepEqual(basicPatternIds.slice(0, 4), ['candle', 'aurora', 'twinkle', 'breathe']);
@@ -1307,8 +1306,9 @@ assert.deepEqual(collectWledBasicPatternIds({ patternIds: ['plasma', 'mandelbrot
 const wledBasicPackage = buildWledBasicPackage({
   projectName: 'Bench Piece',
   activePatternId: 'candle',
-  showClips: [{ patternId: 'aurora' }, { patternId: 'heartbeat' }],
   strips: [
+    { patternId: 'aurora' },
+    { patternId: 'heartbeat' },
     { id: 'outer', name: 'Outer', pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
     { id: 'inner', name: 'Inner', patternId: 'twinkle', pixels: [{ x: 0.5, y: 0.5 }] },
   ],
@@ -1334,7 +1334,7 @@ assert.equal(buildWledBasicPackage({
 const browserFirstPackage = buildWledBasicPackage({
   projectName: 'Browser First Piece',
   activePatternId: 'ember',
-  showClips: [
+  strips: [
     { patternId: 'calm' },
     { patternId: 'bloom' },
     { patternId: 'wave' },
@@ -1342,8 +1342,8 @@ const browserFirstPackage = buildWledBasicPackage({
     { patternId: 'galaxy' },
     { patternId: 'zen' },
     { patternId: 'comet' },
+    { id: 'main', pixels: [{ x: 0, y: 0 }] },
   ],
-  strips: [{ id: 'main', pixels: [{ x: 0, y: 0 }] }],
 });
 assert.ok(browserFirstPackage.presets.length >= 8, 'browser-first WLED package needs at least 8 runnable stock presets');
 assert.ok(browserFirstPackage.customEffectPorts.some(pattern => pattern.patternId === 'ember'));
@@ -1413,7 +1413,9 @@ const migratedV1 = migrateProject({
 assert.equal(migratedV1.version, PROJECT_VERSION);
 assert.match(migratedV1.id, /^lwproj-/);
 assert.equal(migratedV1.layout.strips.length, 1);
-assert.equal(migratedV1.show.clips.length, 1);
+// The retired show-timeline model (clips/transitions/cues/autoLanes) is
+// tolerated on a legacy envelope but never carried forward.
+assert.equal('clips' in migratedV1.show, false);
 const migratedV3 = migrateProject({
   version: PROJECT_VERSION,
   id: 'lwproj-hardware',

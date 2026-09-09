@@ -1,3 +1,5 @@
+import { deriveLegacyPatternCycleIds } from './cardPlaylist.js';
+
 export function normalizeRotaryPatternCycle(ids = [], knownPatternIds = new Set()) {
   const known = toKnownSet(knownPatternIds);
   const output = [];
@@ -12,12 +14,12 @@ export function normalizeRotaryPatternCycle(ids = [], knownPatternIds = new Set(
 
 export function makeDefaultRotaryCycleIds({
   activePatternId = '',
-  showClips = [],
+  playlist = [],
   knownPatternIds = new Set(),
 } = {}) {
   return normalizeRotaryPatternCycle([
     activePatternId,
-    ...showClips.map(clip => clip?.patternId),
+    ...deriveLegacyPatternCycleIds(playlist),
   ], knownPatternIds);
 }
 
