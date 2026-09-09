@@ -75,7 +75,7 @@ export function resolveRotaryInputAction({
   event = null,
   currentBrightness = 1,
   currentPatternId = '',
-  showClips = [],
+  playlist = [],
   physicalControls = {},
   knownPatternIds = new Set(),
   requireEnabled = true,
@@ -104,7 +104,7 @@ export function resolveRotaryInputAction({
       ? storedCycle
       : makeDefaultRotaryCycleIds({
         activePatternId: currentPatternId,
-        showClips,
+        playlist,
         knownPatternIds,
       });
     const patternId = getNextRotaryCyclePatternId(cycleIds, currentPatternId, knownPatternIds);

@@ -47,10 +47,10 @@ assert.deepEqual(
     event: { type: 'press' },
     currentBrightness: 0.5,
     currentPatternId: 'fire',
-    showClips: [
-      { patternId: 'aurora' },
-      { patternId: 'candle' },
-      { patternId: 'fire' },
+    playlist: [
+      { type: 'pattern', patternId: 'aurora', enabled: true },
+      { type: 'pattern', patternId: 'candle', enabled: true },
+      { type: 'pattern', patternId: 'fire', enabled: true },
     ],
     physicalControls: {
       encoder: {

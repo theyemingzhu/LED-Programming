@@ -1,10 +1,4 @@
 import { PALETTE_DEFAULT } from '../data.js';
-import {
-  DEFAULT_AUTO_LANES,
-  DEFAULT_CLIPS,
-  DEFAULT_CUES,
-  DEFAULT_TRANSITIONS,
-} from '../state/ProjectDefaults.js';
 import { normalizeMotionSmoothing } from './motionSmoothing.js';
 import {
   DEFAULT_WLED_PHYSICAL_CONTROLS,
@@ -195,10 +189,6 @@ export function createDefaultProject() {
       motionSmoothing: 'soft',
     },
     show: {
-      clips: DEFAULT_CLIPS,
-      transitions: DEFAULT_TRANSITIONS,
-      cues: DEFAULT_CUES,
-      autoLanes: DEFAULT_AUTO_LANES,
       duration: 600,
     },
     live: {
@@ -450,7 +440,10 @@ export function migrateProject(data) {
         wiring: data.layout?.wiring ?? null,
       },
       pattern: { ...pattern, symSettings: { ...base.pattern.symSettings, ...(pattern.symSettings || {}) } },
-      show: { ...base.show, ...(data.show || {}) },
+      // The retired show-timeline model (clips/transitions/cues/autoLanes) is
+      // tolerated on an old envelope but never picked up: only `duration`
+      // round-trips, so a save can never carry the stale keys forward.
+      show: { duration: data.show?.duration ?? base.show.duration },
       live: { ...base.live, ...(data.live || {}) },
       devices: {
         ...base.devices,
@@ -502,12 +495,10 @@ export function migrateProject(data) {
         symSettings: data.symSettings ? { ...base.pattern.symSettings, ...data.symSettings } : base.pattern.symSettings,
         motionSmoothing: normalizeMotionSmoothing(data.motionSmoothing || base.pattern.motionSmoothing),
       },
+      // Legacy v1/v2 saves may carry showClips/clips/showCues/cues/autoLanes
+      // from the retired show-timeline model; they are read here only to be
+      // dropped, never assigned onto `show`, so nothing resaves them.
       show: {
-        ...base.show,
-        clips: data.showClips || data.clips || base.show.clips,
-        transitions: data.showTransitions || data.transitions || base.show.transitions,
-        cues: data.showCues || data.cues || base.show.cues,
-        autoLanes: data.autoLanes || base.show.autoLanes,
         duration: data.showDuration || data.duration || base.show.duration,
       },
       live: {
@@ -589,10 +580,6 @@ export function toLegacyProject(project) {
     bpm: p.pattern.bpm,
     symSettings: p.pattern.symSettings,
     motionSmoothing: p.pattern.motionSmoothing,
-    showClips: p.show.clips,
-    showTransitions: p.show.transitions,
-    showCues: p.show.cues,
-    autoLanes: p.show.autoLanes,
     showDuration: p.show.duration,
     liveQuantize: p.live.quantize,
     liveRecording: p.live.recording,

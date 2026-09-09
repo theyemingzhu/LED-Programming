@@ -38,7 +38,6 @@ export const WLED_BASIC_DEFAULT_BANK = Object.freeze([
 
 export function collectWledBasicPatternIds({
   activePatternId = '',
-  showClips = [],
   strips = [],
   patterns = PATTERNS,
   patternIds = null,
@@ -48,7 +47,6 @@ export function collectWledBasicPatternIds({
     ? patternIds
     : [
         activePatternId,
-        ...showClips.map(clip => clip.patternId),
         ...strips.map(strip => strip.patternId),
       ];
   const ordered = uniqueIds(requested).filter(id => isWledBasicCompatible(patternById(patterns, id)));
@@ -67,7 +65,6 @@ export function collectWledBasicPatternIds({
 export function buildWledBasicPackage({
   projectName = 'Untitled Project',
   activePatternId = '',
-  showClips = [],
   strips = [],
   patterns = PATTERNS,
   patternIds = null,
@@ -85,7 +82,6 @@ export function buildWledBasicPackage({
 } = {}) {
   const requestedIds = uniqueIds([
     activePatternId,
-    ...showClips.map(clip => clip.patternId),
     ...strips.map(strip => strip.patternId),
     ...(Array.isArray(patternIds) ? patternIds : []),
   ]);
@@ -93,7 +89,6 @@ export function buildWledBasicPackage({
   const controlPatternIds = normalizedPhysicalControls.encoder.patternCycleIds || [];
   const exportPatternIds = orderWledBasicPatternIds(collectWledBasicPatternIds({
     activePatternId,
-    showClips,
     strips,
     patterns,
     patternIds: controlPatternIds.length ? controlPatternIds : patternIds,
