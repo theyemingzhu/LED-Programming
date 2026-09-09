@@ -19,6 +19,20 @@ assert.match(
   'whole-piece visitor scene taps must broadcast to all sections and require authoritative applied-pattern confirmation',
 );
 
+// F23a — the blackout button's label must follow blackout state. A visitor
+// pressed it, the lights went off, and nothing on the button said pressing it
+// again would bring them back. The markup and the render function must both
+// carry the state, not just the `.on` class the style reads.
+assert.match(source, /id='off-btn' disabled aria-pressed='false'>Lights off</,
+  "the off-btn markup should start disabled, aria-pressed='false', reading 'Lights off' (playing, pressing blacks out)");
+const blackoutControlMatch = source.match(/"const blackoutControl=makeConfirmedControl\(\{.*?\}\);"/);
+assert.ok(blackoutControlMatch, 'card page should define blackoutControl as a makeConfirmedControl instance');
+const blackoutControlLiteral = JSON.parse(blackoutControlMatch[0]);
+assert.match(blackoutControlLiteral, /\$\('off-btn'\)\.textContent=/,
+  "blackoutControl's render must set the button's textContent, not only toggle its class");
+assert.match(blackoutControlLiteral, /\$\('off-btn'\)\.setAttribute\('aria-pressed'/,
+  "blackoutControl's render must keep aria-pressed in sync with the pending/confirmed value");
+
 const visitorInitStart = source.indexOf('"(async()=>{try{', source.indexOf('/*LW_CONFIRMED_CONTROL_END*/'));
 const visitorInitEnd = source.indexOf('// Streaming-state poll.', visitorInitStart);
 assert.notEqual(visitorInitStart, -1, 'visitor page should define its initial state hydration');
@@ -213,6 +227,55 @@ for (const [name, initial, next] of [
   assert.equal(h.control.snapshot().confirmed, 0.7, 'superseded failure must not overwrite newer confirmed intent');
   assert.equal(h.rendered.at(-1), 0.7, 'stale response must not roll the visible control back');
   assert.equal(h.control.snapshot().activeRequest, 2, 'responses should be associated with the active request');
+}
+
+// F23a — run the REAL blackoutControl definition (not a generic stand-in) so
+// the label/aria-pressed behaviour is proven against the exact code the card
+// ships, not just asserted by regex.
+{
+  const offBtn = {
+    textContent: 'Lights off',
+    disabled: true,
+    attrs: { 'aria-pressed': 'false' },
+    classList: {
+      on: false,
+      toggle(name, value) {
+        if (name === 'on') this.on = value;
+      },
+    },
+    setAttribute(name, value) {
+      this.attrs[name] = value;
+    },
+  };
+  const blackoutContext = {
+    $: id => (id === 'off-btn' ? offBtn : null),
+    controlPost: async () => ({ ok: true }),
+    showControlError() {},
+    clearControlError() {},
+  };
+  vm.createContext(blackoutContext);
+  vm.runInContext(
+    `${embeddedJs};let blackoutOn=false;${blackoutControlLiteral};globalThis.blackoutControl=blackoutControl;`,
+    blackoutContext,
+  );
+
+  blackoutContext.blackoutControl.setConfirmed(true);
+  assert.equal(offBtn.textContent, 'Lights on', 'blacked-out state should read "Lights on" (pressing it restores the lights)');
+  assert.equal(offBtn.attrs['aria-pressed'], 'true', 'aria-pressed should be true while blacked out');
+  assert.equal(offBtn.classList.on, true);
+
+  blackoutContext.blackoutControl.setConfirmed(false);
+  assert.equal(offBtn.textContent, 'Lights off', 'playing state should read "Lights off" (pressing it blacks out)');
+  assert.equal(offBtn.attrs['aria-pressed'], 'false', 'aria-pressed should be false while playing');
+  assert.equal(offBtn.classList.on, false);
+
+  // The label must flip the instant a tap is sent (optimistic), not only
+  // after the card acknowledges it — this is exactly what left Adrian unable
+  // to tell the button would turn the lights back on.
+  const pendingRequest = blackoutContext.blackoutControl.request(true);
+  assert.equal(offBtn.textContent, 'Lights on', 'the label should flip as soon as a blackout tap is sent, before confirmation');
+  assert.equal(offBtn.attrs['aria-pressed'], 'true');
+  await pendingRequest;
 }
 
 console.log('visitor-control-rollback tests passed');

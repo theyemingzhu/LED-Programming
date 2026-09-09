@@ -1,5 +1,5 @@
-// Locks the versioned card page bridge (currently v6; explicit passive-utility
-// release shipped after the v5 clear-project relay):
+// Locks the versioned card page bridge (currently v7; the open-studio relay
+// shipped after the v6 explicit passive-utility release):
 //
 // 1. VERSIONING — the card→Studio 'ready' postMessages and every relay reply
 //    carry `version:N` spliced from the single C++ constant LW_BRIDGE_VERSION
@@ -37,8 +37,20 @@
 //    logical frame into card-sized chunks. `start` is omitted when absent or
 //    zero, so a single-chunk frame stays byte-identical to a v2 payload and
 //    nothing changes for cards below the cap.
+//
+// 6. OPEN-STUDIO (v7, F23b) — "Edit in Studio" / "Open Lightweaver Studio"
+//    used to reload the opener tab (`opener.location.href=url`), discarding
+//    whatever Studio had in memory. When the card page was bridge-launched
+//    (`lwBridgeLaunch` truthy) and a live `window.opener` exists, lwOpenStudio
+//    now POSTS `{app:'LightweaverCardBridge', type:'open-studio', version:N,
+//    href, editLook, editPattern}` to the opener with
+//    `targetOrigin=lwBridgeLaunch.get('studioOrigin')` (the value already
+//    validated by lwBridgeAllowed — never `'*'`), then focuses the opener
+//    instead of reloading it. Only when there is no live opener or no bridge
+//    launch does it fall back to today's `window.open(url,'lightweaver-studio')`.
 
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,7 +67,7 @@ const web = readFileSync(resolve(here, '../src/LightweaverWeb.cpp'), 'utf8');
 const bridgeVersionMatch = web.match(/constexpr int LW_BRIDGE_VERSION = (\d+);/);
 assert.ok(bridgeVersionMatch, 'LightweaverWeb.cpp must pin the bridge protocol version constant');
 const bridgeVersion = Number(bridgeVersionMatch[1]);
-assert.equal(bridgeVersion, 6, 'the bridge protocol version should be 6 (adds explicit bridge utility release)');
+assert.equal(bridgeVersion, 7, 'the bridge protocol version should be 7 (adds the open-studio relay, F23b)');
 
 // Every relay type Studio can send must actually exist in the card's router,
 // or the request round-trips into an 'invalid-payload' throw the owner reads as
@@ -118,6 +130,123 @@ assert.doesNotMatch(fwInfo, /indexOf\('\{'\)/,
   'firmware-info splice must not rely on a bare indexOf(\'{\')');
 assert.match(fwInfo, /info\[brace\] == '\{'/,
   'firmware-info splice verifies the first non-whitespace char is the opening brace');
+
+// ── F23b: open-studio hands the tab back instead of reloading it ──────────
+// lwOpenStudio lives in studioOpenScript(), a separate function from
+// studioBridgeScript() (spliced into the page earlier, but lwBridgeLaunch and
+// LW_STUDIO_ORIGINS are const at script scope so they exist by the time a
+// click actually invokes lwOpenStudio).
+const openFnStart = web.indexOf('String studioOpenScript()');
+assert.notEqual(openFnStart, -1, 'LightweaverWeb.cpp should define studioOpenScript()');
+const openFnEnd = web.indexOf('return script;', openFnStart);
+assert.notEqual(openFnEnd, -1, 'studioOpenScript() should return its assembled script');
+const openScriptSource = web.slice(openFnStart, openFnEnd);
+
+assert.match(
+  openScriptSource,
+  /const String bridgeVersion = String\(LW_BRIDGE_VERSION\);/,
+  'studioOpenScript() derives its own spliced version string from the pinned constant',
+);
+assert.doesNotMatch(
+  openScriptSource,
+  /opener\.location\.href=url/,
+  'lwOpenStudio must no longer reload the opener — that discards Studio\'s in-memory state',
+);
+assert.match(
+  openScriptSource,
+  /if\(opener\)\{/,
+  'lwOpenStudio still branches on a live, bridge-launched opener',
+);
+assert.match(
+  openScriptSource,
+  /opener\.postMessage\(\{app:'LightweaverCardBridge',type:'open-studio',version:"\);\s*script \+= bridgeVersion;\s*script \+= F\("[^"]*,href:url,editLook:editLook,editPattern:editPattern\},lwBridgeLaunch\.get\('studioOrigin'\)\)/,
+  "the open-studio message is posted to the opener with the constant-derived version and the validated studioOrigin as targetOrigin (never '*')",
+);
+assert.doesNotMatch(
+  openScriptSource,
+  /postMessage\([^)]*,'\*'\)/,
+  'the open-studio postMessage must never target \'*\'',
+);
+assert.match(
+  openScriptSource,
+  /const opened=window\.open\(url,'lightweaver-studio'\);/,
+  'lwOpenStudio keeps window.open as the fallback for no live opener / no bridge launch',
+);
+
+// Dynamically run the real lwOpenStudio against a fake opener to prove the
+// behaviour, not just the presence of the code pattern.
+{
+  // studioOpenScript() builds its script as ONE F("...") call spanning many
+  // adjacent (C++-concatenated) string literals, interrupted once by
+  // `script += bridgeVersion;` to splice the constant-derived version. Split
+  // on that splice marker and, within each side, join every quoted literal
+  // in order — the same reconstruction visitor-control-rollback.mjs uses for
+  // a single unbroken fragment, extended to handle the splice in the middle.
+  const bridgeVersionLiteral = String(bridgeVersion);
+  const spliceMarker = 'script += bridgeVersion;';
+  const openParts = openScriptSource.split(spliceMarker);
+  assert.ok(openParts.length >= 2,
+    'studioOpenScript() should splice bridgeVersion into the open-studio message via script += bridgeVersion;');
+  let openStudioJs = openParts
+    .map(part => [...part.matchAll(/"((?:\\.|[^"\\])*)"/g)]
+      .map(([, body]) => JSON.parse(`"${body.replace(/\\x([0-9a-fA-F]{2})/g, '\\u00$1')}"`))
+      .join(''))
+    .join(bridgeVersionLiteral);
+  assert.match(openStudioJs, /function lwOpenStudio\(event,url\)/,
+    'the rebuilt open script should contain lwOpenStudio');
+
+  const posts = [];
+  const focusCalls = [];
+  const opens = [];
+  const fakeOpener = {
+    closed: false,
+    postMessage(message, targetOrigin) { posts.push({ message, targetOrigin }); },
+    focus() { focusCalls.push('opener'); },
+  };
+  const bridgeContext = {
+    URL,
+    location: { host: 'lw-b0fe81f61b44.local', hash: '' },
+    window: {},
+    lwBridgeLaunch: { get: key => (key === 'studioOrigin' ? 'https://led.mandalacodes.com' : null) },
+    alert() {},
+  };
+  bridgeContext.window.opener = fakeOpener;
+  vm.createContext(bridgeContext);
+  vm.runInContext(openStudioJs, bridgeContext);
+
+  const result = vm.runInContext(
+    "lwOpenStudio(null,'https://led.mandalacodes.com/?editPattern=ocean#screen=card&section=overview')",
+    bridgeContext,
+  );
+  assert.equal(result, false, 'lwOpenStudio should return false (its onclick contract)');
+  assert.equal(posts.length, 1, 'a live bridge-launched opener should receive exactly one postMessage');
+  assert.equal(posts[0].targetOrigin, 'https://led.mandalacodes.com',
+    'the message must target the validated studioOrigin, never \'*\'');
+  assert.equal(posts[0].message.app, 'LightweaverCardBridge');
+  assert.equal(posts[0].message.type, 'open-studio');
+  assert.equal(posts[0].message.version, bridgeVersion, 'the posted version must match LW_BRIDGE_VERSION');
+  assert.equal(posts[0].message.editPattern, 'ocean');
+  assert.equal(posts[0].message.editLook, '');
+  assert.match(posts[0].message.href, /^https:\/\/led\.mandalacodes\.com\/\?cardBridge=1&cardHost=/,
+    'the posted href should still be the computed, cardBridge-qualified Studio URL');
+  assert.deepEqual(focusCalls, ['opener'], 'a bridge-launched opener should be focused, never reloaded');
+
+  // Fallback: no live opener (no bridge launch / opener closed) still opens a
+  // new tab exactly as before.
+  const fallbackOpens = [];
+  const fallbackContext = {
+    URL,
+    location: { host: 'lw-b0fe81f61b44.local', hash: '' },
+    window: { open: (...args) => { fallbackOpens.push(args); return { focus() {} }; } },
+    lwBridgeLaunch: null,
+    alert() {},
+  };
+  vm.createContext(fallbackContext);
+  vm.runInContext(openStudioJs, fallbackContext);
+  vm.runInContext("lwOpenStudio(null,'https://led.mandalacodes.com/#screen=card&section=overview')", fallbackContext);
+  assert.equal(fallbackOpens.length, 1, 'no bridge launch should fall back to window.open, unchanged');
+  assert.equal(fallbackOpens[0][1], 'lightweaver-studio');
+}
 
 // ── scope the rest to the card-page bridge script ─────────────────────────
 const fnStart = web.indexOf('String studioBridgeScript()');
