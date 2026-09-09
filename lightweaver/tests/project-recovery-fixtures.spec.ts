@@ -112,9 +112,11 @@ test('valid v3 autosave restores without claiming Unsaved changes', async ({ pag
   await expectWorkingLayoutScreen(page);
 
   await expect(page.locator('.crumb .proj')).toHaveText('Fixture V3');
-  // Restored work gets a brief event notice — never a passive false-dirty
-  // lifecycle label in the project breadcrumb.
-  await expect(page.getByTestId('workspace-notice')).toContainText('Restored from recovery copy');
+  // Restored work is told once, by the persistent lifecycle badge — never a
+  // passive false-dirty label, and (since the Card Home compact pass, U1)
+  // never a duplicate toast repeating what the badge already says.
+  await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Restored from recovery copy');
+  await expect(page.getByTestId('workspace-notice').filter({ hasText: 'Restored from recovery copy' })).toHaveCount(0);
   await expect(page.locator('.savechip')).toHaveCount(0);
   expect(await readKey(page, QUARANTINE_KEY)).toBe('');
 });
