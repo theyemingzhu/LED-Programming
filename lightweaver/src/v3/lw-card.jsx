@@ -424,7 +424,7 @@ function CardHomePanels({
     if (hardwareActionState.status === 'loading') return;
     setHardwareActionState({ status: 'loading', message: 'Reading exact card hardware state…' });
     try {
-      const status = requireExactReadyStatus(await readCardStatusEnvelope({ host: cardLink?.host || cardHost }));
+      const status = requireExactReadyStatus(await readCardStatusEnvelope({ host: cardLink?.host || cardHost, transport: cardLink?.transport }));
       const pixels = Number(status.led?.pixels) || Number(cardLink?.card?.pixelCount) || 0;
       setHardwareActionState({
         status: 'ok',
@@ -442,6 +442,7 @@ function CardHomePanels({
         { patternId: 'warm-white', brightness: 0.35, syncZones: true },
         {
           host: cardLink?.host || cardHost,
+          transport: cardLink?.transport,
           timeoutMs: 3200,
           verifyReadback: { expectedCardId: cardLink?.card?.id },
         },
@@ -468,7 +469,7 @@ function CardHomePanels({
     if (hardwareActionState.status === 'loading') return;
     setHardwareActionState({ status: 'loading', message: 'Clearing the temporary Find-my-strips setup…' });
     try {
-      await clearCardProject({ host: cardLink?.host || cardHost });
+      await clearCardProject({ host: cardLink?.host || cardHost, transport: cardLink?.transport });
       setHardwareActionState({
         status: 'ok',
         message: 'The temporary setup was cleared. The card kept its WiFi and is restarting blank — reconnect in a few seconds, then install your project or run Find my strips.',
@@ -1080,7 +1081,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   else content = <SettingsScreen embedded mode="preferences" {...cardProps} />;
 
   const workshop = route.section === 'workshop';
-  const heading = SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
+  // The heading follows the shared journey: once setup is done, "Set up
+  // your Lightweaver" is a stale instruction for a card that already works.
+  // Only Home's four sections carry that instruction at all — install,
+  // workshop and preferences keep their own static heading regardless.
+  const heading = home && sharedJourney.setupComplete
+    ? 'Your Lightweaver'
+    : SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
   return (
     <div className="screen card-workspace-screen">
       <div className="card-workspace">

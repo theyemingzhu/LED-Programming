@@ -95,6 +95,46 @@ function lifecycleSetupTask(state) {
   return SETUP_TASKS[state] || SETUP_TASKS.disconnected;
 }
 
+// F25: the Connection Center's direct-connect identity card printed "still
+// verifying its installed project" for EVERY state that was not the literal
+// `ready` value — including decided, terminal states like project-mismatch.
+// A card that answered `/api/status` in 72ms and landed on project-mismatch
+// was not verifying anything; the heading said "Card verified" beside a body
+// that said the opposite. `safeControlAccess` is always identical to `state`
+// (see the ternary below), so these two functions branch on the real verdict
+// instead of collapsing every non-ready state into one "waiting" sentence.
+const DIRECT_CONNECT_WAITING_STATES = new Set(['confirming', 'verifying']);
+
+const DIRECT_CONNECT_READY_COPY = 'This exact card and installed project are ready for ordinary pattern, color, brightness, and Stop controls. Project saves and firmware changes keep their stronger safety checks.';
+
+const DIRECT_CONNECT_WAITING_COPY = 'This exact card answered, but Studio is still verifying its installed project before ordinary controls are enabled.';
+
+// Status, not celebration: the card is fine, it just holds an older save of
+// the same project. The remedy is the existing "Use this card's project" /
+// Setup save route, not a fresh diagnosis.
+const DIRECT_CONNECT_PROJECT_MISMATCH_COPY = "This card holds the same project at a different revision. Use the card's copy, or save this one to the card.";
+
+// Every other terminal state (a blank card, a runtime that answered but is
+// not ready, etc.) gets its own one-sentence verdict built from the same
+// label map the footer chip and identity row already use, so a future state
+// automatically gets a real sentence instead of silently falling into the
+// waiting copy.
+export function directConnectVerdictCopy(state) {
+  if (state === 'ready') return DIRECT_CONNECT_READY_COPY;
+  if (state === 'project-mismatch') return DIRECT_CONNECT_PROJECT_MISMATCH_COPY;
+  if (!state || DIRECT_CONNECT_WAITING_STATES.has(state)) return DIRECT_CONNECT_WAITING_COPY;
+  return `This exact card answered. Card status: ${lifecycleLabel(state).toLowerCase()}.`;
+}
+
+// "Card verified" is literally true of transport identity in every connected
+// state, but beside a decided project mismatch it reads as "your project is
+// fine too" — the exact confusion the F25 report named. Only project-mismatch
+// gets the weaker, still-true heading; every other connected state keeps the
+// stronger claim.
+export function directConnectHeading(state) {
+  return state === 'project-mismatch' ? 'Card connected' : 'Card verified';
+}
+
 function pixelCountFromStrips(strips = []) {
   return strips.reduce((sum, strip) => {
     const count = Math.trunc(Number(strip?.pixelCount ?? strip?.pixels?.length ?? strip?.leds) || 0);

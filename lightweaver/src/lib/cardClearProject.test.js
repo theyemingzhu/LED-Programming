@@ -85,3 +85,28 @@ test('a bridge reply without ok:true is never treated as cleared', async () => {
     error => error instanceof ClearProjectError && error.reason === 'unacknowledged',
   );
 });
+
+// W1-6: the established link's transport wins over the page-protocol guess.
+// With no window at all the guess is "bridge"; an explicit direct link must
+// still post directly, and an explicit bridge link must still relay.
+test('an explicit link transport overrides the page-protocol default', async () => {
+  const calls = [];
+  await clearCardProject({
+    host: '192.168.18.70',
+    transport: 'direct',
+    guardImpl: async () => null,
+    fetchImpl: async url => { calls.push(['fetch', url]); return okResponse(); },
+    bridgeRequestImpl: async () => { throw new Error('bridge must not run for a direct link'); },
+  });
+  assert.deepEqual(calls, [['fetch', 'http://192.168.18.70/api/clear-project']]);
+
+  const relayed = [];
+  await clearCardProject({
+    host: '192.168.18.70',
+    transport: 'bridge',
+    bridgeVersion: CLEAR_PROJECT_MIN_BRIDGE_VERSION,
+    fetchImpl: async () => { throw new Error('direct fetch must not run for a bridge link'); },
+    bridgeRequestImpl: async (type, payload) => { relayed.push([type, payload]); return { ok: true, accepted: true }; },
+  });
+  assert.deepEqual(relayed, [['clear-project', { confirm: CLEAR_PROJECT_CONFIRM_TOKEN }]]);
+});

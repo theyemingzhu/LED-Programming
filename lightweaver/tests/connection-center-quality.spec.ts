@@ -432,6 +432,63 @@ test('direct current firmware keeps the inline update action hidden', async ({ p
   await expect(identity.getByRole('button', { name: 'Update firmware' })).toHaveCount(0);
 });
 
+// F25: the direct-connect identity panel said "Card verified" beside "This
+// exact card answered, but Studio is still verifying its installed project"
+// for EVERY non-ready state, including a decided project-mismatch — a card
+// that had already answered and would never move off that verdict on its
+// own. These two tests pin the honest verdict for the decided state and
+// prove the genuinely in-flight state keeps the waiting copy it earned.
+test('F25: a direct-connect project mismatch names the verdict, never "still verifying"', async ({ page }) => {
+  const installedProject = await currentProjectEvidence(page);
+  const status = {
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: 'lw-b0fe81f61b44', firmwareVersion: signedRelease.firmwareVersion,
+    buildNumber: signedRelease.buildNumber, buildId: signedRelease.buildId,
+    bootId: 'boot-direct-mismatch', runtimePhase: 'ready', knownGoodProject: true,
+    commandReady: true, playbackReady: true, outputReady: true,
+    projectId: installedProject.projectId,
+    projectRevision: (installedProject.projectRevision || 0) + 3,
+    // Same project id, a different save: the card is healthy and holds this
+    // exact project, just not this exact revision — the ticket's "same
+    // project at a different revision" scenario.
+    projectFingerprint: 'f'.repeat(64),
+  };
+  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
+  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+
+  const panel = dialog.getByTestId('windowless-card-connect');
+  await expect(panel.getByRole('heading', { name: 'Card connected' })).toBeVisible();
+  await expect(panel).not.toContainText('Card verified');
+  await expect(panel).not.toContainText('still verifying');
+  await expect(panel).toContainText('This card holds the same project at a different revision');
+  await expect(dialog.getByRole('button', { name: 'Continue in Setup' })).toBeVisible();
+});
+
+test('F25: a direct-connect card still confirming readiness keeps the waiting copy', async ({ page }) => {
+  const status = {
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: 'lw-b0fe81f61b44', firmwareVersion: signedRelease.firmwareVersion,
+    buildNumber: signedRelease.buildNumber, buildId: signedRelease.buildId,
+    bootId: 'boot-direct-confirming', runtimePhase: 'ready',
+    // commandReady/outputReady/knownGoodProject deliberately omitted: the
+    // card answered but has not yet said whether it is ready. Evidence
+    // incomplete, not a decided verdict — the copy must stay honest that
+    // Studio is still checking.
+  };
+  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
+  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+
+  const panel = dialog.getByTestId('windowless-card-connect');
+  await expect(panel.getByRole('heading', { name: 'Card verified' })).toBeVisible();
+  await expect(panel).toContainText('still verifying its installed project');
+});
+
 test('identified incompatible firmware shows the found card, installed versus current release, and the update route', async ({ page }) => {
   const status = {
     app: 'Lightweaver', provisioningContractVersion: 0,

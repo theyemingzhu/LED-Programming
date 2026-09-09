@@ -169,13 +169,28 @@ async function runReconstructStrategy(deps, params = {}) {
     // readiness summary is intentionally last because it may omit geometry.
     status = status || cardLink?.readiness || null;
   }
-  const installedState = await Promise.allSettled([
-    io.readCardPatternsFromCard({ host: readHost }),
-    io.readCardZonesFromCard({ host: readHost }),
-  ]);
-  const patterns = installedState[0].status === 'fulfilled' ? installedState[0].value : null;
-  const zones = installedState[1].status === 'fulfilled' ? installedState[1].value : null;
-  const skeleton = projectSkeletonFromCardStatus(status || {});
+  // F27: `io.readCardPatternsFromCard` / `io.readCardZonesFromCard` are handed
+  // to Promise.allSettled, which only catches a REJECTED promise — a
+  // SYNCHRONOUS throw while building this array (before allSettled ever runs)
+  // escapes uncaught, as does a throw from `projectSkeletonFromCardStatus`.
+  // Either one used to abort the whole strategy with zero network calls and
+  // zero status, and the caller's `await` on this function then rejected with
+  // nothing for `startFromCard` to report. Both now resolve to a reported
+  // failure like every other exit from this strategy.
+  let patterns;
+  let zones;
+  let skeleton;
+  try {
+    const installedState = await Promise.allSettled([
+      io.readCardPatternsFromCard({ host: readHost }),
+      io.readCardZonesFromCard({ host: readHost }),
+    ]);
+    patterns = installedState[0].status === 'fulfilled' ? installedState[0].value : null;
+    zones = installedState[1].status === 'fulfilled' ? installedState[1].value : null;
+    skeleton = projectSkeletonFromCardStatus(status || {});
+  } catch (error) {
+    return { ok: false, reason: '', error, status };
+  }
   if (!skeleton.strips.length) {
     return { ok: false, reason: 'no-geometry', status };
   }

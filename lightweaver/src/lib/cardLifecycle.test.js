@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cardFooterNeedsSave, deriveCardLifecycle, studioTypedLedCount } from './cardLifecycle.js';
+import {
+  cardFooterNeedsSave,
+  deriveCardLifecycle,
+  directConnectHeading,
+  directConnectVerdictCopy,
+  studioTypedLedCount,
+} from './cardLifecycle.js';
 
 const READY_LINK = Object.freeze({
   state: 'connected-direct',
@@ -396,4 +402,45 @@ test('connectionLabel states the link, never the errand', () => {
     assert.deepEqual({ label: lifecycle.label, connectionLabel: lifecycle.connectionLabel },
       { label, connectionLabel });
   }
+});
+
+// F25: the Connection Center's direct-connect panel printed "still verifying
+// its installed project" for every non-'ready' state, including decided,
+// terminal ones. A card that already answered with project-mismatch was not
+// verifying anything — this asserts the panel names the real verdict.
+const DIRECT_CONNECT_WAITING_COPY = 'This exact card answered, but Studio is still verifying its installed project before ordinary controls are enabled.';
+const DIRECT_CONNECT_READY_COPY = 'This exact card and installed project are ready for ordinary pattern, color, brightness, and Stop controls. Project saves and firmware changes keep their stronger safety checks.';
+const DIRECT_CONNECT_PROJECT_MISMATCH_COPY = "This card holds the same project at a different revision. Use the card's copy, or save this one to the card.";
+
+test('F25: confirming/verifying keep the waiting copy; project-mismatch does not', () => {
+  // In-flight states: still genuinely verifying, keep the waiting sentence.
+  assert.equal(directConnectVerdictCopy('confirming'), DIRECT_CONNECT_WAITING_COPY);
+  assert.equal(directConnectVerdictCopy('verifying'), DIRECT_CONNECT_WAITING_COPY);
+  assert.equal(directConnectVerdictCopy(undefined), DIRECT_CONNECT_WAITING_COPY);
+
+  // Mutation check: flipping the state off 'confirming' onto the decided
+  // project-mismatch state must change the copy away from "still verifying".
+  const confirmingCopy = directConnectVerdictCopy('confirming');
+  const mismatchCopy = directConnectVerdictCopy('project-mismatch');
+  assert.notEqual(mismatchCopy, confirmingCopy);
+  assert.equal(mismatchCopy, DIRECT_CONNECT_PROJECT_MISMATCH_COPY);
+  assert.ok(!mismatchCopy.includes('still verifying'), 'project-mismatch must not claim to still be verifying');
+
+  assert.equal(directConnectVerdictCopy('ready'), DIRECT_CONNECT_READY_COPY);
+});
+
+test('F25: every other terminal state gets its own verdict, never "still verifying"', () => {
+  for (const state of ['setup-required', 'wrong-card', 'attention-required', 'length-mismatch', 'content-mismatch', 'update-required']) {
+    const copy = directConnectVerdictCopy(state);
+    assert.ok(!copy.includes('still verifying'), `${state} read as still verifying: ${copy}`);
+    assert.notEqual(copy, DIRECT_CONNECT_WAITING_COPY);
+    assert.match(copy, /^This exact card answered\. Card status: .+\.$/);
+  }
+});
+
+test('F25: the heading does not claim "Card verified" beside a decided project mismatch', () => {
+  assert.equal(directConnectHeading('project-mismatch'), 'Card connected');
+  assert.equal(directConnectHeading('ready'), 'Card verified');
+  assert.equal(directConnectHeading('confirming'), 'Card verified');
+  assert.equal(directConnectHeading('wrong-card'), 'Card verified');
 });

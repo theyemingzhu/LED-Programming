@@ -386,6 +386,45 @@ test('reconstruct refuses a card that reports no light outputs', async () => {
   assert.equal(calls.appliedParts.length, 0);
 });
 
+// F27: the "Use this card's project" button was a silent no-op on the live
+// site 2 of 3 times on a fresh reload — zero network calls, zero status text.
+// Root cause: `io.readCardPatternsFromCard(...)` and `io.readCardZonesFromCard(...)`
+// are handed to Promise.allSettled as array elements, and a SYNCHRONOUS throw
+// while that array is being built (not a rejected promise — a plain function
+// that throws before ever returning one) escapes before allSettled ever runs,
+// because allSettled only catches promise rejections. This is deliberately
+// NOT the same shape as "reconstruct still adopts from the status skeleton
+// alone when patterns and zones endpoints fail" above, which throws inside an
+// async function and was always a well-behaved rejection.
+test('reconstruct reports a synchronous throw from the patterns readback instead of losing it', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+  deps.io.readCardPatternsFromCard = () => { throw new Error('bridge closed mid-read'); };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, '');
+  assert.equal(result.error?.message, 'bridge closed mid-read');
+  assert.equal(calls.appliedParts.length, 0);
+});
+
+// Same class, the other read: a synchronous throw from the zones readback
+// (evaluated as the second array element, after patterns has already
+// returned a real promise) must be caught too.
+test('reconstruct reports a synchronous throw from the zones readback instead of losing it', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+  deps.io.readCardZonesFromCard = () => { throw new Error('bridge closed mid-read'); };
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, '');
+  assert.equal(result.error?.message, 'bridge closed mid-read');
+  assert.equal(calls.appliedParts.length, 0);
+});
+
 test('reconstruct surfaces a rejected replacement as its reason instead of silence', async () => {
   const { deps } = makeDeps();
   deps.io.readCardStatusEnvelope = async () => statusEnvelope({

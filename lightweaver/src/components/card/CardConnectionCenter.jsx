@@ -11,6 +11,7 @@ import {
   writeStoredCardHost,
 } from '../../lib/cardConnection.js';
 import { deriveCardAction } from '../../lib/cardActionAuthority.js';
+import { directConnectHeading, directConnectVerdictCopy } from '../../lib/cardLifecycle.js';
 import { locateReachableCard } from '../../lib/cardFind.js';
 import { openCardFlow } from '../../lib/cardFlowEntry.js';
 import { rememberCardReturnIntent } from '../../lib/cardReturnIntent.js';
@@ -614,11 +615,9 @@ export function CardConnectionCenter({
 
       {showDirectConnect && (
         <div className="card-windowless-connect" data-testid="windowless-card-connect">
-          <h3>{directAttempt?.connected ? 'Card verified' : 'Connect this card'}</h3>
+          <h3>{directAttempt?.connected ? directConnectHeading(lifecycle?.state) : 'Connect this card'}</h3>
           <p>{directAttempt?.connected
-            ? safeControlsReady
-              ? 'This exact card and installed project are ready for ordinary pattern, color, brightness, and Stop controls. Project saves and firmware changes keep their stronger safety checks.'
-              : 'This exact card answered, but Studio is still verifying its installed project before ordinary controls are enabled.'
+            ? directConnectVerdictCopy(lifecycle?.state)
             : 'Your browser may ask whether Lightweaver Studio can find devices on your local network. Choose Allow so Studio can verify this exact card.'}</p>
           {usbReleaseState === 'restarted' && (
             <p role="status">Card restarted. Its Wi-Fi may take a moment. Try again when the card rejoins the network.</p>
