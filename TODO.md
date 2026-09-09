@@ -15,6 +15,9 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Finish F33b so Patterns' Recover lights routes by the link it holds on https _(band: agent-runnable)_ _(effort: moderate)_
+  Branch `round2/f33b-patterns-repair-route` (pushed). Done: the shared options builder `cardConnectionOptionsFor` moved to `src/lib/cardConnection.js`, both Card Home and Patterns import it, so `repairLed` forwards `transport` (commit 0598fe44). Left: `[J33b-patterns-recover-https]` in `tests/journey-continuity.spec.ts` fails at its sanity step on the https lane both with and without the fix, so it does not yet prove anything; on that lane the footer chip carries the needs-save verdict (F32 precedence) and the toolbar button's primary class is not the signal either. Resume: find what Patterns actually shows on the https lane after `card.outOfBandBlackout(true)` (dump the DOM once), key the test on that, prove red with the transport line mutated, then merge.
+
 - [ ] Run the main-only contract gates on pull requests too, so a green PR cannot turn main red _(band: agent-runnable)_ _(effort: moderate)_
   On 2026-09-08 three merges in a row went red on main (#227, #229 and the journey PRs) because `test:core:source`, `test:production-jobs` and the `pages-staging` runtime grep run only on push to main; each PR was green. Add those three to the PR lane in `.github/workflows/test.yml` (about two minutes per PR), then move the F15 playlist-footer spec in once it is green.
 - [ ] Finish moving Studio's remaining messages out of the document flow _(band: agent-runnable)_ _(effort: moderate)_ → PR: [#222](https://github.com/theyemingzhu/LED-Programming/pull/222)
