@@ -3,6 +3,7 @@
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverOutputColorParser.h"
+#include "LightweaverProjectRepository.h"
 #include "LightweaverRecipe.h"
 #include "LightweaverLookModePolicy.h"
 #include "LightweaverWifiChannelPolicy.h"
@@ -2602,6 +2603,11 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["runtimePhase"] = runtimeProvisioningPhase();
   doc["commandReady"] = runtimeCommandReady();
   doc["firmwareUpdateReady"] = runtimeFirmwareUpdateReady();
+  // The exact reason the project repository is (or isn't) usable — set once
+  // at boot by LightweaverProjectRepository::begin(). This is why a healthy
+  // card can still report firmwareUpdateReady: false: storageReadable feeds
+  // firmwareUpdateReady() and this message says what storageReadable found.
+  doc["projectRepositoryMessage"] = lightweaverProjectRepository().lastMessage();
   // Local playback admission, reported separately so a caller can tell
   // "busy reassociating" apart from "cannot drive the lights".
   doc["playbackReady"] = runtimePlaybackReady();

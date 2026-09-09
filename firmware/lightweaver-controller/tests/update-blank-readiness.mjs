@@ -50,6 +50,13 @@ int main() {
 for (const name of ['main.cpp', 'LightweaverStorage.cpp']) {
   assert.match(read(name), /doc\["firmwareUpdateReady"\] = runtimeFirmwareUpdateReady\(\)/,
     `${name} publishes the same independent update readiness`);
+  // F38: firmwareUpdateReady can be false on a healthy card because the
+  // project repository's storage partition failed to mount at boot. Both
+  // envelopes must publish the repository's own message so that is
+  // diagnosable from /api/status or /api/firmware-info alone.
+  assert.match(read(name),
+    /doc\["projectRepositoryMessage"\] = lightweaverProjectRepository\(\)\.lastMessage\(\)/,
+    `${name} publishes why the project repository is (or isn't) usable`);
 }
 assert.match(read('LightweaverStorage.cpp'), /result\.storageKnownBlank = true/);
 assert.match(read('main.cpp'), /loadResult\.storageKnownBlank/);

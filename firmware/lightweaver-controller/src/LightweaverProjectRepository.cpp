@@ -72,19 +72,54 @@ void LightweaverProjectRepository::cleanupAbandonedStaging() {
 
 bool LightweaverProjectRepository::begin(String& message, bool readOnlyProbation) {
   available_ = false;
+  bool formattedOnMount = false;
   if (!LittleFS.begin(false)) {
-    message = "project filesystem unavailable";
-    return false;
+    // A plain mount failure here is not "no head file yet" (loadHead handles
+    // that case fine on an empty-but-formatted filesystem) — it means this
+    // partition has never been formatted as LittleFS at all, e.g. a card that
+    // was factory-flashed before this repository existed, or a genuinely
+    // corrupt filesystem. Retry once with format-on-fail.
+    //
+    // Partition safety: LittleFS.begin() defaults to partition label
+    // "spiffs" (see LittleFS.h), and default_16MB.csv (platformio.ini:
+    // board_build.partitions = default_16MB.csv) defines exactly one
+    // data/spiffs partition — this one. The owner's WiFi credentials,
+    // project config, piece name, and every other setting live in the
+    // separate "nvs" partition, read through Arduino Preferences in
+    // LightweaverStorage.cpp (NVS_NAMESPACE "lightweaver"), never through
+    // LittleFS. This is the only LittleFS.begin() call anywhere in this
+    // firmware. Formatting this partition can only erase a project that was
+    // never successfully committed to this repository (an unformatted
+    // filesystem holds nothing readable to begin with) — it cannot touch
+    // Wi-Fi, config, settings, or OTA app slots.
+    //
+    // Deliberately skipped during firmware-boot probation: formatting is a
+    // mutation, and a probation boot may still roll back. If the partition
+    // truly needs formatting, the next confirmed (non-probation) boot will
+    // retry and format it then.
+    if (readOnlyProbation || !LittleFS.begin(true)) {
+      message = "project filesystem unavailable";
+      lastMessage_ = message;
+      return false;
+    }
+    formattedOnMount = true;
   }
   if (!LittleFS.exists(LW_PROJECT_DIR) &&
       !readOnlyProbation && !LittleFS.mkdir(LW_PROJECT_DIR)) {
     message = "project directory unavailable";
+    lastMessage_ = message;
     return false;
   }
   if (!readOnlyProbation) cleanupAbandonedStaging();
-  if (!loadHead(message)) return false;
+  if (!loadHead(message)) {
+    lastMessage_ = message;
+    return false;
+  }
   available_ = true;
-  message = "project repository ready";
+  message = formattedOnMount
+      ? "project repository ready (formatted on first-time mount)"
+      : "project repository ready";
+  lastMessage_ = message;
   return true;
 }
 
