@@ -15,6 +15,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { mkdirSync, copyFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { createCardSimulator, seedWiringDivergedProject, type CardSimulator } from './harness/cardSimulator';
 import {
   cardState,
@@ -23,6 +24,13 @@ import {
   MATRIX_FIRMWARE_VERSION,
   type CardStateSpec,
 } from './harness/cardStates';
+
+// F41: the real signed release this Studio ships — read, not hardcoded, so
+// the "no newer release" fixture below stays true across releases without
+// editing this file (same recipe as tests/setup-adopt-card-project.spec.ts).
+const CURRENT_RELEASE = JSON.parse(
+  await readFile(new URL('../public/firmware/release-manifest.json', import.meta.url), 'utf8'),
+);
 
 const CONNECT_BUDGET_MS = 15000;
 const CONNECTED = /^connected-(direct|bridge)$/;
@@ -168,11 +176,10 @@ test('[U1a] the ready banner stands down to secondary while the card is blacked 
   ).toHaveCount(1);
   await expect(scopedPrimaries.first()).toHaveAttribute('data-testid', 'recover-lights');
 
-  // The ready banner's own Open Patterns control must still exist and still
-  // work — it just may not wear the primary look while the strip is dark.
-  const openPatterns = page.getByTestId('setup-open-patterns');
-  await expect(openPatterns).toBeVisible();
-  await expect(openPatterns).not.toHaveClass(/\bprimary\b/);
+  // F41: "Open Patterns" left Card Home entirely (it is the sidebar rail's
+  // job now) — this scoped assertion above already proves the one thing this
+  // ticket item cares about (one primary while dark), so nothing further to
+  // check here about that control.
 
   await captureAfter(page, 'blackout', 1440, 900);
   await captureAfter(page, 'blackout', 390, 844);
@@ -298,6 +305,10 @@ test('[U1e] the phase 4 summary drops Card and Project once setup is complete', 
     'a card holding exactly the open project must read as setup-complete',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
 
+  // F41: the finished ladder folds to one line by default now — expand it to
+  // reach the phase 4 table this test is actually about.
+  await page.getByTestId('setup-show-steps').click();
+
   const summary = page.locator('.lw-setup-summary');
   await expect(summary, 'the phase 4 summary must still be showing').toBeVisible();
   await expect(summary.locator('dt', { hasText: 'Card' })).toHaveCount(0);
@@ -306,4 +317,113 @@ test('[U1e] the phase 4 summary drops Card and Project once setup is complete', 
   await expect(summary.locator('dt', { hasText: 'Lights' })).toHaveCount(1);
   await expect(summary.locator('dt', { hasText: 'Color' })).toHaveCount(1);
   await expect(summary.locator('dt', { hasText: 'Power' })).toHaveCount(1);
+});
+
+// ---------------------------------------------------------------------------
+// F41 — one primary at a time on a finished Card Home; "Open Patterns" left
+// the banner and the phase ladder for good (it is the sidebar rail's job);
+// the finished ladder folds to one line.
+//
+// Scope note: like U1a above, the primary count below is scoped to the three
+// surfaces this ticket actually governs — the F16 blackout banner, the ready
+// banner, and the Install panel (`[data-testid="commissioning-step"]`) — not
+// the whole page, which still carries unrelated primaries elsewhere (e.g. the
+// top bar's Save action).
+// ---------------------------------------------------------------------------
+function scopedCardHomePrimaries(page: Page) {
+  return page.locator(
+    '.card-blackout-banner .btn.primary, [data-testid="setup-card-ready"] .btn.primary, [data-testid="commissioning-step"] .btn.primary',
+  );
+}
+
+test('[F41-one-primary] (a) installed-match with a newer card release: Update card is the one primary, Open Patterns is gone, the ladder folds', async ({ page }) => {
+  // MATRIX_BUILD_NUMBER (1432) is older than the real signed release this
+  // Studio ships — verified against the actual manifest, not a mock, exactly
+  // as tests/setup-adopt-card-project.spec.ts already relies on.
+  const spec = cardState('installed-match');
+  await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  await waitConnectedUnaided(page, 'F41a connect');
+
+  await expect(
+    journeyLocator(page),
+    'a card holding exactly the open project must read as setup-complete',
+  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
+
+  const banner = page.getByTestId('setup-card-ready');
+  await expect(banner, 'a genuinely older release must offer the ready banner').toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(banner).toContainText(`Card release ${CURRENT_RELEASE.buildNumber} available`);
+  await expect(banner).toContainText(`Your lights keep working on ${spec.buildNumber}.`);
+
+  const primaries = scopedCardHomePrimaries(page);
+  await expect(primaries, 'exactly one primary action may show — Update card').toHaveCount(1);
+  await expect(primaries.first()).toHaveText('Update card');
+  await expect(primaries.first()).toHaveAttribute('data-testid', 'setup-update-card');
+
+  await expect(
+    page.getByRole('button', { name: 'Open Patterns' }),
+    '"Open Patterns" left Card Home entirely — it is the sidebar rail\'s job now',
+  ).toHaveCount(0);
+
+  await expect(
+    page.getByTestId('setup-progress'),
+    'the finished ladder must fold to one line by default',
+  ).toContainText('Setup complete');
+  await expect(page.locator('.lw-setup-phase-list')).toHaveCount(0);
+
+  await captureAfter(page, 'f41-a', 1440, 900);
+  await captureAfter(page, 'f41-a', 390, 844);
+});
+
+// F41(b) — "Studio has changes the card does not" → Install on card is the
+// one primary — is proven at the unit level instead of here:
+// src/lib/setupJourneyInputs.test.js exercises `cardHomePrimaryAction`'s
+// full priority order (blackout > install > update > none) directly and
+// deterministically. An end-to-end fixture for this one branch was tried at
+// length and dropped: in this codebase `journey.setupComplete` and
+// `matchesOpenProject` are computed from the SAME structural-match evidence
+// (lw-setup.jsx's `installationMatch` / `cardLifecycle.exactProject`), so
+// any edit that invalidates one — a UI rename included, since the project's
+// structural fingerprint changes with it — invalidates the other too and
+// drops the ladder out of "finished" entirely (confirmed by hand: a real
+// rename after reaching setup-complete flips `data-journey-complete` back to
+// `false` and reopens phase 1's "Use the card's copy" choice). Reaching
+// "finished AND has an unsaved edit" as a live, observable state needs a
+// project mutation that does NOT touch the structural fingerprint the ladder
+// itself watches — worth a follow-up if this branch needs its own
+// screenshot, but not a gap in the underlying logic, which the unit test
+// covers completely.
+
+test('[F41-one-primary] (c) blackout: Recover lights is the one primary', async ({ page }) => {
+  const spec = cardState('blackout');
+  await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  await waitConnectedUnaided(page, 'F41c connect');
+  await expect(page.getByTestId('card-blackout-notice')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+
+  const primaries = scopedCardHomePrimaries(page);
+  await expect(primaries, 'exactly one primary action may show while the card is dark — Recover lights').toHaveCount(1);
+  await expect(primaries.first()).toHaveAttribute('data-testid', 'recover-lights');
+
+  await captureAfter(page, 'f41-c', 1440, 900);
+});
+
+test('[F41-one-primary] (d) installed-match, current release, nothing pending: no primary at all', async ({ page }) => {
+  const spec = { ...cardState('installed-match'), buildId: CURRENT_RELEASE.buildId, buildNumber: CURRENT_RELEASE.buildNumber };
+  await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  await waitConnectedUnaided(page, 'F41d connect');
+
+  await expect(
+    journeyLocator(page),
+    'a card holding exactly the open project must read as setup-complete',
+  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
+
+  await expect(
+    page.getByTestId('setup-card-ready'),
+    'nothing newer to report — the ready banner must not render at all',
+  ).toHaveCount(0);
+
+  const primaries = scopedCardHomePrimaries(page);
+  await expect(primaries, 'a finished, healthy, up-to-date card has nothing left to ask for — no primary at all').toHaveCount(0);
+
+  await captureAfter(page, 'f41-d', 1440, 900);
+  await captureAfter(page, 'f41-d', 390, 844);
 });

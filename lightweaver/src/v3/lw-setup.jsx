@@ -9,7 +9,10 @@ import {
 import { publishCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { useSetupJourney } from '../hooks/useSetupJourney.js';
-import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
+import {
+  ladderOwnsPrimary as deriveLadderOwnsPrimary,
+  cardHomePrimaryAction,
+} from '../lib/setupJourneyInputs.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
@@ -144,6 +147,11 @@ export function SetupScreen({
   const [ledCountDraft, setLedCountDraft] = useState('');
   const [ledCountState, setLedCountState] = useState({ busy: false, message: '' });
   const [selectedPhaseId, setSelectedPhaseId] = useState('');
+  // F41: the finished ladder folds to one line by default — a healthy, fully
+  // installed card has nothing left to walk through, and four phases plus a
+  // phase-4 table was the clutter Adrian named. 'Show steps' is a plain
+  // read-only expansion, not a task; it starts collapsed every mount.
+  const [stepsExpanded, setStepsExpanded] = useState(false);
   const importRef = useRef(null);
   const resolveInputsRef = useRef({ currentProject, activeCloudProjects, browserProjects });
   const previousPhaseRef = useRef('');
@@ -861,10 +869,31 @@ export function SetupScreen({
   const identityStatus = wiringTestActive
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
-  const firmwareBehind = firmwareStatus?.actionable === true;
   const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
+  // F41: one primary action per page, once setup is complete — same priority,
+  // same pure function, as the Install panel below reads independently in
+  // lw-card.jsx (cardHomePrimaryAction, lib/setupJourneyInputs.js). This
+  // screen already holds every input locally, so it computes its own answer
+  // rather than waiting on a prop from the parent that rendered it.
+  const installedLabel = installRelationship(
+    resolution,
+    cardState.status?.projectId || cardLink?.readiness?.projectId || '',
+    installationMatch,
+    currentProject?.id,
+    provisionalSetup,
+    cardLifecycle?.exactProject === true,
+  );
+  const primaryAction = cardHomePrimaryAction({
+    journey,
+    // Same signal the Install panel reads independently in lw-card.jsx
+    // (cardHomePrimaryAction, lib/setupJourneyInputs.js) — see its comment
+    // there for why this is `hasUnsavedChanges`, not `matchesOpenProject`.
+    hasChangesPendingInstall: hasUnsavedChanges(readProjectLifecycle()),
+    firmwareUpdateAvailable: Boolean(firmwareBannerCopy),
+  });
+  const ladderFolded = journey.setupComplete && !stepsExpanded && !installIntentOpen;
   const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
@@ -1103,12 +1132,15 @@ export function SetupScreen({
             needs to know what is about to happen to their piece. */}
         {journey.taskId === 'confirm-visible-lights' ? (
           <p role="status">The card is running the final light test. Confirm or restore it with the controls below.</p>
-        ) : !installIntentOpen ? (
+        ) : !installIntentOpen && !journey.setupComplete ? (
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
             <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>
           </>
-        ) : null}
+        ) : /* F41: once setup is complete this table is read-only history —
+               "Open Patterns" duplicated the sidebar's own Patterns rail entry,
+               and the sentence above it described the Install panel directly
+               below, which already says the same thing about itself. */ null}
       </div>
     );
   };
@@ -1135,7 +1167,7 @@ export function SetupScreen({
         <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
         <div><span>Connection</span><strong>{identityStatus}</strong></div>
         <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
-        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
+        <div><span>Installed</span><strong>{installedLabel}</strong></div>
       </section>
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
@@ -1163,41 +1195,28 @@ export function SetupScreen({
             light-finding setup. It used to print directly above the
             "discovery evidence, not a finished installation" banner and an
             unfinished phase ladder — three verdicts, one screen. */}
-        {/* And not before the card is actually paired. This banner offers
-            "Open Patterns" — a live card action — while phase 1 was still
-            asking the owner to pair, so the screen carried two headline
-            buttons and two different accounts of where the owner was. */}
-        {matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen && (
+        {/* F41: this banner now exists for exactly one reason — a newer card
+            release is available. The identity row directly above already
+            states the connection and whether the open project is the
+            installed one, and "Open Patterns" / "Open Layout" duplicated the
+            sidebar rail and the Install panel below — two things that both
+            said "open patterns" was Adrian's own complaint about this screen
+            (2026-09-09). With nothing newer to report the banner renders
+            nothing at all, rather than standing here empty. */}
+        {matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen && firmwareBannerCopy && (
           <section
             className="card-support-panel lw-setup-banner"
             data-testid="setup-card-ready"
             aria-label="Card ready"
           >
-            {/* The identity row directly above already states the connection
-                and whether the open project is the installed one. Repeating
-                that here as a heading plus a paragraph was two more tellings
-                of one fact, so the healthy card keeps only its doors. Old
-                firmware is a DIFFERENT fact the row does not carry, so that
-                case keeps its sentence and its Update action. */}
-            {firmwareBannerCopy && (
-              <>
-                <h2>{firmwareBannerCopy.heading}</h2>
-                <p>{firmwareBannerCopy.body}</p>
-              </>
-            )}
+            <h2>{firmwareBannerCopy.heading}</h2>
+            <p>{firmwareBannerCopy.body}</p>
             <div className="lw-setup-banner-actions">
-              {/* Same one-primary rule as the rest of Card Home. This banner
-                  can render while the ladder still has an active task (an
-                  exact project match during a `confirming` lifecycle, for
-                  one), and two primaries then ask the owner to arbitrate.
-                  Also stands down while the card is blacked out: the F16
-                  banner's "Recover lights" is the page's one primary then,
-                  so this button styles as secondary until the card is lit. */}
-              <button type="button" className={journey.setupComplete && !journey.blackout ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>{journey.setupComplete ? returnDestination.label : 'Open Patterns'}</button>
-              <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
-              {firmwareBehind && (
-                <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
-              )}
+              {/* Same one-primary rule as the rest of Card Home
+                  (cardHomePrimaryAction, lib/setupJourneyInputs.js): primary
+                  only when nothing more urgent — a blackout, or changes the
+                  card does not yet hold — is also pending. */}
+              <button type="button" className={primaryAction === 'update' ? 'btn primary' : 'btn'} data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
             </div>
           </section>
         )}
@@ -1226,12 +1245,35 @@ export function SetupScreen({
       </div>
 
       <section className="lw-setup-phases" aria-label="Setup outcomes">
-        <p className="lw-setup-progress" data-testid="setup-progress">
-          {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
-          {viewedPhaseId !== journey.currentPhaseId
-            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
-            : ''}
-        </p>
+        {/* F41: a finished ladder is read-only history — four phases and a
+            phase-4 table nobody needs to act on, sitting between the identity
+            row and the one panel that still does something (Install / the
+            firmware banner). Folded to one honest line by default; "Show
+            steps" is a plain read, not a task, so it never wears primary.
+            Never folds while `installIntentOpen` — phase 4's own install slot
+            (below) can be mid-push then, and unmounting it would unmount the
+            push itself. */}
+        {ladderFolded ? (
+          <p className="lw-setup-progress lw-setup-progress-folded" data-testid="setup-progress">
+            {`Setup complete · ${installedLabel}`}
+            {' '}
+            <button type="button" className="btn" data-testid="setup-show-steps" onClick={() => setStepsExpanded(true)}>Show steps</button>
+          </p>
+        ) : (
+          <p className="lw-setup-progress" data-testid="setup-progress">
+            {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
+            {viewedPhaseId !== journey.currentPhaseId
+              ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
+              : ''}
+            {journey.setupComplete && (
+              <>
+                {' '}
+                <button type="button" className="btn" data-testid="setup-hide-steps" onClick={() => setStepsExpanded(false)}>Hide steps</button>
+              </>
+            )}
+          </p>
+        )}
+        {!ladderFolded && (
         <ol className="lw-setup-phase-list">
             {journey.phases.map((phase, index) => {
               const active = phase.id === viewedPhaseId;
@@ -1260,6 +1302,7 @@ export function SetupScreen({
               );
             })}
         </ol>
+        )}
       </section>
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />
