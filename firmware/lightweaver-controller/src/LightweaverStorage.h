@@ -91,6 +91,14 @@ struct LiveLookRecord {
   bool syncZones = true;
   uint8_t zoneCount = 0;
   LiveLookZoneRecord zones[LW_LIVE_LOOK_MAX_ZONES];
+  // Timed-playlist auto-advance play state (power-cycle resume). Independent
+  // of the zone/pattern tweaks above — see runtimeServicePlaylist() in
+  // main.cpp. entryIndex is bounds-checked against the CURRENT project's
+  // playlist.entryCount on restore (restoreLiveLookIfMatching()), never
+  // trusted blindly: a record captured under a longer playlist that was
+  // since edited down must not index out of bounds.
+  bool playlistPlaying = false;
+  uint8_t playlistEntryIndex = 0;
 };
 
 namespace lightweaver_live_look_detail {
@@ -121,6 +129,8 @@ inline size_t encodeLiveLookRecord(const LiveLookRecord& record, char* outBuffer
   doc["projectRevision"] = record.projectRevision;
   doc["currentLookId"] = record.currentLookId;
   doc["syncZones"] = record.syncZones;
+  doc["playlistPlaying"] = record.playlistPlaying;
+  doc["playlistEntryIndex"] = record.playlistEntryIndex;
   JsonArray zones = doc["zones"].to<JsonArray>();
   uint8_t count = record.zoneCount < LW_LIVE_LOOK_MAX_ZONES ? record.zoneCount : LW_LIVE_LOOK_MAX_ZONES;
   for (uint8_t i = 0; i < count; i++) {
@@ -163,6 +173,8 @@ inline bool decodeLiveLookRecord(const char* json, size_t jsonLength, LiveLookRe
   parsed.projectRevision = doc["projectRevision"] | 0U;
   lightweaver_live_look_detail::copyBounded(parsed.currentLookId, LW_LIVE_LOOK_ID_BYTES, doc["currentLookId"] | "");
   parsed.syncZones = doc["syncZones"] | true;
+  parsed.playlistPlaying = doc["playlistPlaying"] | false;
+  parsed.playlistEntryIndex = doc["playlistEntryIndex"] | 0U;
   for (JsonVariantConst zoneValue : zones) {
     if (parsed.zoneCount >= LW_LIVE_LOOK_MAX_ZONES) break;
     JsonObjectConst zo = zoneValue.as<JsonObjectConst>();
@@ -203,6 +215,109 @@ inline bool liveLookRecordMatchesProject(const LiveLookRecord& record, const cha
   if (record.projectRevision != projectRevision) return false;
   return strncmp(record.projectId, projectId, LW_LIVE_LOOK_ID_BYTES) == 0 &&
          strlen(projectId) < LW_LIVE_LOOK_ID_BYTES;
+}
+
+// ---------------------------------------------------------------------------
+// Timed playlist block (project JSON's "playlist" object)
+// ---------------------------------------------------------------------------
+// Host-testable char-buffer mirror of PlaylistConfig/PlaylistEntryConfig
+// (LightweaverTypes.h), the same way LiveLookRecord above mirrors live zone
+// state. decodePlaylistRecord() is the SAME function LightweaverStorage.cpp's
+// applyJsonToConfig() calls to parse the real project JSON's "playlist"
+// object into RuntimeConfig.playlist — a native pass over it (see
+// test/test_playlist) proves the real parse/cap/drop behavior, not a
+// reimplementation of it. encodePlaylistRecord() is not used by production
+// (the card never re-serializes an installed project JSON back out — see
+// LightweaverStorage.cpp) but is kept alongside decode so the model is
+// genuinely round-trip testable, and the byte-budget test below reuses it to
+// build its fixture.
+
+// Independent literal for the same Arduino-free reason as
+// LW_LIVE_LOOK_MAX_ZONES: this header must never include LightweaverTypes.h.
+// main.cpp static_asserts the two stay equal.
+constexpr uint8_t LW_PLAYLIST_RECORD_MAX_ENTRIES = 16;
+// Installed look ids and compiled/preset pattern ids are short slugs (the
+// longest today is "custom-color", 12 chars); 40 comfortably covers any
+// realistic id with room to spare. A longer id is truncated on capture, same
+// as LW_LIVE_LOOK_ID_BYTES, and simply fails to resolve at play time.
+constexpr size_t LW_PLAYLIST_PATTERN_ID_BYTES = 40;
+constexpr uint16_t LW_PLAYLIST_RECORD_MIN_DWELL_SECONDS = 1;
+constexpr uint16_t LW_PLAYLIST_RECORD_MAX_DWELL_SECONDS = 3600;
+constexpr uint16_t LW_PLAYLIST_RECORD_DEFAULT_DWELL_SECONDS = 30;
+constexpr uint16_t LW_PLAYLIST_RECORD_MAX_FADE_MS = 10000;
+constexpr uint16_t LW_PLAYLIST_RECORD_DEFAULT_FADE_MS = 1500;
+
+struct PlaylistEntryRecord {
+  char patternId[LW_PLAYLIST_PATTERN_ID_BYTES] = {};
+  uint16_t dwellSeconds = LW_PLAYLIST_RECORD_DEFAULT_DWELL_SECONDS;
+};
+
+struct PlaylistRecord {
+  bool enabled = false;
+  uint16_t fadeMs = LW_PLAYLIST_RECORD_DEFAULT_FADE_MS;
+  uint8_t entryCount = 0;
+  PlaylistEntryRecord entries[LW_PLAYLIST_RECORD_MAX_ENTRIES];
+};
+
+// Decodes the "playlist" object of a project config from `playlistJson`
+// (pass doc["playlist"] directly — a missing/null playlist is valid and
+// leaves outRecord at its default: enabled=false, entryCount=0, meaning "no
+// sequencing", never an error). Entries past LW_PLAYLIST_RECORD_MAX_ENTRIES
+// are DROPPED, never rejected; an entry with no patternId is also dropped
+// (it could never resolve to anything). Neither case is a parse failure —
+// this function only returns false when `playlistJson` is present but is not
+// an object at all. `logDroppedEntries`, when non-null, is invoked once with
+// the count of entries dropped for exceeding the cap (the Arduino caller
+// uses this to log a line; the native test passes nullptr).
+inline bool decodePlaylistRecord(JsonVariant playlistJson, PlaylistRecord& outRecord,
+                                  void (*logDroppedEntries)(uint16_t dropped) = nullptr) {
+  outRecord = PlaylistRecord();
+  if (playlistJson.isNull()) return true;
+  JsonObject obj = playlistJson.as<JsonObject>();
+  if (obj.isNull()) return false;
+  outRecord.enabled = obj["enabled"] | false;
+  long fadeMs = obj["fadeMs"] | static_cast<long>(LW_PLAYLIST_RECORD_DEFAULT_FADE_MS);
+  if (fadeMs < 0) fadeMs = 0;
+  if (fadeMs > static_cast<long>(LW_PLAYLIST_RECORD_MAX_FADE_MS)) fadeMs = LW_PLAYLIST_RECORD_MAX_FADE_MS;
+  outRecord.fadeMs = static_cast<uint16_t>(fadeMs);
+  JsonArray entries = obj["entries"].as<JsonArray>();
+  if (entries.isNull()) return true;
+  uint16_t droppedOverCap = 0;
+  for (JsonVariant entryValue : entries) {
+    JsonObject entry = entryValue.as<JsonObject>();
+    const char* patternId = entry["patternId"] | "";
+    if (!patternId || patternId[0] == '\0') continue;  // no id — nothing to resolve, ever
+    if (outRecord.entryCount >= LW_PLAYLIST_RECORD_MAX_ENTRIES) {
+      droppedOverCap++;
+      continue;
+    }
+    long dwell = entry["dwellSeconds"] | static_cast<long>(LW_PLAYLIST_RECORD_DEFAULT_DWELL_SECONDS);
+    if (dwell < static_cast<long>(LW_PLAYLIST_RECORD_MIN_DWELL_SECONDS)) {
+      dwell = LW_PLAYLIST_RECORD_MIN_DWELL_SECONDS;
+    }
+    if (dwell > static_cast<long>(LW_PLAYLIST_RECORD_MAX_DWELL_SECONDS)) {
+      dwell = LW_PLAYLIST_RECORD_MAX_DWELL_SECONDS;
+    }
+    PlaylistEntryRecord& out = outRecord.entries[outRecord.entryCount];
+    lightweaver_live_look_detail::copyBounded(out.patternId, LW_PLAYLIST_PATTERN_ID_BYTES, patternId);
+    out.dwellSeconds = static_cast<uint16_t>(dwell);
+    outRecord.entryCount++;
+  }
+  if (droppedOverCap > 0 && logDroppedEntries) logDroppedEntries(droppedOverCap);
+  return true;
+}
+
+// Encodes a PlaylistRecord as a "playlist" object under `out`. Not used by
+// production — see the header comment above — kept for round-trip testing.
+inline void encodePlaylistRecord(const PlaylistRecord& record, JsonObject out) {
+  out["enabled"] = record.enabled;
+  out["fadeMs"] = record.fadeMs;
+  JsonArray entries = out["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < record.entryCount; i++) {
+    JsonObject entry = entries.add<JsonObject>();
+    entry["patternId"] = record.entries[i].patternId;
+    entry["dwellSeconds"] = record.entries[i].dwellSeconds;
+  }
 }
 
 // ---------------------------------------------------------------------------

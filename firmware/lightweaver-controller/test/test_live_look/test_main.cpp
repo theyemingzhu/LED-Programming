@@ -130,6 +130,8 @@ void test_encode_decode_round_trip() {
   record.projectRevision = 7;
   strncpy(record.currentLookId, "ocean-breathe", sizeof(record.currentLookId) - 1);
   record.syncZones = false;
+  record.playlistPlaying = true;
+  record.playlistEntryIndex = 5;
   record.zones[0] = makeZone("outer-ring", "custom-color", 0.55f);
   record.zones[1] = makeZone("inner-disc", "aurora", 0.9f);
   record.zoneCount = 2;
@@ -145,6 +147,8 @@ void test_encode_decode_round_trip() {
   TEST_ASSERT_EQUAL_UINT32(7, decoded.projectRevision);
   TEST_ASSERT_EQUAL_STRING("ocean-breathe", decoded.currentLookId);
   TEST_ASSERT_FALSE(decoded.syncZones);
+  TEST_ASSERT_TRUE(decoded.playlistPlaying);
+  TEST_ASSERT_EQUAL_UINT8(5, decoded.playlistEntryIndex);
   TEST_ASSERT_EQUAL_UINT8(2, decoded.zoneCount);
 
   const LiveLookZoneRecord& z0 = decoded.zones[0];
@@ -188,6 +192,8 @@ void test_worst_case_record_fits_documented_budget() {
   record.projectRevision = 4294967295U;  // UINT32_MAX — worst-case digit count
   strncpy(record.currentLookId, longId, sizeof(record.currentLookId) - 1);
   record.syncZones = true;
+  record.playlistPlaying = true;
+  record.playlistEntryIndex = 255;  // UINT8_MAX — worst-case digit count
   record.zoneCount = LW_LIVE_LOOK_MAX_ZONES;
   for (uint8_t i = 0; i < LW_LIVE_LOOK_MAX_ZONES; i++) {
     LiveLookZoneRecord z = makeZone(longId, longId);
