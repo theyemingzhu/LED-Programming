@@ -902,4 +902,97 @@ assert.throws(
   'a GPIO cannot be both an LED output and a control',
 );
 
+// ── timed playlist: the "playlist" block on /api/config ──────────────────
+// Contract: { enabled, fadeMs, entries: [{ patternId, dwellSeconds }] } —
+// absent or disabled produces no `playlist` key at all, so a card running
+// firmware from before F2 ignores nothing new.
+
+assert.equal(Object.hasOwn(normalizeCardRuntimeConfig({ led: { pixels: 44 } }), 'playlist'), false,
+  'no playlist input at all omits the key');
+assert.equal(Object.hasOwn(normalizeCardRuntimeConfig({
+  led: { pixels: 44 },
+  playlist: { enabled: false, fadeMs: 800, entries: [{ patternId: 'plasma', dwellSeconds: 20 }] },
+}), 'playlist'), false, 'disabled omits the key even with entries present');
+assert.equal(Object.hasOwn(normalizeCardRuntimeConfig({
+  led: { pixels: 44 },
+  playlist: { enabled: true, fadeMs: 800, entries: [] },
+}), 'playlist'), false, 'enabled with no entries still omits the key');
+
+const withPlaylist = normalizeCardRuntimeConfig({
+  led: { pixels: 44 },
+  playlist: {
+    enabled: true,
+    fadeMs: 2200,
+    entries: [
+      { patternId: 'plasma', dwellSeconds: 45 },
+      { patternId: 'combo-split-glow', dwellSeconds: 12 },
+    ],
+  },
+});
+assert.deepEqual(withPlaylist.playlist, {
+  enabled: true,
+  fadeMs: 2200,
+  entries: [
+    { patternId: 'plasma', dwellSeconds: 45 },
+    { patternId: 'combo-split-glow', dwellSeconds: 12 },
+  ],
+});
+
+// fadeMs and dwellSeconds are re-clamped here too, not merely trusted from
+// the caller — the same defensive posture every other config field gets.
+const clampedPlaylist = normalizeCardRuntimeConfig({
+  led: { pixels: 44 },
+  playlist: {
+    enabled: true,
+    fadeMs: 99999,
+    entries: [{ patternId: 'plasma', dwellSeconds: 0 }, { patternId: '', dwellSeconds: 30 }],
+  },
+});
+assert.equal(clampedPlaylist.playlist.fadeMs, 10000);
+assert.deepEqual(clampedPlaylist.playlist.entries, [{ patternId: 'plasma', dwellSeconds: 1 }]);
+
+// At most 16 entries reach the card — the dial's own 32-entry patternCycleIds
+// list is unrelated and untouched by this cap.
+const overflowEntries = Array.from({ length: 20 }, (_, index) => ({ patternId: `entry-${index + 1}`, dwellSeconds: 30 }));
+const truncatedPlaylist = normalizeCardRuntimeConfig({
+  led: { pixels: 44 },
+  playlist: { enabled: true, fadeMs: 1500, entries: overflowEntries },
+});
+assert.equal(truncatedPlaylist.playlist.entries.length, 16);
+assert.deepEqual(
+  truncatedPlaylist.playlist.entries.map(entry => entry.patternId),
+  Array.from({ length: 16 }, (_, index) => `entry-${index + 1}`),
+);
+
+// buildCardRuntimePackageFromProject carries the playlist block through from
+// standaloneController.playlist + standaloneController.controls.playlist
+// (the timing settings) to the final wire config.
+const timedPlaylistPkg = buildCardRuntimePackageFromProject({
+  projectName: 'Timed playlist',
+  standaloneController: {
+    outputs: [{ id: 'main', name: 'Main', pin: 16, pixels: 44 }],
+    playlist: [
+      { type: 'pattern', patternId: 'plasma', dwellSeconds: 20 },
+      { type: 'pattern', patternId: 'ember', dwellSeconds: 40, enabled: false },
+    ],
+    controls: { encoder: { patternCycleIds: ['plasma', 'ember'] }, playlist: { enabled: true, fadeMs: 900 } },
+  },
+});
+assert.deepEqual(timedPlaylistPkg.config.playlist, {
+  enabled: true,
+  fadeMs: 900,
+  entries: [{ patternId: 'plasma', dwellSeconds: 20 }],
+});
+
+// The default project — no playlist timing ever set — installs with no
+// playlist block at all. Existing projects behave exactly as before F2.
+const noPlaylistPkg = buildCardRuntimePackageFromProject({
+  projectName: 'No playlist timing',
+  standaloneController: {
+    outputs: [{ id: 'main', name: 'Main', pin: 16, pixels: 44 }],
+    playlist: [{ type: 'pattern', patternId: 'plasma' }],
+  },
+});
+assert.equal(Object.hasOwn(noPlaylistPkg.config, 'playlist'), false);
+
 console.log('card-runtime-contract tests passed');

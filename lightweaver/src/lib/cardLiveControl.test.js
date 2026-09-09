@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
+import { postPlaylistControlToCard, recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
 
 // zoneConfirmsLivePreviewIntent is the pure comparison readBackLivePreview
 // leans on to decide whether a card's own `/api/zones` report already shows a
@@ -36,6 +36,37 @@ test('zoneConfirmsLivePreviewIntent: boolean fields must match exactly, not by t
   const zone = { customBreathe: false };
   assert.equal(zoneConfirmsLivePreviewIntent({ breathe: true }, zone), false);
   assert.equal(zoneConfirmsLivePreviewIntent({ breathe: false }, zone), true);
+});
+
+// ── postPlaylistControlToCard: the timed-playlist transport verb ─────────
+// Reuses the same /api/control endpoint and transport-authority gate every
+// other live control already goes through — this only proves the verb it
+// posts and that it refuses anything outside the four the card understands.
+
+test('postPlaylistControlToCard posts { playlist: <verb> } to /api/control through the active transport authority', async () => {
+  const calls = [];
+  const authority = {
+    async request(path, opts) {
+      calls.push({ path, opts });
+      return { ok: true, playlist: { configured: true, playing: true, entryIndex: 0, entryCount: 2, patternId: 'plasma', remainingSeconds: 20 } };
+    },
+  };
+  for (const verb of ['play', 'pause', 'next', 'previous']) {
+    calls.length = 0;
+    const response = await postPlaylistControlToCard(verb, { authority });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].path, '/api/control');
+    assert.equal(calls[0].opts.method, 'POST');
+    assert.deepEqual(calls[0].opts.body, { playlist: verb });
+    assert.equal(response.ok, true);
+  }
+});
+
+test('postPlaylistControlToCard refuses a verb the card contract does not define', async () => {
+  await assert.rejects(
+    () => postPlaylistControlToCard('rewind', { authority: { request: async () => ({ ok: true }) } }),
+    error => error?.reason === 'invalid-playlist-verb',
+  );
 });
 
 test('zoneConfirmsLivePreviewIntent: false when a targeted field is missing or non-numeric on the zone', () => {

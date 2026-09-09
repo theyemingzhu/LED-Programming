@@ -19,6 +19,13 @@ export const DEFAULT_PRODUCTION_MAX_MILLIAMPS = 1500;
 export const MIN_PRODUCTION_MAX_MILLIAMPS = 100;
 export const MAX_PRODUCTION_MAX_MILLIAMPS = 20000;
 export const CARD_KALEIDOSCOPE_REFLECTION_POINTS_VERSION = 1;
+// The timed-playlist entry cap the card firmware enforces. Kept as its own
+// literal (not imported from cardPlaylist.js) because cardPlaylist.js already
+// imports DEFAULT_CARD_PATTERN_BANK from THIS file — importing back would be
+// circular. Must stay in step with cardPlaylist.js's CARD_PLAYLIST_ENTRY_LIMIT
+// and, once it exists, packages/lightweaver-contract/card-hardware.json's
+// `maxPlaylistEntries`.
+export const CARD_PLAYLIST_CONFIG_ENTRY_LIMIT = 16;
 const CARD_KALEIDOSCOPE_MAPPING_KEYS = ['id', 'zoneId', 'pixelCount', 'pointCount', 'startLed', 'offsets', 'spans'];
 const CARD_KALEIDOSCOPE_SPAN_KEYS = ['start', 'count', 'sourceStart', 'sourceStep'];
 
@@ -140,6 +147,29 @@ export function normalizeCardOutputSettings(led = {}) {
   };
 }
 
+// The card-facing timed-playlist block: { enabled, fadeMs, entries }. Absent
+// or disabled produces no `playlist` key at all on the config, so a card
+// running firmware from before this contract (F2) ignores nothing new — the
+// caller (buildCardRuntimeConfig/makeCardRuntimePackage) only ever supplies
+// this already shaped by cardPlaylist.js's buildCardPlaylistConfig, but it is
+// re-validated here the same way every other config field is, rather than
+// trusted as pre-clean.
+function normalizeCardPlaylistBlock(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.enabled !== true) return null;
+  const fadeMs = clampInt(value.fadeMs, 1500, 0, 10000);
+  const rawEntries = Array.isArray(value.entries) ? value.entries : [];
+  const entries = rawEntries
+    .slice(0, CARD_PLAYLIST_CONFIG_ENTRY_LIMIT)
+    .map(entry => ({
+      patternId: sanitizeId(entry?.patternId),
+      dwellSeconds: clampInt(entry?.dwellSeconds, 30, 1, 3600),
+    }))
+    .filter(entry => entry.patternId);
+  if (!entries.length) return null;
+  return { enabled: true, fadeMs, entries };
+}
+
 export function normalizeCardRuntimeConfig(config = {}) {
   const mode = CARD_RUNTIME_MODES.includes(config.mode) ? config.mode : 'factory-flash';
   const controls = normalizeControls(config.controls);
@@ -188,6 +218,10 @@ export function normalizeCardRuntimeConfig(config = {}) {
       ? { kaleidoscopeMappings }
       : {}),
     syncZones: config.syncZones === undefined ? true : Boolean(config.syncZones),
+    ...(() => {
+      const playlist = normalizeCardPlaylistBlock(config.playlist);
+      return playlist ? { playlist } : {};
+    })(),
   };
 }
 
@@ -412,6 +446,7 @@ export function buildCardRuntimeConfig({
   zones,
   kaleidoscopeMappings,
   syncZones,
+  playlist,
 } = {}) {
   return normalizeCardRuntimeConfig({
     projectId,
@@ -430,6 +465,7 @@ export function buildCardRuntimeConfig({
     zones,
     kaleidoscopeMappings,
     syncZones,
+    playlist,
   });
 }
 

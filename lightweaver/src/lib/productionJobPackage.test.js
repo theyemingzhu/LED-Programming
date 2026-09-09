@@ -56,7 +56,7 @@ function source(overrides = {}) {
     },
     defaultLook: { patternId: 'aurora', brightness: 1, speed: 1, hueShift: 0, customHue: 32, customSaturation: 230, customBreathe: false, customDrift: false },
     looks: [],
-    playlist: [{ id: 'aurora', type: 'pattern', patternId: 'aurora', label: 'Aurora', enabled: true, createdAt: 0 }],
+    playlist: [{ id: 'aurora', type: 'pattern', patternId: 'aurora', label: 'Aurora', enabled: true, dwellSeconds: 30, createdAt: 0 }],
   };
   const restoreSnapshot = {
     version: 4,
@@ -258,7 +258,7 @@ test('production jobs round-trip custom breathe settings while legacy looks rema
     defaultLook: { ...controller.defaultLook },
     sectionLooks: { 'strip-1': { ...controller.defaultLook, breatheLowerPct: 76, breatheUpperPct: 94, breatheCycleSeconds: 12 } },
   }];
-  controller.playlist = [{ id: 'combo-gentle-gallery', type: 'combo', lookId: 'gentle-gallery', label: 'Gentle gallery', enabled: true, createdAt: 0 }];
+  controller.playlist = [{ id: 'combo-gentle-gallery', type: 'combo', lookId: 'gentle-gallery', label: 'Gentle gallery', enabled: true, dwellSeconds: 30, createdAt: 0 }];
   customSource.project.fingerprint = fingerprintCommissioningProject(customSource.project.restoreSnapshot);
   customSource.configuration = buildCardRuntimePackageFromProject({
     projectId: customSource.project.id,
@@ -603,10 +603,21 @@ test('verifies the pinned production-job key against its immutable signed fixtur
   }
   delete job.configuration.config.wiringRevision;
   delete job.configuration.config.wiringDigest;
+  // This fixture also predates the timed-playlist dwellSeconds field — every
+  // playlist item now carries one (cardPlaylist.js's normalizeCardPlaylist),
+  // but the pinned signature below was computed over bytes from before that
+  // field existed.
+  for (const item of job.project.restoreSnapshot.devices.standaloneController.playlist) {
+    delete item.dwellSeconds;
+  }
   job.configuration.config.productionJobDigest = '0'.repeat(64);
   job.digest = createHash('sha256').update(canonicalProductionJobBytes(job, { omitDigest: true })).digest('hex');
   job.configuration.config.productionJobDigest = job.digest;
   const bytes = canonicalProductionJobBytes(job);
+  if (process.env.LW_DEBUG_PINNED) {
+    console.log('DEBUG_BYTES_LEN', bytes.length);
+    console.log('DEBUG_BYTES', Buffer.from(bytes).toString('utf8'));
+  }
   const signature = {
     keyId: 'lightweaver-production-job-2026-01',
     algorithm: PRODUCTION_JOB_SIGNATURE_ALGORITHM,
@@ -723,7 +734,7 @@ test('builds and parses a canonical combo playlist production job', async () => 
     updatedAt: 0,
   }];
   combo.project.restoreSnapshot.devices.standaloneController.playlist = [{
-    id: 'combo-moon-look', type: 'combo', lookId: 'moon-look', label: 'Moon split', enabled: true, createdAt: 0,
+    id: 'combo-moon-look', type: 'combo', lookId: 'moon-look', label: 'Moon split', enabled: true, dwellSeconds: 30, createdAt: 0,
   }];
   combo.project.fingerprint = fingerprintCommissioningProject(combo.project.restoreSnapshot);
   combo.configuration = buildCardRuntimePackageFromProject({

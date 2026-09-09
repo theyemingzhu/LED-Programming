@@ -595,6 +595,59 @@ test('normalizes the installed project revision alongside the rest of the projec
   );
 });
 
+// ── playlist (the timed-playlist status block, F2's /api/status addition) ──
+
+test('normalizes the playlist status block, never inventing a claim the card did not make', () => {
+  const configured = normalizeCardReadiness(readyEnvelope({
+    playlist: { configured: true, playing: true, entryIndex: 1, entryCount: 4, patternId: 'ocean', remainingSeconds: 18 },
+  }));
+  assert.deepEqual(configured.playlist, {
+    configured: true,
+    playing: true,
+    entryIndex: 1,
+    entryCount: 4,
+    patternId: 'ocean',
+    remainingSeconds: 18,
+  });
+  assert.equal(Object.isFrozen(configured.playlist), true);
+
+  // Firmware from before F2 omits `playlist` entirely — that silence must
+  // read as "not on the card yet", not as a guess.
+  const legacy = normalizeCardReadiness(readyEnvelope());
+  assert.deepEqual(legacy.playlist, {
+    configured: false,
+    playing: false,
+    entryIndex: null,
+    entryCount: 0,
+    patternId: '',
+    remainingSeconds: null,
+  });
+
+  // An entryIndex the card reports past its own entryCount is not trusted.
+  const outOfRange = normalizeCardReadiness(readyEnvelope({
+    playlist: { configured: true, entryIndex: 9, entryCount: 2 },
+  }));
+  assert.equal(outOfRange.playlist.entryIndex, null);
+  assert.equal(outOfRange.playlist.entryCount, 2);
+
+  // A non-boolean claim for configured/playing is not a claim.
+  for (const claim of ['true', 1, null]) {
+    const normalized = normalizeCardReadiness(readyEnvelope({
+      playlist: { configured: claim, playing: claim },
+    }));
+    assert.equal(normalized.playlist.configured, false, JSON.stringify(claim));
+    assert.equal(normalized.playlist.playing, false, JSON.stringify(claim));
+  }
+
+  // Classification carries it through untouched, same as every other field.
+  assert.deepEqual(
+    classifyCardReadiness(readyEnvelope({
+      playlist: { configured: true, playing: false, entryIndex: 0, entryCount: 1, patternId: 'plasma', remainingSeconds: 5 },
+    }), { expectedCardId: CARD_ID }).playlist,
+    { configured: true, playing: false, entryIndex: 0, entryCount: 1, patternId: 'plasma', remainingSeconds: 5 },
+  );
+});
+
 // F13. `firmwareVersion` and `buildId` were normalized here and `buildNumber`
 // was not, so anything re-learning a card's firmware from a readiness envelope
 // could carry only two of the three fields and left the third describing the
