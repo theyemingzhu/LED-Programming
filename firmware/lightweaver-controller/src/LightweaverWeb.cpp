@@ -2001,6 +2001,45 @@ void appendTargetedZoneControlAcknowledgement(JsonDocument& out, const String& z
   }
 }
 
+// Playlist verb ("play"|"pause"|"next"|"previous"): independent of the
+// pattern/zone control transaction in handleControlPost. It steps the
+// project's own playlist.entries, never a direct pattern selection, so it
+// never touches the operationScope/prepared-selection machinery that keys off
+// patternId/next/previous. It lives outside handleControlPost so the control
+// handler's own contract (reject before any revision advance) stays readable
+// as one function; the caller has already passed the playback gate.
+static void handlePlaylistControl(JsonDocument& doc) {
+  String verb = controlString(doc, "playlist");
+  bool ok;
+  if (verb == "play") ok = runtimePlaylistPlay();
+  else if (verb == "pause") ok = runtimePlaylistPause();
+  else if (verb == "next") ok = runtimePlaylistNext();
+  else if (verb == "previous") ok = runtimePlaylistPrevious();
+  else {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid playlist verb\"}");
+    return;
+  }
+  if (!ok) {
+    server.send(422, "application/json", "{\"ok\":false,\"error\":\"playlist not configured or unavailable\"}");
+    return;
+  }
+  JsonDocument out;
+  out["ok"] = true;
+  out["cardId"] = runtimeCardId();
+  out["stateRevision"] = runtimeAdvanceStateRevision();
+  String body;
+  serializeJson(out, body);
+  // Splice the playlist status object in directly (same tail-append
+  // pattern handleStatus() uses) rather than round-tripping it through a
+  // second JsonDocument.
+  int lastBrace = body.lastIndexOf('}');
+  if (lastBrace > 0) {
+    body = body.substring(0, lastBrace) + ",\"playlist\":" + runtimePlaylistStatusJson() + "}";
+  }
+  server.send(200, "application/json", body);
+  return;
+}
+
 void handleControlPost() {
   sendCors();
   if (!provisioningControlAdmitted(runtimePlaybackReady())) {
@@ -2034,40 +2073,8 @@ void handleControlPost() {
   } else {
     controlRequestBodyReady = false;
   }
-  // Playlist verb ("play"|"pause"|"next"|"previous"): independent of the
-  // pattern/zone control transaction below — this steps the project's own
-  // playlist.entries, never a direct pattern selection, so it never touches
-  // the operationScope/prepared-selection machinery that keys off
-  // patternId/next/previous and returns its own response immediately.
   if (hasControlField(doc, "playlist")) {
-    String verb = controlString(doc, "playlist");
-    bool ok;
-    if (verb == "play") ok = runtimePlaylistPlay();
-    else if (verb == "pause") ok = runtimePlaylistPause();
-    else if (verb == "next") ok = runtimePlaylistNext();
-    else if (verb == "previous") ok = runtimePlaylistPrevious();
-    else {
-      server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid playlist verb\"}");
-      return;
-    }
-    if (!ok) {
-      server.send(422, "application/json", "{\"ok\":false,\"error\":\"playlist not configured or unavailable\"}");
-      return;
-    }
-    JsonDocument out;
-    out["ok"] = true;
-    out["cardId"] = runtimeCardId();
-    out["stateRevision"] = runtimeAdvanceStateRevision();
-    String body;
-    serializeJson(out, body);
-    // Splice the playlist status object in directly (same tail-append
-    // pattern handleStatus() uses) rather than round-tripping it through a
-    // second JsonDocument.
-    int lastBrace = body.lastIndexOf('}');
-    if (lastBrace > 0) {
-      body = body.substring(0, lastBrace) + ",\"playlist\":" + runtimePlaylistStatusJson() + "}";
-    }
-    server.send(200, "application/json", body);
+    handlePlaylistControl(doc);
     return;
   }
   // Optional `zone` field targets a single zone. Empty / missing = broadcast
