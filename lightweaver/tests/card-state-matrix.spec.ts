@@ -457,10 +457,17 @@ test('[T6] a card holding exactly this project finishes Setup', async ({ page })
     page.getByTestId('setup-progress'),
     'a card holding exactly this project must be able to finish Setup',
   ).toHaveText(/Setup complete/i, { timeout: 15000 });
+  // F41 (2026-09-09, Adrian): "Open Patterns" is the sidebar's job; a finished
+  // ladder folds to one line with a plain way to reopen the steps, and no
+  // second door to Patterns on Card Home.
+  await expect(
+    page.getByTestId('setup-show-steps'),
+    'a finished Setup must fold to one line with a way to reopen the steps',
+  ).toBeVisible();
   await expect(
     page.getByTestId('setup-open-patterns'),
-    'finishing Setup must offer the way on to Patterns',
-  ).toBeVisible();
+    'finishing Setup must not add a second door to Patterns; the sidebar is the way on',
+  ).toHaveCount(0);
 });
 
 test('[T5] a tap that lands while the card is still starting resolves itself', async ({ page }) => {

@@ -13,8 +13,8 @@ test('a compatible-but-older release is optional, worded with the exact build nu
   });
   assert.deepEqual(copy, {
     required: false,
-    heading: 'A newer card release is available',
-    body: 'Your lights keep working on 1524. Update to 1548 when convenient.',
+    heading: 'Card release 1548 available',
+    body: 'Your lights keep working on 1524.',
   });
 });
 
