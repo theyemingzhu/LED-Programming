@@ -175,4 +175,13 @@ test('editing a journey color immediately streams that color instead of the prev
     return colors.length > 0 && colors.every(value => /^[0-9a-f]{2}0000$/i.test(value)) && colors.some(value => !/^000000$/i.test(value));
   }), { timeout: 3000 }).toBe(true);
   await expect(page.getByTestId('color-journey-ribbon').locator('[data-color]').nth(1)).toHaveAttribute('data-color', '#ff0000');
+  await expect(page.getByRole('button', { name: 'Resume journey', exact: true })).toBeVisible();
+  const clock = page.locator('[data-preview-time]');
+  await page.getByRole('button', { name: 'Move color 2 right', exact: true }).click();
+  await expect(clock).toHaveAttribute('data-preview-time', '240');
+  const heldTime = await clock.getAttribute('data-preview-time');
+  await page.waitForTimeout(1100);
+  await expect(clock).toHaveAttribute('data-preview-time', heldTime!);
+  await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
+  await expect.poll(() => clock.getAttribute('data-preview-time')).not.toBe(heldTime);
 });

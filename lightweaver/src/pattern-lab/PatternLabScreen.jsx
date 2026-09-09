@@ -490,6 +490,7 @@ export default function PatternLabScreen() {
   // setPlaying(true) call and no chance of a race between "recipe arrived"
   // and "start playing" firing in the wrong order.
   const [playing, setPlaying] = useState(true);
+  const [auditionStopId, setAuditionStopId] = useState(null);
   const [drafts, setDrafts] = useState([]);
   const [draftState, setDraftState] = useState('loading');
   const [message, setMessage] = useState('');
@@ -1040,6 +1041,7 @@ export default function PatternLabScreen() {
   }
 
   function choosePattern(patternId) {
+    setAuditionStopId(null);
     if (!patternId) {
       setPendingPatternId(null);
       setSourceRecipe(null);
@@ -1094,22 +1096,28 @@ export default function PatternLabScreen() {
     setCreativeVariations([]);
     setPreviewTime(0);
     setPlaying(true);
+    setAuditionStopId(null);
     setMessage('');
     signalInstrumentResponse(0, 'pattern');
+  }
+
+  function holdColorStop(recipe, stopId) {
+    const stops = recipe?.journey?.stops;
+    if (!stopId || !Array.isArray(stops)) return;
+    const stopIndex = stops.findIndex(stop => stop.id === stopId);
+    if (stopIndex < 0) return;
+    const stopStartMs = stops
+      .slice(0, stopIndex)
+      .reduce((total, stop) => total + stop.holdMs + stop.fadeMs, 0);
+    setPreviewTime(stopStartMs / 1000);
+    setPlaying(false);
+    setAuditionStopId(stopId);
   }
 
   function changeCreativeRecipe(next, intent = null) {
     const normalized = normalizePatternLabRecipe(next);
     setDraft(normalized);
-    if (intent?.previewStopId && normalized.journey?.stops) {
-      const stopIndex = normalized.journey.stops.findIndex(stop => stop.id === intent.previewStopId);
-      if (stopIndex >= 0) {
-        const stopStartMs = normalized.journey.stops
-          .slice(0, stopIndex)
-          .reduce((total, stop) => total + stop.holdMs + stop.fadeMs, 0);
-        setPreviewTime(stopStartMs / 1000);
-      }
-    }
+    if (intent?.previewStopId || auditionStopId) holdColorStop(normalized, intent?.previewStopId || auditionStopId);
     setCreativeVariations([]);
     setMessage('');
     signalInstrumentResponse(1);
@@ -1127,6 +1135,7 @@ export default function PatternLabScreen() {
     setDraft(next);
     setCreativeVariations([]);
     setPreviewTime(0);
+    setAuditionStopId(null);
     setMessage(candidate.explanation);
     signalInstrumentResponse(1);
   }
@@ -1360,6 +1369,7 @@ export default function PatternLabScreen() {
     const next = normalizePatternLabRecipe(cloneRecipe(variant));
     setDraft(next);
     setPreviewTime(0);
+    setAuditionStopId(null);
     setMessage(`${status} ${next.name}. The source recipe is unchanged.`);
   }
 
@@ -1397,6 +1407,7 @@ export default function PatternLabScreen() {
     setSourceRecipe(sourceFromRecipe(normalized));
     setDraft(cloneRecipe(normalized));
     setPreviewTime(0);
+    setAuditionStopId(null);
     setMessage(`Opened ${normalized.name}`);
     setImportErrors([]);
   }
@@ -1799,7 +1810,20 @@ export default function PatternLabScreen() {
                       : (previewRecipe ? 'Mapped to current artwork' : 'No source selected')}
                   </span>
                 </span>
-                <button type="button" className="plab-play" disabled={!previewRecipe} aria-pressed={playing} onClick={() => setPlaying(value => !value)}>{playing ? 'Pause' : 'Play'}</button>
+                <button
+                  type="button"
+                  className="plab-play"
+                  disabled={!previewRecipe}
+                  aria-pressed={playing}
+                  onClick={() => {
+                    if (auditionStopId) {
+                      setAuditionStopId(null);
+                      setPlaying(true);
+                    } else {
+                      setPlaying(value => !value);
+                    }
+                  }}
+                >{auditionStopId ? 'Resume journey' : playing ? 'Pause' : 'Play'}</button>
                 <button
                   ref={drawerTriggerRef}
                   type="button"
@@ -1962,6 +1986,8 @@ export default function PatternLabScreen() {
               onOpenSaved={openDraft}
               onUndo={runUndo}
               onRehearsalChange={setRehearsal}
+              auditionStopId={auditionStopId}
+              onPreviewColor={stopId => holdColorStop(draft, stopId)}
             />
             {workingCopyError && <p className="plab-working-copy-error" role="alert">{workingCopyError}</p>}
             <details ref={fineTuneRef} className="plab-fine-tune">

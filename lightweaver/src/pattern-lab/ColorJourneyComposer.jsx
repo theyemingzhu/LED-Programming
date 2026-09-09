@@ -53,11 +53,14 @@ export default function ColorJourneyComposer({
   canUndo = false,
   rehearsal = false,
   onRehearsalChange,
+  auditionStopId = null,
+  onPreviewColor,
 }) {
   const draggedIndex = useRef(null);
   const colorInputs = useRef([]);
   const journey = recipe?.journey ? normalizeColorJourney(recipe.journey) : null;
   const colors = journey?.stops.map(stop => stop.color) || [];
+  const auditionStopIndex = journey?.stops.findIndex(stop => stop.id === auditionStopId) ?? -1;
 
   function updateJourney(nextJourney, intent) {
     const normalized = normalizeColorJourney(nextJourney);
@@ -141,7 +144,10 @@ export default function ColorJourneyComposer({
                 data-color={stop.color}
                 data-color-index={index}
                 aria-label={`Color ${index + 1}: ${stop.color}. Drag to reorder.`}
-                onClick={() => colorInputs.current[index]?.click()}
+                onClick={() => {
+                  onPreviewColor?.(stop.id);
+                  colorInputs.current[index]?.click();
+                }}
                 onDragStart={() => { draggedIndex.current = index; }}
                 onDragOver={event => event.preventDefault()}
                 onDrop={event => {
@@ -163,6 +169,7 @@ export default function ColorJourneyComposer({
                   type="color"
                   value={stop.color}
                   aria-label={`Choose color ${index + 1}`}
+                  onClick={() => onPreviewColor?.(stop.id)}
                   onChange={event => changeColor(index, event.target.value)}
                 />
               </label>
@@ -177,6 +184,9 @@ export default function ColorJourneyComposer({
           ))}
         </div>
       </div>
+      {auditionStopIndex >= 0 && (
+        <p className="plab-studio-live-note" role="status">Holding color {auditionStopIndex + 1} · Resume journey to continue</p>
+      )}
 
       <div className="plab-palette-choices" role="group" aria-label="Color combinations">
         {PALETTES.map(palette => (

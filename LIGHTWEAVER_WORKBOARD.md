@@ -112,6 +112,16 @@ this queue when Adrian is available.
 
 ## Bench queue
 
+2026-09-09 color hold Bench: card lw-b0fe81f61b44 at192.168.18.70,
+firmware1548; user yellow #fff700 looked green. DOM clock53.9s revealed fade
+past30s hold toward teal. Color audition now pauses at stop start and existing
+transport says Resume journey. Opening unchanged swatch also holds; transient only.
+Primary clicked current yellow swatch, dismissed picker, resumed Live preview after
+HMR; browser clock0 and card wled-realtime active. Read-only card evidence: RGB,
+gammaoff, calibration1/1/1, external brightness15/255. No calibration/firmware edits.
+11 focused browser checks + build pass. Pending one observation: does held yellow
+still look greenish? Resume there; do not claim physical match without Adrian.
+
 | ID | Goal | Machine state | Human input still required | Session | Status |
 | --- | --- | --- | --- | --- | --- |
 | BENCH-001 | Restore and re-verify the GPIO 18 bench card after the destructive factory flash | Firmware 1.1.1 build 1198, boot `boot-0bb7a7d8-b0fe81f61b44`, reachable at `192.168.18.70` and USB; Wi-Fi recovered but card is blank with no project/output | Resolve prior 41-pixel RGB evidence versus frozen 44-pixel GRB job, then observe the lights | Prove session `2026-08-10-windowless-offline-studio` | blocked |
