@@ -97,6 +97,18 @@ function cardEditIntent() {
   return readCardEditIntent(window.location.search);
 }
 
+// W1-6 (b6a9bfa9): every call that reaches the card must route by the link it
+// actually holds, not by guessing "bridge" from the page protocol. Module-
+// level (not a hook inside either component below) because CardHomePanels'
+// Checks & recovery panel and CardScreen's blackout banner are two separate
+// components that both reach the card — F33 found the banner had drifted
+// from this because a first attempt at sharing this scoped the builder
+// inside CardHomePanels only, which CardScreen's recoverCardBlackout cannot
+// see. One function both can call is the only shape that cannot drift again.
+function cardConnectionOptionsFor(cardLink, cardHost) {
+  return { host: cardLink?.host || cardHost, transport: cardLink?.transport };
+}
+
 // Card Home's evidence panels — formerly the whole "Card status" overview.
 // The status verdict and the next-action verdict now live in the Setup
 // journey rendered above these panels (SetupScreen: identity row + 4-phase
@@ -420,11 +432,17 @@ function CardHomePanels({
   // shell provides it, and fall back to the background probe otherwise.
   const openConnection = () => (onOpenConnectionCenter ? onOpenConnectionCenter() : onConnectCard?.());
   const requireExactReadyStatus = (status) => requireExactReadyCardStatus(status, cardLink?.card?.id);
+  // W1-6 (b6a9bfa9) / F33: every call that reaches the card must route by the
+  // link it actually holds, not by guessing "bridge" from the page protocol —
+  // see the module-level `cardConnectionOptionsFor` above for why this is a
+  // plain function outside both components rather than a hook scoped to
+  // this one.
+  const cardConnectionOptions = () => cardConnectionOptionsFor(cardLink, cardHost);
   const verifyHardware = async () => {
     if (hardwareActionState.status === 'loading') return;
     setHardwareActionState({ status: 'loading', message: 'Reading exact card hardware state…' });
     try {
-      const status = requireExactReadyStatus(await readCardStatusEnvelope({ host: cardLink?.host || cardHost, transport: cardLink?.transport }));
+      const status = requireExactReadyStatus(await readCardStatusEnvelope(cardConnectionOptions()));
       const pixels = Number(status.led?.pixels) || Number(cardLink?.card?.pixelCount) || 0;
       setHardwareActionState({
         status: 'ok',
@@ -441,8 +459,7 @@ function CardHomePanels({
       const response = await recoverCardLightsVerified(
         { patternId: 'warm-white', brightness: 0.35, syncZones: true },
         {
-          host: cardLink?.host || cardHost,
-          transport: cardLink?.transport,
+          ...cardConnectionOptions(),
           timeoutMs: 3200,
           verifyReadback: { expectedCardId: cardLink?.card?.id },
         },
@@ -469,7 +486,7 @@ function CardHomePanels({
     if (hardwareActionState.status === 'loading') return;
     setHardwareActionState({ status: 'loading', message: 'Clearing the temporary Find-my-strips setup…' });
     try {
-      await clearCardProject({ host: cardLink?.host || cardHost, transport: cardLink?.transport });
+      await clearCardProject(cardConnectionOptions());
       setHardwareActionState({
         status: 'ok',
         message: 'The temporary setup was cleared. The card kept its WiFi and is restarting blank — reconnect in a few seconds, then install your project or run Find my strips.',
@@ -935,14 +952,29 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       // lw-pattern.jsx) — reused, not reinvented, and wrapped the same way so
       // a cleared blackout invalidates the shared journey evidence and this
       // banner clears itself without a click.
+      //
+      // F33: this was the one hardware-reaching call in the file that never
+      // adopted the W1-6 fix (b6a9bfa9) — it built its own options object
+      // instead of the shared `cardConnectionOptionsFor()`, so it never
+      // forwarded `cardLink.transport`. On the live site (https), that meant
+      // it always fell back to guessing "bridge" from the page protocol,
+      // even when the link this banner was reporting Connected on was a
+      // genuine direct link and no card-page bridge tab was open — the
+      // request had nothing to reach and timed out. Same fix as the other
+      // three, and the module-level helper (not CardHomePanels' own
+      // `cardConnectionOptions`) because this button lives in CardScreen, a
+      // different component.
       await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
         { patternId: 'warm-white', brightness: 1, syncZones: true },
-        { host: cardLink?.host || cardHost, timeoutMs: 3200, restartCard: true },
+        { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 3200, restartCard: true },
       ));
       setBlackoutRecoveryStatus('idle');
     } catch (error) {
       setBlackoutRecoveryStatus('error');
-      setBlackoutRecoveryError(error?.message || 'Recovery was not verified. Keep the card powered, reconnect, and retry.');
+      // Fixed, short copy rather than surfacing the underlying transport
+      // error's wording (e.g. "before the preview request timed out.") —
+      // this banner's owner does not need the transport's own vocabulary.
+      setBlackoutRecoveryError('The card did not answer. Check the connection, then try again.');
     }
   };
 

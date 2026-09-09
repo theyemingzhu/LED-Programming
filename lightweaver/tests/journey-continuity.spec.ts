@@ -22,6 +22,8 @@ import {
   OTHER_PROJECT_ID,
   type CardStateSpec,
 } from './harness/cardStates';
+import { installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
+import { testBaseURL } from './testPort.mjs';
 
 // ---------------------------------------------------------------------------
 // Shared boot/read helpers — same conventions as card-state-matrix.spec.ts,
@@ -723,4 +725,95 @@ test('[J30-blackout-out-of-band] a blackout switched on the card\'s own page rea
     page.getByTestId('card-blackout-notice'),
     'clearing the blackout out of band must also reach Studio within one status poll',
   ).toHaveCount(0, { timeout: 20000 });
+});
+
+// ---------------------------------------------------------------------------
+// J33 — F33, live-site defect (Adrian, Studio build 1767+, card
+// lw-b0fe81f61b44 firmware 1548, https://led.mandalacodes.com, Chrome): the
+// identity row read CONNECTION Connected / INSTALLED Installed project
+// matches — a genuine direct link, not a bridge — and pressing Card Home's
+// Recover lights on the blackout banner answered "The card did not answer
+// before the preview request timed out." A walker the night before saw the
+// same button say "The card bridge transport is open, but card identity is
+// not verified." and send no recovery request at all, while Patterns'
+// Recover lights cleared an identical blackout fine both times.
+//
+// Root cause: `recoverCardBlackout` (lw-card.jsx) was the one hardware-
+// reaching call in this file that never adopted the W1-6 fix (b6a9bfa9) —
+// `verifyHardware`, `recoverLights` and `clearTemporarySetup` all build their
+// {host, transport} options from the shared `cardConnectionOptions()`
+// helper, but the blackout banner's button built its own object and never
+// included `transport`. `recoverCardLights` (cardLiveControl.js) only trusts
+// an explicit `transport`; without one it falls back to guessing "bridge"
+// from `window.location.protocol` alone, which is always true on https —
+// so this button always tried the card-page bridge, even holding a direct
+// link with no bridge tab ever open to answer it.
+//
+// This lane serves the real app at the real production origin (same
+// technique as card-state-matrix.spec.ts's Tier 2 / journey-direct-preview's
+// J17) so `window.location.protocol` is genuinely 'https:', lets the card
+// simulator answer the DIRECT http routes it always installs, and installs
+// no fake card-page bridge at all — a request that falls back to the bridge
+// path has nothing that will ever answer it, so only a request that
+// genuinely goes direct can pass.
+// ---------------------------------------------------------------------------
+async function linkTransport(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const state = getSharedCardLink().getState() || {};
+    return `${state.state || ''}/${state.transport || ''}`;
+  });
+}
+
+test('[J33-card-home-recover-https] Card Home Recover lights reaches a direct link over https instead of timing out on a bridge tab that was never opened', async ({ page }) => {
+  const crashes: string[] = [];
+  page.on('pageerror', error => crashes.push(String(error.message)));
+
+  const spec = cardState('installed-match');
+  const card = createCardSimulator(spec);
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await seedReturningOwnerWithCompleteProject(page, spec);
+
+  await page.goto(`${STUDIO_ORIGIN}/`, { waitUntil: 'domcontentloaded' });
+  expect(page.url().startsWith(STUDIO_ORIGIN), 'the page did not actually land on the https origin').toBe(true);
+
+  await waitConnectedUnaided(page, 'J33 card home connect over https');
+  expect(
+    await linkTransport(page),
+    'this test only proves something if the link it holds is genuinely direct, not a bridge',
+  ).toBe('connected-direct/direct');
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'sanity: no blackout has been raised yet',
+  ).toHaveCount(0);
+
+  // The card's OWN page flips its global blackout, out of band — same as
+  // J30, and the same fact both Card Home and Patterns read off the shared
+  // journey's /api/zones poll.
+  card.outOfBandBlackout(true);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'Card Home must report the blackout over https the same way it does on http',
+  ).toBeVisible({ timeout: 20000 });
+
+  const recoverButton = page.getByTestId('recover-lights');
+  await expect(recoverButton).toBeVisible();
+  await recoverButton.click();
+
+  await expect
+    .poll(() => card.requests.some(entry => entry.method === 'POST' && entry.path === '/api/recover-lights'), {
+      message: 'Recover lights must reach the card through the direct link this page holds, not time out waiting on a bridge tab that was never opened',
+      timeout: CONNECT_BUDGET_MS,
+    })
+    .toBe(true);
+
+  await expect(
+    page.getByTestId('card-blackout-notice'),
+    'once the card reports blackout false, the message must go away without a further click',
+  ).toHaveCount(0, { timeout: CONNECT_BUDGET_MS });
+
+  expect(crashes, 'the screen crashed').toEqual([]);
 });
