@@ -36,6 +36,29 @@ export function installedProjectIdFromCardStatus(raw = {}) {
   return cleanText(source.projectId ?? source.piece?.id, 128);
 }
 
+// The timed-playlist status block the firmware adds to /api/status:
+// { configured, playing, entryIndex, entryCount, patternId, remainingSeconds }.
+// Never invented: a card that omits `playlist` entirely (firmware from before
+// F2) reports `configured: false` and every other field at its empty default,
+// which the Playlist screen reads as "not on the card yet" rather than a
+// stale or guessed state.
+function normalizeCardPlaylistStatus(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const entryCount = nonNegativeInteger(source.entryCount) ?? 0;
+  const rawEntryIndex = nonNegativeInteger(source.entryIndex);
+  // An index the card reports past its own entryCount cannot be trusted —
+  // null (unknown), never clamped into a wrong-but-plausible position.
+  const entryIndex = rawEntryIndex !== null && entryCount > 0 && rawEntryIndex < entryCount ? rawEntryIndex : null;
+  return Object.freeze({
+    configured: source.configured === true,
+    playing: source.playing === true,
+    entryIndex,
+    entryCount,
+    patternId: cleanText(source.patternId, 96),
+    remainingSeconds: nonNegativeInteger(source.remainingSeconds),
+  });
+}
+
 export function normalizeCardReadiness(raw = {}) {
   const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const app = cleanText(source.app, 32);
@@ -152,6 +175,7 @@ export function normalizeCardReadiness(raw = {}) {
     // Absence is not damage: every card in the field today omits the field, and
     // its silence has to keep classifying exactly as it did before.
     safeMode: safeModeClaim === true,
+    playlist: normalizeCardPlaylistStatus(source.playlist),
   });
 }
 
