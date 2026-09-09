@@ -1,25 +1,4 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": [
-    {
-      "id": "fw-lights-switch",
-      "what": "The card page's lights control is now a real on/off switch instead of a text button.",
-      "why": "Small visitor-page polish, not worth a signed card release on its own.",
-      "added": "2026-09-09",
-      "source": {
-        "kind": "branch",
-        "branch": "round2/fw-lights-switch"
-      }
-    },
-    {
-      "id": "fw-repo-format",
-      "what": "A card whose storage was never set up now fixes itself and update refusals now say why.",
-      "why": "F38 fix; needed on real cards eventually but not urgent enough for a signed release on its own.",
-      "added": "2026-09-09",
-      "source": {
-        "kind": "branch",
-        "branch": "round2/fw-repo-format"
-      }
-    }
-  ]
+  "waiting": []
 }
