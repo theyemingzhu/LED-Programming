@@ -22,7 +22,7 @@ Survey: [Four Sections, One Strip](https://claude.ai/code/artifact/129b9bf9-75d8
 | # | Change | Lane | Files | State |
 |---|---|---|---|---|
 | 1 | Playlist previews stop pushing config (and rebooting) on wired projects; zone-identity node specs join the PR lane | S1, Studio | playlistLivePreview.js, lw-playlist.jsx, playlist-live-preview.mjs, test.yml, package.json | Shipped 2026-09-09, PR #248, Studio build 1708 |
-| 2 | "Divide into N" on Layout (41 into 4 gives 11, 10, 10, 10), cap 12 | S1b, Studio | stripSplit.js, DrawModePanel.jsx, useLayoutStrips.js, layout-divide.spec.ts | In progress |
+| 2 | "Divide into N" on Layout (41 into 4 gives 11, 10, 10, 10), cap 12 | S1b, Studio | stripSplit.js, DrawModePanel.jsx, useLayoutStrips.js, layout-divide.spec.ts | PR #251 open, phone preview clipping fixed, waiting for main to go green |
 | 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | In progress |
 | 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | In progress |
 | S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | Merged 2026-09-09, PR #250 (114 net lines removed) |
