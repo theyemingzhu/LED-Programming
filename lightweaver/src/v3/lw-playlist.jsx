@@ -341,7 +341,7 @@ function realPatternShape(patternId) {
           }
           return false;
         }
-        const targets = buildSavedLookPlaylistPreviewTargets({ savedLook, strips, patchBoard: board });
+        const targets = buildSavedLookPlaylistPreviewTargets({ savedLook, strips, patchBoard: board, wiring, compiledWiring });
         const requiredZoneIds = targets
           .filter(target => target.kind === 'section')
           .map(target => String(target.zoneId || target.id || ''))

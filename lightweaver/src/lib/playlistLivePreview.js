@@ -15,6 +15,8 @@ export function buildSavedLookPlaylistPreviewTargets({
   savedLook = {},
   strips = [],
   patchBoard = null,
+  wiring = null,
+  compiledWiring = null,
 } = {}) {
   const board = applySavedLookToPatchBoard({
     patchBoard,
@@ -25,6 +27,8 @@ export function buildSavedLookPlaylistPreviewTargets({
   return deriveSectionTargets({
     strips,
     patchBoard: board,
+    wiring,
+    compiledWiring,
     defaultLook: savedLook?.defaultLook || {},
   });
 }

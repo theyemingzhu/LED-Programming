@@ -117,6 +117,9 @@ jobs:
         working-directory: lightweaver
       - run: node scripts/ensure-rollup-native.mjs
         working-directory: lightweaver
+      - name: Run zone-identity and card-section node specs
+        working-directory: lightweaver
+        run: npm run ci:pr-lane-node-specs
       - run: npx playwright install --with-deps chromium
         working-directory: lightweaver
       - name: Run focused critical-workflow smoke tests
