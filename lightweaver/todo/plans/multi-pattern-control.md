@@ -40,6 +40,10 @@ Status: `GET /api/status` gains `"playlist": { "configured", "playing", "entryIn
 
 Persistence: the definition lives in the project and reaches the card only through Install; play state and entry index ride inside the `liveLook` NVS record from 1.1.33, so a power-cycle resumes a playing playlist. Cross-fade uses the card's existing fade path with `fadeMs`; the strip is never black between entries.
 
+## Incident 2026-09-09: #255 turned main red
+
+The Tests workflow runs only on push to main, so #255 was the first CI run of its own code. The provisioning-status contract test extracts the control handler's body by counting braces and stopped at a `'}'` char literal the playlist branch added, hiding the colour-order rejection; its next assertion required every rejection to precede any revision advance inside that one function. Fixed the same hour: the extractor skips literals and comments (with a fixture), and the playlist verb moved to its own handler. Lesson for briefs: name the CI lane scripts (`test:core:source`, `ci:firmware-sensitive`), not a list of individual tests.
+
 ## Every brief carries
 
 Exact files owned and no other file touched; the defect's citation; the locked UI conventions (word labels, one status and one primary action, sliders in reach, phone first, never fully black, no em-dashes); for firmware the byte cap and the measured config size; the acceptance test to add, with red-then-green evidence and verbatim counts; a VERSION bump for any firmware change.
