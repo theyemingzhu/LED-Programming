@@ -208,6 +208,23 @@ String bootId;
 uint32_t cardStateRevision = 0;
 ErrorCode errorCode = ERROR_NONE;
 
+// ---- Live-look resume record (power-cycle survival for /api/control tweaks) ----
+// See LiveLookRecord in LightweaverStorage.h for the data model and why it is
+// its own NVS key. LW_LIVE_LOOK_MAX_ZONES there is an independent literal
+// (that header stays Arduino-free) — pin it to the real hardware ceiling here,
+// where LightweaverTypes.h is already included.
+static_assert(LW_LIVE_LOOK_MAX_ZONES == LW_MAX_ZONES,
+              "the live-look record must be able to hold every zone a card can render");
+// Debounce window: a persist is scheduled ~2s after the LAST change, never
+// per-frame and never mid-fade (fadeTo() blocks loop(), so a service call can
+// only run between ticks — see runtimeServiceLiveLookPersist()).
+constexpr uint32_t LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS = 2000;
+bool liveLookDirty = false;
+uint32_t liveLookDirtyAtMs = 0;
+// True for the rest of this boot once a persisted record matched this
+// project and was applied. Surfaced on /api/status as resumedLiveLook.
+bool resumedLiveLookFlag = false;
+
 struct PreparedSequence {
   File file;
   uint32_t frameCount = 0;
@@ -297,6 +314,7 @@ bool openSequence(const LookConfig& look, PreparedSequence* prepared = nullptr);
 bool isLoadedLookRenderable(const LookConfig& look, bool zoneTargeted);
 bool renderCurrentLook(bool force = false);
 bool renderSequenceFrame(bool force = false);
+bool restoreLiveLookIfMatching();
 void applySequenceFrameBufferToLeds();
 bool renderProceduralFrame(const String& preset);
 bool renderPresetFrame(const String& preset);
@@ -445,6 +463,9 @@ void setup() {
       if (loadResult.bootedCandidate) rollbackCandidateBeforeRestart("candidate startup frame failed");
       return;
     }
+    // Overlay any persisted live tweaks on top of the startup look's own
+    // defaults, before the first visible fade-in — see restoreLiveLookIfMatching().
+    resumedLiveLookFlag = restoreLiveLookIfMatching();
     if (runtimeConfig.provisionalProject && !loadResult.bootedCandidate) {
       // A provisional (Find-my-strips bench) setup must not silently relight
       // the whole strip on an unattended boot. fadeScale stays 0: the internal
@@ -531,6 +552,12 @@ void setup() {
 void loop() {
   uint32_t now = millis();
   esp_task_wdt_reset();  // pet the watchdog every iteration, before any early return
+  // Unconditional every tick, regardless of mode below: a fade started this
+  // tick (fadeTo()) always blocks loop() until it finishes, so by the time
+  // control reaches here no fade from THIS tick is in flight, and any fade
+  // from a PRIOR tick already returned before loop() could run again — this
+  // can never fire mid-fade. See runtimeServiceLiveLookPersist().
+  runtimeServiceLiveLookPersist();
   bool recoveryHoldActive = int32_t(recoveryHoldUntilMs - now) > 0;
   handleLightweaverWeb();
   handleLightweaverFirmwareBootHealth();
@@ -1300,6 +1327,7 @@ void selectLook(int index) {
   blackedOut = false;
   if (!startLook(currentLookIndex, &prepared)) return;
   fadeTo(1.0f, looks[currentLookIndex].fadeInMs);
+  runtimeMarkLiveLookDirty();
 }
 
 bool selectLookInstant(int index) {
@@ -1321,6 +1349,7 @@ bool applyPreparedLookInstant(uint8_t nextIndex, PreparedSequence* prepared) {
   fadeScale = 1.0f;
   if (!startLook(currentLookIndex, prepared)) return false;
   showLeds();
+  runtimeMarkLiveLookDirty();
   return true;
 }
 
@@ -2089,6 +2118,9 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
         break;
       }
     }
+    // Every zone-level mutation funnels through this one function — this is
+    // the single choke point for arming the live-look persist debounce.
+    if (touched > 0) runtimeMarkLiveLookDirty();
     return touched;
   }
   // No target: when sync is on, broadcast. When sync is off, only zone 0.
@@ -2101,6 +2133,7 @@ uint8_t applyToZones(const String& targetId, Fn fn) {
     fn(runtimeConfig.zones[0]);
     touched = 1;
   }
+  if (touched > 0) runtimeMarkLiveLookDirty();
   return touched;
 }
 
@@ -3059,7 +3092,7 @@ bool runtimeCanSetLedColorOrder(const String& order) {
 }
 String runtimeGetLedColorOrder() { return ledColorOrder; }
 
-void runtimeSetSyncZones(bool on) { runtimeConfig.syncZones = on; }
+void runtimeSetSyncZones(bool on) { runtimeConfig.syncZones = on; runtimeMarkLiveLookDirty(); }
 bool runtimeGetSyncZones() { return runtimeConfig.syncZones; }
 
 void runtimeSetDriftRange(uint8_t lo, uint8_t hi) {
@@ -3073,6 +3106,115 @@ void runtimeSetDriftRangeZ(const String& targetId, uint8_t lo, uint8_t hi) {
 }
 uint8_t runtimeGetDriftHueMin() { return driftHueMin; }
 uint8_t runtimeGetDriftHueMax() { return driftHueMax; }
+
+// ---- Live-look resume record: capture, persist, restore ----
+// See LiveLookRecord in LightweaverStorage.h for the data model and why it
+// exists (POST /api/control mutates runtimeConfig.zones[] in memory only,
+// so a tweak was previously lost at every power-cycle).
+
+// Builds a snapshot of the CURRENT live zone state — called only from
+// runtimeServiceLiveLookPersist() at flush time, never on the request that
+// marked the record dirty, so a burst of slider drags encodes once.
+void captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
+  outRecord = LiveLookRecord();
+  lightweaver_live_look_detail::copyBounded(
+      outRecord.projectId, LW_LIVE_LOOK_ID_BYTES, runtimeConfig.pieceId.c_str());
+  outRecord.projectRevision = runtimeConfig.projectRevision;
+  lightweaver_live_look_detail::copyBounded(
+      outRecord.currentLookId, LW_LIVE_LOOK_ID_BYTES,
+      lookCount ? looks[currentLookIndex].id.c_str() : "");
+  outRecord.syncZones = runtimeConfig.syncZones;
+  outRecord.zoneCount = 0;
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount && outRecord.zoneCount < LW_LIVE_LOOK_MAX_ZONES; i++) {
+    const ZoneConfig& z = runtimeConfig.zones[i];
+    LiveLookZoneRecord& zr = outRecord.zones[outRecord.zoneCount];
+    lightweaver_live_look_detail::copyBounded(zr.zoneId, LW_LIVE_LOOK_ID_BYTES, z.id.c_str());
+    lightweaver_live_look_detail::copyBounded(zr.patternId, LW_LIVE_LOOK_ID_BYTES, z.patternId.c_str());
+    zr.brightness = z.brightness;
+    zr.speed = z.speed;
+    zr.hueShift = z.hueShift;
+    zr.customHue = z.customHue;
+    zr.customSaturation = z.customSaturation;
+    zr.customBreathe = z.customBreathe;
+    zr.breatheLowerPct = z.breatheLowerPct;
+    zr.breatheUpperPct = z.breatheUpperPct;
+    zr.breatheCycleSeconds = z.breatheCycleSeconds;
+    zr.customDrift = z.customDrift;
+    zr.driftHueMin = z.driftHueMin;
+    zr.driftHueMax = z.driftHueMax;
+    zr.blackout = z.blackout;
+    outRecord.zoneCount++;
+  }
+}
+
+void runtimeMarkLiveLookDirty() {
+  liveLookDirty = true;
+  liveLookDirtyAtMs = millis();
+}
+
+// Called once per loop() tick (see loop() below). Flushes to flash only after
+// LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS of quiet — a slider dragged for two
+// seconds re-arms this on every /api/control call and never writes until the
+// owner stops touching it.
+void runtimeServiceLiveLookPersist() {
+  if (!liveLookDirty) return;
+  if (millis() - liveLookDirtyAtMs < LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS) return;
+  liveLookDirty = false;
+  LiveLookRecord record;
+  captureLiveLookRecordFromRuntime(record);
+  String message;
+  persistLiveLookRecord(record, message);
+}
+
+bool runtimeResumedLiveLook() { return resumedLiveLookFlag; }
+
+// Called once from setup(), after the installed project's startup look has
+// already been applied (startLook() has seeded runtimeConfig.zones[] from
+// the look's own defaults) and before the first visible fade-in. Overlays any
+// matching persisted per-zone tweaks on top of those defaults — exactly the
+// way a live /api/control tweak would land — and sets resumedLiveLookFlag so
+// GET /api/status can say whether anything was restored.
+//
+// Deliberately does NOT re-select a different look even when the record's
+// currentLookId names one: doing so would mean a second startLook() call this
+// boot (double fade / possible flicker) for a case the record's zone-level
+// restore already covers for the common single-look-per-card setup. The
+// field is still persisted (see captureLiveLookRecordFromRuntime) for a
+// future Studio-facing use, and for the project-match check below.
+bool restoreLiveLookIfMatching() {
+  LiveLookRecord record;
+  if (!loadPersistedLiveLookRecord(record)) return false;
+  if (!liveLookRecordMatchesProject(
+          record, runtimeConfig.pieceId.c_str(), runtimeConfig.projectRevision)) {
+    return false;
+  }
+  bool appliedAny = false;
+  for (uint8_t i = 0; i < record.zoneCount; i++) {
+    const LiveLookZoneRecord& zr = record.zones[i];
+    for (uint8_t z = 0; z < runtimeConfig.zoneCount; z++) {
+      if (runtimeConfig.zones[z].id != zr.zoneId) continue;
+      ZoneConfig& zone = runtimeConfig.zones[z];
+      if (zr.patternId[0] != '\0') zone.patternId = zr.patternId;
+      zone.brightness = zr.brightness;
+      zone.speed = zr.speed;
+      zone.hueShift = zr.hueShift;
+      zone.customHue = zr.customHue;
+      zone.customSaturation = zr.customSaturation;
+      zone.customBreathe = zr.customBreathe;
+      zone.breatheLowerPct = zr.breatheLowerPct;
+      zone.breatheUpperPct = zr.breatheUpperPct;
+      zone.breatheCycleSeconds = zr.breatheCycleSeconds;
+      zone.customDrift = zr.customDrift;
+      zone.driftHueMin = zr.driftHueMin;
+      zone.driftHueMax = zr.driftHueMax;
+      zone.blackout = zr.blackout;
+      appliedAny = true;
+      break;
+    }
+  }
+  runtimeConfig.syncZones = record.syncZones;
+  return appliedAny;
+}
 
 // ---- Frame-source state surfaced to the web/runtime layer ----
 bool runtimeIsStreaming() { return frameSourceIsStreaming(); }
