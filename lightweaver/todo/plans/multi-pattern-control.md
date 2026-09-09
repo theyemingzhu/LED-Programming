@@ -26,9 +26,19 @@ Survey: [Four Sections, One Strip](https://claude.ai/code/artifact/129b9bf9-75d8
 | 3 | Live tweaks survive a power-cycle via a separate small NVS record; `/api/status` reports it | F1, firmware | LightweaverStorage, LightweaverWeb, main.cpp, VERSION | PR #252 merged 2026-09-09 as release 1.1.33 (carries the parked card-page change); signed release + hardware check pending |
 | 5 | Section selector on the card's visitor page | F1, firmware (same VERSION bump as 3) | LightweaverWeb.cpp handleRoot | In PR #252, screenshots checked at 390px |
 | S2 | Timeline model deleted; dial default cycle from playlist | S2, Studio | ProjectContext, ProjectDefaults, projectModel, rotaryPatternCycle, usbRotaryInput | Merged 2026-09-09, PR #250 (114 net lines removed) |
-| 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | Not started; F2 waits for F1 to merge, S3 waits for F2's JSON keys and S2 |
+| 4 | On-card timed playlist: dwell per entry, one cross-fade, over saved compound looks; Studio adds dwell and fade to entries | F2 then S3 | LightweaverTypes.h, main.cpp, LightweaverWeb.cpp, cardPlaylist.js, cardRuntimeContract.js, lw-playlist.jsx | F2 (firmware, 1.1.34) and S3 (Studio) dispatched 2026-09-09 in parallel against the contract below |
 
 Constraint for 3 and 4: the 3968-byte NVS budget. F1 measures a real 4-zone project's byte size and reports it in its PR.
+
+## The timed-playlist contract (fixed 2026-09-09, both lanes build to it)
+
+Project config sent by Install (`/api/config`): `"playlist": { "enabled", "fadeMs" 0..10000 default 1500, "entries": [ { "patternId", "dwellSeconds" 1..3600 } ] }`. `patternId` is the same identifier `/api/control` accepts today (an installed look id, or a built-in id). At most 16 entries reach the card (`LW_MAX_PLAYLIST_ENTRIES`, also `maxPlaylistEntries` in the hardware contract); the dial list keeps its 32. Absent or disabled means today's behaviour.
+
+Runtime control: `POST /api/control { "playlist": "play" | "pause" | "next" | "previous" }`. Any manual look change (tile tap, dial, patternId/next/previous) pauses the playlist: the owner's hand wins.
+
+Status: `GET /api/status` gains `"playlist": { "configured", "playing", "entryIndex", "entryCount", "patternId", "remainingSeconds" }`.
+
+Persistence: the definition lives in the project and reaches the card only through Install; play state and entry index ride inside the `liveLook` NVS record from 1.1.33, so a power-cycle resumes a playing playlist. Cross-fade uses the card's existing fade path with `fadeMs`; the strip is never black between entries.
 
 ## Every brief carries
 
