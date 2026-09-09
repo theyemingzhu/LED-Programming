@@ -26,13 +26,50 @@ function functionBody(source, signature) {
     searchFrom = semicolon + 1;
   }
   assert.notEqual(open, -1, `missing body for ${signature}`);
+  // Braces inside string literals, char literals and comments are not
+  // structure: a handler that splices JSON with body.lastIndexOf('}') must not
+  // end the extraction early. Raw strings (R"...") are not handled; none exist.
   let depth = 0;
   for (let index = open; index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1;
-    if (source[index] === '}') depth -= 1;
-    if (depth === 0) return source.slice(start, index + 1);
+    const ch = source[index];
+    const next = source[index + 1];
+    if (ch === '/' && next === '/') {
+      const eol = source.indexOf('\n', index);
+      if (eol === -1) break;
+      index = eol;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const close = source.indexOf('*/', index + 2);
+      if (close === -1) break;
+      index = close + 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      index += 1;
+      while (index < source.length && source[index] !== ch) {
+        if (source[index] === '\\') index += 1;
+        index += 1;
+      }
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
   }
   throw new Error(`unterminated body for ${signature}`);
+}
+
+// The extractor itself: a brace inside a char literal, a string, or a comment
+// must not end the body. This is the fault that hid the colorOrder rejection
+// on 2026-09-09 when a handler spliced JSON with lastIndexOf('}').
+{
+  const fixture = "void handleProbe() {\n  int last = body.lastIndexOf('}');\n  send(\"{\\\"ok\\\":true}\"); // } in a comment\n  /* } */\n  reject(400, \"marker\");\n}\nvoid other() {}\n";
+  const probe = functionBody(fixture, /void\s+handleProbe\s*\(/);
+  assert.match(probe, /reject\(400, "marker"\)/, 'functionBody must read past braces in literals and comments');
+  assert.doesNotMatch(probe, /void other/, 'functionBody must stop at the real closing brace');
 }
 
 for (const field of ['configValid', 'knownGoodProject', 'runtimePhase']) {
