@@ -569,6 +569,14 @@ void handleRoot() {
             ".pill-row{display:flex;gap:8px}"
             ".pill{flex:1;border:0;color:#050505;padding:10px 8px;border-radius:24px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;font-family:inherit;font-weight:600;opacity:0.7;transition:opacity 0.15s}"
             ".pill.on{opacity:1;box-shadow:0 0 0 2px #c89b5c}"
+            // Section row — only rendered when the card reports more than one
+            // zone (see renderSections()). Same dark-card/gold-accent language
+            // as the rest of the page, distinct from .pill (which carries
+            // per-pattern gradient swatches) since these are plain word labels.
+            ".section-row{display:none;gap:8px;flex-wrap:wrap}"
+            ".section-row.on{display:flex}"
+            ".section-pill{flex:1 1 auto;min-width:64px;background:#141414;border:1px solid #262626;color:#9a8d75;padding:9px 12px;border-radius:24px;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-family:inherit;font-weight:600}"
+            ".section-pill.on{background:#c89b5c;border-color:#c89b5c;color:#050505}"
             "@keyframes flow{0%{background-position:0 0}100%{background-position:200% 0}}"
             "@keyframes scan{0%{background-position:100% 0}100%{background-position:-100% 0}}"
             "@keyframes flicker{0%,100%{opacity:0.9}25%{opacity:1}50%{opacity:0.7}75%{opacity:1}}"
@@ -693,6 +701,7 @@ void handleRoot() {
               "<input type='range' min='-128' max='128' value='0' id='h-slider'>"
               "<span class='val' id='h-val'>0</span>"
             "</div>"
+            "<div class='section-row' id='section-row'></div>"
             "<div class='grid' id='grid'></div>"
             "<div class='foot'>"
               "<button class='off-btn' id='off-btn' disabled>Off</button>"
@@ -750,18 +759,42 @@ void handleRoot() {
             "const installFromHash=()=>{try{const generation=++hashInstallGeneration;const sourceHash=location.hash||'';const hash=sourceHash.replace(/^#/,'');if(!hash)return Promise.resolve();const params=new URLSearchParams(hash);const payload=params.get('lwconfig');if(!payload)return Promise.resolve();const existing=hashInstallFlights.get(payload);if(existing){existing.generation=generation;return existing.promise}const entry={generation,promise:null};const job=hashInstallTail.then(async()=>{if(entry.generation!==hashInstallGeneration)return;try{showHandoff('Saving Studio package to this card...');const json=b64urlDecode(payload);const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:json});const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false){showHandoff(j.error||'Could not save Studio package.','err');return}const currentParams=new URLSearchParams((location.hash||'').replace(/^#/,''));const current=currentParams.get('lwconfig')===payload;if(current)history.replaceState(null,'',location.pathname+location.search);if(j.state==='staged'){showHandoff('New wiring is staged. Return to Studio to run the safe physical test. Your working setup is unchanged.','ok');return}showHandoff('Saved on the card.','ok');if(current&&j.requiresReboot===true&&currentParams.get('reboot')==='1')setTimeout(()=>post('/api/reboot',{}),300)}catch(e){showHandoff(e.message||'Could not read Studio package.','err')}});entry.promise=job;hashInstallFlights.set(payload,entry);hashInstallTail=job.finally(()=>{if(hashInstallFlights.get(payload)===entry)hashInstallFlights.delete(payload)});return job}catch(e){showHandoff(e.message||'Could not read Studio package.','err');return Promise.resolve()}};"
             "window.addEventListener('hashchange',installFromHash);installFromHash();"
             "let patterns=[],currentId='',blackoutOn=false;"
+            // Section selector — '' means Whole piece (broadcast, the
+            // pre-existing behaviour); a zone id means every control below
+            // targets that one zone with syncZones:false. zones holds the raw
+            // GET /api/zones snapshot; zoneCurrentId tracks which pattern tile
+            // is active while a specific section is selected (currentId keeps
+            // doing that job for Whole piece, via sceneControl below).
+            /*LW_SECTION_SELECTOR_START*/
+            "let zones=[],sectionTarget='',zoneCurrentId='',patZonePending=false;"
+            "const currentZone=()=>zones.find(x=>x.id===sectionTarget)||zones[0]||{};"
+            "const activeIdNow=()=>sectionTarget?zoneCurrentId:currentId;"
+            "const zoneField=()=>sectionTarget?{zone:sectionTarget,syncZones:false}:{};"
+            // Assigned inside the boot hydration IIFE below (once zones/patterns
+            // are loaded); reassigned there rather than declared with a body
+            // here so a section switch and the initial boot render share one
+            // implementation. renderSections() itself needs none of the fields
+            // that implementation reads, so it lives up here, callable from
+            // both the boot IIFE and every section pill's onclick.
+            "let applySectionState=()=>{};"
+            "const renderSections=()=>{const row=$('section-row');row.innerHTML='';if(zones.length<2){row.classList.remove('on');return}row.classList.add('on');"
+              "const mk=(id,label)=>{const b=document.createElement('button');b.type='button';b.className='section-pill'+(id===sectionTarget?' on':'');b.textContent=label;b.onclick=()=>{if(id===sectionTarget)return;sectionTarget=id;renderSections();applySectionState()};return b};"
+              "row.appendChild(mk('','Whole piece'));"
+              "zones.forEach(z=>row.appendChild(mk(z.id,z.label||z.id)))"
+            "};"
+            /*LW_SECTION_SELECTOR_END*/
             "let customHue=32,customSat=230,customBreathe=false,customDrift=false,driftMin=0,driftMax=255;"
             "const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');"
-            "const selectedPattern=()=>patterns.find(x=>x.id===currentId)||null;"
+            "const selectedPattern=()=>patterns.find(x=>x.id===activeIdNow())||null;"
             "const studioUrlForPattern=id=>{const link=$('studio-link');let url=(link&&link.href)||'';try{const u=new URL(url,location.href);const pat=patterns.find(x=>x.id===id);if(id){if(pat&&pat.mode==='combo')u.searchParams.set('editLook',id);else u.searchParams.set('editPattern',id)}u.hash='#screen=card&section=overview';return u.href}catch(_){return url}};"
-            "const openPatternStudio=(e,id)=>lwOpenStudio(e,studioUrlForPattern(id||currentId));"
-            "$('edit-studio').onclick=e=>openPatternStudio(e,currentId);"
+            "const openPatternStudio=(e,id)=>lwOpenStudio(e,studioUrlForPattern(id||activeIdNow()));"
+            "$('edit-studio').onclick=e=>openPatternStudio(e,activeIdNow());"
             /*LW_CONFIRMED_CONTROL_START*/
             "const makeConfirmedControl=({initial,render,setDisabled,send,description})=>{let confirmed=initial,activeRequest=0,failed=null,state='idle';const owner={};const request=async value=>{const requestId=++activeRequest;failed=null;state='pending';setDisabled(true);render(value);try{await send(value);if(requestId!==activeRequest)return;confirmed=value;state='confirmed';setDisabled(false);render(confirmed);clearControlError(owner)}catch(error){if(requestId!==activeRequest)return;failed=value;state='failed';setDisabled(false);render(confirmed);showControlError('Could not '+description+'. '+((error&&error.message)||'Try again.'),retry,owner)}};const retry=()=>{if(failed===null)return Promise.resolve();const value=failed;clearControlError(owner);return request(value)};const setConfirmed=value=>{activeRequest++;confirmed=value;failed=null;state='confirmed';render(value);setDisabled(false);clearControlError(owner)};const snapshot=()=>({state,confirmed,failed,activeRequest});return{request,retry,setConfirmed,snapshot}};"
             /*LW_CONFIRMED_CONTROL_END*/
             "const controlPost=async body=>{const response=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const payload=await response.json().catch(()=>({}));if(!response.ok||payload.ok!==true)throw new Error(payload.error||('HTTP '+response.status));return payload};"
             // Generic coalescing sender per field
-            "const makeSender=key=>{let pending=null,inflight=false;const flush=async()=>{if(inflight||pending===null)return;inflight=true;const v=pending;pending=null;try{await post('/api/control',{[key]:v})}catch(e){}finally{inflight=false;if(pending!==null)flush()}};return v=>{pending=v;flush()}};"
+            "const makeSender=key=>{let pending=null,inflight=false;const flush=async()=>{if(inflight||pending===null)return;inflight=true;const v=pending;pending=null;try{await post('/api/control',{[key]:v,...zoneField()})}catch(e){}finally{inflight=false;if(pending!==null)flush()}};return v=>{pending=v;flush()}};"
             "const sendHue=makeSender('hue');"
             "const sendSat=makeSender('saturation');"
             "const sendSpeed=makeSender('speed');"
@@ -794,15 +827,15 @@ void handleRoot() {
             "const showColorPanel=show=>{$('color-panel').classList.toggle('open',show)};"
             "$('hue-slider').oninput=e=>{customHue=parseInt(e.target.value,10);renderColorPanel();sendHue(customHue)};"
             "$('sat-slider').oninput=e=>{customSat=parseInt(e.target.value,10);renderColorPanel();sendSat(customSat)};"
-            "$('breathe-btn').onclick=async()=>{customBreathe=!customBreathe;renderColorPanel();await post('/api/control',{breathe:customBreathe})};"
-            "$('drift-btn').onclick=async()=>{customDrift=!customDrift;renderColorPanel();await post('/api/control',{drift:customDrift})};"
-            "const setPalette=async(lo,hi)=>{driftMin=lo;driftMax=hi;if(!customDrift){customDrift=true}renderColorPanel();await post('/api/control',{drift:customDrift,driftMin:lo,driftMax:hi})};"
+            "$('breathe-btn').onclick=async()=>{customBreathe=!customBreathe;renderColorPanel();await post('/api/control',{breathe:customBreathe,...zoneField()})};"
+            "$('drift-btn').onclick=async()=>{customDrift=!customDrift;renderColorPanel();await post('/api/control',{drift:customDrift,...zoneField()})};"
+            "const setPalette=async(lo,hi)=>{driftMin=lo;driftMax=hi;if(!customDrift){customDrift=true}renderColorPanel();await post('/api/control',{drift:customDrift,driftMin:lo,driftMax:hi,...zoneField()})};"
             "$('pal-warm').onclick=()=>setPalette(0,60);"
             "$('pal-cool').onclick=()=>setPalette(130,200);"
             "$('pal-rainbow').onclick=()=>setPalette(0,255);"
             // Pattern grid
             "const renderPat=()=>{const g=$('grid');g.innerHTML='';const active=selectedPattern();$('active-name').textContent=active?active.label:'Choose a pattern';$('active-preview').innerHTML=active?swatchHtml(active):'';patterns.forEach(p=>{"
-              "const activeTile=p.id===currentId;"
+              "const activeTile=p.id===activeIdNow();"
               "const el=document.createElement('div');el.className='tile'+(activeTile?' active':'');"
               // Label set via textContent (not innerHTML concat) — pattern labels
               // come from stored config and must not be interpreted as HTML.
@@ -810,12 +843,20 @@ void handleRoot() {
               "el.querySelector('.name').textContent=p.label;"
               "const edit=el.querySelector('.tile-edit');if(edit)edit.onclick=e=>{e.stopPropagation();openPatternStudio(e,p.id)};"
               "el.setAttribute('aria-disabled',$('grid').classList.contains('pending')?'true':'false');"
-              "el.onclick=()=>{if(sceneControl.snapshot().state==='pending'||p.id===currentId)return;sceneControl.request(p.id)};"
+              "el.onclick=()=>{if(sceneControl.snapshot().state==='pending'||patZonePending||p.id===activeIdNow())return;if(sectionTarget){sendZonePattern(p.id)}else{sceneControl.request(p.id)}};"
               "g.appendChild(el)"
             "})};"
+            // Whole-piece scene taps: unchanged from before the Section
+            // selector existed — always broadcasts to every zone. A specific
+            // section's taps go through sendZonePattern below instead.
             "const sceneControl=makeConfirmedControl({initial:currentId,description:'change scene',render:value=>{currentId=value;renderPat();showColorPanel(value==='custom-color')},setDisabled:on=>{$('grid').classList.toggle('pending',on);$('grid').setAttribute('aria-busy',String(on))},send:async value=>{const payload=await controlPost({patternId:value,syncZones:true});if(payload.appliedPatternId!==value)throw new Error('Card did not confirm the requested scene.');return payload}});"
-            "const brightnessControl=makeConfirmedControl({initial:1,description:'change brightness',render:value=>{const pct=Math.round(value*100);$('b-slider').value=pct;$('b-val').textContent=pct+'%'},setDisabled:on=>{$('b-slider').disabled=on},send:value=>controlPost({brightness:value})});"
-            "const blackoutControl=makeConfirmedControl({initial:blackoutOn,description:'change blackout',render:value=>{blackoutOn=value;$('off-btn').classList.toggle('on',value)},setDisabled:on=>{$('off-btn').disabled=on},send:value=>controlPost({blackout:value})});"
+            // Section-targeted scene taps. A zone-targeted commit's
+            // appliedPatternId is whole-piece truth (empty unless every zone
+            // now agrees), so confirmation reads confirmedLook instead — the
+            // response field that names the actual applied zone + pattern.
+            "const sendZonePattern=async id=>{if(patZonePending||id===activeIdNow())return;patZonePending=true;$('grid').classList.add('pending');$('grid').setAttribute('aria-busy','true');renderPat();try{const payload=await controlPost({patternId:id,...zoneField()});const confirmedOk=payload.confirmedLook&&payload.confirmedLook.patternId===id&&payload.confirmedLook.zone===sectionTarget;if(!confirmedOk)throw new Error('Card did not confirm the requested scene.');zoneCurrentId=id;showColorPanel(id==='custom-color');clearControlError('zone-pattern')}catch(e){showControlError('Could not change scene. '+((e&&e.message)||'Try again.'),()=>sendZonePattern(id),'zone-pattern')}finally{patZonePending=false;$('grid').classList.remove('pending');$('grid').setAttribute('aria-busy','false');renderPat()}};"
+            "const brightnessControl=makeConfirmedControl({initial:1,description:'change brightness',render:value=>{const pct=Math.round(value*100);$('b-slider').value=pct;$('b-val').textContent=pct+'%'},setDisabled:on=>{$('b-slider').disabled=on},send:value=>controlPost({brightness:value,...zoneField()})});"
+            "const blackoutControl=makeConfirmedControl({initial:blackoutOn,description:'change blackout',render:value=>{blackoutOn=value;$('off-btn').classList.toggle('on',value)},setDisabled:on=>{$('off-btn').disabled=on},send:value=>controlPost({blackout:value,...zoneField()})});"
             "$('b-slider').onchange=e=>brightnessControl.request(parseInt(e.target.value,10)/100);"
             "$('off-btn').onclick=()=>blackoutControl.request(!blackoutOn);"
             // Settings drawer (inline, no separate page)
@@ -840,15 +881,23 @@ void handleRoot() {
                 "if(r.ok&&j.ok){setMsg('Saved on card. Rebooting to apply.','ok');setTimeout(()=>{location.reload()},2000);await post('/api/reboot',{})}"
                 "else{setMsg(j.error||('HTTP '+r.status),'err')}}"
               "catch(e){setMsg('Failed: '+e.message,'err')}};"
-            "(async()=>{try{const e=await get('/api/zones');const z=(e.zones||[])[0]||{};const p=await get('/api/patterns');patterns=p.patterns||[];sceneControl.setConfirmed(p.currentId||'');blackoutControl.setConfirmed(!!z.blackout);"
-              "if(typeof z.customHue==='number'){customHue=z.customHue;customSat=z.customSaturation;customBreathe=!!z.customBreathe;customDrift=!!z.customDrift}"
-              "if(typeof z.driftHueMin==='number')driftMin=z.driftHueMin;"
-              "if(typeof z.driftHueMax==='number')driftMax=z.driftHueMax;"
-              "if(typeof z.brightness==='number')brightnessControl.setConfirmed(z.brightness);"
-              "if(typeof z.speed==='number'){$('s-slider').value=sliderFromSpeed(z.speed);$('s-val').textContent=z.speed.toFixed(2)+'\xC3\x97'}"
-              "if(typeof z.hueShift==='number'){$('h-slider').value=z.hueShift;$('h-val').textContent=z.hueShift}"
-              "renderColorPanel();showColorPanel(currentId==='custom-color');"
-              "$('off-btn').classList.toggle('on',blackoutOn);renderPat()}catch(e){}})();"
+            // Section-aware hydration. zones holds the full GET /api/zones
+            // snapshot (not just zones[0] any more — see currentZone()), so a
+            // Section row can be built from it and every control below can be
+            // re-derived per zone on demand, from applySectionState().
+            "(async()=>{try{const e=await get('/api/zones');zones=e.zones||[];const p=await get('/api/patterns');patterns=p.patterns||[];sceneControl.setConfirmed(p.currentId||'');"
+              "applySectionState=()=>{const z=currentZone();zoneCurrentId=z.patternId||'';blackoutControl.setConfirmed(!!z.blackout);"
+                "if(typeof z.customHue==='number'){customHue=z.customHue;customSat=z.customSaturation;customBreathe=!!z.customBreathe;customDrift=!!z.customDrift}"
+                "if(typeof z.driftHueMin==='number')driftMin=z.driftHueMin;"
+                "if(typeof z.driftHueMax==='number')driftMax=z.driftHueMax;"
+                "if(typeof z.brightness==='number')brightnessControl.setConfirmed(z.brightness);"
+                "if(typeof z.speed==='number'){$('s-slider').value=sliderFromSpeed(z.speed);$('s-val').textContent=z.speed.toFixed(2)+'\xC3\x97'}"
+                "if(typeof z.hueShift==='number'){$('h-slider').value=z.hueShift;$('h-val').textContent=z.hueShift}"
+                "renderColorPanel();showColorPanel(activeIdNow()==='custom-color');"
+                "$('off-btn').classList.toggle('on',blackoutOn);renderPat()"
+              "};"
+              "renderSections();applySectionState()"
+            "}catch(e){}})();"
             // Streaming-state poll. Cheap 1Hz GET on /api/status — well under
             // anything that would compete with the 30fps Art-Net frames the
             // card is also processing. When streaming flips on, dim the pattern
