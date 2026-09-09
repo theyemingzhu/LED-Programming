@@ -33,8 +33,8 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
     // first thing they saw on opening the controls was a failure about a
     // moment that had already passed.
     retryWhileTransient(() => Promise.all([
-      readCardZonesFromCard({ host, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
-      readCardPatternsFromCard({ host, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
+      readCardZonesFromCard({ host, transport: link.transport, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
+      readCardPatternsFromCard({ host, transport: link.transport, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
     ]), { attempts: 3, delayMs: 400 }).then(([zones, patterns]) => {
       if (!active) return;
       setControls(createCardCustomerControls(normalizeCardCustomerControls(zones, patterns)));

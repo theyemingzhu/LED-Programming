@@ -50,6 +50,7 @@ import {
   playlistContainsPattern,
 } from '../lib/cardPlaylist.js';
 import {
+  cardConnectionOptionsFor,
   cardHostToUrl,
   discoverCardStatus,
   isLocalCardHost,
@@ -384,6 +385,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (!persistedId) return { needsBridge: true, directProbeReady: false };
       expectedCardId = persistedId;
     }
+    // transport: n/a (this probe IS how resolveCardBridgePreference discovers whether direct works; F17-A/F21 preview routing, excluded by F36's own brief)
     const probed = await connectCardTransport({ host: cardHost, expectedCardId }).catch(() => null);
     const connected = Boolean(probed?.connected);
     return { needsBridge: !connected, directProbeReady: connected };
@@ -1734,7 +1736,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           blockPatternCardEffect(currentPatternCardAccess());
           return;
         }
-        const before = await readCardProjectEvidence({ host: safety.host || cardHost });
+        const before = await readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport });
         if (!matchesCurrentCardProjectEvidence(before)) {
           blockPatternCardEffect('project');
           return;
@@ -1743,6 +1745,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         dispatchCardSave({ type: 'start', revision: requestedRevision });
         const response = await pushConfigToCard(packageForCard, {
           host: safety.host || cardHost,
+          transport: cardLink?.transport,
           timeoutMs: 6000,
           reboot: 'if-needed',
           allowLayoutChange: undefined,
@@ -1752,7 +1755,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           throw new Error(STAGED_WIRING_CONFLICT_MESSAGE);
         }
         const verification = await waitForCardDeploymentVerification(exactPrepared, {
-          readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost }),
+          readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
         });
         dispatchCardSave({ type: 'confirm' });
         const commitBoard = JSON.stringify(latestBoardRef.current) === JSON.stringify(requestedBoard)
@@ -1788,7 +1791,7 @@ import { PatternPreview } from './PatternPreview.jsx';
           if (currentPatternCardAccess() === 'ready') {
             await pushLivePreviewToCard(
               { ...nextLook, zone, syncZones: nextLook.syncZones },
-              { host: safety.host || cardHost, timeoutMs: 2200 },
+              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200 },
             ).catch(() => null);
           }
         }
@@ -2013,9 +2016,19 @@ import { PatternPreview } from './PatternPreview.jsx';
         // otherwise a cleared blackout would sit unreported until something
         // else happened to re-read the card (F16: "goes away without a
         // click").
+        //
+        // F33b: this was the one hardware-reaching call in this file that
+        // never forwarded `transport` — it built a bare `{ host: cardHost }`
+        // instead of the shared `cardConnectionOptionsFor()` that Card
+        // Home's identical Recover lights button already used (F33). On the
+        // live site (https) that meant `recoveryUsesBridge` in
+        // cardLiveControl.js fell back to guessing "bridge" from the page
+        // protocol — always true on https — even holding a genuine direct
+        // link with no card-page bridge tab open, so the request had
+        // nothing to answer it and timed out. Same fix, same shared builder.
         await withStudioHardwareOperation('recover-lights', () => recoverCardLightsVerified(
           { patternId: 'warm-white', brightness: 1, syncZones: true },
-          { host: cardHost, timeoutMs: 3200, restartCard: true },
+          { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 3200, restartCard: true },
         ));
         if (sequence !== livePreviewSeq.current) return;
         setStatusKind('');
@@ -2067,19 +2080,19 @@ import { PatternPreview } from './PatternPreview.jsx';
       try {
         const safety = await checkCardLayoutWriteSafety(nextPackage, 'applying split preview');
         if (!safety.ok) return;
-        const before = await readCardProjectEvidence({ host: safety.host || cardHost });
+        const before = await readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport });
         if (!matchesCurrentCardProjectEvidence(before)) {
           blockPatternCardEffect('project');
           return;
         }
-        const response = await pushConfigToCard(nextPackage, { host: safety.host || cardHost, timeoutMs: 6000, reboot: 'if-needed', allowLayoutChange: true });
+        const response = await pushConfigToCard(nextPackage, { host: safety.host || cardHost, transport: cardLink?.transport, timeoutMs: 6000, reboot: 'if-needed', allowLayoutChange: true });
         if (response?.state === 'staged') {
           // Converged on the shared refusal (was: "The split is staged but not
           // installed. …" — same meaning, unasserted by any test).
           throw new Error(STAGED_WIRING_CONFLICT_MESSAGE);
         }
         await waitForCardDeploymentVerification({ ...prepared, cardId: before.cardId }, {
-          readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost }),
+          readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
         });
         markCardLookConfirmed({ ...nextLook, zone: selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '', syncZones: selectedTarget?.kind !== 'section' });
         setPatchBoard(nextBoard);
@@ -2087,7 +2100,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         setDraftLooks({});
         if (!response.rebooting && currentPatternCardAccess() === 'ready') {
           const zone = selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '';
-          await pushLivePreviewToCard({ ...nextLook, zone }, { host: safety.host || cardHost, timeoutMs: 2200 }).catch(() => null);
+          await pushLivePreviewToCard({ ...nextLook, zone }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200 }).catch(() => null);
         }
         setStatusKind('');
         setStatus('');
@@ -2406,6 +2419,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                         <StripColorOrderCheck
                           quick
                           cardHost={cardHost}
+                          cardLink={cardLink}
                           controller={standaloneController}
                           setController={setStandaloneController}
                         />

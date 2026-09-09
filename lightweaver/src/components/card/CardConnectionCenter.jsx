@@ -283,6 +283,7 @@ export function CardConnectionCenter({
           return found;
         }
       }
+      // transport: n/a (this establishes a fresh direct transport as the manual Connect flow's own explicit choice — bridge=false branch above is the other explicit choice; nothing to forward)
       const result = await connectCardTransport({
         host: hostToOpen,
         expectedCardId,

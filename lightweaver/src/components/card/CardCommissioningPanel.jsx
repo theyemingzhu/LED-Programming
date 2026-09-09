@@ -386,6 +386,7 @@ export function CardCommissioningPanel({
         // use: a direct GET on http/file pages, and the opened bridge tab's
         // postMessage handshake on HTTPS, where fetching http://192.168.4.1
         // would be blocked as mixed content.
+        // transport: n/a (no link exists yet for this not-yet-commissioned card; the omission is what makes the https guess route through the just-opened bridge tab, which is the intended channel here)
         const status = await readCardStatusEnvelope({
           host: watchedHost,
           timeoutMs: Math.min(SETUP_CARD_REACH_REQUEST_TIMEOUT_MS, budget),
