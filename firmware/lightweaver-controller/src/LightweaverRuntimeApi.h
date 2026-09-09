@@ -174,6 +174,26 @@ void runtimeServiceLiveLookPersist();
 // Surfaced on GET /api/status as resumedLiveLook.
 bool runtimeResumedLiveLook();
 
+// Timed playlist (dwell + cross-fade auto-advance through installed looks /
+// compiled patterns / presets — same resolution POST /api/control's
+// patternId uses). See PlaylistConfig in LightweaverTypes.h for the
+// persisted project-JSON block. Play/pause/next/previous mirror the
+// "playlist" control verb (see LightweaverWeb.cpp's handleControlPost());
+// each returns false when no playlist is configured (playlist.enabled with
+// at least one entry) on the installed project.
+bool runtimePlaylistConfigured();
+bool runtimePlaylistPlay();
+bool runtimePlaylistPause();
+bool runtimePlaylistNext();
+bool runtimePlaylistPrevious();
+// Called from any manual, non-playlist pattern change (see the call sites in
+// handleControlPost()) — the owner's hand wins over the playlist's own
+// advance. A no-op when nothing is playing.
+void playlistPauseForManualChange();
+String runtimePlaylistStatusJson();
+// Call once per loop() tick, same shape as runtimeServiceLiveLookPersist().
+void runtimeServicePlaylist();
+
 uint8_t runtimeOutputRequestedBrightnessByte();
 uint8_t runtimeOutputBrightnessByte();
 float runtimeOutputBrightnessScale();

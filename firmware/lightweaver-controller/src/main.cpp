@@ -225,6 +225,32 @@ uint32_t liveLookDirtyAtMs = 0;
 // project and was applied. Surfaced on /api/status as resumedLiveLook.
 bool resumedLiveLookFlag = false;
 
+// ---- Playlist sequencing (timed dwell + cross-fade auto-advance) ----
+// See PlaylistConfig in LightweaverTypes.h for the persisted project-JSON
+// block. Play state (playing/entryIndex) is live, in-memory state, same as
+// every other /api/control tweak — never part of runtimeConfig — and is
+// folded into the liveLook resume record above so it survives a power-cycle
+// the same way a manual brightness/pattern tweak does (see
+// captureLiveLookRecordFromRuntime() / restoreLiveLookIfMatching()).
+// fadeTo() (below) is the codebase's only whole-output fade primitive
+// (fadeScale, a brightness multiplier applied at render time) — it cannot
+// blend the PIXEL CONTENT of two different patterns, only fade the currently
+// rendered one up or down. A manual look change (selectLook()) fades all the
+// way to 0 then swaps then fades back to 1, which is a true black frame for
+// an instant. The playlist's auto-advance must never do that (locked rule:
+// never fully black output), so its cross-fade fades down to a floor
+// instead of to zero, swaps at the floor, then fades back up — playlist
+// .fadeMs is split evenly across the down and up legs. See
+// playlistCrossfadeToEntry() below.
+constexpr float LW_PLAYLIST_CROSSFADE_FLOOR = 0.06f;
+bool playlistPlaying = false;
+uint8_t playlistEntryIndex = 0;
+// millis() timestamp the current entry's dwell started counting from — set
+// only once its cross-fade-in has completed (fadeTo() is synchronous), per
+// the contract: "the entry's dwell counts from the moment the fade
+// completes."
+uint32_t playlistEntryStartedAtMs = 0;
+
 struct PreparedSequence {
   File file;
   uint32_t frameCount = 0;
@@ -315,6 +341,8 @@ bool isLoadedLookRenderable(const LookConfig& look, bool zoneTargeted);
 bool renderCurrentLook(bool force = false);
 bool renderSequenceFrame(bool force = false);
 bool restoreLiveLookIfMatching();
+void playlistPauseForManualChange();
+bool playlistAdvanceToIndex(uint8_t targetIndex);
 void applySequenceFrameBufferToLeds();
 bool renderProceduralFrame(const String& preset);
 bool renderPresetFrame(const String& preset);
@@ -558,6 +586,11 @@ void loop() {
   // from a PRIOR tick already returned before loop() could run again — this
   // can never fire mid-fade. See runtimeServiceLiveLookPersist().
   runtimeServiceLiveLookPersist();
+  // Playlist advance never runs mid-fade, same reasoning as the live-look
+  // persist call above: any fade started this tick blocks loop() until it
+  // finishes, and any fade from a prior tick already returned before loop()
+  // could run again.
+  runtimeServicePlaylist();
   bool recoveryHoldActive = int32_t(recoveryHoldUntilMs - now) > 0;
   handleLightweaverWeb();
   handleLightweaverFirmwareBootHealth();
@@ -1320,6 +1353,12 @@ void selectLook(int index) {
   if (nextIndex == currentLookIndex && !blackedOut) return;
   PreparedSequence prepared;
   if (!prepareLookForSelection(looks[nextIndex], false, prepared)) return;
+
+  // The rotary dial / physical next-previous buttons are the only live
+  // caller of this function — a manual look change. The owner's hand wins:
+  // pause the playlist rather than fight it on the next tick. See the
+  // contract's "Any manual look change ... PAUSES the playlist" rule.
+  playlistPauseForManualChange();
 
   fadeTo(0.0f, looks[currentLookIndex].fadeOutMs);
   closeSequence();
@@ -3124,6 +3163,8 @@ void captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
       outRecord.currentLookId, LW_LIVE_LOOK_ID_BYTES,
       lookCount ? looks[currentLookIndex].id.c_str() : "");
   outRecord.syncZones = runtimeConfig.syncZones;
+  outRecord.playlistPlaying = playlistPlaying;
+  outRecord.playlistEntryIndex = playlistEntryIndex;
   outRecord.zoneCount = 0;
   for (uint8_t i = 0; i < runtimeConfig.zoneCount && outRecord.zoneCount < LW_LIVE_LOOK_MAX_ZONES; i++) {
     const ZoneConfig& z = runtimeConfig.zones[i];
@@ -3213,7 +3254,205 @@ bool restoreLiveLookIfMatching() {
     }
   }
   runtimeConfig.syncZones = record.syncZones;
+  // Playlist play state. Deliberately does NOT force a boot-time look switch
+  // to land visibly on entries[entryIndex] even when it differs from the
+  // startup look — same reasoning as the currentLookId note above (a second
+  // startLook() this boot risks a double fade/flicker). The index is
+  // restored so /api/status reports it correctly immediately, and the next
+  // natural playlist tick (runtimeServicePlaylist(), a full dwell from now)
+  // carries the strip on from here.
+  if (runtimeConfig.playlist.enabled && runtimeConfig.playlist.entryCount > 0) {
+    playlistPlaying = record.playlistPlaying;
+    playlistEntryIndex = record.playlistEntryIndex < runtimeConfig.playlist.entryCount
+        ? record.playlistEntryIndex : 0;
+    playlistEntryStartedAtMs = millis();
+    if (record.playlistPlaying) appliedAny = true;
+  }
   return appliedAny;
+}
+
+// ---- Playlist sequencing: resolve, cross-fade, tick, control verbs ----
+// See PlaylistConfig in LightweaverTypes.h for the persisted project-JSON
+// block and the playlist state globals above for the live play state.
+
+bool runtimePlaylistConfigured() {
+  return runtimeConfig.playlist.enabled && runtimeConfig.playlist.entryCount > 0;
+}
+
+// Mirrors runtimeSelectPatternById()'s resolution order (installed look id,
+// then compiled pattern, then preset alias) but — unlike
+// runtimeSelectPatternById()/selectLookInstant()/applyPreparedLookInstant()
+// — deliberately does NOT force fadeScale to 1.0f when the resolved target
+// is an installed look. applyPreparedLookInstant() does that because it is
+// meant to be instant; the playlist's caller (playlistAdvanceToIndex(),
+// below) is mid cross-fade and owns fadeScale for the duration of it, so
+// snapping it here would pop the new look in at full brightness instead of
+// letting the fade-up leg carry it there smoothly.
+bool playlistSelectPatternById(const String& id) {
+  const LookConfig* look = findLookByExactId(id);
+  if (!look) look = isSupportedCompiledPattern(id) ? nullptr : findLookByPresetAlias(id);
+  if (look) {
+    uint8_t nextIndex = static_cast<uint8_t>(look - looks);
+    PreparedSequence prepared;
+    if (!prepareLookForSelection(looks[nextIndex], false, prepared)) return false;
+    if (looks[nextIndex].mode == "sequence" && !isPreparedSequenceReady(prepared)) return false;
+    closeSequence();
+    currentLookIndex = nextIndex;
+    blackedOut = false;
+    if (!startLook(currentLookIndex, &prepared)) return false;
+    showLeds();
+    runtimeMarkLiveLookDirty();
+    return true;
+  }
+  if (isSupportedCompiledPattern(id)) {
+    uint8_t applied = applyToZones("", [&](ZoneConfig& z) { z.patternId = id; });
+    activePatternId = applied == runtimeConfig.zoneCount ? id : String("");
+    return applied > 0;
+  }
+  return false;
+}
+
+// Cross-fades from whatever is currently showing to playlist.entries[
+// targetIndex] over playlist.fadeMs, split evenly across a fade-down-to-
+// LW_PLAYLIST_CROSSFADE_FLOOR leg and a fade-up-to-1.0 leg (see that
+// constant's comment for why this never touches true black). Always leaves
+// the strip at full brightness on return, whether or not the target
+// resolved — a resolution failure recovers to full brightness on the
+// PREVIOUS pattern rather than leaving the strip dim. Returns false (and
+// leaves entryIndex/entryStartedAtMs untouched) when the target's patternId
+// does not currently resolve to anything playable — the contract's "unknown
+// ids are skipped at play time" — so the caller can try the next entry.
+bool playlistAdvanceToIndex(uint8_t targetIndex) {
+  if (targetIndex >= runtimeConfig.playlist.entryCount) return false;
+  uint16_t fadeMs = runtimeConfig.playlist.fadeMs;
+  uint16_t halfFade = static_cast<uint16_t>(fadeMs / 2);
+  const String patternId = runtimeConfig.playlist.entries[targetIndex].patternId;
+  fadeTo(LW_PLAYLIST_CROSSFADE_FLOOR, halfFade);
+  bool applied = playlistSelectPatternById(patternId);
+  fadeTo(1.0f, halfFade);
+  if (!applied) return false;
+  playlistEntryIndex = targetIndex;
+  playlistEntryStartedAtMs = millis();
+  runtimeMarkLiveLookDirty();
+  return true;
+}
+
+// play: start or resume. If the currently active look matches one of the
+// configured entries, resumes from that entry with a full dwell starting
+// now; otherwise starts from entry 0 (an immediate cross-fade there).
+bool runtimePlaylistPlay() {
+  if (!runtimePlaylistConfigured()) return false;
+  if (playlistPlaying) return true;
+  playlistPlaying = true;
+  uint8_t resumeIndex = 0;
+  bool matchedCurrent = false;
+  if (lookCount) {
+    for (uint8_t i = 0; i < runtimeConfig.playlist.entryCount; i++) {
+      if (runtimeConfig.playlist.entries[i].patternId == looks[currentLookIndex].id) {
+        resumeIndex = i;
+        matchedCurrent = true;
+        break;
+      }
+    }
+  }
+  if (matchedCurrent) {
+    playlistEntryIndex = resumeIndex;
+    playlistEntryStartedAtMs = millis();
+  } else if (!playlistAdvanceToIndex(0)) {
+    // Entry 0 itself didn't resolve; leave entryIndex at 0 with the dwell
+    // clock already expired so the next runtimeServicePlaylist() tick's
+    // skip-forward loop finds the first entry that does.
+    playlistEntryIndex = 0;
+    playlistEntryStartedAtMs = millis() - (static_cast<uint32_t>(
+        runtimeConfig.playlist.entries[0].dwellSeconds) * 1000UL);
+  }
+  runtimeMarkLiveLookDirty();
+  return true;
+}
+
+// pause: stop advancing, keep the current look. Never fails once a playlist
+// is configured — pausing an already-paused playlist is a no-op success.
+bool runtimePlaylistPause() {
+  if (!runtimePlaylistConfigured()) return false;
+  if (playlistPlaying) {
+    playlistPlaying = false;
+    runtimeMarkLiveLookDirty();
+  }
+  return true;
+}
+
+// Manual look change elsewhere (rotary dial, or a non-playlist /api/control
+// patternId|next|previous — see the call sites) pauses the playlist: the
+// owner's hand wins. A no-op when the playlist isn't configured or isn't
+// currently playing.
+void playlistPauseForManualChange() {
+  if (playlistPlaying) {
+    playlistPlaying = false;
+    runtimeMarkLiveLookDirty();
+  }
+}
+
+// next/previous: jump to the neighbouring entry and restart its dwell. Play
+// state (playing/paused) is deliberately left unchanged — see the contract.
+bool runtimePlaylistNext() {
+  if (!runtimePlaylistConfigured()) return false;
+  uint8_t n = runtimeConfig.playlist.entryCount;
+  return playlistAdvanceToIndex(static_cast<uint8_t>((playlistEntryIndex + 1) % n));
+}
+
+bool runtimePlaylistPrevious() {
+  if (!runtimePlaylistConfigured()) return false;
+  uint8_t n = runtimeConfig.playlist.entryCount;
+  return playlistAdvanceToIndex(static_cast<uint8_t>((playlistEntryIndex + n - 1) % n));
+}
+
+String runtimePlaylistStatusJson() {
+  bool configured = runtimePlaylistConfigured();
+  uint8_t entryCount = configured ? runtimeConfig.playlist.entryCount : 0;
+  uint8_t idx = (entryCount && playlistEntryIndex < entryCount) ? playlistEntryIndex : 0;
+  uint32_t remainingMs = 0;
+  if (configured && playlistPlaying) {
+    uint32_t dwellMs = static_cast<uint32_t>(runtimeConfig.playlist.entries[idx].dwellSeconds) * 1000UL;
+    uint32_t deadline = playlistEntryStartedAtMs + dwellMs;
+    int32_t remaining = int32_t(deadline - millis());
+    remainingMs = remaining > 0 ? static_cast<uint32_t>(remaining) : 0;
+  }
+  JsonDocument doc;
+  doc["configured"] = configured;
+  doc["playing"] = configured && playlistPlaying;
+  doc["entryIndex"] = configured ? idx : 0;
+  doc["entryCount"] = entryCount;
+  doc["patternId"] = (configured && entryCount) ? runtimeConfig.playlist.entries[idx].patternId : String("");
+  doc["remainingSeconds"] = remainingMs / 1000UL;
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
+// Called once per loop() tick (see loop() below), never from the render
+// path. Advances the playlist when the current entry's dwell has elapsed.
+// Tries up to entryCount neighbouring entries so a run of currently-
+// unresolvable patternIds cannot wedge playback — each candidate is
+// pre-checked with runtimeCanSelectPatternByIdZ() (no fade) before
+// committing to a cross-fade, so a bad id costs nothing visible. If every
+// entry fails to resolve this pass, the strip is untouched (still showing
+// the last good pattern, full brightness) and the dwell window is pushed out
+// so this does not re-scan every single tick.
+void runtimeServicePlaylist() {
+  if (!runtimePlaylistConfigured() || !playlistPlaying) return;
+  uint8_t entryCount = runtimeConfig.playlist.entryCount;
+  if (playlistEntryIndex >= entryCount) playlistEntryIndex = 0;
+  uint32_t dwellMs = static_cast<uint32_t>(runtimeConfig.playlist.entries[playlistEntryIndex].dwellSeconds) * 1000UL;
+  uint32_t deadline = playlistEntryStartedAtMs + dwellMs;
+  if (int32_t(deadline - millis()) > 0) return;  // dwell not yet elapsed
+
+  uint8_t candidate = playlistEntryIndex;
+  for (uint8_t attempts = 0; attempts < entryCount; attempts++) {
+    candidate = static_cast<uint8_t>((candidate + 1) % entryCount);
+    const String& pid = runtimeConfig.playlist.entries[candidate].patternId;
+    if (runtimeCanSelectPatternByIdZ("", pid) && playlistAdvanceToIndex(candidate)) return;
+  }
+  playlistEntryStartedAtMs = millis();
 }
 
 // ---- Frame-source state surfaced to the web/runtime layer ----
