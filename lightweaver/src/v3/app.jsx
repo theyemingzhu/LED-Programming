@@ -92,7 +92,6 @@ import {
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { clearScreenFailure, rememberScreenFailure } from '../lib/screenRecoveryDiagnostics.js';
 import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
-import { getStudioTabLock } from '../lib/studioTabLock.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { getRunningStudioRelease } from '../lib/studioRelease.js';
 import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
@@ -963,11 +962,6 @@ function Shell({ offlineUpdateController = null }) {
   useEffect(() => {
     const busy = installActive || hardwareOperationActive || commissioningActive;
     void freshnessMonitorRef.current?.setOperationActive(busy);
-    // F39: the same signal that defers a superseded tab's reload also holds
-    // the one-Studio-tab lock — a running USB install, card write, or
-    // commissioning flow refuses a takeover request instead of being
-    // quieted mid-operation.
-    getStudioTabLock().setBusy(busy);
   }, [commissioningActive, hardwareOperationActive, installActive]);
   useEffect(() => {
     applyStoredStudioTheme();
@@ -2069,57 +2063,13 @@ function Shell({ offlineUpdateController = null }) {
   );
 }
 
-// F39: one active Studio tab per browser. A quiet tab renders only this
-// notice and never mounts ProjectProvider/CloudLibraryProvider/Shell — every
-// card poll, bridge launch and write lives inside those, so nothing left
-// unmounted means nothing left running. The card's own page and the card
-// bridge popup are a different origin entirely (buildCardBridgeLaunchUrl
-// points at the card host), so they never load this module and are outside
-// the lock structurally, not by a special case here.
-function StudioTabGate({ children }) {
-  const lockRef = useRef(null);
-  const [state, setState] = useState({ status: 'pending', reason: '', busy: false });
-
-  useEffect(() => {
-    // Shared with Shell (see the setBusy effect near the freshness monitor's
-    // setOperationActive effect) — the composed install/hardware-operation/
-    // commissioning "busy" signal is Shell-local state, and Shell only
-    // mounts when this gate is active, so Shell is where setBusy is actually
-    // called; this effect only owns start/stop/subscribe.
-    const lock = getStudioTabLock();
-    lockRef.current = lock;
-    const unsubscribe = lock.subscribe(setState);
-    lock.start();
-    setState(lock.getState());
-    return () => {
-      unsubscribe();
-      lock.stop();
-      lockRef.current = null;
-    };
-  }, []);
-
-  if (state.status === 'quiet') {
-    const moved = state.reason === 'moved';
-    return (
-      <div className="studio-tab-notice" role="alert" data-testid="studio-tab-notice" data-reason={state.reason || ''}>
-        <p>{moved ? 'Studio moved to another tab.' : 'Studio is open in another tab.'}</p>
-        <button type="button" onClick={() => lockRef.current?.requestTakeover()}>Use this tab</button>
-      </div>
-    );
-  }
-  if (state.status !== 'active') return null;
-  return children;
-}
-
 function App({ projectRepository = null, initialProjectEnvelope = null, offlineUpdateController = null }) {
   return (
-    <StudioTabGate>
-      <ProjectProvider repository={projectRepository} initialProjectEnvelope={initialProjectEnvelope}>
-        <CloudLibraryProvider>
-          <Shell offlineUpdateController={offlineUpdateController} />
-        </CloudLibraryProvider>
-      </ProjectProvider>
-    </StudioTabGate>
+    <ProjectProvider repository={projectRepository} initialProjectEnvelope={initialProjectEnvelope}>
+      <CloudLibraryProvider>
+        <Shell offlineUpdateController={offlineUpdateController} />
+      </CloudLibraryProvider>
+    </ProjectProvider>
   );
 }
 

@@ -1,9 +1,15 @@
 // F39 — "if I have a version open and then I do another version open and it
-// sometimes causes problems in between everything." Two rules:
+// sometimes causes problems in between everything." Rule shipped here:
 //   1. A superseded tab reloads itself the moment it is idle (no card
 //      operation, no dialog, no edit in progress) — never mid-write.
-//   2. Only one Studio tab is active per browser; a second tab shows a quiet
-//      notice and sends no card requests until it takes over.
+// A second rule was built alongside this one — quieting a second Studio tab
+// behind a takeover notice — but it collides with the tested two-tabs-is-
+// legitimate contract in tests/journey-ownership.spec.ts ("[J08] two tabs:
+// exactly one write reaches the card when both attempt the same install"),
+// which the per-card write lease (src/lib/cardWriteLease.js, F2) already
+// arbitrates. Whether one tab or two is the product rule is Adrian's call,
+// so that rule is parked on round2/f39b-tab-lock (branched from the full
+// build), not shipped here.
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -165,35 +171,5 @@ test.describe('F39 — one Studio at a time', () => {
     settleMarker(marker);
     await expect(page.getByTestId('studio-freshness')).toHaveClass(/is-current/, { timeout: 15_000 });
     await expect(page.getByTestId('studio-freshness')).toContainText(`Studio ${studioBuild}`);
-  });
-
-  test('[F39-second-tab] a second tab is quiet and sends no card requests until it takes over', async ({ page, context }) => {
-    const marker = currentStudioMarker();
-    const card = createCardSimulator(cardState('installed-match'));
-    await openConnectedStudio(page, card, marker);
-
-    // A second, independent simulator installed only on the second tab: the
-    // first tab keeps polling its own card the whole time (expected — it is
-    // still active), so proving "the QUIET tab sends nothing" needs traffic
-    // counted separately from the active tab's normal polling.
-    const quietCard = createCardSimulator(cardState('installed-match'));
-    const page2 = await context.newPage();
-    await installReleaseRoutes(page2, marker);
-    await quietCard.install(page2);
-    await page2.goto('/', { waitUntil: 'domcontentloaded' });
-
-    const notice = page2.getByTestId('studio-tab-notice');
-    await expect(notice).toBeVisible({ timeout: 15_000 });
-    await expect(notice).toContainText('Studio is open in another tab.');
-
-    await page2.waitForTimeout(10_000);
-    expect(quietCard.requests.length).toBe(0);
-
-    await page2.getByRole('button', { name: 'Use this tab' }).click();
-
-    await expect(notice).toHaveCount(0, { timeout: 15_000 });
-    await expect.poll(() => quietCard.requests.length, { timeout: 15_000, intervals: [300] }).toBeGreaterThan(0);
-
-    await expect(page.getByTestId('studio-tab-notice')).toContainText('Studio moved to another tab.', { timeout: 15_000 });
   });
 });
