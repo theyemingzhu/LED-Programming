@@ -10,6 +10,16 @@
         "kind": "branch",
         "branch": "round2/fw-lights-switch"
       }
+    },
+    {
+      "id": "fw-repo-format",
+      "what": "A card whose storage was never set up now fixes itself and update refusals now say why.",
+      "why": "F38 fix; needed on real cards eventually but not urgent enough for a signed release on its own.",
+      "added": "2026-09-09",
+      "source": {
+        "kind": "branch",
+        "branch": "round2/fw-repo-format"
+      }
     }
   ]
 }
