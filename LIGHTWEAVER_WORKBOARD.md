@@ -9,6 +9,20 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-09: **PATTERN-EDIT-MANAGER implemented locally** — Slow color drift has
+visual colors/reordering, locks, Pace, Character, three variations, Undo, rehearsal,
+Keep/reopen and unsaved recovery. Patterns updates/renames retain identity; deletion
+has Undo; full collections refuse new saves; Lab preserves native colors/sections.
+Live preview follows native and streamed patterns; Piece/Strip keeps render geometry.
+Checkpoint: 2,465 unit tests and production build passed. Recovered checkout: 19/19 integrated desktop browser scenarios and 5/5 Mobile Chrome
+creative scenarios passed; desktop and 390px phone screens inspected directly.
+Physical color/playback remains unverified. Journeys require Studio open; recording
+and standalone minute fades are explicitly unsupported. No release or flash.
+Recovery: another session stashed tracked work during release preparation. Recovered
+exact snapshot 4896c040 plus all new files into isolated sibling led-pattern-creative,
+branch codex/pattern-creative-reviewed, base51a7af3b. Preserve original stashes.
+[Implementation and evidence](docs/plans/2026-09-09-pattern-editing-manager.md).
+
 2026-09-05: **FLOW-BLUEPRINT handoff ready** — planning-only integration blueprint
 with E01–E14 existing-code ledger, B0–B6 ownership/dependencies and J01–J14
 acceptance scenarios. [Plan](docs/plans/2026-09-05-unified-card-journey.md) and
@@ -23,6 +37,7 @@ on firmware 1524; no hardware mutation or release is part of this checkpoint.
 
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
+| PATTERN-EDIT-VIS-001 | Exact native look entering Lab; Live preview native→Mandelbrot→Lotus→Stop; six-minute drift | Same physical hues/order and intended animation/restoration on the configured strip | Local `codex/pattern-creative-workflow`; automated mocks only | needs-eyes |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
 | WINDOWLESS-002 | Card HTTP streaming, owner capability, atomic project storage, and embedded local Studio server | Firmware source | done | 4 focused contracts + generated-bundle PlatformIO pass |
 | WINDOWLESS-003 | Card/PWA build targets, encrypted staging, release lanes, and integrated browser/artifact contracts | CI / release / browser tests | done | 8 tooling contracts + Pages staging + production/card builds |
@@ -58,6 +73,10 @@ The primary assigns at most three sub-agents. Two active owners must never name
 the same file or an inseparable behavior boundary.
 
 ## Visual-feedback queue
+
+PATTERN-EDIT-VIS-001: needs-eyes — verify exact native hues entering Lab,
+Mandelbrot/Lotus streaming and Stop, then six-minute drift on the configured strip.
+Automated transport mocks do not satisfy physical proof.
 
 | ID | Screen or hardware state | What Adrian must observe | Build / fixture | Status |
 | --- | --- | --- | --- | --- |

@@ -1,3 +1,4 @@
+import { createColorJourneyPattern, patternLabSamplingBounds } from '../lib/patternLabPatternAdapter.js';
 import {
   buildGammaLut,
   compilePattern,
@@ -204,7 +205,10 @@ async function renderRequest(requestId, payload) {
   const recipe = payload.recipe || {};
   const options = payload.renderOptions || {};
   const stateful = statefulPattern({ ...recipe, time: payload.time }, indices, options);
-  const activeFn = stateful
+  const isColorJourney = recipe.base?.kind === 'color-journey';
+  const activeFn = isColorJourney
+    ? createColorJourneyPattern(recipe.journey, payload.time)
+    : stateful
     ? (index, x, y, _time, _cycle, _count, _palette, _beat, _beatSin, _params, _stripId, stripProgress) => {
       const sampleIndex = Math.max(0, Math.min(indices.length - 1, Math.round(index)));
       return stateful.generator.render(sampleIndex, {
@@ -217,15 +221,16 @@ async function renderRequest(requestId, payload) {
     }
     : compileAuthoritativePattern(recipe.base?.patternId, indices, geometry.visiblePixelCount);
   const sampled = sampledStrips(geometry, indices);
+  const samplingBounds = patternLabSamplingBounds(sampled, geometry.normalizationBounds, recipe);
   const motionSampled = applyPatternLabMotionToStrips(sampled, {
     elapsedSeconds: Number(payload.time) || 0,
     seed: recipe.seed,
     motionWeights: options.motionWeights,
-    bounds: geometry.normalizationBounds,
+    bounds: samplingBounds,
   });
   const frame = renderPixelFrame({
     t: Number(payload.time) || 0,
-    strips: stateful ? sampled : motionSampled,
+    strips: stateful || isColorJourney ? sampled : motionSampled,
     patternId: recipe.base?.patternId,
     activeFn,
     params: recipe.base?.params || {},
@@ -233,12 +238,12 @@ async function renderRequest(requestId, payload) {
     bpm: geometry.bpm,
     masterSpeed: options.masterSpeed,
     masterBrightness: 1,
-    masterSaturation: options.masterSaturation,
-    masterHueShift: options.masterHueShift,
+    masterSaturation: isColorJourney ? 1 : options.masterSaturation,
+    masterHueShift: isColorJourney ? 0 : options.masterHueShift,
     gammaLUT: null,
     symSettings: geometry.symSettings,
     audioBands: geometry.audioBands,
-    normBounds: geometry.normalizationBounds,
+    normBounds: samplingBounds,
   });
   let renderedPixels = frame.pixels;
   for (const layer of recipe.layers || []) {
@@ -251,7 +256,7 @@ async function renderRequest(requestId, payload) {
       geometry.visiblePixelCount,
     );
     if (!layerFn) throw new RangeError(`Unknown Pattern Lab layer pattern: ${String(layer.generator.patternId)}`);
-    const preparedLayer = layerGeometry(motionSampled, layer, geometry.normalizationBounds);
+    const preparedLayer = layerGeometry(motionSampled, layer, samplingBounds);
     const layerFrame = renderPixelFrame({
       t: Number(payload.time) || 0,
       strips: preparedLayer.strips,
@@ -262,12 +267,12 @@ async function renderRequest(requestId, payload) {
       bpm: geometry.bpm,
       masterSpeed: options.masterSpeed,
       masterBrightness: 1,
-      masterSaturation: options.masterSaturation,
-      masterHueShift: options.masterHueShift,
+      masterSaturation: isColorJourney ? 1 : options.masterSaturation,
+      masterHueShift: isColorJourney ? 0 : options.masterHueShift,
       gammaLUT: null,
       symSettings: geometry.symSettings,
       audioBands: geometry.audioBands,
-      normBounds: geometry.normalizationBounds,
+      normBounds: samplingBounds,
     });
     if (layerFrame.pixels.length !== renderedPixels.length
       || preparedLayer.coordinates.length !== renderedPixels.length) {

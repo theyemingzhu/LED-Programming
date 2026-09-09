@@ -298,3 +298,74 @@ test('per-section pattern assignments and per-strip controls remain unchanged', 
 test('custom parameter values keep every representative pixel unchanged', () => {
   assertLossless('fire', {}, { scale: 7.25, rise: 0.85 });
 });
+
+for (const patternId of ['mandelbrot', 'lotus']) {
+  test(`${patternId} new Lab design follows palette and animates on a 41-light horizontal piece`, () => {
+    const strips = [{ id: 'line', pts: Array.from({ length: 41 }, (_, i) => ({ x: i * 10, y: 20, p: i / 40 })) }];
+    const red = recipeFromPattern(patternId, { palette: ['#ff0000'] });
+    const blue = recipeFromPattern(patternId, { palette: ['#0000ff'] });
+    const frame = renderPatternLabRecipeFrame(red, { strips, t: 0 }).pixels;
+    const other = renderPatternLabRecipeFrame(blue, { strips, t: 0 }).pixels;
+    assert.ok(frame.some(pixel => pixel.r > 100), 'visible highlights');
+    assert.ok(frame.every(pixel => pixel.g === 0 && pixel.b === 0), 'selected red palette');
+    assert.notDeepEqual(frame, other, 'palette changes computed pixels');
+    assert.notDeepEqual(frame, renderPatternLabRecipeFrame(red, { strips, t: 3 }).pixels, 'motion within seconds');
+    assert.ok(new Set(frame.map(pixel => JSON.stringify(pixel))).size > 3, 'spatial detail');
+  });
+}
+
+test('legacy Mandelbrot and Lotus recipes retain their exact stored appearance', () => {
+  for (const patternId of ['mandelbrot', 'lotus']) {
+    const recipe = recipeFromPattern(patternId, { palette: FIXED_PALETTE });
+    delete recipe.base.params.__labSpatialV1;
+    assert.deepEqual(renderPatternLabRecipeFrame(recipe, { strips: FIXED_LAYOUT, t: FIXED_TIME }),
+      renderPixelFrame({ strips: FIXED_LAYOUT, t: FIXED_TIME, patternId, params: recipe.base.params, paletteNorm: normalizePalette(FIXED_PALETTE) }));
+  }
+});
+
+test('journey frame uses literal minute timing and independent movement, survives recipe normalization', async () => {
+  const { createSlowColorDriftJourney } = await import('./colorJourney.js');
+  const { createPatternLabRecipe } = await import('./patternLabRecipe.js');
+  const createSlowColorDriftRecipe = () => createPatternLabRecipe({ base: { kind: 'color-journey', id: 'slow-color-drift' }, journey: createSlowColorDriftJourney() });
+  const { normalizePatternLabRecipe } = await import('./patternLabRecipe.js');
+  const recipe = createSlowColorDriftRecipe();
+  const strips = [{ id: 'line', pts: Array.from({ length: 41 }, (_, i) => ({ x: i, y: 0, p: i / 40 })) }];
+  const render = (source, t) => renderPatternLabRecipeFrame(source, { strips, t }).pixels;
+  const baseline = render(recipe, 0);
+  assert.notDeepEqual(baseline, render(recipe, 3), 'motion runs while holding the first color');
+  assert.notDeepEqual(baseline, render(recipe, 180), 'minute-scale color destinations differ');
+  assert.deepEqual(render(recipe, 75), render(normalizePatternLabRecipe(JSON.parse(JSON.stringify(recipe))), 75));
+  assert.deepEqual(render(recipe, 0), render(recipe, 360), 'authored loop and default movement meet at six minutes');
+});
+
+test('actual worker agrees with direct Lab frames for centered line patterns and journey', async () => {
+  const { compactPatternLabWorkerGeometry } = await import('./patternLabWorkerProtocol.js');
+  const { createSlowColorDriftJourney } = await import('./colorJourney.js');
+  const { createPatternLabRecipe } = await import('./patternLabRecipe.js');
+  const createSlowColorDriftRecipe = () => createPatternLabRecipe({ base: { kind: 'color-journey', id: 'slow-color-drift' }, journey: createSlowColorDriftJourney() });
+  const geometry = { strips: [{ id: 'line', pixels: Array.from({ length: 41 }, (_, i) => ({ x: i, y: 0, p: i / 40 })) }], gammaEnabled: false };
+  const compact = compactPatternLabWorkerGeometry(geometry);
+  const renderOptions = { masterSpeed: 1, masterBrightness: 1, masterSaturation: 1, masterHueShift: 0, motionWeights: { drift: 1, flow: 0, pulse: 0, surge: 0 } };
+  const oldPost = globalThis.postMessage;
+  const oldMessage = globalThis.onmessage;
+  let replies = [];
+  globalThis.postMessage = reply => { replies.push(reply); };
+  try {
+    await import('../pattern-lab/patternLab.worker.js');
+    globalThis.onmessage({ data: { type: 'initialize', requestId: 1, payload: { generation: 1, geometry: compact } } });
+    let requestId = 1;
+    for (const recipe of [recipeFromPattern('mandelbrot'), recipeFromPattern('lotus'), createSlowColorDriftRecipe()]) {
+      replies = [];
+      globalThis.onmessage({ data: { type: 'render', requestId: ++requestId, payload: { generation: 1, mode: 'final', layerCount: 0, time: 75, recipe, renderOptions } } });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.ok(!replies.some(reply => reply.type === 'error'), JSON.stringify(replies));
+      const response = replies.find(reply => reply.type === 'frame');
+      assert.ok(response, 'worker returned frame');
+      const direct = renderPatternLabRecipeFrame(recipe, { strips: geometry.strips, t: 75, ...renderOptions }).pixels;
+      assert.deepEqual([...new Uint8Array(response.payload.colors)], direct.flatMap(({ r, g, b }) => [r, g, b]));
+    }
+  } finally {
+    globalThis.postMessage = oldPost;
+    globalThis.onmessage = oldMessage;
+  }
+});

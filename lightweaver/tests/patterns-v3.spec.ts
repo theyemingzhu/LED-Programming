@@ -11,7 +11,7 @@ import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 // These specs assert on the EXACT mockup PatternScreen that now ships
 // (src/v3/lw-pattern.jsx). The DOM is the mockup's own: .pm wrapper, .pmcard
 // browse cards, .pm-targetcard, .chips/.chip, and the testids
-// that the live component exposes (save-current-combo,
+// that the live component exposes (look-save-preset,
 // section-target-*, look-color-picker, look-*-slider/-readout, and visible
 // preview state exposed by the compact preview toolbar).
 
@@ -806,7 +806,7 @@ test('Advanced exposes a gentle bounded breathing envelope', async ({ page }) =>
   await sectionTarget.click();
   await expect(page.getByTestId('breathe-summary')).toHaveText('Breathe · 76–94% · 12s');
 
-  await page.getByTestId('save-current-combo').click();
+  await page.getByTestId('look-save-preset').click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3') || '')).toContain('"breatheLowerPct":92');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('.pmx-advanced summary').click();
@@ -2016,7 +2016,7 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   const before = await page.locator('.pm-cards .pmcard').count();
 
-  await page.getByTestId('save-current-combo').click();
+  await page.getByTestId('look-save-preset').click();
 
   // A new mix card (tagged 'mix') appears in the grid. The catalog sentinel
   // may concurrently reveal its next batch, so saving must not shrink the

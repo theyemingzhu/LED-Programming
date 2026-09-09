@@ -84,10 +84,11 @@ test('native bank aurora samples via look preview, never a frame stream', async 
   await expect(page.getByTestId('pattern-lab-draft-name')).toBeVisible();
   await closeControls(page);
 
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect.poll(() => controls.some(body => body.patternId === 'aurora')).toBe(true);
   expect(await page.evaluate(() => window.__patternLabFrames.length)).toBe(0);
   await expect(page.getByRole('button', { name: 'Preview on Lights' })).toHaveCount(0);
-  await expect(page.locator('.plab-live-preview [role="status"]')).toContainText(/already follows this look/i);
+  await expect(page.locator('.plab-live-preview')).toHaveAttribute('data-live-state', 'native-look');
 });
 
 test('library-only gradient still uses Preview on Lights frames and Stop restores', async ({ page }) => {
@@ -96,7 +97,7 @@ test('library-only gradient still uses Preview on Lights frames and Stop restore
   await choosePattern(page, 'gradient');
   await closeControls(page);
 
-  const preview = page.getByRole('button', { name: 'Preview on Lights' });
+  const preview = page.getByRole('button', { name: 'Live preview', exact: true });
   await expect(preview).toBeVisible();
   await expect(preview).toBeEnabled();
   // Autoload / native sampling must not have opened a frame stream for gradient.
@@ -124,11 +125,34 @@ test('leaving Pattern Lab rolls back an active frame-stream preview', async ({ p
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await choosePattern(page, 'gradient');
   await closeControls(page);
-  await page.getByRole('button', { name: 'Preview on Lights' }).click();
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop preview' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
   await expect(page.getByTestId('pattern-lab-screen')).toHaveCount(0);
   await expect.poll(() => controls.filter(body => body.cancelStream && !body.patternId).length).toBe(1);
   await expect.poll(() => controls.some(body => body.patternId === 'aurora' && body.zone === 'all')).toBe(true);
+});
+
+test('Live preview keeps following native, Mandelbrot and Lotus selections until stopped', async ({ page }) => {
+  const controls = await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab&patternId=aurora', { waitUntil: 'domcontentloaded' });
+  await closeControls(page);
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
+  await expect.poll(() => controls.some(body => body.patternId === 'aurora')).toBe(true);
+
+  await choosePattern(page, 'mandelbrot');
+  await closeControls(page);
+  await expect(page.getByRole('button', { name: 'Stop preview', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
+  const beforeLotus = await page.evaluate(() => window.__patternLabFrames.length);
+  await choosePattern(page, 'lotus');
+  await closeControls(page);
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(beforeLotus);
+  await expect(page.getByRole('button', { name: 'Live preview', exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Live preview', exact: true })).toBeVisible();
+  await expect.poll(() => controls.some(body => body.cancelStream)).toBe(true);
 });

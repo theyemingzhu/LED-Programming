@@ -316,6 +316,9 @@ function prepareBake(input = {}) {
   }
   assertPatternLabJsonSafe(input.recipe);
   const recipe = normalizePatternLabRecipe(input.recipe);
+  if (recipe.base.kind === 'color-journey') {
+    throw new RangeError('Color journeys currently require Studio streaming; standalone recording is not available yet.');
+  }
   validateDeterministicRecipe(recipe);
   const strips = sourceStrips(input.strips, input.hidden);
   const sourcePixelCount = strips.reduce((sum, strip) => sum + strip.pixels.length, 0);

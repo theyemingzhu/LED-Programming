@@ -6,11 +6,9 @@
 // A pattern that looks calm on a ring can be travelling fast along the strip,
 // and nothing in Studio showed that.
 //
-// Nothing here renders or recolours anything. It rewrites POSITIONS and hands
-// the result to the same preview: same pattern function, same palette, same
-// frame — the lights are just standing in a line. Any other approach would be
-// a second renderer that could disagree with the first about what the piece
-// is doing.
+// This is display geometry only. Pass it through displayGeometry, never to
+// the worker or frame renderer. The source artwork remains the sampling input;
+// flattening that input would change spatial patterns and outgoing LED frames.
 
 // Room to breathe at each end so the first and last light are not clipped
 // against the frame edge.
