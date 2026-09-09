@@ -117,7 +117,13 @@ void scheduleApTeardown(uint32_t generation);
 // v5 adds the 'clear-project' relay — the non-destructive "clear temporary
 // setup" for a card stranded on a bench-discovery project. v6 adds explicit
 // release of the passive bridge utility; Setup completion itself keeps it live.
-constexpr int LW_BRIDGE_VERSION = 6;
+// v7 adds the 'open-studio' message: when the card page was launched by
+// Studio and its opener is still alive, "Edit in Studio" / "Open Lightweaver
+// Studio" posts { type:'open-studio', href, editLook, editPattern } to the
+// opener (targetOrigin = the already-validated studioOrigin) and focuses it,
+// instead of reloading the opener tab and discarding its in-memory state.
+// Studio feature-detects, so a pre-v7 card simply keeps reloading the tab.
+constexpr int LW_BRIDGE_VERSION = 7;
 
 String apSsid() {
   uint64_t mac = ESP.getEfuseMac();
@@ -244,7 +250,8 @@ String studioSetupUrl(const RuntimeConfig& cfg) {
 
 String studioOpenScript() {
   String script;
-  script.reserve(2400);
+  script.reserve(2600);
+  const String bridgeVersion = String(LW_BRIDGE_VERSION);
   script += F("let lwBridgeUtilityActive=false;"
            "const lwActivateBridgeUtility=()=>{"
              "const wrap=document.querySelector('.wrap'),utility=$('bridge-utility');"
@@ -263,16 +270,23 @@ String studioOpenScript() {
            "const lwRestoreBridgeUtility=()=>lwBridgeUtilityIntent()?lwActivateBridgeUtility():lwShowVisibleCardPage();"
            "function lwOpenStudio(event,url){"
            "if(event)event.preventDefault();"
+           "let editLook='',editPattern='';"
            "try{"
              "const requested=new URL(url,'https://led.mandalacodes.com/');"
              "const u=new URL('https://led.mandalacodes.com/');"
              "u.searchParams.set('cardBridge','1');"
              "u.searchParams.set('cardHost',location.host);"
-             "let editing=false;for(const key of ['editPattern','editLook']){const value=requested.searchParams.get(key)||'';if(/^[a-z0-9_-]{1,64}$/i.test(value)){u.searchParams.set(key,value);editing=true}}"
+             "let editing=false;for(const key of ['editPattern','editLook']){const value=requested.searchParams.get(key)||'';if(/^[a-z0-9_-]{1,64}$/i.test(value)){u.searchParams.set(key,value);editing=true;if(key==='editPattern')editPattern=value;else editLook=value}}"
              "u.hash=!editing&&requested.hash==='#screen=layout'?'#screen=layout':!editing&&requested.hash==='#screen=card&section=setup'?'#screen=card&section=setup':'#screen=card&section=overview';url=u.href"
            "}catch(_){url='https://led.mandalacodes.com/?cardBridge=1&cardHost='+encodeURIComponent(location.host)+'#screen=card&section=overview'}"
            "let opener=null;try{if(lwBridgeLaunch&&window.opener&&!window.opener.closed)opener=window.opener}catch(_){}"
-           "if(opener){try{opener.location.href=url}catch(_){}try{opener.focus()}catch(_){}return false}"
+           "if(opener){"
+             "try{opener.postMessage({app:'LightweaverCardBridge',type:'open-studio',version:");
+  script += bridgeVersion;
+  script += F(",href:url,editLook:editLook,editPattern:editPattern},lwBridgeLaunch.get('studioOrigin'))}catch(_){}"
+             "try{opener.focus()}catch(_){}"
+             "return false"
+           "}"
            "const opened=window.open(url,'lightweaver-studio');"
            "if(!opened)alert('Allow pop-ups for this page, then tap Open Studio again.');"
            "else try{opened.focus()}catch(_){}"
@@ -704,7 +718,7 @@ void handleRoot() {
             "<div class='section-row' id='section-row'></div>"
             "<div class='grid' id='grid'></div>"
             "<div class='foot'>"
-              "<button class='off-btn' id='off-btn' disabled>Off</button>"
+              "<button class='off-btn' id='off-btn' disabled aria-pressed='false'>Lights off</button>"
               "<a class='set-link studio-link' id='studio-link' href='");
   page += escapeHtml(studioBridgeUrl(cfg));  // hostname/IP are user-settable; keep them inside the quoted attribute
   page += F("' target='_blank' onclick=\"return lwOpenStudio(event,this.href)\">Open Lightweaver Studio</a>"
@@ -856,7 +870,7 @@ void handleRoot() {
             // response field that names the actual applied zone + pattern.
             "const sendZonePattern=async id=>{if(patZonePending||id===activeIdNow())return;patZonePending=true;$('grid').classList.add('pending');$('grid').setAttribute('aria-busy','true');renderPat();try{const payload=await controlPost({patternId:id,...zoneField()});const confirmedOk=payload.confirmedLook&&payload.confirmedLook.patternId===id&&payload.confirmedLook.zone===sectionTarget;if(!confirmedOk)throw new Error('Card did not confirm the requested scene.');zoneCurrentId=id;showColorPanel(id==='custom-color');clearControlError('zone-pattern')}catch(e){showControlError('Could not change scene. '+((e&&e.message)||'Try again.'),()=>sendZonePattern(id),'zone-pattern')}finally{patZonePending=false;$('grid').classList.remove('pending');$('grid').setAttribute('aria-busy','false');renderPat()}};"
             "const brightnessControl=makeConfirmedControl({initial:1,description:'change brightness',render:value=>{const pct=Math.round(value*100);$('b-slider').value=pct;$('b-val').textContent=pct+'%'},setDisabled:on=>{$('b-slider').disabled=on},send:value=>controlPost({brightness:value,...zoneField()})});"
-            "const blackoutControl=makeConfirmedControl({initial:blackoutOn,description:'change blackout',render:value=>{blackoutOn=value;$('off-btn').classList.toggle('on',value)},setDisabled:on=>{$('off-btn').disabled=on},send:value=>controlPost({blackout:value,...zoneField()})});"
+            "const blackoutControl=makeConfirmedControl({initial:blackoutOn,description:'change blackout',render:value=>{blackoutOn=value;$('off-btn').classList.toggle('on',value);$('off-btn').textContent=value?'Lights on':'Lights off';$('off-btn').setAttribute('aria-pressed',value?'true':'false')},setDisabled:on=>{$('off-btn').disabled=on},send:value=>controlPost({blackout:value,...zoneField()})});"
             "$('b-slider').onchange=e=>brightnessControl.request(parseInt(e.target.value,10)/100);"
             "$('off-btn').onclick=()=>blackoutControl.request(!blackoutOn);"
             // Settings drawer (inline, no separate page)
