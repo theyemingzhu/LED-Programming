@@ -1463,6 +1463,56 @@ export async function pushLiveHardwareToCard(settings, options = {}) {
   }
 }
 
+const PLAYLIST_CONTROL_VERBS = new Set(['play', 'pause', 'next', 'previous']);
+
+/**
+ * POST { playlist: 'play' | 'pause' | 'next' | 'previous' } to /api/control —
+ * the same control endpoint and transport gates (authority, bridge, direct
+ * fetch + auto-discover retry) every other live control already uses. Any
+ * manual look change (buildLivePreviewControlPayload's patternId) pauses the
+ * playlist on the card side; this helper only ever sends the transport verb.
+ */
+export async function postPlaylistControlToCard(verb, options = {}) {
+  if (!PLAYLIST_CONTROL_VERBS.has(verb)) {
+    throw new CardPushError('invalid-playlist-verb', `Unknown playlist control "${verb}".`);
+  }
+  const host = options.host || readStoredCardHost();
+  const payload = { playlist: verb };
+  const authority = options.authority || getActiveCardTransportAuthority(host);
+  if (authority) {
+    try {
+      return await authority.request('/api/control', { method: 'POST', body: payload });
+    } catch (error) {
+      throw normalizePreviewError(host, error);
+    }
+  }
+  if (isMixedContentBlocked()) {
+    try {
+      return await sendCardBridgeRequest('control', payload, { host, timeoutMs: options.timeoutMs || 2500 });
+    } catch (error) {
+      throw normalizePreviewError(host, error);
+    }
+  }
+  try {
+    return await postControlPayloadToHost(host, payload, options);
+  } catch (error) {
+    if (!isMixedContentBlocked() && options.autoDiscover !== false) {
+      const found = await discoverCardStatus({
+        preferredHost: host,
+        timeoutMs: Math.min(options.timeoutMs || 2500, 900),
+      });
+      if (found.connected && normalizeCardHost(found.host) !== normalizeCardHost(host)) {
+        try {
+          return await postControlPayloadToHost(found.host, payload, options);
+        } catch (retryError) {
+          throw normalizePreviewError(found.host, retryError);
+        }
+      }
+    }
+    throw normalizePreviewError(host, error);
+  }
+}
+
 export async function identifyCardLights(options = {}) {
   const host = options.host || readStoredCardHost();
   try {
