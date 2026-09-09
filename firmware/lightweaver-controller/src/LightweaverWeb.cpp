@@ -1344,7 +1344,8 @@ void handleStatus() {
                   ",\"projectHead\":\"" + lightweaverProjectRepository().currentHead() + "\"" +
                   ",\"maxMilliamps\":" + String(runtimeConfigPtr->maxMilliamps) +
                   ",\"maxMilliampsSource\":\"" +
-                  (runtimeConfigPtr->maxMilliampsExplicit ? "config" : "default") + "\"}";
+                  (runtimeConfigPtr->maxMilliampsExplicit ? "config" : "default") + "\"" +
+                  ",\"playlist\":" + runtimePlaylistStatusJson() + "}";
     body = body.substring(0, lastBrace) + tail;
   }
   server.send(200, "application/json", body);
@@ -2033,6 +2034,42 @@ void handleControlPost() {
   } else {
     controlRequestBodyReady = false;
   }
+  // Playlist verb ("play"|"pause"|"next"|"previous"): independent of the
+  // pattern/zone control transaction below — this steps the project's own
+  // playlist.entries, never a direct pattern selection, so it never touches
+  // the operationScope/prepared-selection machinery that keys off
+  // patternId/next/previous and returns its own response immediately.
+  if (hasControlField(doc, "playlist")) {
+    String verb = controlString(doc, "playlist");
+    bool ok;
+    if (verb == "play") ok = runtimePlaylistPlay();
+    else if (verb == "pause") ok = runtimePlaylistPause();
+    else if (verb == "next") ok = runtimePlaylistNext();
+    else if (verb == "previous") ok = runtimePlaylistPrevious();
+    else {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid playlist verb\"}");
+      return;
+    }
+    if (!ok) {
+      server.send(422, "application/json", "{\"ok\":false,\"error\":\"playlist not configured or unavailable\"}");
+      return;
+    }
+    JsonDocument out;
+    out["ok"] = true;
+    out["cardId"] = runtimeCardId();
+    out["stateRevision"] = runtimeAdvanceStateRevision();
+    String body;
+    serializeJson(out, body);
+    // Splice the playlist status object in directly (same tail-append
+    // pattern handleStatus() uses) rather than round-tripping it through a
+    // second JsonDocument.
+    int lastBrace = body.lastIndexOf('}');
+    if (lastBrace > 0) {
+      body = body.substring(0, lastBrace) + ",\"playlist\":" + runtimePlaylistStatusJson() + "}";
+    }
+    server.send(200, "application/json", body);
+    return;
+  }
   // Optional `zone` field targets a single zone. Empty / missing = broadcast
   // (under sync rules — see runtime API). Visitors using the basic page never
   // send `zone`; the designer surface does.
@@ -2211,6 +2248,11 @@ void handleControlPost() {
     server.send(422, "application/json", body);
     return;
   }
+  // A manual pattern change (patternId, or the top-level next/previous look
+  // step — never reached with a "playlist" key, which returned earlier
+  // above) pauses the playlist: the owner's hand wins. See the contract's
+  // "Any manual look change ... PAUSES the playlist" rule.
+  if (selectionRequested) playlistPauseForManualChange();
   // Echo current state back
   uint8_t affectedOutputCount =
       runtimeAffectedOutputCount(zoneTarget, runtimeGetSyncZones(), operationScope);

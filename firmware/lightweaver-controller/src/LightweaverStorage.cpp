@@ -55,6 +55,14 @@ constexpr const char* NVS_SD_AUTORUN_SUPPRESSED_KEY = "sdAutorunOff";
 constexpr const char* NVS_LIVE_LOOK_KEY = "liveLook";
 constexpr size_t NVS_STRING_LIMIT = 3968;
 
+// LW_PLAYLIST_RECORD_MAX_ENTRIES (LightweaverStorage.h, Arduino-free) and
+// LW_MAX_PLAYLIST_ENTRIES (LightweaverTypes.h, pulled in transitively via
+// this file's non-native #include of LightweaverStorage.h) must never drift
+// — the native test (test/test_playlist) exercises the former; production
+// parsing below populates RuntimeConfig.playlist, sized by the latter.
+static_assert(LW_PLAYLIST_RECORD_MAX_ENTRIES == LW_MAX_PLAYLIST_ENTRIES,
+              "playlist record capacity must match the runtime config capacity");
+
 uint16_t clampPixels(int value) {
   if (value < 1) return 1;
   if (value > LW_MAX_PIXELS) return LW_MAX_PIXELS;
@@ -267,6 +275,7 @@ void resetConfig(RuntimeConfig& config) {
   config.outputCount = 0;
   for (uint8_t i = 0; i < LW_MAX_LOOKS; i++) resetLook(config.looks[i]);
   config.lookCount = 0;
+  config.playlist = PlaylistConfig();
   resetControls(config.controls);
   resetWifi(config.wifi);
   config.wifiRuntime = WifiRuntimeState{};
@@ -464,6 +473,27 @@ void applyJsonToConfig(JsonDocument& doc, RuntimeConfig& config, RuntimeSource s
       }
       if (zone.rangeCount > 0) config.zoneCount++;
     }
+  }
+
+  // Playlist — optional; absent means no sequencing (see PlaylistConfig in
+  // LightweaverTypes.h). Decoded via decodePlaylistRecord() (Storage.h), the
+  // same Arduino-free function test/test_playlist exercises natively, so the
+  // cap-at-LW_MAX_PLAYLIST_ENTRIES / drop-the-rest behavior here is the real
+  // parse path, not a reimplementation of it.
+  PlaylistRecord playlistRecord;
+  decodePlaylistRecord(doc["playlist"], playlistRecord, [](uint16_t dropped) {
+    if (Serial) {
+      Serial.print("Playlist config: dropped ");
+      Serial.print(dropped);
+      Serial.println(" entries past the playlist entry limit");
+    }
+  });
+  config.playlist.enabled = playlistRecord.enabled;
+  config.playlist.fadeMs = playlistRecord.fadeMs;
+  config.playlist.entryCount = playlistRecord.entryCount;
+  for (uint8_t i = 0; i < playlistRecord.entryCount; i++) {
+    config.playlist.entries[i].patternId = String(playlistRecord.entries[i].patternId);
+    config.playlist.entries[i].dwellSeconds = playlistRecord.entries[i].dwellSeconds;
   }
 }
 
@@ -1108,6 +1138,45 @@ bool validateRuntimeConfigJsonStrict(const String& json,
       if (!found) {
         message = String("unknown zone reference ") + id;
         return false;
+      }
+    }
+  }
+
+  JsonVariant playlistValue = doc["playlist"];
+  if (!playlistValue.isNull()) {
+    if (!playlistValue.is<JsonObjectConst>()) {
+      message = "playlist must be an object";
+      return false;
+    }
+    JsonVariant enabledValue = playlistValue["enabled"];
+    if (!enabledValue.isNull() && !enabledValue.is<bool>()) {
+      message = "playlist.enabled must be a boolean";
+      return false;
+    }
+    JsonVariant fadeMsValue = playlistValue["fadeMs"];
+    if (!fadeMsValue.isNull() && !fadeMsValue.is<int>()) {
+      message = "playlist.fadeMs must be an integer";
+      return false;
+    }
+    // Entry count is never rejected here — past LW_MAX_PLAYLIST_ENTRIES the
+    // real parse (decodePlaylistRecord, called from applyJsonToConfig() via
+    // loadJsonString() below) drops the rest and logs it; that is the
+    // documented behavior, not a validation failure. Only per-entry field
+    // TYPES are checked strictly, same as the zone/look breathe fields above.
+    JsonArray playlistEntries = playlistValue["entries"].as<JsonArray>();
+    if (!playlistEntries.isNull()) {
+      for (JsonVariant entryValue : playlistEntries) {
+        JsonObject entry = entryValue.as<JsonObject>();
+        JsonVariant patternIdValue = entry["patternId"];
+        if (!patternIdValue.isNull() && !patternIdValue.is<const char*>()) {
+          message = "playlist entry patternId must be a string";
+          return false;
+        }
+        JsonVariant dwellValue = entry["dwellSeconds"];
+        if (!dwellValue.isNull() && !dwellValue.is<int>()) {
+          message = "playlist entry dwellSeconds must be an integer";
+          return false;
+        }
       }
     }
   }
