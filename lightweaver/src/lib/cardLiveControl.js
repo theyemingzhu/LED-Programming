@@ -30,6 +30,7 @@ import {
 import { discoverCardWiring, getCardWiringStatus, rollbackCardWiringCandidate } from './cardWiringSafety.js';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from './cardCustomerControlContract.js';
 import { isTransientCardFailure } from './cardTransientFailure.js';
+import { readStudioStripProfile } from './patternLabPreviewCalibration.js';
 
 function isMixedContentBlocked() {
   return typeof window !== 'undefined' && !canPushDirectlyToCard(window.location.protocol);
@@ -434,6 +435,9 @@ export function buildLivePreviewControlPayload(look = {}, options = {}) {
   )));
   return {
     cancelStream: true,
+    // Transient firmware contract: apply the Studio profile to
+    // this live preview only; never write it to card configuration.
+    outputCalibration: readStudioStripProfile(),
     ...(look.zone ? { zone: String(look.zone) } : {}),
     ...(typeof look.syncZones === 'boolean' ? { syncZones: look.syncZones } : {}),
     ...controlPayload,

@@ -16,6 +16,7 @@
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverProjectRepository.h"
 #include "LightweaverCardStudio.h"
+#include "LightweaverOutputColorParser.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
@@ -2097,6 +2098,21 @@ void handleControlPost() {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid color order\"}");
     return;
   }
+  const bool outputCalibrationRequested = hasControlField(doc, "outputCalibration");
+  OutputColorConfig requestedOutputCalibration;
+  const char* outputCalibrationErrorPath = nullptr;
+  const char* outputCalibrationErrorReason = nullptr;
+  if (outputCalibrationRequested && !parseTransientOutputCalibration(
+          doc["outputCalibration"], requestedOutputCalibration,
+          outputCalibrationErrorPath, outputCalibrationErrorReason)) {
+    String body = String("{\"ok\":false,\"error\":\"") +
+        (outputCalibrationErrorPath ? outputCalibrationErrorPath : "invalid output calibration") +
+        " ";
+    body += outputCalibrationErrorReason ? outputCalibrationErrorReason : "invalid";
+    body += "\"}";
+    server.send(400, "application/json", body);
+    return;
+  }
   const bool breatheSettingsRequested = hasControlField(doc, "breatheLowerPct") ||
       hasControlField(doc, "breatheUpperPct") || hasControlField(doc, "breatheCycleSeconds");
   int requestedBreatheLower = runtimeGetBreatheLowerPctZ(zoneTarget);
@@ -2131,6 +2147,13 @@ void handleControlPost() {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"pattern id out of range\"}");
     return;
   }
+
+  // A prepared selection can still fail during its final activation check.
+  // Keep the live-only profile transactional with that selection so a failed
+  // request cannot silently change the card's subsequent output.
+  const bool previousOutputCalibrationActive = runtimeHasTransientOutputCalibration();
+  const OutputColorConfig previousOutputCalibration =
+      runtimeGetTransientOutputCalibration();
 
   bool nextRequested = hasControlField(doc, "next") && controlBool(doc, "next");
   bool previousRequested = hasControlField(doc, "previous") && controlBool(doc, "previous");
@@ -2187,8 +2210,8 @@ void handleControlPost() {
       hasControlField(doc, "driftMin") ||
       hasControlField(doc, "driftMax");
   ProvisioningOperationScopeInputs scopeInputs;
-  scopeInputs.globalOutputs = colorOrderRequested || nextCanChange ||
-      previousCanChange || cancelStreamEffective || patternAffectsAllOutputs;
+  scopeInputs.globalOutputs = colorOrderRequested || outputCalibrationRequested ||
+      nextCanChange || previousCanChange || cancelStreamEffective || patternAffectsAllOutputs;
   scopeInputs.selectedZones = selectedZoneOperationRequested;
   scopeInputs.syncStateChanged = syncStateChanged;
   ProvisioningOutputScope operationScope = provisioningOperationScope(scopeInputs);
@@ -2209,15 +2232,22 @@ void handleControlPost() {
   bool transactionApplied = applyPreparedControlTransaction(
       selectionRequested,
       [&]() {
+        if (outputCalibrationRequested) {
+          runtimeSetTransientOutputCalibration(requestedOutputCalibration);
+        } else {
+          runtimeClearTransientOutputCalibration();
+        }
         // The requested sync state is part of the selection context. A
         // whole-piece pattern must see it while committing, not only when the
         // accompanying brightness/blackout fields are applied afterward.
         if (syncZonesRequested) runtimeSetSyncZones(effectiveSyncZones);
       },
       [&]() {
-        // Prepared selections are preflighted, but a sequence can still fail
-        // its final activation check. Restore split/sync state on that path so
-        // the transaction remains all-or-nothing.
+        if (previousOutputCalibrationActive) {
+          runtimeSetTransientOutputCalibration(previousOutputCalibration);
+        } else {
+          runtimeClearTransientOutputCalibration();
+        }
         if (syncZonesRequested) runtimeSetSyncZones(currentSyncZones);
       },
       []() { return runtimeCommitPreparedPatternSelection(); },
@@ -2300,6 +2330,7 @@ void handleControlPost() {
   out["saturation"] = runtimeGetCustomSaturation();
   appendTargetedZoneControlAcknowledgement(out, zoneTarget);
   out["colorOrder"] = runtimeGetLedColorOrder();
+  out["outputCalibrationActive"] = runtimeHasTransientOutputCalibration();
   out["breathe"] = runtimeGetCustomBreatheZ(zoneTarget);
   out["breatheLowerPct"] = runtimeGetBreatheLowerPctZ(zoneTarget);
   out["breatheUpperPct"] = runtimeGetBreatheUpperPctZ(zoneTarget);

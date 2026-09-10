@@ -1308,6 +1308,14 @@ input[type=range]::-webkit-slider-thumb {
 input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.1); background: var(--accent); }
 input[type=range]::-moz-range-track { height: 2px; background: var(--border-2); border-radius: 1px; }
 input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--text); border: 0; }
+.lw-hue-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, #d8503a, #d8a83a, #c8c83a, #6ab86a, #3aa8b8, #5a6ac8, #9a5ac8, #c84a9a, #d8503a);
+}
+.lw-hue-slider::-webkit-slider-thumb { background: var(--lw-hue-thumb, var(--text)); }
+.lw-hue-slider::-moz-range-track {
+  background: linear-gradient(90deg, #d8503a, #d8a83a, #c8c83a, #6ab86a, #3aa8b8, #5a6ac8, #9a5ac8, #c84a9a, #d8503a);
+}
+.lw-hue-slider::-moz-range-thumb { background: var(--lw-hue-thumb, var(--text)); }
 
 /* ── Pattern cards ───────────────────────────────────────────────── */
 .lw-pattern-grid {

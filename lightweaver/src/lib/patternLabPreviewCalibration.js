@@ -38,6 +38,15 @@ export function writeStudioStripProfile(value, storage = globalThis.localStorage
 }
 
 export function applyPatternLabPreviewCalibrationToHex(hex, calibration = NEUTRAL_PATTERN_LAB_CALIBRATION) {
+  if (hex && typeof hex === 'object') {
+    const normalized = normalizePatternLabPreviewCalibration(calibration);
+    return {
+      ...hex,
+      r: gain(hex.r, normalized.red),
+      g: gain(hex.g, normalized.green),
+      b: gain(hex.b, normalized.blue),
+    };
+  }
   const clean = String(hex || '').replace(/^#/, '');
   if (!/^[\da-f]{6}$/i.test(clean)) return hex;
   const normalized = normalizePatternLabPreviewCalibration(calibration);

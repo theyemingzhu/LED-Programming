@@ -1975,6 +1975,7 @@ test('a slider changes its readout and sends a tuned color modifier', async ({ p
       && r.speed === 1.75
       && r.hue === 160
       && r.zone === 'default-outer-circle'
+      && JSON.stringify(r.outputCalibration) === JSON.stringify({ red: 1, green: 0.62, blue: 0.65 })
   ))).toBe(true);
 });
 

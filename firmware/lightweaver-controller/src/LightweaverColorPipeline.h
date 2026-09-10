@@ -7,6 +7,10 @@
 class LightweaverColorPipeline {
  public:
   void configure(const OutputColorConfig& config);
+  void setTransientCalibration(const OutputColorConfig& config);
+  void clearTransientCalibration();
+  bool hasTransientCalibration() const;
+  OutputColorConfig transientCalibration() const;
   CRGB transform(const CRGB& logical, uint8_t colorOrderCode) const;
 
   bool gammaEnabled() const;
@@ -25,4 +29,8 @@ class LightweaverColorPipeline {
   float redBalance_ = 1.0f;
   float greenBalance_ = 1.0f;
   float blueBalance_ = 1.0f;
+  uint8_t transientRedScale_ = 255;
+  uint8_t transientGreenScale_ = 255;
+  uint8_t transientBlueScale_ = 255;
+  bool transientCalibrationActive_ = false;
 };

@@ -915,8 +915,8 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .pm-hue-lab .hv { font-family: var(--font-mono); font-size: 12px; color: var(--text-hi); }
 .pm-huerange { width: 100%; height: 12px; border-radius: 99px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
   background: linear-gradient(90deg, #d8503a, #d8a83a, #c8c83a, #6ab86a, #3aa8b8, #5a6ac8, #9a5ac8, #c84a9a, #d8503a) !important; }
-.pm-huerange::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: oklch(0.97 0.005 80); border: 2px solid rgba(0,0,0,.35); box-shadow: 0 1px 5px rgba(0,0,0,.5); cursor: pointer; }
-.pm-huerange::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: oklch(0.97 0.005 80); border: 2px solid rgba(0,0,0,.35); cursor: pointer; }
+.pm-huerange::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--pm-hue-thumb, oklch(0.97 0.005 80)); border: 2px solid rgba(0,0,0,.35); box-shadow: 0 1px 5px rgba(0,0,0,.5); cursor: pointer; }
+.pm-huerange::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--pm-hue-thumb, oklch(0.97 0.005 80)); border: 2px solid rgba(0,0,0,.35); cursor: pointer; }
 
 /* refined palette chip */
 .pm-palrow span { width: 18px; height: 18px; border-radius: 4px; }

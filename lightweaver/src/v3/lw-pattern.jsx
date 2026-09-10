@@ -1093,7 +1093,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
     };
 
-    const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 80, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
+    const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 0, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
       const hasCurrentAuthority = () => {
         if (currentPatternPreviewAccess() !== 'ready') return false;
         if (patternAccessRef.current === 'ready') return true;
@@ -2834,7 +2834,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
                     <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
-                    <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
+                    <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} style={{ '--pm-hue-thumb': colorHex }} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
                     <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   </div>
                   <Slider k="Saturation" hint="How much colour" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />

@@ -172,5 +172,21 @@ therefore still uses the card's stored calibration, currently1/1/1. This card's
 installed legacy project `lightweaver-bench-discovery-v1` has no matching Studio
 project loaded, so no full configuration replacement or card write was made.
 
-Single next step: load the matching project or establish a recovery-safe config
-snapshot before installing red1 / green0.62 / blue0.65 card-wide.
+Patterns slider follow-up on 2026-09-10 found a separate command-path defect:
+native Patterns previews sent hue/saturation to `/api/control`, while the accepted
+Studio profile only shaped RGB frame streams. Implemented a nonpersistent
+`outputCalibration` control field so every native preview can carry red1 /
+green0.62 / blue0.65 without replacing the installed project. The card validates
+all gains in 0..1, applies the temporary gains before rendering, preserves saved
+gamma and FastLED correction, and restores the prior state if pattern activation
+fails. Studio now sends the field on every native preview, removes the intentional
+80ms slider delay, and colors the hue marker with the chosen design color.
+Firmware parser7/7, ESP32-S3 build pass; Studio unit19/19, focused Chromium1/1,
+production build pass. Actual screen inspected at1440px. Card remains on firmware
+1548 because no signed preserving image was produced in this Sprint.
+
+Outcome: implementation verified; physical Patterns match pending firmware release.
+Single next step: after this change is included in a signed preserving firmware
+build and installed on card lw-b0fe81f61b44, move the Patterns hue slider to yellow
+and ask whether the physical strip follows immediately and matches the accepted
+yellow.

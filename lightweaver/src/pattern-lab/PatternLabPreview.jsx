@@ -624,7 +624,7 @@ export default function PatternLabPreview({
               >
                 {previewCalibration.green < 1 || previewCalibration.blue < 1 ? 'Strip match on' : 'Match my strip'}
               </button>
-              {previewCalibration.green < 1 && (
+              {(previewCalibration.green < 1 || previewCalibration.blue < 1) && (
                 <>
                   <label htmlFor="plab-green-gain">Green {Math.round(previewCalibration.green * 100)}%</label>
                   <input

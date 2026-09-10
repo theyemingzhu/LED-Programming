@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "LightweaverProvisioningPolicy.h"
+#include "LightweaverOutputColorConfig.h"
 
 struct RuntimeConfig;
 
@@ -55,6 +56,10 @@ bool runtimeSelectPatternByIdZ(const String& targetId, const String& patternId);
 String runtimeCurrentPatternId();
 
 void runtimeSetLedColorOrder(const String& order);
+void runtimeSetTransientOutputCalibration(const OutputColorConfig& config);
+void runtimeClearTransientOutputCalibration();
+bool runtimeHasTransientOutputCalibration();
+OutputColorConfig runtimeGetTransientOutputCalibration();
 bool runtimeCanSetLedColorOrder(const String& order);
 String runtimeGetLedColorOrder();
 bool runtimeControlTargetExists(const String& targetId);

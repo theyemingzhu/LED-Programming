@@ -32,6 +32,13 @@ test('Studio profile reduces green and blue while preserving red', () => {
   assert.equal(applyPatternLabPreviewCalibrationToHex('FFFFFF', DEFAULT_STUDIO_STRIP_PROFILE), 'FF9EA6');
 });
 
+test('Studio profile also transforms normalized live frame pixels', () => {
+  assert.deepEqual(
+    applyPatternLabPreviewCalibrationToHex({ r: 200, g: 200, b: 200, source: 'preview' }, { red: 1, green: 0.62, blue: 0.65 }),
+    { r: 200, g: 124, b: 130, source: 'preview' },
+  );
+});
+
 test('the Studio profile makes yellow greener-neutral without changing its recipe color', () => {
   const recipe = { palette: ['#FFFF00'], base: { patternId: 'gradient' } };
   const original = JSON.stringify(recipe);

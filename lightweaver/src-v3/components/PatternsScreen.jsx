@@ -307,7 +307,7 @@ function previewLedPoint(index, count, cssClass) {
   };
 }
 
-function TuningSlider({ label, testId, min, max, step, value, readout, onChange }) {
+function TuningSlider({ label, testId, min, max, step, value, readout, thumbColor, onChange }) {
   const readoutId = testId.replace(/-slider$/, '-readout');
   return (
     <label className="lw-look-slider-row">
@@ -318,6 +318,8 @@ function TuningSlider({ label, testId, min, max, step, value, readout, onChange 
         max={max}
         step={step}
         value={value}
+        className={testId === 'look-hue-slider' ? 'lw-hue-slider' : undefined}
+        style={thumbColor ? { '--lw-hue-thumb': thumbColor } : undefined}
         data-testid={testId}
         aria-label={label}
         onChange={event => onChange(Number(event.target.value))}
@@ -1111,7 +1113,7 @@ export function PatternsScreen() {
             : `Could not preview on the card at ${cardHostToUrl(cardHost)}.`);
         }
       }
-    }, 80);
+    }, 0);
   }, [cardHost, livePreviewAvailable, livePreviewEnabled, selectedTarget]);
 
   useEffect(() => () => {
@@ -2145,6 +2147,7 @@ export function PatternsScreen() {
                   max="255"
                   step="1"
                   value={look.customHue}
+                  thumbColor={colorHex}
                   readout={`${cardHueToDegrees(look.customHue)} deg`}
                   onChange={customHue => updatePreviewLook({ customHue: clampByte(customHue) })}
                 />

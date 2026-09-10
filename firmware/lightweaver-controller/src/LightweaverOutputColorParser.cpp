@@ -112,3 +112,29 @@ bool parseOutputColorConfig(
   destination = parsed;
   return true;
 }
+
+bool parseTransientOutputCalibration(
+    JsonVariantConst value,
+    OutputColorConfig& destination,
+    const char*& errorPath,
+    const char*& errorReason) {
+  errorPath = nullptr;
+  errorReason = nullptr;
+  OutputColorConfig parsed;
+  if (!value.is<JsonObjectConst>()) {
+    errorPath = "outputCalibration";
+    errorReason = "must be an object";
+    return false;
+  }
+  JsonObjectConst calibration = value.as<JsonObjectConst>();
+  if (!validateNumberField(calibration, "red", "outputCalibration.red", 0.0f, 1.0f, errorPath, errorReason) ||
+      !validateNumberField(calibration, "green", "outputCalibration.green", 0.0f, 1.0f, errorPath, errorReason) ||
+      !validateNumberField(calibration, "blue", "outputCalibration.blue", 0.0f, 1.0f, errorPath, errorReason)) {
+    return false;
+  }
+  if (hasField(calibration, "red")) parsed.red = calibration["red"].as<float>();
+  if (hasField(calibration, "green")) parsed.green = calibration["green"].as<float>();
+  if (hasField(calibration, "blue")) parsed.blue = calibration["blue"].as<float>();
+  destination = parsed;
+  return true;
+}

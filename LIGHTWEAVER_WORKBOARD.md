@@ -41,6 +41,16 @@ exact snapshot 4896c040 plus all new files into isolated sibling led-pattern-cre
 branch codex/pattern-creative-reviewed, base51a7af3b. Preserve original stashes.
 [Implementation and evidence](docs/plans/2026-09-09-pattern-editing-manager.md).
 
+2026-09-10: **PATTERN-COLOR-LIVE-001 implemented locally** — Patterns now sends
+the persistent Studio strip profile with every native live preview through a new
+nonpersistent firmware `outputCalibration` contract. Slider updates no longer wait
+80ms, and the hue marker shows the selected design color while calibration remains
+physical-output-only. The card validates gains, preserves saved gamma/FastLED
+correction, and rolls calibration back if pattern activation fails. Studio unit
+19/19 + focused Chromium1/1 + build; firmware parser7/7 + ESP32-S3 build. Current
+card firmware1548 lacks the new field, so physical proof awaits a signed preserving
+firmware build; no flash or release occurred.
+
 2026-09-05: **FLOW-BLUEPRINT handoff ready** — planning-only integration blueprint
 with E01–E14 existing-code ledger, B0–B6 ownership/dependencies and J01–J14
 acceptance scenarios. [Plan](docs/plans/2026-09-05-unified-card-journey.md) and
@@ -146,10 +156,10 @@ Adrian reports that profile looks pretty good. Studio now persists red100% /
 green62% / blue65% in browser storage and applies it once to Pattern Lab card
 frames and shared creative WLED/USB frames while leaving canvases, recipes, and
 diagnostic streams unchanged. Unit6/6, focused Chromium1/1, production build
-pass. Native Patterns commands rendered by the ESP32 still use the card's saved
-neutral calibration; installing the profile card-wide remains a separate safe
-project-install step because this legacy card project has no matching Studio
-project loaded.
+pass. Native Patterns commands rendered by firmware1548 still use the card's saved
+neutral calibration. A source fix now carries the profile as a temporary native
+preview field without altering the legacy project, but it needs a signed preserving
+firmware build before physical proof.
 Session: docs/bench-sessions/2026-09-09-lab-mixed-colors.md.
 
 2026-09-09 primary-color observation: Adrian confirms held #00ff00 is physically
