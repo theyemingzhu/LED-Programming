@@ -301,6 +301,7 @@
 }
 
 .plab-preview-preparing.plab-preview-notice {
+  z-index: 5;
   background: color-mix(in srgb, var(--bg-canvas) 74%, transparent);
   backdrop-filter: blur(6px);
   pointer-events: auto;

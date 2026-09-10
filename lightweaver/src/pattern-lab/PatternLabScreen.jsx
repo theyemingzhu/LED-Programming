@@ -830,13 +830,14 @@ export default function PatternLabScreen() {
         context.drawImage(glowCanvas, 0, 0, scratch.width, scratch.height);
         const pixels = context.getImageData(0, 0, scratch.width, scratch.height).data;
         let hasVisibleOutput = false;
-        for (let index = 3; index < pixels.length; index += 4) {
-          if (pixels[index] > 0) {
+        for (let index = 0; index < pixels.length; index += 4) {
+          if (pixels[index] > 0 || pixels[index + 1] > 0 || pixels[index + 2] > 0) {
             hasVisibleOutput = true;
             break;
           }
         }
         setPreviewFrameSignals(current => {
+          if (current.recipeId === recipeId && current.sampledPixelCount !== null) return current;
           const next = {
             recipeId,
             frameObserved: true,
@@ -1038,6 +1039,22 @@ export default function PatternLabScreen() {
   function handlePreviewRenderStatus(status) {
     if (status?.hasFrame || status?.failure) setPendingPatternId(null);
     setPreviewFailed(Boolean(status?.failure));
+    if (status?.hasFrame && status?.recipeId && Number.isSafeInteger(status.sampledPixelCount)) {
+      setPreviewFrameSignals(current => {
+        const next = {
+          recipeId: status.recipeId,
+          frameObserved: true,
+          sampledPixelCount: status.sampledPixelCount,
+          blackPixelCount: Number.isSafeInteger(status.blackPixelCount) ? status.blackPixelCount : null,
+        };
+        return current.recipeId === next.recipeId
+          && current.frameObserved === next.frameObserved
+          && current.sampledPixelCount === next.sampledPixelCount
+          && current.blackPixelCount === next.blackPixelCount
+          ? current
+          : next;
+      });
+    }
   }
 
   function choosePattern(patternId) {

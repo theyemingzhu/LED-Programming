@@ -158,15 +158,18 @@ test('explains when every visible strip has zero brightness', async ({ page }) =
 });
 
 test('explains an observed all-black preview frame without inventing invalid output', async ({ page }) => {
-  // Empty Lab first so autoload's default look cannot keep a non-black frame
-  // in the worker while this recipe is importing.
-  await page.goto('/#screen=pattern-lab&patternId=not-a-pattern', { waitUntil: 'domcontentloaded' });
+  // Move out of the Color Drift composer so the recipe housekeeping controls
+  // are present, then replace that frame with the imported all-black recipe.
+  await choosePattern(page, 'gradient');
+  const preview = page.getByTestId('pattern-lab-mapped-preview');
+  const previousFrameId = await preview.getAttribute('data-worker-frame-id');
   await page.getByLabel('Import recipe').setInputFiles({
     name: 'black-frame-source.lwrecipe.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(BLACK_RECIPE)),
   });
-  await expect(page.getByTestId('pattern-lab-mapped-preview')).toHaveAttribute('data-worker-state', 'frame');
+  await expect(preview).not.toHaveAttribute('data-worker-frame-id', previousFrameId || '');
+  await expect(preview).toHaveAttribute('data-worker-state', 'frame');
   await page.getByTestId('pattern-lab-runtime-tools').locator(':scope > summary').click();
   const diagnostics = page.getByTestId('pattern-lab-diagnostics');
   await diagnostics.locator(':scope > summary').click();

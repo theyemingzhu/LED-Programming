@@ -348,6 +348,11 @@ export default function PatternLabPreview({
   const physicalPixels = useMemo(() => {
     return patternLabFrameToCardPixels(worker.frame);
   }, [worker.frame]);
+  const sampledPixelCount = physicalPixels?.length ?? null;
+  const blackPixelCount = physicalPixels
+    && physicalPixels.every(color => color === '000000')
+    ? physicalPixels.length
+    : null;
   latestPixelsRef.current = physicalPixels;
   const displayGeometry = useMemo(() => {
     if (!workerFunction) return suppliedDisplayGeometry;
@@ -387,8 +392,14 @@ export default function PatternLabPreview({
   // Reported through a ref so a caller passing an inline arrow does not re-fire it.
   const hasRenderedFrame = Boolean(workerFunction);
   useEffect(() => {
-    onRenderStatusRef.current?.({ hasFrame: hasRenderedFrame, failure: worker.failure ?? null });
-  }, [hasRenderedFrame, worker.failure]);
+    onRenderStatusRef.current?.({
+      hasFrame: hasRenderedFrame,
+      failure: worker.failure ?? null,
+      recipeId: recipe.id,
+      sampledPixelCount,
+      blackPixelCount,
+    });
+  }, [blackPixelCount, hasRenderedFrame, recipe.id, sampledPixelCount, worker.failure]);
 
   const engineKey = usesNativeLook ? 'native' : `${recipe.base.kind}:${patternId || recipe.base.id || ''}`;
   const nativeRecipeKey = usesNativeLook ? JSON.stringify(recipe) : '';

@@ -49,6 +49,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Pattern Inspector presents Choose, Sculpt, and Evolve as compact attached step groups', async ({ page }) => {
+  await page.locator('.plab-fine-tune > summary').click();
+  await openStep(page, 'choose');
   const choose = page.getByTestId('pattern-lab-step-choose');
   const sculpt = page.getByTestId('pattern-lab-step-sculpt');
   const evolve = page.getByTestId('pattern-lab-step-evolve');
