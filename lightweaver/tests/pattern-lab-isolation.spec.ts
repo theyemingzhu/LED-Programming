@@ -70,17 +70,16 @@ test('Pattern Lab keeps one lazy route descriptor and owns its stylesheet', () =
   expect(styleImporters).toEqual(['pattern-lab/PatternLabScreen.jsx']);
 });
 
-test('Pattern Lab shell exposes its current step and decorative preview safely', async ({ page }) => {
+test('Pattern Lab shell exposes its current step and mapped preview safely', async ({ page }) => {
   expect(LAB_SOURCE).toContain("aria-current={activeWorkflowStep === index ? 'step' : undefined}");
   expect(LAB_CSS).not.toMatch(/color:\s*var\(--text-faint\)/);
   expect(LAB_CSS).not.toMatch(/(?:^|[;{]\s*)color:\s*var\(--accent\)/m);
 
-  // Invalid patternId keeps the empty sculpture (autoload only fills known ids).
+  // An invalid pattern link falls back to the welcoming Color Drift workspace.
   await page.goto('/#screen=pattern-lab&patternId=not-a-pattern', { waitUntil: 'domcontentloaded' });
   const workflow = page.getByRole('navigation', { name: 'Pattern Lab workflow' });
   await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
-  await expect(page.locator('svg.plab-sculpture')).toHaveAttribute('aria-hidden', 'true');
-  await expect(page.locator('svg.plab-sculpture')).toHaveAttribute('focusable', 'false');
+  await expect(page.locator('canvas[aria-label="LED pattern preview"]')).toBeVisible();
 });
 
 test('compact Pattern Lab progression moves focus to each authoring destination', async ({ page }) => {
@@ -224,12 +223,12 @@ test('icon-only actions expose immediate styled tooltips on hover and keyboard f
   const privateStatus = page.getByRole('status', { name: /private workspace/i });
   await expect(privateStatus).toHaveAttribute(
     'data-tooltip',
-    'Private workspace: your project stays unchanged; native looks sample the lights',
+    'Private workspace: Live preview controls the lights only when enabled',
   );
   await privateStatus.hover();
   await expect.poll(() => tooltipState(privateStatus)).toMatchObject(
     hoverCapable
-      ? { content: '"Private workspace: your project stays unchanged; native looks sample the lights"', opacity: '1', visibility: 'visible' }
+      ? { content: '"Private workspace: Live preview controls the lights only when enabled"', opacity: '1', visibility: 'visible' }
       : { opacity: '0', visibility: 'hidden' },
   );
 });
