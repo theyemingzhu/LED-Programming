@@ -140,6 +140,7 @@ assert.throws(
 
 assert.deepEqual(payload, {
   cancelStream: true,
+  outputCalibration: { red: 1, green: 0.62, blue: 0.65 },
   zone: 'patch-inner',
   syncZones: false,
   patternId: 'ocean',
