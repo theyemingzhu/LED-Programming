@@ -24,6 +24,10 @@ class LightweaverProjectRepository {
  public:
   bool begin(String& message, bool readOnlyProbation = false);
   bool available() const { return available_; }
+  // The exact message the last begin() call set, success or failure —
+  // surfaced on /api/status and /api/firmware-info so an owner (or Studio)
+  // can see WHY the repository is unavailable, not just that it is.
+  const String& lastMessage() const { return lastMessage_; }
   String currentHead() const { return head_.current; }
   String currentProjectId() const { return head_.projectId; }
   bool stagingActive() const { return stagedProjectId_.length() > 0; }
@@ -55,6 +59,7 @@ class LightweaverProjectRepository {
   bool validHash(const String& value) const;
 
   bool available_ = false;
+  String lastMessage_;
   LightweaverProjectHead head_;
   String stagedProjectId_;
   String stagedProjectHead_;

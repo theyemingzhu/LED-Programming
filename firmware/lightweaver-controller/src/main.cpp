@@ -2758,6 +2758,10 @@ String runtimeFirmwareInfo() {
   doc["runtimePhase"] = runtimeProvisioningPhase();
   doc["commandReady"] = runtimeCommandReady();
   doc["firmwareUpdateReady"] = runtimeFirmwareUpdateReady();
+  // Same field, same meaning as /api/status: the exact reason the project
+  // repository is (or isn't) usable, set once at boot by
+  // LightweaverProjectRepository::begin().
+  doc["projectRepositoryMessage"] = lightweaverProjectRepository().lastMessage();
   // Local playback admission, reported separately so a caller can tell
   // "busy reassociating" apart from "cannot drive the lights".
   doc["playbackReady"] = runtimePlaybackReady();

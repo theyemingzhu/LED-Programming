@@ -605,6 +605,20 @@ void handleRoot() {
             ".foot{display:flex;justify-content:space-between;align-items:center;padding:4px 4px 0}"
             ".off-btn{background:transparent;border:1px solid #333;color:#f4ede0;padding:8px 18px;border-radius:20px;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-family:inherit;cursor:pointer}"
             ".off-btn.on{background:#c89b5c;color:#0a0a0a;border-color:#c89b5c}"
+            // Lights switch — F23c: a real toggle switch (track + knob, CSS
+            // only) replaces the old text-only button whose "off" label never
+            // read as "press me to turn back on". role='switch'/aria-checked
+            // carry the state (checked = lights ON); .switch.on is the visual
+            // "lights are on" state, the mirror image of the old .off-btn.on
+            // (which meant "pressed / blacked out").
+            ".lights-row{display:flex;align-items:center;gap:8px}"
+            ".lights-row .lights-name{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#9a8d75}"
+            ".switch{background:transparent;border:0;padding:0;margin:0;cursor:pointer;line-height:0;flex-shrink:0}"
+            ".switch-track{display:block;width:36px;height:20px;border-radius:10px;background:#262626;border:1px solid #333;position:relative;transition:background 0.15s ease,border-color 0.15s ease}"
+            ".switch-track .switch-knob{position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:50%;background:#f4ede0;transition:transform 0.15s ease}"
+            ".switch.on .switch-track{background:#c89b5c;border-color:#c89b5c}"
+            ".switch.on .switch-track .switch-knob{transform:translateX(16px);background:#0a0a0a}"
+            ".switch-state{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#f4ede0;min-width:22px}"
             ".set-link{background:transparent;border:0;color:#5a5247;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;font-family:inherit;padding:8px 0;text-decoration:none}"
             ".studio-link{color:#c89b5c}"
             ".set-link:active{color:#c89b5c}"
@@ -719,7 +733,13 @@ void handleRoot() {
             "<div class='section-row' id='section-row'></div>"
             "<div class='grid' id='grid'></div>"
             "<div class='foot'>"
-              "<button class='off-btn' id='off-btn' disabled aria-pressed='false'>Lights off</button>"
+              "<div class='lights-row'>"
+                "<span class='lights-name'>Lights</span>"
+                "<button class='switch' id='off-btn' type='button' role='switch' aria-checked='true' disabled>"
+                  "<span class='switch-track'><span class='switch-knob'></span></span>"
+                "</button>"
+                "<span class='switch-state' id='off-btn-state'>On</span>"
+              "</div>"
               "<a class='set-link studio-link' id='studio-link' href='");
   page += escapeHtml(studioBridgeUrl(cfg));  // hostname/IP are user-settable; keep them inside the quoted attribute
   page += F("' target='_blank' onclick=\"return lwOpenStudio(event,this.href)\">Open Lightweaver Studio</a>"
@@ -871,7 +891,7 @@ void handleRoot() {
             // response field that names the actual applied zone + pattern.
             "const sendZonePattern=async id=>{if(patZonePending||id===activeIdNow())return;patZonePending=true;$('grid').classList.add('pending');$('grid').setAttribute('aria-busy','true');renderPat();try{const payload=await controlPost({patternId:id,...zoneField()});const confirmedOk=payload.confirmedLook&&payload.confirmedLook.patternId===id&&payload.confirmedLook.zone===sectionTarget;if(!confirmedOk)throw new Error('Card did not confirm the requested scene.');zoneCurrentId=id;showColorPanel(id==='custom-color');clearControlError('zone-pattern')}catch(e){showControlError('Could not change scene. '+((e&&e.message)||'Try again.'),()=>sendZonePattern(id),'zone-pattern')}finally{patZonePending=false;$('grid').classList.remove('pending');$('grid').setAttribute('aria-busy','false');renderPat()}};"
             "const brightnessControl=makeConfirmedControl({initial:1,description:'change brightness',render:value=>{const pct=Math.round(value*100);$('b-slider').value=pct;$('b-val').textContent=pct+'%'},setDisabled:on=>{$('b-slider').disabled=on},send:value=>controlPost({brightness:value,...zoneField()})});"
-            "const blackoutControl=makeConfirmedControl({initial:blackoutOn,description:'change blackout',render:value=>{blackoutOn=value;$('off-btn').classList.toggle('on',value);$('off-btn').textContent=value?'Lights on':'Lights off';$('off-btn').setAttribute('aria-pressed',value?'true':'false')},setDisabled:on=>{$('off-btn').disabled=on},send:value=>controlPost({blackout:value,...zoneField()})});"
+            "const blackoutControl=makeConfirmedControl({initial:blackoutOn,description:'change blackout',render:value=>{blackoutOn=value;const lightsOn=!value;$('off-btn').classList.toggle('on',lightsOn);$('off-btn').setAttribute('aria-checked',lightsOn?'true':'false');$('off-btn-state').textContent=lightsOn?'On':'Off'},setDisabled:on=>{$('off-btn').disabled=on},send:value=>controlPost({blackout:value,...zoneField()})});"
             "$('b-slider').onchange=e=>brightnessControl.request(parseInt(e.target.value,10)/100);"
             "$('off-btn').onclick=()=>blackoutControl.request(!blackoutOn);"
             // Settings drawer (inline, no separate page)
@@ -909,7 +929,7 @@ void handleRoot() {
                 "if(typeof z.speed==='number'){$('s-slider').value=sliderFromSpeed(z.speed);$('s-val').textContent=z.speed.toFixed(2)+'\xC3\x97'}"
                 "if(typeof z.hueShift==='number'){$('h-slider').value=z.hueShift;$('h-val').textContent=z.hueShift}"
                 "renderColorPanel();showColorPanel(activeIdNow()==='custom-color');"
-                "$('off-btn').classList.toggle('on',blackoutOn);renderPat()"
+                "$('off-btn').classList.toggle('on',!blackoutOn);renderPat()"
               "};"
               "renderSections();applySectionState()"
             "}catch(e){}})();"

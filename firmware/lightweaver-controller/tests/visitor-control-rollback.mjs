@@ -19,19 +19,28 @@ assert.match(
   'whole-piece visitor scene taps must broadcast to all sections and require authoritative applied-pattern confirmation',
 );
 
-// F23a — the blackout button's label must follow blackout state. A visitor
-// pressed it, the lights went off, and nothing on the button said pressing it
-// again would bring them back. The markup and the render function must both
-// carry the state, not just the `.on` class the style reads.
-assert.match(source, /id='off-btn' disabled aria-pressed='false'>Lights off</,
-  "the off-btn markup should start disabled, aria-pressed='false', reading 'Lights off' (playing, pressing blacks out)");
+// F23c — the lights control is a real switch, not a button whose only tell is
+// its own text. A visitor pressed "Lights off" and the label never became an
+// obvious "press to turn back on" — the fix is a labelled toggle switch with
+// a visible track/knob and standard switch semantics: role='switch',
+// aria-checked following state (checked = lights ON, i.e. blackout false),
+// and the state word "On"/"Off" beside the track. Supersedes F23a's
+// aria-pressed contract (below), which the switch replaces outright.
+assert.match(source, /<span class='lights-name'>Lights<\/span>/,
+  "the switch should be labelled 'Lights'");
+assert.match(source, /id='off-btn' type='button' role='switch' aria-checked='true' disabled>/,
+  "the off-btn markup should start disabled, role='switch', aria-checked='true' (default state is lights on)");
+assert.match(source, /class='switch-track'><span class='switch-knob'><\/span><\/span>/,
+  'the switch should render a visible track and knob (CSS only, no images)');
+assert.match(source, /id='off-btn-state'>On</,
+  "the switch should show the state word 'On' beside the track by default");
 const blackoutControlMatch = source.match(/"const blackoutControl=makeConfirmedControl\(\{.*?\}\);"/);
 assert.ok(blackoutControlMatch, 'card page should define blackoutControl as a makeConfirmedControl instance');
 const blackoutControlLiteral = JSON.parse(blackoutControlMatch[0]);
-assert.match(blackoutControlLiteral, /\$\('off-btn'\)\.textContent=/,
-  "blackoutControl's render must set the button's textContent, not only toggle its class");
-assert.match(blackoutControlLiteral, /\$\('off-btn'\)\.setAttribute\('aria-pressed'/,
-  "blackoutControl's render must keep aria-pressed in sync with the pending/confirmed value");
+assert.match(blackoutControlLiteral, /\$\('off-btn-state'\)\.textContent=/,
+  "blackoutControl's render must set the state word's textContent, not only toggle a class");
+assert.match(blackoutControlLiteral, /\$\('off-btn'\)\.setAttribute\('aria-checked'/,
+  "blackoutControl's render must keep aria-checked in sync with the pending/confirmed value (checked = lights on)");
 
 const visitorInitStart = source.indexOf('"(async()=>{try{', source.indexOf('/*LW_CONFIRMED_CONTROL_END*/'));
 const visitorInitEnd = source.indexOf('// Streaming-state poll.', visitorInitStart);
@@ -229,14 +238,13 @@ for (const [name, initial, next] of [
   assert.equal(h.control.snapshot().activeRequest, 2, 'responses should be associated with the active request');
 }
 
-// F23a — run the REAL blackoutControl definition (not a generic stand-in) so
-// the label/aria-pressed behaviour is proven against the exact code the card
-// ships, not just asserted by regex.
+// F23c — run the REAL blackoutControl definition (not a generic stand-in) so
+// the switch's aria-checked/state-word behaviour is proven against the exact
+// code the card ships, not just asserted by regex.
 {
   const offBtn = {
-    textContent: 'Lights off',
     disabled: true,
-    attrs: { 'aria-pressed': 'false' },
+    attrs: { 'aria-checked': 'true' },
     classList: {
       on: false,
       toggle(name, value) {
@@ -247,8 +255,9 @@ for (const [name, initial, next] of [
       this.attrs[name] = value;
     },
   };
+  const stateEl = { textContent: 'On' };
   const blackoutContext = {
-    $: id => (id === 'off-btn' ? offBtn : null),
+    $: id => (id === 'off-btn' ? offBtn : id === 'off-btn-state' ? stateEl : null),
     controlPost: async () => ({ ok: true }),
     // The page's zone helper: whole piece unless a Section is selected.
     zoneField: () => ({}),
@@ -262,21 +271,22 @@ for (const [name, initial, next] of [
   );
 
   blackoutContext.blackoutControl.setConfirmed(true);
-  assert.equal(offBtn.textContent, 'Lights on', 'blacked-out state should read "Lights on" (pressing it restores the lights)');
-  assert.equal(offBtn.attrs['aria-pressed'], 'true', 'aria-pressed should be true while blacked out');
-  assert.equal(offBtn.classList.on, true);
-
-  blackoutContext.blackoutControl.setConfirmed(false);
-  assert.equal(offBtn.textContent, 'Lights off', 'playing state should read "Lights off" (pressing it blacks out)');
-  assert.equal(offBtn.attrs['aria-pressed'], 'false', 'aria-pressed should be false while playing');
+  assert.equal(stateEl.textContent, 'Off', 'blacked-out state should read "Off" beside the track (switch is off)');
+  assert.equal(offBtn.attrs['aria-checked'], 'false', 'aria-checked should be false while blacked out');
   assert.equal(offBtn.classList.on, false);
 
-  // The label must flip the instant a tap is sent (optimistic), not only
-  // after the card acknowledges it — this is exactly what left Adrian unable
-  // to tell the button would turn the lights back on.
+  blackoutContext.blackoutControl.setConfirmed(false);
+  assert.equal(stateEl.textContent, 'On', 'playing state should read "On" beside the track (switch is on)');
+  assert.equal(offBtn.attrs['aria-checked'], 'true', 'aria-checked should be true while the lights are on');
+  assert.equal(offBtn.classList.on, true);
+
+  // The state word and aria-checked must flip the instant a tap is sent
+  // (optimistic), not only after the card acknowledges it — this is exactly
+  // what left Adrian unable to tell the control would turn the lights back
+  // on.
   const pendingRequest = blackoutContext.blackoutControl.request(true);
-  assert.equal(offBtn.textContent, 'Lights on', 'the label should flip as soon as a blackout tap is sent, before confirmation');
-  assert.equal(offBtn.attrs['aria-pressed'], 'true');
+  assert.equal(stateEl.textContent, 'Off', 'the state word should flip as soon as a blackout tap is sent, before confirmation');
+  assert.equal(offBtn.attrs['aria-checked'], 'false');
   await pendingRequest;
 }
 

@@ -58,4 +58,17 @@ for (const field of ['restoredFirmwareVersion', 'restoredBuildId', 'restoredBuil
     `rollback status publishes ${field}`);
 }
 
+// F38: a healthy card can still be refused an update because the project
+// repository's storage partition failed to mount (F37). Both 409 refusal
+// paths — the challenge and the preflight — must carry the repository's own
+// message in `detail` when that is the actual cause, so the refusal is
+// distinguishable from "someone else is mid-update" instead of a bare
+// generic string.
+assert.match(updater,
+  /runtimeFirmwareUpdateReady\(\) \|\| lightweaverFirmwareUpdateActive\(\)\)[\s\S]{0,600}lightweaverProjectRepository\(\)\.available\(\)[\s\S]{0,300}lightweaverProjectRepository\(\)\.lastMessage\(\)[\s\S]{0,300}sendChallengeError\(409,/,
+  'handleChallenge names the project-repository message when storage is the reason the card refuses');
+assert.match(updater,
+  /stagingActive\(\) \|\| !runtimeFirmwareUpdateReady\(\)\)[\s\S]{0,600}lightweaverProjectRepository\(\)\.available\(\)[\s\S]{0,300}lightweaverProjectRepository\(\)\.lastMessage\(\)[\s\S]{0,300}sendUpdateError\(409, FirmwareUpdateResult::ConcurrentMutation, detail\)/,
+  'handlePreflight names the project-repository message when storage is the reason the card refuses');
+
 console.log('firmware update web contract tests passed');

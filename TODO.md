@@ -15,6 +15,13 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Decide three Card and Patterns surface changes from the round-2 UX critiques _(band: you-required)_ _(effort: quick)_
+  Fold the blank card's "Find my strips" box into the ladder's own task; carry the card's piece name into a project Studio adopts silently; soften Patterns while the footer is not Connected. Pictures: `.claude/ux-screens/` and `docs/ux/2026-09-09-u2-patterns-playlist-critique.md`.
+- [ ] Show the card's own reason when it refuses a firmware update _(band: agent-runnable)_ _(effort: quick)_
+  Firmware 1.1.36 puts `projectRepositoryMessage` in the status envelope and in the 409 `detail`; Studio's `cardFirmwareUpdater.js` (~298) reads `result.message`, which the card never sends, so the owner still sees a generic refusal.
+- [ ] Finish the transport sweep inside the helpers _(band: agent-runnable)_ _(effort: moderate)_
+  `readCardZonesFromCard` / `readCardPatternsFromCard` drop `options.transport` before `connectCardTransport` when no authority exists; `getCardWiringStatus` (cardWiringSafety.js) still guesses from the page protocol; CardPushControl's "local-only" direct push runs on https too. The F36 source guard covers call sites, not these internals.
+
 - [ ] Finish F33b so Patterns' Recover lights routes by the link it holds on https _(band: agent-runnable)_ _(effort: moderate)_
   Branch `round2/f33b-patterns-repair-route` (pushed). Done: the shared options builder `cardConnectionOptionsFor` moved to `src/lib/cardConnection.js`, both Card Home and Patterns import it, so `repairLed` forwards `transport` (commit 0598fe44). Left: `[J33b-patterns-recover-https]` in `tests/journey-continuity.spec.ts` fails at its sanity step on the https lane both with and without the fix, so it does not yet prove anything; on that lane the footer chip carries the needs-save verdict (F32 precedence) and the toolbar button's primary class is not the signal either. Resume: find what Patterns actually shows on the https lane after `card.outOfBandBlackout(true)` (dump the DOM once), key the test on that, prove red with the transport line mutated, then merge.
 

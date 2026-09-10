@@ -656,7 +656,16 @@ void handleChallenge() {
     sendChallengeError(400, "challenge binding is incomplete"); return;
   }
   if (!runtimeFirmwareUpdateReady() || lightweaverFirmwareUpdateActive()) {
-    sendChallengeError(409, "card is not ready for an update challenge"); return;
+    // Storage unreadable is the one cause worth naming specifically — a
+    // healthy card refusing this challenge for that reason otherwise reads
+    // as unexplained. Everything else (a concurrent update already active,
+    // reassociating, etc.) keeps the generic detail.
+    String detail = "card is not ready for an update challenge";
+    if (!lightweaverProjectRepository().available() &&
+        lightweaverProjectRepository().lastMessage().length()) {
+      detail += ": " + lightweaverProjectRepository().lastMessage();
+    }
+    sendChallengeError(409, detail.c_str()); return;
   }
   FirmwareUpdateGrantBinding binding;
   binding.cardId = cardId;
@@ -703,7 +712,15 @@ void handlePreflight() {
   }
   if (lightweaverFirmwareUpdateActive() || lightweaverHttpFrameStreamActive() ||
       lightweaverProjectRepository().stagingActive() || !runtimeFirmwareUpdateReady()) {
-    sendUpdateError(409, FirmwareUpdateResult::ConcurrentMutation); return;
+    // Same reasoning as handleChallenge above: name storage-unreadable
+    // specifically, since it is otherwise indistinguishable from "someone
+    // else is already updating this card".
+    String detail;
+    if (!lightweaverProjectRepository().available() &&
+        lightweaverProjectRepository().lastMessage().length()) {
+      detail = lightweaverProjectRepository().lastMessage();
+    }
+    sendUpdateError(409, FirmwareUpdateResult::ConcurrentMutation, detail); return;
   }
   FirmwareUpdateBinding binding = updateBinding(doc.as<JsonVariantConst>());
   const bool softwareGrantRequested =
