@@ -9,6 +9,48 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-09 color-picker follow-up: Adrian reports choosing pure red while strip
+looks fuchsia/behind. Reproduced journey-phase cause: editing a stop retained the
+current fade time (red→violet at90s yielded RGB147,56,147). Picker edits now seek
+the edited stop's start, preserving playing/paused state and saved hold/fade timing.
+Actual emitted-frame browser regression confirms pure-red bytes after editing a
+noncurrent stop;11 focused browser scenarios + production build passed. User's
+physical recheck remains unobserved; no channel-order/firmware changes.
+
+2026-09-09 follow-up: compact desktop Lab actions, preserved mobile44px targets;
+actual screen inspected. Fixed imported-look color pipeline: Lab now applies
+Patterns hue/saturation/Drift/Breathe exactly once and preserves the source palette.
+Checkpoint2,466/2,466 units + build;13 focused browser checks passed. Native and
+streamed output share RGB decode/calibration in installed firmware f25430dc.
+Adrian's physical Rosewater journey hue mismatch is NOT yet resolved/proven:
+project gamma is off, no channel-order mutation found, card direct read timed out.
+Pending observation: physical strip hue when Lab preview is pink/red. Do not
+claim that imported-look modifier repair proves this separate journey symptom.
+
+2026-09-09: **PATTERN-EDIT-MANAGER implemented locally** — Slow color drift has
+visual colors/reordering, locks, Pace, Character, three variations, Undo, rehearsal,
+Keep/reopen and unsaved recovery. Patterns updates/renames retain identity; deletion
+has Undo; full collections refuse new saves; Lab preserves native colors/sections.
+Live preview follows native and streamed patterns; Piece/Strip keeps render geometry.
+Checkpoint: 2,465 unit tests and production build passed. Recovered checkout: 19/19 integrated desktop browser scenarios and 5/5 Mobile Chrome
+creative scenarios passed; desktop and 390px phone screens inspected directly.
+Physical color/playback remains unverified. Journeys require Studio open; recording
+and standalone minute fades are explicitly unsupported. No release or flash.
+Recovery: another session stashed tracked work during release preparation. Recovered
+exact snapshot 4896c040 plus all new files into isolated sibling led-pattern-creative,
+branch codex/pattern-creative-reviewed, base51a7af3b. Preserve original stashes.
+[Implementation and evidence](docs/plans/2026-09-09-pattern-editing-manager.md).
+
+2026-09-10: **PATTERN-COLOR-LIVE-001 implemented locally** — Patterns now sends
+the persistent Studio strip profile with every native live preview through a new
+nonpersistent firmware `outputCalibration` contract. Slider updates no longer wait
+80ms, and the hue marker shows the selected design color while calibration remains
+physical-output-only. The card validates gains, preserves saved gamma/FastLED
+correction, and rolls calibration back if pattern activation fails. Studio unit
+19/19 + focused Chromium1/1 + build; firmware parser7/7 + ESP32-S3 build. Current
+card firmware1548 lacks the new field, so physical proof awaits a signed preserving
+firmware build; no flash or release occurred.
+
 2026-09-05: **FLOW-BLUEPRINT handoff ready** — planning-only integration blueprint
 with E01–E14 existing-code ledger, B0–B6 ownership/dependencies and J01–J14
 acceptance scenarios. [Plan](docs/plans/2026-09-05-unified-card-journey.md) and
@@ -23,6 +65,7 @@ on firmware 1524; no hardware mutation or release is part of this checkpoint.
 
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
+| PATTERN-EDIT-VIS-001 | Exact native look entering Lab; Live preview native→Mandelbrot→Lotus→Stop; six-minute drift | Same physical hues/order and intended animation/restoration on the configured strip | Local `codex/pattern-creative-workflow`; automated mocks only | needs-eyes |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
 | WINDOWLESS-002 | Card HTTP streaming, owner capability, atomic project storage, and embedded local Studio server | Firmware source | done | 4 focused contracts + generated-bundle PlatformIO pass |
 | WINDOWLESS-003 | Card/PWA build targets, encrypted staging, release lanes, and integrated browser/artifact contracts | CI / release / browser tests | done | 8 tooling contracts + Pages staging + production/card builds |
@@ -59,6 +102,10 @@ the same file or an inseparable behavior boundary.
 
 ## Visual-feedback queue
 
+PATTERN-EDIT-VIS-001: needs-eyes — verify exact native hues entering Lab,
+Mandelbrot/Lotus streaming and Stop, then six-minute drift on the configured strip.
+Automated transport mocks do not satisfy physical proof.
+
 | ID | Screen or hardware state | What Adrian must observe | Build / fixture | Status |
 | --- | --- | --- | --- | --- |
 | WINDOWLESS-VIS-001 | Direct Chrome/Edge local-network permission and exact-card control | Permission allow/deny/revoke, no auxiliary tab, correct lights and Stop | Real router + configured card | needs-eyes |
@@ -74,6 +121,85 @@ Visual feedback does not pause independent automated work. The primary returns t
 this queue when Adrian is available.
 
 ## Bench queue
+
+2026-09-09 held-primary test complete: Adrian confirmed red, green, and blue.
+Channel permutation is not supported by these observations. Now holding #ffff00
+at 0s; outgoing first pixel747400, WebSocket buffer0, picker→send14.7ms.
+Same card lw-b0fe81f61b44 / firmware1548 / boot-deccfe4b-b0fe81f61b44.
+Adrian confirms held yellow is a little greenish; settled mixed-color match fails.
+Calibration authorized; no card change applied: firmware1548 only supports full
+config replacement, and installed legacy project has no repository head to back up.
+Green90% was much closer but still slightly green by Adrian's observation.
+Reversible Studio preview now active at green85%, red/blue100%; recipe remains
+#ffff00 and outgoing frame is746300 with WebSocket buffer0. Initial load is
+neutral and Reset returns neutral. Next: Adrian judges this single comparison.
+Green90% was closer; green85% remained green. Now auditioning green75%, outgoing
+first pixel745700. Awaiting one visual judgment before moving it again.
+At green75% the strip approximately matches the UI, but Adrian calls both too
+green. Testing warmer source #ffd000 with same calibration; outgoing744700.
+Warm #ffd000 was still slightly green at75%; Adrian requested green72%. Now
+auditioning72%, outgoing744400, awaiting one visual judgment.
+Green72% remained green; now auditioning69%, outgoing744100.
+Green62% makes the physical strip a good yellow. Hardware gain no longer tints
+the canvas. Now validating global balance with white; outgoing744874.
+White was slightly blue at green62% / blue100%. Added preview-only blue balance;
+now auditioning blue90%, outgoing white744868.
+White remained slightly blue at90%; now auditioning blue85%, outgoing744863.
+On2026-09-10 resume, Lab recovery had reset temporary calibration and resumed
+the journey, invalidating attribution of the latest “still too blue” report.
+Re-established held white at green62% / blue75%, outgoing744857; awaiting eyes.
+Research found no universal WS2812B white: D65 is about6500K and often looks
+blue in a warm room, while FastLED's TypicalLEDStrip is an empirical starting
+ratio rather than measured color accuracy. Targeting a neutral gallery white
+around4500-5000K; now auditioning green62% / blue65%, outgoing74484B.
+Adrian reports that profile looks pretty good. Studio now persists red100% /
+green62% / blue65% in browser storage and applies it once to Pattern Lab card
+frames and shared creative WLED/USB frames while leaving canvases, recipes, and
+diagnostic streams unchanged. Unit6/6, focused Chromium1/1, production build
+pass. Native Patterns commands rendered by firmware1548 still use the card's saved
+neutral calibration. A source fix now carries the profile as a temporary native
+preview field without altering the legacy project, but it needs a signed preserving
+firmware build before physical proof.
+Session: docs/bench-sessions/2026-09-09-lab-mixed-colors.md.
+
+2026-09-09 primary-color observation: Adrian confirms held #00ff00 is physically
+GREEN (red previously confirmed). Now holding #0000ff for blue observation.
+No channel-order changes warranted; mixed-color brightness/temporal behavior
+remains unresolved. Original owner color #ff6600 to restore after diagnostics.
+
+2026-09-09 primary-color observation: Adrian confirms held #ff0000 is physically
+RED. Simple red/green swap now unlikely. Changed diagnostic swatch to #00ff00,
+held at0s, Live remains on. Next single observation: does strip show green?
+Restore original #ff6600 after diagnostic sequence. No calibration change.
+
+2026-09-09 active timing trace Bench: previous tint/fade fixes did not satisfy
+Adrian. Temporary DEV-only picker/worker/preview/WebSocket logs enabled in source.
+Measured active orange edit picker2590700.5→worker2590705.7→preview2590709.4→
+WS2590762ms, bufferedAmount0. One TCP WS connection; no proven long browser queue.
+Now HOLDING PURE RED #ff0000 for decisive physical channel test; previous owner
+color #ff6600 (orange) should restore after diagnosis. Trace publishes116,0,0 /
+hex740000. No output-calibration changes. Ask which actual color pure red produces;
+orange→yellow-green and violet→blue may be red/green exchange, not proven yet.
+Do not claim tint changes solve physical mapping. Keep temporary trace until this
+observation, then remove tracing or gate explicitly before final code commit.
+
+2026-09-09 purple Bench continuation: user says held bright purple looks mostly
+blue and flickers purple/blue. Browser holds color1 #4400ff at0s, Live on. Card
+lw-b0fe81f61b44 reports neutral RGB/gammaoff/calibration1 and brightness15/255,
+ditheringtrue. No changing journey phase; temporal dithering is a hypothesis for
+flicker, not yet experimentally confirmed. Changed only current color1 via visible
+picker to #8000ff (more red, same blue), held for comparison. No Keep/save/card
+calibration or firmware mutation. Next observation: is this purple closer?
+
+2026-09-09 color hold Bench: card lw-b0fe81f61b44 at192.168.18.70,
+firmware1548; user yellow #fff700 looked green. DOM clock53.9s revealed fade
+past30s hold toward teal. Color audition now pauses at stop start and existing
+transport says Resume journey. Opening unchanged swatch also holds; transient only.
+Primary clicked current yellow swatch, dismissed picker, resumed Live preview after
+HMR; browser clock0 and card wled-realtime active. Read-only card evidence: RGB,
+gammaoff, calibration1/1/1, external brightness15/255. No calibration/firmware edits.
+11 focused browser checks + build pass. Pending one observation: does held yellow
+still look greenish? Resume there; do not claim physical match without Adrian.
 
 | ID | Goal | Machine state | Human input still required | Session | Status |
 | --- | --- | --- | --- | --- | --- |

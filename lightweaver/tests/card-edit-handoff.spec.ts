@@ -129,7 +129,7 @@ test('a card whose firmware cannot report its installed project explains itself 
   expect(counts.status, `resolved the card ${counts.status} times`).toBeLessThan(20);
 });
 
-test('an intent Patterns cannot claim is offered, not handed over again', async ({ page }) => {
+test('an intent Patterns cannot claim stays local and is not handed over again', async ({ page }) => {
   // Landing on Patterns with an intent but no authorization to claim — a
   // bookmarked handoff URL, or a reload after the authorization lapsed. This
   // is the case that used to loop: Patterns returns to the card, the card sees
@@ -143,19 +143,19 @@ test('an intent Patterns cannot claim is offered, not handed over again', async 
     readiness: status,
   }]);
 
-  await expect(page).toHaveURL(/#screen=card/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 20_000 });
 
   // The intent stays in the address bar: it is still what the owner came for,
-  // and loading the project by hand must still honour it. What stops is the
-  // automatic hand-over — the card offers the project instead.
+  // and verifying the project by hand must still honour it. What stops is the
+  // automatic hand-over. The pattern stays available locally while its card
+  // action is visibly refused.
   expect(new URL(page.url()).searchParams.get('editPattern')).toBe('aurora');
-  await expect(
-    page.getByRole('region', { name: 'Matching card project' }).getByRole('button', { name: /^Load / }),
-  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('pattern-gate-notice')).toContainText('That tap was not sent to the card.');
+  await expect(page.getByRole('button', { name: 'Verify project in Card status', exact: true })).toBeVisible();
 
   // And it stays put, instead of being handed back and forth.
   await page.waitForTimeout(1_500);
-  await expect(page).toHaveURL(/#screen=card/);
+  await expect(page).toHaveURL(/#screen=pattern$/);
   expect(counts.status, `resolved the card ${counts.status} times`).toBeLessThan(20);
 });
 
@@ -172,6 +172,8 @@ test('loading the offered project by hand still honours the intent the owner arr
     readiness: status,
   }]);
 
+  await page.getByRole('button', { name: 'Verify project in Card status', exact: true }).click();
+  await expect(page).toHaveURL(/#screen=card/, { timeout: 20_000 });
   const load = page.getByRole('region', { name: 'Matching card project' }).getByRole('button', { name: /^Load / });
   await expect(load).toBeVisible({ timeout: 20_000 });
   await load.click();

@@ -408,3 +408,25 @@ test('sequence asset capacity blocks instead of evicting metadata', async () => 
   assert.equal(result.kind, 'blocked');
   assert.equal(result.reasons[0].code, 'sequence-capacity');
 });
+
+test('linked native Update preserves capacity, identity, playlist and portable editable recipe', async () => {
+  const { recipeFromLook } = await import('./patternLabFromLook.js');
+  const source = { id: 'mine', label: 'Mine', defaultLook: { patternId: 'aurora', customHue: 32, customSaturation: 0, hueShift: 80 } };
+  const draft = { ...recipeFromLook(source), name: 'Renamed', evolution: { enabled: false } };
+  const controller = { looks: [source, ...Array.from({ length: 11 }, (_, i) => ({ ...source, id: `other-${i}` }))], playlist: [{ id: 'first', type: 'combo', lookId: 'mine', label: 'Mine', dwellSeconds: 87 }] };
+  const handoff = await createPatternLabHandoff({ recipe: draft, compatibility: compatibility('live-on-card'), controller });
+  assert.equal(handoff.kind, 'look');
+  assert.equal(handoff.replaceLookId, 'mine');
+  const applied = await applyPatternLabHandoff(controller, handoff);
+  assert.equal(applied.looks.length, 12);
+  assert.equal(applied.activeLookId, 'mine');
+  assert.equal(applied.playlist[0].label, 'Renamed');
+  assert.equal(applied.playlist[0].dwellSeconds, 87);
+  const project = createDefaultProject();
+  project.devices.standaloneController = { ...project.devices.standaloneController, ...applied };
+  const reopened = migrateProject(JSON.parse(JSON.stringify(project))).devices.standaloneController.looks.find(look => look.id === 'mine');
+  assert.deepEqual(recipeFromLook(reopened).palette, draft.palette);
+  assert.equal(reopened.defaultLook.customSaturation, 0);
+  const duplicate = await createPatternLabHandoff({ recipe: draft, compatibility: compatibility('live-on-card'), controller, saveAsNew: true });
+  assert.equal(duplicate.kind, 'blocked');
+});

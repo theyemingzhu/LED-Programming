@@ -21,6 +21,8 @@ test('Pattern Lab is the supported custom-pattern authoring surface', async ({ p
   await expect(page.getByRole('heading', { name: 'Pattern Lab', exact: true })).toBeVisible();
   // The starting pattern is chosen from a searchable tile browser; the native
   // "Base pattern" dropdown it replaced no longer exists.
+  await page.locator('.plab-fine-tune > summary').click();
+  await page.getByRole('button', { name: 'Open Choose' }).click();
   await expect(page.getByRole('searchbox', { name: 'Search patterns' })).toBeVisible();
   const workflow = page.getByRole('navigation', { name: 'Pattern Lab workflow' });
   await expect(workflow.getByRole('button', { name: 'Choose' })).toBeVisible();

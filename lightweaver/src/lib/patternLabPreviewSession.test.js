@@ -147,3 +147,20 @@ test('concurrent stop requests share one cancellation and restore transaction', 
   assert.equal(calls.filter(call => call === 'stream:stop').length, 1);
   assert.equal(calls.filter(call => Array.isArray(call) && call[0] === 'restore:look').length, 1);
 });
+
+test('stop while snapshot is pending prevents a stale session starting or restoring over its successor', async () => {
+  let finishSnapshot;
+  const calls = [];
+  const session = createPatternLabPreviewSession({
+    readSnapshot: () => new Promise(resolve => { finishSnapshot = resolve; }),
+    createStream: () => { calls.push('create'); return { start() {}, push() {}, stop() {} }; },
+    resetOutput: async () => calls.push('reset'),
+    restoreLook: async () => calls.push('restore'),
+  });
+  const starting = session.start(['FF0000']);
+  await session.stop('switched');
+  finishSnapshot({ currentId: 'aurora' });
+  assert.equal(await starting, false);
+  assert.deepEqual(calls, []);
+  assert.equal(session.status().active, false);
+});

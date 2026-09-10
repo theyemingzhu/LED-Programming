@@ -15,9 +15,20 @@ import {
   estimatePatternLabGeneratorBudgets,
 } from '../lib/patternLabGenerators.js';
 import { resolvePatternLabControls } from '../lib/patternLabControls.js';
+import {
+  applyColorJourneyVariation,
+  createColorJourneyVariations,
+  createSlowColorDriftJourney,
+} from '../lib/colorJourney.js';
+import {
+  clearPatternEditSession,
+  consumePatternLabEditHandoff,
+  readPatternEditSession,
+  writePatternEditSession,
+} from '../lib/patternEditSession.js';
 import { recipeFromLook } from '../lib/patternLabFromLook.js';
 import { recipeFromPattern } from '../lib/patternLabPatternAdapter.js';
-import { normalizePatternLabRecipe, PATTERN_LAB_RECIPE_VERSION } from '../lib/patternLabRecipe.js';
+import { createPatternLabRecipe, normalizePatternLabRecipe, PATTERN_LAB_RECIPE_VERSION } from '../lib/patternLabRecipe.js';
 import {
   deletePatternLabDraft,
   readPatternLabDraftState,
@@ -35,6 +46,7 @@ import {
 } from '../lib/patternLabDraftActions.js';
 import { PATTERN_LAB_WORKER_BUDGETS } from '../lib/patternLabWorkerProtocol.js';
 import { isBuiltInPattern, listPatterns } from '../lib/patternRegistry.js';
+import { applySavedLookToPatchBoard } from '../lib/sectionLookModel.js';
 import { flattenToStripView } from '../lib/patternLabStripView.js';
 import { useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
@@ -44,6 +56,7 @@ import PatternLabEvolution from './PatternLabEvolution.jsx';
 import PatternLabExport from './PatternLabExport.jsx';
 import PatternLabJourney from './PatternLabJourney.jsx';
 import PatternLabPreview from './PatternLabPreview.jsx';
+import ColorJourneyComposer from './ColorJourneyComposer.jsx';
 import './pattern-lab.css';
 
 const WORKFLOW = [
@@ -317,6 +330,7 @@ function withEvolutionDisabled(recipe) {
 }
 
 function sourceFromRecipe(recipe) {
+  if (recipe.base?.kind === 'color-journey') return withEvolutionDisabled(cloneRecipe(recipe));
   const stateful = PATTERN_LAB_GENERATOR_IDS.includes(recipe.base?.kind);
   const source = recipeFromPattern(stateful ? 'aurora' : recipe.base.patternId, {
     ...(Array.isArray(recipe.sourcePalette) ? { palette: recipe.sourcePalette } : {}),
@@ -458,6 +472,7 @@ export default function PatternLabScreen() {
   const workspaceRef = useRef(null);
   const sheetDragMovedRef = useRef(false);
   const runtimeToolsRef = useRef(null);
+  const fineTuneRef = useRef(null);
   // Autoload from hash / project look runs once when the workspace is ready.
   // A ref (not draft in the dependency list) keeps a later owner clear from
   // re-triggering a project-look load over their empty session.
@@ -475,6 +490,7 @@ export default function PatternLabScreen() {
   // setPlaying(true) call and no chance of a race between "recipe arrived"
   // and "start playing" firing in the wrong order.
   const [playing, setPlaying] = useState(true);
+  const [auditionStopId, setAuditionStopId] = useState(null);
   const [drafts, setDrafts] = useState([]);
   const [draftState, setDraftState] = useState('loading');
   const [message, setMessage] = useState('');
@@ -550,6 +566,11 @@ export default function PatternLabScreen() {
     sampledPixelCount: null,
     blackPixelCount: null,
   });
+  const [creativeVariations, setCreativeVariations] = useState([]);
+  const [rehearsal, setRehearsal] = useState(false);
+  const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
+  const [workingCopyError, setWorkingCopyError] = useState('');
+  const [pendingProjectSave, setPendingProjectSave] = useState(null);
   const mobileDrawer = useMobileDrawer();
   const drawerOpen = sheetDetent !== 'closed';
   // Modal-ness is a property of ONE detent, not of "the drawer is open".
@@ -559,7 +580,10 @@ export default function PatternLabScreen() {
   // screen without disabling it.
   const sheetModal = mobileDrawer && sheetDetent === 'full';
   const previewRecipe = draft;
-  const previewDuration = draft?.evolution?.durationSeconds ?? 600;
+  const previewDuration = draft?.journey?.stops?.reduce(
+    (total, stop) => total + Number(stop.holdMs || 0) + Number(stop.fadeMs || 0),
+    0,
+  ) / 1000 || draft?.evolution?.durationSeconds || 600;
 
   useEffect(() => {
     if (!workspaceAssets.ready) return;
@@ -578,21 +602,44 @@ export default function PatternLabScreen() {
     didAutoloadRef.current = true;
     if (draft) return;
 
+    const handoff = consumePatternLabEditHandoff(project.projectId);
+    const handoffRecipe = handoff ? recipeFromLook(handoff, { palette: project.palette }) : null;
+    const recovered = handoffRecipe ? null : readPatternEditSession(project.projectId, 'lab');
+    let recipe = handoffRecipe;
+    let selected;
+    if (recipe) {
+      selected = normalizePatternLabRecipe(recipe);
+    } else if (recovered?.recipe) {
+      try {
+        selected = normalizePatternLabRecipe(recovered.recipe);
+        recipe = selected;
+      } catch {}
+    }
     const params = new URLSearchParams(window.location.hash.slice(1));
     const hashPatternId = String(params.get('patternId') || '').trim();
-    const look = hashPatternId
-      ? { patternId: hashPatternId }
-      : (project.standaloneController?.defaultLook || {});
-    const recipe = recipeFromLook(look, { palette: project.palette });
-    if (!recipe) return;
-
-    const selected = withEvolutionDisabled(recipe);
-    const source = { ...selected, sourcePalette: cloneRecipe(selected.palette) };
+    if (!selected && hashPatternId) {
+      recipe = recipeFromLook({ patternId: hashPatternId }, { palette: project.palette });
+      if (recipe) selected = withEvolutionDisabled(recipe);
+    }
+    if (!selected) {
+      const journey = createSlowColorDriftJourney();
+      selected = createPatternLabRecipe({
+        name: 'Amber violet drift',
+        base: { kind: 'color-journey', id: 'slow-color-drift', params: {} },
+        journey,
+        palette: journey.stops.map(stop => stop.color),
+        evolution: { enabled: false },
+      });
+      recipe = selected;
+    }
+    const source = recovered?.sourceRecipe
+      ? normalizePatternLabRecipe(recovered.sourceRecipe)
+      : { ...selected, sourcePalette: cloneRecipe(selected.sourcePalette || selected.palette) };
     setPendingPatternId(String(recipe.base?.patternId || hashPatternId || ''));
     setSourceRecipe(source);
-    setDraft(cloneRecipe(source));
-    setPreviewTime(0);
-    setMessage('');
+    setDraft(cloneRecipe(selected));
+    setPreviewTime(Number(recovered?.previewTime) || 0);
+    setMessage(recovered?.recipe ? 'Recovered your unsaved Lab work.' : '');
     setImportErrors([]);
     setActiveWorkflowStep(0);
     setInstrumentResponse(current => ({
@@ -615,8 +662,41 @@ export default function PatternLabScreen() {
     draft,
     mobileDrawer,
     project.palette,
+    project.projectId,
     project.standaloneController?.defaultLook,
   ]);
+
+  useEffect(() => {
+    if (!draft || !workspaceAssets.ready) return;
+    const result = writePatternEditSession(project.projectId, 'lab', {
+      recipe: draft,
+      sourceRecipe,
+      previewTime,
+    });
+    setWorkingCopyError(result.ok ? '' : result.error);
+  }, [draft, project.projectId, sourceRecipe, workspaceAssets.ready]);
+
+  useEffect(() => {
+    if (!pendingProjectSave) return;
+    const saved = project.flushProjectAutosave();
+    if (!saved) {
+      const failure = {
+        ok: false,
+        message: 'The look changed in this tab, but the project could not be saved in this browser.',
+      };
+      setMessage(failure.message);
+      setPendingProjectSave(null);
+      pendingProjectSave.resolve(failure);
+      return;
+    }
+    clearPatternEditSession(project.projectId, 'patterns');
+    const result = { ok: true, message: pendingProjectSave.message };
+    setMessage(result.message);
+    const navigateAfter = pendingProjectSave.navigateAfter;
+    setPendingProjectSave(null);
+    pendingProjectSave.resolve(result);
+    if (navigateAfter) window.location.hash = '#screen=pattern';
+  }, [pendingProjectSave, project.projectId, project.standaloneController, project.flushProjectAutosave]);
 
   useEffect(() => {
     if (!playing || !previewRecipe) return undefined;
@@ -625,14 +705,14 @@ export default function PatternLabScreen() {
     const advance = now => {
       if (now - lastCommit >= 30) {
         const elapsed = Math.min((now - lastCommit) / 1000, 0.1);
-        setPreviewTime(current => (current + elapsed) % previewDuration);
+        setPreviewTime(current => (current + elapsed * (rehearsal ? 12 : 1)) % previewDuration);
         lastCommit = now;
       }
       frame = requestAnimationFrame(advance);
     };
     frame = requestAnimationFrame(advance);
     return () => cancelAnimationFrame(frame);
-  }, [playing, previewDuration, Boolean(previewRecipe)]);
+  }, [playing, previewDuration, rehearsal, Boolean(previewRecipe)]);
 
   useEffect(() => {
     if (!mobileDrawer || !drawerOpen) return undefined;
@@ -750,13 +830,14 @@ export default function PatternLabScreen() {
         context.drawImage(glowCanvas, 0, 0, scratch.width, scratch.height);
         const pixels = context.getImageData(0, 0, scratch.width, scratch.height).data;
         let hasVisibleOutput = false;
-        for (let index = 3; index < pixels.length; index += 4) {
-          if (pixels[index] > 0) {
+        for (let index = 0; index < pixels.length; index += 4) {
+          if (pixels[index] > 0 || pixels[index + 1] > 0 || pixels[index + 2] > 0) {
             hasVisibleOutput = true;
             break;
           }
         }
         setPreviewFrameSignals(current => {
+          if (current.recipeId === recipeId && current.sampledPixelCount !== null) return current;
           const next = {
             recipeId,
             frameObserved: true,
@@ -811,6 +892,12 @@ export default function PatternLabScreen() {
   // save row turns on, and it is answered by the stored list, not by a flag
   // the screen carries around and can get wrong after a reload.
   const saveOptions = useMemo(() => (draft ? describeSaveOptions(draft, drafts) : null), [draft, drafts]);
+  const creativeSavedVersion = draft ? drafts.find(saved => saved.id === draft.id) : null;
+  const creativeSaveState = workingCopyError
+    ? 'error'
+    : creativeSavedVersion && JSON.stringify(creativeSavedVersion) === JSON.stringify(draft)
+      ? 'saved'
+      : 'unsaved';
   const diagnosticMasterBrightness = draft ? previewMasterBrightness(draft, previewTime) : 1;
   const diagnosticFrameSignals = previewFrameSignals.recipeId === draft?.id
     ? previewFrameSignals
@@ -952,9 +1039,26 @@ export default function PatternLabScreen() {
   function handlePreviewRenderStatus(status) {
     if (status?.hasFrame || status?.failure) setPendingPatternId(null);
     setPreviewFailed(Boolean(status?.failure));
+    if (status?.hasFrame && status?.recipeId && Number.isSafeInteger(status.sampledPixelCount)) {
+      setPreviewFrameSignals(current => {
+        const next = {
+          recipeId: status.recipeId,
+          frameObserved: true,
+          sampledPixelCount: status.sampledPixelCount,
+          blackPixelCount: Number.isSafeInteger(status.blackPixelCount) ? status.blackPixelCount : null,
+        };
+        return current.recipeId === next.recipeId
+          && current.frameObserved === next.frameObserved
+          && current.sampledPixelCount === next.sampledPixelCount
+          && current.blackPixelCount === next.blackPixelCount
+          ? current
+          : next;
+      });
+    }
   }
 
   function choosePattern(patternId) {
+    setAuditionStopId(null);
     if (!patternId) {
       setPendingPatternId(null);
       setSourceRecipe(null);
@@ -991,6 +1095,66 @@ export default function PatternLabScreen() {
     setImportErrors([]);
     signalInstrumentResponse(0, 'pattern');
     settleSheetOnSculpt();
+  }
+
+  function startSlowColorDrift() {
+    const previous = captureWorkingState();
+    const journey = createSlowColorDriftJourney();
+    const next = createPatternLabRecipe({
+      name: 'Amber violet drift',
+      base: { kind: 'color-journey', id: 'slow-color-drift', params: {} },
+      journey,
+      palette: journey.stops.map(stop => stop.color),
+      evolution: { enabled: false },
+    });
+    offerWorkingStateUndo(previous ? `Started Slow color drift. Your work on ${sanitizeDraftName(previous.draft.name)} was set aside.` : '', previous);
+    setSourceRecipe(cloneRecipe(next));
+    setDraft(next);
+    setCreativeVariations([]);
+    setPreviewTime(0);
+    setPlaying(true);
+    setAuditionStopId(null);
+    setMessage('');
+    signalInstrumentResponse(0, 'pattern');
+  }
+
+  function holdColorStop(recipe, stopId) {
+    const stops = recipe?.journey?.stops;
+    if (!stopId || !Array.isArray(stops)) return;
+    const stopIndex = stops.findIndex(stop => stop.id === stopId);
+    if (stopIndex < 0) return;
+    const stopStartMs = stops
+      .slice(0, stopIndex)
+      .reduce((total, stop) => total + stop.holdMs + stop.fadeMs, 0);
+    setPreviewTime(stopStartMs / 1000);
+    setPlaying(false);
+    setAuditionStopId(stopId);
+  }
+
+  function changeCreativeRecipe(next, intent = null) {
+    const normalized = normalizePatternLabRecipe(next);
+    setDraft(normalized);
+    if (intent?.previewStopId || auditionStopId) holdColorStop(normalized, intent?.previewStopId || auditionStopId);
+    setCreativeVariations([]);
+    setMessage('');
+    signalInstrumentResponse(1);
+  }
+
+  function tryCreativeVariation() {
+    if (!draft?.journey) return;
+    setCreativeVariations(createColorJourneyVariations(draft));
+  }
+
+  function selectCreativeVariation(candidate) {
+    const previous = captureWorkingState();
+    const next = normalizePatternLabRecipe(applyColorJourneyVariation(draft, candidate));
+    offerWorkingStateUndo(candidate.explanation, previous);
+    setDraft(next);
+    setCreativeVariations([]);
+    setPreviewTime(0);
+    setAuditionStopId(null);
+    setMessage(candidate.explanation);
+    signalInstrumentResponse(1);
   }
 
   function changeMacro(name, value) {
@@ -1173,6 +1337,7 @@ export default function PatternLabScreen() {
 
   function openWorkflowStep(index) {
     setActiveWorkflowStep(index);
+    if (index <= 2 && fineTuneRef.current) fineTuneRef.current.open = true;
     // Step 0 is the pattern browser, which only exists at full height; the
     // other three are reachable at whatever detent the owner is already on,
     // so a tap on "Sculpt" from the play strip does not swallow the artwork.
@@ -1221,6 +1386,7 @@ export default function PatternLabScreen() {
     const next = normalizePatternLabRecipe(cloneRecipe(variant));
     setDraft(next);
     setPreviewTime(0);
+    setAuditionStopId(null);
     setMessage(`${status} ${next.name}. The source recipe is unchanged.`);
   }
 
@@ -1258,6 +1424,7 @@ export default function PatternLabScreen() {
     setSourceRecipe(sourceFromRecipe(normalized));
     setDraft(cloneRecipe(normalized));
     setPreviewTime(0);
+    setAuditionStopId(null);
     setMessage(`Opened ${normalized.name}`);
     setImportErrors([]);
   }
@@ -1314,6 +1481,32 @@ export default function PatternLabScreen() {
     });
   }
 
+  function keepCreativeLook() {
+    if (!draft?.journey) return;
+    const fallbackName = `${draft.journey.stops.slice(0, 2).map(stop => {
+      const match = {
+        '#f2a65a': 'Amber', '#6d4cc7': 'Violet', '#3478c9': 'Blue',
+        '#d6a85f': 'Gold', '#2d766f': 'Forest', '#66b8b1': 'Sea',
+      }[stop.color];
+      return match || 'Color';
+    }).join(' ')} drift`;
+    const named = {
+      ...draft,
+      name: sanitizeDraftName(draft.name, fallbackName),
+    };
+    setUndoEntry(null);
+    persistDraft(named, saved => creativeSavedVersion
+      ? `Updated ${saved.name}. Saved in this browser.`
+      : `Kept ${saved.name}. Saved in this browser.`);
+  }
+
+  function saveCreativeCopy() {
+    if (!draft?.journey) return;
+    const copy = createSavedCopy(draft, drafts);
+    setUndoEntry(null);
+    persistDraft(copy, saved => `Kept ${saved.name} as a new look.`);
+  }
+
   // Deleting is destructive, so it needs a way back. It gets an undo rather
   // than a confirm dialog: a confirm taxes every delete, including the many
   // that are correct, and still gives nothing back to an owner who taps
@@ -1368,7 +1561,7 @@ export default function PatternLabScreen() {
     });
   }
 
-  async function useInProject({ bakeResult = null } = {}) {
+  async function useInProject({ bakeResult = null, navigateAfter = false } = {}) {
     if (!draft || !compatibility) {
       return { ok: false, message: 'Choose and validate a Pattern Lab recipe first.' };
     }
@@ -1397,6 +1590,13 @@ export default function PatternLabScreen() {
           || 'The project could not accept this addition. Nothing was changed.',
       };
     }
+    if (result.kind === 'look') {
+      project.setPatchBoard(current => applySavedLookToPatchBoard({
+        patchBoard: current,
+        strips: project.strips,
+        savedLook: result.look,
+      }));
+    }
     if (result.kind === 'sequence') {
       const downloaded = await downloadJsonFile(
         `${result.asset.id}.lightweaver-controller.json`,
@@ -1410,7 +1610,10 @@ export default function PatternLabScreen() {
           : `Added ${result.asset.label} as a sequence asset. Download its controller package again before loading the card.`,
       };
     }
-    return { ok: true, message: `Added and selected ${result.look.label} in the project.` };
+    const successMessage = `Added and selected ${result.look.label} in the project.`;
+    return new Promise(resolve => {
+      setPendingProjectSave({ message: successMessage, navigateAfter, resolve });
+    });
   }
 
   // Promoted top-level entry point for the project-handoff badge. Only
@@ -1440,11 +1643,8 @@ export default function PatternLabScreen() {
     }
     setMessage('Adding to project…');
     try {
-      const result = await useInProject();
-      if (result.ok === true) {
-        window.location.hash = '#screen=pattern';
-        return;
-      }
+      const result = await useInProject({ navigateAfter: true });
+      if (result.ok === true) return;
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not add this pattern to the project.');
@@ -1505,9 +1705,9 @@ export default function PatternLabScreen() {
             <span
               className="plab-private-status"
               role="status"
-              aria-label="Private workspace. Your project stays unchanged. Native looks sample the lights."
-              title="Private workspace: your project stays unchanged; native looks sample the lights"
-              data-tooltip="Private workspace: your project stays unchanged; native looks sample the lights"
+              aria-label="Private workspace. Live preview controls the lights only when enabled."
+              title="Private workspace: Live preview controls the lights only when enabled"
+              data-tooltip="Private workspace: Live preview controls the lights only when enabled"
               data-tooltip-align="start"
             >
               <span aria-hidden="true" />
@@ -1560,9 +1760,13 @@ export default function PatternLabScreen() {
             data-testid="pattern-lab-verdict"
           >
             <span className="plab-verdict-tag">
-              {(COMPATIBILITY_OUTCOMES.find(([id]) => id === compatibility.classification) || [null, 'Checking'])[1]}
+              {draft.base?.kind === 'color-journey'
+                ? 'Live from Studio'
+                : (COMPATIBILITY_OUTCOMES.find(([id]) => id === compatibility.classification) || [null, 'Checking'])[1]}
             </span>
-            <p>{compatibilityBadge(compatibility)}</p>
+            <p>{draft.base?.kind === 'color-journey'
+              ? 'Keep this tab open while the piece follows the journey.'
+              : compatibilityBadge(compatibility)}</p>
             <dl className="plab-verdict-nums">
               {Object.entries(compatibility.budgets || {}).slice(0, 2).map(([key, value]) => (
                 <div key={key}>
@@ -1623,7 +1827,20 @@ export default function PatternLabScreen() {
                       : (previewRecipe ? 'Mapped to current artwork' : 'No source selected')}
                   </span>
                 </span>
-                <button type="button" className="plab-play" disabled={!previewRecipe} aria-pressed={playing} onClick={() => setPlaying(value => !value)}>{playing ? 'Pause' : 'Play'}</button>
+                <button
+                  type="button"
+                  className="plab-play"
+                  disabled={!previewRecipe}
+                  aria-pressed={playing}
+                  onClick={() => {
+                    if (auditionStopId) {
+                      setAuditionStopId(null);
+                      setPlaying(true);
+                    } else {
+                      setPlaying(value => !value);
+                    }
+                  }}
+                >{auditionStopId ? 'Resume journey' : playing ? 'Pause' : 'Play'}</button>
                 <button
                   ref={drawerTriggerRef}
                   type="button"
@@ -1638,7 +1855,6 @@ export default function PatternLabScreen() {
             <div className="plab-stage" ref={previewStageRef}>
               {previewRecipe ? (
                 <div
-                  key={`pattern-${instrumentResponse.patternSequence}`}
                   className={`plab-preview-content${instrumentResponse.patternSequence > 0 ? ' is-pattern-transition' : ''}`}
                   data-testid="pattern-lab-preview-content"
                   data-pattern-transition={instrumentResponse.patternSequence > 0 ? 'true' : 'false'}
@@ -1647,7 +1863,10 @@ export default function PatternLabScreen() {
                     recipe={previewRecipe}
                     previewTime={previewTime}
                     playing={playing}
-                    geometry={shownGeometry}
+                    geometry={geometry}
+                    displayGeometry={shownGeometry}
+                    livePreviewEnabled={livePreviewEnabled}
+                    onLivePreviewChange={setLivePreviewEnabled}
                     fallbackLook={project.standaloneController?.defaultLook}
                     onRenderStatus={handlePreviewRenderStatus}
                   />
@@ -1767,6 +1986,30 @@ export default function PatternLabScreen() {
                 section. `display: contents` above the breakpoint keeps the
                 desktop two-pane column byte-identical to what it was. */}
             <div className="plab-sheet-scroll" ref={sheetScrollRef}>
+            <ColorJourneyComposer
+              recipe={draft}
+              variations={creativeVariations}
+              savedLooks={drafts.filter(saved => saved.journey)}
+              saveState={creativeSaveState}
+              hasSavedVersion={Boolean(creativeSavedVersion)}
+              rehearsal={rehearsal}
+              canUndo={Boolean(undoEntry)}
+              onStart={startSlowColorDrift}
+              onRecipeChange={changeCreativeRecipe}
+              onTryVariation={tryCreativeVariation}
+              onSelectVariation={selectCreativeVariation}
+              onKeep={keepCreativeLook}
+              onSaveAsNew={saveCreativeCopy}
+              onOpenSaved={openDraft}
+              onUndo={runUndo}
+              onRehearsalChange={setRehearsal}
+              auditionStopId={auditionStopId}
+              onPreviewColor={stopId => holdColorStop(draft, stopId)}
+            />
+            {workingCopyError && <p className="plab-working-copy-error" role="alert">{workingCopyError}</p>}
+            <details ref={fineTuneRef} className="plab-fine-tune">
+              <summary>Fine tune</summary>
+              <div className="plab-fine-tune-body">
             <div id="plab-pattern-select">
               <PatternLabControls
                 patterns={patterns}
@@ -1797,6 +2040,8 @@ export default function PatternLabScreen() {
               instrumentResponse={instrumentResponse}
               onOpenStep={openWorkflowStep}
             />
+              </div>
+            </details>
 
 
             {draft && (
@@ -1903,7 +2148,7 @@ export default function PatternLabScreen() {
             )}
             {message && <p className="plab-save-status" data-testid="pattern-lab-save-status" aria-live="polite">{message}</p>}
 
-            {draft && compatibility && (
+            {draft && compatibility && draft.base?.kind !== 'color-journey' && (
               <div className="plab-use-in-project-promoted" data-testid="pattern-lab-use-in-project-promoted">
                 <button
                   type="button"
@@ -1940,7 +2185,7 @@ export default function PatternLabScreen() {
                   >×</button>
                 </div>
               )}
-              <div className="plab-actions">
+              {draft?.base?.kind !== 'color-journey' && <div className="plab-actions">
                 <button
                   id="plab-save-private"
                   type="button"
@@ -1966,7 +2211,7 @@ export default function PatternLabScreen() {
                 <button type="button" className="btn plab-action-file" disabled={!draft} onClick={exportRecipe}>Export recipe</button>
                 <button type="button" className="btn plab-action-file" onClick={() => importRef.current?.click()}>Import recipe</button>
                 <input ref={importRef} className="plab-file-input" aria-label="Import recipe" aria-hidden="true" tabIndex={-1} type="file" accept=".lwrecipe.json,application/json" onChange={importRecipe} />
-              </div>
+              </div>}
             </div>
           </aside>
         </section>

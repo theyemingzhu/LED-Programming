@@ -19,6 +19,7 @@ import {
 } from '../lib/projectModel.js';
 import { recordLivePattern as buildLiveRecording } from '../lib/liveRecorder.js';
 import { easeCrossfade } from '../lib/motionSmoothing.js';
+import { applyPatternLabPreviewCalibrationToHex, readStudioStripProfile } from '../../src/lib/patternLabPreviewCalibration.js';
 import { PATTERNS } from '../lib/patterns-library.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { resolveRotaryInputAction, selectFreshUsbRotaryEvents } from '../lib/usbRotaryInput.js';
@@ -248,8 +249,10 @@ export function ProjectProvider({ children }) {
   } = useUsbLed();
 
   const pushOutputFrame = useCallback((pixels) => {
-    wledPush(pixels);
-    usbLedPush(pixels);
+    const profile = readStudioStripProfile();
+    const physicalPixels = profile ? pixels.map(pixel => applyPatternLabPreviewCalibrationToHex(pixel, profile)) : pixels;
+    wledPush(physicalPixels);
+    usbLedPush(physicalPixels);
   }, [usbLedPush, wledPush]);
 
   const knownPatternIds = useMemo(() => new Set(PATTERNS.map(pattern => pattern.id)), []);

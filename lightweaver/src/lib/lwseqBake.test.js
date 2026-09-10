@@ -411,3 +411,10 @@ test('the bake result is bound to the initial immutable input snapshot', async (
   assert.equal(baked.estimate.frameCount, 300);
   assert.equal(baked.estimate.totalBytes, baked.bytes.byteLength);
 });
+
+test('color journey recording fails with its explicit Studio dependency before rendering', async () => {
+  const input = fixture();
+  input.recipe.base = { kind: 'color-journey', id: 'slow-color-drift' };
+  assert.throws(() => estimatePatternLabBake(input), /Studio streaming/);
+  await assert.rejects(bakePatternLabRecipe(input), /Studio streaming/);
+});

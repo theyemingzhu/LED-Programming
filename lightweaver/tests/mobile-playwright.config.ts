@@ -28,7 +28,7 @@ export default defineConfig({
   // failing for a known reason (desktop-era locators behind the mobile sheet),
   // which makes a deliberate run worthless. ADD A FILE HERE as you convert it —
   // a green run should mean "the converted set genuinely works on a phone".
-  testMatch: /(pattern-lab-(isolation|stateful|handoff|live-preview|naming|sleeping-phone|tap-feedback)|setup-phone)\.spec\.ts/,
+  testMatch: /(pattern-lab-(creative-flow|isolation|stateful|handoff|live-preview|naming|sleeping-phone|tap-feedback)|setup-phone)\.spec\.ts/,
   timeout: 60_000,
   // A flake used to be a hard stop. Because the Tests workflow gates Deploy
   // site, one wobbling test on main cancelled the deploy silently — the change

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
-import { choosePattern, closeControls } from './helpers/pattern-lab.ts';
+import { choosePattern, closeControls, openControls } from './helpers/pattern-lab.ts';
 
 declare global {
   interface Window { __patternLabFrames: string[]; }
@@ -84,10 +84,11 @@ test('native bank aurora samples via look preview, never a frame stream', async 
   await expect(page.getByTestId('pattern-lab-draft-name')).toBeVisible();
   await closeControls(page);
 
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect.poll(() => controls.some(body => body.patternId === 'aurora')).toBe(true);
   expect(await page.evaluate(() => window.__patternLabFrames.length)).toBe(0);
   await expect(page.getByRole('button', { name: 'Preview on Lights' })).toHaveCount(0);
-  await expect(page.locator('.plab-live-preview [role="status"]')).toContainText(/already follows this look/i);
+  await expect(page.locator('.plab-live-preview')).toHaveAttribute('data-live-state', 'native-look');
 });
 
 test('library-only gradient still uses Preview on Lights frames and Stop restores', async ({ page }) => {
@@ -96,7 +97,7 @@ test('library-only gradient still uses Preview on Lights frames and Stop restore
   await choosePattern(page, 'gradient');
   await closeControls(page);
 
-  const preview = page.getByRole('button', { name: 'Preview on Lights' });
+  const preview = page.getByRole('button', { name: 'Live preview', exact: true });
   await expect(preview).toBeVisible();
   await expect(preview).toBeEnabled();
   // Autoload / native sampling must not have opened a frame stream for gradient.
@@ -124,11 +125,112 @@ test('leaving Pattern Lab rolls back an active frame-stream preview', async ({ p
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await choosePattern(page, 'gradient');
   await closeControls(page);
-  await page.getByRole('button', { name: 'Preview on Lights' }).click();
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop preview' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
   await expect(page.getByTestId('pattern-lab-screen')).toHaveCount(0);
   await expect.poll(() => controls.filter(body => body.cancelStream && !body.patternId).length).toBe(1);
   await expect.poll(() => controls.some(body => body.patternId === 'aurora' && body.zone === 'all')).toBe(true);
+});
+
+test('Live preview keeps following native, Mandelbrot and Lotus selections until stopped', async ({ page }) => {
+  const controls = await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab&patternId=aurora', { waitUntil: 'domcontentloaded' });
+  await closeControls(page);
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
+  await expect.poll(() => controls.some(body => body.patternId === 'aurora')).toBe(true);
+
+  await choosePattern(page, 'mandelbrot');
+  await closeControls(page);
+  await expect(page.getByRole('button', { name: 'Stop preview', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
+  const beforeLotus = await page.evaluate(() => window.__patternLabFrames.length);
+  await choosePattern(page, 'lotus');
+  await closeControls(page);
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(beforeLotus);
+  await expect(page.getByRole('button', { name: 'Live preview', exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Stop preview', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Live preview', exact: true })).toBeVisible();
+  await expect.poll(() => controls.some(body => body.cancelStream)).toBe(true);
+});
+
+test('editing a journey color immediately streams that color instead of the previous fade', async ({ page }) => {
+  await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
+  await closeControls(page);
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
+  await openControls(page);
+  await page.getByLabel('Choose color 2', { exact: true }).evaluate(input => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, '#ff0000');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const message = JSON.parse(window.__patternLabFrames.at(-1) || '{}');
+    const colors = (message.seg?.[0]?.i || []).filter(value => typeof value === 'string');
+    return colors.length > 0 && colors.every(value => /^[0-9a-f]{2}0000$/i.test(value)) && colors.some(value => !/^000000$/i.test(value));
+  }), { timeout: 3000 }).toBe(true);
+  await expect(page.getByTestId('color-journey-ribbon').locator('[data-color]').nth(1)).toHaveAttribute('data-color', '#ff0000');
+  await expect(page.getByRole('button', { name: 'Resume journey', exact: true })).toBeVisible();
+  const clock = page.locator('[data-preview-time]');
+  await page.getByRole('button', { name: 'Move color 2 right', exact: true }).click();
+  await expect(clock).toHaveAttribute('data-preview-time', '240');
+  const heldTime = await clock.getAttribute('data-preview-time');
+  await page.waitForTimeout(1100);
+  await expect(clock).toHaveAttribute('data-preview-time', heldTime!);
+  await closeControls(page);
+  await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
+  await expect.poll(() => clock.getAttribute('data-preview-time')).not.toBe(heldTime);
+});
+
+test('Pattern Lab strip matching keeps recipe colors intact while reducing streamed white green and blue', async ({ page }) => {
+  await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
+  for (const label of ['Choose color 1', 'Choose color 2', 'Choose color 3']) {
+    await page.getByLabel(label, { exact: true }).evaluate(input => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, '#ffffff');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+  await closeControls(page);
+  const sourceSnapshot = await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot');
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Strip match on', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => {
+    const message = JSON.parse(window.__patternLabFrames.at(-1) || '{}');
+    const colors = (message.seg || []).flatMap(segment => segment.i || []).filter(value => typeof value === 'string');
+    return colors.some(value => {
+      const red = Number.parseInt(value.slice(0, 2), 16);
+      const green = Number.parseInt(value.slice(2, 4), 16);
+      const blue = Number.parseInt(value.slice(4, 6), 16);
+      return red > 40 && green > 0 && blue > 0 && green / red > 0.59 && green / red < 0.65 && blue / red > 0.62 && blue / red < 0.68;
+    });
+  })).toBe(true);
+  await page.getByLabel('Blue strip match', { exact: true }).evaluate(input => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, '0.8');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const message = JSON.parse(window.__patternLabFrames.at(-1) || '{}');
+    const colors = (message.seg || []).flatMap(segment => segment.i || []).filter(value => typeof value === 'string');
+    return colors.some(value => {
+      const red = Number.parseInt(value.slice(0, 2), 16);
+      const blue = Number.parseInt(value.slice(4, 6), 16);
+      return red > 40 && blue > 0 && blue / red > 0.76 && blue / red < 0.84;
+    });
+  })).toBe(true);
+  expect(await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot')).toBe(sourceSnapshot);
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Match my strip', exact: true })).toBeVisible();
 });

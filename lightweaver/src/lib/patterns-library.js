@@ -1038,7 +1038,8 @@ return hsv(h, 0.9, clamp(glow, 0, 1));`,
     code:
 `// @param zoom float 2.5 0.5 5.0
 // @param iter float 16.0 4.0 32.0
-const cx = (x - 0.5) * params.zoom * 2.5 - 0.5;
+const phase = params.__labSpatialV1 ? t * 0.28 : time * 0.05;
+const cx = (x - 0.5) * params.zoom * 2.5 - 0.5 + (params.__labSpatialV1 ? sin(phase) * 0.18 : 0);
 const cy = (y - 0.5) * params.zoom * 2.0;
 let zx = 0, zy = 0, i = 0;
 const maxI = floor(params.iter);
@@ -1047,6 +1048,13 @@ while (i < maxI && zx * zx + zy * zy < 4) {
   zy = 2 * zx * zy + cy; zx = tmp; i++;
 }
 const t2 = i / maxI;
+if (params.__labSpatialV1) {
+  const pos = fract(t2 * 3 + phase * 0.15) * palette.length;
+  const a = palette[floor(pos) % palette.length];
+  const b2 = palette[(floor(pos) + 1) % palette.length];
+  const v = t2 >= 1 ? 0 : (0.3 + 0.7 * sqrt(t2)) * (0.85 + 0.15 * sin(phase + t2 * 8));
+  return rgb(lerp(a.r,b2.r,fract(pos))*v, lerp(a.g,b2.g,fract(pos))*v, lerp(a.b,b2.b,fract(pos))*v);
+}
 return t2 >= 1.0 ? rgb(0,0,0) : hsv(fract(t2 * 3 + time * 0.05), 0.9, t2 > 0.1 ? 0.8 : 0.2);`,
   },
   {
@@ -1077,10 +1085,18 @@ return hsv(h, 0.9, inBuilding * (0.15 + winGlow * 0.85) + sky * 0.05 + horizon);
 // @param bloom float 0.5 0.0 1.0
 const { r, a } = polar(x, y);
 const n = floor(params.petals);
-const petal = 0.5 + 0.5 * sin(a * n + time * 0.3);
+const phase = params.__labSpatialV1 ? t * 0.6 : time * 0.3;
+const petal = 0.5 + 0.5 * sin(a * n + phase);
 const shape = r / (0.15 + 0.35 * params.bloom * petal);
 const v = exp(-pow(shape - 0.8, 2) * 8) + exp(-r * 4) * 0.5;
 const h = 0.88 + petal * 0.06;
+if (params.__labSpatialV1) {
+  const pos = fract(r + petal * 0.45 + phase * 0.04) * palette.length;
+  const c1 = palette[floor(pos) % palette.length];
+  const c2 = palette[(floor(pos) + 1) % palette.length];
+  const value = clamp(v, 0, 1);
+  return rgb(lerp(c1.r,c2.r,fract(pos))*value, lerp(c1.g,c2.g,fract(pos))*value, lerp(c1.b,c2.b,fract(pos))*value);
+}
 return hsv(h, 0.85, clamp(v, 0, 1));`,
   },
   // ── More patterns ─────────────────────────────────────────────────────────

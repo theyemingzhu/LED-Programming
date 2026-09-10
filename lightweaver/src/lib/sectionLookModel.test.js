@@ -203,3 +203,28 @@ test('normalizeSavedLooks drops invalid entries and clamps look values', () => {
   assert.equal(looks[0].sectionLooks.outer.speed, 0.05);
   assert.equal(looks[0].sectionLooks.outer.hueShift, -128);
 });
+
+test('thirteenth save refuses without mutating any look or playlist; update keeps ID at capacity', () => {
+  const controller = { looks: Array.from({ length: 12 }, (_, i) => ({ id: `look-${i}`, label: `Look ${i}`, defaultLook: { patternId: 'aurora' } })), activeLookId: 'look-0', playlist: [{ id: 'entry', type: 'combo', lookId: 'look-0', dwellSeconds: 73 }] };
+  const before = structuredClone(controller);
+  assert.throws(() => saveCurrentLookToController(controller, { lookId: 'thirteenth', label: 'New' }), /12.*looks|looks.*12/i);
+  assert.deepEqual(controller, before);
+  const updated = saveCurrentLookToController(controller, { lookId: 'look-0', label: 'Renamed', defaultLook: { patternId: 'aurora', customSaturation: 0 } });
+  assert.equal(updated.looks.length, 12);
+  assert.equal(updated.activeLookId, 'look-0');
+  assert.equal(updated.playlist[0].lookId, 'look-0');
+  assert.equal(updated.playlist[0].label, 'Renamed');
+  assert.equal(updated.playlist[0].dwellSeconds, 73);
+});
+
+test('delete removes only matching playlist uses and leaves timing intact; snapshot undo restores all references', async () => {
+  const { deleteSavedLookFromController } = await import('./sectionLookModel.js');
+  const controller = { looks: [{ id: 'mine', label: 'Mine' }, { id: 'other', label: 'Other' }], activeLookId: 'mine', playlist: [{ id: 'one', type: 'combo', lookId: 'mine', dwellSeconds: 87 }, { id: 'two', type: 'combo', lookId: 'other', dwellSeconds: 24 }, { id: 'three', type: 'combo', lookId: 'mine', dwellSeconds: 100 }], controls: { playlist: { fadeMs: 700 }, encoder: { patternCycleIds: ['mine', 'other'] } } };
+  const snapshot = structuredClone(controller);
+  const next = deleteSavedLookFromController(controller, 'mine');
+  assert.deepEqual(next.playlist, [controller.playlist[1]]);
+  assert.equal(next.activeLookId, '');
+  assert.deepEqual(next.controls.encoder.patternCycleIds, ['two']);
+  assert.deepEqual(next.controls.playlist, controller.controls.playlist);
+  assert.deepEqual(controller, snapshot);
+});

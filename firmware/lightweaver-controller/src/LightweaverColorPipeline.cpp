@@ -30,11 +30,37 @@ void LightweaverColorPipeline::configure(const OutputColorConfig& config) {
   }
 }
 
+void LightweaverColorPipeline::setTransientCalibration(const OutputColorConfig& config) {
+  transientRedScale_ = balanceScale(config.red);
+  transientGreenScale_ = balanceScale(config.green);
+  transientBlueScale_ = balanceScale(config.blue);
+  transientCalibrationActive_ = true;
+}
+
+void LightweaverColorPipeline::clearTransientCalibration() {
+  transientCalibrationActive_ = false;
+}
+
+bool LightweaverColorPipeline::hasTransientCalibration() const {
+  return transientCalibrationActive_;
+}
+
+OutputColorConfig LightweaverColorPipeline::transientCalibration() const {
+  OutputColorConfig config;
+  config.red = static_cast<float>(transientRedScale_) / 255.0f;
+  config.green = static_cast<float>(transientGreenScale_) / 255.0f;
+  config.blue = static_cast<float>(transientBlueScale_) / 255.0f;
+  return config;
+}
+
 CRGB LightweaverColorPipeline::transform(const CRGB& logical, uint8_t colorOrderCode) const {
+  const uint8_t redScale = transientCalibrationActive_ ? transientRedScale_ : redScale_;
+  const uint8_t greenScale = transientCalibrationActive_ ? transientGreenScale_ : greenScale_;
+  const uint8_t blueScale = transientCalibrationActive_ ? transientBlueScale_ : blueScale_;
   CRGB calibrated(
-      scale8_video(logical.r, redScale_),
-      scale8_video(logical.g, greenScale_),
-      scale8_video(logical.b, blueScale_));
+      scale8_video(logical.r, redScale),
+      scale8_video(logical.g, greenScale),
+      scale8_video(logical.b, blueScale));
 
   if (gammaEnabled_) {
     calibrated.r = gammaLut_[calibrated.r];

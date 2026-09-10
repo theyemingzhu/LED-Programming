@@ -650,7 +650,7 @@ test('bounded marker failure releases the stream back to the last Studio-confirm
     window.location.hash = 'screen=card&section=install';
   }, { id: cardId, firmwareVersion, buildId });
   await page.getByRole('button', { name: 'Start bounded marker test', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText(/bounded light test did not start|could not open|frame/i);
+  await expect(page.getByText('Frame delivery failed.', { exact: true })).toBeVisible();
   // Releasing the frame stream returns firmware to the installed Ocean look.
   await expect.poll(() => controls.some(body => body.cancelStream === true)).toBe(true);
 });

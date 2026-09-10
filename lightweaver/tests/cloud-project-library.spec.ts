@@ -2312,12 +2312,10 @@ test('syncs custom patterns, revision history, and Pattern Lab drafts into a fre
   const fresh = await freshWorkspacePage(browser, fixture);
   try {
     await expect.poll(() => fresh.page.evaluate(() => document.documentElement.dataset.workspaceAssetsReady || '')).toBe('true');
-    // The native <select> this used to check exposed every option through
-    // its plain textContent, so this assertion was really proving the
-    // synced custom pattern is offered as a choice — not that it is the
-    // currently-open draft. The tile grid's equivalent is a tile with that
-    // name, most likely surfaced under the "Your patterns" shelf.
-    await expect(fresh.page.locator('[data-testid="pattern-lab-tile"]').filter({ hasText: 'Cross-device glow' })).toBeVisible();
+    // The synced option lives in the collapsed Choose step until the owner
+    // opens it. Presence proves it is available without expanding the entire
+    // animated tile bank inside this cross-device storage test.
+    await expect(fresh.page.locator('[data-testid="pattern-lab-tile"]').filter({ hasText: 'Cross-device glow' })).toHaveCount(1);
     await expect(fresh.page.getByRole('button', { name: 'Open Cross-device study' })).toBeVisible();
     const snapshot = await fresh.page.evaluate(async () => {
       const { readWorkspaceAssets } = await import('/src/lib/workspaceAssets.js');

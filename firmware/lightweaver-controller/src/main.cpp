@@ -3128,6 +3128,22 @@ void runtimeSetLedColorOrder(const String& order) {
   ledColorOrder = normalized;
   runtimeConfig.ledColorOrder = normalized;
 }
+
+void runtimeSetTransientOutputCalibration(const OutputColorConfig& config) {
+  outputColorPipeline.setTransientCalibration(config);
+}
+
+void runtimeClearTransientOutputCalibration() {
+  outputColorPipeline.clearTransientCalibration();
+}
+
+bool runtimeHasTransientOutputCalibration() {
+  return outputColorPipeline.hasTransientCalibration();
+}
+
+OutputColorConfig runtimeGetTransientOutputCalibration() {
+  return outputColorPipeline.transientCalibration();
+}
 bool runtimeCanSetLedColorOrder(const String& order) {
   String normalized = order;
   normalized.toUpperCase();

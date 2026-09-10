@@ -1,8 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// e2e coverage for two ui-repair blockers that live on the card workspace and
-// the connection center. Helpers are self-contained (mirroring
-// card-workspace.spec.ts) so this file never contends with other specs.
+// e2e coverage for two ui-repair blockers that live on the card workspace.
 
 const CARD_ID = 'lw-blocker-tests';
 const OLD_BUILD = 'a'.repeat(40);
@@ -12,21 +10,6 @@ const HOST = 'lightweaver.local';
 test.beforeEach(async ({ page }) => {
   await page.route('http://192.168.4.1/**', route => route.abort());
 });
-
-// The footer card badge is on screen before the shell has finished wiring what
-// it opens, so a click can land on a button that is not listening yet and be
-// lost with no retry. Under a single-file run the wiring wins and the check
-// passes; alongside other files it loses and the check fails describing a
-// missing panel rather than a swallowed click. Ask for the panel until it is
-// there, and never click while it is already open, which would close it.
-async function openConnectionCenter(page) {
-  const center = page.locator('#card-connection-center');
-  await expect(async () => {
-    if (!(await center.isVisible())) await page.getByTestId('card-link-status').click();
-    await expect(center).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
-  return center;
-}
 
 async function dispatchCardLink(page, events) {
   // The shell subscribes to the shared card link when it mounts. Dispatching
@@ -75,14 +58,9 @@ test('a reflashed card can keep its new firmware instead of being re-flashed (ui
     readiness: liveStatus(),
   }]);
 
-  const center = await openConnectionCenter(page);
-  await expect(center).toContainText(/its firmware changed/i);
-  const trust = center.getByTestId('trust-updated-card');
-  await expect(trust).toHaveText('Keep the new firmware on this card');
-  await trust.click();
-
-  // The remembered identity now carries the live card's new firmware build —
-  // the loop can continue without deleting browser storage by hand.
+  // A same-id card with a compatible new build is accepted automatically and
+  // its remembered identity is refreshed, so the owner is never sent back to
+  // an update flow that would reinstall the firmware they just put on it.
   await expect.poll(async () => {
     const identity = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null'));
     return identity?.buildId;

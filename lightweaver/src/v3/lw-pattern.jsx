@@ -29,12 +29,15 @@ import {
   cardSaturationToChroma,
   hexToCardColor,
 } from '../lib/cardVisualLook.js';
+import { readPatternEditSession, writePatternEditSession, writePatternLabEditHandoff } from '../lib/patternEditSession.js';
+import { recipeFromLook } from '../lib/patternLabFromLook.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import {
   ALL_SECTIONS_TARGET_ID,
   applyLookToPatchBoard,
   applySavedLookToPatchBoard,
   deriveSectionTargets,
+  deleteSavedLookFromController,
   normalizeSavedLooks,
   normalizeSectionVisualLook,
   saveCurrentLookToController,
@@ -428,6 +431,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       gammaEnabled,
       gammaValue,
       serializeProject,
+      flushProjectAutosave,
     } = useProject();
     const projectPreviewStrip = useMemo(
       () => createProjectPreviewStrip({ compiledWiring: wiringInPhysicalPreviewOrder(compiledWiring), strips, hidden }),
@@ -508,6 +512,12 @@ import { PatternPreview } from './PatternPreview.jsx';
     const [handoffUrl, setHandoffUrl] = useState("");
     const [selectedTargetId, setSelectedTargetId] = useState(ALL_SECTIONS_TARGET_ID);
     const [draftLooks, setDraftLooks] = useState({});
+    const [scratchScope, setScratchScope] = useState('');
+    const [scratchError, setScratchError] = useState('');
+    const [lookSaveState, setLookSaveState] = useState('');
+    const [pendingLookSave, setPendingLookSave] = useState(false);
+    const keepScratchAfterSave = useRef(false);
+    const [deletedLook, setDeletedLook] = useState(null);
     const livePreviewTimer = useRef(null);
     const livePreviewSeq = useRef(0);
     const browsePreviewSeq = useRef(0);
@@ -838,6 +848,8 @@ import { PatternPreview } from './PatternPreview.jsx';
     );
     const savedLooks = normalizeSavedLooks(standaloneController?.looks);
     const activeLookId = standaloneController?.activeLookId || '';
+    const editingSavedLook = savedLooks.find(item => item.id === activeLookId) || null;
+    const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label);
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const latestBoardRef = useRef(board);
     const latestControllerRef = useRef(standaloneController);
@@ -981,7 +993,6 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
       return `${sel.label} whole piece`;
     })();
-    const mixLabel = mixName.trim() || currentComboLabel;
 
     const filtered = ALL.filter((p) => {
       if (cat === "mix") { if (!p.mix) return false; } else if (cat !== "all" && p.cat !== cat) return false;
@@ -1082,7 +1093,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
     };
 
-    const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 80, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
+    const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 0, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
       const hasCurrentAuthority = () => {
         if (currentPatternPreviewAccess() !== 'ready') return false;
         if (patternAccessRef.current === 'ready') return true;
@@ -1251,10 +1262,29 @@ import { PatternPreview } from './PatternPreview.jsx';
       setHandoffUrl('');
       setStatusKind('');
       setStatus('');
-      setDraftLooks({});
-      setMixName('');
-      setSelectedTargetId(ALL_SECTIONS_TARGET_ID);
-    }, [invalidatePendingPreview, projectRevision]);
+      const scratch = readPatternEditSession(projectId, 'patterns');
+      setDraftLooks(scratch?.draftLooks || {});
+      setMixName(scratch?.mixName ?? editingSavedLook?.label ?? '');
+      setSelectedTargetId(scratch?.selectedTargetId || ALL_SECTIONS_TARGET_ID);
+      setScratchScope(`${projectId}:${projectRevision}`);
+      setLookSaveState('');
+      setDeletedLook(null);
+    }, [invalidatePendingPreview, projectId, projectRevision]);
+
+    useEffect(() => {
+      if (scratchScope !== `${projectId}:${projectRevision}`) return;
+      const result = writePatternEditSession(projectId, 'patterns', { draftLooks, mixName, selectedTargetId });
+      setScratchError(result.ok ? '' : result.error);
+    }, [draftLooks, mixName, selectedTargetId, scratchScope, projectId, projectRevision]);
+
+    useEffect(() => {
+      if (!pendingLookSave) return;
+      const ok = flushProjectAutosave();
+      setPendingLookSave(false);
+      if (ok && !keepScratchAfterSave.current) setDraftLooks({});
+      keepScratchAfterSave.current = false;
+      setLookSaveState(ok ? 'Saved in this project' : 'Could not save this project in browser storage. Free some space and try again.');
+    }, [pendingLookSave, flushProjectAutosave]);
 
     useEffect(() => {
       if (
@@ -1367,7 +1397,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (!selectedTarget) return null;
       const nextLook = normalizeSectionVisualLook({ ...look, ...patch });
       setDraftLooks(prev => ({ ...prev, [selectedTarget.id]: nextLook }));
-      markProjectEdited();
+      setLookSaveState('');
       if (push) scheduleLivePreview(nextLook, selectedTarget, 80, { expectedControlPatch: patch });
       return nextLook;
     };
@@ -1607,10 +1637,11 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (!saveNamedLook) return { nextLook, nextBoard, nextController, nextTargets };
       const resolvedLabel = label || mixName.trim() || currentComboLabel;
       nextController = saveCurrentLookToController(standaloneController, {
-        lookId: uniqueLookId ? `combo-${Date.now()}-${++savedComboSeq.current}` : '',
+        lookId: uniqueLookId || !editingSavedLook ? `combo-${Date.now()}-${++savedComboSeq.current}` : editingSavedLook.id,
         label: resolvedLabel,
         defaultLook: nextDefaultLook,
         targets: nextTargets,
+        patternLabRecipe: editingSavedLook?.patternLabRecipe ? recipeFromLook({ ...editingSavedLook, label: resolvedLabel, defaultLook: nextDefaultLook, sectionLooks: Object.fromEntries(nextTargets.filter(target => target.kind === 'section').map(target => [target.id, target.look])) }) : null,
       });
       return { nextLook, nextBoard, nextController, nextTargets };
     };
@@ -1830,39 +1861,72 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
     };
 
-    const saveComboOnly = () => {
-      const { nextController } = buildCurrentHardwareState({
-        saveNamedLook: true,
-        label: mixName.trim() || currentComboLabel,
-        uniqueLookId: true,
-      });
-      const nextLooks = normalizeSavedLooks(nextController.looks);
-      const saved = nextLooks[0];
-      setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: saved }));
-      setStandaloneController(nextController);
+    const saveLook = (saveAsNew = false) => {
+      try {
+        const label = mixName.trim() || editingSavedLook?.label || `${sel.label} · ${cardHueToDegrees(look.customHue)}°`;
+        const { nextController, nextBoard } = buildCurrentHardwareState({ saveNamedLook: true, label, uniqueLookId: saveAsNew });
+        setPatchBoard(nextBoard);
+        setStandaloneController(nextController);
+        setMixName(label);
+        setLookSaveState('Saving…');
+        setPendingLookSave(true);
+        setDeletedLook(null);
+        setStatusKind('');
+        setStatus('');
+      } catch (error) {
+        setLookSaveState(error.message || 'Could not save this look.');
+        setStatusKind('err');
+        setStatus(error.message || 'Could not save this look.');
+      }
+    };
+    const savePreset = () => saveLook();
+    const renameLook = () => {
+      if (!editingSavedLook || !mixName.trim()) return;
+      const label = mixName.trim();
+      setStandaloneController(previous => ({
+        ...previous,
+        looks: previous.looks.map(item => item.id === editingSavedLook.id ? { ...item, label, ...(item.patternLabRecipe ? { patternLabRecipe: { ...item.patternLabRecipe, name: label } } : {}) } : item),
+        playlist: (previous.playlist || []).map(item => item.lookId === editingSavedLook.id || item.comboId === editingSavedLook.id ? { ...item, label } : item),
+      }));
+      keepScratchAfterSave.current = true;
+      setPendingLookSave(true);
+      setLookSaveState('Saving…');
+    };
+    const deleteLook = () => {
+      if (!editingSavedLook) return;
+      const next = deleteSavedLookFromController(standaloneController, editingSavedLook.id);
+      setDeletedLook({ previous: standaloneController, next, label: editingSavedLook.label });
+      setStandaloneController(next);
       setDraftLooks({});
       setMixName('');
-      setStatusKind('');
-      setStatus('');
+      setPendingLookSave(true);
+      setLookSaveState('Saving…');
     };
-
-    // Save the current pattern + all its tuned color/motion settings as a named,
-    // recallable look. Same save path as "Save mix", surfaced next to the tuning
-    // controls so a single tuned pattern (e.g. a custom Lava Lamp) can be kept.
-    const savePreset = () => {
-      const label = mixName.trim() || `${sel.label} · ${cardHueToDegrees(look.customHue)}°`;
-      const { nextController } = buildCurrentHardwareState({
-        saveNamedLook: true,
-        label,
-        uniqueLookId: true,
-      });
-      const nextLooks = normalizeSavedLooks(nextController.looks);
-      const saved = nextLooks[0];
-      setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: saved }));
-      setStandaloneController(nextController);
-      setDraftLooks({});
-      setStatusKind('');
-      setStatus(`Saved “${label}”. Find it under the Mixes filter.`);
+    const undoDeleteLook = () => {
+      if (!deletedLook) return;
+      if (JSON.stringify(standaloneController) !== JSON.stringify(deletedLook.next)) {
+        setLookSaveState('The project changed after deletion. Undo is unavailable to protect your newer edits.');
+        return;
+      }
+      setStandaloneController(deletedLook.previous);
+      setMixName(deletedLook.label);
+      setDeletedLook(null);
+      setPendingLookSave(true);
+      setLookSaveState('Saving…');
+    };
+    const openLookInLab = () => {
+      const { nextController, nextTargets } = buildCurrentHardwareState();
+      const value = {
+        ...(editingSavedLook || {}),
+        id: editingSavedLook?.id || '',
+        label: mixName.trim() || editingSavedLook?.label || sel.label,
+        defaultLook: nextController.defaultLook,
+        selectedTargetId,
+        sectionLooks: Object.fromEntries(nextTargets.filter(target => target.kind === 'section').map(target => [target.id, target.look])),
+      };
+      const result = writePatternLabEditHandoff(projectId, value);
+      if (!result.ok) { setLookSaveState(result.error); return; }
+      window.location.hash = '#screen=pattern-lab';
     };
 
     const writePlaylist = (nextItems) => {
@@ -1925,6 +1989,8 @@ import { PatternPreview } from './PatternPreview.jsx';
             looks: savedLooks,
           }));
           setDraftLooks({});
+          setMixName(realLook.label);
+          setLookSaveState('');
           setSelectedTargetId(ALL_SECTIONS_TARGET_ID);
           scheduleBrowseLivePreview(normalizeSectionVisualLook(realLook.defaultLook), sectionTargets[0]);
         }
@@ -1932,6 +1998,8 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
       setStandaloneController(previous => ({ ...(previous || {}), activeLookId: '' }));
       setActivePatternId(p.id);
+      setMixName('');
+      setLookSaveState('');
       const nextLook = updatePreviewLook({ patternId: p.id }, { push: false });
       scheduleBrowseLivePreview(nextLook, selectedTarget);
     };
@@ -2651,13 +2719,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                       <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
                     </div>
                   </div>
-                  {/* Naming and storing the mix has nowhere to go inside a row
-                      of readouts, so it keeps its own row directly beneath. */}
-                  <div className="pm-mixbar">
-                    <div className="pm-mixlabel"><span>Layer mix</span><strong>{mixLabel}</strong></div>
-                    <input className="pm-input" value={mixName} onChange={(e) => setMixName(e.target.value)} placeholder="Name this mix (optional)" aria-label="Layer mix name" />
-                    <button className="btn primary" data-testid="save-current-combo" onClick={saveComboOnly}>Save look</button>
-                  </div>
                 </div>
 
               </section>
@@ -2759,10 +2820,21 @@ import { PatternPreview } from './PatternPreview.jsx';
                       one panel on this screen with no head at all, so four
                       faders floated between two headed modules. */}
                   <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
+                  <div aria-label="Keep your look" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px 16px', marginBottom: 8 }}>
+                    <input className="pm-input" data-testid="look-name" style={{ flex: '1 1 180px', minWidth: 0 }} aria-label="Look name" placeholder="Name this look (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
+                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
+                    {editingSavedLook && <>
+                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={() => saveLook(true)}>Save as new</button>
+                      <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={renameLook}>Rename</button>
+                      <button type="button" className="btn" data-testid="look-delete" onClick={deleteLook}>Delete{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` · ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist uses` : ''}</button>
+                    </>}
+                    {deletedLook && <button type="button" className="btn" data-testid="look-delete-undo" onClick={undoDeleteLook}>Undo delete {deletedLook.label}</button>}
+                    <div role="status" data-testid="look-save-status" style={{ flexBasis: '100%', display: 'block', lineHeight: 1.5, minHeight: 20, paddingTop: 4 }}>{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved changes · working copy kept on this browser' : lookSaveState || (editingSavedLook ? 'In this project' : 'Choose, play, then keep your look'))}</div>
+                  </div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
                     <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
-                    <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
+                    <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} style={{ '--pm-hue-thumb': colorHex }} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
                     <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   </div>
                   <Slider k="Saturation" hint="How much colour" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
@@ -2772,7 +2844,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                     type="button"
                     className="btn"
                     data-testid="open-pattern-lab"
-                    onClick={() => { window.location.hash = `#screen=pattern-lab&patternId=${encodeURIComponent(look.patternId || '')}`; }}
+                    onClick={openLookInLab}
                   >
                     Sculpt in Lab
                   </button>
@@ -2780,7 +2852,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                 </div>
 
                 <div className="card pm-pane">
-                  <div className="sec-h"><span className="t">Color</span><button type="button" className="pm-save" data-testid="look-save-preset" onClick={savePreset}>Save look</button><button type="button" className="pm-reset" data-testid="look-reset" onClick={() => updatePreviewLook({ brightness: DEFAULT_CARD_VISUAL_LOOK.brightness, speed: DEFAULT_CARD_VISUAL_LOOK.speed, customHue: DEFAULT_CARD_VISUAL_LOOK.customHue, customSaturation: DEFAULT_CARD_VISUAL_LOOK.customSaturation, hueShift: DEFAULT_CARD_VISUAL_LOOK.hueShift, customBreathe: false, breatheLowerPct: 85, breatheUpperPct: 100, breatheCycleSeconds: 9, customDrift: false })}>Reset</button></div>
+                  <div className="sec-h"><span className="t">Color</span><button type="button" className="pm-reset" data-testid="look-reset" onClick={() => updatePreviewLook({ brightness: DEFAULT_CARD_VISUAL_LOOK.brightness, speed: DEFAULT_CARD_VISUAL_LOOK.speed, customHue: DEFAULT_CARD_VISUAL_LOOK.customHue, customSaturation: DEFAULT_CARD_VISUAL_LOOK.customSaturation, hueShift: DEFAULT_CARD_VISUAL_LOOK.hueShift, customBreathe: false, breatheLowerPct: 85, breatheUpperPct: 100, breatheCycleSeconds: 9, customDrift: false })}>Reset</button></div>
                   <div className="pm-palette">
                     <span className="pm-palrow">{sel.pal.map((c, i) => {
                       const h = c.replace('#', '');

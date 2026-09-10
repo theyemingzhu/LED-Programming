@@ -131,6 +131,36 @@ void test_out_of_range_values_reject_without_mutation() {
   expectRejected("{\"led\":{\"calibration\":{\"blue\":-1}}}", "led.calibration.blue");
 }
 
+void test_transient_calibration_parses_without_persisted_config_fields() {
+  OutputColorConfig destination = sentinelConfig();
+  const char* errorPath = nullptr;
+  const char* errorReason = nullptr;
+  // Exercise the transient parser directly so this test documents the
+  // control request's top-level shape.
+  JsonDocument doc;
+  TEST_ASSERT_FALSE(deserializeJson(doc,
+      "{\"outputCalibration\":{\"red\":1,\"green\":0.62,\"blue\":0.65}}"));
+  destination = sentinelConfig();
+  TEST_ASSERT_TRUE(parseTransientOutputCalibration(
+      doc["outputCalibration"], destination, errorPath, errorReason));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.0f, destination.red);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.62f, destination.green);
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.65f, destination.blue);
+}
+
+void test_transient_calibration_rejects_bad_values_without_mutation() {
+  JsonDocument doc;
+  TEST_ASSERT_FALSE(deserializeJson(doc,
+      "{\"outputCalibration\":{\"green\":1.01}}"));
+  OutputColorConfig destination = sentinelConfig();
+  const char* errorPath = nullptr;
+  const char* errorReason = nullptr;
+  TEST_ASSERT_FALSE(parseTransientOutputCalibration(
+      doc["outputCalibration"], destination, errorPath, errorReason));
+  TEST_ASSERT_EQUAL_STRING("outputCalibration.green", errorPath);
+  assertSentinel(destination);
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -140,5 +170,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_range_boundaries_parse);
   RUN_TEST(test_wrong_types_reject_without_mutation);
   RUN_TEST(test_out_of_range_values_reject_without_mutation);
+  RUN_TEST(test_transient_calibration_parses_without_persisted_config_fields);
+  RUN_TEST(test_transient_calibration_rejects_bad_values_without_mutation);
   return UNITY_END();
 }

@@ -124,8 +124,18 @@ test('initializes one compact transferable geometry snapshot and keeps render me
   await page.reload({ waitUntil: 'domcontentloaded' });
   await choosePattern(page, 'aurora');
   await expect(page.getByTestId('pattern-lab-mapped-preview')).toHaveAttribute('data-worker-state', 'frame');
+  await page.evaluate(() => {
+    const messages = (window as typeof window & { __LW_PATTERN_LAB_WORKER_MESSAGES__: Array<Record<string, unknown>> })
+      .__LW_PATTERN_LAB_WORKER_MESSAGES__;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].type === 'render') messages.splice(index, 1);
+    }
+  });
   await page.getByRole('slider', { name: 'Color', exact: true }).fill('57');
-  await expect(page.getByTestId('pattern-lab-mapped-preview')).toHaveAttribute('data-worker-state', 'frame');
+  await expect.poll(() => page.evaluate(() => (
+    (window as typeof window & { __LW_PATTERN_LAB_WORKER_MESSAGES__: Array<Record<string, unknown>> })
+      .__LW_PATTERN_LAB_WORKER_MESSAGES__.filter(message => message.type === 'render').length
+  ))).toBeGreaterThan(0);
 
   const messages = await page.evaluate(() => (
     (window as typeof window & { __LW_PATTERN_LAB_WORKER_MESSAGES__: Array<Record<string, unknown>> })
