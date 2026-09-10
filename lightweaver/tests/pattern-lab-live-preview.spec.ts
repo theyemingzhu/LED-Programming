@@ -185,3 +185,48 @@ test('editing a journey color immediately streams that color instead of the prev
   await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
   await expect.poll(() => clock.getAttribute('data-preview-time')).not.toBe(heldTime);
 });
+
+test('Pattern Lab strip matching keeps recipe colors intact while reducing streamed white green and blue', async ({ page }) => {
+  await installCardHarness(page);
+  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
+  for (const label of ['Choose color 1', 'Choose color 2', 'Choose color 3']) {
+    await page.getByLabel(label, { exact: true }).evaluate(input => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, '#ffffff');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+  const sourceSnapshot = await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot');
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Strip match on', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => {
+    const message = JSON.parse(window.__patternLabFrames.at(-1) || '{}');
+    const colors = (message.seg || []).flatMap(segment => segment.i || []).filter(value => typeof value === 'string');
+    return colors.some(value => {
+      const red = Number.parseInt(value.slice(0, 2), 16);
+      const green = Number.parseInt(value.slice(2, 4), 16);
+      const blue = Number.parseInt(value.slice(4, 6), 16);
+      return red > 40 && green > 0 && blue > 0 && green / red > 0.59 && green / red < 0.65 && blue / red > 0.62 && blue / red < 0.68;
+    });
+  })).toBe(true);
+  await page.getByLabel('Blue strip match', { exact: true }).evaluate(input => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, '0.8');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const message = JSON.parse(window.__patternLabFrames.at(-1) || '{}');
+    const colors = (message.seg || []).flatMap(segment => segment.i || []).filter(value => typeof value === 'string');
+    return colors.some(value => {
+      const red = Number.parseInt(value.slice(0, 2), 16);
+      const blue = Number.parseInt(value.slice(4, 6), 16);
+      return red > 40 && blue > 0 && blue / red > 0.76 && blue / red < 0.84;
+    });
+  })).toBe(true);
+  expect(await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot')).toBe(sourceSnapshot);
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Match my strip', exact: true })).toBeVisible();
+});

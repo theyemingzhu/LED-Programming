@@ -42,6 +42,7 @@ import {
   readStoredCardHost,
 } from './cardConnection.js';
 import { getActiveCardTransportAuthority } from './cardTransport.js';
+import { applyPatternLabPreviewCalibrationToHex } from './patternLabPreviewCalibration.js';
 
 export const DEFAULT_FRAME_FPS = 18;
 export const MAX_FRAME_FPS = 24;
@@ -553,6 +554,8 @@ export function createCardFrameStream({
   setIntervalImpl = (...args) => setInterval(...args),
   clearIntervalImpl = (...args) => clearInterval(...args),
   now = () => Date.now(),
+  colorProfile = null,
+  getColorProfile = null,
 } = {}) {
   const verifiedAuthority = authority || getActiveCardTransportAuthority(host);
   const wire = transport === 'bridge' || transport === 'legacy-bridge'
@@ -744,7 +747,10 @@ export function createCardFrameStream({
     // immutable snapshot so a later render cannot alter a queued/in-flight
     // frame.
     if (latestDirty) droppedFrames += 1; // previous frame never made the wire
-    latest = pixels.slice();
+    const profile = typeof getColorProfile === 'function' ? getColorProfile() : colorProfile;
+    latest = profile
+      ? pixels.map(pixel => applyPatternLabPreviewCalibrationToHex(pixel, profile))
+      : pixels.slice();
     latestDirty = true;
     return true;
   }

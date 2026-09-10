@@ -11,6 +11,12 @@ import { pushLivePreviewToCard } from '../lib/cardLiveControl.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import usePatternLabWorker from './usePatternLabWorker.js';
 import { useCardStatus } from '../hooks/useCardStatus.js';
+import {
+  applyPatternLabPreviewCalibrationToHex,
+  readStudioStripProfile,
+  writeStudioStripProfile,
+  DEFAULT_STUDIO_STRIP_PROFILE,
+} from '../lib/patternLabPreviewCalibration.js';
 
 const INTERACTION_SETTLE_MS = 180;
 // Match Patterns' default live-preview debounce (lw-pattern.jsx scheduleLivePreview).
@@ -290,6 +296,12 @@ export default function PatternLabPreview({
   onRenderStatusRef.current = onRenderStatus;
   const [physicalPreview, setPhysicalPreview] = useState({ state: 'idle', active: false, error: null });
   const [patternGaveUpLive, setPatternGaveUpLive] = useState(false);
+  const [previewCalibration, setPreviewCalibration] = useState(() => readStudioStripProfile());
+  useEffect(() => {
+    const onProfile = event => setPreviewCalibration(event.detail || readStudioStripProfile());
+    window.addEventListener('lw-studio-strip-profile', onProfile);
+    return () => window.removeEventListener('lw-studio-strip-profile', onProfile);
+  }, []);
   // Card presence is only relevant to the headline "put this on your lights"
   // action, so thumbnails (which never render that control) skip the network
   // polling entirely.
@@ -333,7 +345,9 @@ export default function PatternLabPreview({
     enabled: true,
   });
   const workerFunction = useMemo(() => workerColorLookup(worker.frame), [worker.frame]);
-  const physicalPixels = useMemo(() => patternLabFrameToCardPixels(worker.frame), [worker.frame]);
+  const physicalPixels = useMemo(() => {
+    return patternLabFrameToCardPixels(worker.frame);
+  }, [worker.frame]);
   latestPixelsRef.current = physicalPixels;
   const displayGeometry = useMemo(() => {
     if (!workerFunction) return suppliedDisplayGeometry;
@@ -363,8 +377,10 @@ export default function PatternLabPreview({
     : PATTERN_LAB_WORKER_BUDGETS.finalSamples;
 
   useEffect(() => {
-    if (physicalPreview.active && physicalPixels) physicalSessionRef.current?.push(physicalPixels);
-  }, [physicalPixels, physicalPreview.active]);
+    if (physicalPreview.active && physicalPixels) {
+      physicalSessionRef.current?.push(physicalPixels);
+    }
+  }, [physicalPixels, physicalPreview.active, previewCalibration]);
 
   // Tell the screen the moment this pattern has actually drawn something (or has
   // failed), so the tile the owner tapped can stop showing itself as working.
@@ -599,6 +615,47 @@ export default function PatternLabPreview({
               background: 'linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0))',
             }}
           >
+            <div className="plab-strip-calibration" data-testid="pattern-lab-strip-calibration">
+              <button
+                type="button"
+                className="plab-strip-calibration-action"
+                onClick={() => writeStudioStripProfile(previewCalibration.green < 1 ? previewCalibration : DEFAULT_STUDIO_STRIP_PROFILE)}
+                aria-pressed={previewCalibration.green < 1 || previewCalibration.blue < 1}
+              >
+                {previewCalibration.green < 1 || previewCalibration.blue < 1 ? 'Strip match on' : 'Match my strip'}
+              </button>
+              {previewCalibration.green < 1 && (
+                <>
+                  <label htmlFor="plab-green-gain">Green {Math.round(previewCalibration.green * 100)}%</label>
+                  <input
+                    id="plab-green-gain"
+                    type="range"
+                    min="0.5"
+                    max="1"
+                    step="0.01"
+                    value={previewCalibration.green}
+                    aria-label="Green strip match"
+                    onChange={event => writeStudioStripProfile({ ...previewCalibration, green: Number(event.target.value) })}
+                  />
+                  <label htmlFor="plab-blue-gain">Blue {Math.round(previewCalibration.blue * 100)}%</label>
+                  <input
+                    id="plab-blue-gain"
+                    type="range"
+                    min="0.5"
+                    max="1"
+                    step="0.01"
+                    value={previewCalibration.blue}
+                    aria-label="Blue strip match"
+                    onChange={event => writeStudioStripProfile({ ...previewCalibration, blue: Number(event.target.value) })}
+                  />
+                  <button
+                    type="button"
+                    className="plab-strip-calibration-reset"
+                    onClick={() => writeStudioStripProfile({ red: 1, green: 1, blue: 1 })}
+                  >Reset</button>
+                </>
+              )}
+            </div>
             <button
               type="button"
               className="plab-live-preview-action"

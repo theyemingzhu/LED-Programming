@@ -112,6 +112,75 @@ this queue when Adrian is available.
 
 ## Bench queue
 
+2026-09-09 held-primary test complete: Adrian confirmed red, green, and blue.
+Channel permutation is not supported by these observations. Now holding #ffff00
+at 0s; outgoing first pixel747400, WebSocket buffer0, picker→send14.7ms.
+Same card lw-b0fe81f61b44 / firmware1548 / boot-deccfe4b-b0fe81f61b44.
+Adrian confirms held yellow is a little greenish; settled mixed-color match fails.
+Calibration authorized; no card change applied: firmware1548 only supports full
+config replacement, and installed legacy project has no repository head to back up.
+Green90% was much closer but still slightly green by Adrian's observation.
+Reversible Studio preview now active at green85%, red/blue100%; recipe remains
+#ffff00 and outgoing frame is746300 with WebSocket buffer0. Initial load is
+neutral and Reset returns neutral. Next: Adrian judges this single comparison.
+Green90% was closer; green85% remained green. Now auditioning green75%, outgoing
+first pixel745700. Awaiting one visual judgment before moving it again.
+At green75% the strip approximately matches the UI, but Adrian calls both too
+green. Testing warmer source #ffd000 with same calibration; outgoing744700.
+Warm #ffd000 was still slightly green at75%; Adrian requested green72%. Now
+auditioning72%, outgoing744400, awaiting one visual judgment.
+Green72% remained green; now auditioning69%, outgoing744100.
+Green62% makes the physical strip a good yellow. Hardware gain no longer tints
+the canvas. Now validating global balance with white; outgoing744874.
+White was slightly blue at green62% / blue100%. Added preview-only blue balance;
+now auditioning blue90%, outgoing white744868.
+White remained slightly blue at90%; now auditioning blue85%, outgoing744863.
+On2026-09-10 resume, Lab recovery had reset temporary calibration and resumed
+the journey, invalidating attribution of the latest “still too blue” report.
+Re-established held white at green62% / blue75%, outgoing744857; awaiting eyes.
+Research found no universal WS2812B white: D65 is about6500K and often looks
+blue in a warm room, while FastLED's TypicalLEDStrip is an empirical starting
+ratio rather than measured color accuracy. Targeting a neutral gallery white
+around4500-5000K; now auditioning green62% / blue65%, outgoing74484B.
+Adrian reports that profile looks pretty good. Studio now persists red100% /
+green62% / blue65% in browser storage and applies it once to Pattern Lab card
+frames and shared creative WLED/USB frames while leaving canvases, recipes, and
+diagnostic streams unchanged. Unit6/6, focused Chromium1/1, production build
+pass. Native Patterns commands rendered by the ESP32 still use the card's saved
+neutral calibration; installing the profile card-wide remains a separate safe
+project-install step because this legacy card project has no matching Studio
+project loaded.
+Session: docs/bench-sessions/2026-09-09-lab-mixed-colors.md.
+
+2026-09-09 primary-color observation: Adrian confirms held #00ff00 is physically
+GREEN (red previously confirmed). Now holding #0000ff for blue observation.
+No channel-order changes warranted; mixed-color brightness/temporal behavior
+remains unresolved. Original owner color #ff6600 to restore after diagnostics.
+
+2026-09-09 primary-color observation: Adrian confirms held #ff0000 is physically
+RED. Simple red/green swap now unlikely. Changed diagnostic swatch to #00ff00,
+held at0s, Live remains on. Next single observation: does strip show green?
+Restore original #ff6600 after diagnostic sequence. No calibration change.
+
+2026-09-09 active timing trace Bench: previous tint/fade fixes did not satisfy
+Adrian. Temporary DEV-only picker/worker/preview/WebSocket logs enabled in source.
+Measured active orange edit picker2590700.5→worker2590705.7→preview2590709.4→
+WS2590762ms, bufferedAmount0. One TCP WS connection; no proven long browser queue.
+Now HOLDING PURE RED #ff0000 for decisive physical channel test; previous owner
+color #ff6600 (orange) should restore after diagnosis. Trace publishes116,0,0 /
+hex740000. No output-calibration changes. Ask which actual color pure red produces;
+orange→yellow-green and violet→blue may be red/green exchange, not proven yet.
+Do not claim tint changes solve physical mapping. Keep temporary trace until this
+observation, then remove tracing or gate explicitly before final code commit.
+
+2026-09-09 purple Bench continuation: user says held bright purple looks mostly
+blue and flickers purple/blue. Browser holds color1 #4400ff at0s, Live on. Card
+lw-b0fe81f61b44 reports neutral RGB/gammaoff/calibration1 and brightness15/255,
+ditheringtrue. No changing journey phase; temporal dithering is a hypothesis for
+flicker, not yet experimentally confirmed. Changed only current color1 via visible
+picker to #8000ff (more red, same blue), held for comparison. No Keep/save/card
+calibration or firmware mutation. Next observation: is this purple closer?
+
 2026-09-09 color hold Bench: card lw-b0fe81f61b44 at192.168.18.70,
 firmware1548; user yellow #fff700 looked green. DOM clock53.9s revealed fade
 past30s hold toward teal. Color audition now pauses at stop start and existing

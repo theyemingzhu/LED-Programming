@@ -4,6 +4,7 @@ import {
   readCardZonesFromCard,
   resetLiveOutputOnCard,
 } from './cardLiveControl.js';
+import { readStudioStripProfile } from './patternLabPreviewCalibration.js';
 
 const RESTORE_FIELDS = [
   'patternId',
@@ -54,6 +55,7 @@ export function createPatternLabPreviewSession({
   restoreLook = (look, options) => pushLivePreviewToCard(look, options),
   resetOutput = (look, options) => resetLiveOutputOnCard(look, options),
   onStateChange = null,
+  getColorProfile = readStudioStripProfile,
 } = {}) {
   let state = 'idle';
   let stream = null;
@@ -158,7 +160,7 @@ export function createPatternLabPreviewSession({
           snapshotAvailable = false;
         }
         if (cancelled) return false;
-        stream = createStream({ host, fps, onHealth });
+        stream = createStream({ host, fps, onHealth, getColorProfile });
         const started = stream.start();
         if (started === false) throw new Error('Pattern Lab physical preview stream could not start');
         setState('live');

@@ -444,6 +444,7 @@ export default function usePatternLabWorker({
       visiblePixelCount: currentGeometry.visiblePixelCount,
       time: payload.time,
       patternSignature: patternSignature(payload.recipe),
+      recipeColors: payload.recipe?.journey?.stops?.map(stop => stop.color).join(',') || payload.recipe?.palette?.join(','),
       generation: payload.generation,
       postedAt,
       deadline: createRenderDeadlineTracker({ startedAt: postedAt, hidden: pageHidden() }),

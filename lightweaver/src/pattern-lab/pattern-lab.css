@@ -2288,3 +2288,21 @@
    a failed preview. Exactly the mistake the verdict strip made against
    .plab-scroll, one container down. */
 .plab-preview:has(.plab-views) { grid-template-rows: auto minmax(0, 1fr) auto; }
+
+.plab-strip-calibration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plab-strip-calibration button {
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 3px;
+  padding: 5px 8px;
+  background: rgba(12, 14, 18, 0.72);
+  color: var(--text-hi);
+  font: 11px var(--font-mono);
+  cursor: pointer;
+}
+.plab-strip-calibration button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-hi); }
+.plab-strip-calibration label { color: var(--text-mid); font: 10px var(--font-mono); white-space: nowrap; }
+.plab-strip-calibration input[type="range"] { width: 76px; accent-color: var(--accent); }
