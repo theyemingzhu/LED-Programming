@@ -399,7 +399,7 @@ export default function PatternLabPreview({
       sampledPixelCount,
       blackPixelCount,
     });
-  }, [blackPixelCount, hasRenderedFrame, recipe.id, sampledPixelCount, worker.failure]);
+  }, [blackPixelCount, hasRenderedFrame, sampledPixelCount, worker.failure, worker.frameRequestId]);
 
   const engineKey = usesNativeLook ? 'native' : `${recipe.base.kind}:${patternId || recipe.base.id || ''}`;
   const nativeRecipeKey = usesNativeLook ? JSON.stringify(recipe) : '';
@@ -461,8 +461,12 @@ export default function PatternLabPreview({
     if (!worker.failure || !TERMINAL_WORKER_FAILURES.has(worker.failure)) return;
     const session = physicalSessionRef.current;
     if (!session) return;
+    physicalSessionRef.current = null;
     setPatternGaveUpLive(true);
-    void session.stop('pattern-gave-up').catch(() => {});
+    void session.stop('pattern-gave-up')
+      .then(() => setPhysicalPreview(session.status()))
+      .catch(error => setPhysicalPreview({ ...session.status(), state: 'error', active: false, error }))
+      .finally(() => setLiveEnabled(false));
   }, [worker.failure]);
 
   async function togglePhysicalPreview() {
@@ -592,6 +596,8 @@ export default function PatternLabPreview({
           ? 'Section edits are preserved. Preview this section from Patterns; Lab needs a verified card section mapping before controlling it.'
           : physicalPreview.error
           ? `Live preview failed: ${physicalPreview.error.message}. ${physicalPreview.restored ? 'Previous card look restored.' : 'Check your lights before retrying.'}`
+          : patternGaveUpLive
+            ? live.caption
           : physicalPreview.state === 'native-look'
             ? (liveEnabled ? 'Playing on the card · updates follow your selection.' : 'Live preview off · the card keeps its last look.')
             : liveEnabled && !cardStatus.connected

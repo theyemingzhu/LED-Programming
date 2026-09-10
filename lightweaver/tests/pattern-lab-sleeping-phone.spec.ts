@@ -162,7 +162,7 @@ async function startLivePreview(page: Page) {
   await closeControls(page);
   const preview = page.getByTestId('pattern-lab-mapped-preview');
   await expect(preview).toHaveAttribute('data-worker-state', 'frame');
-  await page.getByRole('button', { name: 'Preview on Lights' }).click();
+  await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop preview' })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
   return preview;
@@ -265,5 +265,5 @@ test('giving up while the lights are live restores the piece and says so', async
   const live = page.locator('.plab-live-preview');
   await expect(live).toHaveAttribute('data-live-state', 'pattern-stopped-restored', { timeout: 20_000 });
   await expect(live.getByRole('status')).toContainText('stopped drawing');
-  await expect(page.getByRole('button', { name: 'Preview on Lights' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Live preview', exact: true })).toBeVisible();
 });

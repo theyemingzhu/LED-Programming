@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
-import { choosePattern, closeControls } from './helpers/pattern-lab.ts';
+import { choosePattern, closeControls, openControls } from './helpers/pattern-lab.ts';
 
 declare global {
   interface Window { __patternLabFrames: string[]; }
@@ -161,8 +161,10 @@ test('editing a journey color immediately streams that color instead of the prev
   await installCardHarness(page);
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
+  await closeControls(page);
   await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
+  await openControls(page);
   await page.getByLabel('Choose color 2', { exact: true }).evaluate(input => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
     setter.call(input, '#ff0000');
@@ -182,6 +184,7 @@ test('editing a journey color immediately streams that color instead of the prev
   const heldTime = await clock.getAttribute('data-preview-time');
   await page.waitForTimeout(1100);
   await expect(clock).toHaveAttribute('data-preview-time', heldTime!);
+  await closeControls(page);
   await page.getByRole('button', { name: 'Resume journey', exact: true }).click();
   await expect.poll(() => clock.getAttribute('data-preview-time')).not.toBe(heldTime);
 });
@@ -198,6 +201,7 @@ test('Pattern Lab strip matching keeps recipe colors intact while reducing strea
       input.dispatchEvent(new Event('change', { bubbles: true }));
     });
   }
+  await closeControls(page);
   const sourceSnapshot = await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot');
   await page.getByRole('button', { name: 'Live preview', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Strip match on', exact: true })).toHaveAttribute('aria-pressed', 'true');

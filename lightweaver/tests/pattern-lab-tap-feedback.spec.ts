@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openControls, patternTile } from './helpers/pattern-lab.ts';
+import { openControls, openStep, patternTile } from './helpers/pattern-lab.ts';
 
 // Choosing a pattern used to acknowledge nothing at all until the first frame
 // arrived, so a tap read as "the screen ignored me" and the honest response was to
@@ -39,6 +39,7 @@ test('a tap is acknowledged on the tile and above the artwork, and clears on the
   await holdFrames(page);
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await openControls(page);
+  await openStep(page, 'choose');
   await page.evaluate(() => { window.__LW_HOLD_TAP_FRAMES__.hold = true; });
   await patternTile(page, 'aurora').click();
 
@@ -59,6 +60,7 @@ test('the working state never gates the next tap', async ({ page }) => {
   await holdFrames(page);
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await openControls(page);
+  await openStep(page, 'choose');
   await page.evaluate(() => { window.__LW_HOLD_TAP_FRAMES__.hold = true; });
 
   await patternTile(page, 'aurora').click();
@@ -67,6 +69,7 @@ test('the working state never gates the next tap', async ({ page }) => {
   // overlay over the hit area, no modal.
   await expect(patternTile(page, 'ocean')).toBeEnabled();
   await openControls(page);
+  await openStep(page, 'choose');
   await patternTile(page, 'ocean').click();
   await expect(patternTile(page, 'ocean')).toHaveAttribute('data-working', 'true');
   await expect(patternTile(page, 'aurora')).not.toHaveAttribute('data-working', 'true');
