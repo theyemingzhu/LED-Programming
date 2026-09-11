@@ -15,6 +15,9 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Ship round 2 batch 5 (one Studio tab freshness, USB update door, one primary action on Card Home) _(band: agent-runnable)_ _(effort: moderate)_
+  Branch `round2/night-batch-5` (pushed, HEAD 10458d3e = F39 abd8726a + F40 7016a5b0 + F41 ee96bf3f + bench log + test updates). Done: unit 2453/2453, core/production/pages-staging and firmware-sensitive gates green, preflight clean, browser set 228 expected. Left: `tests/card-state-matrix.spec.ts` T5 ("a card that is not ready still offers the recovery it was sent for") passes alone but fails when run with T2/T6; the control run on clean origin/main was never completed. Resume: run `npx playwright test tests/card-state-matrix.spec.ts -g "T6\]|T5\]|T2\] installed-different over" --reporter=json` on a clean origin/main worktree; if T5 fails there too it is pre-existing and the batch ships (rebase onto origin/main, PR, merge, watch Tests and Deploy, prove `/studio-release.json`); if it passes on main, F41's one-primary rule in `src/v3/lw-card.jsx` hides Recover lights for a not-ready card and Recover must still render in Checks & recovery when it is not the chosen primary. Then give Adrian the USB update steps (card 1548 to 1798) and clean worktrees round2-f39, round2-f40-usb-door, round2-f41-one-primary with restore files.
+
 - [ ] Decide three Card and Patterns surface changes from the round-2 UX critiques _(band: you-required)_ _(effort: quick)_
   Fold the blank card's "Find my strips" box into the ladder's own task; carry the card's piece name into a project Studio adopts silently; soften Patterns while the footer is not Connected. Pictures: `.claude/ux-screens/` and `docs/ux/2026-09-09-u2-patterns-playlist-critique.md`.
 - [ ] Show the card's own reason when it refuses a firmware update _(band: agent-runnable)_ _(effort: quick)_
