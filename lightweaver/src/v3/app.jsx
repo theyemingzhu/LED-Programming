@@ -362,7 +362,7 @@ const I = {
 };
 
 /* ---------- Top bar (wired to real project state via props) ---------- */
-function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProject, onNew, onLoad, onDownload, onSave, onPreferences }) {
+function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProject, onNew, onLoad, onDownload, onSave, onPreferences, showProject = true }) {
   // In-place project rename: click the breadcrumb name → input; Enter/blur
   // commit through the SAME state path as the Preferences editor
   // (setProjectName); Escape cancels. The blur that follows an Enter/Escape
@@ -401,7 +401,9 @@ function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProjec
   return (
     <header className="topbar">
       <div className="brand" role="img" aria-label="Lightweaver"><span className="glyph" /><span className="name">Lightweaver</span></div>
-      <nav className="crumb">
+      {/* Card Home names and renames the project in its own status row, so
+          the crumb would say it twice there; every other screen keeps it. */}
+      <nav className="crumb">{showProject && <>
         <span>Projects</span><span className="sep">/</span>
         {nameDraft !== null ? (
           <input
@@ -433,7 +435,7 @@ function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProjec
         {lifecycleLabel && (
           <span className="proj-status" data-testid="project-lifecycle-label">{lifecycleLabel}</span>
         )}
-      </nav>
+      </>}</nav>
       <div className="top-right">
         {action({ label: 'New project', title: 'Start a new empty project', icon: I.newProject, onClick: onNew })}
         {action({ label: 'Projects', title: 'Your saved projects — this browser, the online library, import and export', icon: I.importProject, testId: 'topbar-projects', onClick: onLoad })}
@@ -1850,6 +1852,10 @@ function Shell({ offlineUpdateController = null }) {
     <div className="app">
       <TopBar
         projectName={projectName || 'Untitled'}
+        // Card Home (setup / overview / settings / support) names and renames the
+        // project in its own status row. Preferences, install and workshop are
+        // takeovers with no such row, so the crumb stays there.
+        showProject={!(underlyingView === 'card' && ['setup', 'overview', 'settings', 'support'].includes(underlyingCardRoute?.section))}
         lifecycleLabel={projectLifecycleLabel}
         hasUnsavedChanges={projectHasUnsavedChanges}
         onRenameProject={setProjectName}
