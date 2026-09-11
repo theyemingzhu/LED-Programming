@@ -170,3 +170,43 @@ export async function ensureCardSectionsForPreview({
   const response = await pendingSync;
   return { synced: true, zones: response.verifiedZones, response };
 }
+
+// What the card holds against what the project has. The Patterns screen prints
+// this as its one status line about sections, so the owner reads a fact ("Card
+// holds Ring 1, Ring 2") instead of guessing why a section preview played on
+// the whole piece. `sectionTargets` is the project's list (deriveSectionTargets)
+// and `zonesPayload` is the card's own GET /api/zones snapshot; null means the
+// card has not been read yet, and the summary says nothing rather than a guess.
+export function cardSectionDifference(sectionTargets = [], zonesPayload = null) {
+  const sections = (Array.isArray(sectionTargets) ? sectionTargets : [])
+    .filter(target => target?.kind === 'section')
+    .map(target => ({ zoneId: String(target.zoneId || ''), label: String(target.label || target.zoneId || '') }))
+    .filter(section => section.zoneId);
+  if (!Array.isArray(zonesPayload?.zones)) {
+    return { known: false, held: [], missing: sections, extra: [] };
+  }
+  const cardZones = zonesPayload.zones
+    .map(zone => ({ zoneId: String(zone?.id || ''), label: String(zone?.label || zone?.id || '') }))
+    .filter(zone => zone.zoneId);
+  const cardById = new Map(cardZones.map(zone => [zone.zoneId, zone]));
+  const projectIds = new Set(sections.map(section => section.zoneId));
+  return {
+    known: true,
+    held: sections.filter(section => cardById.has(section.zoneId)),
+    missing: sections.filter(section => !cardById.has(section.zoneId)),
+    extra: cardZones.filter(zone => !projectIds.has(zone.zoneId)),
+  };
+}
+
+export function cardSectionSummary(sectionTargets = [], zonesPayload = null) {
+  const difference = cardSectionDifference(sectionTargets, zonesPayload);
+  if (!difference.known) return '';
+  const heldNames = difference.held.map(section => section.label);
+  if (difference.missing.length === 0) {
+    return heldNames.length ? `Card holds ${heldNames.join(', ')}` : '';
+  }
+  const heldText = heldNames.length
+    ? heldNames.join(', ')
+    : (difference.extra.length === 1 ? 'one section' : `${difference.extra.length} sections`);
+  return `Card holds ${heldText}; Install to send yours`;
+}

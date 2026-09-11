@@ -52,7 +52,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 - [ ] Make connection-center-quality reliable, then put it back in the merge gate _(band: agent-runnable)_ _(effort: moderate)_
   It went into `ci:browser-smoke` on 2026-08-31 and came straight back out. `connection-center-quality.spec.ts:662` ("Bridge return does not call a successful POST independent restoration proof") passed on the pull request and failed on `main` from the SAME commit, which blocked the site deploy — a red `main` silently skips both Deploy site and the signed firmware release. It also fails 5/5 when run alone with `-g`, at a different assertion (the wrong-card dialog around line 696) than it fails in CI (the push count at 725), so it depends on state left by earlier tests in its own file. Fix the isolation first — it should pass alone — then re-add it to the lane. Its sibling specs are stable and stayed in.
 
-- [ ] Decide whether the "card has no such section yet" notice is right, and fix its test either way _(band: agent-runnable)_ _(effort: quick)_
+- [ ] Fix the fixture behind the "card has no such section yet" test; the notice itself is right _(band: agent-runnable)_ _(effort: quick)_
+  Decided 2026-09-11 (PR for sections change 2): the notice is correct, and Patterns now prints what the card holds from its own /api/zones read, so the sentence is a fact. The red test at `workflow.spec.ts:403` mocks /api/zones with patch ids (`patch-default-...`) where a real card reports compiled zone ids (`default-...`), so its card can never hold the sections; fix the fixture the way `patterns-v3.spec.ts` derives DEFAULT_CARD_ZONE_IDS, then move the test into `ci:browser-smoke`. Original note follows.
   `workflow.spec.ts:350` ("quiet pattern preview does not render routine notifications") is red and was red before the 2026-08-31 work — proved by reverting the per-section fix and re-running, still red. Previewing a section on a card that does not hold that section makes Patterns say "The card has no X section yet, so this played on the whole piece. Install to give the card your sections." That notice looks correct and useful, which would make the test stale; but it may also mean the mock card in that spec models sections it never installed. Decide which, then fix the notice or the fixture. Not in `ci:browser-smoke` today — `workflow.spec.ts` runs there under a grep filter that excludes this test.
 
 - [ ] Decide whether Lightweaver keeps living on the mandalacodes web address _(band: you-required)_ _(effort: deep)_
@@ -111,6 +112,9 @@ The three 2026-07-17 Hardware plans are superseded. The 2026-07-18 reusable-card
 plan is a reference library, not one large job to execute.
 
 ## Soon
+
+- [ ] Patterns at 390px: the sticky instrument pane covers the section row and the pattern list _(band: agent-runnable)_ _(effort: moderate)_
+  Measured 2026-09-11 in headless Chromium at 390 by 844: `.pm-instrument` (preview plus Tune, sticky at top 0 under the 900px media query in `v3-screens.css`) stands about 700px tall, so `elementFromPoint` over a section chip returns `pm-tune-pane` and a tap never reaches the chip; the design-target row and the pattern cards scroll beneath it with roughly 50px showing. The sliders-in-reach plan (`docs/superpowers/plans/2026-08-27-pattern-sampling-join.md`) owns this surface; whatever it lands must cap the sticky pane below the viewport or fold Tune. `tests/patterns-section-row.spec.ts` exercises taps at desktop width for this reason and checks only overflow at 390.
 
 
 - [ ] Verify the four-sections build on a real card: Section row, power-cycle resume, and the timed playlist on firmware 1.1.35 _(band: you-required)_ _(effort: quick)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)

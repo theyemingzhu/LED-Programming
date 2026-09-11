@@ -80,7 +80,8 @@ import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardP
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, readCardZonesFromCard } from '../lib/cardLiveControl.js';
+import { cardSectionSummary } from '../lib/cardSectionSync.js';
 import { connectCardTransport, getActiveCardTransportAuthority, readPersistedCardIdentity } from '../lib/cardTransport.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
@@ -694,6 +695,23 @@ import { PatternPreview } from './PatternPreview.jsx';
     // `currentPatternCardAccess` above keeps the full project gate and stays
     // the gate for installs, which do persist.
     const currentPatternPreviewAccess = useCallback(() => patternAccessRef.current, []);
+
+    // What the card holds. Read once per authority (card, firmware, boot) and
+    // per installed revision, only while playback access is ready, so the
+    // section row can print "Card holds Ring 1, Ring 2" as a fact. Null until
+    // read; the summary then says nothing rather than guessing.
+    const [cardZonesPayload, setCardZonesPayload] = useState(null);
+    const cardInstalledRevisionKey = String(cardLink?.readiness?.projectRevision ?? '');
+    useEffect(() => {
+      let cancelled = false;
+      if (patternCardAccess !== 'ready') { setCardZonesPayload(null); return undefined; }
+      const expectedCardId = cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '';
+      readCardZonesFromCard({ ...cardConnectionOptionsFor(cardLink, cardHost), expectedCardId, timeoutMs: 1800 })
+        .then(payload => { if (!cancelled) setCardZonesPayload(payload); })
+        .catch(() => { if (!cancelled) setCardZonesPayload(null); });
+      return () => { cancelled = true; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [patternCardAccess, patternPreviewAuthorityKey, cardInstalledRevisionKey, cardHost]);
     const matchesCurrentCardProjectEvidence = useCallback((evidence = {}) => {
       const binding = patternAuthorizationRef.current;
       const matches = hasCurrentProjectAuthorization()
@@ -987,6 +1005,13 @@ import { PatternPreview } from './PatternPreview.jsx';
       : (customPatternById.has(activePatternId) ? activePatternId : look.patternId);
     const sel = REAL_PATTERN_BY_ID.get(selId) || customPatternById.get(selId) || adaptPattern(selId) || ALL[0];
     const tint = sel.pal[2] || sel.pal[sel.pal.length - 1];
+    const patternNameFor = useCallback((patternId) => {
+      if (!patternId) return '';
+      const entry = REAL_PATTERN_BY_ID.get(patternId) || customPatternById.get(patternId) || adaptPattern(patternId) || getCardPatternById(patternId);
+      return entry?.label || entry?.name || String(patternId);
+    }, [customPatternById]);
+    const cardHoldsLine = useMemo(() => cardSectionSummary(sectionTargets, cardZonesPayload), [sectionTargets, cardZonesPayload]);
+    const sectionCount = sectionTargets.filter(target => target.kind === 'section').length;
     const currentComboLabel = (() => {
       const sections = effectiveSectionTargets.filter(t => t.kind === 'section');
       if (sections.length > 2) return `${sections.length}-layer mix`;
@@ -2679,11 +2704,28 @@ import { PatternPreview } from './PatternPreview.jsx';
                   <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit {CARD_HARDWARE_CONTRACT.maxZones}</span><span className="line" /></div>
                   {/* multi-section target tabs (live): All sections / Section 1 / ... */}
                   {sectionTargets.length > 1 &&
-                    <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
-                      {sectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
-                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>{targetLabel(t)}</button>
+                    <div className="chips pm-section-row" style={{ marginBottom: 8 }} aria-label="Target sections">
+                      {effectiveSectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
+                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>
+                          <span className="chip-name">{targetLabel(t)}</span>
+                          {/* Each section reads with its pattern beneath it, so four
+                              sections are one glance, not four taps. The All chip
+                              carries the piece's default look. */}
+                          <span className="chip-sub" data-testid={`section-pattern-${t.id}`}>{patternNameFor(t.look?.patternId)}</span>
+                        </button>
                       )}
                     </div>
+                  }
+                  {/* One status line about sections: what the card holds, read from
+                      the card itself. Empty until the card has been read. */}
+                  {cardHoldsLine &&
+                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
+                  }
+                  {sectionCount <= 1 &&
+                    <p className="pm-cardholds">
+                      One section drives the whole piece.{' '}
+                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
+                    </p>
                   }
                   {/* Three facts on one line, not two rows that said the same
                       thing twice. The old card printed Target above Layer and
