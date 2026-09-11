@@ -357,3 +357,11 @@
 }
 .pl-pool.pl-pool .pl-chip-nm { flex: 0 0 auto; }
 .pl-pool.pl-pool .pl-chip-add { margin-left: 2px; }
+
+/* Play/Pause as a pressed toggle: the card's playing flag shown as state, so
+   "Install playlist on card" stays the screen's one filled action. */
+.pm .pl-transport-toggle.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
