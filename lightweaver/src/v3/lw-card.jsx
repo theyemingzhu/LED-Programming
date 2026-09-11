@@ -715,7 +715,7 @@ function CardHomePanels({
           data-testid="card-checks-recovery"
           open={(!ready && !wiringTestActive) || benchProject}
         >
-          <summary><h2>Checks &amp; recovery</h2></summary>
+          <summary className="card-page-fold-summary">Checks &amp; recovery</summary>
           <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
           {!ready && !wiringTestActive && (
             <p role="status">

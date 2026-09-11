@@ -150,13 +150,17 @@ test('the ready banner treats a compatible-but-older release as optional, not re
   await connectLegacyCard(page);
   await expectSetupComplete(page);
 
+  // The optional wording lives on the Card release row, said once; the ready
+  // banner keeps only its doors.
   const banner = page.getByTestId('setup-card-ready');
-  await expect(banner).toContainText('A newer card release is available');
-  await expect(banner).toContainText(
-    new RegExp(`Your lights keep working on 1306\\. Update to ${release.buildNumber} when convenient\\.`),
-  );
+  await expect(banner).not.toContainText('A newer card release is available');
   await expect(banner).not.toContainText('This card’s software is behind');
   await expect(banner).not.toContainText('Update the card software before relying on it.');
+  const releaseRow = page.getByTestId('fact-release');
+  await expect(releaseRow).toContainText('A newer card release is available');
+  await expect(releaseRow).toContainText(
+    new RegExp(`Your lights keep working on 1306\\. Update to ${release.buildNumber} when convenient\\.`),
+  );
 
   // Same one-primary rule as the rest of Card Home: the optional wording must
   // not demote Open Patterns to make room for a louder warning.

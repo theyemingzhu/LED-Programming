@@ -1,4 +1,5 @@
 import React from 'react';
+import { requestProjectsPanel } from '../projects/ProjectsPanel.jsx';
 
 // Card Home's facts: the numbers an owner changes at any moment, without
 // walking a ladder — outputs, light count, colour order, artwork placement,
@@ -14,7 +15,7 @@ import React from 'react';
 //                         withPowerSupplySettings); read from led.maxMilliamps
 //   brightness limit      the Hardware fold (SettingsScreen mode="card")
 //   card release          the update screen (#screen=card&section=install)
-//   project on card       Preferences → Manage projects (the Projects panel)
+//   project on card       the Projects panel, opened directly
 // Nothing here writes to the card. The install control stays the one writer.
 
 function Row({ label, hint, children, testId }) {
@@ -80,15 +81,17 @@ export function CardFacts({ currentProject, evidence, cardLink, cardState, firmw
           <span className="m">ESP32-S3</span>
         </div>
         <Row label="Project on card" hint={installedLabel} testId="fact-project">
-          <button type="button" className="btn" onClick={() => go('#screen=card&section=preferences')}>Projects</button>
+          <button type="button" className="btn" data-testid="fact-project-open" onClick={() => requestProjectsPanel()}>Projects</button>
         </Row>
         <Row
           label="Card release"
-          hint={updateAvailable && releaseBuild ? `${releaseBuild} available. Lights keep working meanwhile.` : 'The software the card is running'}
+          hint={updateAvailable && releaseBuild
+            ? `A newer card release is available. Your lights keep working on ${installedBuild || 'this build'}. Update to ${releaseBuild} when convenient.`
+            : 'The software the card is running'}
           testId="fact-release"
         >
           <Readout dim={!installedBuild}>{installedBuild || 'Unknown'}</Readout>
-          <button type="button" className="btn" onClick={() => go('#screen=card&section=install')}>{updateAvailable ? 'Update card' : 'Card software'}</button>
+          <button type="button" className="btn" data-testid={updateAvailable ? 'setup-update-card' : 'fact-release-open'} onClick={() => go('#screen=card&section=install')}>{updateAvailable ? 'Update card' : 'Card software'}</button>
         </Row>
         <Row label="Power limit" hint="What the supply can give, in milliamps" testId="fact-power">
           <Readout dim={!powerLimit}>{powerLimit ? `${powerLimit} mA` : 'Not set'}</Readout>

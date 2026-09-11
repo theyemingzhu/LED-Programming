@@ -1185,7 +1185,12 @@ export function SetupScreen({
                 of one fact, so the healthy card keeps only its doors. Old
                 firmware is a DIFFERENT fact the row does not carry, so that
                 case keeps its sentence and its Update action. */}
-            {firmwareBannerCopy && (
+            {/* Only a REQUIRED update speaks here: it blocks relying on the
+                card. A merely newer release is a fact, and the Card release
+                row below already states it with its own Update card button;
+                printing it here too was the same sentence twice on one
+                screen. */}
+            {firmwareBannerCopy?.required && (
               <>
                 <h2>{firmwareBannerCopy.heading}</h2>
                 <p>{firmwareBannerCopy.body}</p>
@@ -1201,8 +1206,8 @@ export function SetupScreen({
                   so this button styles as secondary until the card is lit. */}
               <button type="button" className={journey.setupComplete && !journey.blackout ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>{journey.setupComplete ? returnDestination.label : 'Open Patterns'}</button>
               <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
-              {firmwareBehind && (
-                <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
+              {firmwareBannerCopy?.required && (
+                <button type="button" className="btn" data-testid="setup-update-card-required" onClick={() => go('#screen=card&section=install')}>Update card</button>
               )}
             </div>
           </section>

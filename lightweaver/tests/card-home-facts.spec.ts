@@ -80,3 +80,16 @@ test('the power row opens the Hardware fold, where the supply size sets the limi
     return [led.maxMilliamps, led.psuAmps];
   }, { timeout: 10000 }).toEqual([2400, 3]);
 });
+
+test('the Project row opens the Projects panel directly', async ({ page }) => {
+  const spec = cardState('installed-match');
+  await seedInstalledMatch(page, spec, {});
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+
+  await page.getByTestId('fact-project-open').click();
+  await expect(page.getByTestId('projects-panel')).toBeVisible();
+  // Still on Card Home: the panel is a dialog over it, not a detour through
+  // Preferences.
+  await expect(page).toHaveURL(/#screen=card&section=overview$/);
+});
