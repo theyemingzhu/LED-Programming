@@ -104,6 +104,29 @@ function cardEditIntent() {
 // always carried: the lifecycle-keyed presentation of a card that is actually
 // answering, the matching-card-project offer with its guarded adoption
 // machine, checks & recovery, and the batch-production link.
+// The last health result per card, so the Health row is never wallpaper:
+// it says when the card was last read and what it said.
+const HEALTH_MEMORY_KEY = 'lw_card_health_v1';
+function readHealthMemory(cardId) {
+  if (!cardId || typeof window === 'undefined') return null;
+  try {
+    const all = JSON.parse(window.localStorage.getItem(HEALTH_MEMORY_KEY) || '{}');
+    const entry = all && typeof all === 'object' ? all[cardId] : null;
+    return entry && typeof entry === 'object' ? entry : null;
+  } catch {
+    return null;
+  }
+}
+function writeHealthMemory(cardId, entry) {
+  if (!cardId || typeof window === 'undefined') return;
+  try {
+    const all = JSON.parse(window.localStorage.getItem(HEALTH_MEMORY_KEY) || '{}');
+    window.localStorage.setItem(HEALTH_MEMORY_KEY, JSON.stringify({ ...(all && typeof all === 'object' ? all : {}), [cardId]: entry }));
+  } catch {
+    // Without storage the row just says "not checked yet" next time.
+  }
+}
+
 function CardHomePanels({
   connected,
   cardHost,
@@ -130,9 +153,18 @@ function CardHomePanels({
   wiringTestActive = false,
   blackedOut = false,
   firmwareStatus = null,
+  countEditor = null,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
+  const healthCardId = cardLink?.card?.id || cardLink?.readiness?.cardId || '';
+  const [lastHealth, setLastHealth] = useState(() => readHealthMemory(healthCardId));
+  useEffect(() => { setLastHealth(readHealthMemory(healthCardId)); }, [healthCardId]);
+  const rememberHealth = (status, message) => {
+    const entry = { at: new Date().toISOString(), status, message };
+    writeHealthMemory(healthCardId, entry);
+    setLastHealth(entry);
+  };
   const resolutionContextRef = useRef(null);
   const projectSwitchInFlightRef = useRef(false);
   const cardProjectProbeRef = useRef('');
@@ -404,12 +436,13 @@ function CardHomePanels({
     try {
       const status = requireExactReadyStatus(await readCardStatusEnvelope(cardConnectionOptions()));
       const pixels = Number(status.led?.pixels) || Number(cardLink?.card?.pixelCount) || 0;
-      setHardwareActionState({
-        status: 'ok',
-        message: `Hardware readback verified for ${status.cardId}${pixels ? ` · ${pixels} LEDs` : ''}. This confirms card state, not visible light output.`,
-      });
+      const message = `Hardware readback verified for ${status.cardId}${pixels ? ` · ${pixels} LEDs` : ''}. This confirms card state, not visible light output.`;
+      setHardwareActionState({ status: 'ok', message });
+      rememberHealth('ok', `readback verified${pixels ? `, ${pixels} LEDs` : ''}`);
     } catch (error) {
-      setHardwareActionState({ status: 'error', message: error?.message || 'Hardware readback failed. Reconnect the card and try again.' });
+      const message = error?.message || 'Hardware readback failed. Reconnect the card and try again.';
+      setHardwareActionState({ status: 'error', message });
+      rememberHealth('error', message);
     }
   };
   const recoverLights = async () => {
@@ -433,8 +466,11 @@ function CardHomePanels({
           ? 'The lights were recovered to warm white, but that is all this did: the card is still running the temporary Find-my-strips setup and will return to it after a restart. Use Clear temporary setup below to actually remove it, or install your project to replace it.'
           : `Recovery command ${response?.restarted ? 'survived restart and was' : 'was'} acknowledged with ready-state readback. Check the real LEDs; visible warm white is not confirmed automatically.`,
       });
+      rememberHealth('ok', 'lights recovered to warm white');
     } catch (error) {
-      setHardwareActionState({ status: 'error', message: error?.message || 'Recovery was not verified. Keep the card powered, reconnect, and retry.' });
+      const message = error?.message || 'Recovery was not verified. Keep the card powered, reconnect, and retry.';
+      setHardwareActionState({ status: 'error', message });
+      rememberHealth('error', message);
     }
   };
   // The non-destructive way off a stranded Find-my-strips bench project:
@@ -621,12 +657,9 @@ function CardHomePanels({
   return (
     <div className="card-overview">
       {showPresentation && (
-        <div className="card-overview-state">
+        <div className="card-overview-state is-strip" role="status">
           <span className={`card-overview-signal ${presentation.tone}`} aria-hidden="true" />
-          <div>
-            <span className="card-workspace-kicker">Detected state</span>
-            <p data-testid="card-detected-state">{presentation.message}</p>
-          </div>
+          <p data-testid="card-detected-state">{presentation.message}</p>
         </div>
       )}
 
@@ -718,7 +751,9 @@ function CardHomePanels({
       <CardFacts
         currentProject={currentProject}
         cardLink={cardLink}
+        cardHost={cardHost}
         firmwareStatus={firmwareStatus}
+        countEditor={countEditor}
         go={hash => { window.location.hash = hash; }}
         health={(ready || verifiedTransport) ? {
           busy: hardwareActionState.status === 'loading',
@@ -732,6 +767,7 @@ function CardHomePanels({
           clear: benchProject ? () => void clearTemporarySetup() : null,
           message: hardwareActionState.message || '',
           messageRole: hardwareActionState.status === 'error' ? 'alert' : 'status',
+          last: lastHealth,
         } : null}
       />
     </div>
@@ -863,6 +899,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // Load for this card's project — the Matching-card-project panel below
   // suppresses its duplicate offer while it is (one project, one Load).
   const [setupLoadOffer, setSetupLoadOffer] = useState(false);
+  const [countEditor, setCountEditor] = useState(null);
   const sharedJourney = useSetupJourney({
     cardLink,
     cardLifecycle,
@@ -1015,11 +1052,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
         onLoadOfferChange={setSetupLoadOffer}
+        onCountEditor={setCountEditor}
         installAction={installAction}
       />
       <CardHomePanels
         {...cardProps}
         firmwareStatus={firmwareStatus}
+        countEditor={countEditor}
         suppressMatchingProject={setupLoadOffer}
         yieldPrimary={homeOwnsPrimary}
         wiringTestActive={wiringTestActive}

@@ -123,6 +123,9 @@ export function SetupScreen({
   firmwareStatus = null,
   onRenameProject = null,
   installDoor = null,
+  // Card Home's Lights row edits the count in place through the same write
+  // as the typed-count form below; SetupScreen hands the editor up.
+  onCountEditor = null,
   onLoadOfferChange,
   installAction = null,
 }) {
@@ -742,8 +745,10 @@ export function SetupScreen({
 
   const applyTypedLedCount = async event => {
     event?.preventDefault?.();
+    return applyLedCount(Math.trunc(Number(ledCountDraft)));
+  };
+  const applyLedCount = async pixels => {
     if (ledCountState.busy) return;
-    const pixels = Math.trunc(Number(ledCountDraft));
     if (!Number.isSafeInteger(pixels) || pixels < 1) {
       setLedCountState({ busy: false, message: 'Enter how many lights are on this strip.' });
       return;
@@ -754,12 +759,23 @@ export function SetupScreen({
       return;
     }
     setLedCountState({ busy: true, message: '' });
-    const host = cardLink?.host || cardHost || '';
+    // Only a card holding the temporary bench setup takes a count straight
+    // away (and lights the strip to it). A card holding a real project keeps
+    // that project until the owner installs: the count is written to the
+    // project here, and the status row / Install door carry the difference.
+    const cardTakesCount = resolution.kind === 'bench' || provisionalSetup === true || !installationMatch;
+    const host = cardTakesCount ? (cardLink?.host || cardHost || '') : '';
     const nextStatus = cardState.status
       ? cardStatusWithPixelCount(cardState.status, { pixels, pin })
       : { outputs: [{ pin, pixels, gpio: pin, count: pixels }], led: { pixels } };
     try {
       await applyCardParts(projectSkeletonFromCardStatus(nextStatus), nextStatus);
+      if (!cardTakesCount) {
+        setLedCountDraft('');
+        setLedCountState({ busy: false, message: `${pixels} lights set in the project. Install on card to apply it.` });
+        setRecheckTick(tick => tick + 1);
+        return;
+      }
       if (host) {
         const written = await applyLedCountOnCard({ host, pixels, pin });
         if (!written.applied && written.reason !== 'not-a-length-change' && written.reason !== 'disconnected' && written.reason !== 'unreachable') {
@@ -802,6 +818,25 @@ export function SetupScreen({
       });
     }
   };
+
+  // The facts row's stepper: same write, no form. Offered whenever the
+  // output is known (the typed form only appears mid-setup).
+  // Offered only while the card can take a count straight away (the bench /
+  // discovery states, or a card that does not hold this project). Once a
+  // real project is installed, its strips are Layout's geometry and the row
+  // sends the owner there instead.
+  const cardTakesCount = resolution.kind === 'bench' || provisionalSetup === true || !installationMatch;
+  useEffect(() => {
+    if (!onCountEditor) return undefined;
+    onCountEditor(countPin == null || !cardTakesCount ? null : {
+      apply: applyLedCount,
+      busy: ledCountState.busy,
+      message: ledCountState.message,
+      pin: countPin,
+    });
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCountEditor, countPin, cardTakesCount, ledCountState.busy, ledCountState.message, cardState.status, cardLink?.host, cardHost]);
 
   const ledCountEntry = offerTypedCount ? (
     <form className="lw-setup-led-count" data-testid="setup-led-count-form" onSubmit={applyTypedLedCount}>
@@ -1109,7 +1144,7 @@ export function SetupScreen({
           // a paragraph describing an install that had already happened.
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>
+            <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Install and open Patterns</button>
           </>
         ) : null}
       </div>
