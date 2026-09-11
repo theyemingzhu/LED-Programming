@@ -51,7 +51,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: /Set up your Lightweaver/i })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 
   // Drive the link with the same payload the route serves, so the screen and
   // the card agree about what this card is.

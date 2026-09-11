@@ -10,8 +10,8 @@ import React from 'react';
 //                         strips are drawn, then Layout → Draw (the LED stepper)
 //   colour order          the two-question check (StripColorOrderCheck),
 //                         mounted in the Hardware fold behind ?tool=color-order
-//   power limit           Layout → Wire, "Card hardware" (persistPowerSettings);
-//                         read from led.maxMilliamps, the path the editor writes
+//   power limit           the Hardware fold (same writer as Layout → Wire,
+//                         withPowerSupplySettings); read from led.maxMilliamps
 //   brightness limit      the Hardware fold (SettingsScreen mode="card")
 //   card release          the update screen (#screen=card&section=install)
 //   project on card       Preferences → Manage projects (the Projects panel)
@@ -92,7 +92,7 @@ export function CardFacts({ currentProject, evidence, cardLink, cardState, firmw
         </Row>
         <Row label="Power limit" hint="What the supply can give, in milliamps" testId="fact-power">
           <Readout dim={!powerLimit}>{powerLimit ? `${powerLimit} mA` : 'Not set'}</Readout>
-          <button type="button" className="btn" onClick={() => go('#screen=layout&mode=wire')}>{powerLimit ? 'Change' : 'Set a limit'}</button>
+          <button type="button" className="btn" onClick={() => go('#screen=card&section=settings')}>{powerLimit ? 'Change' : 'Set a limit'}</button>
         </Row>
         <Row label="Brightness limit" hint="Max firmware output for sellable pieces" testId="fact-brightness">
           <Readout>{brightness255}</Readout>

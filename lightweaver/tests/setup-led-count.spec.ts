@@ -90,7 +90,7 @@ test.beforeEach(async ({ page }) => {
   }, status);
 
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: /Set up your Lightweaver/i })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 
   await page.evaluate(async ({ cardId, host, readiness }) => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');

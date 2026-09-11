@@ -111,5 +111,5 @@ test('a bare URL lands on the card even after Setup has been completed once', as
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect.poll(() => routeHash(page)).toBe('#screen=card&section=setup');
   await expect(railItem(page, 'Card')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('heading', { name: /Set up your Lightweaver/i })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 });

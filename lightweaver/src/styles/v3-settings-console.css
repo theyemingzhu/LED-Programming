@@ -656,3 +656,8 @@
   .set .set-ring-orbit.center { width: 48px; height: 48px; font-size: 17px; }
   .set .set-ring-copy > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }
+
+/* ── power supply: two small numbers and the limit they produce ── */
+.set .set-power { flex-wrap: wrap; }
+.set .set-power-field { display: inline-flex; align-items: center; gap: 6px; }
+.set .set-power-field .num-input { width: 64px; }

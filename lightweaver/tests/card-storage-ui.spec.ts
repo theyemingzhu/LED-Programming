@@ -116,7 +116,7 @@ test('Settings renders an oversized project and reports exact capacity on save',
   await gotoSavedProject(page, project, 'settings');
   await prepareCardHomeInstall(page, 'lw-card-storage-ui-settings');
 
-  await expect(page.getByRole('heading', { name: 'Your Lightweaver', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   const requestsBefore = requests.length;
   await page.getByTestId('layout-send-to-card').click();
   await expect(page.locator('.la-card-push-banner')).toHaveText(
