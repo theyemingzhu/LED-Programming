@@ -288,10 +288,19 @@ test('focused browser script covers core workflow without embedding the full rel
   const packageJson = await readJson('lightweaver/package.json');
   const smoke = packageJson.scripts['ci:browser-smoke'];
   const regression = packageJson.scripts['ci:browser-regression'];
-  assert.equal(
-    smoke,
-    'playwright test tests/workflow.spec.ts tests/screen-smoke.spec.ts tests/card-workspace.spec.ts --project=chromium --workers=1 --grep "imports SVG|every primary screen|Hardware loads the verified production project|Hardware offers an exact current project|reachable recovering factory card uses URL IP" && playwright test tests/card-home-checks.spec.ts --project=chromium --workers=1 --grep "W16-https" && playwright test tests/notice-layer.spec.ts tests/strip-discovery.spec.ts tests/journey-continuity.spec.ts tests/journey-edits.spec.ts tests/journey-ownership.spec.ts tests/journey-j01.spec.ts tests/journey-readback.spec.ts tests/journey-count-save.spec.ts tests/journey-firmware-identity.spec.ts --project=chromium --workers=1',
-  );
+  // The core workflow the smoke lane must always carry. Pinned as required
+  // members rather than one exact string: adding a spec to the lane (as the
+  // sections work did on 2026-09-11) must not turn main red in a lane that
+  // never ran the added spec. Dropping one of these still fails.
+  assert.match(smoke, /^playwright test tests\/workflow\.spec\.ts tests\/screen-smoke\.spec\.ts tests\/card-workspace\.spec\.ts --project=chromium --workers=1 --grep "imports SVG\|every primary screen\|Hardware loads the verified production project\|Hardware offers an exact current project\|reachable recovering factory card uses URL IP"/);
+  assert.match(smoke, /playwright test tests\/card-home-checks\.spec\.ts --project=chromium --workers=1 --grep "W16-https"/);
+  for (const spec of [
+    'notice-layer', 'strip-discovery', 'journey-continuity', 'journey-edits', 'journey-ownership',
+    'journey-j01', 'journey-readback', 'journey-count-save', 'journey-firmware-identity',
+  ]) {
+    assert.match(smoke, new RegExp(`tests/${spec}\\.spec\\.ts`), `smoke lane must still run ${spec}`);
+  }
+  assert.match(smoke, /--workers=1'?$/);
   assert.match(regression, /npm run test:show/);
   assert.match(regression, /npm run test:screen-recovery/);
   assert.match(regression, /tests\/pattern-lab-authoring\.spec\.ts/);
