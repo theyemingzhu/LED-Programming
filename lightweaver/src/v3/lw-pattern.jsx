@@ -80,7 +80,7 @@ import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardP
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, readCardZonesFromCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, readCardZonesFromCard, flashSectionOnCard } from '../lib/cardLiveControl.js';
 import { cardSectionSummary } from '../lib/cardSectionSync.js';
 import { connectCardTransport, getActiveCardTransportAuthority, readPersistedCardIdentity } from '../lib/cardTransport.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
@@ -1584,6 +1584,28 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     // Clicking a target tab pushes that target's current look to its zone
     // (debounced) so the physical strip follows the selection.
+    // "Show me which one": a tapped section stands out on the piece for a
+    // second (the others dim, never black), so the owner learns which physical
+    // part "Ring 3" is without a trip to the wall. Brightness-only posts, so a
+    // running playlist keeps running. One flash at a time; a tap during a
+    // flash is simply not flashed.
+    const flashInFlightRef = useRef(false);
+    const flashSection = (target) => {
+      if (target?.kind !== 'section' || !target.zoneId) return;
+      if (patternAccessRef.current !== 'ready' || flashInFlightRef.current) return;
+      const heldZones = Array.isArray(cardZonesPayload?.zones) ? cardZonesPayload.zones : null;
+      if (heldZones && heldZones.length < 2) return;
+      flashInFlightRef.current = true;
+      const expectedCardId = cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '';
+      flashSectionOnCard({
+        ...cardConnectionOptionsFor(cardLink, cardHost),
+        expectedCardId,
+        zoneId: target.zoneId,
+        zones: heldZones,
+        timeoutMs: 1500,
+      }).catch(() => {}).finally(() => { flashInFlightRef.current = false; });
+    };
+
     const selectTarget = (target) => {
       if (!target) return;
       invalidatePendingPreview();
@@ -1602,6 +1624,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         return;
       }
       scheduleLivePreview(resolveDraftTargetLook(target), target, 150);
+      flashSection(target);
     };
 
     const choosePatternPreviewTarget = (value) => {

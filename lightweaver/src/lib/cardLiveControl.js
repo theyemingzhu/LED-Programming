@@ -1758,3 +1758,72 @@ export async function repairMirroredLedOutputOnCard(runtimePackage = {}, options
     pixels: repairPackage.config.led.pixels,
   };
 }
+
+// "Show me which one." Tapping a section chip makes that section stand out on
+// the physical piece for a moment: every OTHER zone dims to a fraction of the
+// brightness the card itself reports for it, holds, then returns to exactly
+// that reported value. Brightness-only control posts, so a running playlist
+// is not paused (only a pattern selection pauses it) and no zone is ever sent
+// black: the dim floor keeps the strip lit. Skips itself when the card holds
+// one zone, or does not hold the tapped one.
+export async function flashSectionOnCard({
+  zoneId,
+  zones = null,
+  dimTo = 0.2,
+  floor = 0.05,
+  holdMs = 1000,
+  ...options
+} = {}) {
+  const host = options.host || readStoredCardHost();
+  const readZonesImpl = options.readZonesImpl || (readOptions => readCardZones(host, readOptions));
+  const postImpl = options.postControlImpl || (payload => postSectionControlToHost(host, payload, options));
+  const sleep = options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  const wanted = String(zoneId || '');
+  if (!wanted) return { flashed: false, dimmed: [], restored: [] };
+  const payload = Array.isArray(zones)
+    ? { zones }
+    : await readZonesImpl({ ...options, timeoutMs: options.timeoutMs || 1200 });
+  const list = Array.isArray(payload?.zones) ? payload.zones : [];
+  const holdsWanted = list.some(zone => String(zone?.id || '') === wanted);
+  const others = list
+    .filter(zone => zone?.id && String(zone.id) !== wanted)
+    .map(zone => {
+      const reported = Number(zone.brightness);
+      return { zone: String(zone.id), brightness: Number.isFinite(reported) ? Math.min(1, Math.max(0, reported)) : 1 };
+    });
+  if (!holdsWanted || !others.length) return { flashed: false, dimmed: [], restored: [] };
+  const dimmed = [];
+  const restored = [];
+  try {
+    for (const entry of others) {
+      await postImpl({ zone: entry.zone, syncZones: false, brightness: Math.max(floor, entry.brightness * dimTo) });
+      dimmed.push(entry.zone);
+    }
+    await sleep(holdMs);
+  } finally {
+    // Whatever was dimmed is put back, even if a later dim or the hold failed.
+    for (const entry of others) {
+      if (!dimmed.includes(entry.zone)) continue;
+      try {
+        await postImpl({ zone: entry.zone, syncZones: false, brightness: entry.brightness });
+        restored.push(entry.zone);
+      } catch {
+        // A restore that fails leaves the card's own debounce to settle it;
+        // the caller reports what did and did not come back.
+      }
+    }
+  }
+  return { flashed: true, dimmed, restored };
+}
+
+// One control post that routes by the link Studio holds, the same three doors
+// the live preview uses: an established transport authority, the verified
+// card-page bridge, or a direct local post.
+async function postSectionControlToHost(host, payload, options = {}) {
+  const authority = options.authority || getActiveCardTransportAuthority(host);
+  if (authority) return authority.request('/api/control', { method: 'POST', body: payload });
+  if (options.transport === 'bridge' || options.preferBridge || hasVerifiedBridgeForHost(host) || isMixedContentBlocked()) {
+    return requireBoundedControlObject(await sendCardBridgeRequest('control', payload, { host, timeoutMs: options.timeoutMs || 1500 }));
+  }
+  return postControlPayloadToHost(host, payload, options);
+}
