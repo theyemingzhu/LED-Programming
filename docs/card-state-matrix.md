@@ -34,6 +34,8 @@ the strip stays dark is a fail.
 | `wiring-open` | holding an unconfirmed staged wiring change |
 | `stale-firmware` | on a different build from the one Studio remembers |
 | `slow-to-answer` | dropping the first few requests, then answering (the discovery race) |
+| `not-ready` | answering, but with a runtime that is still starting (`runtimePhase: starting`, `commandReady: false`, lights off) |
+| `real-card-as-found` | Adrian's gallery card as found on 2026-08-23: the bench project id claiming a finished install (`provisionalSetup: false`), 256 pixels, lights off, a wiring transaction left open, build 1427 |
 
 **Browser state (S)** — what Studio remembers.
 

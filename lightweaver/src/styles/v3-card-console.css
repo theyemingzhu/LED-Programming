@@ -442,3 +442,46 @@
   .card-workspace-screen .lw-fact { grid-template-columns: minmax(0, 1fr); }
   .card-workspace-screen .lw-fact-v { justify-content: flex-start; flex-wrap: wrap; }
 }
+
+/* ── Checks & recovery: the same fold vocabulary as Hardware / Advanced ── */
+.card-workspace-screen .card-checks-panel { display: block; padding: 0; overflow: hidden; }
+.card-workspace-screen .card-checks-panel > .card-overview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.card-workspace-screen .card-checks-panel > summary {
+  min-height: 48px;
+  padding: 0 18px;
+  gap: 11px;
+  margin: 0;
+  background: var(--bg-elev);
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-hi);
+}
+.card-workspace-screen .card-checks-panel[open] > summary { border-bottom-color: var(--border-soft); }
+.card-workspace-screen .card-checks-panel > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--idle);
+  font-size: 0;
+}
+.card-workspace-screen .card-checks-panel[open] > summary::before {
+  content: "";
+  background: var(--lw-live-ink);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live-ink) 80%, transparent);
+}
+.card-workspace-screen .card-checks-panel > summary:hover { background: var(--bg-elev-2); }
+.card-workspace-screen .card-checks-panel > summary:focus-visible { outline-offset: -2px; border-radius: 0; }
+.card-workspace-screen .card-checks-panel > :not(summary) { margin-left: 18px; margin-right: 18px; }
+.card-workspace-screen .card-checks-panel > p:first-of-type { margin-top: 14px; }
+.card-workspace-screen .card-checks-panel[open] > :last-child { margin-bottom: 16px; }
+.card-workspace-screen .card-checks-panel:not([open]) { min-height: 0; }
+
+/* the install module keeps its distance from the Checks fold below it */
+.card-workspace-screen .card-workspace-body.lw-setup-body > .lww-flow { margin-bottom: 18px; }

@@ -112,7 +112,6 @@ plan is a reference library, not one large job to execute.
 
 ## Soon
 
-- [ ] Card Home leftovers: the Project row opens the Projects panel directly (today it routes to Preferences); the ready banner's firmware sentence duplicates the Card release row; Checks & recovery as a quiet fold row; `card-state-matrix.md` gains the `not-ready` and `real-card-as-found` rows _(band: agent-runnable)_ _(effort: moderate)_
 
 - [ ] Verify the four-sections build on a real card: Section row, power-cycle resume, and the timed playlist on firmware 1.1.35 _(band: you-required)_ _(effort: quick)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)
   All five changes shipped 2026-09-09 (Studio builds 1708, 1714, 1760; firmware 1.1.33 to 1.1.35). Only the bench check remains; the plan lists the exact steps.
