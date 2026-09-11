@@ -37,6 +37,7 @@ import {
   ALL_SECTIONS_TARGET_ID,
   applyLookToPatchBoard,
   applySavedLookToPatchBoard,
+  copyLookToAllSections,
   deriveSectionTargets,
   deleteSavedLookFromController,
   normalizeSavedLooks,
@@ -1420,6 +1421,18 @@ import { PatternPreview } from './PatternPreview.jsx';
       window.history.replaceState(null, '', `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`);
     }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, savedLooks, setPatchBoard, setStandaloneController, strips]);
 
+    // "Use on every section": the selected section's look becomes every
+    // section's draft and the piece's default in one tap, and the whole piece
+    // previews it. Nothing is saved until Keep this look, as with any draft.
+    const useLookOnEverySection = () => {
+      if (!selectedTarget || selectedTarget.kind !== 'section') return;
+      const shared = normalizeSectionVisualLook(look);
+      setDraftLooks(prev => copyLookToAllSections(prev, shared, sectionTargets));
+      setLookSaveState('');
+      const allTarget = sectionTargets.find(target => target.kind === 'all');
+      if (allTarget && connected) scheduleLivePreview(shared, allTarget, 80);
+    };
+
     const updatePreviewLook = (patch, { push = true } = {}) => {
       if (!selectedTarget) return null;
       const nextLook = normalizeSectionVisualLook({ ...look, ...patch });
@@ -2743,6 +2756,13 @@ import { PatternPreview } from './PatternPreview.jsx';
                       the card itself. Empty until the card has been read. */}
                   {cardHoldsLine &&
                     <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
+                  }
+                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
+                    <p className="pm-cardholds">
+                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
+                        Use this look on every section
+                      </button>
+                    </p>
                   }
                   {sectionCount <= 1 &&
                     <p className="pm-cardholds">

@@ -102,6 +102,10 @@ test('section chips carry their pattern names and the card-holds line is read fr
     .map(post => post.brightness)).toEqual([0.2, 1]);
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Plasma');
+  // One tap makes every section share the selected section's look.
+  await page.getByTestId('use-on-every-section').click();
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Plasma');
+  await expect(page.getByTestId('section-pattern-all')).toHaveText('Plasma');
 
   const holds = page.getByTestId('card-holds');
   await expect(holds).toHaveText(`Card holds ${zones.map(zone => zone.label).join(', ')}`);
