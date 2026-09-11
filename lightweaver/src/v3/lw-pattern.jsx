@@ -32,6 +32,7 @@ import {
 import { readPatternEditSession, writePatternEditSession, writePatternLabEditHandoff } from '../lib/patternEditSession.js';
 import { recipeFromLook } from '../lib/patternLabFromLook.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
+import { CARD_HARDWARE_CONTRACT } from '../lib/cardHardwareContract.js';
 import {
   ALL_SECTIONS_TARGET_ID,
   applyLookToPatchBoard,
@@ -415,6 +416,8 @@ import { PatternPreview } from './PatternPreview.jsx';
       patchBoard,
       wiring,
       compiledWiring,
+      sectionTargets: projectSectionTargets,
+      deriveProjectSectionTargets,
       setPatchBoard,
       standaloneController,
       setStandaloneController,
@@ -856,16 +859,15 @@ import { PatternPreview } from './PatternPreview.jsx';
     latestBoardRef.current = board;
     latestControllerRef.current = standaloneController;
 
+    // The project derives the section list once (ProjectContext). Patterns
+    // only departs from it when the saved default pattern is unknown to this
+    // card and a warm default stands in; the sections, order and names are
+    // still the project's, because the structural inputs are the same.
+    const savedGlobalLookKey = JSON.stringify(savedGlobalLook);
     const sectionTargets = useMemo(
-      () => deriveSectionTargets({ strips, patchBoard: board, wiring, compiledWiring, defaultLook: savedGlobalLook }),
-      [
-        strips, board, wiring, compiledWiring,
-        savedGlobalLook.patternId, savedGlobalLook.brightness, savedGlobalLook.speed,
-        savedGlobalLook.hueShift, savedGlobalLook.customHue, savedGlobalLook.customSaturation,
-        savedGlobalLook.customBreathe, savedGlobalLook.breatheLowerPct,
-        savedGlobalLook.breatheUpperPct, savedGlobalLook.breatheCycleSeconds,
-        savedGlobalLook.customDrift,
-      ],
+      () => (hasSavedDefaultPattern ? projectSectionTargets : deriveProjectSectionTargets(savedGlobalLook)),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [hasSavedDefaultPattern, projectSectionTargets, deriveProjectSectionTargets, savedGlobalLookKey],
     );
     const selectedTarget = sectionTargets.find(target => target.id === selectedTargetId) || sectionTargets[0];
     const savedTargetLook = normalizeSectionVisualLook(selectedTarget?.look || savedGlobalLook);
@@ -2674,7 +2676,7 @@ import { PatternPreview } from './PatternPreview.jsx';
 
                 {/* design target */}
                 <div className="pm-target">
-                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit 10</span><span className="line" /></div>
+                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit {CARD_HARDWARE_CONTRACT.maxZones}</span><span className="line" /></div>
                   {/* multi-section target tabs (live): All sections / Section 1 / ... */}
                   {sectionTargets.length > 1 &&
                     <div className="chips" style={{ marginBottom: 8 }} aria-label="Target sections">
