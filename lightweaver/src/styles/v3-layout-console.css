@@ -823,3 +823,7 @@
 @media (pointer: coarse) {
   .la .lww-tools-panel details > summary { min-height: 44px; }
 }
+
+/* Wire order: two word buttons that make the drag handle's move with a thumb. */
+.la .la-wire-order { display: flex; gap: 6px; }
+.la .la-wire-order .btn { flex: 1; justify-content: center; }
