@@ -113,7 +113,7 @@ plan is a reference library, not one large job to execute.
 ## Soon
 
 - [ ] Rebuild Card Home as status, not steps: status row, always-editable facts grid, "still to do" list, one primary _(band: agent-runnable)_ _(effort: deep)_ → Plan: [card-home-status-not-steps.md](todo/plans/card-home-status-not-steps.md)
-  Step 1 (pure cut) shipped 2026-09-11 as PR #272. Remaining, in order: power row reads `led.maxMilliamps` + card-name heading; facts grid; missing list replacing the ladder; power editor in the Hardware fold; Project row opens the Projects panel; matrix doc gains `not-ready` and `real-card-as-found`.
+  Steps 1–4 shipped 2026-09-11 (PR #272 the cut; PR #274 status module, still-to-do list, facts modules, power path, one primary on a finished card). Remaining: the heading becomes the card name (29 test assertions read "Set up your Lightweaver" as the Card-screen marker; retarget them to a test id first); the power editor re-mounted in the Hardware fold; the Project row opens the Projects panel directly (today it routes to Preferences); the ready banner's firmware copy now duplicates the Card release row; Checks & recovery restyled as a quiet fold row; matrix doc gains `not-ready` and `real-card-as-found`.
 
 - [ ] Verify the four-sections build on a real card: Section row, power-cycle resume, and the timed playlist on firmware 1.1.35 _(band: you-required)_ _(effort: quick)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)
   All five changes shipped 2026-09-09 (Studio builds 1708, 1714, 1760; firmware 1.1.33 to 1.1.35). Only the bench check remains; the plan lists the exact steps.
