@@ -328,3 +328,16 @@ function titleFromId(id = '') {
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 }
+
+// "Use on every section": one section's look becomes the draft for every
+// section and for the piece's default, so a whole piece returns to one look
+// in a tap instead of a tap per chip. Pure: returns a new draft map, the
+// source draft map is untouched.
+export function copyLookToAllSections(draftLooks = {}, look = {}, targets = []) {
+  const shared = normalizeSectionVisualLook(look);
+  const next = { ...(draftLooks || {}), [ALL_SECTIONS_TARGET_ID]: shared };
+  for (const target of Array.isArray(targets) ? targets : []) {
+    if (target?.kind === 'section' && target.id) next[target.id] = { ...shared };
+  }
+  return next;
+}
