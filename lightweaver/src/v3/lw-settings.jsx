@@ -11,6 +11,7 @@
    additional .card.set-card sections in the same mockup idiom so it reads as
    native, not bolted on. */
 import React, { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { readPowerSupplySettings, withPowerSupplySettings } from '../lib/powerSupplySettings.js';
 import { I, SWATCHES } from './lw-shared.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import { requestProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
@@ -409,6 +410,19 @@ const SettingsFieldContext = createContext(null);
     const runtimeLabel = RUNTIME_LABEL[standaloneController?.runtimeMode] || 'Playlist';
     const colorOrderLabel = COLOR_ORDER_LABELS.includes(config.led.colorOrder) ? config.led.colorOrder : 'RGB';
     const brightnessLimit255 = Math.round((config.led.brightnessLimit ?? 0.45) * 255);
+    // The power limit the card enforces (led.maxMilliamps) is derived from the
+    // supply size and per-LED draw. Until now the only editor lived in Layout →
+    // Wire; Card Home's Power limit row sends the owner here, so the same two
+    // fields live beside Brightness limit. Same writer as Wire
+    // (withPowerSupplySettings), so both surfaces compute the same budget.
+    const powerSupply = readPowerSupplySettings(standaloneController);
+    const powerLimitMilliamps = Number.isFinite(Number(standaloneController?.led?.maxMilliamps)) && Number(standaloneController.led.maxMilliamps) > 0
+      ? Math.round(Number(standaloneController.led.maxMilliamps))
+      : 0;
+    const persistPowerSettings = next => setStandaloneController(previous => withPowerSupplySettings(previous, {
+      ...readPowerSupplySettings(previous),
+      ...next,
+    }));
     const addPaletteColor = () => {
       // pick the next wheel swatch not already in the palette, else the first
       const next = SWATCHES.find(s => !palette.includes(s)) || SWATCHES[palette.length % SWATCHES.length];
@@ -544,6 +558,25 @@ const SettingsFieldContext = createContext(null);
                     autoStart={openColorOrderTest}
                   />
                   <Row label="Brightness limit" hint="Max firmware output for sellable pieces"><Range value={brightnessLimit255} set={(v) => updateController({ led: { brightnessLimit: Math.max(0.05, Math.min(1, v / 255)) } })} min={32} max={255} step={1} fmt={(v) => `${v}`} /></Row>
+                  <Row label="Power limit" hint="The card caps itself at 80% of the supply">
+                    <div className="set-v-inline set-power" data-testid="settings-power-supply">
+                      <label className="set-power-field">
+                        <span className="set-u">Supply</span>
+                        <FieldInput className="num-input" type="number" min="0.5" step="0.5" inputMode="decimal" aria-label="Power supply amps"
+                          value={powerSupply.psuAmps}
+                          onChange={(e) => { const value = Number.parseFloat(e.target.value); if (Number.isFinite(value) && value > 0) persistPowerSettings({ psuAmps: value }); }} />
+                        <span className="set-u">A</span>
+                      </label>
+                      <label className="set-power-field">
+                        <span className="set-u">Per LED</span>
+                        <FieldInput className="num-input" type="number" min="1" step="1" inputMode="numeric" aria-label="Milliamps per LED"
+                          value={powerSupply.milliampsPerPixel}
+                          onChange={(e) => { const value = Number.parseFloat(e.target.value); if (Number.isFinite(value) && value > 0) persistPowerSettings({ milliampsPerPixel: value }); }} />
+                        <span className="set-u">mA</span>
+                      </label>
+                      <span className="set-rv" data-testid="settings-power-limit">{powerLimitMilliamps ? `${powerLimitMilliamps} mA` : 'Not set'}</span>
+                    </div>
+                  </Row>
                   <Row label="Layout & outputs" hint="Read-only — Layout owns structure and routing" stack>
                     <div className="set-outputs">
                       <div className="set-outputs-toolbar">

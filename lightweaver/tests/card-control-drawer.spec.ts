@@ -147,7 +147,7 @@ test('a connected footer opens customer card controls without a popup', async ({
   await page.getByRole('button', { name: 'Close connection center' }).click();
   await footer.click();
   await expect(page).toHaveURL(/#screen=card&section=setup/);
-  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
   await page.evaluate(async () => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');

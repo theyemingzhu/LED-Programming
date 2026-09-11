@@ -54,7 +54,7 @@ async function openOnPhone(page: Page, status: Record<string, unknown> | null) {
     }, { version: 1, id: CARD_ID, firmwareVersion: '1.1.29', buildId: BUILD_ID, buildNumber: 1427 });
   }
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   return errors;
 }
 

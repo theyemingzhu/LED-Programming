@@ -1081,8 +1081,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // your Lightweaver" is a stale instruction for a card that already works.
   // Only Home's four sections carry that instruction at all — install,
   // workshop and preferences keep their own static heading regardless.
-  const heading = home && sharedJourney.setupComplete
-    ? 'Your Lightweaver'
+  // Home's heading is the card's name: the one line that answers "what is
+  // this card" before the status module beneath it says how it is. "Set up
+  // your Lightweaver" / "Your Lightweaver" were two instructions above a
+  // fact; the setup verdict now lives in the status module's header.
+  const cardName = cardLink?.card?.name || cardLink?.card?.id || cardLink?.readiness?.cardId || cardLink?.host || cardHost || '';
+  const heading = home
+    ? (cardName || 'Lightweaver card')
     : SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
   return (
     <div className="screen card-workspace-screen">
@@ -1094,7 +1099,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
                 a 34px "Your Lightweaver" was two lines of orientation before
                 a single fact. Workshop keeps its mode label. */}
             {workshop && <span className="card-workspace-kicker">Manufacturing mode</span>}
-            <h1 ref={headingRef} tabIndex={-1}>{heading}</h1>
+            <h1 ref={headingRef} tabIndex={-1} data-testid="card-workspace-heading" data-home={home ? 'true' : undefined}>{heading}</h1>
             {workshop && (
               <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Hardware</button>
             )}

@@ -181,7 +181,7 @@ test('[U1a] the ready banner stands down to secondary while the card is blacked 
 // ---------------------------------------------------------------------------
 // (b) Heading follows the journey.
 // ---------------------------------------------------------------------------
-test('[U1b] Card Home heading follows the setup journey', async ({ page }) => {
+test('[U1b] Card Home heading is the card name, and the status header carries the setup verdict', async ({ page }) => {
   const spec = cardState('factory-blank');
   await boot(page, spec, '/', seedKnownCard);
   await waitConnectedUnaided(page, 'U1b factory-blank connect');
@@ -190,13 +190,17 @@ test('[U1b] Card Home heading follows the setup journey', async ({ page }) => {
     journeyLocator(page),
     'a blank card must not read as setup-complete',
   ).toHaveAttribute('data-journey-complete', 'false');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Set up your Lightweaver');
+  // The heading names the card; the setup verdict is the status module's.
+  await expect(page.getByTestId('card-workspace-heading')).toHaveText(
+    await page.locator('[data-testid="setup-identity-row"] > *').first().locator('strong').innerText(),
+  );
+  await expect(page.getByTestId('setup-progress')).toHaveText(/^Step [1-3] of 3$/);
 
   await captureAfter(page, 'factory-blank', 1440, 900);
   await captureAfter(page, 'factory-blank', 390, 844);
 });
 
-test('[U1b] Card Home heading reads "Your Lightweaver" once setup is complete', async ({ page }) => {
+test('[U1b] Card Home heading stays the card name once setup is complete; the verdict reads Setup complete', async ({ page }) => {
   const spec = cardState('installed-match');
   await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
   await waitConnectedUnaided(page, 'U1b installed-match connect');
@@ -205,7 +209,10 @@ test('[U1b] Card Home heading reads "Your Lightweaver" once setup is complete', 
     journeyLocator(page),
     'a card holding exactly the open project must read as setup-complete',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your Lightweaver');
+  await expect(page.getByTestId('card-workspace-heading')).toHaveText(
+    await page.locator('[data-testid="setup-identity-row"] > *').first().locator('strong').innerText(),
+  );
+  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
 
   await captureAfter(page, 'installed-match', 1440, 900);
   await captureAfter(page, 'installed-match', 390, 844);

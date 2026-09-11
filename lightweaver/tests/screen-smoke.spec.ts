@@ -333,7 +333,7 @@ test('opening after a blocked popup renders the retry action directly', async ({
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await expect(page).toHaveURL(/#screen=card&section=setup/);
-  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
 });
 
@@ -376,7 +376,7 @@ test('opening with old firmware renders the card update directly', async ({ page
   await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention/);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await expect(page).toHaveURL(/#screen=card&section=setup/);
-  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Install or update firmware' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
 });
@@ -580,7 +580,7 @@ test('a paired card reporting a factory status surfaces "Needs project", not gre
 
   await status.click();
   await expect(page).toHaveURL(/#screen=card&section=setup/);
-  await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
 });
 
