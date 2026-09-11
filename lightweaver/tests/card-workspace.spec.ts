@@ -1562,7 +1562,10 @@ test('disconnected Card Home names the state and offers the exact connect task o
   await expect(page.getByTestId('setup-identity-row')).toContainText('Not connected');
   await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(4);
+  // Still to do: connect (current), lights, verify. Artwork placement is
+  // never a step.
+  await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(3);
+  await expect(page.getByTestId('setup-phase-connect')).toHaveAttribute('aria-current', 'step');
   const task = page.getByTestId('setup-active-task');
   await task.getByTestId('setup-connect-card').click();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible();

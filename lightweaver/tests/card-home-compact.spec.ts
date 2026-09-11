@@ -264,7 +264,7 @@ test('[U1d] the Installed identity value wraps instead of truncating on a phone'
   await waitConnectedUnaided(page, 'U1d connect');
   await expect(journeyLocator(page)).toBeVisible({ timeout: CONNECT_BUDGET_MS });
 
-  const installedValue = page.locator('[data-testid="setup-identity-row"] > div').nth(3).locator('strong');
+  const installedValue = page.locator('[data-testid="setup-identity-row"] > *').nth(3).locator('strong');
   await expect(installedValue).toHaveText('Same project, not yet verified');
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -298,12 +298,14 @@ test('[U1e] the phase 4 summary drops Card and Project once setup is complete', 
     'a card holding exactly the open project must read as setup-complete',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
 
-  const summary = page.locator('.lw-setup-summary');
-  await expect(summary, 'the phase 4 summary must still be showing').toBeVisible();
-  await expect(summary.locator('dt', { hasText: 'Card' })).toHaveCount(0);
-  await expect(summary.locator('dt', { hasText: 'Project' })).toHaveCount(0);
-  await expect(summary.locator('dt', { hasText: 'Outputs' })).toHaveCount(1);
-  await expect(summary.locator('dt', { hasText: 'Lights' })).toHaveCount(1);
-  await expect(summary.locator('dt', { hasText: 'Color' })).toHaveCount(1);
-  await expect(summary.locator('dt', { hasText: 'Power' })).toHaveCount(1);
+  // The facts are always on Home now, not only on the last rung, and the
+  // still-to-do list is gone once nothing is left to do.
+  await expect(page.getByTestId('setup-todo')).toHaveCount(0);
+  const facts = page.getByTestId('card-facts');
+  await expect(facts, 'the facts must be showing').toBeVisible();
+  for (const id of ['fact-outputs', 'fact-lights', 'fact-color-order', 'fact-power']) {
+    await expect(facts.getByTestId(id)).toHaveCount(1);
+  }
+  // Card and project are the status row's, stated once.
+  await expect(facts.getByText('Matrix piece', { exact: true })).toHaveCount(0);
 });

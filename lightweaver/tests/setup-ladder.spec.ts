@@ -66,29 +66,28 @@ test.beforeEach(async ({ page }) => {
   }, { cardId: CARD_ID, host: CARD_HOST, readiness: blankStatus() });
 });
 
-test('Setup presents four outcome phases with one active task', async ({ page }) => {
+test('Setup lists only what is still to do, in order, with one active task', async ({ page }) => {
+  // A blank connected card: connect is done, so it is not listed; lights is
+  // current; verify follows. Artwork placement gates nothing and is never in
+  // the list — it lives in the facts below as an optional row.
   const phases = page.locator('[data-testid^="setup-phase-"]');
-  await expect(phases).toHaveCount(4);
+  await expect(phases).toHaveCount(2);
   expect(await phases.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-phase-id'))))
-    .toEqual(['connect', 'lights', 'layout', 'verify']);
+    .toEqual(['lights', 'verify']);
   await expect(page.locator('[data-testid^="setup-phase-"][aria-current="step"]')).toHaveCount(1);
   await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('data-status', 'current');
   await expect(page.getByTestId('setup-phase-lights')).toContainText('Find and verify the lights');
-  await expect(page.getByTestId('setup-phase-layout')).toContainText('Place lights in the artwork');
   await expect(page.getByTestId('setup-phase-verify')).toContainText('Test and save to card');
-});
-
-test('every phase can be reviewed without changing truthful progress or unlocking its action', async ({ page }) => {
-  await page.getByTestId('setup-phase-layout').getByRole('button').click();
-
-  await expect(page.getByTestId('setup-progress')).toHaveText('Phase 2 of 4 · Viewing phase 3');
-  await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('aria-current', 'step');
-  await expect(page.getByTestId('setup-phase-layout')).not.toHaveAttribute('aria-current', 'step');
-  await expect(page.getByTestId('setup-active-task')).toContainText('Finish the earlier setup phases');
-
-  await page.getByTestId('setup-phase-connect').getByRole('button').click();
-  await expect(page.getByTestId('setup-progress')).toHaveText('Phase 2 of 4 · Viewing phase 1');
-  await expect(page.getByTestId('setup-active-task')).toContainText('This exact card is connected');
+  await expect(page.getByTestId('setup-phase-verify')).toHaveAttribute('data-status', 'upcoming');
+  await expect(page.getByTestId('setup-progress')).toHaveText('Step 2 of 3');
+  await expect(page.getByTestId('setup-todo')).toContainText('1 of 3 done');
+  // The only task on the page is the current phase's; an upcoming phase
+  // carries its one-line description and no controls.
+  await expect(page.getByTestId('setup-active-task')).toHaveCount(1);
+  await expect(page.getByTestId('setup-phase-verify').getByRole('button')).toHaveCount(0);
+  // Artwork placement is a fact with its own door, not a step.
+  await expect(page.getByTestId('fact-artwork')).toContainText('Optional');
+  await expect(page.getByTestId('fact-artwork').getByRole('button', { name: 'Draw' })).toBeVisible();
 });
 
 test('bottom-left attention opens the exact Setup task instead of a competing connection screen', async ({ page }) => {
@@ -115,7 +114,7 @@ test('blank card enters shared light discovery before Layout', async ({ page }) 
   await page.getByTestId('setup-lights-action').click();
   await expect(page.getByTestId('card-setup-overlay')).toBeVisible();
   await expect(page.getByTestId('strip-discovery')).toBeVisible();
-  await expect(page.getByTestId('setup-phase-layout')).toHaveAttribute('data-status', 'upcoming');
+  await expect(page.getByTestId('setup-phase-layout')).toHaveCount(0);
   await expect(page.locator('iframe')).toHaveCount(0);
 });
 

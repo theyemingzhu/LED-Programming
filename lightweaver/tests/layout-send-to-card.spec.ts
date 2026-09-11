@@ -293,12 +293,8 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
   await expect(page).not.toHaveURL(/#screen=pattern$/);
   const verifyPhase = page.getByTestId('setup-phase-verify');
   await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeVisible({ timeout: 10000 });
-  await page.getByTestId('setup-phase-lights').locator('.lw-setup-phase-head').click();
-  await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeHidden();
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
-  await verifyPhase.locator('.lw-setup-phase-head').click();
-  await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
-  await expect(page.getByTestId('setup-progress')).toContainText('Phase 4');
+  await expect(page.getByTestId('setup-progress')).toContainText('Step 3 of 3');
   await expect(page.getByTestId('setup-identity-row')).toContainText('Testing lights');
   await expect(page.getByText(/Recover lights is the check to run first/)).toHaveCount(0);
   await verifyPhase.getByRole('button', { name: 'The lights look correct' }).click();

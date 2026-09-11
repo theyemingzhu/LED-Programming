@@ -20,7 +20,8 @@ test('install-project shows LED check on Card Home, not firmware flash', async (
 
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Find your connected card/i })).toHaveCount(0);
-  await expect(page.getByText('Lightweaver hardware')).toBeVisible();
+  // Home carries no kicker; the status module is its name-plate.
+  await expect(page.getByText('Lightweaver hardware')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Set up your Lightweaver' })).toBeVisible();
 
   // The flow is on Home. Hardware is a fold, not a second install page.

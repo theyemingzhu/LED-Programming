@@ -127,6 +127,7 @@ function CardHomePanels({
   suppressMatchingProject = false,
   yieldPrimary = false,
   wiringTestActive = false,
+  blackedOut = false,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
@@ -724,7 +725,12 @@ function CardHomePanels({
           )}
           <div className="card-overview-actions">
             <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void verifyHardware()}>Verify hardware</button>
-            <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void recoverLights()}>Recover lights</button>
+            {/* One Recover lights per page: while the lights-off notice at
+                the top of Home is offering it as the primary, this panel
+                does not print a second copy of the same request. */}
+            {!blackedOut && (
+              <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void recoverLights()}>Recover lights</button>
+            )}
             {benchProject && (
               <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void clearTemporarySetup()}>Clear temporary setup</button>
             )}
@@ -885,6 +891,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // a render late through the now-removed `onPrimaryActionChange` callback.
   const commissioningFlow = useCommissioningFlow();
   const ladderOwnsPrimary = deriveLadderOwnsPrimary(sharedJourney, commissioningFlow);
+  // Once setup is complete the ready banner's "Open Patterns" is the page's
+  // one primary, so the install control and the matching-project panel
+  // render as secondary — the card already holds this project, and two
+  // orange buttons on a finished card asked the owner to arbitrate.
+  const homeOwnsPrimary = ladderOwnsPrimary || sharedJourney.setupComplete === true;
 
   // F16: card lw-b0fe81f61b44 held the open project, reported "Connected"
   // and a ready runtime, yet /api/zones held blackout:true and the strip was
@@ -1004,14 +1015,16 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
           connected={connected}
           cardHost={cardHost}
           yieldPrimary={ladderOwnsPrimary}
+          demote={sharedJourney.setupComplete === true}
           onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
         />
       )}
       <CardHomePanels
         {...cardProps}
         suppressMatchingProject={setupLoadOffer}
-        yieldPrimary={ladderOwnsPrimary}
+        yieldPrimary={homeOwnsPrimary}
         wiringTestActive={wiringTestActive}
+        blackedOut={cardBlackedOut}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onOpenSection={onOpenSection}
         replaceProject={replaceProject}
@@ -1076,7 +1089,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       <div className="card-workspace">
         <main className={`card-workspace-body${home ? ' lw-setup-body' : ''}`}>
           <header className="card-workspace-header">
-            <span className="card-workspace-kicker">{workshop ? 'Manufacturing mode' : 'Lightweaver hardware'}</span>
+            {/* Home has no kicker: the status module beneath the heading is
+                the card's own name-plate now, and "Lightweaver hardware" above
+                a 34px "Your Lightweaver" was two lines of orientation before
+                a single fact. Workshop keeps its mode label. */}
+            {workshop && <span className="card-workspace-kicker">Manufacturing mode</span>}
             <h1 ref={headingRef} tabIndex={-1}>{heading}</h1>
             {workshop && (
               <button type="button" className="btn" onClick={() => onOpenSection('overview')}>Back to Hardware</button>

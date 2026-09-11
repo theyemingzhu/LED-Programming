@@ -132,7 +132,8 @@ test('typed LED count lights the strip and tells the owner to look', async ({ pa
   expect(countWrites[0].led.outputs).toEqual([expect.objectContaining({ pin: 18, pixels: 41 })]);
   expect(recoveryWrites).toHaveLength(1);
   expect(recoveryWrites[0]).toEqual(expect.objectContaining({ patternId: 'warm-white' }));
-  await page.getByTestId('setup-phase-lights').locator('.lw-setup-phase-head').click();
+  // The status stays on the current row; there is no other phase to browse
+  // to and back from any more.
   await expect(page.getByTestId('setup-led-count-status')).toBeVisible();
   await expect(page.getByTestId('setup-led-count-status')).toHaveCount(1);
 });

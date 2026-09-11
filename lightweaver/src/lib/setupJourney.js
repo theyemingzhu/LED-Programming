@@ -5,6 +5,20 @@ import { isUncountedHeadroomCount } from './discoveryCommit.js';
 // blockers inside connection, never durable numbered work of their own.
 export const SETUP_PHASE_IDS = Object.freeze(['connect', 'lights', 'layout', 'verify']);
 
+// The three of those that gate the card. Placing lights in the artwork is a
+// Studio-side design fact: the install control never reads `project.layout`,
+// the install payload never carries it, and a pattern preview needs only a
+// connected, non-blank card (surveyed 2026-09-11). So `layout` is reported as
+// a phase with its own status, but it is never the current phase, never
+// blocks `verify`, and never appears in what is still to do.
+export const SETUP_CHAIN_IDS = Object.freeze(['connect', 'lights', 'verify']);
+
+// The phases that still stand between this card and a finished install, in
+// the order they have to happen. Empty once setup is complete.
+export function missingPhases(journey) {
+  return (journey?.phases || []).filter(phase => SETUP_CHAIN_IDS.includes(phase.id) && phase.status !== 'done');
+}
+
 // Written when Setup reports completion. A bare URL used to read this and
 // skip the card; it now always lands on Card Home so the owner sees the
 // connection first. The key is still written so existing browsers keep a
@@ -272,14 +286,26 @@ function nextVerificationAction(verification) {
 }
 
 function phasesFor(currentPhaseId, lightsProgress, currentLayoutProgress, complete = false) {
-  const currentIndex = complete ? SETUP_PHASE_IDS.length : SETUP_PHASE_IDS.indexOf(currentPhaseId);
-  return SETUP_PHASE_IDS.map((id, index) => ({
-    id,
-    ...PHASE_COPY[id],
-    status: complete || index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'upcoming',
-    ...(id === 'lights' ? { progress: lightsProgress } : {}),
-    ...(id === 'layout' ? { progress: currentLayoutProgress } : {}),
-  }));
+  const currentIndex = complete ? SETUP_CHAIN_IDS.length : SETUP_CHAIN_IDS.indexOf(currentPhaseId);
+  return SETUP_PHASE_IDS.map(id => {
+    // Artwork placement stands outside the chain: done when drawn, otherwise
+    // `optional` — never current, never upcoming, never in the way.
+    if (id === 'layout') {
+      return {
+        id,
+        ...PHASE_COPY[id],
+        status: layoutComplete(currentLayoutProgress) ? 'done' : 'optional',
+        progress: currentLayoutProgress,
+      };
+    }
+    const index = SETUP_CHAIN_IDS.indexOf(id);
+    return {
+      id,
+      ...PHASE_COPY[id],
+      status: complete || index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'upcoming',
+      ...(id === 'lights' ? { progress: lightsProgress } : {}),
+    };
+  });
 }
 
 export function deriveSetupJourney({
@@ -389,9 +415,6 @@ export function deriveSetupJourney({
   } else if (!lightsComplete(progress, resolution)) {
     currentPhaseId = 'lights';
     nextAction = { id: 'discover-lights', phaseId: 'lights' };
-  } else if (!layoutComplete(currentLayoutProgress)) {
-    currentPhaseId = 'layout';
-    nextAction = { id: 'place-lights', phaseId: 'layout' };
   } else if (!exactVerificationComplete(verification)) {
     currentPhaseId = 'verify';
     nextAction = nextVerificationAction(verification);
