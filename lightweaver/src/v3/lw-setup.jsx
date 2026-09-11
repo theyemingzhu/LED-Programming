@@ -23,8 +23,6 @@ import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
-import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
-import { CardFacts } from '../components/card/CardFacts.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
@@ -123,6 +121,8 @@ export function SetupScreen({
   browserProjects = [],
   replaceProject,
   firmwareStatus = null,
+  onRenameProject = null,
+  installDoor = null,
   onLoadOfferChange,
   installAction = null,
 }) {
@@ -145,6 +145,21 @@ export function SetupScreen({
   const [adoptionNotice, setAdoptionNotice] = useState('');
   const [pairState, setPairState] = useState({ busy: false, message: '' });
   const [ledCountDraft, setLedCountDraft] = useState('');
+  // Rename the project right in the status row: click the name, type, Enter
+  // or blur commits through the same path as the top bar (setProjectName),
+  // Escape cancels. The blur after Enter/Escape must not double-commit.
+  const [nameDraft, setNameDraft] = useState(null);
+  const nameSettledRef = useRef(false);
+  const projectDisplayName = currentProject?.name || currentProject?.id || 'Untitled project';
+  const startRename = () => { nameSettledRef.current = false; setNameDraft(projectDisplayName); };
+  const commitRename = () => {
+    if (nameSettledRef.current) return;
+    nameSettledRef.current = true;
+    const next = (nameDraft || '').trim();
+    setNameDraft(null);
+    if (next && next !== projectDisplayName) onRenameProject?.(next);
+  };
+  const cancelRename = () => { nameSettledRef.current = true; setNameDraft(null); };
   const [ledCountState, setLedCountState] = useState({ busy: false, message: '' });
   const importRef = useRef(null);
   const resolveInputsRef = useRef({ currentProject, activeCloudProjects, browserProjects });
@@ -863,8 +878,6 @@ export function SetupScreen({
   const identityStatus = wiringTestActive
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
-  const firmwareBehind = firmwareStatus?.actionable === true;
-  const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
   const renderActiveTask = phase => {
@@ -1121,28 +1134,98 @@ export function SetupScreen({
           Studio resumes whatever is still unfinished…"). Phase 1 is that
           sentence, with the button attached. Explaining a step directly above
           the step is the same repetition this screen was compressed to end. */}
-      {/* Status: where this card is. One module, four readouts, the setup
-          verdict in its header. The Connection cell is the door to the
-          connection centre; the other three are read-only facts here. */}
-      <section className="lw-mod lw-mod-status" aria-label="Card status">
-        <div className="lw-mod-head">
-          <span className={`lw-led${exactTransport ? ' is-live' : ''}`} aria-hidden="true" />
-          <span className="t">Status</span>
-          <span className="m" data-testid="setup-progress">
-            {journey.setupComplete
-              ? 'Setup complete'
-              : `Step ${Math.max(1, SETUP_CHAIN_IDS.indexOf(journey.currentPhaseId) + 1)} of ${SETUP_CHAIN_IDS.length}`}
-          </span>
-        </div>
-        <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
-          <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
-          <button type="button" className="lw-setup-identity-door" data-testid="setup-identity-connection" onClick={() => onOpenConnectionCenter?.()}>
-            <span>Connection</span><strong>{identityStatus}</strong>
-          </button>
-          <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
-          <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
-        </section>
-      </section>
+      {/* Status: where this card is, and its doors. Card, Connection (a
+          button to the connection centre), Project (renamed in place; its
+          hint is the install relationship), Lights (count, pins, colour,
+          placement in one breath), then Open Patterns, Open Layout and the
+          install control. The ready banner this absorbs used to say the same
+          things again in its own box beneath. */}
+      {(() => {
+        const cardReady = matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen;
+        const installedText = installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true);
+        const pins = evidence.outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
+        const led = currentProject?.devices?.standaloneController?.led || {};
+        const colorConfirmed = led.colorOrderConfirmed === true && Boolean(led.colorOrder);
+        const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
+        const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
+        const lightsValue = evidence.count > 0
+          ? `${evidence.count} on ${pins.length ? pins.map(pin => `GPIO ${pin}`).join(', ') : `${evidence.outputs.length} output${evidence.outputs.length === 1 ? '' : 's'}`}`
+          : 'Not counted yet';
+        const lightsHint = evidence.count > 0
+          ? `${colorConfirmed ? `${led.colorOrder} confirmed` : 'Color order not confirmed'} · ${drawn ? `${strips.length} strip${strips.length === 1 ? '' : 's'} drawn` : 'not drawn'}`
+          : 'Find my strips counts them';
+        return (
+          <section className="lw-mod lw-mod-status" aria-label="Card status">
+            <div className="lw-mod-head">
+              <span className={`lw-led${exactTransport ? ' is-live' : ''}`} aria-hidden="true" />
+              <span className="t">Status</span>
+              <span className="m" data-testid="setup-progress">
+                {journey.setupComplete
+                  ? 'Setup complete'
+                  : `Step ${Math.max(1, SETUP_CHAIN_IDS.indexOf(journey.currentPhaseId) + 1)} of ${SETUP_CHAIN_IDS.length}`}
+              </span>
+            </div>
+            <div className="lw-status-grid">
+              <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
+                <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
+                <button type="button" className="lw-setup-identity-door" data-testid="setup-identity-connection" onClick={() => onOpenConnectionCenter?.()}>
+                  <span>Connection</span><strong>{identityStatus}</strong>
+                </button>
+                <div className="lw-identity-project">
+                  <span>Project</span>
+                  {nameDraft !== null ? (
+                    <input
+                      className="lw-identity-rename"
+                      data-testid="setup-project-name-input"
+                      aria-label="Project name"
+                      value={nameDraft}
+                      autoFocus
+                      onFocus={event => event.target.select()}
+                      onChange={event => setNameDraft(event.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') { event.preventDefault(); commitRename(); }
+                        else if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
+                      }}
+                    />
+                  ) : (
+                    <button type="button" className="lw-identity-name" data-testid="setup-project-name-edit" title="Rename project" onClick={startRename} disabled={!onRenameProject}>
+                      <strong>{projectDisplayName}</strong><em>Rename</em>
+                    </button>
+                  )}
+                  <small data-testid="setup-identity-installed">{installedText}</small>
+                </div>
+                <div className="lw-identity-lights" data-testid="setup-identity-lights"><span>Lights</span><strong>{lightsValue}</strong><small>{lightsHint}</small></div>
+              </section>
+              {/* No Patterns/Layout doors on a blank card: until the lights are
+                  counted there is nothing to preview and nothing to place, and
+                  Still to do owns the page. The install control decides for
+                  itself whether it has anything to show (CardInstallAction);
+                  an empty door slot collapses (CSS :empty). */}
+              <div className="lw-setup-doors" data-testid={cardReady ? 'setup-card-ready' : 'setup-doors'} aria-label="Card doors">
+                {(journey.setupComplete || evidence.count > 0) && (<>
+                {/* One primary per page: Open Patterns is it only on a finished,
+                    lit card. Before install it is a preview door (the card
+                    plays a pattern it will not keep), and while the card is
+                    dark the lights-off notice's Recover lights owns the page. */}
+                <button
+                  type="button"
+                  className={journey.setupComplete && !journey.blackout ? 'btn primary' : 'btn'}
+                  data-testid="setup-open-patterns"
+                  disabled={!exactTransport}
+                  onClick={openPatterns}
+                >
+                  {journey.setupComplete ? returnDestination.label : 'Patterns'}
+                  {!journey.setupComplete && <small className="lw-door-tag">preview</small>}
+                </button>
+                <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
+                </>)}
+                {installDoor}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
         {ledCountState.message && (
@@ -1158,60 +1241,9 @@ export function SetupScreen({
         {!adoptionError && adoptionNotice && (
           <p role="status" data-testid="setup-adoption-notice">{adoptionNotice}</p>
         )}
-        {resolution.kind === 'bench' && (
-          <section className="card-support-panel lw-setup-banner">
-            <h2>Temporary light setup detected</h2>
-            <p>This is discovery evidence, not a finished installation. Continue through artwork placement and the visible final test.</p>
-          </section>
-        )}
-        {/* "Already set up" is a claim about a FINISHED installation, so it
-            stands down while the card is still holding the temporary
-            light-finding setup. It used to print directly above the
-            "discovery evidence, not a finished installation" banner and an
-            unfinished phase ladder — three verdicts, one screen. */}
-        {/* And not before the card is actually paired. This banner offers
-            "Open Patterns" — a live card action — while phase 1 was still
-            asking the owner to pair, so the screen carried two headline
-            buttons and two different accounts of where the owner was. */}
-        {matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen && (
-          <section
-            className="card-support-panel lw-setup-banner"
-            data-testid="setup-card-ready"
-            aria-label="Card ready"
-          >
-            {/* The identity row directly above already states the connection
-                and whether the open project is the installed one. Repeating
-                that here as a heading plus a paragraph was two more tellings
-                of one fact, so the healthy card keeps only its doors. Old
-                firmware is a DIFFERENT fact the row does not carry, so that
-                case keeps its sentence and its Update action. */}
-            {/* Only a REQUIRED update speaks here: it blocks relying on the
-                card. A merely newer release is a fact, and the Card release
-                row below already states it with its own Update card button;
-                printing it here too was the same sentence twice on one
-                screen. */}
-            {firmwareBannerCopy?.required && (
-              <>
-                <h2>{firmwareBannerCopy.heading}</h2>
-                <p>{firmwareBannerCopy.body}</p>
-              </>
-            )}
-            <div className="lw-setup-banner-actions">
-              {/* Same one-primary rule as the rest of Card Home. This banner
-                  can render while the ladder still has an active task (an
-                  exact project match during a `confirming` lifecycle, for
-                  one), and two primaries then ask the owner to arbitrate.
-                  Also stands down while the card is blacked out: the F16
-                  banner's "Recover lights" is the page's one primary then,
-                  so this button styles as secondary until the card is lit. */}
-              <button type="button" className={journey.setupComplete && !journey.blackout ? 'btn primary' : 'btn'} data-testid="setup-open-patterns" onClick={openPatterns}>{journey.setupComplete ? returnDestination.label : 'Open Patterns'}</button>
-              <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
-              {firmwareBannerCopy?.required && (
-                <button type="button" className="btn" data-testid="setup-update-card-required" onClick={() => go('#screen=card&section=install')}>Update card</button>
-              )}
-            </div>
-          </section>
-        )}
+        {/* The temporary bench setup is named by the status row's Project cell
+            ("Temporary setup — not installed") and by the still-to-do list;
+            a banner saying it a third time was cut with the rest. */}
         {savedMatchLoadOffer && (
           <section className="card-support-panel lw-setup-banner">
             <h2>A saved project matches this exact card</h2>
@@ -1295,16 +1327,6 @@ export function SetupScreen({
         );
       })()}
 
-      {/* The facts, always, each with its one-click editor. */}
-      <CardFacts
-        currentProject={currentProject}
-        evidence={evidence}
-        cardLink={cardLink}
-        cardState={cardState}
-        firmwareStatus={firmwareStatus}
-        installedLabel={installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}
-        go={go}
-      />
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />
     </div>

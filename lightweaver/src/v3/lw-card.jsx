@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AutomaticInstallScreen, TechnicianFlashScreen } from './lw-flash.jsx';
 import { InstallerScreen } from './lw-installer.jsx';
+import { CardFacts } from '../components/card/CardFacts.jsx';
 import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.jsx';
 import { ProductionScreen } from './lw-production.jsx';
@@ -128,6 +129,7 @@ function CardHomePanels({
   yieldPrimary = false,
   wiringTestActive = false,
   blackedOut = false,
+  firmwareStatus = null,
 }) {
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
@@ -708,39 +710,30 @@ function CardHomePanels({
           names Recover lights as the remedy, so a card that is answering
           without a ready runtime, or is holding the temporary setup, still
           finds this section open with no click. */}
-      {(ready || verifiedTransport) && (
-        <details
-          className="card-support-panel card-checks-panel"
-          aria-label="Hardware checks and recovery"
-          data-testid="card-checks-recovery"
-          open={(!ready && !wiringTestActive) || benchProject}
-        >
-          <summary className="card-page-fold-summary">Checks &amp; recovery</summary>
-          <p>These read the card and report back what it says. Nothing here is recorded as passing a light or colour test until you say you saw it.</p>
-          {!ready && !wiringTestActive && (
-            <p role="status">
-              This card is answering but is not reporting a ready runtime. Recover lights is
-              the check to run first — the card accepts it in this state.
-            </p>
-          )}
-          <div className="card-overview-actions">
-            <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void verifyHardware()}>Verify hardware</button>
-            {/* One Recover lights per page: while the lights-off notice at
-                the top of Home is offering it as the primary, this panel
-                does not print a second copy of the same request. */}
-            {!blackedOut && (
-              <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void recoverLights()}>Recover lights</button>
-            )}
-            {benchProject && (
-              <button type="button" className="btn" disabled={hardwareActionState.status === 'loading'} onClick={() => void clearTemporarySetup()}>Clear temporary setup</button>
-            )}
-            <button type="button" className="btn" onClick={() => { window.location.hash = '#screen=card&section=settings&tool=color-order'; }}>Color-order test</button>
-          </div>
-          {hardwareActionState.message && (
-            <p role={hardwareActionState.status === 'error' ? 'alert' : 'status'}>{hardwareActionState.message}</p>
-          )}
-        </details>
-      )}
+      {/* The facts, always, each with its one-click editor — and Health as a
+          row among them: Verify hardware and Recover lights (and Clear
+          temporary setup on a bench card). Gated on being able to TALK to
+          the card, not on the card being well: the Patterns gate routes an
+          unwell card here and names Recover lights as the remedy. */}
+      <CardFacts
+        currentProject={currentProject}
+        cardLink={cardLink}
+        firmwareStatus={firmwareStatus}
+        go={hash => { window.location.hash = hash; }}
+        health={(ready || verifiedTransport) ? {
+          busy: hardwareActionState.status === 'loading',
+          note: !ready && !wiringTestActive
+            ? 'This card is answering but is not reporting a ready runtime. Recover lights is the check to run first — the card accepts it in this state.'
+            : '',
+          verify: () => void verifyHardware(),
+          // One Recover lights per page: while the lights-off notice at the
+          // top of Home is offering it as the primary, this row does not.
+          recover: blackedOut ? null : () => void recoverLights(),
+          clear: benchProject ? () => void clearTemporarySetup() : null,
+          message: hardwareActionState.message || '',
+          messageRole: hardwareActionState.status === 'error' ? 'alert' : 'status',
+        } : null}
+      />
     </div>
   );
 }
@@ -863,7 +856,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -1001,6 +994,20 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       <SetupScreen
         {...cardProps}
         onOpenConnectionCenter={onOpenConnectionCenter}
+        onRenameProject={onRenameProject}
+        installDoor={!installIntentOpen ? (
+          // The one project writer, as the status row's third door. Hidden
+          // while an install intent is in the URL: the verify row's slot owns
+          // it then (installAction above), and two mounts would push twice.
+          <CardInstallAction
+            compact
+            connected={connected}
+            cardHost={cardHost}
+            yieldPrimary={ladderOwnsPrimary}
+            demote={sharedJourney.setupComplete === true}
+            onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
+          />
+        ) : null}
         currentProject={currentProject}
         activeCloudProjects={activeCloudProjects}
         browserProjects={browserProjects}
@@ -1010,17 +1017,9 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onLoadOfferChange={setSetupLoadOffer}
         installAction={installAction}
       />
-      {!installIntentOpen && (
-        <CardInstallAction
-          connected={connected}
-          cardHost={cardHost}
-          yieldPrimary={ladderOwnsPrimary}
-          demote={sharedJourney.setupComplete === true}
-          onEditInWire={() => { window.location.hash = '#screen=layout&mode=draw'; }}
-        />
-      )}
       <CardHomePanels
         {...cardProps}
+        firmwareStatus={firmwareStatus}
         suppressMatchingProject={setupLoadOffer}
         yieldPrimary={homeOwnsPrimary}
         wiringTestActive={wiringTestActive}
@@ -1042,24 +1041,27 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         onMatchedProjectVerified={onMatchedProjectVerified}
         onStartNewProject={onStartNewProject}
       />
-      <CardPageFold
-        testId="card-hardware-fold"
-        summary="Hardware"
-        open={route.section === 'settings'}
-        onOpen={() => onOpenSection('settings')}
-        onClose={() => onOpenSection('setup')}
-      >
-        <SettingsScreen embedded mode="card" {...cardProps} />
-      </CardPageFold>
-      <CardPageFold
-        testId="card-advanced-fold"
-        summary="Advanced"
-        open={route.section === 'support'}
-        onOpen={() => onOpenSection('support')}
-        onClose={() => onOpenSection('setup')}
-      >
-        <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />
-      </CardPageFold>
+      {/* Two folds on one row; an open fold takes the whole row. */}
+      <div className="card-folds">
+        <CardPageFold
+          testId="card-hardware-fold"
+          summary="Hardware"
+          open={route.section === 'settings'}
+          onOpen={() => onOpenSection('settings')}
+          onClose={() => onOpenSection('setup')}
+        >
+          <SettingsScreen embedded mode="card" {...cardProps} />
+        </CardPageFold>
+        <CardPageFold
+          testId="card-advanced-fold"
+          summary="Advanced"
+          open={route.section === 'support'}
+          onOpen={() => onOpenSection('support')}
+          onClose={() => onOpenSection('setup')}
+        >
+          <CardSupport initialTool={route.supportTool} cardProps={cardProps} onOpenConnectionCenter={onOpenConnectionCenter} onOpenSection={onOpenSection} />
+        </CardPageFold>
+      </div>
     </>
   );
   else if (route.section === 'install') content = (

@@ -28,6 +28,9 @@ export function CardInstallAction({
   // Render, but as a secondary control: the page's primary lives elsewhere
   // (the ready banner's Open Patterns on a finished card).
   demote = false,
+  // In the status row's door slot: no heading, no module chrome — the
+  // control itself is the door. Light-test controls still render beneath it.
+  compact = false,
 }) {
   // `cta` is the class every headline button in this component uses. Kept as
   // one binding so a future branch cannot forget the rule.
@@ -138,11 +141,12 @@ export function CardInstallAction({
   if (yieldPrimary && !installTaskOpen) return null;
 
   return (
-    <WireHoverDescription className="lww-flow" data-testid="commissioning-step" aria-label="Check and install on this card">
+    <WireHoverDescription className={compact ? 'lww-flow is-compact' : 'lww-flow'} data-testid="commissioning-step" aria-label="Check and install on this card">
       {/* This surface used to begin with a bare button sitting directly under
           the ladder's last phase description, so "Start LED check" read as
-          that phase's button and was not. It is its own thing and says so. */}
-      <h2 className="lww-flow-heading">Check and install on this card</h2>
+          that phase's button and was not. It is its own thing and says so.
+          In the status row it is one door among three and needs no heading. */}
+      {!compact && <h2 className="lww-flow-heading">Check and install on this card</h2>}
       {cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>
