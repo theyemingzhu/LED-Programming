@@ -96,7 +96,13 @@ test('the project is renamed right in the status row', async ({ page }) => {
   // The same rename path as the top bar: both now say the new name, and it
   // is what gets saved.
   await expect(page.getByTestId('setup-project-name-edit')).toContainText('Gallery north wall');
+  // The top bar carries no project crumb on the Card screen (the status row
+  // is the project there); on Layout it shows the same name.
+  await expect(page.getByTestId('project-name-edit')).toHaveCount(0);
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('project-name-edit')).toHaveText('Gallery north wall');
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Gallery north wall', { timeout: 20000 });
   await expect.poll(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'))).name, { timeout: 10000 }).toBe('Gallery north wall');
   // Escape cancels without renaming.
   await page.getByTestId('setup-project-name-edit').click();
