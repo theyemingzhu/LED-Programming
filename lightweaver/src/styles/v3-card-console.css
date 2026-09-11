@@ -189,7 +189,11 @@
    they hold the instrument. Capped at 720 the Settings modules can only ever
    stack in one column, which is why the panel read as a narrow strip. Give
    the folds the page's full column so they can lay out in two. */
-.card-workspace-screen .card-workspace-body.lw-setup-body > .card-page-fold {
+.card-workspace-screen .card-workspace-body.lw-setup-body > .card-page-fold,
+.card-workspace-screen .card-workspace-body.lw-setup-body > .lw-setup-journey,
+.card-workspace-screen .card-workspace-body.lw-setup-body > .card-workspace-header,
+.card-workspace-screen .card-workspace-body.lw-setup-body > .card-overview,
+.card-workspace-screen .card-workspace-body.lw-setup-body > .lww-flow {
   width: min(1180px, 100%);
 }
 
@@ -249,3 +253,192 @@
 /* The Settings panel already carries this language and defines its own
    tokens; it must not inherit the page's button sizing on top of its own. */
 .card-workspace-screen .set .btn { box-shadow: var(--lw-raise), var(--lw-lift); }
+
+/* ── Card Home as modules: status, still to do, facts ────────
+   The same vocabulary as the Hardware fold's SettingsScreen (set-card):
+   a header bar that carries the LED and a mono kicker, rows with the label
+   left and the control right, readouts in an inset well. Declared here,
+   not shared with .set, so Card Home's rows do not inherit the settings
+   grid's fixed control column. */
+
+.card-workspace-screen .lw-mod {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lw-mod);
+  overflow: hidden;
+  margin-top: 18px;
+}
+.card-workspace-screen .lw-mod-status { margin-top: 0; }
+.card-workspace-screen .lw-mod-todo { border-color: color-mix(in oklch, var(--accent) 45%, var(--border-soft)); }
+.card-workspace-screen .lw-mod-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 18px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border-soft);
+}
+.card-workspace-screen .lw-mod-head .t {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-hi);
+}
+.card-workspace-screen .lw-mod-head .m {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+.card-workspace-screen .lw-led {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.card-workspace-screen .lw-led.is-live {
+  background: var(--layer-1);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--layer-1) 80%, transparent);
+}
+.card-workspace-screen .lw-led.is-warn {
+  background: var(--warn);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--warn) 80%, transparent);
+}
+
+/* the identity strip lives inside the status module now */
+.card-workspace-screen .lw-mod-status .lw-setup-identity {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.card-workspace-screen .lw-mod-status .lw-setup-identity > div,
+.card-workspace-screen .lw-mod-status .lw-setup-identity > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 14px 18px;
+  min-width: 0;
+  background: var(--bg-panel);
+  border: 0;
+  border-right: 1px solid var(--border-soft);
+  border-radius: 0;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+.card-workspace-screen .lw-mod-status .lw-setup-identity > :last-child { border-right: 0; }
+.card-workspace-screen .lw-mod-status .lw-setup-identity > button { cursor: pointer; }
+.card-workspace-screen .lw-mod-status .lw-setup-identity > button:hover { background: var(--bg-elev); }
+.card-workspace-screen .lw-mod-status .lw-setup-identity > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.card-workspace-screen .lw-mod-status .lw-setup-identity strong { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+
+/* still to do: numbered rows, the current one carrying its task */
+.card-workspace-screen .lw-mod-todo .lw-setup-phase-list { display: block; margin: 0; padding: 0; list-style: none; }
+.card-workspace-screen .lw-mod-todo .lw-setup-phase {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--border-hair);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+.card-workspace-screen .lw-mod-todo .lw-setup-phase:last-child { border-bottom: 0; }
+.card-workspace-screen .lw-mod-todo .lw-setup-phase::after { display: none; }
+.card-workspace-screen .lw-mod-todo .lw-setup-phase.is-current {
+  background: linear-gradient(90deg, color-mix(in oklch, var(--accent) 10%, transparent), transparent 60%);
+}
+.card-workspace-screen .lw-mod-todo .lw-setup-phase-marker {
+  width: auto;
+  height: auto;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-lo);
+}
+.card-workspace-screen .lw-mod-todo .lw-setup-phase.is-current .lw-setup-phase-marker,
+.card-workspace-screen .lw-mod-todo .lw-setup-phase.is-done .lw-setup-phase-marker {
+  width: auto;
+  height: auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--layer-1);
+}
+.card-workspace-screen .lw-mod-todo .lw-setup-phase-body { min-width: 0; }
+.card-workspace-screen .lw-mod-todo .lw-setup-phase-body h2 { margin: 0; font-size: 13.5px; font-weight: 500; letter-spacing: -0.005em; }
+.card-workspace-screen .lw-mod-todo .lw-setup-phase.is-upcoming .lw-setup-phase-body h2 { color: var(--text-mid); }
+.card-workspace-screen .lw-mod-todo .lw-setup-phase-body > p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-lo); max-width: 62ch; }
+.card-workspace-screen .lw-mod-todo .lw-setup-task { padding-left: 0; }
+
+/* facts: two modules side by side */
+.card-workspace-screen .lw-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.card-workspace-screen .lw-facts .lw-mod { margin-top: 0; }
+.card-workspace-screen .lw-facts { margin-top: 18px; }
+.card-workspace-screen .lw-fact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.card-workspace-screen .lw-fact:last-child { border-bottom: 0; }
+.card-workspace-screen .lw-fact-k { min-width: 0; }
+.card-workspace-screen .lw-fact-k .kk { display: block; font-size: 13.5px; font-weight: 500; }
+.card-workspace-screen .lw-fact-k .hh { display: block; margin-top: 3px; max-width: 46ch; font-size: 12.5px; line-height: 1.5; color: var(--text-lo); }
+.card-workspace-screen .lw-fact-v { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.card-workspace-screen .lw-fact-v .btn { min-height: 36px; padding: 0 14px; border-radius: 6px; font-weight: 600; white-space: nowrap; }
+.card-workspace-screen .lw-rv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 74px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 6px;
+  background: var(--bg-canvas);
+  box-shadow: var(--lw-inset);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--layer-1);
+  white-space: nowrap;
+}
+.card-workspace-screen .lw-rv.is-dim { color: var(--text-lo); font-weight: 500; }
+
+/* the heading: one line, the size of a section title, not a poster */
+.card-workspace-screen .card-workspace-header h1 { font-size: 20px; letter-spacing: -0.015em; }
+
+@media (max-width: 760px) {
+  .card-workspace-screen .lw-facts { grid-template-columns: minmax(0, 1fr); }
+  .card-workspace-screen .lw-mod-status .lw-setup-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-workspace-screen .lw-mod-status .lw-setup-identity > :nth-child(2) { border-right: 0; }
+  .card-workspace-screen .lw-mod-status .lw-setup-identity > :nth-child(-n + 2) { border-bottom: 1px solid var(--border-soft); }
+  .card-workspace-screen .lw-fact { grid-template-columns: minmax(0, 1fr); }
+  .card-workspace-screen .lw-fact-v { justify-content: flex-start; flex-wrap: wrap; }
+}

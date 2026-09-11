@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import * as setupJourney from './setupJourney.js';
 
-const { deriveSetupJourney, isSetupComplete, SETUP_PHASE_IDS } = setupJourney;
+const { deriveSetupJourney, isSetupComplete, missingPhases, SETUP_PHASE_IDS } = setupJourney;
 
 const FACTORY_STATUS = {
   app: 'Lightweaver',
@@ -119,7 +119,8 @@ test('a factory blank exact card goes to light discovery before Layout', () => {
 
   assert.equal(phases.connect.status, 'done');
   assert.equal(phases.lights.status, 'current');
-  assert.equal(phases.layout.status, 'upcoming');
+  // Artwork placement is outside the chain: never upcoming, only optional or done.
+  assert.equal(phases.layout.status, 'optional');
   assert.equal(journey.currentPhaseId, 'lights');
   assert.equal(journey.nextAction.id, 'discover-lights');
 });
@@ -156,7 +157,9 @@ test('temporary bench configuration is not setup completion, and does not pin th
 
   assert.equal(isSetupComplete(journey), false);
   assert.equal(phaseMap(journey).lights.status, 'done');
-  assert.equal(journey.currentPhaseId, 'layout');
+  // Lights done on a bench card goes straight to test-and-save; drawing the
+  // artwork was never a precondition of writing the card.
+  assert.equal(journey.currentPhaseId, 'verify');
 });
 
 // Every phase satisfied EXCEPT that the card still holds the temporary setup:
@@ -221,17 +224,35 @@ test('a starter project count does not hide the Setup LED count field on a 256-h
   }), true);
 });
 
-test('existing discovery evidence unlocks Layout without a second direction store', () => {
+test('existing discovery evidence goes straight to test-and-save; artwork placement stays optional', () => {
   const journey = deriveSetupJourney({
     cardLink: connectedCard(READY_STATUS),
     project: discoveredProject(),
   });
 
   assert.equal(phaseMap(journey).lights.status, 'done');
-  assert.equal(phaseMap(journey).layout.status, 'current');
-  assert.equal(journey.currentPhaseId, 'layout');
-  assert.equal(journey.nextAction.id, 'place-lights');
-  assert.equal(journey.taskId, 'place-lights');
+  assert.equal(phaseMap(journey).layout.status, 'optional');
+  assert.equal(journey.currentPhaseId, 'verify');
+  assert.equal(journey.nextAction.id, 'test-and-save');
+  assert.equal(journey.taskId, 'test-and-save');
+  assert.deepEqual(missingPhases(journey).map(phase => phase.id), ['verify']);
+});
+
+test('what is still to do never lists artwork placement, and is empty once installed', () => {
+  const blank = deriveSetupJourney({
+    cardLink: { ...connectedCard(), cardBlank: true },
+    cardLifecycle: { state: 'setup-required', setupTaskId: 'install-project' },
+  });
+  assert.deepEqual(missingPhases(blank).map(phase => phase.id), ['lights', 'verify']);
+
+  const installed = deriveSetupJourney({
+    cardLink: connectedCard(READY_STATUS),
+    cardLifecycle: { state: 'ready' },
+    project: discoveredProject(),
+    resolution: { matchesCurrentProject: true, playbackAccess: 'ready' },
+  });
+  assert.equal(isSetupComplete(installed), true);
+  assert.deepEqual(missingPhases(installed), []);
 });
 
 test('Layout is required before final test and save', () => {

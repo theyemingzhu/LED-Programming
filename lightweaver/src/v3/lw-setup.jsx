@@ -5,6 +5,8 @@ import {
   SETUP_SKIP_STORAGE_KEY,
   setupOffersTypedLedCount,
   setupTypedLedCountPin,
+  missingPhases,
+  SETUP_CHAIN_IDS,
 } from '../lib/setupJourney.js';
 import { publishCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnIntent.js';
@@ -22,6 +24,7 @@ import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
+import { CardFacts } from '../components/card/CardFacts.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
@@ -143,7 +146,6 @@ export function SetupScreen({
   const [pairState, setPairState] = useState({ busy: false, message: '' });
   const [ledCountDraft, setLedCountDraft] = useState('');
   const [ledCountState, setLedCountState] = useState({ busy: false, message: '' });
-  const [selectedPhaseId, setSelectedPhaseId] = useState('');
   const importRef = useRef(null);
   const resolveInputsRef = useRef({ currentProject, activeCloudProjects, browserProjects });
   const previousPhaseRef = useRef('');
@@ -507,12 +509,12 @@ export function SetupScreen({
   useEffect(() => {
     const previous = previousPhaseRef.current;
     previousPhaseRef.current = journey.currentPhaseId || '';
-    if (selectedPhaseId || !previous || !journey.currentPhaseId || previous === journey.currentPhaseId) return undefined;
+    if (!previous || !journey.currentPhaseId || previous === journey.currentPhaseId) return undefined;
     const frame = requestAnimationFrame(() => {
-      document.querySelector(`[data-testid="setup-phase-${journey.currentPhaseId}"] .lw-setup-phase-head`)?.focus();
+      document.querySelector(`[data-testid="setup-phase-${journey.currentPhaseId}"]`)?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [journey.currentPhaseId, selectedPhaseId]);
+  }, [journey.currentPhaseId]);
 
   const go = hash => { window.location.hash = hash; };
   const installIntentOpen = new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
@@ -865,7 +867,6 @@ export function SetupScreen({
   const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
-  const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
       return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
@@ -1080,22 +1081,6 @@ export function SetupScreen({
     }
     return (
       <div className="lw-setup-task" data-testid="setup-active-task">
-        <dl className="lw-setup-summary">
-          {/* Card and Project drop once setup is complete: the identity row
-              directly above the phase ladder already states both, and this
-              table used to repeat them a third and fourth time on the one
-              screen that had just been compressed to end repeated tellings. */}
-          {!journey.setupComplete && (
-            <>
-              <div><dt>Card</dt><dd>{exactCardName(cardLink, cardHost)}</dd></div>
-              <div><dt>Project</dt><dd>{currentProject?.name || currentProject?.id || 'Untitled project'}</dd></div>
-            </>
-          )}
-          <div><dt>Outputs</dt><dd>{evidence.outputs.length || 'None'}</dd></div>
-          <div><dt>Lights</dt><dd>{evidence.count || 'None counted'}</dd></div>
-          <div><dt>Color</dt><dd>{evidence.colorOrder || 'Not confirmed'}</dd></div>
-          <div><dt>Power</dt><dd>{currentProject?.devices?.standaloneController?.power?.maxMilliamps ? `${currentProject.devices.standaloneController.power.maxMilliamps} mA limit` : 'Review in Hardware settings'}</dd></div>
-        </dl>
         {/* The last step, in the owner's words. It used to read "The existing
             Test & Install surface sends the candidate, verifies exact readback,
             and waits for your explicit visible confirmation" — four pieces of
@@ -1136,11 +1121,27 @@ export function SetupScreen({
           Studio resumes whatever is still unfinished…"). Phase 1 is that
           sentence, with the button attached. Explaining a step directly above
           the step is the same repetition this screen was compressed to end. */}
-      <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
-        <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
-        <div><span>Connection</span><strong>{identityStatus}</strong></div>
-        <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
-        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
+      {/* Status: where this card is. One module, four readouts, the setup
+          verdict in its header. The Connection cell is the door to the
+          connection centre; the other three are read-only facts here. */}
+      <section className="lw-mod lw-mod-status" aria-label="Card status">
+        <div className="lw-mod-head">
+          <span className={`lw-led${exactTransport ? ' is-live' : ''}`} aria-hidden="true" />
+          <span className="t">Status</span>
+          <span className="m" data-testid="setup-progress">
+            {journey.setupComplete
+              ? 'Setup complete'
+              : `Step ${Math.max(1, SETUP_CHAIN_IDS.indexOf(journey.currentPhaseId) + 1)} of ${SETUP_CHAIN_IDS.length}`}
+          </span>
+        </div>
+        <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
+          <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
+          <button type="button" className="lw-setup-identity-door" data-testid="setup-identity-connection" onClick={() => onOpenConnectionCenter?.()}>
+            <span>Connection</span><strong>{identityStatus}</strong>
+          </button>
+          <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
+          <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
+        </section>
       </section>
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
@@ -1230,42 +1231,75 @@ export function SetupScreen({
         )}
       </div>
 
-      <section className="lw-setup-phases" aria-label="Setup outcomes">
-        <p className="lw-setup-progress" data-testid="setup-progress">
-          {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
-          {viewedPhaseId !== journey.currentPhaseId
-            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
-            : ''}
-        </p>
-        <ol className="lw-setup-phase-list">
-            {journey.phases.map((phase, index) => {
-              const active = phase.id === viewedPhaseId;
-              const current = phase.id === journey.currentPhaseId;
-              return (
-                <li
-                  key={phase.id}
-                  className={`lw-setup-phase is-${phase.status}${active ? ' is-active' : ''}`}
-                  data-testid={`setup-phase-${phase.id}`}
-                  data-phase-id={phase.id}
-                  data-status={phase.status}
-                  aria-current={current ? 'step' : undefined}
-                >
-                  <button type="button" className="lw-setup-phase-head" onClick={() => setSelectedPhaseId(phase.id)} aria-expanded={active}>
-                    <span className="lw-setup-phase-marker" aria-hidden="true">{phase.status === 'done' ? '✓' : index + 1}</span>
-                    <div>
+      {/* Still to do: only the phases that gate the card and are not yet
+          done, in the order they have to happen. Empty (and not rendered)
+          once setup is complete. Artwork placement never appears here — it
+          gates nothing (setupJourney.js, SETUP_CHAIN_IDS). The four-rung
+          ladder this replaces claimed an order the code never enforced and
+          hid the last phase as "upcoming" while the owner was, legitimately,
+          tuning patterns on lights that were not yet drawn. */}
+      {(() => {
+        let missing = missingPhases(journey);
+        // An install in flight (`next=patterns` in the URL) keeps the verify
+        // row mounted whatever the journey says mid-push: the install control
+        // lives in that row and auto-starts on mount, so a row that unmounted
+        // and came back while the card was staging a candidate would post a
+        // second one (layout-send-to-card.spec.ts counts exactly one).
+        if (installIntentOpen && !missing.some(phase => phase.id === 'verify')) {
+          missing = [...missing, ...journey.phases.filter(phase => phase.id === 'verify')];
+        }
+        if (missing.length === 0) return null;
+        const done = SETUP_CHAIN_IDS.length - missingPhases(journey).length;
+        return (
+          <section className="lw-mod lw-mod-todo" aria-label="Still to do" data-testid="setup-todo">
+            <div className="lw-mod-head">
+              <span className="lw-led is-warn" aria-hidden="true" />
+              <span className="t">Still to do</span>
+              <span className="m">{done} of {SETUP_CHAIN_IDS.length} done</span>
+            </div>
+            <ol className="lw-setup-phase-list">
+              {missing.map(phase => {
+                // `next=patterns` in the URL is an install in flight: the
+                // verify row owns the page while it lasts, whatever the
+                // journey's own current phase says.
+                const current = phase.id === journey.currentPhaseId || (installIntentOpen && phase.id === 'verify');
+                return (
+                  <li
+                    key={phase.id}
+                    className={`lw-setup-phase is-${phase.status}${current ? ' is-active' : ''}`}
+                    data-testid={`setup-phase-${phase.id}`}
+                    data-phase-id={phase.id}
+                    data-status={phase.status}
+                    aria-current={current ? 'step' : undefined}
+                    tabIndex={-1}
+                  >
+                    <span className="lw-setup-phase-marker" aria-hidden="true">{SETUP_CHAIN_IDS.indexOf(phase.id) + 1}</span>
+                    <div className="lw-setup-phase-body">
                       <h2>{phase.title}</h2>
-                      {!active && <p>{phase.detail}</p>}
+                      {!current && <p>{phase.detail}</p>}
+                      {current && renderActiveTask(phase)}
+                      {phase.id === 'verify' && (
+                        <div hidden={!current} data-testid="setup-install-slot">{installAction}</div>
+                      )}
                     </div>
-                  </button>
-                  {active && renderActiveTask(phase)}
-                  {phase.id === 'verify' && (
-                    <div hidden={!active} data-testid="setup-install-slot">{installAction}</div>
-                  )}
-                </li>
-              );
-            })}
-        </ol>
-      </section>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        );
+      })()}
+
+      {/* The facts, always, each with its one-click editor. */}
+      <CardFacts
+        currentProject={currentProject}
+        evidence={evidence}
+        cardLink={cardLink}
+        cardState={cardState}
+        firmwareStatus={firmwareStatus}
+        installedLabel={installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}
+        go={go}
+      />
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />
     </div>

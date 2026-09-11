@@ -25,10 +25,13 @@ export function CardInstallAction({
   // next step; only one may wear the primary style at a time, and the ladder
   // wins because it is the only one that knows which phase the owner is in.
   yieldPrimary = false,
+  // Render, but as a secondary control: the page's primary lives elsewhere
+  // (the ready banner's Open Patterns on a finished card).
+  demote = false,
 }) {
   // `cta` is the class every headline button in this component uses. Kept as
   // one binding so a future branch cannot forget the rule.
-  const cta = yieldPrimary ? 'btn lww-cta' : 'btn primary lww-cta';
+  const cta = yieldPrimary || demote ? 'btn lww-cta' : 'btn primary lww-cta';
   const {
     wiring, updateWiring, compiledWiring, patchBoard,
     projectId, projectName, standaloneController, strips,
@@ -169,7 +172,7 @@ export function CardInstallAction({
           <section className="lw-wire-finish">
             <CardPushControl
               connected={connected}
-              yieldPrimary={yieldPrimary}
+              yieldPrimary={yieldPrimary || demote}
               board={cardTransportBoard}
               compiledWiring={compiledWiring}
               strips={strips}
