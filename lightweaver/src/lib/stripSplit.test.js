@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { FakeDocument } from './svgDomStub.js';
 import {
   MAX_SPLIT_SECTIONS,
+  applyStripSplitCount,
   nextSplitNames,
   planStripSplitCounts,
+  planStripSplitFromCounts,
   splitBoundaryFractions,
   splitFractionForCounts,
   splitStripPaths,
@@ -113,4 +115,24 @@ test('splitFractionForCounts still works unmodified for a plain two-way plan (re
   const plan = planStripSplitCounts(41);
   assert.equal(splitFractionForCounts(plan, false), 21 / 41);
   assert.equal(splitFractionForCounts(plan, true), 1 - 21 / 41);
+});
+
+// Uneven divide (sections-effortless plan, change 5): the owner's own counts.
+test('planStripSplitFromCounts accepts counts that add up to the strip and nothing else', () => {
+  assert.deepEqual(planStripSplitFromCounts(41, [10, 21, 10]), { counts: [10, 21, 10], total: 41, sections: 3, head: 10, tail: 31 });
+  assert.equal(planStripSplitFromCounts(41, [10, 20, 10]), null, 'one LED unplaced');
+  assert.equal(planStripSplitFromCounts(41, [0, 41]), null, 'a section needs at least one LED');
+  assert.equal(planStripSplitFromCounts(41, [41]), null, 'one section is no divide');
+  assert.equal(planStripSplitFromCounts(41, [10.5, 30.5]), null, 'whole LEDs only');
+  assert.equal(planStripSplitFromCounts(20, Array(MAX_SPLIT_SECTIONS + 1).fill(1).concat([20 - MAX_SPLIT_SECTIONS - 1])), null, 'never past the card zone cap');
+});
+
+test('applyStripSplitCount keeps the total by balancing the neighbour, floors at one LED each', () => {
+  assert.deepEqual(applyStripSplitCount([14, 14, 13], 0, 10), [10, 18, 13]);
+  assert.deepEqual(applyStripSplitCount([10, 18, 13], 2, 20), [10, 11, 20], 'the last field balances against the previous one');
+  assert.deepEqual(applyStripSplitCount([10, 18, 13], 1, 100), [10, 30, 1], 'a value past the pool is clamped, never refused');
+  assert.deepEqual(applyStripSplitCount([10, 18, 13], 1, 0), [10, 1, 30]);
+  assert.deepEqual(applyStripSplitCount([10, 18, 13], 1, 'x'), [10, 18, 13], 'a non-number changes nothing');
+  const total = counts => counts.reduce((sum, value) => sum + value, 0);
+  assert.equal(total(applyStripSplitCount([11, 10, 10, 10], 3, 3)), 41);
 });

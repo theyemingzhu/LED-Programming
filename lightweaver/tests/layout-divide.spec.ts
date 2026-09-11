@@ -160,3 +160,27 @@ test('the Divide control fits at 390px wide with no horizontal overflow', async 
   const overflowAfter = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
   expect(overflowAfter).toBe(false);
 });
+
+// Uneven divide (sections-effortless plan, change 5): the counts are fields.
+// Typing one count moves the difference to its neighbour, so the strip's LED
+// total never changes and Divide is never refused for a sum that is off.
+test('typing a section count rebalances its neighbour and divides to those exact counts', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await createOneStrip(page);
+  await setStripLedCount(page, 41);
+
+  await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
+  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('14, 14, 13 LEDs');
+
+  const first = page.locator('[data-testid^="divide-count-"][data-testid$="-1"]');
+  await first.fill('10');
+  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('10, 18, 13 LEDs');
+  const last = page.locator('[data-testid^="divide-count-"][data-testid$="-3"]');
+  await last.fill('21');
+  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('10, 10, 21 LEDs');
+
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(3);
+  expect(await rowCounts(page)).toEqual([10, 10, 21]);
+  await expect(page.locator('.la-gpio-group')).toHaveCount(1);
+});

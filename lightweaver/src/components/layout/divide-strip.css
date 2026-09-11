@@ -29,3 +29,26 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+/* The per-section count fields. Compact numerics that wrap as a group under
+   the section-count select on a phone; the readout after them is the same
+   "10, 21, 10 LEDs" line the even plan showed. */
+.la-divide-counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 100%;
+}
+.la-divide-count {
+  width: 44px;
+  min-width: 0;
+  padding: 4px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-app);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+}

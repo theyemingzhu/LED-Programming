@@ -36,6 +36,38 @@ export function planStripSplitCounts(pixelCount, sections = 2) {
   return { counts, total, sections: n, head: counts[0], tail: total - counts[0] };
 }
 
+// An owner's own counts (10, 21, 10 out of 41) instead of the even plan.
+// Valid when there are 2..MAX_SPLIT_SECTIONS whole counts, each at least 1,
+// that add up to the strip; returns the same shape planStripSplitCounts
+// returns so every caller downstream is unchanged, or null when the counts
+// do not describe this strip.
+export function planStripSplitFromCounts(pixelCount, counts) {
+  const total = Math.max(0, Math.trunc(Number(pixelCount) || 0));
+  if (total < 2 || !Array.isArray(counts)) return null;
+  const whole = counts.map(value => Math.trunc(Number(value)));
+  if (whole.length < 2 || whole.length > MAX_SPLIT_SECTIONS) return null;
+  if (whole.some(value => !Number.isFinite(value) || value < 1)) return null;
+  if (whole.reduce((sum, value) => sum + value, 0) !== total) return null;
+  return { counts: whole, total, sections: whole.length, head: whole[0], tail: total - whole[0] };
+}
+
+// Editing one count keeps the total by moving the difference to its
+// neighbour (the next section, or the previous one for the last field), so
+// a typed number never leaves LEDs unplaced or placed twice. Both fields keep
+// at least one LED; a value that cannot be honoured is clamped, not refused.
+export function applyStripSplitCount(counts, index, value) {
+  if (!Array.isArray(counts) || counts.length < 2) return counts;
+  const next = counts.map(item => Math.max(1, Math.trunc(Number(item) || 1)));
+  if (index < 0 || index >= next.length) return next;
+  const neighbour = index === next.length - 1 ? index - 1 : index + 1;
+  const pool = next[index] + next[neighbour];
+  const wanted = Math.trunc(Number(value));
+  const clamped = Number.isFinite(wanted) ? Math.max(1, Math.min(pool - 1, wanted)) : next[index];
+  next[index] = clamped;
+  next[neighbour] = pool - clamped;
+  return next;
+}
+
 // Where along the path the cut falls, as a 0..1 fraction of its length.
 // `reversed` strips are sampled end-first, so their first half is the far end
 // of the path and the fraction is mirrored.
