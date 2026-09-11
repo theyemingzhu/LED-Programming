@@ -17,6 +17,7 @@ import {
   nextSplitName,
   nextSplitNames,
   planStripSplitCounts,
+  planStripSplitFromCounts,
   splitStripPaths,
   splitStripPathsN,
 } from '../../../lib/stripSplit.js';
@@ -353,11 +354,15 @@ export function useLayoutStrips(ctx) {
   // "Split into two" control. This function powers a separate "Divide"
   // control with its own owner-picked section count and its own naming rule
   // (nextSplitNames — every piece suffixed 1..N, including piece 1).
+  // `sections` is a count (the even plan) or an array of the owner's own
+  // counts (uneven divide); both resolve to the same plan shape.
   const divideStripIntoSections = useCallback((id, sections) => {
     if (wiring.locked) return null;
     const source = strips.find(st => st.id === id);
     if (!source) return null;
-    const counts = planStripSplitCounts(source.pixelCount, sections);
+    const counts = Array.isArray(sections)
+      ? planStripSplitFromCounts(source.pixelCount, sections)
+      : planStripSplitCounts(source.pixelCount, sections);
     if (!counts || counts.counts.length < 2) return null;
     const paths = splitStripPathsN(source.pathData, counts, source.reversed);
     if (!paths || paths.length !== counts.counts.length) return null;

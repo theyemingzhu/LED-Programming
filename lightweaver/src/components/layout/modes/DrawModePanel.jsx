@@ -12,7 +12,7 @@ import {
 } from '../shared/InspectorPrimitives.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
-import { MAX_SPLIT_SECTIONS, planStripSplitCounts } from '../../../lib/stripSplit.js';
+import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
 import {
   STRIP_COLORS,
   DENSITY_OPTIONS,
@@ -415,6 +415,19 @@ export function DrawModePanel({
   // `minmax(0, 1fr)` columns, so a new field wraps to its own row instead of
   // forcing the panel wider.
   const [divideSections, setDivideSections] = useState({}); // stripId → N
+  // stripId → the owner's own counts, once a field has been edited. Absent
+  // means the even plan; a stored set that no longer adds up to the strip
+  // (the LED count changed, or N changed) falls back to the plan.
+  const [divideCounts, setDivideCounts] = useState({});
+  const divideCountsFor = (strip, sections) => {
+    const stored = divideCounts[strip?.id];
+    const kept = stored && stored.length === sections ? planStripSplitFromCounts(strip?.pixelCount, stored) : null;
+    return (kept || planStripSplitCounts(strip?.pixelCount, sections))?.counts || [];
+  };
+  const setDivideCount = (strip, sections, index, value) => {
+    const next = applyStripSplitCount(divideCountsFor(strip, sections), index, value);
+    setDivideCounts(prev => ({ ...prev, [strip.id]: next }));
+  };
 
   // The most sections a given strip could usefully be divided into: never
   // more zones than the card can address, and never more pieces than LEDs.
@@ -430,11 +443,6 @@ export function DrawModePanel({
     return '';
   };
   // "11, 10, 10, 10 LEDs" — the answer to "what will I get?" before committing.
-  const dividePreview = (strip, sections) => {
-    const counts = planStripSplitCounts(strip?.pixelCount, sections);
-    return counts ? `${counts.counts.join(', ')} LEDs` : '';
-  };
-
   // The visible Wire editor owns reconciliation. Test & Install only reports
   // an incomplete plan; opening it must never repair or assign physical runs.
   useEffect(() => {
@@ -1603,9 +1611,25 @@ export function DrawModePanel({
                                   <option key={n} value={n}>{n} sections</option>
                                 ))}
                               </select>
-                              <span className="lw-sel-v la-divide-preview" data-testid={`divide-preview-${s.id}`}>
-                                {dividePreview(s, divideSectionsValue)}
-                              </span>
+                              {/* The counts are fields, not a readout: a 41-LED ring
+                                  becomes 10, 21, 10 by typing, and the total never
+                                  moves because each edit is balanced by its
+                                  neighbour (applyStripSplitCount). The readout keeps
+                                  its testid, so the even plan still reads as before. */}
+                              <div className="la-divide-counts" role="group" aria-label={`LEDs per section of ${s.name}`}>
+                                {divideCountsFor(s, divideSectionsValue).map((count, index) => (
+                                  <input key={index} type="number" inputMode="numeric" min={1}
+                                         className="la-divide-count"
+                                         data-testid={`divide-count-${s.id}-${index + 1}`}
+                                         aria-label={`Section ${index + 1} LEDs`}
+                                         value={count}
+                                         disabled={!!divideBlockedReason(s, isSplit)}
+                                         onChange={event => setDivideCount(s, divideSectionsValue, index, event.target.value)} />
+                                ))}
+                                <span className="lw-sel-v la-divide-preview" data-testid={`divide-preview-${s.id}`}>
+                                  {`${divideCountsFor(s, divideSectionsValue).join(', ')} LEDs`}
+                                </span>
+                              </div>
                               <button type="button" className="btn"
                                       data-testid={`divide-commit-${s.id}`}
                                       aria-label={`Divide ${s.name} into ${divideSectionsValue} sections`}
@@ -1614,7 +1638,7 @@ export function DrawModePanel({
                                       title={divideBlockedReason(s, isSplit)
                                         || 'Divide into several sections, each with its own pattern'}
                                       disabled={!!divideBlockedReason(s, isSplit)}
-                                      onClick={() => divideStripIntoSections(s.id, divideSectionsValue)}>
+                                      onClick={() => divideStripIntoSections(s.id, divideCountsFor(s, divideSectionsValue))}>
                                 Divide
                               </button>
                             </div>
