@@ -27,7 +27,10 @@ function compiledZones(project) {
   }).zones;
 }
 
+const controlPosts: Record<string, unknown>[] = [];
+
 async function mockReadyCard(page, project, cardZones, cardId = 'lw-section-row') {
+  controlPosts.length = 0;
   const projectFingerprint = cardProjectFingerprint(project);
   const installedConfig = buildCardRuntimePackageFromProject({
     projectId: project.id,
@@ -56,6 +59,7 @@ async function mockReadyCard(page, project, cardZones, cardId = 'lw-section-row'
   await page.route('**/api/config', route => route.fulfill({ json: installedConfig }));
   await page.route('**/api/control', async route => {
     const body = JSON.parse(route.request().postData() || '{}');
+    controlPosts.push(body);
     await route.fulfill({ json: { ok: true, cardId, patternId: body.patternId, revision: body.revision } });
   });
   await page.addInitScript(({ id, savedProject }) => {
@@ -89,6 +93,13 @@ test('section chips carry their pattern names and the card-holds line is read fr
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
   // Picking a pattern for a section updates its chip at once.
   await page.getByTestId('section-target-patch-default-inner-circle').click();
+  // Tapping the chip flashes that section on the piece: the OTHER zone dims
+  // to a fifth of its reported brightness, then returns to that value. The
+  // tapped zone is never written by the flash.
+  const outerZone = zones.find(zone => zone.id !== 'default-inner-circle')!.id;
+  await expect.poll(() => controlPosts
+    .filter(post => post.zone === outerZone && post.syncZones === false && typeof post.brightness === 'number')
+    .map(post => post.brightness)).toEqual([0.2, 1]);
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Plasma');
 
