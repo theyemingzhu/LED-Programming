@@ -642,3 +642,106 @@
 }
 
 .card-workspace-screen .lw-mod-todo .lw-setup-phase { align-items: start; }
+
+/* ── round 7: edit in the row ─────────────────────────────── */
+.card-workspace-screen .lw-stepper { display: inline-flex; align-items: center; gap: 6px; }
+.card-workspace-screen .lw-stepper-key { min-width: 36px; padding: 0; font-family: var(--font-mono); font-size: 16px; }
+.card-workspace-screen .lw-stepper-input,
+.card-workspace-screen .lw-inline-field .lw-stepper-input {
+  width: 68px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg-canvas);
+  box-shadow: var(--lw-inset);
+  color: var(--layer-1);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.card-workspace-screen .lw-stepper-input::-webkit-outer-spin-button,
+.card-workspace-screen .lw-stepper-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.card-workspace-screen .lw-stepper-input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.card-workspace-screen .lw-inline-field { display: inline-flex; align-items: center; gap: 6px; }
+.card-workspace-screen .lw-unit { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-lo); }
+.card-workspace-screen .lw-keys {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  box-shadow: var(--lw-inset);
+}
+.card-workspace-screen .lw-key {
+  min-height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-mid);
+  background: var(--bg-elev-2);
+  box-shadow: var(--lw-raise);
+  cursor: pointer;
+}
+.card-workspace-screen .lw-key:hover { color: var(--text-hi); background: var(--bg-sel); }
+.card-workspace-screen .lw-key.on {
+  color: var(--lw-on-live);
+  background: var(--lw-live);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--lw-live) 34%, transparent), inset 0 1px 0 oklch(1 0 0 / 0.3);
+}
+.card-workspace-screen .lw-key:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.card-workspace-screen .lw-fader {
+  width: 130px;
+  height: 6px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* detected state as one sentence in a strip */
+.card-workspace-screen .card-overview-state.is-strip {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 40px;
+  padding: 8px 18px;
+  margin-top: 12px;
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  box-shadow: none;
+}
+.card-workspace-screen .card-overview-state.is-strip p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-mid); }
+
+/* phone: the doors span the status module as one full-width row of equal
+   buttons (a fixed bar was tried and covered the app's own status bar, whose
+   chip is the phone's connection control) */
+@media (max-width: 640px) {
+  .card-workspace-screen .lw-setup-doors {
+    border-left: 0;
+    border-top: 1px solid var(--border-soft);
+    max-width: none;
+    padding: 10px 14px;
+    background: var(--bg-elev);
+  }
+  .card-workspace-screen .lw-setup-doors > .btn,
+  .card-workspace-screen .lw-setup-doors .lww-flow.is-compact { flex: 1 1 auto; }
+  .card-workspace-screen .lw-setup-doors .lww-flow.is-compact .la-card-push-btn { width: 100%; }
+  .card-workspace-screen .lw-fact { grid-template-columns: minmax(0, 1fr); }
+  .card-workspace-screen .lw-fact-v { justify-content: flex-start; flex-wrap: wrap; }
+}
+
+/* phone: the status cells two-up (declared after the four-up rule so it wins) */
+@media (max-width: 760px) {
+  .card-workspace-screen .lw-mod-status .lw-setup-identity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-workspace-screen .lw-mod-status .lw-setup-identity > :nth-child(2) { border-right: 0; }
+  .card-workspace-screen .lw-mod-status .lw-setup-identity > :nth-child(-n + 2) { border-bottom: 1px solid var(--border-soft); }
+  .card-workspace-screen .lw-mod-status .lw-setup-identity strong { font-size: 13.5px; }
+  .card-workspace-screen .lw-identity-name strong { font-size: 13.5px; }
+}
