@@ -81,7 +81,9 @@ import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardP
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, readCardZonesFromCard, flashSectionOnCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
+import { freshJourneyEvidence } from '../lib/cardJourneyEvidence.js';
+import { useCardJourneyEvidence } from '../hooks/useSetupJourney.js';
 import { cardSectionSummary } from '../lib/cardSectionSync.js';
 import { connectCardTransport, getActiveCardTransportAuthority, readPersistedCardIdentity } from '../lib/cardTransport.js';
 import { retryWhileTransient } from '../lib/cardTransientFailure.js';
@@ -697,22 +699,17 @@ import { PatternPreview } from './PatternPreview.jsx';
     // the gate for installs, which do persist.
     const currentPatternPreviewAccess = useCallback(() => patternAccessRef.current, []);
 
-    // What the card holds. Read once per authority (card, firmware, boot) and
-    // per installed revision, only while playback access is ready, so the
-    // section row can print "Card holds Ring 1, Ring 2" as a fact. Null until
-    // read; the summary then says nothing rather than guessing.
-    const [cardZonesPayload, setCardZonesPayload] = useState(null);
-    const cardInstalledRevisionKey = String(cardLink?.readiness?.projectRevision ?? '');
-    useEffect(() => {
-      let cancelled = false;
-      if (patternCardAccess !== 'ready') { setCardZonesPayload(null); return undefined; }
-      const expectedCardId = cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '';
-      readCardZonesFromCard({ ...cardConnectionOptionsFor(cardLink, cardHost), expectedCardId, timeoutMs: 1800 })
-        .then(payload => { if (!cancelled) setCardZonesPayload(payload); })
-        .catch(() => { if (!cancelled) setCardZonesPayload(null); });
-      return () => { cancelled = true; };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [patternCardAccess, patternPreviewAuthorityKey, cardInstalledRevisionKey, cardHost]);
+    // What the card holds, from the shared journey evidence (one /api/zones
+    // read per card and boot, made by the journey refresh every screen
+    // already runs), never a read of Patterns' own: a passive fact must not
+    // pay the identity-mutation guard, and a second reader must not add a
+    // second request to a card on somebody's shelf. Null until read.
+    const journeyEvidence = useCardJourneyEvidence();
+    const cardZonesPayload = useMemo(() => {
+      if (patternCardAccess !== 'ready') return null;
+      const fresh = freshJourneyEvidence(journeyEvidence, cardLink);
+      return Array.isArray(fresh.zones) ? { zones: fresh.zones } : null;
+    }, [patternCardAccess, journeyEvidence, cardLink]);
     const matchesCurrentCardProjectEvidence = useCallback((evidence = {}) => {
       const binding = patternAuthorizationRef.current;
       const matches = hasCurrentProjectAuthorization()

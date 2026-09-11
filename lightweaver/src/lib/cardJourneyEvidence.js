@@ -53,6 +53,15 @@ const EMPTY = Object.freeze({
   // published its OWN status/wiring read and never attempt the zones read at
   // all.
   blackoutKnown: false,
+  // The card's own zone list from the same /api/zones envelope (id, label,
+  // patternId, brightness), or null until a zones read has answered. Same
+  // preserved-by-key posture as `blackout`: a publish that never read zones
+  // keeps the last list for the same card and boot. Screens that want to
+  // print what the card holds (Patterns' section row) read it from here
+  // instead of making their own guarded read; a passive fact-gathering read
+  // must never pay the identity-mutation guard, which is exactly what turned
+  // a live light test into "load a matching project" (journey J13).
+  zones: null,
   readAt: 0,
   read: false,
   // A hardware operation finished, so whatever we hold predates it. The
@@ -94,6 +103,7 @@ export function journeyEvidenceSnapshot({
   resolutionKind = 'unknown',
   matchesOpenProject = false,
   blackout,
+  zones,
   readAt = Date.now(),
 } = {}) {
   const key = cardLink ? journeyEvidenceKey(cardLink) : { cardId: text(cardId), bootId: text(bootId), host: text(host) };
@@ -112,6 +122,9 @@ export function journeyEvidenceSnapshot({
   // knows nothing new about zones and must not mark the fact known if it
   // never was.
   const resolvedBlackoutKnown = blackout !== undefined || (sameKey && current.blackoutKnown === true);
+  const resolvedZones = zones === undefined
+    ? (sameKey ? current.zones : null)
+    : zones;
   return Object.freeze({
     ...key,
     projectId: text(projectId),
@@ -122,6 +135,7 @@ export function journeyEvidenceSnapshot({
     matchesOpenProject: matchesOpenProject === true,
     blackout: resolvedBlackout,
     blackoutKnown: resolvedBlackoutKnown,
+    zones: resolvedZones,
     readAt: Number(readAt) || 0,
     read: true,
     stale: false,
@@ -246,6 +260,19 @@ async function readCardZonesEnvelope({ host, timeoutMs = 3000, transport } = {})
 // The defect this exists to end (F16): a card can hold the open project,
 // answer "Connected", and report a ready runtime while every zone sits
 // blacked out — nothing in the status envelope says so, only /api/zones does.
+// The zone list a screen can print, bounded and normalised; null when the
+// envelope carried no list at all (older firmware), so nothing is asserted.
+export function zonesFromZonesEnvelope(envelope) {
+  if (!Array.isArray(envelope?.zones)) return null;
+  return Object.freeze(envelope.zones.slice(0, 64).map(zone => Object.freeze({
+    id: text(zone?.id),
+    label: text(zone?.label) || text(zone?.id),
+    patternId: text(zone?.patternId),
+    brightness: Number.isFinite(Number(zone?.brightness)) ? Number(zone.brightness) : 1,
+    blackout: zone?.blackout === true,
+  })).filter(zone => zone.id));
+}
+
 function blackoutFromZonesEnvelope(envelope) {
   const zones = Array.isArray(envelope?.zones) ? envelope.zones : [];
   return zones.length > 0 && zones[0]?.blackout === true;
@@ -303,6 +330,7 @@ export function refreshCardJourneyEvidence({ cardLink, reason = '', openProjectI
       // the last successful read said, same posture as every other fact here
       // — never asserted false off a read that never happened.
       blackout: zonesEnvelope ? blackoutFromZonesEnvelope(zonesEnvelope) : previous.blackout,
+      ...(zonesEnvelope ? { zones: zonesFromZonesEnvelope(zonesEnvelope) } : {}),
       reason,
     });
   })()
@@ -346,6 +374,7 @@ export function refreshCardJourneyBlackout({ cardLink, reason = '', openProjectI
         resolutionKind: previous.resolutionKind,
         matchesOpenProject: previous.matchesOpenProject,
         blackout: blackoutFromZonesEnvelope(envelope),
+        zones: zonesFromZonesEnvelope(envelope),
         reason,
       });
     })

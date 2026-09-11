@@ -15,8 +15,6 @@ import { CARD_PATTERN_BANK } from '../src/lib/cardPatternBank.js';
 import { CARD_PLAYLIST_ENTRY_LIMIT } from '../src/lib/cardPlaylist.js';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
 
-const SCRATCHPAD_SCREENSHOT_PATH = '/private/tmp/claude-501/-Users-adrianrasmussen-Documents-Files-2-Areas-Coding-led--claude-worktrees-led-multi-pattern-control-18b95e/5d84b955-5c1a-44d5-b128-71078edef9b0/scratchpad/playlist-390.png';
-
 function makeTimedPlaylistProject({ count = 2 } = {}) {
   const project = createDefaultProject();
   project.id = `timed-playlist-project-${count}`;
@@ -213,7 +211,6 @@ for (const viewport of VIEWPORTS) {
         await page.getByRole('button', { name: 'Play', exact: true }).click();
         await expect(transportStatus).toContainText('Playing');
         await page.screenshot({ path: 'test-results/playlist-390.png', fullPage: true });
-        await page.screenshot({ path: SCRATCHPAD_SCREENSHOT_PATH, fullPage: true });
       }
     });
 
