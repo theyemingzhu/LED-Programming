@@ -461,6 +461,12 @@ test('[T6] a card holding exactly this project finishes Setup', async ({ page })
     page.getByTestId('setup-open-patterns'),
     'finishing Setup must offer the way on to Patterns',
   ).toBeVisible();
+  // …exactly once. The ladder's last rung used to print the same button a
+  // second time directly beneath the ready banner's copy.
+  await expect(
+    page.getByRole('button', { name: 'Open Patterns', exact: true }),
+    'a finished Setup offers Open Patterns once, not twice',
+  ).toHaveCount(1);
 });
 
 test('[T5] a tap that lands while the card is still starting resolves itself', async ({ page }) => {

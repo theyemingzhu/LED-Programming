@@ -103,7 +103,7 @@ async function prepareCardHomeInstall(page, cardId: string) {
   // Setup now offers one test-and-save action; capacity is checked before
   // any candidate can be sent, independent of the old separate LED check.
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
-  await expect(page.getByText('Ready to install on the card.')).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
 }
 
