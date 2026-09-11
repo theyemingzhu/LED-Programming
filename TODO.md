@@ -117,6 +117,8 @@ plan is a reference library, not one large job to execute.
   Measured 2026-09-11 in headless Chromium at 390 by 844: `.pm-instrument` (preview plus Tune, sticky at top 0 under the 900px media query in `v3-screens.css`) stands about 700px tall, so `elementFromPoint` over a section chip returns `pm-tune-pane` and a tap never reaches the chip; the design-target row and the pattern cards scroll beneath it with roughly 50px showing. The sliders-in-reach plan (`docs/superpowers/plans/2026-08-27-pattern-sampling-join.md`) owns this surface; whatever it lands must cap the sticky pane below the viewport or fold Tune. `tests/patterns-section-row.spec.ts` exercises taps at desktop width for this reason and checks only overflow at 390.
 
 
+- [ ] On the bench, tap a section chip and watch the other sections dim for a second and come back; unplug inside that second _(band: you-required)_ _(effort: quick)_ → Plan: [sections-effortless.md](lightweaver/todo/plans/sections-effortless.md)
+  The seven sections-without-effort changes shipped 2026-09-11 (PRs #281 to #289), all Studio, no firmware. Only the flash (change 4) touches the card in a way a mock cannot prove: if a power-cycle inside the hold resumes a dimmed zone, that is the first item of the next firmware release.
 - [ ] Verify the four-sections build on a real card: Section row, power-cycle resume, and the timed playlist on firmware 1.1.35 _(band: you-required)_ _(effort: quick)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)
   All five changes shipped 2026-09-09 (Studio builds 1708, 1714, 1760; firmware 1.1.33 to 1.1.35). Only the bench check remains; the plan lists the exact steps.
 
