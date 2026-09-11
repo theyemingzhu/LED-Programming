@@ -112,6 +112,9 @@ plan is a reference library, not one large job to execute.
 
 ## Soon
 
+- [ ] Rebuild Card Home as status, not steps: status row, always-editable facts grid, "still to do" list, one primary _(band: agent-runnable)_ _(effort: deep)_ → Plan: [card-home-status-not-steps.md](todo/plans/card-home-status-not-steps.md)
+  Step 1 (pure cut) shipped 2026-09-11 as PR #272. Remaining, in order: power row reads `led.maxMilliamps` + card-name heading; facts grid; missing list replacing the ladder; power editor in the Hardware fold; Project row opens the Projects panel; matrix doc gains `not-ready` and `real-card-as-found`.
+
 - [ ] Verify the four-sections build on a real card: Section row, power-cycle resume, and the timed playlist on firmware 1.1.35 _(band: you-required)_ _(effort: quick)_ → Plan: [multi-pattern-control.md](lightweaver/todo/plans/multi-pattern-control.md)
   All five changes shipped 2026-09-09 (Studio builds 1708, 1714, 1760; firmware 1.1.33 to 1.1.35). Only the bench check remains; the plan lists the exact steps.
 - [ ] Playlist screen shows two filled primaries at once, "Install playlist on card" and "Pause"; make the transport state read as state, not a second primary _(band: agent-runnable)_ _(effort: quick)_
