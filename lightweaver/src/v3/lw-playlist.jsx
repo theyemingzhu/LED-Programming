@@ -954,8 +954,14 @@ function realPatternShape(patternId) {
                     <span className="pl-transport-status" data-testid="playlist-card-transport-status">{playlistStatusLine}</span>
                     {cardPlaylistStatus.configured &&
                       <div className="pl-transport-actions">
+                        {/* Transport is state, not the screen's action: Install
+                            playlist on card is the one filled button here, so
+                            Play/Pause reads as a pressed toggle (the card's own
+                            playing flag), in words. */}
                         <button
-                          className="btn primary"
+                          className={"btn pl-transport-toggle" + (cardPlaylistStatus.playing ? " is-on" : "")}
+                          aria-pressed={cardPlaylistStatus.playing}
+                          data-testid="playlist-play-toggle"
                           disabled={playlistControlPending || recoveryPending}
                           onClick={() => sendPlaylistControl(cardPlaylistStatus.playing ? 'pause' : 'play')}
                         >

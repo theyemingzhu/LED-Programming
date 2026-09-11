@@ -176,6 +176,14 @@ for (const viewport of VIEWPORTS) {
       await expect(transportStatus).toContainText('Playing entry 1 of 2, Aurora');
       await expect.poll(() => card.state.playlistPlaying).toBe(true);
 
+      // One status, one primary action: with the playlist playing, "Install
+      // playlist on card" is the only filled button on the screen, and the
+      // transport reads as a pressed toggle, not a second primary.
+      const filled = page.locator('.pm button.btn.primary:visible');
+      await expect(filled).toHaveCount(1);
+      await expect(filled).toHaveText(/Install playlist on card/);
+      await expect(page.getByTestId('playlist-play-toggle')).toHaveAttribute('aria-pressed', 'true');
+
       // Pause, then Play again — the toggling primary action round-trips.
       await page.getByRole('button', { name: 'Pause', exact: true }).click();
       await expect(transportStatus).toContainText('Paused on Aurora');

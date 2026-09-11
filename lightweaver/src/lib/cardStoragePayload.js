@@ -119,3 +119,37 @@ function cloneValue(value) {
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+
+// Room on the card, measured the way Install measures it: the compacted
+// config's byte size against the flash limit, and roughly how many more
+// sections would fit, estimated by serialising one more zone shaped like the
+// largest one already there. The estimate never exceeds the card's zone cap.
+// Nothing is thrown: a config already over the limit reports negative room.
+export function cardStorageRoom(runtimePackageOrConfig = {}, { maxBytes = CARD_CONFIG_STORAGE_LIMIT_BYTES } = {}) {
+  const config = compactCardStorageConfig(runtimePackageOrConfig);
+  const measure = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  const bytes = measure(config);
+  const remaining = maxBytes - bytes;
+  const zones = Array.isArray(config.zones) ? config.zones : [];
+  const zoneCap = CARD_HARDWARE_CONTRACT.maxZones;
+  let sectionsLeft = Math.max(0, zoneCap - zones.length);
+  if (zones.length && remaining > 0) {
+    const largest = zones.reduce((best, zone) => (measure(zone) > measure(best) ? zone : best), zones[0]);
+    const probe = { ...config, zones: [...zones, { ...cloneValue(largest), id: `${largest.id || 'zone'}-x` }] };
+    const perZone = Math.max(1, measure(probe) - bytes);
+    sectionsLeft = Math.min(sectionsLeft, Math.floor(remaining / perZone));
+  } else if (remaining <= 0) {
+    sectionsLeft = 0;
+  }
+  return { bytes, limit: maxBytes, remaining, zoneCount: zones.length, zoneCap, sectionsLeft };
+}
+
+export function cardStorageRoomLine(room) {
+  if (!room) return '';
+  const fmt = value => Number(value).toLocaleString('en-US');
+  if (room.remaining < 0) return `Over the card's room by ${fmt(-room.remaining)} bytes; remove a look or a section`;
+  const sections = room.sectionsLeft === 0
+    ? 'no room for another section'
+    : `about ${fmt(room.sectionsLeft)} more section${room.sectionsLeft === 1 ? '' : 's'}`;
+  return `Room on card: ${fmt(room.bytes)} of ${fmt(room.limit)} bytes, ${sections}`;
+}

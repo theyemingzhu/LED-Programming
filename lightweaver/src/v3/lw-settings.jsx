@@ -23,6 +23,7 @@ import {
   normalizeSavedLooks,
 } from '../lib/sectionLookModel.js';
 import { EMPTY_CARD_DEPLOYMENT, prepareCardDeployment } from '../lib/cardDeployment.js';
+import { cardStorageRoom, cardStorageRoomLine } from '../lib/cardStoragePayload.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { DEFAULT_CIRCLE_SECTION_COUNT } from '../lib/defaultCircleLayout.js';
 import {
@@ -231,6 +232,9 @@ const SettingsFieldContext = createContext(null);
     const runtimePackage = preparedDeployment.runtimePackage;
     const config = runtimePackage.config;
     const configJson = useMemo(() => JSON.stringify(config, null, 2), [config]);
+    // The same measurement Install makes, read here so the flash cap is a
+    // number the owner watches, not a refusal at push time.
+    const storageRoomLine = useMemo(() => cardStorageRoomLine(cardStorageRoom(runtimePackage)), [runtimePackage]);
     const safeProjectName = (projectName || 'lightweaver-piece').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
     const savedLooks = normalizeSavedLooks(standaloneController?.looks);
@@ -581,6 +585,7 @@ const SettingsFieldContext = createContext(null);
                     </div>
                   </Row>
                   <RingSummary sections={hardwareSections} targets={sectionTargets} activeLookLabel={activeSavedLook?.label || 'Current look'} />
+                  {storageRoomLine && <p className="set-room" data-testid="card-storage-room">{storageRoomLine}</p>}
                 </section>}
 
               </div>

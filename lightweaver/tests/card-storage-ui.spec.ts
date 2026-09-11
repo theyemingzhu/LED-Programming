@@ -117,6 +117,9 @@ test('Settings renders an oversized project and reports exact capacity on save',
   await prepareCardHomeInstall(page, 'lw-card-storage-ui-settings');
 
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
+  // The room line reads the same measurement before any push is attempted:
+  // an oversized project says how far over it is, in words, right here.
+  await expect(page.getByTestId('card-storage-room')).toHaveText(/^Over the card's room by [\d,]+ bytes; remove a look or a section$/);
   const requestsBefore = requests.length;
   await page.getByTestId('layout-send-to-card').click();
   await expect(page.locator('.la-card-push-banner')).toHaveText(
