@@ -35,6 +35,7 @@ import {
   starterLedCountFromProject,
 } from '../../../lib/discoveryCommit.js';
 import { CARD_HARDWARE_CAPABILITIES } from '../../../lib/cardRuntimeContract.js';
+import { groupOutputPins, moveStripRunsInOutputOrder, stripMoveTarget } from '../../../lib/wiringModel.js';
 import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { activeBoardGpios } from '../../../lib/gpioAssignments.js';
@@ -87,6 +88,23 @@ const SHAPE_ICONS = {
 // Receives the full useLayoutState() bundle as a single `state` prop (the panel
 // references nearly the entire bundle, so grouped props would be noise). No
 // handler is renamed and no logic is restructured — this is a pure move.
+
+// The pins a shipped card exposes come first; the other legal pins fold under
+// "More pins" so the common choice is one tap and the long list stays legal.
+function GpioOptions({ choices = [] }) {
+  const byPin = new Map(choices.map(choice => [choice.pin, choice]));
+  const { connector, more } = groupOutputPins(choices.map(choice => choice.pin));
+  const option = pin => {
+    const choice = byPin.get(pin);
+    return <option key={pin} value={pin} disabled={choice?.disabled}>GPIO {pin}</option>;
+  };
+  return (
+    <>
+      {connector.map(option)}
+      {more.length > 0 && <optgroup label="More pins">{more.map(option)}</optgroup>}
+    </>
+  );
+}
 
 export function DrawModePanel({
   state,
@@ -538,19 +556,15 @@ export function DrawModePanel({
     if (!ids.length) return;
     updateWiring(draft => {
       ensureRunsForAllStrips(draft);
-      const runsByStrip = new Map(draft.runs.filter(run => run.type === 'strip').map(run => [run.source.stripId, run]));
-      const targetRun = runsByStrip.get(targetStripId);
-      const targetOutput = draft.outputs.find(output => output.runIds.includes(targetRun?.id));
-      const movedRuns = ids.map(id => runsByStrip.get(id)).filter(Boolean);
-      if (!targetOutput || !movedRuns.length) return;
-      draft.outputs.forEach(output => { output.runIds = output.runIds.filter(runId => !movedRuns.some(run => run.id === runId)); });
-      const targetIndex = targetOutput.runIds.indexOf(targetRun.id);
-      const insertAt = targetIndex < 0
-        ? targetOutput.runIds.length
-        : targetIndex + (placement === 'after' ? 1 : 0);
-      targetOutput.runIds.splice(insertAt, 0, ...movedRuns.map(run => run.id));
-      draft.outputs = draft.outputs.filter(output => output.runIds.length || output.id === targetOutput.id);
+      moveStripRunsInOutputOrder(draft, { stripIds: ids, targetStripId, placement });
     }, { changeKind: 'route' });
+  };
+  // Word buttons for the same move: a thumb on a phone has no drag. Each is a
+  // swap with the neighbour on the same output, so the pin never changes.
+  const moveStripStep = (stripId, direction) => {
+    const target = stripMoveTarget(wiring, strips, stripId, direction);
+    if (!target) return;
+    moveStripsInGpioOrder([stripId], target.targetStripId, target.placement);
   };
 
   // Reopen a locked plan so a Draw-mode edit always applies — same rationale
@@ -1234,9 +1248,7 @@ export function DrawModePanel({
                   <div className="la-gpio-wrap">
                     <select className="la-gpio-select" aria-label="New strip GPIO output"
                             value={addGpio} onChange={event => setAddGpio(Number(event.target.value))}>
-                      {addGpioChoices().map(({ pin, disabled }) => (
-                        <option key={pin} value={pin} disabled={disabled}>GPIO {pin}</option>
-                      ))}
+                      <GpioOptions choices={addGpioChoices()} />
                     </select>
                   </div>
                   <div className="la-strip-density" data-testid="add-strip-density-control"
@@ -1548,13 +1560,30 @@ export function DrawModePanel({
                                 <select className="la-gpio-select" aria-label="GPIO output"
                                         value={outputForStrip(s.id)?.pin ?? 16}
                                         onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
-                                  {gpioChoicesForStrip(s.id).map(({ pin, disabled }) => (
-                                    <option key={pin} value={pin} disabled={disabled}>GPIO {pin}</option>
-                                  ))}
+                                  <GpioOptions choices={gpioChoicesForStrip(s.id)} />
                                 </select>
                               </div>
                             </div>
                           </div>
+                          {(() => {
+                            const up = stripMoveTarget(wiring, strips, s.id, 'up');
+                            const down = stripMoveTarget(wiring, strips, s.id, 'down');
+                            if (!up && !down) return null;
+                            return (
+                              <div className="la-strip-physical-field lw-sel-wide" data-testid={`wire-order-${s.id}`}>
+                                <span className="k">Wire order</span>
+                                {/* The same move the drag handle makes, as two words a
+                                    thumb can press. Ends of the chain disable the
+                                    button rather than hiding it, so the order reads. */}
+                                <div className="la-wire-order">
+                                  <button type="button" className="btn" aria-label={`Move ${s.name} up the wire`}
+                                          disabled={!up || wiring.locked} onClick={() => moveStripStep(s.id, 'up')}>Move up</button>
+                                  <button type="button" className="btn" aria-label={`Move ${s.name} down the wire`}
+                                          disabled={!down || wiring.locked} onClick={() => moveStripStep(s.id, 'down')}>Move down</button>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           <div className="la-strip-physical-field lw-sel-wide">
                             {/* The general form of Split (below): an owner who
                                 wants several independently-patterned zones out

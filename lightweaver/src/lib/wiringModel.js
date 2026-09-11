@@ -356,3 +356,74 @@ export function wiringFingerprint(wiring) {
   const runs = model.runs.map(({ verified, ...run }) => run);
   return JSON.stringify({ controllerAnchor: model.controllerAnchor, outputs: physicalWiringOutputs(model.outputs), runs });
 }
+
+// The pins a shipped card exposes on its connector (docs/hardware-setup.md
+// step 1.3). Every pin in the hardware contract is legal; these four are the
+// ones an owner can actually plug into, so pickers list them first and fold
+// the other eleven behind "More pins".
+export const CARD_CONNECTOR_PINS = Object.freeze([16, 17, 18, 21]);
+
+export function groupOutputPins(pins = [], connectorPins = CARD_CONNECTOR_PINS) {
+  const connector = new Set(connectorPins);
+  return {
+    connector: pins.filter(pin => connector.has(pin)),
+    more: pins.filter(pin => !connector.has(pin)),
+  };
+}
+
+// Strips in wire order per output: what the card sees, first to last on each
+// data pin. A split strip has several runs but one physical row, so it appears
+// once. Strips no output claims ride at the end of the first output.
+export function stripOrderByOutput(wiring, strips = []) {
+  const model = normalizeWiring(wiring);
+  const stripIds = new Set(strips.map(strip => strip.id));
+  const assigned = new Set();
+  const groups = model.outputs.map(output => {
+    const seen = new Set();
+    const ordered = output.runIds
+      .map(runId => model.runs.find(run => run.id === runId))
+      .filter(run => run?.type === 'strip' && stripIds.has(run.source?.stripId))
+      .map(run => run.source.stripId)
+      .filter(stripId => !seen.has(stripId) && seen.add(stripId));
+    ordered.forEach(stripId => assigned.add(stripId));
+    return { outputId: output.id, pin: output.pin, stripIds: ordered };
+  });
+  const unassigned = strips.map(strip => strip.id).filter(stripId => !assigned.has(stripId));
+  if (unassigned.length && groups[0]) groups[0] = { ...groups[0], stripIds: [...groups[0].stripIds, ...unassigned] };
+  return groups;
+}
+
+// "Move up" / "Move down" for a strip: the neighbour it swaps with on the same
+// output, or null at either end. Moves never cross outputs (that is the GPIO
+// picker's job), so the output count cannot change and no pin is ever lost.
+export function stripMoveTarget(wiring, strips, stripId, direction) {
+  const group = stripOrderByOutput(wiring, strips).find(item => item.stripIds.includes(stripId));
+  if (!group) return null;
+  const index = group.stripIds.indexOf(stripId);
+  const neighbourIndex = direction === 'up' ? index - 1 : index + 1;
+  if (neighbourIndex < 0 || neighbourIndex >= group.stripIds.length) return null;
+  return { targetStripId: group.stripIds[neighbourIndex], placement: direction === 'up' ? 'before' : 'after' };
+}
+
+// The one reorder primitive, shared by drag-and-drop and the word buttons.
+// Mutates the draft handed to updateWiring: lifts every run of the moved
+// strips out of every output and re-inserts them beside the target strip's
+// run on the target's output. Outputs left empty are dropped, except the
+// target's own.
+export function moveStripRunsInOutputOrder(draft, { stripIds = [], targetStripId, placement = 'before' } = {}) {
+  const ids = stripIds.filter(id => id && id !== targetStripId);
+  if (!ids.length) return false;
+  const runsByStrip = new Map(draft.runs.filter(run => run.type === 'strip').map(run => [run.source.stripId, run]));
+  const targetRun = runsByStrip.get(targetStripId);
+  const targetOutput = draft.outputs.find(output => output.runIds.includes(targetRun?.id));
+  const movedRuns = ids.map(id => runsByStrip.get(id)).filter(Boolean);
+  if (!targetOutput || !movedRuns.length) return false;
+  draft.outputs.forEach(output => { output.runIds = output.runIds.filter(runId => !movedRuns.some(run => run.id === runId)); });
+  const targetIndex = targetOutput.runIds.indexOf(targetRun.id);
+  const insertAt = targetIndex < 0
+    ? targetOutput.runIds.length
+    : targetIndex + (placement === 'after' ? 1 : 0);
+  targetOutput.runIds.splice(insertAt, 0, ...movedRuns.map(run => run.id));
+  draft.outputs = draft.outputs.filter(output => output.runIds.length || output.id === targetOutput.id);
+  return true;
+}
