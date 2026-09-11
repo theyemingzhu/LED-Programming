@@ -81,15 +81,26 @@ test('the power row opens the Hardware fold, where the supply size sets the limi
   }, { timeout: 10000 }).toEqual([2400, 3]);
 });
 
-test('the Project row opens the Projects panel directly', async ({ page }) => {
+test('the project is renamed right in the status row', async ({ page }) => {
   const spec = cardState('installed-match');
   await seedInstalledMatch(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
 
-  await page.getByTestId('fact-project-open').click();
-  await expect(page.getByTestId('projects-panel')).toBeVisible();
-  // Still on Card Home: the panel is a dialog over it, not a detour through
-  // Preferences.
-  await expect(page).toHaveURL(/#screen=card&section=overview$/);
+  await page.getByTestId('setup-project-name-edit').click();
+  const input = page.getByTestId('setup-project-name-input');
+  await expect(input).toBeFocused();
+  await input.fill('Gallery north wall');
+  await input.press('Enter');
+
+  // The same rename path as the top bar: both now say the new name, and it
+  // is what gets saved.
+  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Gallery north wall');
+  await expect(page.getByTestId('project-name-edit')).toHaveText('Gallery north wall');
+  await expect.poll(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'))).name, { timeout: 10000 }).toBe('Gallery north wall');
+  // Escape cancels without renaming.
+  await page.getByTestId('setup-project-name-edit').click();
+  await page.getByTestId('setup-project-name-input').fill('Nope');
+  await page.getByTestId('setup-project-name-input').press('Escape');
+  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Gallery north wall');
 });

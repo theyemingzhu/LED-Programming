@@ -123,7 +123,10 @@ test('Setup removes the optional shelf and competing first-run actions', async (
   await expect(page.getByRole('button', { name: 'Save the project', exact: true })).toHaveCount(0);
   await expect(page.getByText('Add knobs and buttons', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('setup-skip')).toHaveCount(0);
+  // A blank card has no doors yet: Still to do owns the page until the
+  // lights are counted.
   await expect(page.getByRole('button', { name: /Open Layout/i })).toHaveCount(0);
+  await expect(page.getByTestId('setup-doors')).not.toBeVisible();
 });
 
 test('Setup identity row names the exact card project and installed match', async ({ page }) => {

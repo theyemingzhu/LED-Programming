@@ -271,7 +271,7 @@ test('[U1d] the Installed identity value wraps instead of truncating on a phone'
   await waitConnectedUnaided(page, 'U1d connect');
   await expect(journeyLocator(page)).toBeVisible({ timeout: CONNECT_BUDGET_MS });
 
-  const installedValue = page.locator('[data-testid="setup-identity-row"] > *').nth(3).locator('strong');
+  const installedValue = page.getByTestId('setup-identity-installed');
   await expect(installedValue).toHaveText('Same project, not yet verified');
 
   await page.setViewportSize({ width: 390, height: 844 });

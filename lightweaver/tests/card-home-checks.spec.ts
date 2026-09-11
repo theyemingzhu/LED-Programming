@@ -13,11 +13,11 @@ test.beforeEach(async ({ page }) => {
   await page.route('http://192.168.4.1/**', route => route.abort());
 });
 
+// Health is a row of the facts module now (always on screen, nothing to
+// open); the name stays because every test below reads through it.
 async function openChecksPanel(page) {
   const panel = page.getByTestId('card-checks-recovery');
   await expect(panel).toBeVisible({ timeout: 15_000 });
-  const isOpen = await panel.evaluate(el => (el as HTMLDetailsElement).open);
-  if (!isOpen) await panel.locator('summary').click();
   return panel;
 }
 
@@ -69,7 +69,7 @@ for (const stateId of ['installed-match', 'installed-different']) {
     await panel.getByRole('button', { name: 'Verify hardware' }).click();
 
     await expect.poll(() => card.requests.length, { timeout: 10_000 }).toBeGreaterThan(requestsBefore);
-    const note = panel.locator('[role="status"], [role="alert"]');
+    const note = panel.getByTestId('card-checks-message');
     await expect(note).toContainText(/hardware readback verified|readback failed/i, { timeout: 10_000 });
   });
 
@@ -78,7 +78,8 @@ for (const stateId of ['installed-match', 'installed-different']) {
     await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
     const panel = await openChecksPanel(page);
 
-    await panel.getByRole('button', { name: 'Color-order test' }).click();
+    // The colour check is the Color order fact's own door, not a health button.
+    await page.getByTestId('fact-color-order').getByRole('button', { name: 'Check colors' }).click();
 
     await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 10_000 })
       .toBe('#screen=card&section=settings&tool=color-order');
@@ -157,7 +158,7 @@ for (const stateId of ['installed-match', 'installed-different']) {
     const before = card.requests.length;
     await panel.getByRole('button', { name: 'Verify hardware' }).click();
 
-    const note = panel.locator('[role="status"], [role="alert"]');
+    const note = panel.getByTestId('card-checks-message');
     await expect(note).toContainText(/Hardware readback verified/i, { timeout: 10_000 });
     const relayed = card.requests.slice(before).map(request => `${request.method} ${request.path}`);
     expect(relayed, 'the read must reach the card through the bridge').toContain('GET /api/status');
@@ -173,7 +174,7 @@ for (const stateId of ['installed-match', 'installed-different']) {
     const before = card.requests.length;
     await panel.getByRole('button', { name: 'Recover lights' }).click();
 
-    const note = panel.locator('[role="status"], [role="alert"]');
+    const note = panel.getByTestId('card-checks-message');
     await expect(note).toContainText(/Recovery command .* acknowledged with ready-state readback/i, { timeout: 15_000 });
     const relayed = card.requests.slice(before).map(request => `${request.method} ${request.path}`);
     expect(relayed).toContain('POST /api/recover-lights');

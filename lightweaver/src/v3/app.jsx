@@ -1873,6 +1873,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
               firmwareStatus={firmwareStatus}
+              onRenameProject={setProjectName}
               replaceProject={replaceProject}
               currentProject={serializeProject()}
               projectGeneration={projectLifecycle.generation}
