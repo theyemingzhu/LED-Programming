@@ -210,7 +210,7 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   await page.goto(seedUrl, { waitUntil: 'domcontentloaded' });
   if (!verified) {
     await expect(page.getByTestId('commissioning-step')).toBeVisible();
-    await expect(page.getByText('Ready to install on the card.')).toBeVisible();
+    await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
     await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
     return;
   }
@@ -236,7 +236,7 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
   // the install control. Wait for the enabled state instead of sampling early.
   if (url.includes('&next=patterns')) await expect(page.getByTestId('setup-install-slot')).toBeVisible();
   else {
-    await expect(page.getByText('Ready to install on the card.')).toBeVisible();
+    await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
     await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
   }
 }

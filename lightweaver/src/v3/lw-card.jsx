@@ -19,7 +19,6 @@ import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdopti
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { cardConnectionOptionsFor, normalizeCardHost } from '../lib/cardConnection.js';
 import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
-import { STRIP_DISCOVERY_LABEL } from '../lib/cardAction.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import {
   CARD_LINK_JOURNAL_LIMIT,
@@ -112,7 +111,6 @@ function CardHomePanels({
   onConnectCard,
   onOpenConnectionCenter,
   onOpenSection,
-  go,
   replaceProject,
   currentProject,
   projectGeneration,
@@ -202,60 +200,42 @@ function CardHomePanels({
   const lifecycleState = !cardLink && connected ? 'ready' : lifecycle.state;
   const lifecycleReason = cardLink ? lifecycle.reason : '';
 
-  const openSupport = { label: 'Open support', section: 'support' };
   const presentations = {
     operationFailed: () => ({
       tone: 'failure',
       message: 'The last card operation failed. Reconnect and inspect the card before retrying it.',
-      primary: { label: 'Reconnect card', action: 'connect' },
-      secondary: openSupport,
     }),
     cardRestarted: () => ({
       tone: 'connecting',
       message: 'Card restarted — verifying the exact card, firmware, and project before commands resume.',
-      primary: { label: 'Card restarted — verifying', disabled: true },
-      secondary: openSupport,
     }),
     checkingStability: () => ({
       tone: 'connecting',
       message: 'Checking card. Studio is waiting for two stable exact status checks before commands resume.',
-      primary: { label: 'Checking card', disabled: true },
-      secondary: openSupport,
     }),
     stoppedResponding: () => ({
       tone: 'connecting',
       message: 'Card stopped responding. Studio is reconnecting and will require fresh status before commands resume.',
-      primary: { label: 'Card stopped responding', disabled: true },
-      secondary: openSupport,
     }),
     recoveringOperation: () => ({
       tone: 'connecting',
       message: 'Studio is recovering the last card operation. Keep this page open until the result is confirmed.',
-      primary: { label: 'Recovery in progress…', disabled: true },
-      secondary: openSupport,
     }),
     pendingOperation: () => ({
       tone: 'connecting',
       message: 'A card operation is in progress. Keep this page open until Studio confirms the result.',
-      primary: { label: 'Card operation in progress…', disabled: true },
-      secondary: openSupport,
     }),
     connecting: () => ({
       tone: 'connecting',
       message: 'Studio is looking for the card. Keep the card page open while its identity is verified.',
-      primary: { label: 'Connecting…', disabled: true },
-      secondary: openSupport,
     }),
     blank: () => ({
       tone: 'failure',
       message: 'Blank — load a project, or find this card’s strips first.',
-      primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
-      tertiary: { label: 'Start a new project', action: 'new-project' },
     }),
     bench: () => ({
       tone: 'connecting',
       message: `${identity || 'A Lightweaver card'} is connected, but it is running the temporary Find-my-strips setup — not one of your projects. Install your project to replace it, run Find my strips again, or use Clear temporary setup under Checks & recovery below.`,
-      primary: { label: STRIP_DISCOVERY_LABEL, action: 'discovery' },
     }),
     // `redundant` means: the Setup identity row and the phase ladder directly
     // above already carry this verdict AND its action, so printing it again
@@ -270,8 +250,6 @@ function CardHomePanels({
     checkingEvidence: () => ({
       tone: 'connecting',
       message: 'Checking card. Studio is waiting for complete identity, project, and command readiness evidence.',
-      primary: { label: 'Checking card', disabled: true },
-      secondary: openSupport,
     }),
     // Distinct from checkingEvidence on purpose. The card HAS answered, with
     // complete evidence, and that evidence says it is not ready — so telling
@@ -282,8 +260,6 @@ function CardHomePanels({
     answeringNotReady: () => ({
       tone: 'attention',
       message: `${identity || 'This card'} is answering, but it is not reporting a ready runtime. Run Recover lights below, then check what the strip does.`,
-      primary: { label: 'Recover lights', section: 'overview' },
-      secondary: openSupport,
     }),
     foundUnpaired: () => {
       const foundProjectId = cardLink?.discoveredCard?.projectId || '';
@@ -301,27 +277,19 @@ function CardHomePanels({
           : foundProjectId
             ? 'Lightweaver found, holding a project — tap Connect to pair.'
             : 'Lightweaver found — tap Connect to pair.',
-        primary: { label: 'Connect card', action: 'connect' },
-        secondary: openSupport,
       };
     },
     updateNeeded: failureReason => ({
       tone: 'failure',
       message: `${cardLinkReasonText(failureReason)} Update it before loading changes.`,
-      primary: { label: 'Update card', section: 'install' },
-      secondary: openSupport,
     }),
     reasonFailure: failureReason => ({
       tone: 'failure',
       message: `${cardLinkReasonText(failureReason)} Reconnect and inspect the card before loading changes.`,
-      primary: { label: failureReason === 'wrong-card' ? 'Connect expected card' : 'Reconnect card', action: 'connect' },
-      secondary: openSupport,
     }),
     notConnected: () => ({
       tone: 'disconnected',
       message: 'A Lightweaver card is not connected. Connect one to inspect it before installing or loading a project.',
-      primary: { label: 'Connect card', action: 'connect' },
-      secondary: { label: 'Install Lightweaver', section: 'install' },
     }),
   };
 
@@ -375,7 +343,6 @@ function CardHomePanels({
         // says save it to the card. Same fact, same words, third place.
         redundant: true,
         message: `${identity || 'This Lightweaver'} is connected. The project open in Studio has changed since it was installed — save it to the card to bring them back into step.`,
-        secondary: openSupport,
       };
       break;
     case 'discovery-setup':
@@ -768,11 +735,6 @@ function CardHomePanels({
           )}
         </details>
       )}
-
-      <p className="card-overview-batch" data-testid="card-batch-link">
-        <span style={{ color: 'var(--text-faint)' }}>Making many cards? </span>
-        <button type="button" className="link-btn" onClick={() => onOpenSection('workshop')}>Batch production</button>
-      </p>
     </div>
   );
 }
@@ -1052,7 +1014,6 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         wiringTestActive={wiringTestActive}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onOpenSection={onOpenSection}
-        go={go}
         replaceProject={replaceProject}
         currentProject={currentProject}
         projectGeneration={projectGeneration}

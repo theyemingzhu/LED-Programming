@@ -1925,8 +1925,11 @@ test('ready overview offers Batch production as a low-emphasis link, not a setup
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  const batch = page.getByTestId('card-batch-link').getByRole('button', { name: 'Batch production', exact: true });
-  await expect(batch).toHaveClass(/link-btn/);
+  // Batch production is reached from the Advanced fold only; Home no longer
+  // carries a second, always-on door to it.
+  await expect(page.getByTestId('card-batch-link')).toHaveCount(0);
+  await page.getByTestId('card-advanced-fold').locator('summary').click();
+  const batch = page.getByTestId('card-advanced-fold').getByRole('button', { name: 'Batch production', exact: true });
   await expect(batch).not.toHaveClass(/primary/);
 
   await batch.click();

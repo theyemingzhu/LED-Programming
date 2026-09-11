@@ -166,7 +166,6 @@ export function CardInstallAction({
         </>
       ) : (
         <>
-          <p className="lww-install-ready" role="status">Ready to install on the card.</p>
           <section className="lw-wire-finish">
             <CardPushControl
               connected={connected}

@@ -85,15 +85,7 @@
   padding: 10px 16px;
 }
 
-.lww-install-ready {
-  margin: 0;
-  color: var(--ok);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.lww-flow:has(.lw-wiring-candidate) > .lww-flow-heading,
-.lww-flow:has(.lw-wiring-candidate) > .lww-install-ready {
+.lww-flow:has(.lw-wiring-candidate) > .lww-flow-heading {
   display: none;
 }
 

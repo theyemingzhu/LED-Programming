@@ -1966,9 +1966,11 @@ test('production setup is keyboard operable, restores heading focus, and announc
   await entry.focus();
   await entry.press('Enter');
   await expect(page).toHaveURL(/#screen=card&section=setup/);
-  // Batch production is not a section tab; it is reached from the
-  // low-emphasis Home link.
-  const batch = page.getByTestId('card-batch-link').getByRole('button', { name: 'Batch production', exact: true });
+  // Batch production is not a section tab; it is reached from the Advanced
+  // fold's tool grid.
+  await page.getByTestId('card-advanced-fold').locator('summary').focus();
+  await page.keyboard.press('Enter');
+  const batch = page.getByTestId('card-advanced-fold').getByRole('button', { name: 'Batch production', exact: true });
   await batch.focus();
   await batch.press('Enter');
   await expect(page).toHaveURL(/#screen=card&section=workshop/);

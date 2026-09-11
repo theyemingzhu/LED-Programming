@@ -1336,7 +1336,7 @@ export async function readyInstallProject(page: Page, edit?: (project: Record<st
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('commissioning-step')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
-  await expect(page.getByText('Ready to install on the card.')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
+  await expect(page.getByTestId('layout-send-to-card')).toBeVisible({ timeout: HARNESS_CONNECT_BUDGET_MS });
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled({ timeout: HARNESS_CONNECT_BUDGET_MS });
   return project;
 }

@@ -1103,7 +1103,12 @@ export function SetupScreen({
             needs to know what is about to happen to their piece. */}
         {journey.taskId === 'confirm-visible-lights' ? (
           <p role="status">The card is running the final light test. Confirm or restore it with the controls below.</p>
-        ) : !installIntentOpen ? (
+        ) : !installIntentOpen && !journey.setupComplete ? (
+          // Only while the project is NOT yet on the card. Once setup is
+          // complete the ready banner above already carries "Open Patterns"
+          // (setup-open-patterns) for the identical click, and this rung used
+          // to print the same button a second time directly beneath it, with
+          // a paragraph describing an install that had already happened.
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
             <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>

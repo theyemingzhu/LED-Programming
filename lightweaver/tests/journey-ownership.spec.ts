@@ -110,7 +110,7 @@ async function readyInstallProject(page: Page, edit?: (project: Record<string, a
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('commissioning-step')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  await expect(page.getByText('Ready to install on the card.')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(page.getByTestId('layout-send-to-card')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
   return project;
 }
@@ -346,7 +346,7 @@ test('[J08] sequential identical install: a second tab pressing install after th
   }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID, project: installedProject });
   await two.goto(INSTALL_ROUTE, { waitUntil: 'domcontentloaded' });
   await expect(two.getByTestId('commissioning-step')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
-  await expect(two.getByText('Ready to install on the card.')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(two.getByTestId('layout-send-to-card')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   await expect(two.getByTestId('layout-send-to-card')).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
 
   await two.getByTestId('layout-send-to-card').click();
