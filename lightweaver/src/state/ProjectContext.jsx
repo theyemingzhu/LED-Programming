@@ -16,6 +16,7 @@ import { easeCrossfade } from '../lib/motionSmoothing.js';
 import { PATTERNS } from '../lib/patterns-library.js';
 import { createDefaultPatchBoard, normalizePatchBoard } from '../lib/patchBoard.js';
 import { compileWiring } from '../lib/wiringCompiler.js';
+import { deriveSectionTargets, normalizeSectionVisualLook } from '../lib/sectionLookModel.js';
 import { invalidateWiringVerification, makeDefaultWiring, migrateWiring, physicalChangeKindForCompatField, prepareWiringForPhysicalEdit, reconcileWiringToStrips, standaloneControllerPhysicalChangeKind, updateWiring as mutateWiring } from '../lib/wiringModel.js';
 import {
   createLayoutState,
@@ -532,6 +533,22 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     setStandaloneControllerRaw(next);
     return { ok: true, wiring: boundary.wiring, errors: [] };
   }, [standaloneController, wiring]);
+  // The section list is derived ONCE here, from the project's own strips,
+  // patch board and compiled wiring, so every screen shows the same sections
+  // in the same order under the same names. Screens that need a different
+  // fallback look (Patterns warms an unknown default pattern) call
+  // deriveProjectSectionTargets with their look; the structural inputs are
+  // still this one set, which is what keeps the lists identical.
+  const deriveProjectSectionTargets = useCallback(
+    (defaultLook) => deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring, defaultLook }),
+    [strips, patchBoard, wiring, compiledWiring],
+  );
+  const projectDefaultLookKey = JSON.stringify(normalizeSectionVisualLook(standaloneController?.defaultLook));
+  const sectionTargets = useMemo(
+    () => deriveProjectSectionTargets(normalizeSectionVisualLook(standaloneController?.defaultLook)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deriveProjectSectionTargets, projectDefaultLookKey],
+  );
   const [portRoles, setPortRolesRaw] = useState(defaults.portRoles || defaultPortRoles());
   const setPortRoles = useCallback(value => {
     const next = typeof value === 'function' ? value(portRoles) : value;
@@ -1036,6 +1053,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       patchBoard,        setPatchBoard,
       updatePatchBoard,
       wiring, updateWiring, compiledWiring,
+      sectionTargets, deriveProjectSectionTargets,
       updateStripKaleidoscope,
       replaceLayoutGeometry,
       // Layout undo/redo (single shared snapshot stack)

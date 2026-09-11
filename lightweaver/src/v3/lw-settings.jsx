@@ -21,9 +21,7 @@ import { STANDALONE_RUNTIME_MODES, DEFAULT_STANDALONE_OUTPUTS } from '../lib/sta
 import { patchBoardToZones } from '../lib/cardRuntimeContract.js';
 import { getCardPatternById } from '../lib/cardPatternBank.js';
 import {
-  deriveSectionTargets,
   normalizeSavedLooks,
-  normalizeSectionVisualLook,
 } from '../lib/sectionLookModel.js';
 import { EMPTY_CARD_DEPLOYMENT, prepareCardDeployment } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
@@ -171,6 +169,7 @@ const SettingsFieldContext = createContext(null);
       patchBoard,
       compiledWiring,
       wiring,
+      sectionTargets,
       standaloneController, setStandaloneController,
       serializeProject,
       markProjectPersisted,
@@ -237,12 +236,6 @@ const SettingsFieldContext = createContext(null);
 
     const savedLooks = normalizeSavedLooks(standaloneController?.looks);
     const activeSavedLook = savedLooks.find(look => look.id === standaloneController?.activeLookId) || savedLooks[0] || null;
-    const defaultLook = normalizeSectionVisualLook(standaloneController?.defaultLook);
-    const sectionTargets = useMemo(
-      () => deriveSectionTargets({ strips, patchBoard: board, wiring, compiledWiring, defaultLook }),
-      [strips, board, wiring, compiledWiring, defaultLook.patternId, defaultLook.brightness, defaultLook.speed, defaultLook.hueShift,
-       defaultLook.customHue, defaultLook.customSaturation, defaultLook.customBreathe, defaultLook.customDrift],
-    );
 
     const hardwareSectionCount = zones.length || strips.length || DEFAULT_CIRCLE_SECTION_COUNT;
     const hardwareSections = strips.length
