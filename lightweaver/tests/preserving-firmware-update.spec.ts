@@ -540,3 +540,82 @@ test('[F35-reach] a card the footer calls Connected is never reported unreachabl
     })
     .toBe(true);
 });
+
+// ---------------------------------------------------------------------------
+// F40 — Adrian, verbatim: "I tried to look for where you're talking about, I
+// don't quite see it." He was told to use the one-time USB update (keeps
+// Wi-Fi, project, settings) for the F34/F35 card, which answers
+// `firmwareUpdateReady: false` and so cannot take a network write yet. The
+// preserving panel correctly still opens on the Wi-Fi door (F34: the card CAN
+// take a network update once the bit clears), but that door was a dead end —
+// there was no way out to the USB path that actually works today. This runs
+// on the same https/direct-link rig as F34/F35: a genuine, reached, capable
+// card, not the DEV-only `__LW_PRESERVING_UPDATE_FIXTURE__` shortcut.
+// ---------------------------------------------------------------------------
+
+/** Chromium ships navigator.serial; this pins it so the USB door's
+ * availability never depends on the runner's own Web Serial support. */
+async function stubWebSerialSupport(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', {
+      configurable: true,
+      value: { requestPort: async () => ({}) },
+    });
+  });
+}
+
+test('[F40-usb-door] a card that cannot take a Wi-Fi update yet leads with the one-time USB door', async ({ page }) => {
+  await stubWebSerialSupport(page);
+  const spec = realCardOlderBuildSpec();
+  const card = createCardSimulator(spec, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await seedKnownRealCard(page);
+
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByRole('heading', { name: 'Update this card over Wi-Fi' })).toBeVisible();
+
+  await expect(
+    panel.getByTestId('preserving-update-usb-required-notice'),
+    'a card answering firmwareUpdateReady: false must say so before offering either action',
+  ).toHaveText('This card cannot take a Wi-Fi update yet. Use USB once; after that, Wi-Fi works.');
+
+  const primary = panel.getByTestId('preserving-update-primary-action');
+  await expect(primary).toHaveText('Update once over USB instead');
+  await expect(primary).toHaveClass(/btn-lg/);
+  const secondary = panel.getByTestId('preserving-update-secondary-action');
+  await expect(secondary).toHaveText('Update over Wi-Fi');
+  await expect(secondary).not.toHaveClass(/btn-lg/);
+
+  await primary.click();
+  await expect(panel.getByRole('heading', { name: 'One-time USB update for this card' })).toBeVisible();
+});
+
+test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and still offers the USB door', async ({ page }) => {
+  await stubWebSerialSupport(page);
+  const spec = cardState('installed-match');
+  const card = createCardSimulator(spec, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await seedKnownRealCard(page);
+
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByRole('heading', { name: 'Update this card over Wi-Fi' })).toBeVisible();
+
+  await expect(
+    panel.getByTestId('preserving-update-usb-required-notice'),
+    'a card that can take a Wi-Fi update right now must not be told otherwise',
+  ).toHaveCount(0);
+
+  const primary = panel.getByTestId('preserving-update-primary-action');
+  await expect(primary).toHaveText('Update over Wi-Fi');
+  const secondary = panel.getByTestId('preserving-update-secondary-action');
+  await expect(secondary).toHaveText('Update once over USB instead');
+  await expect(secondary).not.toHaveClass(/btn-lg/);
+});

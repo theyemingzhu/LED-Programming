@@ -572,6 +572,10 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
   display: grid; justify-items: end; gap: 8px;
 }
 .preserving-update-inline-action { justify-self: end; }
+.preserving-update-notice,
+.preserving-update-usb-unavailable {
+  margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-mid); text-align: right;
+}
 .install-card-check h2,
 .install-confirm h2 { margin: 0 0 6px; font-size: 16px; }
 .install-card-check p,
