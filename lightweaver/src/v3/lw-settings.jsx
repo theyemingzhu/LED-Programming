@@ -27,14 +27,10 @@ import { cardStorageRoom, cardStorageRoomLine } from '../lib/cardStoragePayload.
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { DEFAULT_CIRCLE_SECTION_COUNT } from '../lib/defaultCircleLayout.js';
 import {
-  cardHostToUrl,
   cardLoadMethodForProtocol,
   readStoredCardHost,
   writeStoredCardHost,
 } from '../lib/cardConnection.js';
-import { readCardStatusEnvelope } from '../lib/cardPushClient.js';
-import { pushLiveHardwareToCard } from '../lib/cardLiveControl.js';
-import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
 import { getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { saveProjectToCardFromGesture } from '../lib/cardProjectSave.js';
 import { createProjectEnvelope } from '../lib/projectRepository.js';
@@ -113,7 +109,6 @@ const SettingsFieldContext = createContext(null);
   const RUNTIME_VALUE = { Playlist: 'sequence', Single: 'procedural', Sequence: 'preset' };
   const RUNTIME_LABEL = { sequence: 'Playlist', procedural: 'Single', preset: 'Sequence' };
 
-  const COLOR_ORDER_LABELS = ['RGB', 'GRB', 'BRG'];
 
   // ── Ring hardware summary (live RingSummary visual) ──────────────────
   function RingSummary({ sections, targets, activeLookLabel }) {
@@ -187,7 +182,6 @@ const SettingsFieldContext = createContext(null);
     const [projectCopySource, setProjectCopySource] = useState(projectRepositorySource?.label || 'This browser');
     const [cardProjectSave, setCardProjectSave] = useState({ status: 'idle', progress: '' });
     const cardProjectSaveAbortRef = useRef(null);
-    const liveHardwareSeq = useRef(0);
 
     // ── Derived card / hardware data (mirrors the old ChipScreen) ──────
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
@@ -294,42 +288,6 @@ const SettingsFieldContext = createContext(null);
     // Setup owns every question this panel only reports on.
     const openSetupLadder = () => { window.location.hash = '#screen=card&section=setup'; };
 
-    // Setup asks which colour order this card is wired in, and proves it by
-    // painting three blocks on the strip. This is the other half of that: try
-    // an order against the card RIGHT NOW and refuse to claim it worked until
-    // the card reports the same order back. Keep both — asking and proving are
-    // different jobs, and only the asking was duplicated.
-    const updateColorOrder = (value) => {
-      const colorOrder = String(value || '').toUpperCase();
-      updateController({ led: { colorOrder } });
-      if (!directPushAvailable) {
-        setStatusKind('');
-        setStatus('Color order changed in Studio. Open the local Studio to preview this live on the card.');
-        return;
-      }
-      const seq = ++liveHardwareSeq.current;
-      setStatusKind('');
-      setStatus(`Previewing ${colorOrder} color order on ${cardHostToUrl(cardHost)}...`);
-      pushLiveHardwareToCard({ colorOrder }, { ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 2000 })
-        .then(async response => {
-          if (response?.ok !== true || !Number.isSafeInteger(response?.stateRevision)) {
-            throw new Error('The card did not return a card-owned hardware acknowledgement.');
-          }
-          const readback = await readCardStatusEnvelope({ ...cardConnectionOptionsFor(cardLink, cardHost), timeoutMs: 2000 });
-          if (!response.cardId || readback?.cardId !== response.cardId || readback?.led?.colorOrder !== colorOrder) {
-            throw new Error('The card hardware readback did not match the requested color order.');
-          }
-          if (seq !== liveHardwareSeq.current) return;
-          setStatusKind('ok');
-          setStatus(`Color order ${colorOrder} was acknowledged and read back from the exact card. Check the real red, green, blue, and white appearance; Studio has not marked that visual test passed. Save to card to keep it after restart.`);
-        })
-        .catch(() => {
-          if (seq !== liveHardwareSeq.current) return;
-          setStatusKind('err');
-          setStatus(`Color order changed in Studio, but ${cardHostToUrl(cardHost)} did not answer.`);
-        });
-    };
-
     const loadMethod = cardLoadMethodForProtocol(typeof window !== 'undefined' ? window.location.protocol : 'https:');
     const directPushAvailable = loadMethod.directPush;
 
@@ -404,7 +362,6 @@ const SettingsFieldContext = createContext(null);
     const resLabel = RES_LABEL(tweaks.dpr || 1);
     const fpsLabel = FPS_LABELS.includes(String(tweaks.wledFps)) ? String(tweaks.wledFps) : '25';
     const runtimeLabel = RUNTIME_LABEL[standaloneController?.runtimeMode] || 'Playlist';
-    const colorOrderLabel = COLOR_ORDER_LABELS.includes(config.led.colorOrder) ? config.led.colorOrder : 'RGB';
     const addPaletteColor = () => {
       // pick the next wheel swatch not already in the palette, else the first
       const next = SWATCHES.find(s => !palette.includes(s)) || SWATCHES[palette.length % SWATCHES.length];
@@ -529,9 +486,9 @@ const SettingsFieldContext = createContext(null);
                 {showCard && <section className="card set-card is-live">
                   <div className="sec-h"><span className="t">Card &amp; hardware</span><span className="m">esp32-s3</span></div>
                   <Row label="Runtime mode" hint="What the card plays from on boot"><Seg opts={RUNTIME_LABELS} val={runtimeLabel} set={(o) => updateController({ runtimeMode: RUNTIME_VALUE[o] })} /></Row>
-                  <Row label="Color order" hint="Setup asks this. Change it here to try an order on the strip right now.">
-                    <div data-testid="color-order-summary"><Seg opts={COLOR_ORDER_LABELS} val={colorOrderLabel} set={updateColorOrder} /></div>
-                  </Row>
+                  {/* The colour order itself is set on Card Home's Color
+                      order row (three keys, pushed live and read back). This
+                      fold keeps only the proof: light the strip and ask. */}
                   <StripColorOrderCheck
                     cardHost={cardHost}
                     cardLink={cardLink}

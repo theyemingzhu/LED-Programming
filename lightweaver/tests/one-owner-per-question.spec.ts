@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Card Home is the install. Hardware fold keeps recovery and calibration —
-// card address and colour-order try-on. It must not offer a second
+// card address and the strip colour check (the order itself is set on Card
+// Home's Color order row). It must not offer a second
 // "Install on card" primary. Deleting that row used to be withdrawn; this
 // plan deletes it because Home now *is* that install.
 
@@ -51,18 +52,22 @@ test('the card address stays editable, because it is also the recovery path', as
     .toContainText('where Studio looks for it');
 });
 
-test('the colour-order picker stays, because trying an order is not asking for it', async ({ page }) => {
+test('the colour-order picker is gone from Hardware; Card Home owns the order', async ({ page }) => {
   await openHardware(page);
 
-  const picker = page.getByTestId('color-order-summary');
-  await expect(picker).toBeVisible();
-  await expect(picker.getByRole('button', { name: 'GRB', exact: true })).toBeVisible();
-  await expect(page.locator('.set-row', { hasText: 'Color order' }).locator('.hh'))
-    .toContainText('try an order on the strip');
+  // One owner per question: the order is set on Card Home's Color order row
+  // (three keys, pushed live and read back). Hardware keeps only the proof.
+  await expect(page.getByTestId('color-order-summary')).toHaveCount(0);
+  await expect(page.getByTestId('card-hardware-fold').locator('.set-row', { hasText: 'Color order' })).toHaveCount(0);
+  await expect(page.getByTestId('card-hardware-fold').getByRole('button', { name: 'Check colors' })).toBeVisible();
+
+  await page.goto(CARD_HOME, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('fact-color-keys')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('fact-color-keys')).toHaveCount(1);
 });
 
 test('the colour-order test deep link from the card still lands here', async ({ page }) => {
   await page.goto(`${HARDWARE_ROUTE}&tool=color-order`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-hardware-fold')).toHaveAttribute('open', '');
-  await expect(page.getByTestId('color-order-summary')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('strip-color-order')).toBeVisible({ timeout: 20_000 });
 });
