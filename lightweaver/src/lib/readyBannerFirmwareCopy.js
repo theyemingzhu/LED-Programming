@@ -24,8 +24,12 @@ export function readyBannerFirmwareCopy(firmwareStatus) {
   ) {
     return {
       required: false,
-      heading: 'A newer card release is available',
-      body: `Your lights keep working on ${firmwareStatus.installedBuildNumber}. Update to ${firmwareStatus.releaseBuildNumber} when convenient.`,
+      // F41: the banner used to spell out the errand ("Update to N when
+      // convenient") next to its own Update card button — the button already
+      // says the errand, so the body only needs to say what stays true while
+      // the owner waits.
+      heading: `Card release ${firmwareStatus.releaseBuildNumber} available`,
+      body: `Your lights keep working on ${firmwareStatus.installedBuildNumber}.`,
     };
   }
   return {
