@@ -519,3 +519,84 @@ Two agents' claims did not survive checking and were corrected; one agent's
 "this is pre-existing" was right and worth trusting only because it had
 baselined it. Host contention invented failures twice, exactly as the
 2026-08-20 entry warns; both times an isolated re-run was green.
+
+---
+
+## 2026-09-11 — Card Home is a status, not a staircase
+
+**Topic:** Adrian opened Card Home cold and could not tell where he was, what was
+clickable, or why "Open Patterns" appeared twice under a heading the size of a
+billboard. Four visual options, then three more, were rejected before the real
+question surfaced: what does the card journey actually require, in what order,
+and what on the screen is only there because a ladder once needed it? Four survey
+agents read the journey, lifecycle, install and pattern code; Fable synthesised.
+
+**Convergent answer:** The screen is a status readout with doors, not a sequence
+of steps. Only three things gate anything: the card must answer, the lights must
+be counted on a known output, and the project must be written to the card. Placing
+lights in the artwork gates nothing (install reads wiring, count, pin and colour
+order only; pattern preview needs only a connected card), so Layout left the chain
+and became an optional door. Every fact the owner might need to change (count,
+colour order, supply amps, brightness, project name, release) is edited in its own
+row at any time, with the same write the setup path uses. "Still to do" lists only
+the unmet gates; a finished card shows none. One primary per page. The deeper
+point: the old screen taught an order the product never enforced, and every
+duplicate button and banner was that imaginary order leaking.
+
+**Rejected paths, with reasons:**
+
+- **Reordering the existing blocks (the first seven mockups).** Rearrangement kept
+  every ambiguity: the owner still could not tell a readout from a button. Adrian's
+  words: "the clarity is what's needed." Layout changes without a model change are
+  not design.
+- **A wizard that hides later steps until earlier ones pass.** Owners arrive mid-way
+  (bench cards, legacy cards, cards blacked out by a bad colour order). Hiding the
+  count editor from a card on step 1 is exactly the trap he named: "if I need more
+  LEDs I need to do that immediately even if I'm on a different step."
+- **Keeping artwork placement as setup phase 3.** The code proved it is not a
+  dependency of anything. A required step that requires nothing is theatre.
+- **Two facts modules (This card / Checks & recovery) stacked.** Health is a fact
+  about the card like the count is; it became a row in the one module, and it
+  remembers its last result so it is never a dead button.
+- **A fixed doors bar on phones.** Built, then reverted: it covered the app's own
+  status chip. A full-width row scrolls with the page instead.
+- **Reading the power limit from the field the UI wrote to.** The screen showed
+  "not set" while the card enforced 2000 mA, because two names existed for one
+  value. The row now reads the one the card reads.
+
+**The honest tensions left unresolved:**
+
+- The Hardware fold still carries the colour-order picker beside the new colour
+  keys in the facts row. A spec guards "one owner per question" on that picker, so
+  removing it is a test-and-model change, not a delete. Two owners for one question
+  is exactly what this session removed elsewhere.
+- Setup on an installed card reconciles the count back to what the card holds, so
+  the stepper only appears on bench, provisional or mismatched cards. Correct, but
+  "Change count" on an installed card sends the owner to Wire, which reads as a
+  detour.
+- The design canvas rounds were judged on mockups that had no real data; two
+  changes that looked right on the board (fixed doors bar, a kicker on the heading)
+  were wrong on the phone. Mockups settle arrangement, not fit.
+- `connect-simple.spec.ts:119` is red on main and was before this work. Untouched,
+  unowned.
+
+**Concrete next moves, in order:**
+
+1. ~~Cut the journey to three gates; Layout optional.~~ Shipped (#272, #274).
+2. ~~Status row with rename-in-place, three doors, facts module with in-row editors,
+   health memory, folds side by side, phone layout.~~ Shipped through #283; live
+   at Studio build 1862.
+3. Adrian opens Card Home on the real gallery card and names what reads wrong.
+   That is the only review that counts; the harness's twelve card states are
+   models of cards, not cards.
+4. Decide whether the Hardware fold's colour picker goes (and retarget the
+   one-owner spec) or stays as the "check colours on the strip" tool.
+5. Move `patterns-v3`, `connection-center-quality` and `patch-board` into the PR
+   lane (owed since 2026-08-31, still owed).
+
+**What this entry exists to prevent:** Future Claude reading this file: do not
+reintroduce a numbered setup ladder on Card Home, and do not gate any editor on a
+phase. If a screen shows "step N of M", the M must be the number of things the
+code actually requires (three today), and every fact must stay editable from every
+step. Before adding a phase, prove in code that something reads it.
+
