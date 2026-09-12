@@ -15,6 +15,9 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Decide whether the two unmerged round-2 branches still earn a place on the rebuilt Card Home _(band: you-required)_ _(effort: quick)_
+  `archive/round2-f41-one-primary` (fold the finished ladder to one line, one primary at a time) and `archive/round2-night-batch-5` (that branch plus its test edits) were built before Card Home rounds 6 and 7 landed on main and no longer merge; main now has one install control and one Open Patterns. `round2/f39b-tab-lock` (only one Studio tab may connect) is parked on your call. Delete all three if the live Card Home already reads as one primary.
+
 - [ ] Decide three Card and Patterns surface changes from the round-2 UX critiques _(band: you-required)_ _(effort: quick)_
   Fold the blank card's "Find my strips" box into the ladder's own task; carry the card's piece name into a project Studio adopts silently; soften Patterns while the footer is not Connected. Pictures: `.claude/ux-screens/` and `docs/ux/2026-09-09-u2-patterns-playlist-critique.md`.
 - [ ] Show the card's own reason when it refuses a firmware update _(band: agent-runnable)_ _(effort: quick)_

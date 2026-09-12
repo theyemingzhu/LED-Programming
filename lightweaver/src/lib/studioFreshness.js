@@ -6,6 +6,13 @@ export const STUDIO_RELEASE_PATH = '/studio-release.json';
 export const STUDIO_FRESHNESS_POLL_MS = 30_000;
 export const STUDIO_FRESHNESS_TIMEOUT_MS = 5_000;
 export const STUDIO_REFRESH_ATTEMPT_KEY = 'lw_studio_refresh_attempt_v1';
+// F39: a superseded tab does not reload out from under a write, an update, or
+// an open dialog. It retries at this cadence until the tab is genuinely idle.
+export const STUDIO_FRESHNESS_IDLE_WATCH_MS = 2_000;
+// If 60 seconds pass with the tab never idle, the chip's own copy changes
+// (see freshnessPresentation in app.jsx) so the owner is not left staring at
+// stale "update ready" text that never explains why nothing happened.
+export const STUDIO_FRESHNESS_IDLE_DEADLINE_MS = 60_000;
 
 function immutableState(status, release, reason = '') {
   return Object.freeze({
@@ -59,6 +66,14 @@ export function createStudioFreshnessMonitor({
     setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
     clearTimeout: id => globalThis.clearTimeout(id),
   },
+  now = () => Date.now(),
+  // F39: a tab is idle only with no open dialog and no edit in the last few
+  // seconds — on top of the existing operationActive gate below. Permissive
+  // by default so a caller that does not wire these (or an older test) keeps
+  // today's behaviour exactly: reload the instant a release differs and no
+  // hardware operation is running.
+  hasOpenDialog = () => false,
+  isEditIdle = () => true,
 } = {}) {
   const release = parseStudioRelease(releaseInput);
   const releaseUrl = new URL(STUDIO_RELEASE_PATH, locationOrigin).href;
@@ -85,6 +100,8 @@ export function createStudioFreshnessMonitor({
   let convergedReleaseRevision = '';
   let pollTimer = null;
   let inFlight = null;
+  let supersededAt = null;
+  let idleWatchTimer = null;
 
   const emit = next => {
     state = next;
@@ -148,20 +165,77 @@ export function createStudioFreshnessMonitor({
     }
   };
 
+  // F39: idle means no hardware operation, no open dialog, tab visible, and
+  // no project edit in the last few seconds. `operationActive` is checked
+  // here too (not only by the caller) so the idle-watch retry loop below
+  // reads one true source instead of duplicating the composed gate.
+  const isTabIdle = () => {
+    if (operationActive) return false;
+    if (documentRef.visibilityState !== 'visible') return false;
+    try {
+      if (hasOpenDialog()) return false;
+    } catch {
+      return false;
+    }
+    try {
+      if (!isEditIdle()) return false;
+    } catch {
+      return false;
+    }
+    return true;
+  };
+
+  const clearIdleWatch = () => {
+    if (idleWatchTimer !== null) timers.clearTimeout(idleWatchTimer);
+    idleWatchTimer = null;
+  };
+
+  const currentSupersededReason = () => {
+    if (operationActive) return 'operation-active';
+    const waitedMs = now() - (supersededAt ?? now());
+    return waitedMs >= STUDIO_FRESHNESS_IDLE_DEADLINE_MS ? 'idle-wait' : 'awaiting-idle';
+  };
+
+  // Retries at STUDIO_FRESHNESS_IDLE_WATCH_MS until `target` is either
+  // reloaded to (the tab went idle) or superseded by a newer poll (handled by
+  // acceptRelease clearing/recreating this watch, since the revision guard
+  // below makes a stale watch a no-op).
+  const scheduleIdleWatch = target => {
+    clearIdleWatch();
+    idleWatchTimer = timers.setTimeout(() => {
+      idleWatchTimer = null;
+      if (!pendingRelease || pendingRelease.sourceRevision !== target.sourceRevision) return;
+      if (isTabIdle()) {
+        pendingRelease = null;
+        refreshTo(target);
+        return;
+      }
+      emit(immutableState('update-ready', target, currentSupersededReason()));
+      scheduleIdleWatch(target);
+    }, STUDIO_FRESHNESS_IDLE_WATCH_MS);
+  };
+
   const acceptRelease = target => {
     if (target.sourceRevision === release.sourceRevision) {
       pendingRelease = null;
       convergedReleaseRevision = '';
+      supersededAt = null;
+      clearIdleWatch();
       try { storage.removeItem(STUDIO_REFRESH_ATTEMPT_KEY); } catch { /* matching code needs no reload guard */ }
       return emit(immutableState('current', release));
     }
-    if (operationActive) {
-      pendingRelease = target;
-      return emit(immutableState('update-ready', target, 'operation-active'));
+    if (!pendingRelease || pendingRelease.sourceRevision !== target.sourceRevision) {
+      supersededAt = now();
     }
-    pendingRelease = null;
-    refreshTo(target);
-    return state;
+    if (isTabIdle()) {
+      pendingRelease = null;
+      clearIdleWatch();
+      refreshTo(target);
+      return state;
+    }
+    pendingRelease = target;
+    scheduleIdleWatch(target);
+    return emit(immutableState('update-ready', target, currentSupersededReason()));
   };
 
   const requireConvergedRelease = async markerText => {
@@ -255,6 +329,7 @@ export function createStudioFreshnessMonitor({
     if (!operationActive && pendingRelease) {
       pendingRelease = null;
       convergedReleaseRevision = '';
+      clearIdleWatch();
       return checkNow();
     }
     return Promise.resolve(state);
@@ -295,6 +370,7 @@ export function createStudioFreshnessMonitor({
       if (!started) return;
       started = false;
       clearPoll();
+      clearIdleWatch();
       windowRef.removeEventListener('focus', onFocus);
       windowRef.removeEventListener('online', onOnline);
       windowRef.removeEventListener(STUDIO_HARDWARE_OPERATION_EVENT, onHardwareOperationActive);
