@@ -685,6 +685,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 }
 .sb-freshness .sb-dot.warn { background: var(--warn); box-shadow: none; }
 .sb-freshness.is-unknown { color: var(--text-lo); }
+
 .sb-right { display: flex; align-items: center; gap: 0; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
 .sb-right .sb-fact .fv { color: var(--text-lo); }
 .sb-right .kbd { color: var(--text-faint); }
