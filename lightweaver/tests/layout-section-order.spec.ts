@@ -25,6 +25,7 @@ test('Move up and Move down reorder sections on the wire without a drag', async 
   const count = page.locator('.la-strip-detail input[type="number"]').first();
   await count.fill('30');
   await count.blur();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
   await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);

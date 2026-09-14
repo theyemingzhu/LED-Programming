@@ -9,7 +9,7 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
-### 2026-09-14 Layout clarity — managed Sprint (active)
+### 2026-09-14 Layout clarity — managed Sprint (done locally)
 
 Manager recipe: Build a scoped feature v1; Manager Playbook v2. Baseline
 `1b7ce23a` (origin/main at start). Scope: on-demand Divide, distinct canvas
@@ -22,14 +22,37 @@ implementation tasks running:
 - Wiring panels: `01a09d6d-d6d5-7c91-81f5-253cce521f7d`.
 Each owns distinct files; canvas owner additionally handles generated names in
 useLayoutState/discoveryCommit and selection-visibility compatibility.
-Tasks use host-default models (no model requested); measured cost unavailable.
+Initial dispatch incorrectly used host default: Astra medium for all three tasks.
+User corrected routing: manager must select appropriate economical workers.
+Remaining canvas task explicitly switched to Sol medium; further bounded fixes
+use Sol medium. Astra remains manager/integrator. Measured cost unavailable.
 Primary integrates, reviews and runs one checkpoint and real-screen inspection.
 Pending user preferences: wiring consolidation vs hiding; local preview vs release.
 Default endpoint is verified local preview; no release/hardware authorization yet.
 Acceptance: 41→11/10/10/10, four visible colors/names, collapsed Divide after action,
 no overlapping labels at17%/fit, useful wiring functions reachable, desktop/mobile
 no overflow, relevant focused browser tests and unit/build checkpoint pass.
-Resumption: collect the three task commits, integrate here, inspect combined UI.
+Integrated commits: 5ecbb14d +265b3a59 (wiring), b802d013 (inspector),
+f27fd2d2 +c94f6628 (canvas/identity +single selection). Generated project-title
+names divide to Strip1..N; custom names retained. Division preserves41 LEDs,
+validates proposed wiring before mutation, and one Undo restores the source.
+Numeric color normalization prevents duplicate amber after restoration.
+Actual combined desktop17% and390px phone screens inspected. Divider closes,
+first strip remains editable, no automatic Group/Combine panel, compact colored
+labels have no leader lines/duplicate badge. Build summary retains order/power.
+Checkpoint:2484/2484 unit tests +production build passed; final hook-only
+selection follow-up built successfully. Integrated browser evidence:66 passing cases before final selection follow-up;
+52/52 final batch passed, including9 repeated division cases (109 unique total).
+The interrupted first batch was resumed by remaining suites plus affected tests;
+no browser failures remain. Final production build passed.
+Manager routing repair persisted in job-manager SKILL.md, Playbookv3, build
+recipev2 and guidev2; skill validator passed. Follow-up actual model verified:
+Sol medium. Initial three Astra-medium dispatches were a manager mistake.
+No deployment, signing, card commands or flashing. User shipping preference
+unanswered; verified local preview remains the endpoint.
+Resumption: review http://localhost:4173/#screen=layout; release only on explicit
+shipping instruction. UI batch is committed locally, not pushed/deployed.
+
 
 
 2026-09-09 color-picker follow-up: Adrian reports choosing pure red while strip
