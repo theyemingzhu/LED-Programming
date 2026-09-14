@@ -54,6 +54,7 @@ async function openWire(page: any, fixture: object) {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(data));
   }, fixture);
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
@@ -66,7 +67,7 @@ test('a small card against a large design is stated as a fact, and the design is
   await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
   await expect(page.getByTestId('wire-adopt-18')).toHaveCount(0);
   // The design still says 400. Counting a bench strip must never shrink it.
-  await expect(page.locator('.lww-plan-head .meta')).toContainText('400 LEDs in this design');
+  await expect(page.getByTestId('sheet-total')).toContainText('400 LEDs');
   const total = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
     .layout.strips.reduce((sum: number, strip: any) => sum + strip.pixelCount, 0));
   expect(total).toBe(400);
@@ -87,10 +88,9 @@ test('a wrong GPIO is still a fault, because nothing lights at all', async ({ pa
 
 test('counting what is plugged in lives with the Wire tools', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 18, countedPin: 18, countedPixels: 41 }));
-  // It no longer waits behind a disclosure — Wire tools is a panel of its own
-  // — but WHERE it lives is still the point: with the controls that change the
-  // design, not among the read-outs.
+  // Recount remains available inside the optional hardware controls.
   const tools = page.getByTestId('advanced-installation-tools');
   await expect(tools).toBeVisible();
+  await tools.locator(':scope > summary').click();
   await expect(tools.getByTestId('wire-recount')).toBeVisible();
 });

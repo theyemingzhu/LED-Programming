@@ -1,8 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// One line under a strip's controls does all the labelling: it describes the
-// strip at rest and names whatever is under the pointer otherwise. Nothing in
-// the panel carries a permanent word, so no word repeats down a list of strips.
+// Controls retain accessible names and contextual help without a permanent prose row.
 
 async function oneStrip(page: any) {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -12,54 +10,31 @@ async function oneStrip(page: any) {
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 }
 
-test('the caption describes the strip at rest and names what the mouse touches', async ({ page }) => {
+test('strip controls expose help without a permanent caption row', async ({ page }) => {
   await oneStrip(page);
-  const caption = page.locator('.la-strip-caption').first();
-  await expect(caption).toHaveText('Data in at LED 1');
-
-  await page.getByRole('button', { name: 'Flip path direction' }).first().hover();
-  await expect(caption).toHaveText('Flip the drawing path so LED 1 swaps ends');
-
-  await page.getByRole('button', { name: 'Duplicate strip' }).first().hover();
-  await expect(caption).toHaveText('Duplicate this strip');
-
-  // Off every labelled control, the line goes back to being about the strip.
-  await page.locator('.panel-head').first().hover();
-  await expect(caption).toHaveText('Data in at LED 1');
-});
-
-test('a touch names a control and the name stays up afterwards', async ({ page }) => {
-  await oneStrip(page);
-  const caption = page.locator('.la-strip-caption').first();
-
+  await expect(page.locator('.la-strip-caption')).toHaveCount(0);
+  for (const name of ['Flip path direction', 'Duplicate strip', 'Remove strip']) {
+    const button = page.getByRole('button', { name, exact: true }).first();
+    await expect(button).toHaveAttribute('title', /.+/);
+    await button.hover();
+    await expect(page.locator('.la-strip-caption')).toHaveCount(0);
+  }
   const duplicate = page.getByRole('button', { name: 'Duplicate strip' }).first();
   await duplicate.dispatchEvent('pointerdown', { pointerType: 'touch', isPrimary: true });
-  await expect(caption).toHaveText('Duplicate this strip');
-
-  // No hover to leave, so the last thing named stays named.
   await duplicate.dispatchEvent('pointerup', { pointerType: 'touch', isPrimary: true });
-  await expect(caption).toHaveText('Duplicate this strip');
+  await expect(page.locator('.la-strip-caption')).toHaveCount(0);
 });
 
-test('count and size do not lecture on hover', async ({ page }) => {
+test('reverse data direction remains explicit without a prose caption', async ({ page }) => {
   await oneStrip(page);
-  const caption = page.locator('.la-strip-caption').first();
-
-  await page.getByLabel('Strip LED count', { exact: true }).hover();
-  await expect(caption).toHaveText('Data in at LED 1');
-
-  await page.getByLabel('Strip length in metres', { exact: true }).hover();
-  await expect(caption).toHaveText('Data in at LED 1');
-});
-
-test('the caption reports the data-in end after reversing it', async ({ page }) => {
-  await oneStrip(page);
-  const caption = page.locator('.la-strip-caption').first();
-  const leds = Number.parseInt(await page.locator('.la-strip-row .layer-len').first().innerText(), 10);
-
-  await page.getByRole('button', { name: /Reverse data direction/ }).first().click();
-  await page.locator('.panel-head').first().hover();
-  await expect(caption).toHaveText(`Data in at LED ${leds}`);
+  const reverse = page.getByRole('button', { name: /Reverse data direction/ }).first();
+  await expect(reverse).toHaveAttribute('aria-pressed', 'false');
+  await reverse.click();
+  await expect(reverse).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.layout?.wiring?.runs?.find((run: any) => run.type === 'strip')?.physicalDirection;
+  })).toBe('source-reverse');
 });
 
 test('hide sits on the strip row and does not close the open strip', async ({ page }) => {

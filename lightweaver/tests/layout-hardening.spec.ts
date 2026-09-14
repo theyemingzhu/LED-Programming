@@ -195,6 +195,7 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
   // Specialist tools stay behind the top-level Advanced disclosure.
+  await page.getByTestId('layout-specs-trigger').click();
   const advanced = page.getByTestId('advanced-installation-tools');
   box = await advanced.locator('summary').first().boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
@@ -244,8 +245,9 @@ test('mode toolbar only presents tools that apply while keeping secondary groups
 
   await expect(page.getByTitle('Split one physical strip where the wire jumps to a new spot.')).toHaveCount(0);
   await expect(page.getByTitle('Join two strips into one continuous run.')).toHaveCount(0);
-  await page.getByText('Wire tools', { exact: true }).click();
-  await page.getByText('Custom mapping', { exact: true }).click();
+  await page.getByTestId('layout-specs-trigger').click();
+  await page.getByText('Wiring & hardware', { exact: true }).click();
+  await page.getByText('Advanced mapping', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Split a strip mid-wire' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeVisible();
   await expect(page.getByTitle('Import an SVG to map LED strips')).toBeVisible();

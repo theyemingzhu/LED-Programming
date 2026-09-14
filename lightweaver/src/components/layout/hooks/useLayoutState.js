@@ -1,3 +1,4 @@
+import { nextStripNames } from '../../../lib/stripLabels.js';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { samplePath as libSamplePath } from '../../../lib/mapper.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
@@ -151,7 +152,7 @@ export function useLayoutState() {
     pathEl.setAttribute('d', layer.pathData);
     const pixels = libSamplePath(pathEl, count);
     return {
-      id, name: layer.name,
+      id, name: nextStripNames(strips, Number(id.match(/\d+$/)?.[0]) || 1).at(-1),
       sourceLayerId: layer.layerId, sourcePathId: null,
       pathData: layer.pathData, pixelCount: count,
       closed: isClosedPathData(layer.pathData, layer.closed ?? layer.isClosed),

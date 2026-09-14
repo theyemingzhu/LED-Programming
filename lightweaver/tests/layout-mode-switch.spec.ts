@@ -16,7 +16,7 @@ test('Layout has no Test & Install tab and keyboard 2 does not open a second mod
   await expect(page.getByTestId('layout-mode-draw')).toHaveCount(0);
   await expect(page.getByTestId('layout-mode-size')).toHaveCount(0);
   await expect(page.getByTestId('layout-wire-panel')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Check and install on the card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Install on card', exact: true })).toBeVisible();
   await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
 
   await page.keyboard.press('2');
@@ -29,15 +29,14 @@ test('Layout has no Test & Install tab and keyboard 2 does not open a second mod
 test('Wire tools stay on Layout as their own panel, not a second mode', async ({ page }) => {
   await gotoLayout(page);
 
-  // Wire tools used to be a closed disclosure. It is a panel now: everything
-  // in it CHANGES the design, and it was the one interactive thing in this
-  // column, sitting collapsed between read-outs you cannot operate at all.
-  // What this test is really for is unchanged — the tools live ON Layout and
-  // need no mode switch to reach.
+  // Optional wiring controls stay on Layout without a mode switch.
+  await page.getByTestId('layout-specs-trigger').click();
   const advanced = page.getByTestId('advanced-installation-tools');
   await expect(advanced).toBeVisible();
+  await expect(advanced).toHaveJSProperty('open', false);
+  await advanced.locator(':scope > summary').click();
   await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
-  // The deeper settings stay folded; only the panel itself came forward.
+  // The deeper settings stay folded after opening Wiring & hardware.
   const power = page.getByTestId('wire-power-section');
   await expect(power).toBeVisible();
   await expect(power).toHaveJSProperty('open', false);

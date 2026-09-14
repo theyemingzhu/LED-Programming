@@ -9,6 +9,105 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-15 Layout release (active)
+User authorizes going live. Primary owns exact revision release and live proof.
+Sol medium owns bounded diagnosis of existing exhaustive Patterns regression
+at1509: stale test exercised direct transport instead of pending bridge.
+Existing bridge helper now establishes intended transport; focused and adjacent
+checks pass, plus5 repeat passes. No production transport change. Prior main
+exhaustive run34799265254 failed. PR295 holds the release. Core/project checks
+and71 cloud browser checks passed; continuing remaining launch stages after
+installing missing pinned mapper dependencies. Studio-only bundle exception
+permits direct site deploy and keeps firmware unchanged.
+
+### 2026-09-14 Layout specifications (done locally)
+Move wire plan/build information out of the default layout inspector into an
+on-demand Specs surface with reduced inset and full available width. Keep
+functional hardware/build controls reachable and meaningful errors available.
+Owner: Sol medium, bounded UI relocation and focused regressions; routine UI
+work requires no frontier worker. Primary verified desktop/390px phone and
+Escape focus return; production build passed. Resumed after interrupted
+verification with Sol medium assigned only the remaining stale test repairs.
+Four Specs/build-summary tests passed on resumption. No deployment or hardware
+actions. All three isolated wiring/checklist repairs passed (8.3s); reserved
+address behavior remains explicitly checked. Seven focused checks passed on
+resumption. Prior related suites supplied the remaining regression evidence.
+Ready locally; deployment remains a separate release step.
+
+### 2026-09-14 LED visibility (done locally)
+Larger outlined LED dots remain screen-sized at Fit and 17% zoom; selected
+strip ribbon uses muted paint blue-gray. Divided-section colors and geometry
+are preserved. Sol medium handled the bounded canvas fix; primary integrated.
+Focused regression witnessed red (1.291px radius) then green. Six existing
+selection/identity browser tests passed. Primary inspected the actual 17%
+preview and confirmed clear dots across all four sections. No deployment or
+hardware changes.
+
+
+### 2026-09-14 Layout interface typography (done locally)
+
+User wants Illustrator-like editor chrome: compact interface labels/buttons,
+consistent sans-serif typography, no always-visible explanatory paragraphs.
+Sol medium owns bounded Layout presentation changes; reason: routine UI/CSS
+implementation, no card protocol or state-machine changes. Primary owns combined
+screen review and checkpoint. Scope: Layout idle install action/help, strip
+caption presentation, inspector typography; active warnings/confirmations stay
+reachable and legible. No release or hardware commands authorized.
+Implemented compact Install on card +on-demand info for both change types;
+removed permanent strip captions; UI sans labels/normal casing/tracking, tabular
+numeric values, matching canvas label typography. Card handlers/state unchanged.
+Regression red witnessed on old install copy. Combined browser:53/53 pass;
+unit2484/2484 +production build pass. Desktop and390px phone screens inspected.
+One Sol-medium worker, primary integrated review. Resumption: review local4173;
+not pushed/deployed.
+
+
+### 2026-09-14 Layout clarity — managed Sprint (done locally)
+
+Manager recipe: Build a scoped feature v1; Manager Playbook v2. Baseline
+`1b7ce23a` (origin/main at start). Scope: on-demand Divide, distinct canvas
+section colors, compact Strip-number labels, cleaner inspector, consolidated
+wiring/reference disclosures. Preserve geometry, LED totals, custom names,
+persistence and card contracts. User asked for separate tasks; three isolated
+implementation tasks running:
+- Compact editor: `01a09d6d-d6d8-7641-a1da-5b8d559264cb`.
+- Canvas identity: `01a09d6d-d6d5-7c91-81f5-2557a75801df`.
+- Wiring panels: `01a09d6d-d6d5-7c91-81f5-253cce521f7d`.
+Each owns distinct files; canvas owner additionally handles generated names in
+useLayoutState/discoveryCommit and selection-visibility compatibility.
+Initial dispatch incorrectly used host default: Astra medium for all three tasks.
+User corrected routing: manager must select appropriate economical workers.
+Remaining canvas task explicitly switched to Sol medium; further bounded fixes
+use Sol medium. Astra remains manager/integrator. Measured cost unavailable.
+Primary integrates, reviews and runs one checkpoint and real-screen inspection.
+Pending user preferences: wiring consolidation vs hiding; local preview vs release.
+Default endpoint is verified local preview; no release/hardware authorization yet.
+Acceptance: 41→11/10/10/10, four visible colors/names, collapsed Divide after action,
+no overlapping labels at17%/fit, useful wiring functions reachable, desktop/mobile
+no overflow, relevant focused browser tests and unit/build checkpoint pass.
+Integrated commits: 5ecbb14d +265b3a59 (wiring), b802d013 (inspector),
+f27fd2d2 +c94f6628 (canvas/identity +single selection). Generated project-title
+names divide to Strip1..N; custom names retained. Division preserves41 LEDs,
+validates proposed wiring before mutation, and one Undo restores the source.
+Numeric color normalization prevents duplicate amber after restoration.
+Actual combined desktop17% and390px phone screens inspected. Divider closes,
+first strip remains editable, no automatic Group/Combine panel, compact colored
+labels have no leader lines/duplicate badge. Build summary retains order/power.
+Checkpoint:2484/2484 unit tests +production build passed; final hook-only
+selection follow-up built successfully. Integrated browser evidence:66 passing cases before final selection follow-up;
+52/52 final batch passed, including9 repeated division cases (109 unique total).
+The interrupted first batch was resumed by remaining suites plus affected tests;
+no browser failures remain. Final production build passed.
+Manager routing repair persisted in job-manager SKILL.md, Playbookv3, build
+recipev2 and guidev2; skill validator passed. Follow-up actual model verified:
+Sol medium. Initial three Astra-medium dispatches were a manager mistake.
+No deployment, signing, card commands or flashing. User shipping preference
+unanswered; verified local preview remains the endpoint.
+Resumption: review http://localhost:4173/#screen=layout; release only on explicit
+shipping instruction. UI batch is committed locally, not pushed/deployed.
+
+
+
 2026-09-09 color-picker follow-up: Adrian reports choosing pure red while strip
 looks fuchsia/behind. Reproduced journey-phase cause: editing a stop retained the
 current fade time (red→violet at90s yielded RGB147,56,147). Picker edits now seek

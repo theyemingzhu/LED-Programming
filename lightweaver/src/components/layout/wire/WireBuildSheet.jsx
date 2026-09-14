@@ -50,19 +50,48 @@ export function WireBuildSheet({ state }) {
   const runOrder = sheet.rows.map(row => row.index).join(' → ');
 
   return (
-    <>
-      {/* Both read-outs fold. Neither is a control — you cannot click a row
-          into doing anything — so leaving them permanently open spent the
-          whole side column on reference while Wire tools, the one panel here
-          you actually operate, sat collapsed between them. */}
-      <details className="lwbs lwbs-schedule" aria-label="Strip schedule" data-testid="strip-schedule">
-        <summary className="panel-head">
-          <span className="ttl">Strip schedule</span>
-          {/* The count lives on the sheet's Total line; repeating it here only
-              made the bar too long for a 300px column and clipped the words
-              that say which order these are in. */}
-          <span className="meta">{sheet.planned ? 'wire order' : 'drawing order'}</span>
-        </summary>
+    <details className="lwbs lwbs-sheet lwbs-summary" aria-label="Build summary" data-testid="build-sheet">
+      <summary className="panel-head">
+        <span className="ttl">Build summary</span>
+        <span className="meta">
+          {sheet.continuous ? 'continuous run' : `${sheet.outputs.length} data lines`}
+        </span>
+      </summary>
+      <dl className="lwbs-facts">
+        <dt>Run</dt>
+        <dd data-testid="sheet-run">
+          {runOrder}
+          {sheet.continuous
+            ? `, one data line on GPIO ${sheet.outputs[0].pin ?? '—'}`
+            : `, across ${sheet.outputs.length} data lines`}
+        </dd>
+
+        <dt>Total</dt>
+        <dd data-testid="sheet-total">
+          {sheet.totalLeds} LEDs
+          {sheet.totalLengthMm === null ? '' : ` · ${formatMillimetres(sheet.totalLengthMm, 0)} of strip`}
+        </dd>
+
+        <dt>Draw</dt>
+        <dd data-testid="sheet-draw">
+          {formatAmps(power.maxAmps)} at full white, {power.milliampsPerPixel} mA a light
+        </dd>
+
+        <dt>Supply</dt>
+        <dd data-testid="sheet-supply" className={power.status === 'over' ? 'is-over' : undefined}>
+          {!power.declared && (
+            <>Add your supply rating in Wiring &amp; hardware → Hardware &amp; power to estimate spare capacity.</>
+          )}
+          {power.declared && power.status === 'ok' && (
+            <>{formatAmps(power.psuAmps)} supply · {formatAmps(power.safeAmps)} usable · {formatAmps(power.headroomAmps)} spare</>
+          )}
+          {power.declared && power.status === 'over' && (
+            <>{formatAmps(power.psuAmps)} supply · {formatAmps(power.safeAmps)} usable · short by {formatAmps(Math.abs(power.headroomAmps))} at full white</>
+          )}
+        </dd>
+      </dl>
+      <div className="lwbs-schedule" data-testid="strip-schedule">
+        <p className="lwbs-note">{sheet.planned ? 'Wire order' : 'Drawing order'}</p>
         <table className="lwbs-table">
           <thead>
             <tr>
@@ -84,49 +113,7 @@ export function WireBuildSheet({ state }) {
             addresses will follow whatever order you solder in.
           </p>
         )}
-      </details>
-
-      <details className="lwbs lwbs-sheet" aria-label="Build sheet" data-testid="build-sheet">
-        <summary className="panel-head">
-          <span className="ttl">Build sheet</span>
-          <span className="meta">
-            {sheet.continuous ? 'continuous run' : `${sheet.outputs.length} data lines`}
-          </span>
-        </summary>
-        <dl className="lwbs-facts">
-          <dt>Run</dt>
-          <dd data-testid="sheet-run">
-            {runOrder}
-            {sheet.continuous
-              ? `, one data line on GPIO ${sheet.outputs[0].pin ?? '—'}`
-              : `, across ${sheet.outputs.length} data lines`}
-          </dd>
-
-          <dt>Total</dt>
-          <dd data-testid="sheet-total">
-            {sheet.totalLeds} LEDs
-            {sheet.totalLengthMm === null ? '' : ` · ${formatMillimetres(sheet.totalLengthMm, 0)} of strip`}
-          </dd>
-
-          <dt>Draw</dt>
-          <dd data-testid="sheet-draw">
-            {formatAmps(power.maxAmps)} at full white, {power.milliampsPerPixel} mA a light
-          </dd>
-
-          <dt>Supply</dt>
-          <dd data-testid="sheet-supply" className={power.status === 'over' ? 'is-over' : undefined}>
-            {!power.declared && (
-              <>Not set. The draw above is real; the headroom needs your supply size — set it in Wire tools.</>
-            )}
-            {power.declared && power.status === 'ok' && (
-              <>{formatAmps(power.psuAmps)} supply · {formatAmps(power.safeAmps)} usable · {formatAmps(power.headroomAmps)} spare</>
-            )}
-            {power.declared && power.status === 'over' && (
-              <>{formatAmps(power.psuAmps)} supply · {formatAmps(power.safeAmps)} usable · short by {formatAmps(Math.abs(power.headroomAmps))} at full white</>
-            )}
-          </dd>
-        </dl>
-      </details>
-    </>
+      </div>
+    </details>
   );
 }

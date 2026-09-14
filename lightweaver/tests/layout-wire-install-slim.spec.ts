@@ -63,6 +63,7 @@ async function openLayoutTools(page: any, fixture: object) {
   }, fixture);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  await page.getByTestId('layout-specs-trigger').click();
 }
 
 test('Wire keeps strip tools visible and drops the always-true first-to-last label', async ({ page }) => {
@@ -97,12 +98,17 @@ test('old Test & Install URL is a Card checklist, not a second strip editor', as
   }));
 
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
-  await expect(page.getByTestId('start-led-check')).toBeVisible();
+  await expect(page.getByTestId('setup-phase-connect')).toContainText('Connect to your card');
+  await expect(page.getByTestId('setup-phase-connect')).toHaveAttribute('data-status', 'current');
+  await expect(page.getByTestId('setup-phase-lights')).toContainText('Find and verify the lights');
+  await expect(page.getByTestId('setup-connect-card')).toHaveText('Pair this card');
   await expect(page.getByTestId('project-led-chipset')).toHaveCount(0);
 
   await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
-  await expect(page.locator('.lww-plan-head .meta')).toContainText('2 strips · 44 LEDs');
+  await page.getByTestId('layout-specs-trigger').click();
+  await expect(page.getByTestId('wire-plan')).toHaveCount(0);
+  await expect(page.getByTestId('sheet-total')).toContainText('44 LEDs');
   const advanced = page.getByTestId('advanced-installation-tools');
   await advanced.locator('summary').first().click();
   await expect(page.getByTestId('project-led-chipset')).toBeVisible();

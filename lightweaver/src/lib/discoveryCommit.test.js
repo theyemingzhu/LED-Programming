@@ -248,3 +248,12 @@ test('projectSkeletonFromCardStatus is empty when the card reports nothing', () 
   assert.deepEqual(skeleton.outputs, []);
   assert.equal(skeleton.portRoles.every(entry => entry.role === 'unused'), true);
 });
+
+test('card reconstruction names physical strips independently of the project title', () => {
+  for (const name of ['Untitled Project', 'Atrium mandala', 'Lightweaver Bench Discovery']) {
+    const skeleton = projectSkeletonFromCardStatus({ knownGoodProject: true, outputReady: true,
+      piece: { name }, outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+    assert.equal(skeleton.strips[0].name, 'Strip 1');
+    assert.equal(skeleton.strips[0].id, 'strip-1');
+  }
+});

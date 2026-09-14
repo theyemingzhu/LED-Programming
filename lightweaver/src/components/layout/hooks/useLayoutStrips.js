@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
+import { nextStripNames, isGeneratedStripName, stripColorKey } from '../../../lib/stripLabels.js';
 import {
   nextStripId,
+  STRIP_COLORS,
   sampleStripPixels,
   translatePathData,
   svgPathLength,
@@ -51,7 +53,7 @@ export function useLayoutStrips(ctx) {
   } = ctx;
   // Splitting rewrites the physical chain as well as the strip list, so this
   // one action reaches wiring directly (same route useLayoutWire takes).
-  const { wiring, updateWiring } = useProject();
+  const { wiring, updateWiring, projectName } = useProject();
 
   // Density is a physical fact of the purchased strip — count and length are
   // locked together through it: count = length(m) × density(LEDs/m).
@@ -397,33 +399,27 @@ export function useLayoutStrips(ctx) {
       newIds.push(newId);
       pool = [...pool, { id: newId }];
     }
-    const names = nextSplitNames(source.name, counts.counts.length, strips.map(st => st.name));
+    const names = isGeneratedStripName(source.name, projectName)
+      ? nextStripNames(strips, counts.counts.length, id)
+      : nextSplitNames(source.name, counts.counts.length, strips.map(st => st.name));
 
+    // The palette cursor restarts after restoration. Skip sibling colors so
+    // a newly divided card strip cannot start with two identical sections.
+    const pieceColors = new Set([stripColorKey(source.color)]);
+    const nextPieceColor = () => {
+      let color = nextColor();
+      for (let attempt = 1; pieceColors.has(stripColorKey(color)) && attempt < STRIP_COLORS.length; attempt += 1) color = nextColor();
+      pieceColors.add(stripColorKey(color));
+      return color;
+    };
     const pieces = counts.counts.map((pixelCount, index) => {
       const piece = partOf(paths[index], pixelCount);
       return index === 0
         ? { ...piece, id, name: names[0] }
-        : { ...piece, id: newIds[index - 1], name: names[index], color: nextColor() };
+        : { ...piece, id: newIds[index - 1], name: names[index], color: nextPieceColor() };
     });
 
-    pushLayoutHistory();
-    setStrips(prev => prev.flatMap(st => (st.id === id ? pieces : [st])));
-    setStripDensities(prev => {
-      const next = { ...prev };
-      const sourceDensity = densityFor(id);
-      newIds.forEach(newId => { next[newId] = sourceDensity; });
-      return next;
-    });
-    // A hand-pinned count on the original means every piece is hand-set too,
-    // so a later resize does not silently recount them.
-    if (stripCountOverrides?.[id]) {
-      setStripCountOverrides(prev => {
-        const next = { ...prev, [id]: true };
-        newIds.forEach(newId => { next[newId] = true; });
-        return next;
-      });
-    }
-    updateWiring(draft => {
+    const wiringResult = updateWiring(draft => {
       const existing = draft.runs.find(run => run.type === 'strip' && run.source?.stripId === id);
       if (existing) {
         existing.source = { ...existing.source, from: 0, to: Math.max(0, counts.counts[0] - 1) };
@@ -456,12 +452,34 @@ export function useLayoutStrips(ctx) {
         }
         previousRunId = run.id;
       });
-    }, { changeKind: 'route' });
-    selectStrips([id, ...newIds]);
-    scrollToStrip(newIds.at(-1) || id);
+    }, { changeKind: 'route', strips: strips.flatMap(st => st.id === id ? pieces : [st]) });
+    if (!wiringResult?.ok) return null;
+    // updateWiring records the single pre-division snapshot before either
+    // geometry or density changes, so one Undo restores the whole strip.
+    setStrips(prev => prev.flatMap(st => (st.id === id ? pieces : [st])));
+    setStripDensities(prev => {
+      const next = { ...prev };
+      const sourceDensity = densityFor(id);
+      newIds.forEach(newId => { next[newId] = sourceDensity; });
+      return next;
+    });
+    // A hand-pinned count on the original means every piece is hand-set too,
+    // so a later resize does not silently recount them.
+    if (stripCountOverrides?.[id]) {
+      setStripCountOverrides(prev => {
+        const next = { ...prev, [id]: true };
+        newIds.forEach(newId => { next[newId] = true; });
+        return next;
+      });
+    }
+    // Keep the first section open for editing. Selecting every new section
+    // automatically opens the batch Group/Combine panel and obscures the
+    // result the owner is trying to inspect.
+    selectStrip(id);
+    scrollToStrip(id);
     return newIds;
-  }, [strips, wiring, updateWiring, nextColor, densityFor, stripCountOverrides,
-      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrips, scrollToStrip]);
+  }, [strips, wiring, updateWiring, projectName, nextColor, densityFor, stripCountOverrides,
+      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
   const createStripGroupFromIds = useCallback((stripIds, nameOverride = '') => {
     const uniqueIds = [...new Set(stripIds)].filter(Boolean);

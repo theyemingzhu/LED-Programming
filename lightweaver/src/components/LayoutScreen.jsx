@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { TbIcon } from './layout/shared/InspectorPrimitives.jsx';
 import { GLOW_MODES, svgPt, sampleStripPixels } from '../lib/layoutGeometry.js';
 import { createPrimitiveStripDefinition } from '../lib/layoutPrimitives.js';
@@ -31,6 +31,13 @@ import { useKaleidoscopeCalibration } from './layout/hooks/useKaleidoscopeCalibr
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [specsOpen, setSpecsOpen] = useState(false);
+  const [specsAttention, setSpecsAttention] = useState(false);
+  const specsButtonRef = useRef(null);
+  const closeSpecs = () => {
+    setSpecsOpen(false);
+    requestAnimationFrame(() => specsButtonRef.current?.focus());
+  };
   const [firstLedPicker, setFirstLedPicker] = useState(null);
   const [firstLedError, setFirstLedError] = useState(null);
   const [firstLedMarkerRunId, setFirstLedMarkerRunId] = useState(null);
@@ -321,7 +328,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
   return (
     <div className="screen">
-      <div className={`la mode-${mode}${inspectorCollapsed ? ' inspector-collapsed' : ''}`}>
+      <div className={`la mode-${mode}${inspectorCollapsed ? ' inspector-collapsed' : ''}${specsOpen ? ' specs-open' : ''}`}>
 
       {/* ── Hidden file inputs ─────────────────────────────────────── */}
       <input ref={fileRef} type="file" accept=".svg"  style={{ display: 'none' }} onChange={handleFile}/>
@@ -459,26 +466,54 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           <strong>Inspector</strong>
         </button>
         <div className="la-mode-nav">
-          <button
-            type="button"
-            className="btn primary"
-            data-testid="layout-check-and-install"
-            title="Check the lights and install this project on the connected card."
-            data-tooltip="Check the lights and install this project on the connected card."
-            onClick={() => openCardFlow('install-project')}
-          >
-            Check and install on the card
-          </button>
-          {layoutChangeKind && (
-            <p className="la-change-kind" data-testid="layout-change-kind">
-              {layoutChangeKind === 'hardware'
-                ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
-                : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
-            </p>
-          )}
+          <div className="la-install-actions">
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="layout-check-and-install"
+              title="Check the lights and install this project on the connected card."
+              data-tooltip="Check the lights and install this project on the connected card."
+              onClick={() => openCardFlow('install-project')}
+            >
+              Install on card
+            </button>
+            <button
+              ref={specsButtonRef}
+              type="button"
+              className={`btn la-specs-trigger${specsOpen ? ' is-active' : ''}${specsAttention ? ' needs-attention' : ''}`}
+              data-testid="layout-specs-trigger"
+              aria-expanded={specsOpen}
+              aria-controls="layout-specs-panel"
+              aria-label={specsAttention ? 'Specs, attention needed' : 'Specs'}
+              title={specsAttention ? 'Open wiring, hardware, and build specs. A spec needs attention.' : 'Open wiring, hardware, and build specs.'}
+              onClick={() => setSpecsOpen(open => !open)}
+            >
+              Specs
+              {specsAttention && <span className="la-specs-attention" aria-hidden="true"/>}
+            </button>
+            {layoutChangeKind && (
+              <details className="la-change-help" data-testid="layout-change-help">
+                <summary
+                  aria-label="Installation info"
+                  title="Installation info"
+                  data-testid="layout-change-help-toggle"
+                >
+                  <span aria-hidden="true">i</span>
+                </summary>
+                <div className="la-change-help-popover">
+                  <p className="la-change-kind" data-testid="layout-change-kind">
+                    {layoutChangeKind === 'hardware'
+                      ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
+                      : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
+                  </p>
+                </div>
+              </details>
+            )}
+          </div>
         </div>
         <div className="la-mode-content is-draw">
-          <DrawModePanel state={state}
+          <div className="la-inspector-main" hidden={specsOpen}>
+            <DrawModePanel state={state}
                          firstLedPicker={firstLedPicker}
                          firstLedError={firstLedError}
                          onBeginFirstLedPicker={beginFirstLedPicker}
@@ -498,11 +533,39 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
                          kaleidoscopeCalibration={kaleidoscopeCalibration}
                          onConnectCard={onConnectCard}
                          onOpenConnectionCenter={onOpenConnectionCenter}
-                         onStarterPreviewChange={setStarterPreview}/>
-          <WirePlanTools state={state} connected={connected} cardHost={cardHost}/>
-          {/* The schedule and the sheet read from the compiled wire order, so
-              they sit after the plan that produces it. */}
-          <WireBuildSheet state={state}/>
+                           onStarterPreviewChange={setStarterPreview}/>
+          </div>
+          <section
+            className="la-specs-panel"
+            id="layout-specs-panel"
+            data-testid="layout-specs-panel"
+            aria-label="Project specs"
+            hidden={!specsOpen}
+            onKeyDown={event => {
+              if (event.key === 'Escape') closeSpecs();
+            }}
+          >
+            <header className="la-specs-header">
+              <button
+                type="button"
+                className="btn btn-ghost la-specs-back"
+                aria-label="Back to inspector"
+                onClick={closeSpecs}
+              >← Back</button>
+              <strong>Specs</strong>
+            </header>
+            <div className="la-specs-body">
+              <WirePlanTools
+                state={state}
+                connected={connected}
+                cardHost={cardHost}
+                onAttentionChange={setSpecsAttention}
+              />
+              {/* The sheet reads from the compiled wire order produced by the
+                  wiring controls above it. */}
+              <WireBuildSheet state={state}/>
+            </div>
+          </section>
         </div>
       </aside>
       </div>{/* .la */}

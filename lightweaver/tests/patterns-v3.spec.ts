@@ -1531,6 +1531,7 @@ test('leaving Patterns invalidates a pending bridge selection', async ({ page })
   await page.reload({ waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
   await expect(page.getByRole('button', { name: 'Install on card' })).toBeEnabled();
+  await useReadyBridgeTransport(page);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await page.evaluate(() => { window.location.hash = '#screen=layout'; });

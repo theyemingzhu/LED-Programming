@@ -26,12 +26,14 @@ async function importLine(page: any) {
 }
 
 async function enterWire(page: any) {
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 async function gotoDefaultWire(page: any) {
   await page.addInitScript(() => localStorage.clear());
   await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
@@ -84,15 +86,20 @@ async function exportProject(page: any, tmp: string, name = 'saved.json') {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-// Wire tools is a panel now rather than a disclosure — everything in it
-// changes the design, so it no longer waits behind a summary. All this has to
-// do is make sure the panel is on screen.
+// Open the optional wiring controls before using specialist tools.
 async function openAdvanced(page: any) {
   if (await page.getByTestId('advanced-installation-tools').count() === 0) {
     await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
     await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
   }
-  await expect(page.getByTestId('advanced-installation-tools')).toBeVisible();
+  if (!await page.getByTestId('layout-wire-tools').isVisible()) {
+    await page.getByTestId('layout-specs-trigger').click();
+  }
+  const tools = page.getByTestId('advanced-installation-tools');
+  await expect(tools).toBeVisible();
+  if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
+    await tools.locator(':scope > summary').click();
+  }
 }
 
 async function loadVerifiedWiring(page: any, tmp: string) {
@@ -153,13 +160,11 @@ test('Draw lists strips grouped by GPIO in data-wire order and drag reorder writ
   expect(runStripOrder).toEqual(['default-inner-circle', 'default-outer-circle']);
 });
 
-test('Custom mapping stays folded and Split still cuts a run', async ({ page }) => {
+test('Advanced mapping stays folded and Split still cuts a run', async ({ page }) => {
   const tmp = await importLine(page);
   await enterWire(page);
 
-  // The Wire tools panel itself is open — it is the one thing in this column
-  // you operate. The specialist cutting tools inside it are still folded, and
-  // that is what this guards: Split and Add a cable jump do not greet you.
+  // Both wiring controls and specialist mapping start folded.
   const advanced = page.getByTestId('advanced-installation-tools');
   await expect(advanced).toBeVisible();
   await expect(page.getByRole('button', { name: 'Split a strip mid-wire' })).toHaveCount(0);
@@ -183,7 +188,7 @@ test('Custom mapping stays folded and Split still cuts a run', async ({ page }) 
   await clickStripPathAt(page, 0.45);
   await expect(page.getByText('Selected split')).toBeVisible();
   expect((await exportProject(page, tmp, 'after-split.json')).layout.wiring.runs.filter((run: any) => run.type === 'strip')).toHaveLength(2);
-  await expect(page.locator('.lww-plan-head .meta')).toContainText('1 strip ·');
+  await expect(page.getByTestId('sheet-total')).toContainText('LED');
   const runSelector = page.getByLabel('Physical run');
   await expect(runSelector.locator('option')).toHaveCount(2);
   await runSelector.selectOption({ index: 1 });

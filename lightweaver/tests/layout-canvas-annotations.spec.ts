@@ -40,6 +40,8 @@ test('a strip callout names the strip with its count and spacing', async ({ page
   await addLine(page);
   const callout = page.locator('.lw-strip-callout').first();
   await expect(callout).toBeVisible();
+  await expect(callout.locator('line')).toHaveCount(0);
+  await expect(page.getByTestId('selected-strip-badge')).toHaveCount(0);
 
   // The name, then the two facts a builder needs off the drawing itself.
   await expect(callout).toContainText('Line');

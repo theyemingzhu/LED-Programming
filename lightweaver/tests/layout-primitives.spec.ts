@@ -399,9 +399,7 @@ test('size, density, and LED count stay linked', async ({ page }) => {
 
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(linked.pixelCount + 1);
 
-  const caption = page.locator('.la-strip-caption').first();
-  await page.locator('.panel-head').first().hover();
-  await expect(caption).toHaveText(/Data in at LED/);
+  await expect(page.locator('.la-strip-caption')).toHaveCount(0);
   await expect(page.getByLabel('Strip LED count', { exact: true }))
     .not.toHaveAttribute('title');
   await expect(page.getByLabel('Strip length in metres', { exact: true }))
@@ -546,9 +544,10 @@ test('Draw strip rows drag into first-to-last wiring order', async ({ page }) =>
 
   const rows = page.locator('.la-strip-row');
   await expect(rows).toHaveCount(2);
+  const secondName = await rows.nth(1).locator('.layer-name').innerText();
   await rows.nth(1).dragTo(rows.nth(0));
 
-  await expect(rows.first()).toContainText('Line 2');
+  await expect(rows.first().locator('.layer-name')).toHaveText(secondName);
   await expect.poll(async () => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
     return saved?.layout?.wiring?.outputs?.[0]?.runIds;
@@ -562,11 +561,12 @@ test('dropping below a Draw strip places the row after it', async ({ page }) => 
   await page.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Line', exact: true }).click();
 
   const rows = page.locator('.la-strip-row');
+  const secondName = await rows.nth(1).locator('.layer-name').innerText();
   const targetBox = await rows.nth(1).boundingBox();
   if (!targetBox) throw new Error('Expected a second strip row.');
   await rows.nth(0).dragTo(rows.nth(1), { targetPosition: { x: 24, y: targetBox.height - 2 } });
 
-  await expect(rows.first()).toContainText('Line 2');
+  await expect(rows.first().locator('.layer-name')).toHaveText(secondName);
 });
 
 test('the Size + control grows a strip ~23% about a fixed center', async ({ page }) => {

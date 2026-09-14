@@ -104,8 +104,12 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
 
   // This edit only changes the pixel count on the SAME pin (18) — F14's rule
   // says the card applies and reboots at once, no wiring candidate — so the
-  // copy line beside the install button must read the length-only sentence.
+  // explanation stays available on demand without filling the editing surface.
+  await expect(page.getByTestId('layout-change-kind')).not.toBeVisible();
+  await page.getByTestId('layout-change-help-toggle').click();
+  await expect(page.getByTestId('layout-change-kind')).toBeVisible();
   await expect(page.getByTestId('layout-change-kind')).toContainText('length-only change');
+  await page.getByTestId('layout-change-help-toggle').click();
 
   await page.getByTestId('layout-check-and-install').click();
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);

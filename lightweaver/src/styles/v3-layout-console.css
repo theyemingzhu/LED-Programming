@@ -153,22 +153,24 @@
   background: var(--idle);
 }
 .la .panel-head:not(.lww-plan-head) .ttl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .panel-head:not(.lww-plan-head) .meta { margin-left: auto; }
-.la .panel-head .meta { letter-spacing: 0.06em; }
+.la .panel-head .meta { letter-spacing: normal; }
 
 /* ── strips: a schedule, not a list of cards ─────────────── */
 
-.la .la-strip-row .layer-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+.la .la-strip-row .layer-name { font-family: var(--font-ui); font-size: 0.8125rem; font-weight: 500; }
 .la .la-strip-row .layer-len,
 .la .la-strip-row .la-wire-n {
   font-family: var(--font-mono);
-  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
   color: var(--text-lo);
 }
 .la .la-strip-row.sel {
@@ -205,10 +207,11 @@
   border-left-color: var(--border-hair);
 }
 .la .la-strip-physical-field > .k {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .la-size-readout input[type=number] {
@@ -217,6 +220,7 @@
   border-color: var(--border-hair);
   box-shadow: var(--lw-inset);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .la .la-strip-physical-field .la-size-ctrl .btn,
 .la .la-strip-physical-field .lw-led-nudge .btn {
@@ -241,83 +245,99 @@
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
     0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
 }
-
-/* ═══ the wire plan is a module, not a caption ═════════════
-   It carried the run's facts as loose text under a bare label,
-   below a panel that had already become a module — so the one
-   block describing what will actually be wired read as the
-   least important thing in the column.
-
-   Its head is a sub-head, not a panel header (see the exclusion
-   above), and below a 320px container it stacks into a column —
-   which the side panel always is. So the status light is placed
-   rather than flowed: a leading dot in a column layout becomes a
-   line of its own.
-   ═══════════════════════════════════════════════════════════ */
-
-.la .lw-wire-path.is-embedded {
-  margin: 14px 16px 16px;
-  padding: 0 13px 13px;
-  border: 1px solid var(--border-hair);
-  border-radius: 2px;
-  background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
+.la .la-mode-nav .btn,
+.la .la-change-help,
+.la .la-change-kind {
+  font-family: var(--font-ui);
 }
-.la .lw-wire-path.is-embedded > .lww-plan-head {
+.la .la-install-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.la .la-install-actions > .btn { flex: 1 1 auto; }
+.la .la-install-actions > .la-specs-trigger {
   position: relative;
-  margin: 0 -13px 11px;
-  padding: 11px 13px 11px 30px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border-hair);
+  flex: 0 0 auto;
+  min-width: 64px;
 }
-.la .lw-wire-path.is-embedded > .lww-plan-head::before {
-  content: "";
-  position: absolute;
-  left: 13px;
-  top: 16px;
-  width: 7px;
-  height: 7px;
+.la .la-specs-trigger.is-active {
+  color: var(--lw-live-ink);
+  border-color: var(--lw-live-ink);
+}
+.la .la-specs-attention {
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
   border-radius: 50%;
-  background: var(--idle);
+  background: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
 }
-.la .lww-plan-head .ttl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
+.la .la-change-help { position: relative; flex: 0 0 auto; }
+.la .la-change-help > summary {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 100%;
+  min-height: 32px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
   color: var(--text-lo);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  list-style: none;
 }
-/* the run itself reads as a sheet: mono, measured, one fact per line */
-.la .lww-plan-summary {
-  padding: 9px 11px;
-  border-radius: 2px;
-  background: var(--lw-well);
-  border: 1px solid var(--border-hair);
-  box-shadow: var(--lw-inset);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.75;
-  color: var(--text-mid);
+.la .la-change-help > summary::-webkit-details-marker { display: none; }
+.la .la-change-help > summary:hover { color: var(--text-hi); border-color: var(--border); }
+.la .la-change-help > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
+.la .la-change-help-popover {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(240px, calc(100vw - 32px));
+  padding: 9px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.32);
+}
+.la .la-change-help .la-change-kind { margin: 0; }
 
-/* The run's facts live in the head's .meta, which is set to one clipped line
-   for the wide layout it was written for. In this 300px column that column
-   layout stacks, and the sentence lost its last two words to an ellipsis —
-   "44 LEDs in this de…". Let it wrap; it is the only line on this panel that
-   says what will actually be wired. */
-.la .lw-wire-path.is-embedded > .lww-plan-head .meta {
-  max-width: 100%;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--text-mid);
+/* Specs temporarily replaces the editing inspector and gets enough width for
+   the six-column assembly schedule. Its body owns the only side inset. */
+@media (min-width: 601px) {
+  .la.specs-open { grid-template-columns: minmax(0, 1fr) minmax(420px, 34vw); }
 }
+.la .la-inspector-main { display: contents; }
+.la .la-inspector-main[hidden] { display: none; }
+.la .la-specs-panel { min-width: 0; }
+.la .la-specs-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 43px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-hair);
+  background: var(--bg-elev);
+}
+.la .la-specs-header strong { font-size: 0.75rem; color: var(--text-hi); }
+.la .la-specs-back { min-height: 30px; padding-inline: 8px; }
+.la .la-specs-body { min-width: 0; padding: 10px; }
+.la .la-specs-body > .lw-wire-path.is-embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.la .la-specs-body > .lwbs { margin: 10px 0 0; }
 
 /* ═══ strip schedule + build sheet ═════════════════════════
    The two read-outs somebody wires from. Both are modules in
@@ -348,16 +368,16 @@
 .la .lwbs-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11.5px;
 }
 .la .lwbs-table th {
   padding: 8px 8px 7px;
   text-align: left;
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-faint);
   border-bottom: 1px solid var(--border-hair);
   white-space: nowrap;
@@ -374,6 +394,11 @@
 .la .lwbs-table th:last-child,
 .la .lwbs-table td:last-child { padding-right: 13px; }
 .la .lwbs-ix { width: 1%; color: var(--text-faint); }
+.la .lwbs-ix,
+.la .lwbs-n {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
 .la .lwbs-n { text-align: right; width: 1%; }
 /* the strip's own name is the one thing here that is not a number */
 .la .lwbs-nm {
@@ -406,15 +431,16 @@
   grid-template-columns: 62px minmax(0, 1fr);
   gap: 0;
   padding: 4px 13px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11.5px;
   line-height: 1.6;
 }
 .la .lwbs-facts dt {
   padding: 8px 0;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-faint);
   border-bottom: 1px solid var(--border-hair);
 }
@@ -462,7 +488,13 @@
   border-bottom: 0;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
 }
-.la .la-strip-detail .lw-sel-head .ttl { font-size: 10px; letter-spacing: 0.18em; }
+.la .la-strip-detail .lw-sel-head .ttl {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
 /* The name is the meta, so a long one clips rather than pushing the bar wide;
    the whole string stays reachable through the title attribute. */
 .la .la-strip-detail .lw-sel-head .meta {
@@ -470,9 +502,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: normal;
   color: var(--text-hi);
 }
 
@@ -498,17 +531,18 @@
 .la .la-strip-detail .lw-sel-grid > .lw-sel-wide { grid-column: 1 / -1; }
 .la .la-strip-detail .lw-sel-grid > .la-strip-physical-field > .k {
   flex: 0 0 auto;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-faint);
 }
 /* a measured value, sat against its cell's own right edge */
 .la .lw-sel-v {
   margin-left: auto;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-hi);
   white-space: nowrap;
@@ -598,26 +632,20 @@
   .la .la-strip-detail .actions .btn { min-height: 44px; }
 }
 
-/* ── Read-outs fold; tools do not ─────────────────────────────────────────
-   The side column mixes two kinds of panel. Wire plan, Strip schedule and
-   Build sheet are things to LOOK AT — there is nothing on them to press — so
-   each is a <details> whose head carries its summary when shut. Wire tools is
-   the opposite: every row changes the design, so it is a plain panel that is
-   always open, and it now sits on its own instead of being a disclosure
-   buried between two read-outs. */
+/* Wiring controls and build references share one disclosure treatment. */
 .la .lwbs > summary.panel-head,
-.la .lww-plan > summary.panel-head {
+.la .lww-tools-panel > summary.panel-head {
   cursor: pointer;
   list-style: none;
   user-select: none;
 }
 .la .lwbs > summary.panel-head::-webkit-details-marker,
-.la .lww-plan > summary.panel-head::-webkit-details-marker { display: none; }
+.la .lww-tools-panel > summary.panel-head::-webkit-details-marker { display: none; }
 
 /* One chevron, rotated when open — the only thing added to the head, so the
    title and its meta keep the exact position they had as a static bar. */
 .la .lwbs > summary.panel-head::after,
-.la .lww-plan > summary.panel-head::after {
+.la .lww-tools-panel > summary.panel-head::after {
   content: "";
   width: 7px;
   height: 7px;
@@ -629,13 +657,13 @@
   transition: transform 140ms ease;
 }
 .la .lwbs[open] > summary.panel-head::after,
-.la .lww-plan[open] > summary.panel-head::after {
+.la .lww-tools-panel[open] > summary.panel-head::after {
   transform: rotate(225deg) translate(-2px, -2px);
 }
 .la .lwbs > summary.panel-head:hover,
-.la .lww-plan > summary.panel-head:hover { color: var(--lw-text-hi, inherit); }
+.la .lww-tools-panel > summary.panel-head:hover { color: var(--lw-text-hi, inherit); }
 .la .lwbs > summary.panel-head:focus-visible,
-.la .lww-plan > summary.panel-head:focus-visible {
+.la .lww-tools-panel > summary.panel-head:focus-visible {
   outline: 2px solid var(--lw-live, currentColor);
   outline-offset: -2px;
 }
@@ -643,13 +671,9 @@
 /* Wire tools reads as a panel in its own right now. */
 .la .lww-tools-panel { margin-top: 12px; }
 
-/* The wire-plan head flips to a column under 320px (lw-wire.css container
-   query) so its long meta line can wrap. That put the fold chevron on a row
-   of its own, centred under the text. Pinning it to the head's top-right
-   keeps one arrow in one place at every width — and the head is the click
-   target either way, so nothing moves for the reader. */
-.la .lww-plan > summary.panel-head { position: relative; padding-right: 26px; }
-.la .lww-plan > summary.panel-head::after {
+/* Keep the wiring disclosure arrow aligned at narrow column widths. */
+.la .lww-tools-panel > summary.panel-head { position: relative; padding-right: 26px; }
+.la .lww-tools-panel > summary.panel-head::after {
   position: absolute;
   right: 12px;
   top: 14px;
@@ -693,11 +717,11 @@
   min-width: 0;
 }
 .la .lww-tools-panel .la-led-chipset .k {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .lww-tools-panel .la-gpio-wrap { min-width: 0; }
@@ -718,9 +742,13 @@
   border-radius: 2px;
   background: var(--bg-canvas);
   color: var(--text-hi);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   text-overflow: ellipsis;
+}
+.la .lww-tools-panel input[type="number"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Buttons sit on a row and take their own width, as they do everywhere else
@@ -739,7 +767,7 @@
   grid-template-columns: none;
 }
 
-/* One fold idiom for the whole screen: hairline above, mono label, chevron
+/* One fold idiom for the whole screen: hairline above, compact label, chevron
    right. These used to be unmarked text with no hint they opened at all. */
 .la .lww-tools-panel details { min-width: 0; border-top: 1px solid var(--border-hair); }
 .la .lww-tools-panel details > summary {
@@ -750,11 +778,11 @@
   padding: 0 22px 0 0;
   list-style: none;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: .16em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .lww-tools-panel details > summary::-webkit-details-marker { display: none; }
@@ -788,37 +816,17 @@
   display: grid;
   gap: 5px;
   min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .lww-tools-panel .lww-power-fields,
 .la .lww-tools-panel .lww-wiring-fields { display: grid; gap: 8px; }
 
-/* Alignment. The wire panel carries 13px of side padding, so anything inside
-   it starts indented from the Strip schedule and Build sheet, which are its
-   siblings in the column. Wire plan was inset 14px and Wire tools 30px — three
-   panels doing the same job, none of their left edges agreeing. Both are
-   pulled back out to the column's own edge. */
-/* Wire plan and Wire tools sit inside a wrapper that carries 13px of side
-   padding, so their edges land at 1151/1410 while the Strip schedule and
-   Build sheet — siblings of that wrapper — sit at 1137/1424. Rather than
-   fight the wrapper's padding (it also spaces the two loose paragraphs
-   inside it), the outer two are inset to meet the inner two. Four panels,
-   one left edge. */
 .la .la-wire-panel > .lww-tools-panel { margin: 0; }
-.la .lwbs { margin-left: 30px; margin-right: 30px; }
-
-/* The plan's summary is its whole content when shut — "2 strips · 44 LEDs in
-   this design" clipped to "…in this desi…" is the one line that had to fit. */
-.la .lww-plan > summary.panel-head .meta {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-}
 
 @media (pointer: coarse) {
   .la .lww-tools-panel details > summary { min-height: 44px; }
@@ -827,3 +835,10 @@
 /* Wire order: two word buttons that make the drag handle's move with a thumb. */
 .la .la-wire-order { display: flex; gap: 6px; }
 .la .la-wire-order .btn { flex: 1; justify-content: center; }
+
+/* Keep the combined reference table and facts within this panel's column. */
+.la .lwbs-summary > .lwbs-schedule { margin: 0; }
+.la .lwbs-summary > summary.panel-head .meta { white-space: normal; }
+@media (pointer: coarse) {
+  .la .lww-tools-panel > summary.panel-head { min-height: 44px; }
+}
