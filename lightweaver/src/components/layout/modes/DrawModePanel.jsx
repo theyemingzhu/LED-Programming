@@ -406,14 +406,12 @@ export function DrawModePanel({
     return counts ? `${counts.head} LEDs + ${counts.tail} LEDs` : '';
   };
 
-  // The owner-picked section count per strip. Lives in the same always-open
-  // "Selected strip" register as LED count and Size (a field in the physical
-  // grid, not a disclosure) rather than in the tight actions-button row: that
-  // row's total width is a locked budget (tests/layout-strip-caption.spec.ts
-  // — "every control added to this panel competes for one fixed width"), and
-  // a fourth icon button there overflowed it. The 2-up physical grid uses
-  // `minmax(0, 1fr)` columns, so a new field wraps to its own row instead of
-  // forcing the panel wider.
+  // Division is an occasional action; retain each strip's draft while the
+  // disclosure is closed, but never carry an open editor into a new selection.
+  const [divideOpen, setDivideOpen] = useState(false);
+  const divideTriggerRef = useRef(null);
+  const divideSelectionKey = JSON.stringify([selStripId, selLayerId, selectedStripIds]);
+  useEffect(() => setDivideOpen(false), [divideSelectionKey, panelStripId]);
   const [divideSections, setDivideSections] = useState({}); // stripId → N
   // stripId → the owner's own counts, once a field has been edited. Absent
   // means the even plan; a stored set that no longer adds up to the strip
@@ -1458,18 +1456,8 @@ export function DrawModePanel({
                       <span className="layer-len">{s.pixelCount} LEDs</span>
                     </div>
                     {isOpen && (
-                      <div className="la-strip-detail" onClick={e => e.stopPropagation()}>
-                        {/* One module, one header. The row above names the strip;
-                            this bar says which strip the controls below belong
-                            to, so nothing between them has to repeat it. */}
-                        <div className="panel-head lw-sel-head">
-                          <span className="ttl">Selected strip</span>
-                          <span className="meta" title={s.name}>{s.name}</span>
-                        </div>
-                        {/* A dense two-up register: the two controls that size
-                            the strip, the three facts that follow from them, the
-                            reel it is cut from, and the card-wide chipset beside
-                            the pin this strip's data leaves on. */}
+                      <div className="la-strip-detail la-strip-inspector" onClick={e => e.stopPropagation()}>
+                        {/* The selected row names these controls. Keep sizing first. */}
                         <div className="row lw-sel-grid">
                           <div className="la-strip-physical-field lw-sel-stack">
                             <span className="k">LEDs</span>
@@ -1592,14 +1580,29 @@ export function DrawModePanel({
                               </div>
                             );
                           })()}
-                          <div className="la-strip-physical-field lw-sel-wide">
-                            {/* The general form of Split (below): an owner who
-                                wants several independently-patterned zones out
-                                of one reel picks how many, sees the resulting
-                                counts, then commits. Each new strip becomes its
-                                own zone once compiled, so this needs no wiring
-                                change of its own. */}
-                            <span className="k">Divide into</span>
+                        </div>
+                        <div className="la-divide-disclosure">
+                          <button type="button" className="btn la-divide-toggle"
+                                  ref={divideTriggerRef}
+                                  data-testid={`divide-toggle-${s.id}`}
+                                  aria-label={`Divide ${s.name} into sections`}
+                                  aria-expanded={divideOpen}
+                                  aria-controls={`divide-panel-${s.id}`}
+                                  onClick={() => setDivideOpen(open => !open)}>
+                            <SplitIcon/>
+                            <span>Divide into sections</span>
+                            {divideOpen ? <ChevronDownIcon/> : <ChevronRightIcon/>}
+                          </button>
+                          {divideOpen && <div id={`divide-panel-${s.id}`}
+                               className="la-divide-panel" role="region"
+                               aria-label={`Divide ${s.name} into sections`}
+                               onKeyDown={event => {
+                                 if (event.key === 'Escape') {
+                                   event.stopPropagation();
+                                   setDivideOpen(false);
+                                   divideTriggerRef.current?.focus();
+                                 }
+                               }}>
                             <div className="lw-sel-pair la-divide-pair">
                               <select className="la-divide-select"
                                       data-testid={`divide-sections-${s.id}`}
@@ -1638,11 +1641,17 @@ export function DrawModePanel({
                                       title={divideBlockedReason(s, isSplit)
                                         || 'Divide into several sections, each with its own pattern'}
                                       disabled={!!divideBlockedReason(s, isSplit)}
-                                      onClick={() => divideStripIntoSections(s.id, divideCountsFor(s, divideSectionsValue))}>
+                                      onClick={() => {
+                                        const divided = divideStripIntoSections(s.id, divideCountsFor(s, divideSectionsValue));
+                                        if (divided) {
+                                          setDivideOpen(false);
+                                          divideTriggerRef.current?.focus();
+                                        }
+                                      }}>
                                 Divide
                               </button>
                             </div>
-                          </div>
+                          </div>}
                         </div>
                         <div className="actions" role="group" aria-label="Strip actions">
                           {/* Three families, separated by space rather than by

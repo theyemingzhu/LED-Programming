@@ -7,11 +7,7 @@ import { test, expect } from '@playwright/test';
 // compiles to its own zone (wiringCompiler.js) and its own section target on
 // the Patterns screen, without any change to the wiring/card contract.
 //
-// The control lives as a field in the Selected-strip physical grid (next to
-// LED count, Size, Chipset · data pin) rather than as a button in the
-// actions row — that row's total width is a locked budget asserted by
-// tests/layout-strip-caption.spec.ts, and the grid is the one place a new
-// field wraps to its own row instead of forcing the panel wider.
+// Division opens on demand; sizing and the existing one-click Split stay visible.
 
 async function gotoFreshLayout(page: any) {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -19,12 +15,12 @@ async function gotoFreshLayout(page: any) {
   await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
-// A freshly created strip is selected, so its "Divide into" field is already
-// visible — same setup layout-strip-split.spec.ts uses for Split.
+// A fresh strip keeps its division controls tucked behind an explicit action.
 async function createOneStrip(page: any) {
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
-  await expect(page.locator('[data-testid^="divide-commit-"]')).toHaveCount(1);
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await expect(page.locator('[data-testid^="divide-commit-"]')).toBeVisible();
 }
 
 async function setStripLedCount(page: any, count: number) {
@@ -60,6 +56,10 @@ test('dividing a 41-LED strip into 4 makes four strips of 11, 10, 10, 10', async
 test('dividing into 3 spreads the remainder from the first section, and survives a reload', async ({ page }) => {
   await gotoFreshLayout(page);
   await createOneStrip(page);
+  // A custom name keeps this persistence check independent of generated naming.
+  await page.locator('.la-strip-row .layer-name').dblclick();
+  await page.locator('.la-strip-row input').fill('Ribbon');
+  await page.locator('.la-strip-row input').press('Enter');
   await setStripLedCount(page, 41);
 
   await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
@@ -67,7 +67,7 @@ test('dividing into 3 spreads the remainder from the first section, and survives
   await page.locator('[data-testid^="divide-commit-"]').click();
 
   expect(await rowCounts(page)).toEqual([14, 14, 13]);
-  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Line 1', 'Line 2', 'Line 3']);
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Ribbon 1', 'Ribbon 2', 'Ribbon 3']);
 
   await expect.poll(() => page.evaluate(() => (JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')
     ?.layout?.strips || []).map((strip: any) => strip.pixelCount))).toEqual([14, 14, 13]);
@@ -151,6 +151,8 @@ test('the Divide control fits at 390px wide with no horizontal overflow', async 
   // full, never clipped to "11, 10,…".
   const preview = page.locator('[data-testid^="divide-preview-"]');
   await expect(preview).toHaveText('11, 10, 10, 10 LEDs');
+  const sectionInput = page.locator('[data-testid^="divide-count-"]').first();
+  expect((await sectionInput.boundingBox())!.width).toBeLessThanOrEqual(60);
   const clipped = await preview.evaluate(el => el.scrollWidth > el.clientWidth + 1);
   expect(clipped).toBe(false);
   await page.screenshot({ path: 'test-results/layout-divide-390.png' });
@@ -183,4 +185,38 @@ test('typing a section count rebalances its neighbour and divides to those exact
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
   expect(await rowCounts(page)).toEqual([10, 10, 21]);
   await expect(page.locator('.la-gpio-group')).toHaveCount(1);
+});
+
+
+test('Divide disclosure opens by keyboard and collapses after selection changes and successful divide', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  const toggle = page.locator('[data-testid^="divide-toggle-"]');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('[data-testid^="divide-sections-"]')).toBeHidden();
+  await expect(page.locator('.lw-sel-head')).toHaveCount(0);
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  const regionId = await toggle.getAttribute('aria-controls');
+  await expect(page.locator(`[id="${regionId}"]`)).toBeVisible();
+  await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
+  await page.locator('[data-testid^="divide-count-"][data-testid$="-1"]').fill('10');
+  const preview = await page.locator('[data-testid^="divide-preview-"]').innerText();
+  await page.locator('[data-testid^="divide-sections-"]').press('Escape');
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText(preview);
+  await page.getByRole('button', { name: 'Duplicate strip', exact: true }).click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(2);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('.la-strip-row .layer-name').first().click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(4);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('[data-testid^="divide-sections-"]')).toBeHidden();
+  await page.screenshot({ path: 'test-results/layout-divide-collapsed.png' });
 });

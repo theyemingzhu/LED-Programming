@@ -1,10 +1,44 @@
-/* "Divide into" — Draw mode's N-way generalisation of "Split into two".
-   Lives as a field in the Selected-strip physical grid (`.lw-sel-grid`,
-   defined in v3-layout-console.css), not as a button in the actions row: that
-   row's total width is a locked budget (tests/layout-strip-caption.spec.ts —
-   "every control added to this panel competes for one fixed width"), and the
-   grid's `minmax(0, 1fr)` columns are the one place a new field wraps to its
-   own row instead of forcing the panel wider. */
+/* Scoped inspector polish and the on-demand division editor. */
+.la .la-strip-detail.la-strip-inspector .lw-sel-grid {
+  gap: 6px 10px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+}
+.la .la-strip-detail.la-strip-inspector .lw-sel-grid > .la-strip-physical-field {
+  padding: 5px 0;
+  background: transparent;
+}
+.la .la-strip-detail.la-strip-inspector .lw-sel-grid > .la-strip-physical-field > .k {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.la-divide-disclosure {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+.la .la-divide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  justify-content: flex-start;
+}
+.la .la-divide-toggle > svg:last-child { margin-left: auto; }
+.la-divide-panel { padding: 8px 0 4px; }
+.la-divide-toggle:focus-visible,
+.la .la-strip-detail .la-divide-panel :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .la .la-divide-toggle,
+  .la .la-divide-panel .btn,
+  .la-divide-select,
+  .la-divide-count { min-height: 44px; }
+}
 
 .la-divide-select {
   min-width: 0;
@@ -25,9 +59,11 @@
   flex-wrap: wrap;
 }
 
-.la-divide-preview {
+.la .la-divide-panel .la-divide-preview {
   flex: 0 0 auto;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 /* The per-section count fields. Compact numerics that wrap as a group under
@@ -40,8 +76,9 @@
   gap: 4px;
   flex: 1 1 100%;
 }
-.la-divide-count {
+.la .la-divide-panel input.la-divide-count {
   width: 44px;
+  flex: 0 0 44px;
   min-width: 0;
   padding: 4px 4px;
   border-radius: 4px;
