@@ -45,14 +45,16 @@ async function gotoLayoutTools(page: any) {
   await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
 }
 
-// The lane/port editors, board pins, and expert mapping all live behind the
-// single top-level Advanced wiring disclosure (its inner details cards start
-// open).
+// Open wiring controls; nested advanced settings remain folded.
 async function openAdvanced(page: any) {
   if (await page.getByTestId('advanced-installation-tools').count() === 0) {
     await gotoLayoutTools(page);
   }
-  await expect(page.getByTestId('advanced-installation-tools')).toBeVisible();
+  const tools = page.getByTestId('advanced-installation-tools');
+  await expect(tools).toBeVisible();
+  if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
+    await tools.locator(':scope > summary').click();
+  }
 }
 
 async function openCustomMapping(page: any) {

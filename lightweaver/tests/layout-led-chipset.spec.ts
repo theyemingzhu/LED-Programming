@@ -39,13 +39,11 @@ test('a chipset picked in the starter persists into the project and reaches the 
 
   await picker.getByRole('button', { name: 'Create line' }).click();
 
-  // The chipset used to be hidden until a "Wire tools" disclosure was opened,
-  // on the reading that it is an advanced control. Wire tools is now a panel
-  // in its own right rather than a fold, because everything in it CHANGES the
-  // design — it was the one interactive thing on this column and it sat
-  // collapsed between two read-outs you cannot operate at all. So the chipset
-  // is simply on screen, and what this test guards is unchanged: the starter's
-  // choice reaches the project's control and is what gets saved.
+  // The starter choice reaches the project control inside Wiring & hardware.
+  const tools = page.getByTestId('advanced-installation-tools');
+  if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
+    await tools.locator(':scope > summary').click();
+  }
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset).toBeVisible();
   await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2812B');
@@ -57,6 +55,10 @@ test('changing the chipset after the layout exists survives a reload', async ({ 
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
 
+  const tools = page.getByTestId('advanced-installation-tools');
+  if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
+    await tools.locator(':scope > summary').click();
+  }
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2815');
   await projectChipset.getByTestId('led-chipset-select').selectOption('WS2812B');
@@ -99,6 +101,10 @@ test('a project saved with no chipset loads on a supported one instead of failin
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
 
+  const tools = page.getByTestId('advanced-installation-tools');
+  if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
+    await tools.locator(':scope > summary').click();
+  }
   const projectChipset = page.getByTestId('project-led-chipset');
   await expect(projectChipset).toBeVisible();
   await expect(projectChipset.getByTestId('led-chipset-select')).toHaveValue('WS2815');

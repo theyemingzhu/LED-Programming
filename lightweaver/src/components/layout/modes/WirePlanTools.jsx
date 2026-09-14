@@ -270,17 +270,13 @@ export function WirePlanTools({ state, cardHost }) {
 
   return (
     <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-tools">
-      {/* Two different kinds of panel used to be one. The wire PLAN is a
-          read-out — a count of strips and lights you can look at but not
-          operate — so it folds, and its head carries the whole summary when
-          shut. The wire TOOLS below are the opposite: every row is a control
-          that changes the design, so they are their own panel with their own
-          head, no longer a disclosure buried inside a read-out. */}
-      <details className="lww-plan" data-testid="wire-plan" open>
-        <summary className="panel-head lww-plan-head">
+      <section className="lww-plan" data-testid="wire-plan">
+        <div className="panel-head lww-plan-head">
           <span className="ttl">Wire plan</span>
           <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
-        </summary>
+        </div>
+      </section>
+      {/* Connection and power warnings stay visible when the controls fold. */}
       {(showCapacityFact || mismatchedOutputs.length > 0) && !cardNeedsStripDiscovery && (
         <section className="wire-discovered-list" aria-label="What is plugged in right now">
           {showCapacityFact && (
@@ -320,13 +316,13 @@ export function WirePlanTools({ state, cardHost }) {
         </p>
       )}
 
-      </details>
+      {mutationError && <p className="lw-wiring-error" role="alert">{mutationError}</p>}
+      {pinError && <p className="lw-wiring-error" role="alert">{pinError}</p>}
 
-      <section className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wire tools">
-        <div className="panel-head">
-          <span className="ttl">Wire tools</span>
-          <span className="meta">changes the design</span>
-        </div>
+      <details className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware">
+        <summary className="panel-head">
+          <span className="ttl">Wiring &amp; hardware</span>
+        </summary>
         <div className="lww-advanced-tools-body">
           <div className="la-led-chipset-row" data-testid="project-led-chipset">
             <LedChipsetSelect value={ledType} onChange={setLedType}/>
@@ -350,7 +346,6 @@ export function WirePlanTools({ state, cardHost }) {
           <WireDiscovery outputs={wiring.outputs} cardHost={cardHost} disabled={wiring.locked} onPinConfirmed={changeOutputPin}/>
           {compiledWiring.sendReady && <button className="btn lw-open-assembly" title="Show or hide the assembly map used to build the verified LED wiring." data-tooltip="Show or hide the assembly map used to build the verified LED wiring." onClick={() => setShowAssembly(value => !value)}>{showAssembly ? 'Hide assembly map' : 'Open assembly map'}</button>}
           {showAssembly && compiledWiring.sendReady && <WiringAssemblyMap wiring={wiring} compiled={compiledWiring} strips={strips} physicalScale={Number(pxPerMm) > 0 ? { pxPerMm: Number(pxPerMm) } : null} onClose={() => setShowAssembly(false)}/>}
-          {mutationError && <p className="lw-wiring-error" role="alert">{mutationError}</p>}
           <details className="lww-custom-mapping">
             <summary>Custom mapping</summary>
             <div className="lww-specialist-actions">
@@ -468,10 +463,9 @@ export function WirePlanTools({ state, cardHost }) {
                 ? `Over by ${Math.abs(powerEstimate.headroomAmps).toFixed(1)} A`
                 : `Headroom ${powerEstimate.headroomAmps.toFixed(1)} A`}
             </p>
-            {pinError && <p className="lw-wiring-error">{pinError}</p>}
           </details>
         </div>
-      </section>
+      </details>
     </WireHoverDescription>
   );
 }

@@ -598,26 +598,20 @@
   .la .la-strip-detail .actions .btn { min-height: 44px; }
 }
 
-/* ── Read-outs fold; tools do not ─────────────────────────────────────────
-   The side column mixes two kinds of panel. Wire plan, Strip schedule and
-   Build sheet are things to LOOK AT — there is nothing on them to press — so
-   each is a <details> whose head carries its summary when shut. Wire tools is
-   the opposite: every row changes the design, so it is a plain panel that is
-   always open, and it now sits on its own instead of being a disclosure
-   buried between two read-outs. */
+/* Wiring controls and build references share one disclosure treatment. */
 .la .lwbs > summary.panel-head,
-.la .lww-plan > summary.panel-head {
+.la .lww-tools-panel > summary.panel-head {
   cursor: pointer;
   list-style: none;
   user-select: none;
 }
 .la .lwbs > summary.panel-head::-webkit-details-marker,
-.la .lww-plan > summary.panel-head::-webkit-details-marker { display: none; }
+.la .lww-tools-panel > summary.panel-head::-webkit-details-marker { display: none; }
 
 /* One chevron, rotated when open — the only thing added to the head, so the
    title and its meta keep the exact position they had as a static bar. */
 .la .lwbs > summary.panel-head::after,
-.la .lww-plan > summary.panel-head::after {
+.la .lww-tools-panel > summary.panel-head::after {
   content: "";
   width: 7px;
   height: 7px;
@@ -629,13 +623,13 @@
   transition: transform 140ms ease;
 }
 .la .lwbs[open] > summary.panel-head::after,
-.la .lww-plan[open] > summary.panel-head::after {
+.la .lww-tools-panel[open] > summary.panel-head::after {
   transform: rotate(225deg) translate(-2px, -2px);
 }
 .la .lwbs > summary.panel-head:hover,
-.la .lww-plan > summary.panel-head:hover { color: var(--lw-text-hi, inherit); }
+.la .lww-tools-panel > summary.panel-head:hover { color: var(--lw-text-hi, inherit); }
 .la .lwbs > summary.panel-head:focus-visible,
-.la .lww-plan > summary.panel-head:focus-visible {
+.la .lww-tools-panel > summary.panel-head:focus-visible {
   outline: 2px solid var(--lw-live, currentColor);
   outline-offset: -2px;
 }
@@ -643,13 +637,9 @@
 /* Wire tools reads as a panel in its own right now. */
 .la .lww-tools-panel { margin-top: 12px; }
 
-/* The wire-plan head flips to a column under 320px (lw-wire.css container
-   query) so its long meta line can wrap. That put the fold chevron on a row
-   of its own, centred under the text. Pinning it to the head's top-right
-   keeps one arrow in one place at every width — and the head is the click
-   target either way, so nothing moves for the reader. */
-.la .lww-plan > summary.panel-head { position: relative; padding-right: 26px; }
-.la .lww-plan > summary.panel-head::after {
+/* Keep the wiring disclosure arrow aligned at narrow column widths. */
+.la .lww-tools-panel > summary.panel-head { position: relative; padding-right: 26px; }
+.la .lww-tools-panel > summary.panel-head::after {
   position: absolute;
   right: 12px;
   top: 14px;
@@ -814,7 +804,7 @@
 
 /* The plan's summary is its whole content when shut — "2 strips · 44 LEDs in
    this design" clipped to "…in this desi…" is the one line that had to fit. */
-.la .lww-plan > summary.panel-head .meta {
+.la .lww-plan .panel-head .meta {
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -827,3 +817,10 @@
 /* Wire order: two word buttons that make the drag handle's move with a thumb. */
 .la .la-wire-order { display: flex; gap: 6px; }
 .la .la-wire-order .btn { flex: 1; justify-content: center; }
+
+/* Keep the combined reference table and facts within this panel's column. */
+.la .lwbs-summary > .lwbs-schedule { margin: 0; }
+.la .lwbs-summary > summary.panel-head .meta { white-space: normal; }
+@media (pointer: coarse) {
+  .la .lww-tools-panel > summary.panel-head { min-height: 44px; }
+}

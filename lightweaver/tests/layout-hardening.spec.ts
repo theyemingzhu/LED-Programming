@@ -244,7 +244,7 @@ test('mode toolbar only presents tools that apply while keeping secondary groups
 
   await expect(page.getByTitle('Split one physical strip where the wire jumps to a new spot.')).toHaveCount(0);
   await expect(page.getByTitle('Join two strips into one continuous run.')).toHaveCount(0);
-  await page.getByText('Wire tools', { exact: true }).click();
+  await page.getByText('Wiring & hardware', { exact: true }).click();
   await page.getByText('Custom mapping', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Split a strip mid-wire' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeVisible();

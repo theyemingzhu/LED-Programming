@@ -87,10 +87,9 @@ test('a wrong GPIO is still a fault, because nothing lights at all', async ({ pa
 
 test('counting what is plugged in lives with the Wire tools', async ({ page }) => {
   await openWire(page, project({ designPixels: 400, outputPin: 18, countedPin: 18, countedPixels: 41 }));
-  // It no longer waits behind a disclosure — Wire tools is a panel of its own
-  // — but WHERE it lives is still the point: with the controls that change the
-  // design, not among the read-outs.
+  // Recount remains available inside the optional hardware controls.
   const tools = page.getByTestId('advanced-installation-tools');
   await expect(tools).toBeVisible();
+  await tools.locator(':scope > summary').click();
   await expect(tools.getByTestId('wire-recount')).toBeVisible();
 });

@@ -30,6 +30,8 @@ test('the schedule and sheet report the project the wire order actually describe
   await expect(page.getByTestId('build-sheet')).toHaveCount(0);
 
   await addLine(page);
+  await expect(page.getByTestId('build-sheet')).toBeVisible();
+  await page.getByTestId('build-sheet').locator('summary').click();
   await expect(page.getByTestId('strip-schedule')).toBeVisible();
 
   const rows = page.locator('[data-testid="strip-schedule"] tbody tr');
@@ -60,6 +62,8 @@ test('the schedule and sheet report the project the wire order actually describe
 test('a second strip takes the addresses that follow the first', async ({ page }) => {
   await freshLayout(page);
   await addLine(page);
+  await expect(page.getByTestId('build-sheet')).toBeVisible();
+  await page.getByTestId('build-sheet').locator('summary').click();
   await expect(page.getByTestId('strip-schedule')).toBeVisible();
 
   const duplicate = page.getByRole('button', { name: /^(copy|duplicate)/i });
@@ -83,6 +87,8 @@ test('the schedule fits its column on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await freshLayout(page);
   await addLine(page);
+  await expect(page.getByTestId('build-sheet')).toBeVisible();
+  await page.getByTestId('build-sheet').locator('summary').click();
   await expect(page.getByTestId('strip-schedule')).toBeVisible();
 
   const overflow = await page.evaluate(() => {
@@ -96,4 +102,32 @@ test('the schedule fits its column on a phone', async ({ page }) => {
   // that overflows here pushes the whole page sideways.
   expect(overflow.table).toBeLessThanOrEqual(0);
   expect(overflow.page).toBeLessThanOrEqual(0);
+});
+
+
+test('wiring and build references start collapsed while power warnings stay visible', async ({ page }) => {
+  await freshLayout(page);
+  await addLine(page);
+  const tools = page.getByTestId('advanced-installation-tools');
+  const build = page.getByTestId('build-sheet');
+  await expect(tools.locator(':scope > summary')).toHaveText('Wiring & hardware');
+  await expect(tools).not.toHaveAttribute('open', '');
+  await expect(build.locator(':scope > summary')).toContainText('Build summary');
+  await expect(build).not.toHaveAttribute('open', '');
+  await expect(page.getByTestId('project-led-chipset')).not.toBeVisible();
+  await expect(page.getByTestId('sheet-total')).not.toBeVisible();
+
+  await tools.locator(':scope > summary').click();
+  await expect(page.getByTestId('project-led-chipset')).toBeVisible();
+  await expect(tools.locator('.lww-custom-mapping')).not.toHaveAttribute('open', '');
+  const hardware = page.getByTestId('wire-power-section');
+  await expect(hardware).not.toHaveAttribute('open', '');
+  await hardware.locator('summary').click();
+  await page.getByRole('spinbutton', { name: 'Power supply amps', exact: true }).fill('0.5');
+  await tools.locator(':scope > summary').click();
+  await expect(page.locator('.lww-power-warning')).toBeVisible();
+  await expect(page.locator('.lww-power-warning')).toContainText('your supply is 0.5 A');
+  await build.locator(':scope > summary').click();
+  await expect(page.getByTestId('sheet-total')).toBeVisible();
+  await expect(page.getByTestId('strip-schedule').locator('tbody tr')).toBeVisible();
 });
