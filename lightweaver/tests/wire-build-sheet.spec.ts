@@ -55,8 +55,8 @@ test('the schedule and sheet report the project the wire order actually describe
 
   // No supply has been declared, so the draw stands and the verdict does not.
   const supply = page.getByTestId('sheet-supply');
-  await expect(supply).toContainText(/not set/i);
-  await expect(supply).not.toContainText(/spare/i);
+  await expect(supply).toHaveText('Add your supply rating in Wiring & hardware → Hardware & power to estimate spare capacity.');
+  await expect(supply).not.toContainText(/\d[\d.]* A spare/i);
 });
 
 test('a second strip takes the addresses that follow the first', async ({ page }) => {
@@ -120,7 +120,9 @@ test('wiring and build references start collapsed while power warnings stay visi
   await tools.locator(':scope > summary').click();
   await expect(page.getByTestId('project-led-chipset')).toBeVisible();
   await expect(tools.locator('.lww-custom-mapping')).not.toHaveAttribute('open', '');
+  await expect(tools.locator('.lww-custom-mapping > summary')).toHaveText('Advanced mapping');
   const hardware = page.getByTestId('wire-power-section');
+  await expect(hardware.locator('summary')).toHaveText('Hardware & power');
   await expect(hardware).not.toHaveAttribute('open', '');
   await hardware.locator('summary').click();
   await page.getByRole('spinbutton', { name: 'Power supply amps', exact: true }).fill('0.5');

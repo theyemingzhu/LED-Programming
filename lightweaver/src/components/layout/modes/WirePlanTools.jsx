@@ -347,7 +347,7 @@ export function WirePlanTools({ state, cardHost }) {
           {compiledWiring.sendReady && <button className="btn lw-open-assembly" title="Show or hide the assembly map used to build the verified LED wiring." data-tooltip="Show or hide the assembly map used to build the verified LED wiring." onClick={() => setShowAssembly(value => !value)}>{showAssembly ? 'Hide assembly map' : 'Open assembly map'}</button>}
           {showAssembly && compiledWiring.sendReady && <WiringAssemblyMap wiring={wiring} compiled={compiledWiring} strips={strips} physicalScale={Number(pxPerMm) > 0 ? { pxPerMm: Number(pxPerMm) } : null} onClose={() => setShowAssembly(false)}/>}
           <details className="lww-custom-mapping">
-            <summary>Custom mapping</summary>
+            <summary>Advanced mapping</summary>
             <div className="lww-specialist-actions">
               <button className="btn" disabled={wiring.locked} aria-pressed={wireOverlayMode === 'chop'} title="Turn on the canvas tool for dividing the selected LED strip at a physical cut point." data-tooltip="Turn on the canvas tool for dividing the selected LED strip at a physical cut point." onClick={toggleSplitTool}>Split a strip mid-wire</button>
               <button
@@ -424,7 +424,7 @@ export function WirePlanTools({ state, cardHost }) {
             )}
           </details>
           <details className="lww-card-hardware" data-testid="wire-power-section">
-            <summary>Card hardware</summary>
+            <summary>Hardware &amp; power</summary>
             <div className="lw-pin-group">
               <strong>Physical controls</strong>
               {BOARD_CONTROL_FIELDS.map(field => <label key={field.key}>{field.label}

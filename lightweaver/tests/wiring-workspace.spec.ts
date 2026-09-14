@@ -269,7 +269,7 @@ test('Test & Install owns neither wire count nor ordering and keeps specialist t
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeVisible();
 });
 
-test('Custom mapping inserts and removes a zero-address cable jump without changing Wire order', async ({ page }) => {
+test('Advanced mapping inserts and removes a zero-address cable jump without changing Wire order', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   await page.locator('[data-strip-id="default-outer-circle"] .la-strip-row').click();
   await switchMode(page, 'wire');
@@ -599,7 +599,7 @@ test('Wire button tooltips use one unclipped portal at phone and desktop widths'
   await expectPortalTooltip(page.getByRole('button', { name: 'Add a cable jump' }), 'Select a strip that has another physical run after it.');
 });
 
-test('card hardware keeps power collapsed, persists its inputs, and raises over-budget warnings', async ({ page }) => {
+test('hardware and power keeps power collapsed, persists its inputs, and raises over-budget warnings', async ({ page }) => {
   await gotoWire(page);
   await openAdvanced(page);
   const power = page.getByTestId('wire-power-section');

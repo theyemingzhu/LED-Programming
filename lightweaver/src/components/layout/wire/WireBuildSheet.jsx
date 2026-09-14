@@ -80,7 +80,7 @@ export function WireBuildSheet({ state }) {
         <dt>Supply</dt>
         <dd data-testid="sheet-supply" className={power.status === 'over' ? 'is-over' : undefined}>
           {!power.declared && (
-            <>Not set. The draw above is real; the headroom needs your supply size — set it in Wiring & hardware → Card hardware.</>
+            <>Add your supply rating in Wiring &amp; hardware → Hardware &amp; power to estimate spare capacity.</>
           )}
           {power.declared && power.status === 'ok' && (
             <>{formatAmps(power.psuAmps)} supply · {formatAmps(power.safeAmps)} usable · {formatAmps(power.headroomAmps)} spare</>

@@ -155,7 +155,7 @@ test('Draw lists strips grouped by GPIO in data-wire order and drag reorder writ
   expect(runStripOrder).toEqual(['default-inner-circle', 'default-outer-circle']);
 });
 
-test('Custom mapping stays folded and Split still cuts a run', async ({ page }) => {
+test('Advanced mapping stays folded and Split still cuts a run', async ({ page }) => {
   const tmp = await importLine(page);
   await enterWire(page);
 
