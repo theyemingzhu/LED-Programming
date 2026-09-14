@@ -17,7 +17,7 @@ test('resting divided strips keep legible LEDs and a subdued selection ribbon at
   await count.fill('41');
   await count.blur();
   await page.locator('[data-testid^="divide-toggle-"]').click();
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
   await page.locator('[data-testid^="divide-commit-"]').click();
   await page.getByRole('button', { name: 'Fit all', exact: true }).click();
 

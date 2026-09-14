@@ -9,16 +9,29 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
-### 2026-09-15 Layout release (active)
-User authorizes going live. Primary owns exact revision release and live proof.
-Sol medium owns bounded diagnosis of existing exhaustive Patterns regression
-at1509: stale test exercised direct transport instead of pending bridge.
-Existing bridge helper now establishes intended transport; focused and adjacent
-checks pass, plus5 repeat passes. No production transport change. Prior main
-exhaustive run34799265254 failed. PR295 holds the release. Core/project checks
-and71 cloud browser checks passed; continuing remaining launch stages after
-installing missing pinned mapper dependencies. Studio-only bundle exception
-permits direct site deploy and keeps firmware unchanged.
+### 2026-09-14 Custom division count (done locally)
+Sprint. Sol medium replaced the section preset dropdown with a labeled numeric
+field and matching editable LED counts. Invalid drafts stay visible and cannot
+commit; existing card/LED limits, geometry, naming and undo remain intact.
+Primary inspected desktop and390px phone; production build passed. Focused
+regression witnessed red then17 tests green, including moving one divided
+section toGPIO17 while others remainGPIO18 with autosave intact. Existing
+per-strip GPIO control retained: separate patterns do not need separate pins;
+separate physical data connections can use it after dividing. No firmware or
+deployment changes. Prior production remains Studio1888/firmware1819.
+
+### 2026-09-14 Layout release (live; exhaustive gate cancelled)
+PR295 merged at18479a014faf321c8a443fafaf520b8e32f1e479, Studio build1888.
+Tests34836107488 passed; actual Cloudflare publish34836881370 succeeded.
+Primary independently rebuilt/staged the exact clean main checkout and ran
+PROD_CHECK_REQUIRED=1 npm run check:prod successfully: no-store marker,60 Studio
+files and signed firmware release graph verified live. Firmware remains1819.
+Exhaustive34836125611 concluded cancelled; no exhaustive pass or Shipped claim.
+Prior exhaustive regression was stale bridge-test setup, fixed by Sol medium
+using the existing transport helper; focused/adjacent plus5 repeat runs passed.
+No production transport or physical-card changes. Local duplicate gate stopped
+when its persistent preview build identity became stale; exact-main CI is the
+authoritative gate. Final proof log:/tmp/lightweaver-layout-live-proof.log.
 
 ### 2026-09-14 Layout specifications (done locally)
 Move wire plan/build information out of the default layout inspector into an

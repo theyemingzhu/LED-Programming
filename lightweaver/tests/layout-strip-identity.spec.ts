@@ -14,7 +14,7 @@ test('41 LEDs divide into four individually colored, numbered strips with compac
   await count.fill('41');
   await count.blur();
   await revealDivideControls(page);
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Strip 1', 'Strip 2', 'Strip 3', 'Strip 4']);
   await expect(page.locator('.la-batch')).toHaveCount(0);
@@ -64,7 +64,7 @@ for (const sourceName of ['Untitled Project', 'North arch']) {
     await page.reload();
     await page.locator('.la-strip-row').first().click();
     await revealDivideControls(page);
-    await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+    await page.locator('[data-testid^="divide-sections-"]').fill('4');
     await page.locator('[data-testid^="divide-commit-"]').click();
     const expected = Array.from({ length: 4 }, (_, i) => `${sourceName === 'Untitled Project' ? 'Strip' : sourceName} ${i + 1}`);
     await expect(page.locator('.la-strip-row .layer-name')).toHaveText(expected);
