@@ -9,6 +9,17 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-15 Layout release (active)
+User authorizes going live. Primary owns exact revision release and live proof.
+Sol medium owns bounded diagnosis of existing exhaustive Patterns regression
+at1509: stale test exercised direct transport instead of pending bridge.
+Existing bridge helper now establishes intended transport; focused and adjacent
+checks pass, plus5 repeat passes. No production transport change. Prior main
+exhaustive run34799265254 failed. PR295 holds the release. Core/project checks
+and71 cloud browser checks passed; continuing remaining launch stages after
+installing missing pinned mapper dependencies. Studio-only bundle exception
+permits direct site deploy and keeps firmware unchanged.
+
 ### 2026-09-14 Layout specifications (done locally)
 Move wire plan/build information out of the default layout inspector into an
 on-demand Specs surface with reduced inset and full available width. Keep
