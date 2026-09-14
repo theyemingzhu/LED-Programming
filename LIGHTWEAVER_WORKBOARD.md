@@ -9,6 +9,29 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-14 Layout clarity — managed Sprint (active)
+
+Manager recipe: Build a scoped feature v1; Manager Playbook v2. Baseline
+`1b7ce23a` (origin/main at start). Scope: on-demand Divide, distinct canvas
+section colors, compact Strip-number labels, cleaner inspector, consolidated
+wiring/reference disclosures. Preserve geometry, LED totals, custom names,
+persistence and card contracts. User asked for separate tasks; three isolated
+implementation tasks running:
+- Compact editor: `01a09d6d-d6d8-7641-a1da-5b8d559264cb`.
+- Canvas identity: `01a09d6d-d6d5-7c91-81f5-2557a75801df`.
+- Wiring panels: `01a09d6d-d6d5-7c91-81f5-253cce521f7d`.
+Each owns distinct files; canvas owner additionally handles generated names in
+useLayoutState/discoveryCommit and selection-visibility compatibility.
+Tasks use host-default models (no model requested); measured cost unavailable.
+Primary integrates, reviews and runs one checkpoint and real-screen inspection.
+Pending user preferences: wiring consolidation vs hiding; local preview vs release.
+Default endpoint is verified local preview; no release/hardware authorization yet.
+Acceptance: 41→11/10/10/10, four visible colors/names, collapsed Divide after action,
+no overlapping labels at17%/fit, useful wiring functions reachable, desktop/mobile
+no overflow, relevant focused browser tests and unit/build checkpoint pass.
+Resumption: collect the three task commits, integrate here, inspect combined UI.
+
+
 2026-09-09 color-picker follow-up: Adrian reports choosing pure red while strip
 looks fuchsia/behind. Reproduced journey-phase cause: editing a stop retained the
 current fade time (red→violet at90s yielded RGB147,56,147). Picker edits now seek
