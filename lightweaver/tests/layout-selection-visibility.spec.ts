@@ -1,44 +1,66 @@
 import { test, expect } from '@playwright/test';
 
-async function gotoFreshLayout(page: any) {
-  await page.addInitScript(() => localStorage.clear());
-  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
-}
-
 async function createTwoLineStrips(page: any) {
-  const picker = page.getByTestId('layout-primitive-picker');
-  await picker.getByRole('button', { name: 'Create line' }).click();
+  await page.goto('/#screen=layout');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   await page.getByTestId('layout-add-strip').click();
   await page.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Line', exact: true }).click();
-  await expect(page.locator('path[data-strip-path]')).toHaveCount(2);
+  await page.locator('.la-strip-row').first().click();
 }
 
-async function stripDetails(page: any, stripId: string) {
-  return page.evaluate(id => {
-    const strips = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.layout?.strips || [];
-    const strip = strips.find((item: any) => item.id === id);
-    return strip ? { name: strip.name, pixelCount: strip.pixelCount } : null;
-  }, stripId);
+async function screenSize(locator: any, property: string) {
+  return locator.evaluate((node: SVGGraphicsElement, property: string) => {
+    const ctm = node.getScreenCTM()!;
+    return parseFloat(getComputedStyle(node).getPropertyValue(property)) * Math.hypot(ctm.a, ctm.b);
+  }, property);
 }
 
-async function screenStrokeWidth(locator: any) {
-  return locator.evaluate((node: SVGGraphicsElement) => {
-    const ctm = node.getScreenCTM();
-    if (!ctm) throw new Error('Selected strip has no screen transform.');
-    return parseFloat(getComputedStyle(node).strokeWidth) * Math.hypot(ctm.a, ctm.b);
-  });
-}
+test('selected identity stays compact and non-blocking at fit and zoomed out', async ({ page }) => {
+  await createTwoLineStrips(page);
+  const hit = page.locator('[data-strip-path]').first();
+  const id = await hit.getAttribute('data-strip-path');
+  const halo = page.getByTestId('selected-strip-halo');
+  const core = page.getByTestId('selected-strip-core');
+  const label = page.getByTestId(`strip-callout-${id}`);
+  await expect(label).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('selected-strip-badge')).toHaveCount(0);
+  await expect(halo).toHaveAttribute('d', (await hit.getAttribute('d'))!);
+  await expect(halo).toHaveAttribute('stroke', (await page.locator(`[data-strip-identity="${id}"]`).getAttribute('stroke'))!);
+  for (const overlay of [halo, core, label]) await expect(overlay).toHaveCSS('pointer-events', 'none');
+  await expect(hit).toHaveCSS('cursor', 'grab');
+  for (const zoomedOut of [false, true]) {
+    if (zoomedOut) for (let i = 0; i < 8; i++) await page.getByTitle('Zoom out (-)').click();
+    expect(await screenSize(halo, 'stroke-width')).toBeCloseTo(4.5, 1);
+    expect(await screenSize(core, 'stroke-width')).toBeCloseTo(2.25, 1);
+    expect(await screenSize(label.locator('text').first(), 'font-size')).toBeCloseTo(11, 1);
+  }
+  await page.getByRole('button', { name: 'Fit all', exact: true }).click();
+  const box = await hit.boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await expect(hit).toHaveCSS('cursor', 'grabbing');
+  await expect(label).toHaveCount(0);
+  await page.mouse.up();
+  await expect(label).toBeVisible();
+});
 
-async function screenBadgeTextSize(locator: any) {
-  return locator.evaluate((node: SVGGraphicsElement) => {
-    const text = node.matches('text') ? node : node.querySelector('text');
-    if (!text) throw new Error('Selected strip badge has no text.');
-    const ctm = text.getScreenCTM();
-    if (!ctm) throw new Error('Selected strip badge has no screen transform.');
-    const fontSize = parseFloat(getComputedStyle(text).fontSize) * Math.hypot(ctm.a, ctm.b);
-    return Math.max(fontSize, text.getBoundingClientRect().height);
-  });
-}
+test('a long custom strip name has one bounded label with its full accessible identity', async ({ page }) => {
+  await createTwoLineStrips(page);
+  const firstRow = page.locator('.la-strip-row').first();
+  const id = await page.locator('[data-strip-path]').first().getAttribute('data-strip-path');
+  const name = 'Atrium north wall illuminated contour installation segment alpha';
+  await firstRow.locator('.layer-name').dblclick();
+  await firstRow.locator('input').first().fill(name);
+  await firstRow.locator('input').first().press('Enter');
+  const label = page.getByTestId(`strip-callout-${id}`);
+  await expect(label).toHaveAttribute('aria-label', new RegExp(name));
+  await expect(label.locator('text').first()).toContainText('…');
+  const box = await label.locator('rect').boundingBox();
+  expect(box!.width).toBeLessThanOrEqual(150);
+  await expect(page.locator('.lw-strip-callout line')).toHaveCount(0);
+});
 
 async function zoomToTerminal(page: any, controlTitle: string) {
   const svg = page.locator('.lw-viewport svg');
@@ -85,166 +107,28 @@ async function fitSelectionView(page: any) {
   return svg.getAttribute('viewBox');
 }
 
-test('selected Draw strip has a clear, non-blocking visual identity across drag and zoom extremes', async ({ page }) => {
+
+test('selected annotation and selection strokes remain screen-sized at both numerical zoom limits', async ({ page }) => {
   test.setTimeout(60_000);
-  await gotoFreshLayout(page);
   await createTwoLineStrips(page);
-
-  const hitPaths = page.locator('path[data-strip-path]');
-  const selectedHitPath = hitPaths.first();
-  const unselectedHitPath = hitPaths.nth(1);
-  const selectedId = await selectedHitPath.getAttribute('data-strip-path');
-  if (!selectedId) throw new Error('Selected strip has no id.');
-  const selectedPathData = await selectedHitPath.getAttribute('d');
-  if (!selectedPathData) throw new Error('Selected strip has no path geometry.');
-  await expect.poll(() => stripDetails(page, selectedId)).not.toBeNull();
-  const selected = await stripDetails(page, selectedId);
-  if (!selected) throw new Error('Selected strip was not saved.');
-
-  // Use the inspector to select the first strip so this visual contract is
-  // independent of whether either line is currently within the fitted canvas.
-  await page.locator('.la-strip-row').first().click();
-
+  const label = page.locator('.lw-strip-callout[data-selected="true"]');
   const halo = page.getByTestId('selected-strip-halo');
   const core = page.getByTestId('selected-strip-core');
-  const badge = page.getByTestId('selected-strip-badge');
-  await expect(halo).toHaveCount(1);
-  await expect(core).toHaveCount(1);
-  await expect(halo).toHaveAttribute('d', selectedPathData);
-  await expect(core).toHaveAttribute('d', selectedPathData);
-  await expect(halo).toHaveAttribute('stroke', 'oklch(0.78 0.16 205)');
-  await expect(core).toHaveAttribute('stroke', 'white');
-  for (const path of [halo, core]) {
-    await expect(path).toHaveAttribute('fill', 'none');
-    await expect(path).toHaveAttribute('stroke-linecap', 'round');
-    await expect(path).toHaveAttribute('stroke-linejoin', 'round');
+  const minimum = await zoomToTerminal(page, 'Zoom out (-)');
+  expect(Number(minimum?.split(/\s+/)[2])).toBeGreaterThanOrEqual(640 / 1e-6);
+  for (const control of [null, 'Zoom in (+)']) {
+    if (control) {
+      await fitSelectionView(page);
+      const maximum = await zoomToTerminal(page, control);
+      expect(Number(maximum?.split(/\s+/)[2])).toBeLessThanOrEqual(640 / 1e6 * 1.001);
+    }
+    await expect(label).toBeVisible();
+    expect(await screenSize(halo, 'stroke-width')).toBeCloseTo(4.5, 1);
+    expect(await screenSize(core, 'stroke-width')).toBeCloseTo(2.25, 1);
+    expect(await screenSize(label.locator('text').first(), 'font-size')).toBeCloseTo(11, 1);
+    const box = await label.locator('rect').boundingBox();
+    expect(box!.width).toBeGreaterThan(100);
+    expect(box!.width).toBeLessThanOrEqual(152);
+    for (const overlay of [halo, core, label]) await expect(overlay).toHaveCSS('pointer-events', 'none');
   }
-  // Halo is a thin translucent ribbon and core a faint spine so the LED
-  // dots underneath stay readable, rather than a solid tube burying them.
-  await expect(halo).toHaveAttribute('opacity', '0.55');
-  await expect(core).toHaveAttribute('opacity', '0.35');
-
-  // The selected strip's LED dots carry a dark socket rim for contrast
-  // against the halo/core overlay (dots render by default: glow mode starts
-  // as 'dots' and showLeds defaults to true).
-  const selectedLed = page.locator(`[data-testid^="strip-led-${selectedId}-"]`).first();
-  if (await selectedLed.count() > 0) {
-    const selectedLedCircle = selectedLed.locator('circle').first();
-    await expect(selectedLedCircle).toHaveAttribute('stroke', 'oklch(0.22 0.03 235 / 0.9)');
-  }
-
-  await expect(badge).toContainText(selected.name);
-  await expect(badge).toContainText(new RegExp(`${selected.pixelCount}\\s*LEDs?`));
-  const badgeRect = badge.locator('rect');
-  await expect(badgeRect).toHaveAttribute('fill', 'oklch(0.18 0.02 220 / 0.88)');
-  await expect(badgeRect).toHaveAttribute('stroke', 'oklch(0.78 0.16 205)');
-  const badgeDimensions = await badgeRect.evaluate(rect => ({
-    width: Number(rect.getAttribute('width')),
-    height: Number(rect.getAttribute('height')),
-  }));
-  expect(badgeDimensions.width).toBeGreaterThan(0);
-  expect(badgeDimensions.height).toBeGreaterThan(0);
-
-  for (const overlay of [halo, core, badge]) {
-    await expect(overlay).toHaveCSS('pointer-events', 'none');
-  }
-  await expect(selectedHitPath).toHaveCSS('cursor', 'grab');
-  await expect(unselectedHitPath).toHaveCSS('cursor', 'pointer');
-
-  // Selection weight is intentionally screen-legible rather than shrinking
-  // away with the drawing as the maker zooms out to the supported minimum.
-  const normalHaloWidth = await screenStrokeWidth(halo);
-  const normalCoreWidth = await screenStrokeWidth(core);
-  const normalBadgeSize = await screenBadgeTextSize(badge);
-  expect(normalHaloWidth).toBeGreaterThanOrEqual(3);
-  expect(normalCoreWidth).toBeGreaterThanOrEqual(2);
-  expect(normalBadgeSize).toBeGreaterThanOrEqual(8);
-
-  const terminalViewBox = await zoomToTerminal(page, 'Zoom out (-)');
-  const terminalWidth = Number(terminalViewBox?.trim().split(/\s+/)[2]);
-  // Fresh layouts have a 640-unit viewBox; the terminal width demonstrates
-  // that the zoom clamp, rather than an intermediate render, was reached.
-  expect(terminalWidth).toBeGreaterThanOrEqual(640 / 1e-6);
-
-  const minHaloWidth = await screenStrokeWidth(halo);
-  const minCoreWidth = await screenStrokeWidth(core);
-  const minBadgeSize = await screenBadgeTextSize(badge);
-  expect(minHaloWidth).toBeGreaterThanOrEqual(3);
-  expect(minCoreWidth).toBeGreaterThanOrEqual(2);
-  expect(minBadgeSize).toBeGreaterThanOrEqual(8);
-  expect(minHaloWidth / normalHaloWidth).toBeGreaterThanOrEqual(0.75);
-  expect(minCoreWidth / normalCoreWidth).toBeGreaterThanOrEqual(0.75);
-  expect(minBadgeSize / normalBadgeSize).toBeGreaterThanOrEqual(0.75);
-  expect(minHaloWidth / normalHaloWidth).toBeLessThanOrEqual(1.25);
-  expect(minCoreWidth / normalCoreWidth).toBeLessThanOrEqual(1.25);
-  expect(minBadgeSize / normalBadgeSize).toBeLessThanOrEqual(1.25);
-
-  const svg = page.locator('.lw-viewport svg');
-  const fittedViewBox = await fitSelectionView(page);
-  expect(fittedViewBox).not.toBe(terminalViewBox);
-  const fitHaloWidth = await screenStrokeWidth(halo);
-  const fitCoreWidth = await screenStrokeWidth(core);
-  const fitBadgeSize = await screenBadgeTextSize(badge);
-
-  const maximumViewBox = await zoomToTerminal(page, 'Zoom in (+)');
-  const maximumWidth = Number(maximumViewBox?.trim().split(/\s+/)[2]);
-  expect(maximumWidth).toBeLessThanOrEqual((640 / 1e6) * 1.001);
-  const maxHaloWidth = await screenStrokeWidth(halo);
-  const maxCoreWidth = await screenStrokeWidth(core);
-  const maxBadgeSize = await screenBadgeTextSize(badge);
-  expect(maxHaloWidth).toBeGreaterThanOrEqual(3);
-  expect(maxCoreWidth).toBeGreaterThanOrEqual(2);
-  expect(maxBadgeSize).toBeGreaterThanOrEqual(8);
-  expect(maxHaloWidth / fitHaloWidth).toBeGreaterThanOrEqual(0.75);
-  expect(maxCoreWidth / fitCoreWidth).toBeGreaterThanOrEqual(0.75);
-  expect(maxBadgeSize / fitBadgeSize).toBeGreaterThanOrEqual(0.75);
-  expect(maxHaloWidth / fitHaloWidth).toBeLessThanOrEqual(1.25);
-  expect(maxCoreWidth / fitCoreWidth).toBeLessThanOrEqual(1.25);
-  // Chromium rounds SVG text bounds more aggressively near the numerical
-  // zoom ceiling, so allow up to a 2x text-size ratio while keeping it legible.
-  expect(maxBadgeSize / fitBadgeSize).toBeLessThanOrEqual(2);
-
-  const dragViewBox = await fitSelectionView(page);
-  expect(dragViewBox).not.toBe(maximumViewBox);
-  const selectedPathBox = await selectedHitPath.boundingBox();
-  if (!selectedPathBox) throw new Error('Selected strip has no pointer target.');
-  await page.mouse.move(
-    selectedPathBox.x + selectedPathBox.width / 2,
-    selectedPathBox.y + selectedPathBox.height / 2,
-  );
-  await page.mouse.down();
-  await expect(selectedHitPath).toHaveCSS('cursor', 'grabbing');
-  await expect(badge).toHaveCount(0);
-  await page.mouse.up();
-  await expect(page.locator('.la-strip-row').first()).toHaveClass(/sel/);
-  await expect(halo).toHaveCount(1);
-  await expect(badge).toContainText(selected.name);
-});
-
-test('a long selected strip name keeps a compact badge while exposing its full label', async ({ page }) => {
-  await gotoFreshLayout(page);
-  await createTwoLineStrips(page);
-
-  const firstRow = page.locator('.la-strip-row').first();
-  await firstRow.click();
-  const selectedId = await page.locator('path[data-strip-path]').first().getAttribute('data-strip-path');
-  if (!selectedId) throw new Error('Selected strip has no id.');
-  await expect.poll(() => stripDetails(page, selectedId)).not.toBeNull();
-  const ledCount = (await stripDetails(page, selectedId))?.pixelCount;
-  const longName = 'Atrium north wall illuminated contour installation segment alpha';
-  await firstRow.locator('.layer-name').dblclick();
-  const renameInput = firstRow.locator('input').first();
-  await renameInput.fill(longName);
-  await renameInput.press('Enter');
-
-  const badge = page.getByTestId('selected-strip-badge');
-  await expect(badge).toContainText(longName);
-  const fullLabel = `${longName} · ${ledCount} LEDs`;
-  await expect(badge).toContainText(fullLabel);
-  const screenWidth = await badge.locator('rect').evaluate(rect => rect.getBoundingClientRect().width);
-  expect(screenWidth).toBeGreaterThan(0);
-  expect(screenWidth).toBeLessThanOrEqual(240);
-  const exposedLabel = await badge.evaluate(node =>
-    node.getAttribute('aria-label') || node.getAttribute('title') || node.querySelector('title')?.textContent || '');
-  expect(exposedLabel).toBe(fullLabel);
 });

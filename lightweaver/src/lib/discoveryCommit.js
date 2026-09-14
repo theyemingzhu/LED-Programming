@@ -208,13 +208,8 @@ export function projectSkeletonFromCardStatus(status = {}) {
       }));
       strips.push({
         id: stripId,
-        // Same scaffold-name guard as cardIdentity.js: while the temporary
-        // Find-my-strips setup is on the card, `piece.name` IS that scaffold,
-        // and naming the owner's strip after it carried the label into the
-        // artwork permanently.
-        name: reportedSegments.length === 1
-          ? (status?.piece?.name === 'Lightweaver Bench Discovery' ? 'Line' : (status?.piece?.name || 'Line'))
-          : `Line ${strips.length + 1}`,
+        // Status reports a project title, not an owner-authored strip name.
+        name: `Strip ${strips.length + 1}`,
         pathData: `M ${startX} ${y} L ${endX} ${y}`,
         closed: false,
         svgLength: span,

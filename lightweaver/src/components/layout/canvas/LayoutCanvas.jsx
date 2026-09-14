@@ -1,3 +1,5 @@
+import { useLayoutEffect, useState } from 'react';
+import { placeStripLabels } from '../../../lib/stripLabels.js';
 import {
   rgbCss,
   pointsAttr,
@@ -76,6 +78,28 @@ export function LayoutCanvas({
     togglePathSelection, setHoveredLayerId, setHoveredSubPathId,
     onFitBoard,
   } = interactionHandlers;
+  const [viewportSize, setViewportSize] = useState({ width: 640, height: 480 });
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const measure = () => setViewportSize({ width: svg.clientWidth || 640, height: svg.clientHeight || 480 });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, [svgRef]);
+  const annotationScale = Math.max(renderedBounds.w / viewportSize.width, renderedBounds.h / viewportSize.height);
+  const labelBounds = {
+    x: renderedBounds.x - (viewportSize.width * annotationScale - renderedBounds.w) / 2,
+    y: renderedBounds.y - (viewportSize.height * annotationScale - renderedBounds.h) / 2,
+    w: viewportSize.width * annotationScale,
+    h: viewportSize.height * annotationScale,
+  };
+  const labels = placeStripLabels(
+    strips.filter(s => !hidden[s.id] && s.pixels?.length > 0)
+      .sort((a, b) => Number(b.id === selStripId) - Number(a.id === selStripId)).slice(0, 12),
+    annotationScale, labelBounds, selStripId,
+  );
   const handleCanvasPointerDown = event => {
     if (!firstLedPicker) {
       handleSvgMouseDown(event);
@@ -312,12 +336,11 @@ export function LayoutCanvas({
               // Schematic at rest = warm identity color; only let the (possibly
               // cool) pattern frame tint the strand when light preview is on.
               const stripColor = effectiveShowLight ? rgbCss(stripFrame, s.color) : (s.color || 'var(--accent)');
-              // The physical strip RAIL is neutral hardware — decoupled from the
-              // LED colour so the lit pixels (warm dots) read as distinct from the
-              // rail they sit on. Only the live pattern preview tints the rail.
+              // Identity colors keep adjacent physical sections distinguishable
+              // even when their LED dots are too small to resolve.
               const railColor = isHid
                 ? 'oklch(40% 0.01 75)'
-                : (effectiveShowLight ? stripColor : 'oklch(62% 0.012 75)');
+                : stripColor;
               return (
                 <g key={s.id} transform={`translate(${s.x || 0} ${s.y || 0})`}>
                   <path d={s.pathData}
@@ -363,10 +386,11 @@ export function LayoutCanvas({
                         strokeLinecap="round"
                         pointerEvents="none"/>
                   <path d={s.pathData}
+                        data-strip-identity={s.id}
                         stroke={railColor}
-                        strokeWidth={isSel ? 1.6 : 1} fill="none"
+                        strokeWidth={annotationScale * (isSel ? 3 : 2.5)} fill="none"
                         pointerEvents="none"
-                        opacity={isHid ? 0.25 : isMoving ? 0.95 : isSel ? 0.9 : 0.55}
+                        opacity={isHid ? 0.25 : isMoving ? 0.95 : isSel ? 0.95 : 0.85}
                         style={{ filter: isSel && !isEditingGesture ? `drop-shadow(0 0 3px ${stripColor})` : 'none' }}/>
                   {isSel && !isHid && (
                     <>
@@ -375,8 +399,8 @@ export function LayoutCanvas({
                         data-testid="selected-strip-halo"
                         d={s.pathData}
                         fill="none"
-                        stroke="oklch(0.78 0.16 205)"
-                        strokeWidth={selectionVbScale * 4.5}
+                        stroke={stripColor}
+                        strokeWidth={annotationScale * 4.5}
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         pointerEvents="none"
@@ -388,7 +412,7 @@ export function LayoutCanvas({
                         d={s.pathData}
                         fill="none"
                         stroke="white"
-                        strokeWidth={selectionVbScale * 2.25}
+                        strokeWidth={annotationScale * 2.25}
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         pointerEvents="none"
@@ -623,132 +647,29 @@ export function LayoutCanvas({
               </g>
             )}
 
-            {/* ── Strip mid-path badge (selected strip only) ── */}
-            {!isEditingGesture && strips.filter(s => !hidden[s.id] && s.pixels?.length > 0 && s.id === selStripId).map(s => {
-              const mid = s.pixels[Math.floor(s.pixels.length / 2)];
+            {/* One compact, screen-sized annotation per strip; no leader lines. */}
+            {!isEditingGesture && showLeds && labels.map(({ strip: s, x, y, width, height }) => {
+              const physicalScale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 3.7795;
+              const pitch = s.svgLength > 0 && s.pixelCount > 1
+                ? s.svgLength / physicalScale / (s.pixelCount - 1) : null;
+              const detail = `${s.pixelCount} px${pitch === null ? '' : ` · ${pitch.toFixed(1)} mm pitch`}`;
               const label = `${s.name} · ${s.pixelCount} LEDs`;
-              const labelSuffix = ` · ${s.pixelCount} LEDs`;
-              const badgeCameraScale = selectionVbScale / vbScale;
-              const badgeFontSize = vbScale * 10;
-              const badgePaddingX = vbScale * 9;
-              const badgeHeight = vbScale * 20;
-              const badgeMinWidth = vbScale * 72;
-              const badgeMaxWidth = vbScale * 152;
-              const approximateCharacterWidth = badgeFontSize * 0.62;
-              const availableNameWidth = badgeMaxWidth - badgePaddingX * 2 - labelSuffix.length * approximateCharacterWidth;
-              const maximumNameCharacters = Math.max(1, Math.floor(availableNameWidth / approximateCharacterWidth) - 1);
-              const displayName = s.name.length > maximumNameCharacters
-                ? `${s.name.slice(0, maximumNameCharacters).trimEnd()}…`
-                : s.name;
-              const displayLabel = `${displayName}${labelSuffix}`;
-              const badgeWidth = Math.min(
-                badgeMaxWidth,
-                Math.max(badgeMinWidth, displayLabel.length * approximateCharacterWidth + badgePaddingX * 2),
-              );
-              const badgeOffset = vbScale * 25;
+              const displayName = s.name.length > 20 ? `${s.name.slice(0, 19).trimEnd()}…` : s.name;
               return (
-                <g
-                  key={s.id + '-badge'}
-                  data-testid="selected-strip-badge"
-                  aria-label={label}
-                  transform={`translate(${mid.x} ${mid.y}) scale(${badgeCameraScale})`}
-                  style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                  <title>{label}</title>
-                  <rect
-                    x={-badgeWidth / 2}
-                    y={-badgeOffset - badgeHeight}
-                    width={badgeWidth}
-                    height={badgeHeight}
-                    rx={vbScale * 5}
-                    fill="oklch(0.18 0.02 220 / 0.88)"
-                    stroke="oklch(0.78 0.16 205)"
-                    strokeWidth={vbScale * 1.25}
-                  />
-                  <text
-                    x="0"
-                    y={-badgeOffset - badgeHeight / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="white"
-                    fontSize={badgeFontSize}
-                    fontFamily="var(--ui-font, monospace)"
-                    fontWeight="600">
-                    {displayLabel}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* ── Strip callouts — the drawing labels its own parts ──────────
-                The approved Layout board names each strip ON the artwork with
-                its light count and spacing, the way a measured drawing does,
-                so the canvas can be read without cross-referencing the panel.
-
-                Every visible strip, not just the selected one — that is what
-                makes it a drawing rather than a selection read-out. The label
-                is pushed out along the strip's own normal so it clears the
-                strip it belongs to, and a leader line ties it back.
-
-                Capped: past a dozen strips the labels overlap into noise and
-                the drawing is worse for having them. The panel's schedule
-                carries the same facts for every strip, always. */}
-            {!isEditingGesture && showLeds && strips.filter(s => !hidden[s.id]).length <= 12
-              && strips.filter(s => !hidden[s.id] && s.pixels?.length > 1).map(s => {
-              const pts = s.pixels;
-              const mid = pts[Math.floor(pts.length / 2)];
-              const before = pts[Math.max(0, Math.floor(pts.length / 2) - 1)];
-              const after = pts[Math.min(pts.length - 1, Math.floor(pts.length / 2) + 1)];
-              // Normal to the strip at its midpoint, so the label steps away
-              // from the line rather than sitting on top of it.
-              const dx = after.x - before.x;
-              const dy = after.y - before.y;
-              const len = Math.hypot(dx, dy) || 1;
-              const nx = -dy / len;
-              const ny = dx / len;
-              const reach = selectionVbScale * 46;
-              const tipX = mid.x + nx * reach;
-              const tipY = mid.y + ny * reach;
-              const toRight = nx >= 0;
-              const anchorX = tipX + (toRight ? selectionVbScale * 6 : -selectionVbScale * 6);
-
-              // Spacing is the drawn length shared between the gaps. A strip
-              // with no drawn length has none to state, so it says nothing
-              // rather than a zero.
-              const scale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 3.7795;
-              const lengthMm = Number.isFinite(s.svgLength) && s.svgLength > 0
-                ? s.svgLength / scale
-                : null;
-              const gaps = (s.pixelCount || pts.length) - 1;
-              const pitchMm = lengthMm !== null && gaps >= 1 ? lengthMm / gaps : null;
-              const detail = pitchMm === null
-                ? `${s.pixelCount || pts.length} px`
-                : `${s.pixelCount || pts.length} px · ${pitchMm.toFixed(1)} mm pitch`;
-
-              return (
-                <g key={s.id + '-callout'}
-                   className="lw-strip-callout"
+                <g key={s.id + '-callout'} className="lw-strip-callout"
                    data-testid={`strip-callout-${s.id}`}
-                   style={{ pointerEvents: 'none', userSelect: 'none' }}
-                   opacity={s.id === selStripId ? 1 : 0.66}>
-                  <line x1={mid.x} y1={mid.y} x2={tipX} y2={tipY}
-                        stroke={s.id === selStripId ? s.color : 'oklch(0.52 0.012 75)'}
-                        strokeWidth={selectionVbScale * 0.9}/>
-                  <circle cx={tipX} cy={tipY} r={selectionVbScale * 1.8}
-                          fill={s.id === selStripId ? s.color : 'oklch(0.60 0.012 75)'}/>
-                  <text x={anchorX} y={tipY - selectionVbScale * 1}
-                        textAnchor={toRight ? 'start' : 'end'}
-                        fontFamily="var(--font-mono, monospace)"
-                        fontSize={selectionVbScale * 9}
-                        fill={s.id === selStripId ? 'oklch(0.945 0.006 80)' : 'oklch(0.72 0.009 78)'}>
-                    {s.name}
-                  </text>
-                  <text x={anchorX} y={tipY + selectionVbScale * 10}
-                        textAnchor={toRight ? 'start' : 'end'}
-                        fontFamily="var(--font-mono, monospace)"
-                        fontSize={selectionVbScale * 7.5}
-                        fill="oklch(0.56 0.009 75)">
-                    {detail}
-                  </text>
+                   data-selected={s.id === selStripId || undefined}
+                   aria-label={label}
+                   transform={`translate(${x} ${y}) scale(${annotationScale})`}
+                   style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                  <title>{label} · {detail}</title>
+                  <rect width={width / annotationScale} height={height / annotationScale} rx="4"
+                        fill="oklch(0.18 0.02 220 / 0.88)" stroke={s.color}
+                        strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
+                  <text x="7" y="13" fontFamily="var(--font-mono, monospace)" fontSize="11"
+                        fontWeight={s.id === selStripId ? 600 : 400} fill={s.color}>{displayName}</text>
+                  <text x="7" y="25" fontFamily="var(--font-mono, monospace)" fontSize="9"
+                        fill="oklch(0.72 0.009 78)">{detail}</text>
                 </g>
               );
             })}
