@@ -9,6 +9,16 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-14 LED visibility (done locally)
+Larger outlined LED dots remain screen-sized at Fit and 17% zoom; selected
+strip ribbon uses muted paint blue-gray. Divided-section colors and geometry
+are preserved. Sol medium handled the bounded canvas fix; primary integrated.
+Focused regression witnessed red (1.291px radius) then green. Six existing
+selection/identity browser tests passed. Primary inspected the actual 17%
+preview and confirmed clear dots across all four sections. No deployment or
+hardware changes.
+
+
 ### 2026-09-14 Layout interface typography (done locally)
 
 User wants Illustrator-like editor chrome: compact interface labels/buttons,

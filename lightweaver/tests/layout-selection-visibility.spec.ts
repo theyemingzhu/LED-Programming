@@ -27,7 +27,7 @@ test('selected identity stays compact and non-blocking at fit and zoomed out', a
   await expect(label).toHaveAttribute('data-selected', 'true');
   await expect(page.getByTestId('selected-strip-badge')).toHaveCount(0);
   await expect(halo).toHaveAttribute('d', (await hit.getAttribute('d'))!);
-  await expect(halo).toHaveAttribute('stroke', (await page.locator(`[data-strip-identity="${id}"]`).getAttribute('stroke'))!);
+  await expect(halo).toHaveAttribute('stroke', 'oklch(64% 0.025 235)');
   for (const overlay of [halo, core, label]) await expect(overlay).toHaveCSS('pointer-events', 'none');
   await expect(hit).toHaveCSS('cursor', 'grab');
   for (const zoomedOut of [false, true]) {

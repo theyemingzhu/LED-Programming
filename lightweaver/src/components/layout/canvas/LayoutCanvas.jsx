@@ -399,7 +399,7 @@ export function LayoutCanvas({
                         data-testid="selected-strip-halo"
                         d={s.pathData}
                         fill="none"
-                        stroke={stripColor}
+                        stroke="oklch(64% 0.025 235)"
                         strokeWidth={annotationScale * 4.5}
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -533,13 +533,13 @@ export function LayoutCanvas({
                          else onKaleidoscopeLedPick(s.id, i);
                        }}>
                       <circle cx={px.x} cy={px.y}
-                              r={selected ? vbScale * 5.2 : vbScale * 3.8}
+                              r={annotationScale * (selected ? 4.6 : 3.5)}
                               fill={ledColor} opacity={shellOpacity}
-                              stroke={selected ? 'oklch(0.22 0.03 235 / 0.9)' : 'none'}
-                              strokeWidth={selected ? vbScale * 1.3 : 0}/>
+                              stroke="oklch(22% 0.03 235 / 0.9)"
+                              strokeWidth={annotationScale * (selected ? 1.3 : 0.9)}/>
                       {coreOpacity > 0 && (
                         <circle cx={px.x} cy={px.y}
-                                r={selected ? vbScale * 2.9 : vbScale * 2.25}
+                                r={annotationScale * (selected ? 2.9 : 2.25)}
                                 fill={ledColor} opacity={coreOpacity}/>
                       )}
                       {(firstLedPicker?.stripId === s.id || (kaleidoscopeEditor?.stripId === s.id && kaleidoscopeEditor.mode === 'pick')) && <circle cx={px.x} cy={px.y} r={vbScale * 20}
