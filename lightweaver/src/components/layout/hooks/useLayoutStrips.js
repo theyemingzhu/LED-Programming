@@ -472,11 +472,14 @@ export function useLayoutStrips(ctx) {
         return next;
       });
     }
-    selectStrips([id, ...newIds]);
-    scrollToStrip(newIds.at(-1) || id);
+    // Keep the first section open for editing. Selecting every new section
+    // automatically opens the batch Group/Combine panel and obscures the
+    // result the owner is trying to inspect.
+    selectStrip(id);
+    scrollToStrip(id);
     return newIds;
   }, [strips, wiring, updateWiring, projectName, nextColor, densityFor, stripCountOverrides,
-      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrips, scrollToStrip]);
+      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
   const createStripGroupFromIds = useCallback((stripIds, nameOverride = '') => {
     const uniqueIds = [...new Set(stripIds)].filter(Boolean);

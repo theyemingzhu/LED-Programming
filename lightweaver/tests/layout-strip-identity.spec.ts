@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
 
+async function revealDivideControls(page: any) {
+  const toggle = page.locator('[data-testid^="divide-toggle-"]').first();
+  if (await toggle.count()) await toggle.click();
+}
+
 test('41 LEDs divide into four individually colored, numbered strips with compact labels', async ({ page }) => {
   await page.goto('/#screen=layout');
   await page.evaluate(() => localStorage.clear());
@@ -8,9 +13,14 @@ test('41 LEDs divide into four individually colored, numbered strips with compac
   const count = page.locator('.la-strip-detail input[type="number"]').first();
   await count.fill('41');
   await count.blur();
+  await revealDivideControls(page);
   await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Strip 1', 'Strip 2', 'Strip 3', 'Strip 4']);
+  await expect(page.locator('.la-batch')).toHaveCount(0);
+  await expect(page.locator('.la-strip-row.sel')).toHaveCount(1);
+  await expect(page.locator('.la-strip-row').first()).toHaveClass(/\bsel\b/);
+  await expect(page.locator('.la-strip-detail input[type="number"]').first()).toBeEditable();
   const rails = page.locator('[data-strip-identity]');
   await expect(rails).toHaveCount(4);
   expect(new Set(await rails.evaluateAll(nodes => nodes.map(n => n.getAttribute('stroke')))).size).toBe(4);
@@ -53,6 +63,7 @@ for (const sourceName of ['Untitled Project', 'North arch']) {
     });
     await page.reload();
     await page.locator('.la-strip-row').first().click();
+    await revealDivideControls(page);
     await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
     await page.locator('[data-testid^="divide-commit-"]').click();
     const expected = Array.from({ length: 4 }, (_, i) => `${sourceName === 'Untitled Project' ? 'Strip' : sourceName} ${i + 1}`);
