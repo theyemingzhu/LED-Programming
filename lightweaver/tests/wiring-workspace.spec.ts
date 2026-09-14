@@ -2,6 +2,7 @@ import { test, expect } from './studioTest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 const TEST_CARD_ID = 'lw-wiring-tests';
 
@@ -25,7 +26,7 @@ async function installStableCardIdentity(page: any) {
 // live on Layout. Old `#screen=layout&mode=wire` opens Card install.
 const CARD_INSTALL_HASH = '#screen=card&section=setup&task=install-project';
 const LAYOUT_HASH = '#screen=layout&mode=draw';
-const planMeta = (page: any) => page.locator('.lww-plan-head .meta');
+const planMeta = (page: any) => page.getByTestId('sheet-total');
 
 async function gpioGroupsOnWire(page: any) {
   await switchMode(page, 'draw');
@@ -49,6 +50,9 @@ async function gotoLayoutTools(page: any) {
 async function openAdvanced(page: any) {
   if (await page.getByTestId('advanced-installation-tools').count() === 0) {
     await gotoLayoutTools(page);
+  }
+  if (!await page.getByTestId('advanced-installation-tools').isVisible()) {
+    await page.getByTestId('layout-specs-trigger').click();
   }
   const tools = page.getByTestId('advanced-installation-tools');
   await expect(tools).toBeVisible();
@@ -237,7 +241,7 @@ test('Test & Install shows a compact count line and one next-action CTA instead 
   await expect(step.getByTestId('layout-send-to-card')).toContainText('Install on card');
 
   await gotoLayoutTools(page);
-  await expect(planMeta(page)).toHaveText('2 strips · 44 LEDs in this design');
+  await expect(planMeta(page)).toContainText('44 LEDs');
   await expect(page.locator('.lww-custom-mapping')).toHaveJSProperty('open', false);
   await expect(page.getByTestId('wire-power-section')).toHaveJSProperty('open', false);
   await expect(page.locator('.lww-power-warning')).toHaveCount(0);
@@ -292,7 +296,7 @@ test('Advanced mapping inserts and removes a zero-address cable jump without cha
     .filter((run: any) => run?.type === 'strip')
     .map((run: any) => run.source.stripId))
     .toEqual(['default-outer-circle', 'default-inner-circle']);
-  await expect(planMeta(page)).toHaveText('2 strips · 44 LEDs in this design');
+  await expect(planMeta(page)).toContainText('44 LEDs');
 
   await jumpRow.getByRole('button', { name: 'Remove cable jump' }).click();
   await expect(jumpRow).toHaveCount(0);
@@ -303,6 +307,7 @@ test('Advanced mapping inserts and removes a zero-address cable jump without cha
     .toEqual(['default-outer-circle', 'default-inner-circle']);
 
   await switchMode(page, 'draw');
+  await page.getByRole('button', { name: 'Back to inspector' }).click();
   await page.locator('[data-strip-id="default-inner-circle"] .la-strip-row').click();
   await switchMode(page, 'wire');
   await openCustomMapping(page);
@@ -621,6 +626,8 @@ test('hardware and power keeps power collapsed, persists its inputs, and raises 
   // Both inputs persist through the project autosave.
   await page.waitForTimeout(600);
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('layout-specs-trigger')).toHaveAccessibleName('Specs, attention needed');
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
   await expect(page.locator('.lww-power-warning')).toHaveText('Needs 2.6 A at full white — your supply is 0.5 A.');
   await openAdvanced(page);
@@ -639,11 +646,16 @@ test('unverified wiring keeps the staged install path available without manual l
   await openCustomMapping(page);
   await page.getByRole('button', { name: 'Add skipped LEDs' }).click();
   await page.getByRole('button', { name: 'Add skipped LEDs' }).click();
-  await expect(planMeta(page)).toContainText('46 LEDs');
+  await expect(planMeta(page)).toContainText('44 LEDs');
   const project = await saveProject(page);
   const ids = project.layout.wiring.runs.map((run: any) => run.id);
   expect(ids).toContain('reserved-1');
   expect(ids).toContain('reserved-2');
+  expect(compileWiring({
+    wiring: project.layout.wiring,
+    strips: project.layout.strips,
+    groups: project.layout.layerGroups,
+  }).totalPixels).toBe(46);
 });
 
 test('Wire owns physical data direction alongside the drawn path direction', async ({ page }) => {

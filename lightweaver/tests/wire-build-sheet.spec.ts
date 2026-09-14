@@ -30,6 +30,7 @@ test('the schedule and sheet report the project the wire order actually describe
   await expect(page.getByTestId('build-sheet')).toHaveCount(0);
 
   await addLine(page);
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('build-sheet')).toBeVisible();
   await page.getByTestId('build-sheet').locator('summary').click();
   await expect(page.getByTestId('strip-schedule')).toBeVisible();
@@ -62,13 +63,15 @@ test('the schedule and sheet report the project the wire order actually describe
 test('a second strip takes the addresses that follow the first', async ({ page }) => {
   await freshLayout(page);
   await addLine(page);
-  await expect(page.getByTestId('build-sheet')).toBeVisible();
-  await page.getByTestId('build-sheet').locator('summary').click();
-  await expect(page.getByTestId('strip-schedule')).toBeVisible();
 
   const duplicate = page.getByRole('button', { name: /^(copy|duplicate)/i });
   await expect(duplicate.first()).toBeVisible();
   await duplicate.first().click();
+
+  await page.getByTestId('layout-specs-trigger').click();
+  await expect(page.getByTestId('build-sheet')).toBeVisible();
+  await page.getByTestId('build-sheet').locator('summary').click();
+  await expect(page.getByTestId('strip-schedule')).toBeVisible();
 
   const rows = page.locator('[data-testid="strip-schedule"] tbody tr');
   await expect(rows).toHaveCount(2);
@@ -87,6 +90,7 @@ test('the schedule fits its column on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await freshLayout(page);
   await addLine(page);
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('build-sheet')).toBeVisible();
   await page.getByTestId('build-sheet').locator('summary').click();
   await expect(page.getByTestId('strip-schedule')).toBeVisible();
@@ -108,6 +112,15 @@ test('the schedule fits its column on a phone', async ({ page }) => {
 test('wiring and build references start collapsed while power warnings stay visible', async ({ page }) => {
   await freshLayout(page);
   await addLine(page);
+  const specsButton = page.getByRole('button', { name: 'Specs' });
+  await expect(specsButton).toBeVisible();
+  await expect(page.getByTestId('layout-specs-panel')).toBeHidden();
+  await expect(page.getByTestId('wire-plan')).toHaveCount(0);
+  await specsButton.click();
+  await expect(specsButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(specsButton).toHaveAttribute('aria-controls', 'layout-specs-panel');
+  await expect(page.getByTestId('layout-specs-panel')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Back to inspector' })).toBeVisible();
   const tools = page.getByTestId('advanced-installation-tools');
   const build = page.getByTestId('build-sheet');
   await expect(tools.locator(':scope > summary')).toHaveText('Wiring & hardware');
@@ -132,4 +145,15 @@ test('wiring and build references start collapsed while power warnings stay visi
   await build.locator(':scope > summary').click();
   await expect(page.getByTestId('sheet-total')).toBeVisible();
   await expect(page.getByTestId('strip-schedule').locator('tbody tr')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Back to inspector' }).click();
+  await expect(page.getByTestId('layout-specs-panel')).toBeHidden();
+  await expect(specsButton).toBeFocused();
+  await expect(page.locator('.la-strip-row').first()).toBeVisible();
+
+  await specsButton.click();
+  await page.getByRole('button', { name: 'Back to inspector' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('layout-specs-panel')).toBeHidden();
+  await expect(specsButton).toBeFocused();
 });

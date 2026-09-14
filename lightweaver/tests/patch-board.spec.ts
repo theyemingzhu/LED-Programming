@@ -26,12 +26,14 @@ async function importLine(page: any) {
 }
 
 async function enterWire(page: any) {
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
 async function gotoDefaultWire(page: any) {
   await page.addInitScript(() => localStorage.clear());
   await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
@@ -89,6 +91,9 @@ async function openAdvanced(page: any) {
   if (await page.getByTestId('advanced-installation-tools').count() === 0) {
     await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
     await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  }
+  if (!await page.getByTestId('layout-wire-tools').isVisible()) {
+    await page.getByTestId('layout-specs-trigger').click();
   }
   const tools = page.getByTestId('advanced-installation-tools');
   await expect(tools).toBeVisible();
@@ -183,7 +188,7 @@ test('Advanced mapping stays folded and Split still cuts a run', async ({ page }
   await clickStripPathAt(page, 0.45);
   await expect(page.getByText('Selected split')).toBeVisible();
   expect((await exportProject(page, tmp, 'after-split.json')).layout.wiring.runs.filter((run: any) => run.type === 'strip')).toHaveLength(2);
-  await expect(page.locator('.lww-plan-head .meta')).toContainText('1 strip ·');
+  await expect(page.getByTestId('sheet-total')).toContainText('LED');
   const runSelector = page.getByLabel('Physical run');
   await expect(runSelector.locator('option')).toHaveCount(2);
   await runSelector.selectOption({ index: 1 });

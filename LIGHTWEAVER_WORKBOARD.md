@@ -9,6 +9,20 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-14 Layout specifications (done locally)
+Move wire plan/build information out of the default layout inspector into an
+on-demand Specs surface with reduced inset and full available width. Keep
+functional hardware/build controls reachable and meaningful errors available.
+Owner: Sol medium, bounded UI relocation and focused regressions; routine UI
+work requires no frontier worker. Primary verified desktop/390px phone and
+Escape focus return; production build passed. Resumed after interrupted
+verification with Sol medium assigned only the remaining stale test repairs.
+Four Specs/build-summary tests passed on resumption. No deployment or hardware
+actions. All three isolated wiring/checklist repairs passed (8.3s); reserved
+address behavior remains explicitly checked. Seven focused checks passed on
+resumption. Prior related suites supplied the remaining regression evidence.
+Ready locally; deployment remains a separate release step.
+
 ### 2026-09-14 LED visibility (done locally)
 Larger outlined LED dots remain screen-sized at Fit and 17% zoom; selected
 strip ribbon uses muted paint blue-gray. Divided-section colors and geometry

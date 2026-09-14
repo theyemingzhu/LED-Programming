@@ -38,6 +38,7 @@ test('a chipset picked in the starter persists into the project and reaches the 
   await expect(starterSelect).toHaveValue('WS2812B');
 
   await picker.getByRole('button', { name: 'Create line' }).click();
+  await page.getByTestId('layout-specs-trigger').click();
 
   // The starter choice reaches the project control inside Wiring & hardware.
   const tools = page.getByTestId('advanced-installation-tools');
@@ -54,6 +55,7 @@ test('a chipset picked in the starter persists into the project and reaches the 
 test('changing the chipset after the layout exists survives a reload', async ({ page }) => {
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  await page.getByTestId('layout-specs-trigger').click();
 
   const tools = page.getByTestId('advanced-installation-tools');
   if (!await tools.evaluate((element: HTMLDetailsElement) => element.open)) {
@@ -65,6 +67,7 @@ test('changing the chipset after the layout exists survives a reload', async ({ 
   await expect.poll(() => savedLedType(page)).toBe('WS2812B');
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('project-led-chipset').getByTestId('led-chipset-select'))
     .toHaveValue('WS2812B');
 });
@@ -99,6 +102,7 @@ test('a project saved with no chipset loads on a supported one instead of failin
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-specs-trigger').click();
   await page.getByTestId('advanced-installation-tools').locator('summary').first().click();
 
   const tools = page.getByTestId('advanced-installation-tools');

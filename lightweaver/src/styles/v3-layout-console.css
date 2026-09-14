@@ -256,6 +256,23 @@
   gap: 6px;
 }
 .la .la-install-actions > .btn { flex: 1 1 auto; }
+.la .la-install-actions > .la-specs-trigger {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 64px;
+}
+.la .la-specs-trigger.is-active {
+  color: var(--lw-live-ink);
+  border-color: var(--lw-live-ink);
+}
+.la .la-specs-attention {
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
+}
 .la .la-change-help { position: relative; flex: 0 0 auto; }
 .la .la-change-help > summary {
   display: grid;
@@ -294,83 +311,33 @@
 }
 .la .la-change-help .la-change-kind { margin: 0; }
 
-/* ═══ the wire plan is a module, not a caption ═════════════
-   It carried the run's facts as loose text under a bare label,
-   below a panel that had already become a module — so the one
-   block describing what will actually be wired read as the
-   least important thing in the column.
-
-   Its head is a sub-head, not a panel header (see the exclusion
-   above), and below a 320px container it stacks into a column —
-   which the side panel always is. So the status light is placed
-   rather than flowed: a leading dot in a column layout becomes a
-   line of its own.
-   ═══════════════════════════════════════════════════════════ */
-
-.la .lw-wire-path.is-embedded {
-  margin: 14px 16px 16px;
-  padding: 0 13px 13px;
-  border: 1px solid var(--border-hair);
-  border-radius: 2px;
-  background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
+/* Specs temporarily replaces the editing inspector and gets enough width for
+   the six-column assembly schedule. Its body owns the only side inset. */
+@media (min-width: 601px) {
+  .la.specs-open { grid-template-columns: minmax(0, 1fr) minmax(420px, 34vw); }
 }
-.la .lw-wire-path.is-embedded > .lww-plan-head {
-  position: relative;
-  margin: 0 -13px 11px;
-  padding: 11px 13px 11px 30px;
-  background: var(--bg-elev);
+.la .la-inspector-main { display: contents; }
+.la .la-inspector-main[hidden] { display: none; }
+.la .la-specs-panel { min-width: 0; }
+.la .la-specs-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 43px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-hair);
+  background: var(--bg-elev);
 }
-.la .lw-wire-path.is-embedded > .lww-plan-head::before {
-  content: "";
-  position: absolute;
-  left: 13px;
-  top: 16px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+.la .la-specs-header strong { font-size: 0.75rem; color: var(--text-hi); }
+.la .la-specs-back { min-height: 30px; padding-inline: 8px; }
+.la .la-specs-body { min-width: 0; padding: 10px; }
+.la .la-specs-body > .lw-wire-path.is-embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
 }
-.la .lww-plan-head .ttl {
-  font-family: var(--font-ui);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: normal;
-  text-transform: none;
-  color: var(--text-lo);
-}
-/* the run itself reads as a sheet: mono, measured, one fact per line */
-.la .lww-plan-summary {
-  padding: 9px 11px;
-  border-radius: 2px;
-  background: var(--lw-well);
-  border: 1px solid var(--border-hair);
-  box-shadow: var(--lw-inset);
-  font-family: var(--font-ui);
-  font-size: 11.5px;
-  line-height: 1.75;
-  color: var(--text-mid);
-}
-
-/* The run's facts live in the head's .meta, which is set to one clipped line
-   for the wide layout it was written for. In this 300px column that column
-   layout stacks, and the sentence lost its last two words to an ellipsis —
-   "44 LEDs in this de…". Let it wrap; it is the only line on this panel that
-   says what will actually be wired. */
-.la .lw-wire-path.is-embedded > .lww-plan-head .meta {
-  max-width: 100%;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--text-mid);
-}
+.la .la-specs-body > .lwbs { margin: 10px 0 0; }
 
 /* ═══ strip schedule + build sheet ═════════════════════════
    The two read-outs somebody wires from. Both are modules in
@@ -859,27 +826,7 @@
 .la .lww-tools-panel .lww-power-fields,
 .la .lww-tools-panel .lww-wiring-fields { display: grid; gap: 8px; }
 
-/* Alignment. The wire panel carries 13px of side padding, so anything inside
-   it starts indented from the Strip schedule and Build sheet, which are its
-   siblings in the column. Wire plan was inset 14px and Wire tools 30px — three
-   panels doing the same job, none of their left edges agreeing. Both are
-   pulled back out to the column's own edge. */
-/* Wire plan and Wire tools sit inside a wrapper that carries 13px of side
-   padding, so their edges land at 1151/1410 while the Strip schedule and
-   Build sheet — siblings of that wrapper — sit at 1137/1424. Rather than
-   fight the wrapper's padding (it also spaces the two loose paragraphs
-   inside it), the outer two are inset to meet the inner two. Four panels,
-   one left edge. */
 .la .la-wire-panel > .lww-tools-panel { margin: 0; }
-.la .lwbs { margin-left: 30px; margin-right: 30px; }
-
-/* The plan's summary is its whole content when shut — "2 strips · 44 LEDs in
-   this design" clipped to "…in this desi…" is the one line that had to fit. */
-.la .lww-plan .panel-head .meta {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-}
 
 @media (pointer: coarse) {
   .la .lww-tools-panel details > summary { min-height: 44px; }

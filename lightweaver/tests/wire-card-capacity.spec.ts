@@ -54,6 +54,7 @@ async function openWire(page: any, fixture: object) {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(data));
   }, fixture);
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('layout-wire-tools')).toBeVisible();
 }
 
@@ -66,7 +67,7 @@ test('a small card against a large design is stated as a fact, and the design is
   await expect(page.getByTestId('wire-mismatch-18')).toHaveCount(0);
   await expect(page.getByTestId('wire-adopt-18')).toHaveCount(0);
   // The design still says 400. Counting a bench strip must never shrink it.
-  await expect(page.locator('.lww-plan-head .meta')).toContainText('400 LEDs in this design');
+  await expect(page.getByTestId('sheet-total')).toContainText('400 LEDs');
   const total = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
     .layout.strips.reduce((sum: number, strip: any) => sum + strip.pixelCount, 0));
   expect(total).toBe(400);

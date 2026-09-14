@@ -30,6 +30,7 @@ test('Wire tools stay on Layout as their own panel, not a second mode', async ({
   await gotoLayout(page);
 
   // Optional wiring controls stay on Layout without a mode switch.
+  await page.getByTestId('layout-specs-trigger').click();
   const advanced = page.getByTestId('advanced-installation-tools');
   await expect(advanced).toBeVisible();
   await expect(advanced).toHaveJSProperty('open', false);

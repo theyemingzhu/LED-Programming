@@ -28,7 +28,7 @@ const parsePositive = (raw, fallback) => {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
 
-export function WirePlanTools({ state, cardHost }) {
+export function WirePlanTools({ state, cardHost, onAttentionChange }) {
   const {
     strips, selStripId, pxPerMm,
     selectedWireCut, nudgeSelectedWireCut, deleteSelectedWireCut,
@@ -211,9 +211,6 @@ export function WirePlanTools({ state, cardHost }) {
     if (run?.type === 'strip') run.source[field] = Math.max(0, Math.trunc(Number(value) || 0));
   }, { changeKind: 'seam', runIds: selectedRun ? [selectedRun.id] : [] });
 
-  const stripIds = new Set(strips.map(strip => strip.id));
-  const mappedStripIds = new Set(wiring.runs.filter(run => run.type === 'strip' && stripIds.has(run.source.stripId)).map(run => run.source.stripId));
-  const physicalStripCount = mappedStripIds.size;
   // What the card itself reports it is holding. LayoutScreen passes only
   // `connected`/`cardHost`, so the readiness evidence is read from the shared
   // card link here rather than threaded through a file this panel does not own.
@@ -242,7 +239,6 @@ export function WirePlanTools({ state, cardHost }) {
     milliampsPerPixel,
     ...next,
   }));
-  const stripWord = physicalStripCount === 1 ? 'strip' : 'strips';
   // How the card that is plugged in right now relates to the design. Never used
   // to change the design — a development card is allowed to be smaller than the
   // piece being designed, and saying so is the whole job here.
@@ -267,15 +263,15 @@ export function WirePlanTools({ state, cardHost }) {
     const discovered = discoveredByOutput.get(output.id);
     return discovered && output.pin !== discovered.pin;
   });
+  const needsAttention = (!cardNeedsStripDiscovery && (showCapacityFact || mismatchedOutputs.length > 0))
+    || powerEstimate.status === 'over'
+    || Boolean(mutationError || pinError);
+  useEffect(() => {
+    onAttentionChange?.(needsAttention);
+  }, [needsAttention, onAttentionChange]);
 
   return (
     <WireHoverDescription className="lw-wire-path is-embedded la-wire-panel" data-testid="layout-wire-tools">
-      <section className="lww-plan" data-testid="wire-plan">
-        <div className="panel-head lww-plan-head">
-          <span className="ttl">Wire plan</span>
-          <span className="meta">{physicalStripCount} {stripWord} · {compiledWiring.totalPixels} LEDs in this design</span>
-        </div>
-      </section>
       {/* Connection and power warnings stay visible when the controls fold. */}
       {(showCapacityFact || mismatchedOutputs.length > 0) && !cardNeedsStripDiscovery && (
         <section className="wire-discovered-list" aria-label="What is plugged in right now">
