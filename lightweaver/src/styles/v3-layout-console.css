@@ -153,22 +153,24 @@
   background: var(--idle);
 }
 .la .panel-head:not(.lww-plan-head) .ttl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .panel-head:not(.lww-plan-head) .meta { margin-left: auto; }
-.la .panel-head .meta { letter-spacing: 0.06em; }
+.la .panel-head .meta { letter-spacing: normal; }
 
 /* ── strips: a schedule, not a list of cards ─────────────── */
 
-.la .la-strip-row .layer-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+.la .la-strip-row .layer-name { font-family: var(--font-ui); font-size: 0.8125rem; font-weight: 500; }
 .la .la-strip-row .layer-len,
 .la .la-strip-row .la-wire-n {
   font-family: var(--font-mono);
-  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
   color: var(--text-lo);
 }
 .la .la-strip-row.sel {
@@ -205,10 +207,11 @@
   border-left-color: var(--border-hair);
 }
 .la .la-strip-physical-field > .k {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .la-size-readout input[type=number] {
@@ -217,6 +220,7 @@
   border-color: var(--border-hair);
   box-shadow: var(--lw-inset);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .la .la-strip-physical-field .la-size-ctrl .btn,
 .la .la-strip-physical-field .lw-led-nudge .btn {
@@ -241,6 +245,54 @@
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
     0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
 }
+.la .la-mode-nav .btn,
+.la .la-change-help,
+.la .la-change-kind {
+  font-family: var(--font-ui);
+}
+.la .la-install-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.la .la-install-actions > .btn { flex: 1 1 auto; }
+.la .la-change-help { position: relative; flex: 0 0 auto; }
+.la .la-change-help > summary {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 100%;
+  min-height: 32px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
+  color: var(--text-lo);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  list-style: none;
+}
+.la .la-change-help > summary::-webkit-details-marker { display: none; }
+.la .la-change-help > summary:hover { color: var(--text-hi); border-color: var(--border); }
+.la .la-change-help > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.la .la-change-help-popover {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(240px, calc(100vw - 32px));
+  padding: 9px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.32);
+}
+.la .la-change-help .la-change-kind { margin: 0; }
 
 /* ═══ the wire plan is a module, not a caption ═════════════
    It carried the run's facts as loose text under a bare label,
@@ -284,10 +336,11 @@
   background: var(--idle);
 }
 .la .lww-plan-head .ttl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 /* the run itself reads as a sheet: mono, measured, one fact per line */
@@ -297,7 +350,7 @@
   background: var(--lw-well);
   border: 1px solid var(--border-hair);
   box-shadow: var(--lw-inset);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11.5px;
   line-height: 1.75;
   color: var(--text-mid);
@@ -348,16 +401,16 @@
 .la .lwbs-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11.5px;
 }
 .la .lwbs-table th {
   padding: 8px 8px 7px;
   text-align: left;
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-faint);
   border-bottom: 1px solid var(--border-hair);
   white-space: nowrap;
@@ -374,6 +427,11 @@
 .la .lwbs-table th:last-child,
 .la .lwbs-table td:last-child { padding-right: 13px; }
 .la .lwbs-ix { width: 1%; color: var(--text-faint); }
+.la .lwbs-ix,
+.la .lwbs-n {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
 .la .lwbs-n { text-align: right; width: 1%; }
 /* the strip's own name is the one thing here that is not a number */
 .la .lwbs-nm {
@@ -406,15 +464,16 @@
   grid-template-columns: 62px minmax(0, 1fr);
   gap: 0;
   padding: 4px 13px 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11.5px;
   line-height: 1.6;
 }
 .la .lwbs-facts dt {
   padding: 8px 0;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-faint);
   border-bottom: 1px solid var(--border-hair);
 }
@@ -462,7 +521,13 @@
   border-bottom: 0;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
 }
-.la .la-strip-detail .lw-sel-head .ttl { font-size: 10px; letter-spacing: 0.18em; }
+.la .la-strip-detail .lw-sel-head .ttl {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
 /* The name is the meta, so a long one clips rather than pushing the bar wide;
    the whole string stays reachable through the title attribute. */
 .la .la-strip-detail .lw-sel-head .meta {
@@ -470,9 +535,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: normal;
   color: var(--text-hi);
 }
 
@@ -498,17 +564,18 @@
 .la .la-strip-detail .lw-sel-grid > .lw-sel-wide { grid-column: 1 / -1; }
 .la .la-strip-detail .lw-sel-grid > .la-strip-physical-field > .k {
   flex: 0 0 auto;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-faint);
 }
 /* a measured value, sat against its cell's own right edge */
 .la .lw-sel-v {
   margin-left: auto;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-hi);
   white-space: nowrap;
@@ -683,11 +750,11 @@
   min-width: 0;
 }
 .la .lww-tools-panel .la-led-chipset .k {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .lww-tools-panel .la-gpio-wrap { min-width: 0; }
@@ -708,9 +775,13 @@
   border-radius: 2px;
   background: var(--bg-canvas);
   color: var(--text-hi);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   text-overflow: ellipsis;
+}
+.la .lww-tools-panel input[type="number"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Buttons sit on a row and take their own width, as they do everywhere else
@@ -729,7 +800,7 @@
   grid-template-columns: none;
 }
 
-/* One fold idiom for the whole screen: hairline above, mono label, chevron
+/* One fold idiom for the whole screen: hairline above, compact label, chevron
    right. These used to be unmarked text with no hint they opened at all. */
 .la .lww-tools-panel details { min-width: 0; border-top: 1px solid var(--border-hair); }
 .la .lww-tools-panel details > summary {
@@ -740,11 +811,11 @@
   padding: 0 22px 0 0;
   list-style: none;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: .16em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .lww-tools-panel details > summary::-webkit-details-marker { display: none; }
@@ -778,11 +849,11 @@
   display: grid;
   gap: 5px;
   min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--text-lo);
 }
 .la .lww-tools-panel .lww-power-fields,

@@ -459,23 +459,36 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           <strong>Inspector</strong>
         </button>
         <div className="la-mode-nav">
-          <button
-            type="button"
-            className="btn primary"
-            data-testid="layout-check-and-install"
-            title="Check the lights and install this project on the connected card."
-            data-tooltip="Check the lights and install this project on the connected card."
-            onClick={() => openCardFlow('install-project')}
-          >
-            Check and install on the card
-          </button>
-          {layoutChangeKind && (
-            <p className="la-change-kind" data-testid="layout-change-kind">
-              {layoutChangeKind === 'hardware'
-                ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
-                : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
-            </p>
-          )}
+          <div className="la-install-actions">
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="layout-check-and-install"
+              title="Check the lights and install this project on the connected card."
+              data-tooltip="Check the lights and install this project on the connected card."
+              onClick={() => openCardFlow('install-project')}
+            >
+              Install on card
+            </button>
+            {layoutChangeKind && (
+              <details className="la-change-help" data-testid="layout-change-help">
+                <summary
+                  aria-label="Installation info"
+                  title="Installation info"
+                  data-testid="layout-change-help-toggle"
+                >
+                  <span aria-hidden="true">i</span>
+                </summary>
+                <div className="la-change-help-popover">
+                  <p className="la-change-kind" data-testid="layout-change-kind">
+                    {layoutChangeKind === 'hardware'
+                      ? 'This changes wiring or power — the card stages it and asks for a light test before committing.'
+                      : 'This is a length-only change — the card saves it and restarts on its own, no light test needed.'}
+                  </p>
+                </div>
+              </details>
+            )}
+          </div>
         </div>
         <div className="la-mode-content is-draw">
           <DrawModePanel state={state}

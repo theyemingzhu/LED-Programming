@@ -666,9 +666,9 @@ export function LayoutCanvas({
                   <rect width={width / annotationScale} height={height / annotationScale} rx="4"
                         fill="oklch(0.18 0.02 220 / 0.88)" stroke={s.color}
                         strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
-                  <text x="7" y="13" fontFamily="var(--font-mono, monospace)" fontSize="11"
+                  <text className="lw-strip-label-name" x="7" y="13" fontFamily="var(--font-ui, sans-serif)" fontSize="11"
                         fontWeight={s.id === selStripId ? 600 : 400} fill={s.color}>{displayName}</text>
-                  <text x="7" y="25" fontFamily="var(--font-mono, monospace)" fontSize="9"
+                  <text className="lw-strip-label-data" x="7" y="25" fontFamily="var(--font-ui, sans-serif)" fontSize="9"
                         fill="oklch(0.72 0.009 78)">{detail}</text>
                 </g>
               );
@@ -753,15 +753,15 @@ export function LayoutCanvas({
                 <rect x="1" y="1" width="638" height="398" rx="4" fill="none"
                       stroke="oklch(30% 0.01 75)" strokeDasharray="6 4"/>
                 <text x="320" y="185" textAnchor="middle" fill="oklch(55% 0.04 70)"
-                      fontSize="14" fontFamily="var(--ui-font)">
+                      fontSize="14" fontFamily="var(--font-ui, sans-serif)">
                   Drop an SVG or click Import SVG
                 </text>
                 <text x="320" y="205" textAnchor="middle" fill="oklch(48% 0.03 70)"
-                      fontSize="11" fontFamily="var(--ui-font)">
+                      fontSize="11" fontFamily="var(--font-ui, sans-serif)">
                   Illustrator: File → Export As → SVG (layers preserved)
                 </text>
                 <text x="320" y="222" textAnchor="middle" fill="oklch(42% 0.025 70)"
-                      fontSize="10" fontFamily="var(--ui-font)">
+                      fontSize="10" fontFamily="var(--font-ui, sans-serif)">
                   Drag and drop supported
                 </text>
               </>

@@ -399,9 +399,7 @@ test('size, density, and LED count stay linked', async ({ page }) => {
 
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(linked.pixelCount + 1);
 
-  const caption = page.locator('.la-strip-caption').first();
-  await page.locator('.panel-head').first().hover();
-  await expect(caption).toHaveText(/Data in at LED/);
+  await expect(page.locator('.la-strip-caption')).toHaveCount(0);
   await expect(page.getByLabel('Strip LED count', { exact: true }))
     .not.toHaveAttribute('title');
   await expect(page.getByLabel('Strip length in metres', { exact: true }))

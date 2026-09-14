@@ -9,6 +9,24 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-14 Layout interface typography (done locally)
+
+User wants Illustrator-like editor chrome: compact interface labels/buttons,
+consistent sans-serif typography, no always-visible explanatory paragraphs.
+Sol medium owns bounded Layout presentation changes; reason: routine UI/CSS
+implementation, no card protocol or state-machine changes. Primary owns combined
+screen review and checkpoint. Scope: Layout idle install action/help, strip
+caption presentation, inspector typography; active warnings/confirmations stay
+reachable and legible. No release or hardware commands authorized.
+Implemented compact Install on card +on-demand info for both change types;
+removed permanent strip captions; UI sans labels/normal casing/tracking, tabular
+numeric values, matching canvas label typography. Card handlers/state unchanged.
+Regression red witnessed on old install copy. Combined browser:53/53 pass;
+unit2484/2484 +production build pass. Desktop and390px phone screens inspected.
+One Sol-medium worker, primary integrated review. Resumption: review local4173;
+not pushed/deployed.
+
+
 ### 2026-09-14 Layout clarity — managed Sprint (done locally)
 
 Manager recipe: Build a scoped feature v1; Manager Playbook v2. Baseline

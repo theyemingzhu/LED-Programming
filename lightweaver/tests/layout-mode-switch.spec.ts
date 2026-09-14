@@ -16,7 +16,7 @@ test('Layout has no Test & Install tab and keyboard 2 does not open a second mod
   await expect(page.getByTestId('layout-mode-draw')).toHaveCount(0);
   await expect(page.getByTestId('layout-mode-size')).toHaveCount(0);
   await expect(page.getByTestId('layout-wire-panel')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Check and install on the card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Install on card', exact: true })).toBeVisible();
   await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
 
   await page.keyboard.press('2');

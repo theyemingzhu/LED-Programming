@@ -355,43 +355,6 @@ export function DrawModePanel({
     verified: false,
   });
 
-  // One line under the strip's controls does all the labelling. At rest it
-  // describes this strip; under a pointer it names whatever is being touched.
-  // Nothing in the panel carries a permanent word, so nothing repeats.
-  const [caption, setCaption] = useState(null);
-  const captionTargetText = event => {
-    const node = event.target instanceof Element ? event.target.closest('[data-caption]') : null;
-    return node?.getAttribute('data-caption') || '';
-  };
-  // Mouse labels on hover. Touch labels on press and keeps the label up
-  // afterwards — there is no pointer to rest, so the last thing touched stays
-  // named until something else is.
-  const captionHandlers = stripId => ({
-    onPointerOver: event => {
-      if (event.pointerType !== 'mouse') return;
-      const text = captionTargetText(event);
-      if (text) setCaption({ stripId, text });
-    },
-    onPointerOut: event => {
-      if (event.pointerType !== 'mouse') return;
-      if (captionTargetText(event)) setCaption(null);
-    },
-    onPointerDown: event => {
-      const text = captionTargetText(event);
-      if (text) setCaption({ stripId, text });
-    },
-  });
-  // The resting line: the facts about this strip the rows do not already show.
-  const describeStrip = (strip, stripRun) => {
-    const parts = [];
-    if (!stripRun) parts.push('Not yet wired to an output');
-    else if (stripRun.physicalDirection === 'source-reverse') parts.push(`Data in at LED ${strip.pixelCount}`);
-    else parts.push('Data in at LED 1');
-    if (strip.reversed) parts.push('path flipped');
-    if (strip.kaleidoscope?.pointCount) parts.push(`${strip.kaleidoscope.pointCount} reflection points`);
-    return parts.join(' · ');
-  };
-
   // Why Split is unavailable, said the way the owner would say it. Empty
   // string means the control is live.
   const splitBlockedReason = (strip, alreadySplit) => {
@@ -1388,7 +1351,7 @@ export function DrawModePanel({
                     ? String(run.seamLed + 1)
                     : run.physicalDirection === 'source-reverse' ? String(s.pixelCount) : '1';
                 return (
-                  <div key={s.id} data-strip-id={s.id} {...captionHandlers(s.id)}>
+                  <div key={s.id} data-strip-id={s.id}>
                   <div
                        className={`la-strip-row${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
                        draggable
@@ -1746,10 +1709,6 @@ export function DrawModePanel({
                             </button>
                           </div>
                         </div>
-                        <span className="la-physical-rule-hint la-strip-caption"
-                              data-testid={`strip-caption-${s.id}`}>
-                          {caption?.stripId === s.id ? caption.text : describeStrip(s, run)}
-                        </span>
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}

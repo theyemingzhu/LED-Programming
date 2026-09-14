@@ -10,8 +10,11 @@
   background: transparent;
 }
 .la .la-strip-detail.la-strip-inspector .lw-sel-grid > .la-strip-physical-field > .k {
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
 }
 .la-divide-disclosure {
   margin-top: 8px;
