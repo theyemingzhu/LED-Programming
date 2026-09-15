@@ -110,3 +110,30 @@ test('opening a selected section preserves global and other section looks, then 
   assert.equal(restored.sectionLooks.left.brightness, 0.3);
   assert.equal(restored.sectionLooks.left.customHue, 39);
 });
+
+test('opening a saved Color Journey restores the authored journey instead of its transport placeholder', async () => {
+  const { createPatternLabRecipe } = await import('./patternLabRecipe.js');
+  const authored = createPatternLabRecipe({
+    id: 'journey-draft',
+    name: 'Evening drift',
+    base: { kind: 'color-journey', id: 'slow-color-drift', params: {} },
+    journey: {
+      stops: [{ color: '#ff0000', holdMs: 0, fadeMs: 1000 }, { color: '#0000ff', holdMs: 0, fadeMs: 1000 }],
+      easing: 'linear', loop: false, motionSpeedSeconds: 22, character: 'expressive',
+    },
+    evolution: { enabled: false },
+  });
+  const saved = {
+    id: 'evening-drift',
+    label: 'Evening drift',
+    defaultLook: { patternId: 'aurora', brightness: 0.575 },
+    patternLabRecipe: authored,
+  };
+
+  const reopened = recipeFromLook(saved);
+  assert.equal(reopened.base.kind, 'color-journey');
+  assert.equal(reopened.journey.easing, 'linear');
+  assert.equal(reopened.journey.loop, false);
+  assert.equal(reopened.sourceLook.id, saved.id);
+  assert.equal(recipeUsesNativeCardLook(reopened), false);
+});

@@ -9,7 +9,10 @@ import {
 import { PATTERN_LAB_EVOLUTION_CHARACTERS } from '../lib/patternLabEvolution.js';
 import { bakePatternLabRecipe } from '../lib/lwseqBake.js';
 import { OFFLINE_AUDIO_CAPABILITY } from '../lib/offlineAudioLanes.js';
-import { applyPatternLabHandoff, createPatternLabHandoff } from '../lib/patternLabHandoff.js';
+import { compileColorJourneyNativeRecipe } from '../lib/colorJourneyNative.js';
+import { buildCardRuntimePackageFromProject } from '../lib/cardRuntimeProject.js';
+import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
+import { applyPatternLabHandoff, createPatternLabHandoff, prospectivePatternLabLookIdentity } from '../lib/patternLabHandoff.js';
 import {
   PATTERN_LAB_GENERATOR_IDS,
   estimatePatternLabGeneratorBudgets,
@@ -134,8 +137,9 @@ function formatBudgetUsage(value) {
   return `${fmt(used)} / ${fmt(limit)}`;
 }
 
-function compatibilityBadge(compatibility) {
+function compatibilityBadge(compatibility, recipe = null) {
   if (!compatibility) return null;
+  if (recipe?.base?.kind === 'color-journey' && compatibility.classification === 'live-on-card') return 'Standalone ready';
   return COMPATIBILITY_BADGES[compatibility.classification] || null;
 }
 
@@ -144,8 +148,11 @@ function promotedActionLabel(compatibility) {
   return PROMOTED_ACTION_LABELS[compatibility.classification] || 'Use in Project';
 }
 
-function promotedActionHint(compatibility) {
+function promotedActionHint(compatibility, recipe = null) {
   if (!compatibility) return '';
+  if (recipe?.base?.kind === 'color-journey' && compatibility.classification === 'live-on-card') {
+    return 'Install on a card with Color Journey support; starts at the first color when selected or powered on.';
+  }
   return PROMOTED_ACTION_HINTS[compatibility.classification] || '';
 }
 
@@ -260,6 +267,7 @@ function allVisibleStripBrightnessZero(geometry, masterBrightness) {
 }
 
 function hasKnownStatelessRuntime(recipe) {
+  if (recipe?.base?.kind === 'color-journey') return (recipe.layers || []).length === 0;
   if (recipe?.base?.kind !== 'lightweaver-pattern' || !isBuiltInPattern(recipe.base.patternId)) return false;
   return (recipe.layers || []).every(layer => (
     layer?.generator?.kind === 'lightweaver-pattern'
@@ -295,9 +303,65 @@ function runtimeMetricsFor(recipe, geometry) {
   return metrics;
 }
 
-function compatibilityFor(recipe, geometry, options = {}) {
+function compatibilityFor(recipe, geometry, project = null, options = {}) {
   const metrics = runtimeMetricsFor(recipe, geometry);
   const initial = classifyPatternLabCompatibility(recipe, { metrics, ...options });
+  if (recipe?.base?.kind === 'color-journey' && initial.classification === 'live-on-card' && project) {
+    try {
+      if (project.starterPending === true) {
+        throw new RangeError('Finish the project layout before marking this Color Journey standalone ready.');
+      }
+      const existingLooks = project.standaloneController?.looks || [];
+      const identity = prospectivePatternLabLookIdentity(recipe, project.standaloneController);
+      if (existingLooks.length >= 12 && !identity.updating) {
+        throw new RangeError('This project already has the maximum of 12 saved looks.');
+      }
+      compileColorJourneyNativeRecipe({
+        recipe,
+        strips: project.strips,
+        groups: project.layoutLayerGroups,
+        wiring: project.wiring,
+        compiledWiring: project.compiledWiring,
+        hidden: project.hidden,
+        symSettings: project.symSettings,
+      });
+      const lookId = identity.id;
+      const priorLook = identity.existingLook;
+      const controller = structuredClone(project.standaloneController || {});
+      controller.looks = [
+        ...(controller.looks || []).filter(look => look?.id !== lookId),
+        {
+          id: lookId,
+          label: identity.label,
+          defaultLook: { patternId: 'aurora', brightness: recipe.playback?.brightness },
+          patternLabRecipe: recipe,
+          ...(priorLook?.nativeRecipe ? { nativeRecipe: priorLook.nativeRecipe } : {}),
+          ...(priorLook?.nativeRecipeLayoutKey ? { nativeRecipeLayoutKey: priorLook.nativeRecipeLayoutKey } : {}),
+        },
+      ];
+      const existingPlaylist = controller.playlist || [];
+      controller.playlist = existingPlaylist.some(item => item?.lookId === lookId || item?.comboId === lookId)
+        ? existingPlaylist
+        : [...existingPlaylist, { id: lookId, type: 'combo', lookId, label: identity.label, enabled: true }];
+      prepareCardStoragePayload(buildCardRuntimePackageFromProject({
+        projectId: project.projectId,
+        projectName: project.projectName,
+        strips: project.strips,
+        patchBoard: project.patchBoard,
+        wiring: project.wiring,
+        compiledWiring: project.compiledWiring,
+        symSettings: project.symSettings,
+        standaloneController: controller,
+      }));
+    } catch (error) {
+      return {
+        ...initial,
+        classification: 'studio-only',
+        reasons: [{ code: 'color-journey-project-invalid', message: error?.message || 'The current project layout cannot play this journey standalone.' }],
+        actions: [],
+      };
+    }
+  }
   if (!initial.simplification?.variant) return initial;
   return classifyPatternLabCompatibility(recipe, {
     metrics,
@@ -912,10 +976,10 @@ export default function PatternLabScreen() {
     [draft, geometry],
   );
   const compatibility = useMemo(
-    () => draft ? compatibilityFor(draft, geometry, {
+    () => draft ? compatibilityFor(draft, geometry, project, {
       allowSectionLookHandoff: sectionState?.scoped && sectionState.supported,
     }) : null,
-    [draft, geometry, sectionState],
+    [draft, geometry, project, sectionState],
   );
   // "Has this exact design already been kept?" is the whole question the
   // save row turns on, and it is answered by the stored list, not by a flag
@@ -1624,6 +1688,7 @@ export default function PatternLabScreen() {
       strips: project.strips,
       groups: project.layoutLayerGroups,
       wiring: project.wiring,
+      compiledWiring: project.compiledWiring,
       hidden: project.hidden,
       audioLanes: draft.offlineAudio,
       render: {
@@ -1649,6 +1714,12 @@ export default function PatternLabScreen() {
       compatibility,
       bakeResult,
       controller: project.standaloneController,
+      strips: project.strips,
+      groups: project.layoutLayerGroups,
+      wiring: project.wiring,
+      compiledWiring: project.compiledWiring,
+      hidden: project.hidden,
+      symSettings: project.symSettings,
     });
     if (result.kind === 'blocked') {
       return {
@@ -1669,7 +1740,7 @@ export default function PatternLabScreen() {
           || 'The project could not accept this addition. Nothing was changed.',
       };
     }
-    if (result.kind === 'look') {
+    if (result.kind === 'look' && result.look.patternLabRecipe?.base?.kind !== 'color-journey') {
       project.setPatchBoard(current => applySavedLookToPatchBoard({
         patchBoard: current,
         strips: project.strips,
@@ -1840,12 +1911,12 @@ export default function PatternLabScreen() {
           >
             <span className="plab-verdict-tag">
               {draft.base?.kind === 'color-journey'
-                ? 'Live from Studio'
+                ? (compatibility.classification === 'live-on-card' ? 'Standalone ready' : 'Studio only')
                 : (COMPATIBILITY_OUTCOMES.find(([id]) => id === compatibility.classification) || [null, 'Checking'])[1]}
             </span>
             <p>{draft.base?.kind === 'color-journey'
-              ? 'Keep this tab open while the piece follows the journey.'
-              : compatibilityBadge(compatibility)}</p>
+              ? compatibilityBadge(compatibility, draft)
+              : compatibilityBadge(compatibility, draft)}</p>
             <dl className="plab-verdict-nums">
               {Object.entries(compatibility.budgets || {}).slice(0, 2).map(([key, value]) => (
                 <div key={key}>
@@ -2252,7 +2323,7 @@ export default function PatternLabScreen() {
             )}
             {message && <p className="plab-save-status" data-testid="pattern-lab-save-status" aria-live="polite">{message}</p>}
 
-            {draft && compatibility && draft.base?.kind !== 'color-journey' && (
+            {draft && compatibility && (
               <div className="plab-use-in-project-promoted" data-testid="pattern-lab-use-in-project-promoted">
                 <button
                   type="button"
@@ -2264,8 +2335,8 @@ export default function PatternLabScreen() {
                   className="plab-compat-badge"
                   data-testid="pattern-lab-compat-badge"
                   data-classification={compatibility.classification}
-                >{compatibilityBadge(compatibility)}</span>
-                <small className="plab-compat-hint">{promotedActionHint(compatibility)}</small>
+                >{compatibilityBadge(compatibility, draft)}</span>
+                <small className="plab-compat-hint">{promotedActionHint(compatibility, draft)}</small>
               </div>
             )}
 

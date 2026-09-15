@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertCardColorJourneySupport,
   assertCardKaleidoscopeSupport,
   cardConfigNeedsRebootFromInfo,
   cardConfigPinLayoutChangedFromInfo,
@@ -22,6 +23,25 @@ const runtimePackage = {
       outputs: [{ id: 'main', pin: 16, pixels: 8 }],
     },
     looks: [],
+  },
+};
+
+const colorJourneyRuntimePackage = {
+  ...runtimePackage,
+  config: {
+    ...runtimePackage.config,
+    looks: [{
+      id: 'journey', label: 'Journey', mode: 'procedural', preset: 'aurora',
+      nativeRecipe: {
+        version: 1, kind: 'color-journey', id: 'slow-color-drift',
+        journey: {
+          version: 1,
+          stops: [{ color: '#ff0000', holdMs: 0, fadeMs: 1000 }, { color: '#0000ff', holdMs: 0, fadeMs: 1000 }],
+          easing: 'linear', loop: true, restart: 'restart', motionSpeedMs: 18000, depth: 0.25,
+          phase16: '00000000000000000000000000000000',
+        },
+      },
+    }],
   },
 };
 
@@ -100,6 +120,71 @@ test('project evidence reader performs an uncached independent branded firmware-
   assert.match(call.url, /\/api\/firmware-info$/);
   assert.equal(call.init.method, 'GET');
   assert.equal(call.init.cache, 'no-store');
+});
+
+test('Color Journey installs require the exact versioned firmware capability and preserve it in evidence', async () => {
+  const expected = {
+    version: 1,
+    maxPixels: 256,
+    phaseEncoding: 'q0.16-hex',
+    restart: 'restart',
+  };
+  assert.equal(assertCardColorJourneySupport(runtimePackage, null), true);
+  assert.equal(assertCardColorJourneySupport(colorJourneyRuntimePackage, { recipeCapabilities: { colorJourney: expected } }), true);
+  for (const evidence of [
+    null,
+    {},
+    { recipeCapabilities: { colorJourney: { ...expected, version: 0 } } },
+    { recipeCapabilities: { colorJourney: { ...expected, maxPixels: 128 } } },
+    { recipeCapabilities: { colorJourney: { ...expected, phaseEncoding: 'u16' } } },
+    { recipeCapabilities: { colorJourney: { ...expected, restart: 'resume' } } },
+  ]) {
+    assert.throws(
+      () => assertCardColorJourneySupport(colorJourneyRuntimePackage, evidence),
+      error => error instanceof CardPushError && error.reason === 'color-journey-unsupported',
+    );
+  }
+  const body = {
+    app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '1.2.3', buildId: 'build-123',
+    recipeCapabilities: { colorJourney: expected },
+  };
+  const normalized = await readCardProjectEvidence({
+    host: '192.168.4.1', transport: 'direct', fetchImpl: async () => response(body),
+  });
+  assert.deepEqual(normalized.recipeCapabilities, body.recipeCapabilities);
+});
+
+test('Color Journey bridge install fails before config mutation without capability and sends once with exact support', async () => {
+  const oldWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('https:');
+  try {
+    let writes = 0;
+    const options = {
+      host: 'lightweaver.local',
+      transport: 'bridge',
+      initialConfigAuthorityImpl: () => true,
+      bridgeRequestImpl: async type => {
+        if (type === 'config') writes += 1;
+        return { ok: true };
+      },
+    };
+    await assert.rejects(
+      pushConfigToCard(colorJourneyRuntimePackage, options),
+      error => error instanceof CardPushError && error.reason === 'color-journey-unsupported',
+    );
+    assert.equal(writes, 0);
+    await pushConfigToCard(colorJourneyRuntimePackage, {
+      ...options,
+      cardEvidence: {
+        recipeCapabilities: {
+          colorJourney: { version: 1, maxPixels: 256, phaseEncoding: 'q0.16-hex', restart: 'restart' },
+        },
+      },
+    });
+    assert.equal(writes, 1);
+  } finally {
+    globalThis.window = oldWindow;
+  }
 });
 
 test('project evidence reader rejects a response branded as another product', async () => {

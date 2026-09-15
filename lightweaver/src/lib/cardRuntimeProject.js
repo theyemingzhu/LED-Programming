@@ -5,6 +5,7 @@ import { getCardPatternById, getCardPatternRuntimeId, orderedCardPatterns } from
 import { applySavedLookToPatchBoard, normalizeSavedLooks } from './sectionLookModel.js';
 import { chainAddressCount } from './patchBoard.js';
 import { compileWiring } from './wiringCompiler.js';
+import { colorJourneyLayoutKey, compileColorJourneyNativeRecipe, normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 import {
   buildCardPlaylistConfig,
   derivePlaylistLookIds,
@@ -34,6 +35,7 @@ export function buildCardRuntimePackageFromProject({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
+  symSettings = null,
   standaloneController = {},
 } = {}) {
   const usesKaleidoscope = strips.some(strip => strip?.kaleidoscope?.enabled === true);
@@ -108,6 +110,10 @@ export function buildCardRuntimePackageFromProject({
     runtimeZones,
     visualLook,
     compiled: Boolean(compiled),
+    compiledWiring: compiled,
+    strips,
+    wiring,
+    symSettings,
   });
   const requestedPatternIds = [
     visualLook.patternId,
@@ -239,6 +245,9 @@ function buildRuntimeLooksFromPlaylist({
   runtimeZones = [],
   visualLook = {},
   compiled = false,
+  compiledWiring = null,
+  wiring = null,
+  symSettings = null,
 } = {}) {
   const savedLookById = new Map(savedLooks.map(look => [look.id, look]));
   return (playlist || [])
@@ -248,6 +257,39 @@ function buildRuntimeLooksFromPlaylist({
         const savedLook = savedLookById.get(item.lookId);
         if (!savedLook) return null;
         const comboDefault = normalizeCardVisualLook(savedLook.defaultLook);
+        if (savedLook.patternLabRecipe?.base?.kind === 'color-journey') {
+          const compiledNative = compileColorJourneyNativeRecipe({
+            id: item.id,
+            recipe: savedLook.patternLabRecipe,
+            strips,
+            wiring,
+            compiledWiring,
+            symSettings,
+          });
+          const retainedNative = savedLook.nativeRecipe
+            && savedLook.nativeRecipeLayoutKey === colorJourneyLayoutKey({ strips, wiring })
+            ? normalizeStoredNativeColorJourney(savedLook.nativeRecipe, runtimeZones.reduce((sum, zone) => sum + (zone.ranges || []).reduce((n, range) => n + range.count, 0), 0) || undefined)
+            : null;
+          return {
+            id: item.id,
+            label: item.label || savedLook.label,
+            mode: 'procedural',
+            preset: item.id,
+            brightness: 1,
+            zones: zoneLooksFromZones(runtimeZones).map(zone => ({
+              ...zone,
+              patternId: item.id,
+              brightness: comboDefault.brightness,
+              speed: 1,
+              hueShift: 0,
+              customBreathe: false,
+              customDrift: false,
+            })),
+            nativeRecipe: retainedNative
+              ? { ...compiledNative, journey: { ...compiledNative.journey, phase16: retainedNative.journey.phase16 } }
+              : compiledNative,
+          };
+        }
         const effectiveZones = compiled
           ? runtimeZones.map(zone => applyLookFieldsToZone(
               zone,

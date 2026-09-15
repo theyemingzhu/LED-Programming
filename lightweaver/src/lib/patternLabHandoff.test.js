@@ -114,6 +114,48 @@ test('procedural handoff copies direct playback brightness and speed', async () 
   assert.equal(result.look.defaultLook.speed, 1.7);
 });
 
+test('native Color Journey handoff validates current physical layout and preserves the authored recipe', async () => {
+  const source = recipe({
+    version: 2,
+    base: { kind: 'color-journey', id: 'slow-color-drift', params: {} },
+    journey: {
+      version: 1,
+      stops: [
+        { id: 'red', color: '#ff0000', holdMs: 1_000, fadeMs: 2_000 },
+        { id: 'blue', color: '#0000ff', holdMs: 1_000, fadeMs: 2_000 },
+      ],
+      easing: 'smooth', loop: false, motionSpeedSeconds: 18, character: 'balanced',
+    },
+    evolution: { enabled: false },
+  });
+  const result = await createPatternLabHandoff({
+    recipe: source,
+    compatibility: compatibilityFor(source),
+    strips,
+    wiring,
+    cardEvidence: { recipeCapabilities: { colorJourney: { version: 1, maxPixels: 256, phaseEncoding: 'q0.16-hex', restart: 'restart' } } },
+  });
+
+  assert.equal(result.kind, 'look');
+  assert.equal(result.look.patternLabRecipe.base.kind, 'color-journey');
+  assert.equal(result.look.patternLabRecipe.journey.loop, false);
+  assert.equal(result.look.nativeRecipe, undefined, 'layout-derived phase is compiled into the card package, not authored project state');
+
+  const blocked = await createPatternLabHandoff({
+    recipe: source,
+    compatibility: compatibilityFor(source),
+    strips,
+    wiring: {
+      ...wiring,
+      outputs: [{ ...wiring.outputs[0], runIds: ['main-run', 'hole'] }],
+      runs: [...wiring.runs, { id: 'hole', type: 'inactive', count: 1, verified: true }],
+    },
+    cardEvidence: { recipeCapabilities: { colorJourney: { version: 1, maxPixels: 256, phaseEncoding: 'q0.16-hex', restart: 'restart' } } },
+  });
+  assert.equal(blocked.kind, 'blocked');
+  assert.equal(blocked.reasons[0].code, 'look-unsupported');
+});
+
 test('fails closed on versionless or malformed compatibility results', async () => {
   const cases = [
     { classification: 'live-on-card', reasons: [] },
