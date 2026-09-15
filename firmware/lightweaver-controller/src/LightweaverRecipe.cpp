@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <initializer_list>
 
 namespace lightweaver {
 namespace {
@@ -27,6 +28,13 @@ bool fail(RecipeParseError& error, RecipeParseErrorCode code,
 bool hasField(JsonObjectConst object, const char* key) {
   for (JsonPairConst field : object) {
     if (std::strcmp(field.key().c_str(), key) == 0) return true;
+  }
+  return false;
+}
+
+bool fieldIsOneOf(const char* field, std::initializer_list<const char*> allowed) {
+  for (const char* key : allowed) {
+    if (std::strcmp(field, key) == 0) return true;
   }
   return false;
 }
@@ -82,6 +90,143 @@ bool parseColor(const char* text, RecipeColor& color) {
   color.red = static_cast<uint8_t>((values[0] << 4) | values[1]);
   color.green = static_cast<uint8_t>((values[2] << 4) | values[3]);
   color.blue = static_cast<uint8_t>((values[4] << 4) | values[5]);
+  return true;
+}
+
+bool parseRequiredUint32(JsonObjectConst object, const char* key, const char* path,
+                         uint32_t minimum, uint32_t maximum, uint32_t& destination,
+                         RecipeParseError& error) {
+  if (!hasField(object, key) || !object[key].is<uint32_t>()) {
+    return fail(error, RecipeParseErrorCode::InvalidType, path,
+                "must be a non-negative integer");
+  }
+  const uint32_t parsed = object[key].as<uint32_t>();
+  if (parsed < minimum || parsed > maximum) {
+    return fail(error, RecipeParseErrorCode::InvalidValue, path,
+                "is outside the supported range");
+  }
+  destination = parsed;
+  return true;
+}
+
+bool parseColorJourney(JsonObjectConst object, uint16_t expectedPixels,
+                       NativeRecipe& parsed, RecipeParseError& error) {
+  for (JsonPairConst field : object) {
+    if (!fieldIsOneOf(field.key().c_str(), {"version", "kind", "id", "journey"})) {
+      return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.kind",
+                  "color journeys cannot include layered or unknown fields");
+    }
+  }
+  JsonObjectConst journey = object["journey"].as<JsonObjectConst>();
+  if (journey.isNull()) {
+    return fail(error, RecipeParseErrorCode::InvalidType, "recipe.journey",
+                "must be an object");
+  }
+  if (!journey["version"].is<uint8_t>() ||
+      journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_VERSION) {
+    return fail(error, RecipeParseErrorCode::UnsupportedVersion,
+                "recipe.journey.version", "only color journey v1 is supported");
+  }
+  for (JsonPairConst field : journey) {
+    if (!fieldIsOneOf(field.key().c_str(), {
+            "version", "stops", "easing", "loop", "restart",
+            "motionSpeedMs", "depth", "phase16"})) {
+      return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey",
+                  "contains an unknown field");
+    }
+  }
+  parsed.kind = NativeRecipeKind::ColorJourney;
+  ColorJourneyRecipe& destination = parsed.colorJourney;
+
+  JsonArrayConst stops = journey["stops"].as<JsonArrayConst>();
+  if (stops.isNull() || stops.size() < LW_COLOR_JOURNEY_MIN_STOPS ||
+      stops.size() > LW_COLOR_JOURNEY_MAX_STOPS) {
+    return fail(error, RecipeParseErrorCode::InvalidValue,
+                "recipe.journey.stops", "must contain 2 to 8 stops");
+  }
+  for (JsonVariantConst stopValue : stops) {
+    if (!stopValue.is<JsonObjectConst>()) {
+      return fail(error, RecipeParseErrorCode::InvalidType,
+                  "recipe.journey.stops[]", "must be an object");
+    }
+    JsonObjectConst stop = stopValue.as<JsonObjectConst>();
+    for (JsonPairConst field : stop) {
+      if (!fieldIsOneOf(field.key().c_str(), {"color", "holdMs", "fadeMs"})) {
+        return fail(error, RecipeParseErrorCode::InvalidValue,
+                    "recipe.journey.stops[]", "contains an unknown field");
+      }
+    }
+    ColorJourneyStop& parsedStop = destination.stops[destination.stopCount];
+    if (!stop["color"].is<const char*>() ||
+        !parseColor(stop["color"].as<const char*>(), parsedStop.color)) {
+      return fail(error, RecipeParseErrorCode::InvalidValue,
+                  "recipe.journey.stops[].color", "must be a #RRGGBB color");
+    }
+    if (!parseRequiredUint32(stop, "holdMs", "recipe.journey.stops[].holdMs",
+                             0, 600000, parsedStop.holdMs, error) ||
+        !parseRequiredUint32(stop, "fadeMs", "recipe.journey.stops[].fadeMs",
+                             1000, 600000, parsedStop.fadeMs, error)) return false;
+    destination.stopCount++;
+  }
+
+  if (!journey["easing"].is<const char*>()) {
+    return fail(error, RecipeParseErrorCode::InvalidType,
+                "recipe.journey.easing", "must be a string");
+  }
+  const char* easing = journey["easing"].as<const char*>();
+  if (std::strcmp(easing, "linear") == 0) destination.smooth = false;
+  else if (std::strcmp(easing, "smooth") == 0) destination.smooth = true;
+  else return fail(error, RecipeParseErrorCode::InvalidValue,
+                   "recipe.journey.easing", "must be linear or smooth");
+  if (!journey["loop"].is<bool>()) {
+    return fail(error, RecipeParseErrorCode::InvalidType,
+                "recipe.journey.loop", "must be a boolean");
+  }
+  destination.loop = journey["loop"].as<bool>();
+  if (!journey["restart"].is<const char*>() ||
+      std::strcmp(journey["restart"].as<const char*>(), "restart") != 0) {
+    return fail(error, RecipeParseErrorCode::InvalidValue,
+                "recipe.journey.restart", "must be restart");
+  }
+  if (!parseRequiredUint32(journey, "motionSpeedMs", "recipe.journey.motionSpeedMs",
+                           4000, 90000, destination.motionSpeedMs, error)) return false;
+  if (!journey["depth"].is<float>()) {
+    return fail(error, RecipeParseErrorCode::InvalidType,
+                "recipe.journey.depth", "must be a number");
+  }
+  const float depth = journey["depth"].as<float>();
+  if (depth != 0.12f && depth != 0.25f && depth != 0.42f) {
+    return fail(error, RecipeParseErrorCode::InvalidValue,
+                "recipe.journey.depth", "must be 0.12, 0.25, or 0.42");
+  }
+  destination.depth = depth;
+
+  if (expectedPixels == 0 || expectedPixels > LW_COLOR_JOURNEY_MAX_PIXELS ||
+      !journey["phase16"].is<const char*>()) {
+    return fail(error, RecipeParseErrorCode::InvalidValue,
+                "recipe.journey.phase16", "must match 1 to 256 configured pixels");
+  }
+  const char* phases = journey["phase16"].as<const char*>();
+  if (std::strlen(phases) != static_cast<size_t>(expectedPixels) * 4U) {
+    return fail(error, RecipeParseErrorCode::InvalidValue,
+                "recipe.journey.phase16", "must contain four hex digits per configured pixel");
+  }
+  for (uint16_t pixel = 0; pixel < expectedPixels; pixel++) {
+    uint16_t phase = 0;
+    for (uint8_t nibble = 0; nibble < 4; nibble++) {
+      const char character = phases[pixel * 4U + nibble];
+      if (!((character >= '0' && character <= '9') ||
+            (character >= 'a' && character <= 'f'))) {
+        return fail(error, RecipeParseErrorCode::InvalidValue,
+                    "recipe.journey.phase16", "must be lowercase hexadecimal");
+      }
+      phase = static_cast<uint16_t>((phase << 4) | hexNibble(character));
+    }
+    parsed.colorJourneyPhases[pixel] = phase;
+  }
+  destination.phaseCount = expectedPixels;
+  parsed.estimatedOperationsPerFrame = 32U * expectedPixels;
+  parsed.estimatedStateBytes = static_cast<uint16_t>(sizeof(ColorJourneyRecipe));
   return true;
 }
 
@@ -319,7 +464,8 @@ bool parseLayer(JsonVariantConst value, uint8_t paletteCount,
 }  // namespace
 
 bool parseNativeRecipeV1(JsonVariantConst value, size_t serializedBytes,
-                         NativeRecipe& destination, RecipeParseError& error) {
+                         NativeRecipe& destination, RecipeParseError& error,
+                         uint16_t expectedPixels) {
   error = RecipeParseError{};
   if (serializedBytes > LW_RECIPE_MAX_CONFIG_BYTES) {
     return fail(error, RecipeParseErrorCode::LimitExceeded, "recipe",
@@ -336,6 +482,18 @@ bool parseNativeRecipeV1(JsonVariantConst value, size_t serializedBytes,
                 "recipe.version", "only recipe schema v1 is supported");
   }
 
+  bool isColorJourney = false;
+  if (hasField(object, "kind")) {
+    if (!object["kind"].is<const char*>()) {
+      return fail(error, RecipeParseErrorCode::InvalidType,
+                  "recipe.kind", "must be a string");
+    }
+    const char* kind = object["kind"].as<const char*>();
+    if (std::strcmp(kind, "color-journey") == 0) isColorJourney = true;
+    else return fail(error, RecipeParseErrorCode::UnsupportedNode,
+                     "recipe.kind", "unsupported recipe kind");
+  }
+
   NativeRecipe parsed;
   parsed.version = LW_RECIPE_SCHEMA_VERSION;
   if (!object["id"].is<const char*>()) {
@@ -349,6 +507,11 @@ bool parseNativeRecipeV1(JsonVariantConst value, size_t serializedBytes,
                 "recipe.id", "must contain 1 to 64 bytes");
   }
   std::memcpy(parsed.id, id, idLength + 1);
+  if (isColorJourney) {
+    if (!parseColorJourney(object, expectedPixels, parsed, error)) return false;
+    destination = parsed;
+    return true;
+  }
   if (!readUint32(object, "seed", "recipe.seed", UINT32_MAX, parsed.seed,
                   RecipeParseErrorCode::InvalidValue, error)) return false;
 
@@ -481,6 +644,19 @@ const NativeRecipe* findNativeRecipe(const char* routeId) {
   return nullptr;
 }
 
+bool restartNativeRecipe(const char* routeId, uint32_t nowMs) {
+  if (!routeId) return false;
+  for (RegisteredRecipe& entry : registry) {
+    if (entry.occupied && std::strcmp(entry.routeId, routeId) == 0) {
+      if (entry.recipe.kind != NativeRecipeKind::ColorJourney) return false;
+      entry.recipe.activationElapsedMs = 0;
+      entry.recipe.activationLastTickMs = nowMs;
+      return true;
+    }
+  }
+  return false;
+}
+
 void writeNativeRecipeCapabilities(JsonObject destination,
                                    const char* firmwareVersion,
                                    const char* buildId) {
@@ -515,6 +691,11 @@ void writeNativeRecipeCapabilities(JsonObject destination,
   destination["maxOperationsPerFrame"] = LW_RECIPE_MAX_OPERATIONS_PER_FRAME;
   destination["maxEstimatedStateBytes"] = LW_RECIPE_MAX_STATE_BYTES;
   destination["physicalParityVerified"] = false;
+  JsonObject colorJourney = destination["colorJourney"].to<JsonObject>();
+  colorJourney["version"] = LW_COLOR_JOURNEY_VERSION;
+  colorJourney["maxPixels"] = LW_COLOR_JOURNEY_MAX_PIXELS;
+  colorJourney["phaseEncoding"] = "q0.16-hex";
+  colorJourney["restart"] = "restart";
 }
 
 }  // namespace lightweaver

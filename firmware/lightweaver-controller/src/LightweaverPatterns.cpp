@@ -1,4 +1,5 @@
 #include "LightweaverPatterns.h"
+#include "LightweaverColorJourney.h"
 
 #include <cmath>
 #include "LightweaverBreathe.h"
@@ -278,8 +279,21 @@ bool renderNativeRecipe(const lightweaver::NativeRecipe& recipe, CRGB* leds,
                         uint16_t totalPixels, uint32_t now,
                         const PatternModifiers& mods,
                         const PatternCoordinateContext* context) {
-  if (!leds || totalPixels == 0 || recipe.version != lightweaver::LW_RECIPE_SCHEMA_VERSION ||
-      recipe.paletteCount < lightweaver::LW_RECIPE_MIN_PALETTE_COLORS ||
+  if (!leds || totalPixels == 0 || recipe.version != lightweaver::LW_RECIPE_SCHEMA_VERSION) {
+    return false;
+  }
+  if (recipe.kind == lightweaver::NativeRecipeKind::ColorJourney) {
+    const uint16_t globalStart = context ? context->globalStart : 0;
+    if (globalStart + totalPixels > recipe.colorJourney.phaseCount) return false;
+    const uint64_t elapsedMs = lightweaver::advanceColorJourneyElapsedMs(recipe, now);
+    for (uint16_t pixel = 0; pixel < totalPixels; pixel++) {
+      const lightweaver::RecipeColor sampled = lightweaver::sampleColorJourneyPixel(
+          recipe, recipe.colorJourneyPhases[globalStart + pixel], elapsedMs);
+      leds[pixel] = CRGB(sampled.red, sampled.green, sampled.blue);
+    }
+    return true;
+  }
+  if (recipe.paletteCount < lightweaver::LW_RECIPE_MIN_PALETTE_COLORS ||
       recipe.layerCount > lightweaver::LW_RECIPE_MAX_LAYERS) return false;
   const uint32_t recipeNow = patternClock(now, mods);
   for (uint16_t pixel = 0; pixel < totalPixels; pixel++) {

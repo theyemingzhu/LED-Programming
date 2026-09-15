@@ -1413,6 +1413,8 @@ bool startLook(uint8_t index, PreparedSequence* prepared) {
     return true;
   }
 
+  const String patternId = look.preset.length() > 0 ? look.preset : look.id;
+  lightweaver::restartNativeRecipe(patternId.c_str(), millis());
   applyLookToRuntimeZones(look);
   bool rendered = renderCurrentLook(true);
   if (rendered) activePatternId = look.id;
@@ -1653,6 +1655,9 @@ bool renderZoneSlice(const ZoneConfig& zone, const LookConfig* look,
     return true;
   }
 
+  PatternCoordinateContext effectiveContext = context ? *context : PatternCoordinateContext{};
+  effectiveContext.globalStart = start;
+  context = &effectiveContext;
   bool rendered = false;
   if (!look) {
     rendered = renderProceduralPattern(zone.patternId, zoneLeds, count, now, mods, context);

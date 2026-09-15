@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "LightweaverPatterns.h"
+#include "LightweaverColorJourney.h"
 #include "LightweaverSequencePlayback.h"
 #include "LightweaverWledRealtimePolicy.h"
 
@@ -87,6 +88,53 @@ int main() {
   assert(renderNativeRecipe(recipe, recipeFrame, 8, 424242U, modifiers, &context));
   assert(hashFrame(recipeFrame, 8) == 966627400615423963ULL);
   assert(recipeFrame[1] == recipeFrame[3] && recipeFrame[3] == recipeFrame[5] && recipeFrame[5] == recipeFrame[7]);
+
+  lightweaver::NativeRecipe journey;
+  journey.kind = lightweaver::NativeRecipeKind::ColorJourney;
+  journey.activationLastTickMs = 1000;
+  journey.colorJourney.stopCount = 2;
+  journey.colorJourney.stops[0].color.red = 255;
+  journey.colorJourney.stops[0].holdMs = 1000;
+  journey.colorJourney.stops[0].fadeMs = 1000;
+  journey.colorJourney.stops[1].color.blue = 255;
+  journey.colorJourney.stops[1].holdMs = 1000;
+  journey.colorJourney.stops[1].fadeMs = 1000;
+  journey.colorJourney.motionSpeedMs = 18000;
+  journey.colorJourney.depth = 0.25f;
+  journey.colorJourney.phaseCount = 4;
+  journey.colorJourneyPhases[0] = 0x0000;
+  journey.colorJourneyPhases[1] = 0x4000;
+  journey.colorJourneyPhases[2] = 0x8000;
+  journey.colorJourneyPhases[3] = 0xc000;
+  PatternCoordinateContext journeyContext;
+  journeyContext.globalStart = 1;
+  PatternModifiers journeyModifiers;
+  journeyModifiers.speed = 4.0f;
+  journeyModifiers.hueShift = 128;
+  journeyModifiers.customHue = 200;
+  CRGB journeyFrame[2] = {};
+  assert(renderNativeRecipe(journey, journeyFrame, 2, 1000U,
+                            journeyModifiers, &journeyContext));
+  // Global slice offset selects phases 1 and 2. Generic speed/hue modifiers
+  // are intentionally absent from standalone journey color.
+  assert(journeyFrame[0] == CRGB(191, 0, 0));
+  assert(journeyFrame[1] == CRGB(223, 0, 0));
+
+  // The wire stores phases in physical order. A reversed two-pixel segment is
+  // remapped once before rendering, then the ordinary output copy reverses the
+  // logical colors. The final physical pixels retain the authored phase order.
+  lightweaver::NativeRecipe reversedJourney = journey;
+  reversedJourney.colorJourney.phaseCount = 2;
+  reversedJourney.colorJourneyPhases[0] = 0x0000;
+  reversedJourney.colorJourneyPhases[1] = 0x4000;
+  lightweaver::reverseColorJourneyPhaseSpan(reversedJourney, 0, 2);
+  PatternCoordinateContext reversedContext;
+  CRGB reversedLogical[2] = {};
+  assert(renderNativeRecipe(reversedJourney, reversedLogical, 2, 1000U,
+                            journeyModifiers, &reversedContext));
+  CRGB reversedPhysical[2] = {reversedLogical[1], reversedLogical[0]};
+  assert(reversedPhysical[0] == CRGB(223, 0, 0));
+  assert(reversedPhysical[1] == CRGB(191, 0, 0));
 
   // A mapped runtime must not fold externally supplied RGB or .lwseq frames.
   // Invoke the same public decode/apply seams used by the production handlers
