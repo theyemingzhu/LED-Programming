@@ -126,6 +126,7 @@ export function normalizeCardProjectEvidence(payload = {}) {
     throw cardIdentityError('project-identity-invalid', 'The Lightweaver card returned a partial production job identity.');
   }
   const capabilities = normalizeEvidenceCapabilities(source.capabilities);
+  const recipeCapabilities = normalizeRecipeCapabilities(source.recipeCapabilities);
   const hasMappings = Object.hasOwn(source, 'kaleidoscopeMappings');
   let kaleidoscopeMappings = [];
   if (hasMappings) {
@@ -151,6 +152,7 @@ export function normalizeCardProjectEvidence(payload = {}) {
     ...(identity.productionJobId ? { productionJobId: identity.productionJobId } : {}),
     ...(identity.productionJobDigest ? { productionJobDigest: identity.productionJobDigest } : {}),
     ...(capabilities ? { capabilities } : {}),
+    ...(recipeCapabilities ? { recipeCapabilities } : {}),
     ...(hasMappings ? { kaleidoscopeMappings } : {}),
     // The card's own answer to "is what I am holding the temporary
     // Find-my-strips setup?". It was dropped here, so every consumer fell back
@@ -160,6 +162,20 @@ export function normalizeCardProjectEvidence(payload = {}) {
     // only when the card actually reported it, so older firmware still falls
     // back to the id.
     ...(typeof source.provisionalSetup === 'boolean' ? { provisionalSetup: source.provisionalSetup } : {}),
+  };
+}
+
+function normalizeRecipeCapabilities(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const colorJourney = value.colorJourney;
+  if (!colorJourney || typeof colorJourney !== 'object' || Array.isArray(colorJourney)) return {};
+  return {
+    colorJourney: {
+      version: Number(colorJourney.version),
+      maxPixels: Number(colorJourney.maxPixels),
+      phaseEncoding: cleanText(colorJourney.phaseEncoding, 32),
+      restart: cleanText(colorJourney.restart, 32),
+    },
   };
 }
 

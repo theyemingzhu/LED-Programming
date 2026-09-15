@@ -2155,6 +2155,12 @@
 .plab-journey-details summary,
 .plab-fine-tune > summary { min-height: 44px; display: flex; align-items: center; color: var(--text-mid); font-size: 11px; font-weight: 650; cursor: pointer; }
 .plab-journey-details > div { display: grid; gap: 8px; }
+.plab-journey-policy,
+.plab-journey-loop { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-mid); font-size: 10px; }
+.plab-journey-policy select { min-width: 112px; min-height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); background: var(--bg-elev); color: var(--text-hi); font: inherit; }
+.plab-journey-loop { justify-content: flex-start; }
+.plab-journey-details .plab-journey-loop input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; margin: 0; accent-color: var(--accent); }
+.plab-journey-restart { margin: 0; color: var(--text-mid); font-size: 9.5px; line-height: 1.45; }
 .plab-journey-details > div > div { display: grid; grid-template-columns: 12px 1fr auto auto; align-items: center; gap: 7px; color: var(--text-mid); font-size: 9px; }
 .plab-journey-details i,
 .plab-journey-details > div > div > span { width: 10px; height: 28px; border-radius: 5px; }

@@ -3,6 +3,7 @@ import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { derivePlaylistLookIds } from './cardPlaylist.js';
 import { compileWiring } from './wiringCompiler.js';
+import { normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 
 export const ALL_SECTIONS_TARGET_ID = 'all';
 export const MAX_SAVED_LOOKS = 12;
@@ -148,6 +149,7 @@ export function normalizeSavedLooks(looks = []) {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const linkedRecipe = normalizeLinkedRecipe(look.patternLabRecipe);
+    const nativeRecipe = normalizeLinkedNativeRecipe(look.nativeRecipe);
     normalized.push({
       id,
       type: COMPOUND_PATTERN_TYPE,
@@ -155,6 +157,8 @@ export function normalizeSavedLooks(looks = []) {
       defaultLook: normalizeSectionVisualLook(look.defaultLook || look.look || {}),
       sectionLooks: normalizeSectionLooks(look.sectionLooks || look.zones || {}),
       ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
+      ...(nativeRecipe ? { nativeRecipe } : {}),
+      ...(nativeRecipe && typeof look.nativeRecipeLayoutKey === 'string' ? { nativeRecipeLayoutKey: look.nativeRecipeLayoutKey } : {}),
       updatedAt: Number.isFinite(Number(look.updatedAt)) ? Number(look.updatedAt) : 0,
     });
     if (normalized.length >= MAX_SAVED_LOOKS) break;
@@ -203,6 +207,11 @@ export function saveCurrentLookToController(controller = {}, {
 function normalizeLinkedRecipe(value) {
   if (!value) return null;
   try { return normalizePatternLabRecipe(value); } catch { return null; }
+}
+
+function normalizeLinkedNativeRecipe(value) {
+  if (!value) return null;
+  try { return normalizeStoredNativeColorJourney(value); } catch { return null; }
 }
 
 // Look, playlist and encoder references change together in a single controller write.

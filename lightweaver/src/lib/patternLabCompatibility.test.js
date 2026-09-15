@@ -67,6 +67,31 @@ test('classifies a supported bounded recipe as live on card', () => {
   assert.equal(result.reasons.length, 0);
 });
 
+test('classifies a bounded whole-piece Color Journey as native and rejects oversized or scoped journeys', () => {
+  const journey = recipe({
+    base: { kind: 'color-journey', id: 'slow-color-drift', params: {} },
+    evolution: { enabled: false },
+    journey: {
+      version: 1,
+      stops: [
+        { color: '#ff0000', holdMs: 1_000, fadeMs: 2_000 },
+        { color: '#0000ff', holdMs: 1_000, fadeMs: 2_000 },
+      ],
+      easing: 'smooth', loop: true, motionSpeedSeconds: 18, character: 'balanced',
+    },
+  });
+  const native = classifyPatternLabCompatibility(journey, { metrics: { ...FIT_METRICS, pixelCount: 256 } });
+  const oversized = classifyPatternLabCompatibility(journey, { metrics: { ...FIT_METRICS, pixelCount: 257 } });
+  const scoped = classifyPatternLabCompatibility({ ...journey, targets: [{ kind: 'section', id: 'outer' }] }, { metrics: FIT_METRICS });
+
+  assert.equal(native.classification, 'live-on-card');
+  assert.ok(!native.reasons.some(reason => reason.code === 'color-journey-stream-only'));
+  assert.equal(oversized.classification, 'studio-only');
+  assert.ok(oversized.reasons.some(reason => reason.code === 'color-journey-pixel-limit'));
+  assert.equal(scoped.classification, 'studio-only');
+  assert.ok(scoped.reasons.some(reason => reason.code === 'color-journey-target-unsupported'));
+});
+
 test('routes the real five-to-fifteen-minute evolution engine through deterministic baking', () => {
   const result = classifyPatternLabCompatibility(recipe({
     evolution: { enabled: true, character: 'tidal', durationSeconds: 600, change: 0.3 },
@@ -592,12 +617,12 @@ test('dark-output explanations distinguish zero strip brightness and an observed
   assert.match(explanations[1].message, /Every sampled pixel in the last preview frame is black/);
 });
 
-test('Color journey never promises native playback or recording before its standalone path exists', () => {
+test('Color journey requires an explicit whole-piece target before promising native playback', () => {
   const result = classifyPatternLabCompatibility({
     id: 'journey', name: 'Slow color drift', base: { kind: 'color-journey' },
     layers: [], evolution: { durationSeconds: 360 },
   }, { metrics: { pixelCount: 41, fps: 24, operationsPerFrame: 410, stateBytes: 0, framebufferBytes: 123, nativeConfigBytes: 1000, durationSeconds: 360 } });
   assert.equal(result.classification, 'studio-only');
-  assert.ok(result.reasons.some(item => item.code === 'color-journey-stream-only'));
+  assert.ok(result.reasons.some(item => item.code === 'color-journey-target-unsupported'));
   assert.ok(!result.actions.some(item => item.id === 'bake'));
 });

@@ -99,6 +99,7 @@ function runtimePackageFromSnapshot(snapshot = {}, identity = {}) {
     strips: snapshot.layout?.strips || [],
     patchBoard: snapshot.layout?.patchBoard || null,
     wiring: snapshot.layout?.wiring || null,
+    symSettings: snapshot.symSettings || null,
     standaloneController: snapshot.devices?.standaloneController || {},
   });
 }

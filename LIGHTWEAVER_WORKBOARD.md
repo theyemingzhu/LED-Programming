@@ -9,6 +9,37 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-15 Standalone Color Journeys (done locally)
+Managed with job-manager / Manager Playbook v3; isolated direction-two branch
+`codex/standalone-color-journeys`. Scope: native standalone journeys, preserving
+install/readback, authored artwork motion and restart; software proof only.
+Architecture: Q0.16 artwork phase in physical order, maximum256 pixels and actual
+3968-byte full-config budget; reject unsupported geometry/scope. Literal timing,
+2–8 RGB stops, hold0–600000ms, fade1000–600000ms, linear/smooth, loop/one-shot.
+Astra manager fixed cross-runtime architecture, persistence and rollover policy.
+Two explicitly selected gpt-5.6-sol medium workers implemented disjoint Studio
+and firmware boundaries; same routing retained for bounded review fixes. Host
+catalog checked; tool accepted routing, actual backend model not exposed.
+Firmware committed locally: `d9fcc031`. Native13/13, shared samples3/3, reversed
+segment golden, preserving install/power-loss/transaction/allocation/playlist
+contracts passed. ESP32 compile: RAM223712/327680 (68.3%), flash2204877/6553600
+(33.6%); NativeRecipe760 bytes. RAM64-bit elapsed survives device tick rollover.
+Final integrated checkpoint2501 tests+build and18 focused browsers passed (25.9s). Actual
+1280×800 desktop and390×844 phone timing/editor inspected; viewport restored.
+Final review corrections passed: Save-as-new returns journeys to Lab; readback
+color/timing edits preserve exact phase; changed readback layouts fail closed.
+Preflight uses actual prospective look identity and full-config capacity. No
+model escalation; completed within60–90minute estimate.
+Initial reds: absent native handoff, missing compiler/capability/serialization,
+brightness routing and device rollover (at4294967296ms red223 vs90).
+Measured usage/cost unavailable. Detailed contract/evidence and direction-one
+integration boundary: [Standalone Color Journeys](docs/native-color-journey.md).
+Unperformed: actual-card browser-close continuity, power-cycle restart, hue/motion.
+No hardware commands, flash, version/signing, push, merge or deployment.
+Resumption: integrate this branch with direction one, retaining selected-section
+authority in PatternLabScreen, then arrange explicit Bench/release authorization.
+Reviewable local commits only; this work is not shipped.
+
 ### 2026-09-15 Layout release (active)
 User authorizes going live. Primary owns exact revision release and live proof.
 Sol medium owns bounded diagnosis of existing exhaustive Patterns regression

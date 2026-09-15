@@ -1,8 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { guardedResolutionRun, resolvedMatchKey } from './cardProjectAdoption.js';
+import { guardedResolutionRun, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
 import { cardProjectFingerprint } from './cardProjectResolver.js';
 import { createDefaultProject } from './projectModel.js';
+import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
+import { sampleNativeColorJourneyPixel } from './colorJourneyNative.js';
+import { renderPatternLabRecipeFrame } from './patternLabPatternAdapter.js';
+import { applyPatternLabHandoff, createPatternLabHandoff } from './patternLabHandoff.js';
+import { classifyPatternLabCompatibility } from './patternLabCompatibility.js';
+import { recipeFromLook } from './patternLabFromLook.js';
 
 const CARD_ID = 'lw-adoption-test-card';
 const FIRMWARE_VERSION = '1.0.0';
@@ -349,6 +355,73 @@ test('reconstruct strategy rebuilds looks, playlist, and startup state from the 
   assert.equal(origin.kind, 'card-partial');
   assert.equal(origin.cardId, CARD_ID);
   assert.equal(typeof origin.at, 'number');
+});
+
+test('native journey card readback preserves exact phase through Lab handoff, edits, preview, and resave', async () => {
+  const skeleton = {
+    strips: [{ id: 'art', pixels: [{ x: 0, y: 0 }, { x: 10, y: 0 }] }],
+    wiring: {
+      version: 1, locked: true, verified: true,
+      outputs: [{ id: 'out1', pin: 16, runIds: ['run-art'] }],
+      runs: [{ id: 'run-art', type: 'strip', source: { stripId: 'art', from: 0, to: 1 }, physicalDirection: 'source-reverse', verified: true }],
+    },
+  };
+  const nativeRecipe = {
+    version: 1, kind: 'color-journey', id: 'journey',
+    journey: {
+      version: 1,
+      stops: [
+        { color: '#ff0000', holdMs: 1_000, fadeMs: 2_000 },
+        { color: '#0000ff', holdMs: 1_000, fadeMs: 2_000 },
+      ],
+      easing: 'smooth', loop: true, restart: 'restart', motionSpeedMs: 18_000, depth: 0.25,
+      phase16: '1234abcd',
+    },
+  };
+  const adopted = reconstructInstalledCardState({
+    skeleton,
+    patterns: { currentId: 'journey', patterns: [{ id: 'journey', label: 'Journey', nativeRecipe }] },
+  });
+  const look = adopted.devices.standaloneController.looks[0];
+  assert.equal(look.patternLabRecipe.sourceLook.nativeSourcePhase16, 'abcd1234', 'preview phase is restored to logical artwork order');
+  const preview = renderPatternLabRecipeFrame(look.patternLabRecipe, { strips: skeleton.strips, t: 7 }).pixels;
+  assert.deepEqual(preview[0], sampleNativeColorJourneyPixel(nativeRecipe, 1, 7_000));
+  assert.deepEqual(preview[1], sampleNativeColorJourneyPixel(nativeRecipe, 0, 7_000));
+
+  const runtime = buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: skeleton.strips, wiring: skeleton.wiring,
+    standaloneController: adopted.devices.standaloneController,
+  });
+  assert.equal(runtime.config.looks[0].nativeRecipe.journey.phase16, nativeRecipe.journey.phase16);
+
+  const editedRecipe = recipeFromLook(look);
+  editedRecipe.journey.stops[0].color = '#00ff00';
+  const compatibility = classifyPatternLabCompatibility(editedRecipe, {
+    metrics: { pixelCount: 2, fps: 30, operationsPerFrame: 128, stateBytes: 0, framebufferBytes: 6, nativeConfigBytes: 512, lwseqBytes: 1000, microSdBytes: 1000 },
+  });
+  const handoff = await createPatternLabHandoff({
+    recipe: editedRecipe, compatibility, controller: adopted.devices.standaloneController,
+    strips: skeleton.strips, wiring: skeleton.wiring,
+  });
+  const editedController = await applyPatternLabHandoff(adopted.devices.standaloneController, handoff);
+  assert.equal(editedController.looks[0].nativeRecipe.journey.phase16, nativeRecipe.journey.phase16);
+  assert.equal(editedController.looks[0].nativeRecipeLayoutKey, look.nativeRecipeLayoutKey);
+  const edited = buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: skeleton.strips, wiring: skeleton.wiring,
+    standaloneController: editedController,
+  });
+  assert.equal(edited.config.looks[0].nativeRecipe.journey.phase16, nativeRecipe.journey.phase16);
+  assert.equal(edited.config.looks[0].nativeRecipe.journey.stops[0].color, '#00ff00', 'Lab edits replace authored journey data without discarding retained phase');
+  const editedPreview = renderPatternLabRecipeFrame(editedController.looks[0].patternLabRecipe, { strips: skeleton.strips, t: 7 }).pixels;
+  assert.deepEqual(editedPreview[0], sampleNativeColorJourneyPixel(edited.config.looks[0].nativeRecipe, 1, 7_000));
+  assert.deepEqual(editedPreview[1], sampleNativeColorJourneyPixel(edited.config.looks[0].nativeRecipe, 0, 7_000));
+
+  const changedStrips = structuredClone(skeleton.strips);
+  changedStrips[0].pixels[1].y = 8;
+  assert.throws(() => buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: changedStrips, wiring: skeleton.wiring,
+    standaloneController: adopted.devices.standaloneController,
+  }), /previous layout/i, 'layout edits fail closed instead of silently diverging from the retained preview phase');
 });
 
 test('reconstruct strategy falls back to the card link id when the status envelope omits cardId', async () => {

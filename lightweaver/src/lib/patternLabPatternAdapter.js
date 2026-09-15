@@ -151,13 +151,15 @@ function finalizeFrame(frame, options) {
 
 // Journey timing stays in literal seconds, independently of the legacy pattern
 // clock. Movement changes only luminance, retaining the authored RGB hue.
-export function createColorJourneyPattern(journey, elapsedSeconds = 0) {
+export function createColorJourneyPattern(journey, elapsedSeconds = 0, sourcePhase16 = '') {
   const elapsed = Math.max(0, Number(elapsedSeconds) || 0);
   const { rgb } = sampleColorJourney(journey, elapsed * 1000);
   const depth = { restrained: 0.12, balanced: 0.25, expressive: 0.42 }[journey?.character] ?? 0.12;
   const period = Math.max(1, Number(journey?.motionSpeedSeconds) || 18);
-  return (_index, x, y) => {
-    const movement = 1 - depth * (0.5 + 0.5 * Math.sin((x + y * 0.35 - elapsed / period) * Math.PI * 2));
+  return (index, x, y) => {
+    const phaseHex = String(sourcePhase16).slice(index * 4, index * 4 + 4);
+    const phase = /^[0-9a-f]{4}$/.test(phaseHex) ? Number.parseInt(phaseHex, 16) / 0x10000 : x + y * 0.35;
+    const movement = 1 - depth * (0.5 + 0.5 * Math.sin((phase - (elapsed % period) / period) * Math.PI * 2));
     return { r: rgb[0] * movement, g: rgb[1] * movement, b: rgb[2] * movement };
   };
 }
@@ -216,7 +218,7 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     ...renderContext,
     patternId: normalized.base.patternId,
     ...(isColorJourney ? {
-      activeFn: createColorJourneyPattern(normalized.journey, context.t),
+      activeFn: createColorJourneyPattern(normalized.journey, context.t, normalized.sourceLook?.nativeSourcePhase16),
       masterSaturation: 1, masterHueShift: 0,
     } : {}),
     params: normalized.base.params,
