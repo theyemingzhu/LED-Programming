@@ -1,0 +1,242 @@
+{
+  "version": 2,
+  "description": "Exact Q0.16 phase reference; integer rational rounding, ties toward positive infinity. Hardware count ceiling is a representation boundary, not a frame-rate guarantee.",
+  "cases": [
+    {
+      "name": "257 one-turn",
+      "phases": [
+        [
+          257,
+          0,
+          65536
+        ]
+      ],
+      "pixelCount": 257,
+      "samples": [
+        {
+          "pixel": 0,
+          "phase16": 0
+        },
+        {
+          "pixel": 1,
+          "phase16": 256
+        },
+        {
+          "pixel": 127,
+          "phase16": 32512
+        },
+        {
+          "pixel": 128,
+          "phase16": 32768
+        },
+        {
+          "pixel": 255,
+          "phase16": 65280
+        },
+        {
+          "pixel": 256,
+          "phase16": 0
+        }
+      ]
+    },
+    {
+      "name": "1024 reversed",
+      "phases": [
+        [
+          1024,
+          0,
+          -65536
+        ]
+      ],
+      "pixelCount": 1024,
+      "samples": [
+        {
+          "pixel": 0,
+          "phase16": 0
+        },
+        {
+          "pixel": 1,
+          "phase16": 65472
+        },
+        {
+          "pixel": 255,
+          "phase16": 49200
+        },
+        {
+          "pixel": 256,
+          "phase16": 49136
+        },
+        {
+          "pixel": 511,
+          "phase16": 32800
+        },
+        {
+          "pixel": 512,
+          "phase16": 32736
+        },
+        {
+          "pixel": 1022,
+          "phase16": 64
+        },
+        {
+          "pixel": 1023,
+          "phase16": 0
+        }
+      ]
+    },
+    {
+      "name": "mixed spans and negative tie",
+      "phases": [
+        [
+          5,
+          65534,
+          4
+        ],
+        [
+          3,
+          1,
+          -1
+        ],
+        [
+          1,
+          23456,
+          0
+        ],
+        [
+          4,
+          65535,
+          -3
+        ]
+      ],
+      "pixelCount": 13,
+      "samples": [
+        {
+          "pixel": 0,
+          "phase16": 65534
+        },
+        {
+          "pixel": 1,
+          "phase16": 65535
+        },
+        {
+          "pixel": 2,
+          "phase16": 0
+        },
+        {
+          "pixel": 3,
+          "phase16": 1
+        },
+        {
+          "pixel": 4,
+          "phase16": 2
+        },
+        {
+          "pixel": 5,
+          "phase16": 1
+        },
+        {
+          "pixel": 6,
+          "phase16": 1
+        },
+        {
+          "pixel": 7,
+          "phase16": 0
+        },
+        {
+          "pixel": 8,
+          "phase16": 23456
+        },
+        {
+          "pixel": 9,
+          "phase16": 65535
+        },
+        {
+          "pixel": 10,
+          "phase16": 65534
+        },
+        {
+          "pixel": 11,
+          "phase16": 65533
+        },
+        {
+          "pixel": 12,
+          "phase16": 65532
+        }
+      ]
+    },
+    {
+      "name": "65535 positive overflow guard",
+      "phases": [
+        [
+          65535,
+          65535,
+          2147418112
+        ]
+      ],
+      "pixelCount": 65535,
+      "samples": [
+        {
+          "pixel": 0,
+          "phase16": 65535
+        },
+        {
+          "pixel": 1,
+          "phase16": 32767
+        },
+        {
+          "pixel": 32766,
+          "phase16": 65535
+        },
+        {
+          "pixel": 32767,
+          "phase16": 32767
+        },
+        {
+          "pixel": 65533,
+          "phase16": 32767
+        },
+        {
+          "pixel": 65534,
+          "phase16": 65535
+        }
+      ]
+    },
+    {
+      "name": "65535 negative overflow guard",
+      "phases": [
+        [
+          65535,
+          0,
+          -2147418112
+        ]
+      ],
+      "pixelCount": 65535,
+      "samples": [
+        {
+          "pixel": 0,
+          "phase16": 0
+        },
+        {
+          "pixel": 1,
+          "phase16": 32768
+        },
+        {
+          "pixel": 32766,
+          "phase16": 0
+        },
+        {
+          "pixel": 32767,
+          "phase16": 32768
+        },
+        {
+          "pixel": 65533,
+          "phase16": 32768
+        },
+        {
+          "pixel": 65534,
+          "phase16": 0
+        }
+      ]
+    }
+  ]
+}

@@ -286,7 +286,7 @@ function buildRuntimeLooksFromPlaylist({
               customDrift: false,
             })),
             nativeRecipe: retainedNative
-              ? { ...compiledNative, journey: { ...compiledNative.journey, phase16: retainedNative.journey.phase16 } }
+              ? { ...compiledNative, journey: { ...retainedNative.journey, stops: compiledNative.journey.stops, easing: compiledNative.journey.easing, loop: compiledNative.journey.loop, motionSpeedMs: compiledNative.journey.motionSpeedMs, depth: compiledNative.journey.depth } }
               : compiledNative,
           };
         }

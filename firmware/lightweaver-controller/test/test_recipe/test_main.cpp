@@ -306,6 +306,11 @@ void test_parses_strict_color_journey_and_capability() {
   TEST_ASSERT_EQUAL_UINT16(256, journey["maxPixels"].as<uint16_t>());
   TEST_ASSERT_EQUAL_STRING("q0.16-hex", journey["phaseEncoding"].as<const char*>());
   TEST_ASSERT_EQUAL_STRING("restart", journey["restart"].as<const char*>());
+  JsonObject v2 = doc["colorJourneyV2"];
+  TEST_ASSERT_EQUAL_UINT8(2, v2["version"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_UINT16(65535, v2["maxPixels"].as<uint16_t>());
+  TEST_ASSERT_EQUAL_UINT8(64, v2["maxPhaseSpans"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_STRING("q0.16-affine", v2["phaseEncoding"].as<const char*>());
 }
 
 void test_rejects_color_journey_boundaries_without_mutating_destination() {
@@ -424,10 +429,74 @@ void test_journey_clock_crosses_millis_rollover_without_restarting() {
   TEST_ASSERT_EQUAL_UINT8(255, final.blue);
 }
 
+void test_v2_rejects_malformed_spans_and_preserves_destination() {
+  const char* cases[] = {"[]", "[[0,0,0]]", "[[1,0,1]]", "[[1,-1,0]]", "[[1,65536,0]]",
+    "[[1,0,0,0]]", "[[1.5,0,0]]", "[[1,0.5,0]]", "[[2,0,0.5]]", "[[2,0,32769]]",
+    "[[2,0,-32769]]", "[[65536,0,0]]", "[[65535,0,2147483648]]", "[[65535,0,-2147483649]]",
+    "[[65535,0,0],[1,0,0]]", "[{}]", "null", "[[true,0,0]]"};
+  for (const char* phases : cases) {
+    JsonDocument doc, values;
+    TEST_ASSERT_FALSE(deserializeJson(doc, kValidColorJourney));
+    TEST_ASSERT_FALSE(deserializeJson(values, phases));
+    doc["journey"]["version"] = 2;
+    doc["journey"].remove("phase16");
+    doc["journey"]["phases"].set(values.as<JsonVariantConst>());
+    NativeRecipe destination;
+    destination.version = 77;
+    RecipeParseError error;
+    uint32_t expected = 0;
+    for (JsonVariantConst span : values.as<JsonArrayConst>()) expected += span[0].as<uint32_t>();
+    if (!expected || expected > 65535) expected = 65535;
+    TEST_ASSERT_FALSE_MESSAGE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), destination, error, expected), phases);
+    TEST_ASSERT_EQUAL_UINT8(77, destination.version);
+  }
+  JsonDocument doc;
+  TEST_ASSERT_FALSE(deserializeJson(doc, kValidColorJourney));
+  doc["journey"]["version"] = 2;
+  doc["journey"].remove("phase16");
+  JsonArray spans = doc["journey"]["phases"].to<JsonArray>();
+  for (unsigned i = 0; i < 65; ++i) {
+    JsonArray span = spans.add<JsonArray>(); span.add(1); span.add(i); span.add(0);
+  }
+  NativeRecipe recipe;
+  RecipeParseError error;
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 65));
+  spans.remove(64);
+  TEST_ASSERT_TRUE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 64));
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 63));
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 65));
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 0));
+  doc["journey"]["phase16"] = "0000";
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 64));
+  doc["journey"]["version"] = 1;
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 1));
+}
+
+void test_v2_affine_journey_capacity_and_rejection() {
+  JsonDocument doc;
+  TEST_ASSERT_FALSE(deserializeJson(doc, kValidColorJourney));
+  doc["journey"]["version"] = 2;
+  doc["journey"].remove("phase16");
+  JsonArray spans = doc["journey"]["phases"].to<JsonArray>();
+  JsonArray span = spans.add<JsonArray>();
+  span.add(65535); span.add(65535); span.add(-2147418112);
+  NativeRecipe recipe;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 65535));
+  TEST_ASSERT_EQUAL_UINT8(2, recipe.colorJourney.version);
+  TEST_ASSERT_EQUAL_UINT16(65535, recipe.colorJourney.phaseCount);
+  span[2] = -2147418113LL;
+  recipe.version = 77;
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 65535));
+  TEST_ASSERT_EQUAL_UINT8(77, recipe.version);
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
+  RUN_TEST(test_v2_affine_journey_capacity_and_rejection);
+  RUN_TEST(test_v2_rejects_malformed_spans_and_preserves_destination);
   RUN_TEST(test_parses_complete_bounded_v1_recipe);
   RUN_TEST(test_rejects_unknown_version_and_nodes);
   RUN_TEST(test_rejects_resource_limit_violations);

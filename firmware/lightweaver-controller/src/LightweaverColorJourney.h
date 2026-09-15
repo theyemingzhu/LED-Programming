@@ -13,6 +13,8 @@ RecipeColor sampleColorJourneyBase(const NativeRecipe& recipe, uint64_t elapsedM
 RecipeColor sampleColorJourneyPixel(const NativeRecipe& recipe, uint16_t phaseQ16,
                                     uint64_t elapsedMs);
 uint64_t advanceColorJourneyElapsedMs(const NativeRecipe& recipe, uint32_t nowMs);
+uint16_t sampleColorJourneyPhaseSpan(const ColorJourneyPhaseSpan& span, uint16_t offset);
+uint16_t sampleColorJourneyPhase(const NativeRecipe& recipe, uint16_t physicalPixel);
 void reverseColorJourneyPhaseSpan(NativeRecipe& recipe, uint16_t start, uint16_t count);
 
 }  // namespace lightweaver

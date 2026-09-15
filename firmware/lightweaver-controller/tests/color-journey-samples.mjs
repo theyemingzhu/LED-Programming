@@ -56,6 +56,22 @@ for (const [caseIndex, testCase] of fixture.cases.entries()) {
     lines.push('  }');
   });
 }
+const phaseFixture = JSON.parse(readFileSync(
+  resolve(root, '../../docs/fixtures/color-journey-v2-phases.json'), 'utf8'));
+for (const [caseIndex, testCase] of phaseFixture.cases.entries()) {
+  const name = `affine${caseIndex}`;
+  lines.push(`  NativeRecipe ${name};`);
+  lines.push(`  ${name}.kind = NativeRecipeKind::ColorJourney;`);
+  lines.push(`  ${name}.colorJourney.version = 2;`);
+  lines.push(`  ${name}.colorJourney.phaseCount = ${testCase.pixelCount};`);
+  lines.push(`  ${name}.colorJourney.phaseSpanCount = ${testCase.phases.length};`);
+  testCase.phases.forEach(([count, start, delta], index) => {
+    lines.push(`  ${name}.colorJourneyPhaseSpans[${index}] = {${count}, ${start}, ${delta}};`);
+  });
+  testCase.samples.forEach(({ pixel, phase16 }) => {
+    lines.push(`  assert(sampleColorJourneyPhase(${name}, ${pixel}) == ${phase16});`);
+  });
+}
 lines.push('  return 0;', '}');
 
 const temp = mkdtempSync(resolve(os.tmpdir(), 'lw-color-journey-'));
@@ -74,4 +90,4 @@ try {
   rmSync(temp, { recursive: true, force: true });
 }
 
-console.log(`color journey fixture parity passed (${fixture.cases.length} cases)`);
+console.log(`color journey fixture parity passed (${fixture.cases.length} color cases + ${phaseFixture.cases.length} affine phase cases)`);

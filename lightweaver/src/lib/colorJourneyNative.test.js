@@ -52,7 +52,7 @@ const wiring = {
 
 test('compiles the bounded v1 wire in physical output and reversed run order', () => {
   const nativeRecipe = compileColorJourneyNativeRecipe({ recipe: recipe(), strips, wiring });
-  assert.equal(COLOR_JOURNEY_NATIVE_MAX_PIXELS, 256);
+  assert.equal(COLOR_JOURNEY_NATIVE_MAX_PIXELS, 65535);
   assert.deepEqual(nativeRecipe, {
     version: 1,
     kind: 'color-journey',
@@ -107,7 +107,7 @@ test('native physical waveform matches the full Lab renderer after final segment
 test('fails closed for holes, oversized layouts, section targets, layers, requirements, and base modifiers', () => {
   const cases = [
     { wiring: { ...wiring, outputs: [{ ...wiring.outputs[0], runIds: ['tail', 'hole', 'head'] }], runs: [...wiring.runs, { id: 'hole', type: 'inactive', count: 1 }] }, error: /inactive|hole/i },
-    { strips: [{ id: 'long', pixels: Array.from({ length: COLOR_JOURNEY_NATIVE_MAX_PIXELS + 1 }, (_, x) => ({ x, y: 0 })) }], wiring: { version: 1, outputs: [{ id: 'out', pin: 16, runIds: ['long'] }], runs: [{ id: 'long', type: 'strip', source: { stripId: 'long', from: 0, to: COLOR_JOURNEY_NATIVE_MAX_PIXELS } }] }, error: /256/ },
+    { strips: [{ id: 'long', pixels: Array.from({ length: COLOR_JOURNEY_NATIVE_MAX_PIXELS + 1 }, (_, x) => ({ x, y: 0 })) }], wiring: { version: 1, outputs: [{ id: 'out', pin: 16, runIds: ['long'] }], runs: [{ id: 'long', type: 'strip', source: { stripId: 'long', from: 0, to: COLOR_JOURNEY_NATIVE_MAX_PIXELS } }] }, error: /65535|physical|pixel/i },
     { recipe: recipe({ targets: [{ kind: 'section', id: 'line' }] }), error: /whole piece/i },
     { recipe: recipe({ layers: [{ id: 'extra' }] }), error: /layer/i },
     { recipe: recipe({ requirements: [{ capability: 'audio', required: true }] }), error: /requirement/i },
@@ -141,4 +141,11 @@ test('non-looping native sampling holds its final authored color', () => {
   assert.equal(color.r, 0);
   assert.equal(color.g, 0);
   assert.ok(color.b > 0, 'motion continues while the final authored blue is held');
+});
+
+for (const count of [257, 1024, 4096]) test(`lossless affine journey supports ${count} physical pixels`, () => {
+  const strips = [{ id: 'line', pixels: Array.from({ length: count }, (_, x) => ({ x, y: 0 })) }];
+  const native = compileColorJourneyNativeRecipe({ recipe: recipe(), strips, wiring: { version: 1, outputs: [{ id: 'out', pin: 16, runIds: ['line'] }], runs: [{ id: 'line', type: 'strip', source: { stripId: 'line', from: 0, to: count - 1 } }] } });
+  assert.equal(native.journey.version, 2);
+  assert.ok(native.journey.phases.length <= 64);
 });

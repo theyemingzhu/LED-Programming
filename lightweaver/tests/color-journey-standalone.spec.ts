@@ -3,23 +3,33 @@ import { openControls } from './helpers/pattern-lab';
 
 // These browser journeys are deliberately offline. Native card capability and
 // interrupted transaction behavior are exercised by the focused transport tests.
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
+  const count = Number(testInfo.title.match(/^(1024|4096|7813) pixels/)?.[1] || 16);
+  const curved = testInfo.title.includes('curved');
   await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
-  await page.addInitScript(() => {
+  await page.addInitScript(({ count, curved }) => {
     if (localStorage.getItem('lw_autosave_v3')) return;
     localStorage.setItem('lw_autosave_v3', JSON.stringify({
       version: 3, id: 'native-journey-browser', name: 'Journey software fixture',
       layout: {
         starterPending: false, svgText: '', viewBox: '0 0 240 200',
-        strips: [{ id: 'art', name: 'Artwork', pathData: 'M 20 20 L 200 60 L 100 180', pixelCount: 16, color: '#d99865', x: 0, y: 0 }],
+        strips: [{
+          id: 'art', name: 'Artwork',
+          pathData: curved
+            ? 'M 20 180 C 20 20 220 20 220 180'
+            : count > 256
+              ? 'M 20 20 L 200 20'
+              : 'M 20 20 L 200 60 L 100 180',
+          pixelCount: count, color: '#d99865', x: 0, y: 0,
+        }],
         wiring: {
           version: 1, locked: true, verified: true,
           outputs: [{ id: 'out', name: 'Out', pin: 18, runIds: ['art-run'] }],
-          runs: [{ id: 'art-run', type: 'strip', verified: true, source: { stripId: 'art', from: 0, to: 15 }, physicalDirection: 'source-reverse' }],
+          runs: [{ id: 'art-run', type: 'strip', verified: true, source: { stripId: 'art', from: 0, to: count - 1 }, physicalDirection: 'source-reverse' }],
         },
       },
     }));
-  });
+  }, { count, curved });
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await openControls(page);
   await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
@@ -34,7 +44,9 @@ test('a journey exposes a truthful standalone handoff while keeping browser save
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
 });
 
-test('phone standalone handoff is readable and does not overflow the composer', async ({ page }) => {
+test('4096 pixels desktop and phone standalone handoff is readable without overflow', async ({ page }) => {
+  await expect(page.getByTestId('pattern-lab-verdict')).toHaveAttribute('data-classification', 'live-on-card');
+  await page.screenshot({ path: '/tmp/lightweaver-journey-4096-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await openControls(page);
   const handoff = page.getByTestId('pattern-lab-use-in-project-promoted');
@@ -43,6 +55,7 @@ test('phone standalone handoff is readable and does not overflow the composer', 
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   const box = await handoff.boundingBox();
   expect(box?.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: '/tmp/lightweaver-journey-4096-phone.png', fullPage: true });
 });
 
 test('timing controls preserve one-shot and interpolation choices after reload', async ({ page }) => {
@@ -85,4 +98,96 @@ test('a supported mapped journey enters the project with its authored timing int
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return project.devices.standaloneController.looks.length;
   })).toBe(1);
+});
+
+
+for (const targetCount of [1024, 4096]) test(`${targetCount} pixels save, capability-gated install, and readback retain exact physical phase`, async ({ page }) => {
+  await expect(page.getByTestId('pattern-lab-verdict')).toHaveAttribute('data-classification', 'live-on-card');
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Use in Project', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
+    .devices?.standaloneController?.looks?.some((look: any) => look.patternLabRecipe?.base?.kind === 'color-journey'))).toBe(true);
+  const result = await page.evaluate(async (targetCount) => {
+    const { buildCardRuntimePackageFromProject } = await import('/src/lib/cardRuntimeProject.js');
+    const { prepareCardStoragePayload } = await import('/src/lib/cardStoragePayload.js');
+    const { pushConfigToCard } = await import('/src/lib/cardPushClient.js');
+    const { reconstructInstalledCardState } = await import('/src/lib/cardProjectAdoption.js');
+    const { sampleNativeColorJourneyPixel } = await import('/src/lib/colorJourneyNative.js');
+    const { samplePath } = await import('/src/lib/mapper.js');
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', saved.layout.strips[0].pathData);
+    svg.appendChild(path);
+    document.body.appendChild(svg);
+    const pixels = samplePath(path, targetCount);
+    svg.remove();
+    const strips = [{ id: saved.layout.strips[0].id, name: 'Artwork', pixels }];
+    const wiring = saved.layout.wiring;
+    const runtime = buildCardRuntimePackageFromProject({ projectId: saved.id, projectName: saved.name, strips, wiring,
+      standaloneController: { ...saved.devices.standaloneController, playlist: [{ id: 'journey-entry', type: 'combo', lookId: saved.devices.standaloneController.activeLookId, enabled: true }] } });
+    let written: any = null;
+    const options = { host: 'lightweaver.local', transport: 'bridge', initialConfigAuthorityImpl: () => true,
+      bridgeRequestImpl: async (type: string, payload: any) => { if (type === 'config') written = structuredClone(payload); return { ok: true }; } };
+    let oldCardReason = '';
+    try {
+      await pushConfigToCard(runtime, { ...options, cardEvidence: { recipeCapabilities: {
+        colorJourney: { version: 1, maxPixels: 256, phaseEncoding: 'q0.16-hex', restart: 'restart' },
+      } } });
+    } catch (error: any) { oldCardReason = error.reason; }
+    const wroteToOldCard = written !== null;
+    await pushConfigToCard(runtime, { ...options, cardEvidence: { recipeCapabilities: {
+      colorJourneyV2: { version: 2, maxPixels: 65535, maxPhaseSpans: 64, phaseEncoding: 'q0.16-affine', restart: 'restart' },
+    } } });
+    const look = written.looks.find((look: any) => look.nativeRecipe?.kind === 'color-journey');
+    if (!look) throw new Error('Missing native installed look: ' + JSON.stringify({ written, controller: saved.devices.standaloneController }));
+    const readback = reconstructInstalledCardState({ skeleton: { strips, wiring },
+      patterns: { currentId: look.id, patterns: [{ id: look.id, label: look.label, nativeRecipe: look.nativeRecipe }] } });
+    const restored = buildCardRuntimePackageFromProject({ projectId: saved.id, projectName: saved.name, strips, wiring,
+      standaloneController: readback.devices.standaloneController });
+    const restoredNative = restored.config.looks[0].nativeRecipe;
+    const native = runtime.config.looks[0].nativeRecipe;
+    return { oldCardReason, wroteToOldCard, bytes: prepareCardStoragePayload(runtime).bytes,
+      version: look.nativeRecipe.journey.version,
+      exactReadback: JSON.stringify(restoredNative.journey) === JSON.stringify(native.journey),
+      framesMatch: [0, 999, 12000, 0xffffffff + 1000].every(time => [0, 255, 256, 512, targetCount - 1].every(pixel =>
+        JSON.stringify(sampleNativeColorJourneyPixel(native, pixel, time)) === JSON.stringify(sampleNativeColorJourneyPixel(restoredNative, pixel, time)))) };
+  }, targetCount);
+  expect(result.oldCardReason).toBe('color-journey-unsupported');
+  expect(result.wroteToOldCard).toBe(false);
+  expect(result.version).toBe(2);
+  expect(result.bytes).toBeLessThanOrEqual(3968);
+  expect(result.exactReadback).toBe(true);
+  expect(result.framesMatch).toBe(true);
+});
+
+test('4096 curved pixels fail closed when exact SVG geometry exceeds 64 phase spans', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { samplePath } = await import('/src/lib/mapper.js');
+    const { encodeColorJourneyPhases } = await import('/src/lib/colorJourneyPhases.js');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M 20 180 C 20 20 220 20 220 180');
+    svg.appendChild(path);
+    document.body.appendChild(svg);
+    const pixels = samplePath(path, 4096);
+    svg.remove();
+    const xs = pixels.map((pixel: any) => Number(pixel.x) || 0);
+    const ys = pixels.map((pixel: any) => Number(pixel.y) || 0);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const range = Math.max(Math.max(...xs) - minX, Math.max(...ys) - minY, 0.001);
+    const phases = pixels.map((pixel: any) => Math.round(((((pixel.x - minX) / range + (pixel.y - minY) / range * 0.35) % 1) + 1) % 1 * 0x10000) & 0xffff);
+    try {
+      encodeColorJourneyPhases(phases);
+      return { rejected: false, message: '' };
+    } catch (error: any) {
+      return { rejected: true, message: String(error?.message || error) };
+    }
+  });
+  expect(result.rejected).toBe(true);
+  expect(result.message).toMatch(/too complex for lossless standalone storage.*64 phase spans/i);
+});
+
+test('7813 pixels retain the conservative operation-budget gate', async ({ page }) => {
+  await expect(page.getByTestId('pattern-lab-verdict')).not.toHaveAttribute('data-classification', 'live-on-card');
 });

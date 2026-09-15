@@ -291,7 +291,9 @@ function runtimeMetricsFor(recipe, geometry) {
   metrics.framebufferBytes = pixelCount * 3;
   if (hasKnownStatelessRuntime(recipe)) {
     metrics.stateBytes = 0;
-    metrics.operationsPerFrame = pixelCount * 64 * (1 + (recipe.layers?.length || 0));
+    // Match the native Color Journey renderer's per-pixel operation estimate.
+    const operationsPerPixel = recipe.base.kind === 'color-journey' ? 32 : 64;
+    metrics.operationsPerFrame = pixelCount * operationsPerPixel * (1 + (recipe.layers?.length || 0));
   } else if (PATTERN_LAB_GENERATOR_IDS.includes(recipe?.base?.kind)) {
     const generator = estimatePatternLabGeneratorBudgets(recipe.base.kind, {
       sampleCount: Math.min(pixelCount, PATTERN_LAB_WORKER_BUDGETS.finalSamples),

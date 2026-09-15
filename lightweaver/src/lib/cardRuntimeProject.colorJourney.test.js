@@ -64,3 +64,46 @@ test('changing physical direction recompiles phase without changing the saved au
   assert.notEqual(reversePhase, forwardPhase);
   assert.deepEqual(forward.standaloneController.looks[0].patternLabRecipe, authored);
 });
+
+for (const count of [257, 1024, 4096]) test(`compact ${count}-pixel journey preserves exact physical order and fits full config`, () => {
+  const value = project();
+  value.strips = [{ id: 'art', name: 'Art', pixels: Array.from({ length: count }, (_, x) => ({ x, y: 0 })) }];
+  value.wiring = structuredClone(wiring);
+  value.wiring.runs[0].source.to = count - 1;
+  const runtime = buildCardRuntimePackageFromProject(value);
+  const native = runtime.config.looks[0].nativeRecipe;
+  assert.equal(native.journey.version, 2);
+  const phases = expandColorJourneyPhases(native.journey);
+  const expected = Array.from({ length: count }, (_, i) => Math.round(((i / (count - 1)) % 1) * 65536) & 65535).reverse();
+  assert.deepEqual(phases, expected);
+  assert.ok(prepareCardStoragePayload(runtime).bytes <= 3968);
+  const adopted = patternLabRecipeFromNativeColorJourney(native, value);
+  adopted.journey.stops[0].color = '#123456';
+  const edited = compileColorJourneyNativeRecipe({ recipe: adopted, strips: value.strips, wiring: value.wiring });
+  assert.deepEqual(expandColorJourneyPhases(edited.journey), phases);
+  assert.equal(edited.journey.stops[0].color, '#123456');
+  value.standaloneController.looks[0] = { ...value.standaloneController.looks[0], patternLabRecipe: adopted,
+    nativeRecipe: native, nativeRecipeLayoutKey: colorJourneyLayoutKey(value) };
+  const retained = buildCardRuntimePackageFromProject(value).config.looks[0].nativeRecipe;
+  assert.deepEqual(retained.journey.phases, native.journey.phases);
+  assert.equal(retained.journey.version, 2);
+  assert.equal(retained.journey.stops[0].color, '#123456');
+});
+
+import { expandColorJourneyPhases } from './colorJourneyPhases.js';
+import { patternLabRecipeFromNativeColorJourney, compileColorJourneyNativeRecipe, colorJourneyLayoutKey } from './colorJourneyNative.js';
+
+test('adopting a valid 64-span card journey preserves original encoding across edits', () => {
+  const value = project();
+  const count = 1024;
+  value.strips = [{ id: 'art', pixels: Array.from({ length: count }, (_, x) => ({ x, y: 0 })) }];
+  value.wiring = structuredClone(wiring);
+  value.wiring.runs[0].source.to = count - 1;
+  const native = buildCardRuntimePackageFromProject(value).config.looks[0].nativeRecipe;
+  native.journey.phases = Array.from({ length: 64 }, (_, index) => [16, (index * 7919) & 65535, 1001 + index]);
+  const adopted = patternLabRecipeFromNativeColorJourney(native, value);
+  adopted.journey.stops[0].holdMs = 12345;
+  const compiled = compileColorJourneyNativeRecipe({ recipe: adopted, strips: value.strips, wiring: value.wiring });
+  assert.deepEqual(compiled.journey.phases, native.journey.phases);
+  assert.equal(compiled.journey.stops[0].holdMs, 12345);
+});
