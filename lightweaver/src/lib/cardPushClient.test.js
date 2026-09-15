@@ -686,3 +686,18 @@ test('explicit direct status transport is honored on an HTTPS Studio page', { co
     globalThis.window = originalWindow;
   }
 });
+
+test('affine journeys require exact v2 capability and never inherit legacy support', () => {
+  const runtime = structuredClone(colorJourneyRuntimePackage);
+  runtime.config.looks[0].nativeRecipe.journey.version = 2;
+  delete runtime.config.looks[0].nativeRecipe.journey.phase16;
+  runtime.config.looks[0].nativeRecipe.journey.phases = [[1024, 0, 65536]];
+  const v1 = { version: 1, maxPixels: 256, phaseEncoding: 'q0.16-hex', restart: 'restart' };
+  const v2 = { version: 2, maxPixels: 65535, maxPhaseSpans: 64, phaseEncoding: 'q0.16-affine', restart: 'restart' };
+  assert.throws(() => assertCardColorJourneySupport(runtime, { recipeCapabilities: { colorJourney: v1 } }), /firmware/);
+  assert.equal(assertCardColorJourneySupport(runtime, { recipeCapabilities: { colorJourneyV2: v2 } }), true);
+  for (const override of [{ version: 3 }, { maxPixels: 1024 }, { maxPhaseSpans: 128 }, { phaseEncoding: 'hex' }, { restart: 'resume' }]) {
+    assert.throws(() => assertCardColorJourneySupport(runtime, { recipeCapabilities: { colorJourney: v1, colorJourneyV2: { ...v2, ...override } } }), /firmware/);
+  }
+  assert.throws(() => assertCardColorJourneySupport(colorJourneyRuntimePackage, { recipeCapabilities: { colorJourneyV2: v2 } }), /firmware/);
+});

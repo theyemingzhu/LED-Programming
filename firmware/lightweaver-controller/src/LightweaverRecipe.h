@@ -24,6 +24,14 @@ constexpr uint8_t LW_COLOR_JOURNEY_VERSION = 1;
 constexpr uint8_t LW_COLOR_JOURNEY_MIN_STOPS = 2;
 constexpr uint8_t LW_COLOR_JOURNEY_MAX_STOPS = 8;
 constexpr uint16_t LW_COLOR_JOURNEY_MAX_PIXELS = 256;
+constexpr uint8_t LW_COLOR_JOURNEY_V2_VERSION = 2;
+constexpr uint8_t LW_COLOR_JOURNEY_MAX_PHASE_SPANS = 64;
+struct ColorJourneyPhaseSpan {
+  uint16_t count;
+  uint16_t start;
+  int32_t delta;
+};
+static_assert(sizeof(ColorJourneyPhaseSpan) == 8, "phase spans must stay compact");
 
 enum class NativeRecipeKind : uint8_t {
   Layered,
@@ -101,6 +109,7 @@ struct ColorJourneyRecipe {
   uint32_t motionSpeedMs = 18000;
   float depth = 0.25f;
   uint16_t phaseCount = 0;
+  uint8_t phaseSpanCount = 0;
 };
 
 struct RecipeTransform {
@@ -155,6 +164,7 @@ struct NativeRecipe {
   union {
     NativeRecipeLayer layers[LW_RECIPE_MAX_LAYERS];
     uint16_t colorJourneyPhases[LW_COLOR_JOURNEY_MAX_PIXELS];
+    ColorJourneyPhaseSpan colorJourneyPhaseSpans[LW_COLOR_JOURNEY_MAX_PHASE_SPANS];
   };
   uint8_t layerCount = 0;
   uint32_t estimatedOperationsPerFrame = 0;

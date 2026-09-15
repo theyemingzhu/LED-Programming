@@ -1657,6 +1657,8 @@ bool renderZoneSlice(const ZoneConfig& zone, const LookConfig* look,
 
   PatternCoordinateContext effectiveContext = context ? *context : PatternCoordinateContext{};
   effectiveContext.globalStart = start;
+  effectiveContext.outputs = outputs;
+  effectiveContext.outputCount = outputCount;
   context = &effectiveContext;
   bool rendered = false;
   if (!look) {

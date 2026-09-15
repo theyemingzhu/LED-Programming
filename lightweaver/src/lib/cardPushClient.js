@@ -101,7 +101,8 @@ export function assertCardKaleidoscopeSupport(runtimePackage, evidence) {
 
 export function assertCardColorJourneySupport(runtimePackage, evidence) {
   if (!runtimeConfigUsesColorJourney(runtimePackage)) return true;
-  if (!hasColorJourneyRecipeCapability(evidence)) {
+  const config = runtimePackage?.config || runtimePackage;
+  if (config.looks.some(look => look.nativeRecipe?.kind === 'color-journey' && !hasColorJourneyRecipeCapability(evidence, look.nativeRecipe.journey?.version))) {
     throw new CardPushError(
       'color-journey-unsupported',
       'This card firmware cannot install standalone Color Journeys. Update the card firmware, then retry.',

@@ -88,8 +88,37 @@ uint64_t advanceColorJourneyElapsedMs(const NativeRecipe& recipe, uint32_t nowMs
   return recipe.activationElapsedMs;
 }
 
+uint16_t sampleColorJourneyPhaseSpan(const ColorJourneyPhaseSpan& span, uint16_t offset) {
+  if (span.count <= 1) return span.start;
+  const int64_t denominator = span.count - 1;
+  const int64_t numerator = static_cast<int64_t>(span.delta) * offset;
+  // floor(x + 1/2), including negative half ties (JS Math.round).
+  const int64_t doubled = 2 * numerator + denominator;
+  const int64_t divisor = 2 * denominator;
+  int64_t rounded = doubled / divisor;
+  if (doubled < 0 && doubled % divisor != 0) --rounded;
+  return static_cast<uint16_t>(static_cast<int64_t>(span.start) + rounded);
+}
+
+uint16_t sampleColorJourneyPhase(const NativeRecipe& recipe, uint16_t physicalPixel) {
+  if (physicalPixel >= recipe.colorJourney.phaseCount) return 0;
+  if (recipe.colorJourney.version == LW_COLOR_JOURNEY_VERSION) {
+    return recipe.colorJourneyPhases[physicalPixel];
+  }
+  uint32_t start = 0;
+  for (uint8_t index = 0; index < recipe.colorJourney.phaseSpanCount; ++index) {
+    const ColorJourneyPhaseSpan& span = recipe.colorJourneyPhaseSpans[index];
+    if (physicalPixel < start + span.count) {
+      return sampleColorJourneyPhaseSpan(span, physicalPixel - start);
+    }
+    start += span.count;
+  }
+  return 0;
+}
+
 void reverseColorJourneyPhaseSpan(NativeRecipe& recipe, uint16_t start, uint16_t count) {
-  if (recipe.kind != NativeRecipeKind::ColorJourney || count < 2 ||
+  if (recipe.kind != NativeRecipeKind::ColorJourney ||
+      recipe.colorJourney.version != LW_COLOR_JOURNEY_VERSION || count < 2 ||
       start >= recipe.colorJourney.phaseCount ||
       static_cast<uint32_t>(start) + count > recipe.colorJourney.phaseCount) return;
   for (uint16_t offset = 0; offset < count / 2; offset++) {

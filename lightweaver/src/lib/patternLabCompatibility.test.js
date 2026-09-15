@@ -81,7 +81,7 @@ test('classifies a bounded whole-piece Color Journey as native and rejects overs
     },
   });
   const native = classifyPatternLabCompatibility(journey, { metrics: { ...FIT_METRICS, pixelCount: 256 } });
-  const oversized = classifyPatternLabCompatibility(journey, { metrics: { ...FIT_METRICS, pixelCount: 257 } });
+  const oversized = classifyPatternLabCompatibility(journey, { metrics: { ...FIT_METRICS, pixelCount: 65536 } });
   const scoped = classifyPatternLabCompatibility({ ...journey, targets: [{ kind: 'section', id: 'outer' }] }, { metrics: FIT_METRICS });
 
   assert.equal(native.classification, 'live-on-card');

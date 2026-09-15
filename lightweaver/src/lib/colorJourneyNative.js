@@ -1,10 +1,11 @@
+import { COLOR_JOURNEY_MAX_PIXELS, expandColorJourneyPhases, encodeColorJourneyPhases } from './colorJourneyPhases.js';
 import { normalizeColorJourney, sampleColorJourney } from './colorJourney.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { compileWiring } from './wiringCompiler.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 
 export const COLOR_JOURNEY_NATIVE_VERSION = 1;
-export const COLOR_JOURNEY_NATIVE_MAX_PIXELS = 256;
+export const COLOR_JOURNEY_NATIVE_MAX_PIXELS = COLOR_JOURNEY_MAX_PIXELS;
 
 const DEPTH_BY_CHARACTER = Object.freeze({
   restrained: 0.12,
@@ -48,15 +49,15 @@ export function colorJourneyLayoutKey({ strips = [], wiring = null } = {}) {
 
 export function normalizeStoredNativeColorJourney(value, expectedPixels = null) {
   const journey = value?.journey;
-  const phase16 = journey?.phase16;
-  const inferredPixels = typeof phase16 === 'string' && phase16.length % 4 === 0 ? phase16.length / 4 : 0;
+  const phases = expandColorJourneyPhases(journey);
+  const inferredPixels = phases.length;
   const pixels = expectedPixels == null ? inferredPixels : expectedPixels;
   const stops = journey?.stops;
   const id = String(value?.id || '');
   if (!Number.isInteger(pixels) || pixels < 1 || pixels > COLOR_JOURNEY_NATIVE_MAX_PIXELS
     || value?.version !== 1 || value?.kind !== 'color-journey'
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || id.length > 64
-    || journey?.version !== 1
+    || ![1, 2].includes(journey?.version)
     || !Array.isArray(stops) || stops.length < 2 || stops.length > 8
     || !stops.every(stop => /^#[0-9a-f]{6}$/.test(stop?.color)
       && Number.isInteger(stop?.holdMs) && stop.holdMs >= 0 && stop.holdMs <= 600_000
@@ -65,7 +66,7 @@ export function normalizeStoredNativeColorJourney(value, expectedPixels = null) 
     || journey.restart !== 'restart'
     || !Number.isInteger(journey.motionSpeedMs) || journey.motionSpeedMs < 4_000 || journey.motionSpeedMs > 90_000
     || ![0.12, 0.25, 0.42].includes(journey.depth)
-    || typeof phase16 !== 'string' || phase16.length !== pixels * 4 || !/^[0-9a-f]+$/.test(phase16)) {
+    || phases.length !== pixels) {
     throw new RangeError('Stored native Color Journey is invalid.');
   }
   return structuredClone(value);
@@ -73,13 +74,14 @@ export function normalizeStoredNativeColorJourney(value, expectedPixels = null) 
 
 export function nativeColorJourneySourcePhase16(nativeRecipe, { strips = [], wiring = null } = {}) {
   const native = normalizeStoredNativeColorJourney(nativeRecipe);
+  const phase16 = expandColorJourneyPhases(native.journey).map(value => value.toString(16).padStart(4, '0')).join('');
   const compiled = compileWiring({ wiring, strips });
-  if (!compiled?.ok || compiled.totalPixels * 4 !== native.journey.phase16.length) {
+  if (!compiled?.ok || compiled.totalPixels * 4 !== phase16.length) {
     throw new RangeError('Native Color Journey readback does not match the reconstructed layout.');
   }
   const bySource = new Map();
   physicalPixels(compiled).forEach((pixel, index) => {
-    bySource.set(`${pixel.stripId}:${pixel.sourceLed}`, native.journey.phase16.slice(index * 4, index * 4 + 4));
+    bySource.set(`${pixel.stripId}:${pixel.sourceLed}`, phase16.slice(index * 4, index * 4 + 4));
   });
   return strips.flatMap(strip => (strip.pixels || strip.pts || []).map((_, index) => bySource.get(`${strip.id}:${index}`) || '')).join('');
 }
@@ -104,6 +106,9 @@ export function patternLabRecipeFromNativeColorJourney(nativeRecipe, { id = '', 
     evolution: { enabled: false },
     sourceLook: {
       nativeSourcePhase16: nativeColorJourneySourcePhase16(native, { strips, wiring }),
+      nativePhaseEncoding: native.journey.version === 2
+        ? { version: 2, phases: structuredClone(native.journey.phases) }
+        : { version: 1, phase16: native.journey.phase16 },
       nativeRecipeLayoutKey: colorJourneyLayoutKey({ strips, wiring }),
     },
   });
@@ -176,9 +181,10 @@ export function compileColorJourneyNativeRecipe({
     (_, sourceLed) => `${strip.id}:${sourceLed}`,
   ));
   const actualSources = compiled.pixels.map(pixel => `${pixel.stripId}:${pixel.sourceLed}`);
+  const sourceSet = new Set(actualSources);
   if (actualSources.length !== expectedSources.length
     || new Set(actualSources).size !== actualSources.length
-    || expectedSources.some(source => !actualSources.includes(source))) {
+    || expectedSources.some(source => !sourceSet.has(source))) {
     throw new RangeError('Native Color Journeys require every artwork pixel exactly once; partial or duplicated wiring is unsupported.');
   }
   const compiledPhysicalPixels = physicalPixels(compiled);
@@ -194,19 +200,36 @@ export function compileColorJourneyNativeRecipe({
     return point;
   });
   const bounds = geometryBounds(renderPixels);
-  const phase16 = pixels.map(pixel => {
+  const retainedSource = recipe.sourceLook?.nativeSourcePhase16;
+  const retainedBySource = new Map();
+  if (retainedSource !== undefined) {
+    if (typeof retainedSource !== 'string' || retainedSource.length !== expectedSources.length * 4 || !/^[0-9a-f]+$/.test(retainedSource)) {
+      throw new RangeError('Read-back Color Journey source phase data is invalid.');
+    }
+    expectedSources.forEach((source, index) => retainedBySource.set(source, retainedSource.slice(index * 4, index * 4 + 4)));
+  }
+  const phase16 = pixels.map((pixel, index) => {
+    if (retainedSource !== undefined) {
+      const source = compiledPhysicalPixels[index];
+      return retainedBySource.get(`${source.stripId}:${source.sourceLed}`);
+    }
     const x = (Number(pixel.x || 0) - bounds.minX) / bounds.range;
     const y = (Number(pixel.y || 0) - bounds.minY) / bounds.range;
     const quantized = Math.round(moduloOne(x + y * 0.35) * 0x10000) & 0xffff;
     return quantized.toString(16).padStart(4, '0');
   }).join('');
+  const phaseValues = phase16.match(/.{4}/g).map(value => Number.parseInt(value, 16));
+  const retainedEncoding = recipe.sourceLook?.nativePhaseEncoding;
+  const retainedValues = retainedEncoding ? expandColorJourneyPhases(retainedEncoding) : null;
+  const encoding = retainedValues?.length === phaseValues.length && retainedValues.every((value, index) => value === phaseValues[index])
+    ? structuredClone(retainedEncoding) : encodeColorJourneyPhases(phaseValues);
   const journey = normalizeColorJourney(recipe.journey);
   return {
     version: COLOR_JOURNEY_NATIVE_VERSION,
     kind: 'color-journey',
     id: String(id || recipe.base.id || recipe.id),
     journey: {
-      version: 1,
+      ...encoding,
       stops: journey.stops.map(stop => ({
         color: stop.color,
         holdMs: stop.holdMs,
@@ -217,7 +240,6 @@ export function compileColorJourneyNativeRecipe({
       restart: 'restart',
       motionSpeedMs: Math.round(journey.motionSpeedSeconds * 1000),
       depth: DEPTH_BY_CHARACTER[journey.character],
-      phase16,
     },
   };
 }
@@ -227,9 +249,8 @@ export function sampleNativeColorJourneyPixel(nativeRecipe, pixelIndex, elapsedM
     throw new TypeError('A native Color Journey v1 recipe is required.');
   }
   const journey = nativeRecipe.journey || {};
-  const offset = Math.trunc(Number(pixelIndex)) * 4;
-  const phaseHex = String(journey.phase16 || '').slice(offset, offset + 4);
-  if (!/^[0-9a-f]{4}$/.test(phaseHex)) throw new RangeError('Native Color Journey pixel index is outside phase16.');
+  const phaseValue = expandColorJourneyPhases(journey)[pixelIndex];
+  if (!Number.isInteger(phaseValue)) throw new RangeError('Native Color Journey pixel index is outside phase data.');
   const time = Math.max(0, Math.trunc(Number.isFinite(Number(elapsedMs)) ? Number(elapsedMs) : 0));
   const { rgb } = sampleColorJourney({
     version: 1,
@@ -237,7 +258,7 @@ export function sampleNativeColorJourneyPixel(nativeRecipe, pixelIndex, elapsedM
     easing: journey.easing,
     loop: journey.loop,
   }, time);
-  const phase = Number.parseInt(phaseHex, 16) / 0x10000;
+  const phase = phaseValue / 0x10000;
   const period = Math.max(4_000, Number(journey.motionSpeedMs) || 18_000);
   const depth = Number(journey.depth) || 0.12;
   const motionCycle = (time % period) / period;
@@ -257,10 +278,16 @@ export function runtimeConfigUsesColorJourney(configOrPackage = {}) {
   ));
 }
 
-export function hasColorJourneyRecipeCapability(evidence) {
+export function hasColorJourneyRecipeCapability(evidence, version = 1) {
+  if (version === 2) {
+    const capability = evidence?.recipeCapabilities?.colorJourneyV2;
+    return capability?.version === 2 && capability?.maxPixels === 65535
+      && capability?.maxPhaseSpans === 64 && capability?.phaseEncoding === 'q0.16-affine' && capability?.restart === 'restart';
+  }
+  if (version !== 1) return false;
   const capability = evidence?.recipeCapabilities?.colorJourney;
   return capability?.version === 1
-    && capability?.maxPixels === COLOR_JOURNEY_NATIVE_MAX_PIXELS
+    && capability?.maxPixels === 256
     && capability?.phaseEncoding === 'q0.16-hex'
     && capability?.restart === 'restart';
 }

@@ -518,8 +518,8 @@ function evaluatePatternLabCompatibility(recipe, descriptor, metrics, options) {
   const reasons = [];
   const changes = [];
   const isColorJourney = recipe.base?.kind === 'color-journey';
-  if (isColorJourney && budgets.pixelCount.known && budgets.pixelCount.used > 256) {
-    reasons.push(reason('color-journey-pixel-limit', 'Standalone Color Journeys support at most 256 physical pixels.', { bakeable: false }));
+  if (isColorJourney && budgets.pixelCount.known && budgets.pixelCount.used > 65535) {
+    reasons.push(reason('color-journey-pixel-limit', 'Standalone Color Journeys support at most 65535 physical pixels.', { bakeable: false }));
   }
   if (isColorJourney && (
     !Array.isArray(recipe.targets)

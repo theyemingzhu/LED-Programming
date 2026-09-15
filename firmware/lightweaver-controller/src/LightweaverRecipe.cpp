@@ -123,20 +123,27 @@ bool parseColorJourney(JsonObjectConst object, uint16_t expectedPixels,
                 "must be an object");
   }
   if (!journey["version"].is<uint8_t>() ||
-      journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_VERSION) {
+      (journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_VERSION &&
+       journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_V2_VERSION)) {
     return fail(error, RecipeParseErrorCode::UnsupportedVersion,
-                "recipe.journey.version", "only color journey v1 is supported");
+                "recipe.journey.version", "only color journey v1 and v2 are supported");
   }
   for (JsonPairConst field : journey) {
     if (!fieldIsOneOf(field.key().c_str(), {
             "version", "stops", "easing", "loop", "restart",
-            "motionSpeedMs", "depth", "phase16"})) {
+            "motionSpeedMs", "depth", "phase16", "phases"})) {
       return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey",
                   "contains an unknown field");
     }
   }
   parsed.kind = NativeRecipeKind::ColorJourney;
   ColorJourneyRecipe& destination = parsed.colorJourney;
+  destination.version = journey["version"].as<uint8_t>();
+  if ((destination.version == LW_COLOR_JOURNEY_VERSION && hasField(journey, "phases")) ||
+      (destination.version == LW_COLOR_JOURNEY_V2_VERSION && hasField(journey, "phase16"))) {
+    return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey",
+                "phase encoding must match the journey version");
+  }
 
   JsonArrayConst stops = journey["stops"].as<JsonArrayConst>();
   if (stops.isNull() || stops.size() < LW_COLOR_JOURNEY_MIN_STOPS ||
@@ -201,28 +208,60 @@ bool parseColorJourney(JsonObjectConst object, uint16_t expectedPixels,
   }
   destination.depth = depth;
 
-  if (expectedPixels == 0 || expectedPixels > LW_COLOR_JOURNEY_MAX_PIXELS ||
-      !journey["phase16"].is<const char*>()) {
-    return fail(error, RecipeParseErrorCode::InvalidValue,
-                "recipe.journey.phase16", "must match 1 to 256 configured pixels");
-  }
-  const char* phases = journey["phase16"].as<const char*>();
-  if (std::strlen(phases) != static_cast<size_t>(expectedPixels) * 4U) {
-    return fail(error, RecipeParseErrorCode::InvalidValue,
-                "recipe.journey.phase16", "must contain four hex digits per configured pixel");
-  }
-  for (uint16_t pixel = 0; pixel < expectedPixels; pixel++) {
-    uint16_t phase = 0;
-    for (uint8_t nibble = 0; nibble < 4; nibble++) {
-      const char character = phases[pixel * 4U + nibble];
-      if (!((character >= '0' && character <= '9') ||
-            (character >= 'a' && character <= 'f'))) {
-        return fail(error, RecipeParseErrorCode::InvalidValue,
-                    "recipe.journey.phase16", "must be lowercase hexadecimal");
-      }
-      phase = static_cast<uint16_t>((phase << 4) | hexNibble(character));
+  if (destination.version == LW_COLOR_JOURNEY_V2_VERSION) {
+    JsonArrayConst spans = journey["phases"].as<JsonArrayConst>();
+    if (!expectedPixels || spans.isNull() || spans.size() == 0 ||
+        spans.size() > LW_COLOR_JOURNEY_MAX_PHASE_SPANS) {
+      return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey.phases",
+                  "must contain 1 to 64 phase spans matching configured pixels");
     }
-    parsed.colorJourneyPhases[pixel] = phase;
+    uint32_t count = 0;
+    for (JsonVariantConst value : spans) {
+      JsonArrayConst span = value.as<JsonArrayConst>();
+      if (span.isNull() || span.size() != 3 || !span[0].is<uint16_t>() ||
+          !span[1].is<uint16_t>() || !span[2].is<int32_t>() || span[0].as<uint16_t>() == 0) {
+        return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey.phases[]",
+                    "must be [positive uint16 count, uint16 start, int32 delta]");
+      }
+      const uint16_t length = span[0].as<uint16_t>();
+      const int32_t delta = span[2].as<int32_t>();
+      const int64_t bound = static_cast<int64_t>(length - 1U) * 32768;
+      count += length;
+      if (delta < -bound || delta > bound || count > expectedPixels) {
+        return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey.phases[]",
+                    "phase delta or count exceeds the supported range");
+      }
+      parsed.colorJourneyPhaseSpans[destination.phaseSpanCount++] =
+          ColorJourneyPhaseSpan{length, span[1].as<uint16_t>(), delta};
+    }
+    if (count != expectedPixels) {
+      return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey.phases",
+                  "span counts must match configured pixels");
+    }
+  } else {
+    if (expectedPixels == 0 || expectedPixels > LW_COLOR_JOURNEY_MAX_PIXELS ||
+        !journey["phase16"].is<const char*>()) {
+      return fail(error, RecipeParseErrorCode::InvalidValue,
+                  "recipe.journey.phase16", "must match 1 to 256 configured pixels");
+    }
+    const char* phases = journey["phase16"].as<const char*>();
+    if (std::strlen(phases) != static_cast<size_t>(expectedPixels) * 4U) {
+      return fail(error, RecipeParseErrorCode::InvalidValue,
+                  "recipe.journey.phase16", "must contain four hex digits per configured pixel");
+    }
+    for (uint16_t pixel = 0; pixel < expectedPixels; pixel++) {
+      uint16_t phase = 0;
+      for (uint8_t nibble = 0; nibble < 4; nibble++) {
+        const char character = phases[pixel * 4U + nibble];
+        if (!((character >= '0' && character <= '9') ||
+              (character >= 'a' && character <= 'f'))) {
+          return fail(error, RecipeParseErrorCode::InvalidValue,
+                      "recipe.journey.phase16", "must be lowercase hexadecimal");
+        }
+        phase = static_cast<uint16_t>((phase << 4) | hexNibble(character));
+      }
+      parsed.colorJourneyPhases[pixel] = phase;
+    }
   }
   destination.phaseCount = expectedPixels;
   parsed.estimatedOperationsPerFrame = 32U * expectedPixels;
@@ -696,6 +735,12 @@ void writeNativeRecipeCapabilities(JsonObject destination,
   colorJourney["maxPixels"] = LW_COLOR_JOURNEY_MAX_PIXELS;
   colorJourney["phaseEncoding"] = "q0.16-hex";
   colorJourney["restart"] = "restart";
+  JsonObject v2 = destination["colorJourneyV2"].to<JsonObject>();
+  v2["version"] = LW_COLOR_JOURNEY_V2_VERSION;
+  v2["maxPixels"] = LW_CARD_HARDWARE_MAX_PIXELS;
+  v2["maxPhaseSpans"] = LW_COLOR_JOURNEY_MAX_PHASE_SPANS;
+  v2["phaseEncoding"] = "q0.16-affine";
+  v2["restart"] = "restart";
 }
 
 }  // namespace lightweaver

@@ -1,3 +1,4 @@
+import { normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 import { CARD_PATTERN_BANK } from './cardPatternBank.js';
 import { CARD_HARDWARE_CONTRACT, normalizeCardLedType } from './cardHardwareContract.js';
 import { chainPixelOffsets, chainRowIds } from './patchBoard.js';
@@ -646,47 +647,15 @@ function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PA
 }
 
 function normalizeNativeColorJourney(value, totalPixels) {
-  const journey = value?.journey;
-  const stops = journey?.stops;
-  const phase16 = journey?.phase16;
-  const validStops = Array.isArray(stops) && stops.length >= 2 && stops.length <= 8
-    && stops.every(stop => /^#[0-9a-f]{6}$/.test(stop?.color)
-      && Number.isInteger(stop?.holdMs) && stop.holdMs >= 0 && stop.holdMs <= 600_000
-      && Number.isInteger(stop?.fadeMs) && stop.fadeMs >= 1_000 && stop.fadeMs <= 600_000);
-  const nativeId = String(value?.id || '');
-  if (!Number.isInteger(totalPixels) || totalPixels < 1 || totalPixels > 256
-    || value?.version !== 1
-    || value?.kind !== 'color-journey'
-    || !nativeId || nativeId.length > 64 || sanitizeId(nativeId) !== nativeId
-    || journey?.version !== 1
-    || !validStops
-    || !['linear', 'smooth'].includes(journey.easing)
-    || typeof journey.loop !== 'boolean'
-    || journey.restart !== 'restart'
-    || !Number.isInteger(journey.motionSpeedMs)
-    || journey.motionSpeedMs < 4_000
-    || journey.motionSpeedMs > 90_000
-    || ![0.12, 0.25, 0.42].includes(journey.depth)
-    || typeof phase16 !== 'string'
-    || phase16.length !== totalPixels * 4
-    || !/^[0-9a-f]+$/.test(phase16)) {
-    throw new RangeError('Native Color Journey recipe is invalid for this physical pixel layout.');
-  }
-  return {
-    version: 1,
-    kind: 'color-journey',
-    id: sanitizeId(value.id),
-    journey: {
-      version: 1,
-      stops: stops.map(stop => ({ color: stop.color, holdMs: stop.holdMs, fadeMs: stop.fadeMs })),
-      easing: journey.easing,
-      loop: journey.loop,
-      restart: 'restart',
-      motionSpeedMs: journey.motionSpeedMs,
-      depth: journey.depth,
-      phase16,
-    },
-  };
+  const native = normalizeStoredNativeColorJourney(value, totalPixels);
+  const journey = native.journey;
+  return { version: 1, kind: 'color-journey', id: native.id, journey: {
+    version: journey.version,
+    stops: journey.stops.map(stop => ({ color: stop.color, holdMs: stop.holdMs, fadeMs: stop.fadeMs })),
+    easing: journey.easing, loop: journey.loop, restart: 'restart',
+    motionSpeedMs: journey.motionSpeedMs, depth: journey.depth,
+    ...(journey.version === 1 ? { phase16: journey.phase16 } : { phases: journey.phases }),
+  } };
 }
 
 function normalizeLookZones(zones = []) {
