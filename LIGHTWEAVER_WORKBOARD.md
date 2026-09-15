@@ -10,6 +10,9 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+Required installation count confirmed by Adrian:4,096 physical pixels.
+Acceptance includes full save/install/readback, exact physical phase, and
+honest geometry limits; real hardware throughput remains an observed gate.
 Manager Playbook v6 / Build a scoped feature recipe v5; Adrian authorizes
 continuing allotted tasks through completion and shipment. One director here.
 Pixel expansion: task01a0a737-fa0f-76f1-ba52-29673578f64a exists in83d2;
