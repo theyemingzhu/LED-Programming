@@ -22,7 +22,12 @@ paths, units/shared native fixtures/compile; return specific architecture gaps.
 Release gate repair: existing UI task01a09d6c-3b60-7f41-87b7-ee32822acc2c,
 gpt-5.6-sol / medium; diagnose three exact browser failures from35031272027,
 preserve actual readback/latest-preview/no-config-write behavior. Distinct tree
-and test-only ownership independent of pixel firmware/compiler. No extra frontier
+and test-only ownership independent of pixel firmware/compiler.
+Release-gate repair complete:0d8f868e integrated as4f748858. Main run had380
+passes/3 failures; all three were stale owner/fixture/selector assumptions.
+Worker red→3green +9 repeated +4 adjacent passed. Primary integrated3/3 pass
+(8.8s), preserving same-card readback/latest-preview/no-config-write checks.
+No product-source changes; UI repair task safe to archive. No extra frontier
 workers. Primary owns integration, release, workboard. Cost unknown.
 
 ### 2026-09-16 Release cleanup (blocked: pixel capacity)
