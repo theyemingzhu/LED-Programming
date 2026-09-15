@@ -9,6 +9,21 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-16 Larger standalone Color Journeys (done locally)
+Branch `codex/scale-color-journeys`, based on release-cleanup `81f68ea1` / PR296.
+Required installation target confirmed as4,096 physical pixels. Implemented
+lossless bounded affine Q0.16 spans beside legacy v1; exact-card v2 capability,
+old-card rejection, physical reversal and readback/edit retention are covered.
+4,096 real straight SVG samples save/install/read back exactly within the3,968-
+byte full-config budget; representative4,096 cubic SVG is explicitly rejected
+because it exceeds64 exact spans. No geometry simplification occurs. Existing
+65,535 wire ceiling and7,812 Studio operations gate are representation/budget
+bounds, not physical FPS proof. Checkpoint2528 units+build; browser10/10; native
+15/15 plus shared3+5 fixtures; ESP32 compile RAM68.3%, flash33.7%, recipe760B.
+Desktop+390px screens inspected. Real-card4,096 FPS/playback/restart/hues remain
+unperformed. No flash, signing, merge, deployment or production commands.
+
+
 ### 2026-09-16 Release cleanup (active)
 User authorized reviewing LED tasks and pushing/merging completed work, closing
 completed tasks, and reporting remaining blockers. Source base origin/main
