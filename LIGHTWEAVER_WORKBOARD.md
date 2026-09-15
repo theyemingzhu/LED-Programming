@@ -10,6 +10,15 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+Director decision: approve explicitly versioned bounded-affine runtime derivative
+under original<=1 RGB renderer parity; authored geometry stays unchanged.
+194Q0.16 circular phase ticks bound max-depth0.42/channel255 error to0.99599.
+Measured4096 cubic18spans/1512B, mixed23spans/1585B. Preserve exactv1/v2;
+new format requires explicit capability. No persistence migration. Same allotted
+Sol/medium implements/validates; retain legacy configs and readback without
+repeated approximation. New question only returns to director if numerical
+proof, geometry, storage or rollback boundary fails. Real FPS remains unproven.
+
 4096 implementation7fc8974a integrated for combined validation; source proof:
 2528unit+build,10browser,15native,shared fixtures,ESP32 RAM68.3%/flash33.7%.
 Important limitation: real4096 cubic SVG rejects (>64 exact affine spans).
