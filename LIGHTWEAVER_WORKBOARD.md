@@ -9,6 +9,19 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-16 Managed completion (active)
+Manager Playbook v6 / Build a scoped feature recipe v5; Adrian authorizes
+continuing allotted tasks through completion and shipment. One director here.
+Pixel expansion: task01a0a737-fa0f-76f1-ba52-29673578f64a exists in83d2;
+interrupted, not absent. Resume preserved work with gpt-5.6-sol / medium:
+finish existing bounded lossless-span contract, verify1024/4096 real-browser
+paths, units/shared native fixtures/compile; return specific architecture gaps.
+Release gate repair: existing UI task01a09d6c-3b60-7f41-87b7-ee32822acc2c,
+gpt-5.6-sol / medium; diagnose three exact browser failures from35031272027,
+preserve actual readback/latest-preview/no-config-write behavior. Distinct tree
+and test-only ownership independent of pixel firmware/compiler. No extra frontier
+workers. Primary owns integration, release, workboard. Cost unknown.
+
 ### 2026-09-16 Release cleanup (blocked: pixel capacity)
 User authorized reviewing LED tasks and pushing/merging completed work, closing
 completed tasks, and reporting remaining blockers. Source base origin/main
