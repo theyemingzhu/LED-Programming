@@ -547,6 +547,43 @@ void test_v3_error_bound_matches_firmware_rounding_for_every_motion_phase() {
   TEST_ASSERT_EQUAL_UINT8(2, maxAt195);
 }
 
+void test_v3_readback_serialization_preserves_the_bounded_derivative() {
+  JsonDocument source;
+  TEST_ASSERT_FALSE(deserializeJson(source, kValidColorJourney));
+  source["journey"]["version"] = 3;
+  source["journey"]["maxPhaseErrorTicks"] = 194;
+  source["journey"].remove("phase16");
+  JsonArray spans = source["journey"]["phases"].to<JsonArray>();
+  JsonArray first = spans.add<JsonArray>();
+  first.add(3); first.add(65535); first.add(-1);
+  JsonArray second = spans.add<JsonArray>();
+  second.add(2); second.add(7); second.add(32768);
+  NativeRecipe parsed;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(lightweaver::parseNativeRecipeV1(
+      source.as<JsonVariantConst>(), measureJson(source), parsed, error, 5));
+
+  JsonDocument readback;
+  TEST_ASSERT_TRUE(lightweaver::writeNativeRecipeJson(readback.to<JsonObject>(), parsed));
+  TEST_ASSERT_EQUAL_UINT8(3, readback["journey"]["version"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_UINT16(194, readback["journey"]["maxPhaseErrorTicks"].as<uint16_t>());
+  TEST_ASSERT_EQUAL_INT32(-1, readback["journey"]["phases"][0][2].as<int32_t>());
+  TEST_ASSERT_EQUAL_INT32(32768, readback["journey"]["phases"][1][2].as<int32_t>());
+  NativeRecipe restored;
+  TEST_ASSERT_TRUE(lightweaver::parseNativeRecipeV1(
+      readback.as<JsonVariantConst>(), measureJson(readback), restored, error, 5));
+  TEST_ASSERT_EQUAL_UINT8(parsed.colorJourney.phaseSpanCount,
+                          restored.colorJourney.phaseSpanCount);
+  for (uint8_t index = 0; index < parsed.colorJourney.phaseSpanCount; ++index) {
+    TEST_ASSERT_EQUAL_UINT16(parsed.colorJourneyPhaseSpans[index].count,
+                            restored.colorJourneyPhaseSpans[index].count);
+    TEST_ASSERT_EQUAL_UINT16(parsed.colorJourneyPhaseSpans[index].start,
+                            restored.colorJourneyPhaseSpans[index].start);
+    TEST_ASSERT_EQUAL_INT32(parsed.colorJourneyPhaseSpans[index].delta,
+                           restored.colorJourneyPhaseSpans[index].delta);
+  }
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -554,6 +591,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_v2_affine_journey_capacity_and_rejection);
   RUN_TEST(test_v3_bounded_affine_requires_exact_error_contract);
   RUN_TEST(test_v3_error_bound_matches_firmware_rounding_for_every_motion_phase);
+  RUN_TEST(test_v3_readback_serialization_preserves_the_bounded_derivative);
   RUN_TEST(test_v2_rejects_malformed_spans_and_preserves_destination);
   RUN_TEST(test_parses_complete_bounded_v1_recipe);
   RUN_TEST(test_rejects_unknown_version_and_nodes);
