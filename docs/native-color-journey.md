@@ -1,7 +1,8 @@
-# Standalone Color Journeys v1
+# Standalone Color Journeys
 
-Status: implemented in the direction-two checkout; local software verification
-and final integration review are complete. No release or real-card proof is
+Status: v1 is integrated in release-cleanup; v2 lossless phase compression is
+implemented and software-verified on `codex/scale-color-journeys`. The required
+installation count is 4,096 physical pixels. No release or real-card proof is
 implied by host tests.
 
 ## Playback contract
@@ -59,7 +60,7 @@ A saved look carries this `nativeRecipe` (example phases are illustrative):
 ```
 
 `motionSpeedMs` is 4,000–90,000. Depth corresponds to restrained (0.12), balanced
-(0.25), or expressive (0.42). The maximum phase count is 256 pixels and must match
+(0.25), or expressive (0.42). For v1, the maximum phase count is 256 pixels and must match
 the installed configuration's total physical pixel count. The entire serialized
 card configuration, including all other looks and wiring, must fit 3,968 bytes;
 256 pixels is an upper bound, never a promise that every project fits.
@@ -84,6 +85,74 @@ card installation. Missing capabilities and older
 cards do not imply support. Older v1 recipe parsers reject the payload because
 it has no legacy palette/layer graph. New parsers reject unknown kinds, versions,
 invalid colors/timings/phase encodings, mismatched pixel counts and excess bytes.
+
+## Larger journeys: lossless v2 phase spans
+
+The outer `nativeRecipe.version` stays 1. Its `journey.version` is 2 and
+`phases` replaces `phase16`. Each span is `[count, start, delta]`: count is a
+positive integer, start is an unsigned Q0.16 phase, and delta is the signed,
+unwrapped Q0.16 difference between the first and last phase. For local index i:
+
+```
+phase = round(start + delta * i / (count - 1)) modulo 65536
+```
+
+Rounding at a half goes toward positive infinity. A singleton has delta zero.
+Count and start fit uint16; delta is within ±(count−1)×32768. Firmware uses a
+64-bit intermediate, including for negative deltas. Counts sum exactly to the
+installed physical count. Mixed v1/v2 fields, malformed spans, unknown versions,
+overflow, and count mismatches are rejected before replacing configuration.
+
+Studio derives the same per-pixel Q0.16 values as v1, unwraps neighboring phases,
+and finds the longest exact span from each boundary until each encoded span
+reproduces **every original value exactly**. It rejects layouts needing more than
+64 spans; it never
+changes the artwork, reduces pixel count, or approximates phases to make them fit.
+The compiler uses legacy v1 for journeys of 256 pixels or fewer. Card readback
+retains the native phase and existing layout fingerprint through timing/color
+edits and resave, including reversed physical segments.
+
+The representation accepts the existing hardware count range up to 65,535,
+subject to the 64-span limit and the unchanged 3,968-byte **whole configuration**
+limit. Studio also retains its conservative 250,000 estimated operations/frame
+gate: the journey estimate is 32 operations/pixel, matching firmware, so the
+default live handoff budget ends at 7,812 pixels. This estimate is not measured
+card throughput; counts beyond it remain outside the current Studio live gate.
+This is not a guarantee that arbitrary artwork or every saved-look bank fits.
+The accepted 4,096-pixel browser fixture is a real SVG-sampled straight path in
+reversed physical order. A representative 4,096-pixel cubic SVG exceeds the
+64-span exact encoding and is rejected. Complex curves and irregular pixels may
+therefore exhaust spans even at lower counts. Supporting those projects requires
+a separately approved storage change. Physical output throughput, allocation and
+frame rate remain dependent on the card and wiring; host tests cannot establish
+practical maximum FPS.
+
+New firmware additionally advertises:
+
+```json
+{
+  "colorJourneyV2": {
+    "version": 2,
+    "maxPixels": 65535,
+    "maxPhaseSpans": 64,
+    "phaseEncoding": "q0.16-affine",
+    "restart": "restart"
+  }
+}
+```
+
+This lives under `recipeCapabilities`, alongside the unchanged v1 capability.
+A v2 installation requires this explicit capability from the exact card; a v1
+capability alone cannot authorize it. Old firmware rejects journey version 2.
+Existing NVS configuration, known-good/candidate transaction, HTTP byte limit,
+playback timing, brightness and restart semantics are unchanged. The 64 spans
+share the existing 512-byte phase union, avoiding per-pixel RAM multiplication
+across saved looks. v2 phases remain in physical order; rendering translates
+logical indices through the existing output segments before sampling.
+
+Shared integer reference vectors:
+[color-journey-v2-phases.json](fixtures/color-journey-v2-phases.json), including
+negative half-rounding, wrap, reversed phases, mixed spans and extreme products.
 
 ## Preservation and integration
 
@@ -136,6 +205,25 @@ Software evidence (2026-09-15):
 - A browser regression reproduced the saved-journey “Save as new” bypass;
   journey editing now returns to Lab without creating an Aurora replacement.
 
+Larger-journey evidence (2026-09-16):
+
+- Integrated checkpoint: 2,528 unit tests passed and the production Vite build
+  passed, with the existing large-chunk warning only.
+- Focused browser suite: 10 passed. At 4,096 pixels it exercises real SVG
+  sampling, reversed physical wiring, save, exact v2 capability rejection on an
+  older card, one supported bridge config write, card readback, byte-budget
+  preflight and exact sampled-color parity. The 1,024 path repeats the same
+  install/readback contract. A 7,813-pixel fixture proves the operations gate.
+- The representative 4,096-pixel cubic SVG is intentionally rejected because
+  preserving every Q0.16 phase exactly needs more than 64 spans.
+- PlatformIO native recipe suite: 15 passed. Shared parity covers the original
+  three journey fixtures plus five v2 integer/rounding fixtures. The 1,024-pixel
+  native renderer golden covers multiple outputs and reversed segments.
+- ESP32-S3 compile passed: RAM 223,712 / 327,680 bytes (68.3%); flash 2,207,365 /
+  6,553,600 bytes (33.7%). `NativeRecipe` remains 760 bytes.
+- The actual desktop and 390×844 phone screens were inspected for the 4,096
+  fixture. Both show the standalone handoff without horizontal overflow.
+
 Repeatable verification commands from the repository root:
 
 ```sh
@@ -157,11 +245,12 @@ signing, merge or deployment are authorized for this task.
 
 ## Local handoff
 
-Branch: `codex/standalone-color-journeys`. Firmware contract/rendering commit:
-`d9fcc031`. The following Studio commit on this branch contains compiler, UI,
-capability gates, readback, CI and software evidence. Nothing was pushed.
+Branch: `codex/scale-color-journeys`, based on the integrated release-cleanup
+branch. The commits on this branch contain the firmware renderer/parser contract,
+Studio codec and capability gates, browser install/readback regression, shared
+fixtures and this evidence. Nothing was pushed by this task.
 
-Direction-one integration should resolve `PatternLabScreen.jsx` deliberately:
-retain its selected-target helper and section snapshots; preserve this branch’s
-whole-piece native guard, exact prospective-config preflight and install gate.
-Next physical proof requires an explicitly authorized Bench/release session.
+Next physical proof requires the release/Bench session: close Studio and observe
+continued playback, power-cycle and observe restart, then compare hues and motion
+on the installed 4,096-pixel piece. That session must also establish practical
+frame rate and power/output behavior for the actual wiring.

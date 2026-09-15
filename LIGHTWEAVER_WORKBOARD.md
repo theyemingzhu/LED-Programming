@@ -10,6 +10,15 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+4096 implementation7fc8974a integrated for combined validation; source proof:
+2528unit+build,10browser,15native,shared fixtures,ESP32 RAM68.3%/flash33.7%.
+Important limitation: real4096 cubic SVG rejects (>64 exact affine spans).
+Do not treat straight-only result as unconditional artwork acceptance. Same
+allotted task Sol/high now performs bounded read-only assessment: exact codec
+versus existing-repository phase artifact, and bounded rendered-channel error
+within original1RGB tolerance. Stop at measured recommendation; director decides
+contract, then medium implementation. No storage migration authorized by inference.
+
 Required installation count confirmed by Adrian:4,096 physical pixels.
 Acceptance includes full save/install/readback, exact physical phase, and
 honest geometry limits; real hardware throughput remains an observed gate.
