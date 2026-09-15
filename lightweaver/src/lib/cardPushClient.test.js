@@ -146,7 +146,12 @@ test('Color Journey installs require the exact versioned firmware capability and
   }
   const body = {
     app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '1.2.3', buildId: 'build-123',
-    recipeCapabilities: { colorJourney: expected },
+    recipeCapabilities: {
+      colorJourney: expected,
+      colorJourneyV2: { version: 2, maxPixels: 65535, maxPhaseSpans: 64, phaseEncoding: 'q0.16-affine', restart: 'restart' },
+      colorJourneyV3: { version: 3, maxPixels: 65535, maxPhaseSpans: 64, maxPhaseErrorTicks: 194,
+        phaseEncoding: 'q0.16-affine-rgb1', restart: 'restart' },
+    },
   };
   const normalized = await readCardProjectEvidence({
     host: '192.168.4.1', transport: 'direct', fetchImpl: async () => response(body),
@@ -700,4 +705,20 @@ test('affine journeys require exact v2 capability and never inherit legacy suppo
     assert.throws(() => assertCardColorJourneySupport(runtime, { recipeCapabilities: { colorJourney: v1, colorJourneyV2: { ...v2, ...override } } }), /firmware/);
   }
   assert.throws(() => assertCardColorJourneySupport(colorJourneyRuntimePackage, { recipeCapabilities: { colorJourneyV2: v2 } }), /firmware/);
+});
+
+test('bounded affine journeys require the exact v3 error capability before writes', () => {
+  const runtime = structuredClone(colorJourneyRuntimePackage);
+  runtime.config.looks[0].nativeRecipe.journey.version = 3;
+  runtime.config.looks[0].nativeRecipe.journey.maxPhaseErrorTicks = 194;
+  delete runtime.config.looks[0].nativeRecipe.journey.phase16;
+  runtime.config.looks[0].nativeRecipe.journey.phases = [[1024, 0, 65536]];
+  const v3 = { version: 3, maxPixels: 65535, maxPhaseSpans: 64,
+    maxPhaseErrorTicks: 194, phaseEncoding: 'q0.16-affine-rgb1', restart: 'restart' };
+  assert.equal(assertCardColorJourneySupport(runtime, { recipeCapabilities: { colorJourneyV3: v3 } }), true);
+  for (const evidence of [
+    { recipeCapabilities: { colorJourneyV2: { version: 2, maxPixels: 65535, maxPhaseSpans: 64, phaseEncoding: 'q0.16-affine', restart: 'restart' } } },
+    { recipeCapabilities: { colorJourneyV3: { ...v3, maxPhaseErrorTicks: 195 } } },
+    { recipeCapabilities: { colorJourneyV3: { ...v3, phaseEncoding: 'q0.16-affine' } } },
+  ]) assert.throws(() => assertCardColorJourneySupport(runtime, evidence), /firmware/);
 });

@@ -654,7 +654,12 @@ function normalizeNativeColorJourney(value, totalPixels) {
     stops: journey.stops.map(stop => ({ color: stop.color, holdMs: stop.holdMs, fadeMs: stop.fadeMs })),
     easing: journey.easing, loop: journey.loop, restart: 'restart',
     motionSpeedMs: journey.motionSpeedMs, depth: journey.depth,
-    ...(journey.version === 1 ? { phase16: journey.phase16 } : { phases: journey.phases }),
+    ...(journey.version === 1
+      ? { phase16: journey.phase16 }
+      : {
+          ...(journey.version === 3 ? { maxPhaseErrorTicks: journey.maxPhaseErrorTicks } : {}),
+          phases: journey.phases,
+        }),
   } };
 }
 

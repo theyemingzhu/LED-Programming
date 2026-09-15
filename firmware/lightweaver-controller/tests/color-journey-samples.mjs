@@ -71,6 +71,12 @@ for (const [caseIndex, testCase] of phaseFixture.cases.entries()) {
   testCase.samples.forEach(({ pixel, phase16 }) => {
     lines.push(`  assert(sampleColorJourneyPhase(${name}, ${pixel}) == ${phase16});`);
   });
+  const boundedName = `bounded${caseIndex}`;
+  lines.push(`  NativeRecipe ${boundedName} = ${name};`);
+  lines.push(`  ${boundedName}.colorJourney.version = 3;`);
+  testCase.samples.forEach(({ pixel, phase16 }) => {
+    lines.push(`  assert(sampleColorJourneyPhase(${boundedName}, ${pixel}) == ${phase16});`);
+  });
 }
 lines.push('  return 0;', '}');
 

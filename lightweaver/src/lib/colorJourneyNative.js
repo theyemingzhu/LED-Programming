@@ -1,4 +1,10 @@
-import { COLOR_JOURNEY_MAX_PIXELS, expandColorJourneyPhases, encodeColorJourneyPhases } from './colorJourneyPhases.js';
+import {
+  COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS,
+  COLOR_JOURNEY_MAX_PIXELS,
+  encodeBoundedColorJourneyPhases,
+  expandColorJourneyPhases,
+  encodeColorJourneyPhases,
+} from './colorJourneyPhases.js';
 import { normalizeColorJourney, sampleColorJourney } from './colorJourney.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { compileWiring } from './wiringCompiler.js';
@@ -57,7 +63,7 @@ export function normalizeStoredNativeColorJourney(value, expectedPixels = null) 
   if (!Number.isInteger(pixels) || pixels < 1 || pixels > COLOR_JOURNEY_NATIVE_MAX_PIXELS
     || value?.version !== 1 || value?.kind !== 'color-journey'
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) || id.length > 64
-    || ![1, 2].includes(journey?.version)
+    || ![1, 2, 3].includes(journey?.version)
     || !Array.isArray(stops) || stops.length < 2 || stops.length > 8
     || !stops.every(stop => /^#[0-9a-f]{6}$/.test(stop?.color)
       && Number.isInteger(stop?.holdMs) && stop.holdMs >= 0 && stop.holdMs <= 600_000
@@ -106,8 +112,12 @@ export function patternLabRecipeFromNativeColorJourney(nativeRecipe, { id = '', 
     evolution: { enabled: false },
     sourceLook: {
       nativeSourcePhase16: nativeColorJourneySourcePhase16(native, { strips, wiring }),
-      nativePhaseEncoding: native.journey.version === 2
-        ? { version: 2, phases: structuredClone(native.journey.phases) }
+      nativePhaseEncoding: [2, 3].includes(native.journey.version)
+        ? {
+            version: native.journey.version,
+            ...(native.journey.version === 3 ? { maxPhaseErrorTicks: native.journey.maxPhaseErrorTicks } : {}),
+            phases: structuredClone(native.journey.phases),
+          }
         : { version: 1, phase16: native.journey.phase16 },
       nativeRecipeLayoutKey: colorJourneyLayoutKey({ strips, wiring }),
     },
@@ -221,8 +231,17 @@ export function compileColorJourneyNativeRecipe({
   const phaseValues = phase16.match(/.{4}/g).map(value => Number.parseInt(value, 16));
   const retainedEncoding = recipe.sourceLook?.nativePhaseEncoding;
   const retainedValues = retainedEncoding ? expandColorJourneyPhases(retainedEncoding) : null;
-  const encoding = retainedValues?.length === phaseValues.length && retainedValues.every((value, index) => value === phaseValues[index])
-    ? structuredClone(retainedEncoding) : encodeColorJourneyPhases(phaseValues);
+  let encoding;
+  if (retainedValues?.length === phaseValues.length && retainedValues.every((value, index) => value === phaseValues[index])) {
+    encoding = structuredClone(retainedEncoding);
+  } else {
+    try {
+      encoding = encodeColorJourneyPhases(phaseValues);
+    } catch (error) {
+      if (!/geometry is too complex/.test(String(error?.message || error))) throw error;
+      encoding = encodeBoundedColorJourneyPhases(phaseValues);
+    }
+  }
   const journey = normalizeColorJourney(recipe.journey);
   return {
     version: COLOR_JOURNEY_NATIVE_VERSION,
@@ -279,6 +298,13 @@ export function runtimeConfigUsesColorJourney(configOrPackage = {}) {
 }
 
 export function hasColorJourneyRecipeCapability(evidence, version = 1) {
+  if (version === 3) {
+    const capability = evidence?.recipeCapabilities?.colorJourneyV3;
+    return capability?.version === 3 && capability?.maxPixels === 65535
+      && capability?.maxPhaseSpans === 64
+      && capability?.maxPhaseErrorTicks === COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS
+      && capability?.phaseEncoding === 'q0.16-affine-rgb1' && capability?.restart === 'restart';
+  }
   if (version === 2) {
     const capability = evidence?.recipeCapabilities?.colorJourneyV2;
     return capability?.version === 2 && capability?.maxPixels === 65535

@@ -25,7 +25,9 @@ constexpr uint8_t LW_COLOR_JOURNEY_MIN_STOPS = 2;
 constexpr uint8_t LW_COLOR_JOURNEY_MAX_STOPS = 8;
 constexpr uint16_t LW_COLOR_JOURNEY_MAX_PIXELS = 256;
 constexpr uint8_t LW_COLOR_JOURNEY_V2_VERSION = 2;
+constexpr uint8_t LW_COLOR_JOURNEY_V3_VERSION = 3;
 constexpr uint8_t LW_COLOR_JOURNEY_MAX_PHASE_SPANS = 64;
+constexpr uint16_t LW_COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS = 194;
 struct ColorJourneyPhaseSpan {
   uint16_t count;
   uint16_t start;
