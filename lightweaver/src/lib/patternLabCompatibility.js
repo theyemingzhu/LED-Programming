@@ -229,7 +229,7 @@ function layerGeneratorIssue(layer, index) {
   return null;
 }
 
-function collectRecipeFeatures(recipe) {
+function collectRecipeFeatures(recipe, options = {}) {
   const features = [];
   features.push({
     category: 'generators',
@@ -276,6 +276,7 @@ function collectRecipeFeatures(recipe) {
     });
   }
   for (const [index, target] of (recipe.targets || []).entries()) {
+    if (options.allowSectionLookHandoff === true && target?.kind === 'section') continue;
     features.push({
       category: 'targets', value: target.kind, path: ['targets', index, 'kind'],
       code: 'target-not-native', label: 'target',
@@ -439,7 +440,8 @@ export function classifyPatternLabCompatibility(recipe, options = {}) {
     throw new TypeError('Pattern Lab compatibility requires a recipe');
   }
   const descriptor = descriptorWithDefaults(options.descriptor);
-  const evaluation = evaluatePatternLabCompatibility(recipe, descriptor, options.metrics);
+  const evaluationOptions = { allowSectionLookHandoff: options.allowSectionLookHandoff === true };
+  const evaluation = evaluatePatternLabCompatibility(recipe, descriptor, options.metrics, evaluationOptions);
   const { budgets, reasons, changes, nativeEligible, bakeEligible } = evaluation;
 
   const directClassification = nativeEligible
@@ -460,7 +462,7 @@ export function classifyPatternLabCompatibility(recipe, options = {}) {
       variant,
       descriptor,
       options.simplificationMetrics,
-      { allowRecipeEstimates: false },
+      { ...evaluationOptions, allowRecipeEstimates: false },
     );
     const resultClassification = variantEvaluation.nativeEligible
       ? 'live-on-card'
@@ -523,7 +525,7 @@ function evaluatePatternLabCompatibility(recipe, descriptor, metrics, options) {
     const issue = layerGeneratorIssue(layer, index);
     if (issue) reasons.push(issue);
   }
-  for (const feature of collectRecipeFeatures(recipe)) {
+  for (const feature of collectRecipeFeatures(recipe, options)) {
     const unsupported = featureReason(feature, descriptor, changes);
     if (unsupported) reasons.push(unsupported);
   }

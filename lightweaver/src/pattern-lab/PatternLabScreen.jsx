@@ -48,6 +48,13 @@ import { PATTERN_LAB_WORKER_BUDGETS } from '../lib/patternLabWorkerProtocol.js';
 import { isBuiltInPattern, listPatterns } from '../lib/patternRegistry.js';
 import { applySavedLookToPatchBoard } from '../lib/sectionLookModel.js';
 import { flattenToStripView } from '../lib/patternLabStripView.js';
+import {
+  PATTERN_LAB_WHOLE_PIECE_ID,
+  replacePatternLabSectionBase,
+  resolvePatternLabEditAreas,
+  resolvePatternLabSectionState,
+  retargetPatternLabRecipe,
+} from '../lib/patternLabSectionEditing.js';
 import { useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import PatternLabControls from './PatternLabControls.jsx';
@@ -288,13 +295,14 @@ function runtimeMetricsFor(recipe, geometry) {
   return metrics;
 }
 
-function compatibilityFor(recipe, geometry) {
+function compatibilityFor(recipe, geometry, options = {}) {
   const metrics = runtimeMetricsFor(recipe, geometry);
-  const initial = classifyPatternLabCompatibility(recipe, { metrics });
+  const initial = classifyPatternLabCompatibility(recipe, { metrics, ...options });
   if (!initial.simplification?.variant) return initial;
   return classifyPatternLabCompatibility(recipe, {
     metrics,
     simplificationMetrics: runtimeMetricsFor(initial.simplification.variant, geometry),
+    ...options,
   });
 }
 
@@ -494,6 +502,7 @@ export default function PatternLabScreen() {
   const [drafts, setDrafts] = useState([]);
   const [draftState, setDraftState] = useState('loading');
   const [message, setMessage] = useState('');
+  const [targetWarning, setTargetWarning] = useState('');
   const [importErrors, setImportErrors] = useState([]);
   // One level of undo, deliberately not a history stack.
   //
@@ -608,7 +617,9 @@ export default function PatternLabScreen() {
     let recipe = handoffRecipe;
     let selected;
     if (recipe) {
-      selected = normalizePatternLabRecipe(recipe);
+      selected = handoff?.patternLabRecipe
+        ? normalizePatternLabRecipe(recipe)
+        : withEvolutionDisabled(recipe);
     } else if (recovered?.recipe) {
       try {
         selected = normalizePatternLabRecipe(recovered.recipe);
@@ -771,6 +782,7 @@ export default function PatternLabScreen() {
     symSettings: project.symSettings,
     audioBands: project.audioBands,
     motionSmoothing: project.motionSmoothing,
+    sectionTargets: project.sectionTargets,
   }), [
     project.strips,
     project.viewBox,
@@ -782,7 +794,22 @@ export default function PatternLabScreen() {
     project.symSettings,
     project.audioBands,
     project.motionSmoothing,
+    project.sectionTargets,
   ]);
+
+  const editAreas = useMemo(() => resolvePatternLabEditAreas({
+    sectionTargets: project.sectionTargets,
+    strips: project.strips,
+    compiledWiring: project.compiledWiring,
+  }), [project.compiledWiring, project.sectionTargets, project.strips]);
+  const sectionState = useMemo(
+    () => draft ? resolvePatternLabSectionState(draft, editAreas) : null,
+    [draft, editAreas],
+  );
+  const selectedStripIds = useMemo(
+    () => sectionState?.scoped && sectionState.resolved ? new Set(sectionState.area.stripIds) : null,
+    [sectionState],
+  );
 
   // The strip view is the same geometry with the lights moved onto a line, so
   // the preview renders it through exactly the same path as the piece — one
@@ -885,8 +912,10 @@ export default function PatternLabScreen() {
     [draft, geometry],
   );
   const compatibility = useMemo(
-    () => draft ? compatibilityFor(draft, geometry) : null,
-    [draft, geometry],
+    () => draft ? compatibilityFor(draft, geometry, {
+      allowSectionLookHandoff: sectionState?.scoped && sectionState.supported,
+    }) : null,
+    [draft, geometry, sectionState],
   );
   // "Has this exact design already been kept?" is the whole question the
   // save row turns on, and it is answered by the stored list, not by a flag
@@ -934,7 +963,7 @@ export default function PatternLabScreen() {
       frameObserved: diagnosticFrameSignals.frameObserved,
       sampledPixelCount: diagnosticFrameSignals.sampledPixelCount,
       blackPixelCount: diagnosticFrameSignals.blackPixelCount,
-      targetMatched: (draft.targets || []).every(target => target?.kind === 'whole-piece'),
+      targetMatched: sectionState?.resolved === true,
     },
   }) : null, [
     diagnosticFrameSignals,
@@ -945,6 +974,7 @@ export default function PatternLabScreen() {
     previewTime,
     project.gammaEnabled,
     runtimeMetrics,
+    sectionState,
   ]);
 
   function signalInstrumentResponse(step, kind = 'control') {
@@ -1076,6 +1106,17 @@ export default function PatternLabScreen() {
         })
       : withEvolutionDisabled(recipeFromPattern(patternId, { palette: project.palette }));
     const source = { ...selected, sourcePalette: cloneRecipe(selected.palette) };
+    const replacement = draft && sectionState?.scoped
+      ? replacePatternLabSectionBase(draft, source, editAreas)
+      : { ok: true, recipe: source };
+    if (!replacement.ok) {
+      setPendingPatternId(null);
+      setTargetWarning(replacement.message);
+      setMessage(replacement.message);
+      return;
+    }
+    const nextRecipe = replacement.recipe;
+    setTargetWarning('');
     // Choosing a base pattern rebuilds the draft from scratch — every
     // slider, knob and colour move on the previous one is gone. That is the
     // single most expensive silent loss on this screen, so it is the case
@@ -1088,13 +1129,36 @@ export default function PatternLabScreen() {
       previous,
     );
     setPendingPatternId(patternId);
-    setSourceRecipe(source);
-    setDraft(cloneRecipe(source));
+    setSourceRecipe(sourceFromRecipe(nextRecipe));
+    setDraft(cloneRecipe(nextRecipe));
     setPreviewTime(0);
     setMessage('');
     setImportErrors([]);
     signalInstrumentResponse(0, 'pattern');
     settleSheetOnSculpt();
+  }
+
+  function selectEditArea(nextTargetId) {
+    if (!draft || nextTargetId === sectionState?.selectedTargetId) return;
+    const result = retargetPatternLabRecipe(draft, nextTargetId, editAreas);
+    if (!result.ok) {
+      setTargetWarning(result.message);
+      setMessage(result.message);
+      return;
+    }
+    setTargetWarning('');
+    setDraft(result.recipe);
+    setPreviewTime(0);
+    setAuditionStopId(null);
+    setLivePreviewEnabled(false);
+    setMessage(nextTargetId === PATTERN_LAB_WHOLE_PIECE_ID
+      ? 'Editing the whole piece.'
+      : `Editing ${editAreas.find(area => area.id === nextTargetId)?.label || 'the selected area'}. Other areas stay unchanged.`);
+  }
+
+  function selectArtworkStrip(stripId) {
+    const area = editAreas.find(candidate => candidate.kind === 'section' && candidate.stripIds.includes(stripId));
+    if (area) selectEditArea(area.id);
   }
 
   function startSlowColorDrift() {
@@ -1454,7 +1518,10 @@ export default function PatternLabScreen() {
   // already kept. Overwriting is still available, but only from the button
   // that says out loud which design it overwrites.
   function saveDraft() {
-    if (!draft) return;
+    if (!draft || sectionState?.supported === false) {
+      if (sectionState?.message) setMessage(sectionState.message);
+      return;
+    }
     if (saveOptions?.canReplace) {
       const copy = createSavedCopy(draft, drafts);
       setUndoEntry(null);
@@ -1467,7 +1534,10 @@ export default function PatternLabScreen() {
   }
 
   function replaceSavedDraft() {
-    if (!draft || !saveOptions?.canReplace) return;
+    if (!draft || !saveOptions?.canReplace || sectionState?.supported === false) {
+      if (sectionState?.message) setMessage(sectionState.message);
+      return;
+    }
     const previousSaved = drafts.find(item => item.id === draft.id);
     const named = { ...draft, name: uniqueDraftName(sanitizeDraftName(draft.name, sourceRecipe?.name || 'Untitled design'), drafts, { exceptId: draft.id }) };
     const saved = persistDraft(named, next => `Replaced ${saveOptions.savedName} with ${next.name}.`);
@@ -1532,7 +1602,10 @@ export default function PatternLabScreen() {
   }
 
   async function exportRecipe() {
-    if (!draft) return;
+    if (!draft || sectionState?.supported === false) {
+      if (sectionState?.message) setMessage(sectionState.message);
+      return;
+    }
     try {
       const canonical = normalizePatternLabRecipe(draft);
       const exported = await downloadJsonFile(safeFilename(canonical.name), canonical, { preferPicker: false });
@@ -1544,6 +1617,8 @@ export default function PatternLabScreen() {
 
   async function bakeForCard(_compatibility, { signal } = {}) {
     if (!draft) throw new TypeError('Choose a Pattern Lab recipe before baking.');
+    if (sectionState?.supported === false) throw new TypeError(sectionState.message);
+    if (sectionState?.scoped) throw new TypeError('Section designs use the existing Patterns preview route and cannot be baked from Lab yet.');
     return bakePatternLabRecipe({
       recipe: draft,
       strips: project.strips,
@@ -1564,6 +1639,10 @@ export default function PatternLabScreen() {
   async function useInProject({ bakeResult = null, navigateAfter = false } = {}) {
     if (!draft || !compatibility) {
       return { ok: false, message: 'Choose and validate a Pattern Lab recipe first.' };
+    }
+    if (sectionState?.supported === false) return { ok: false, message: sectionState.message };
+    if (sectionState?.scoped && compatibility.classification !== 'live-on-card') {
+      return { ok: false, message: 'This section design cannot be flattened or baked safely. Return to a simple pattern or edit the whole piece.' };
     }
     const result = await createPatternLabHandoff({
       recipe: draft,
@@ -1869,6 +1948,8 @@ export default function PatternLabScreen() {
                     onLivePreviewChange={setLivePreviewEnabled}
                     fallbackLook={project.standaloneController?.defaultLook}
                     onRenderStatus={handlePreviewRenderStatus}
+                    selectedStripIds={selectedStripIds}
+                    onStripSelect={selectArtworkStrip}
                   />
                 </div>
               ) : (
@@ -1906,22 +1987,43 @@ export default function PatternLabScreen() {
                 the board too and are deliberately NOT here — nothing in the
                 app answers them yet, and five buttons where two work is worse
                 than two. */}
-            {draft && !previewFailed && (
-              <div className="plab-views" role="group" aria-label="Preview view" data-testid="pattern-lab-views">
-                <button
-                  type="button"
-                  className={previewView === 'piece' ? 'on' : undefined}
-                  aria-pressed={previewView === 'piece'}
-                  onClick={() => setPreviewView('piece')}
-                  title="The lights where they physically sit"
-                >Piece</button>
-                <button
-                  type="button"
-                  className={previewView === 'strip' ? 'on' : undefined}
-                  aria-pressed={previewView === 'strip'}
-                  onClick={() => setPreviewView('strip')}
-                  title="The same lights in the order the card addresses them"
-                >Strip</button>
+            {draft && (
+              <div className="plab-view-controls">
+                <label className="plab-edit-area">
+                  <span>Edit area</span>
+                  <select
+                    aria-label="Edit area"
+                    aria-invalid={sectionState?.resolved === false ? 'true' : undefined}
+                    value={sectionState?.selectedTargetId || PATTERN_LAB_WHOLE_PIECE_ID}
+                    onChange={event => selectEditArea(event.target.value)}
+                  >
+                    {sectionState?.resolved === false && (
+                      <option value={sectionState.selectedTargetId} disabled>{sectionState.selectedTargetId} · unavailable</option>
+                    )}
+                    {editAreas.map(area => <option key={area.id} value={area.id}>{area.label}</option>)}
+                  </select>
+                </label>
+                {!previewFailed && (
+                  <div className="plab-views" role="group" aria-label="Preview view" data-testid="pattern-lab-views">
+                    <button
+                      type="button"
+                      className={previewView === 'piece' ? 'on' : undefined}
+                      aria-pressed={previewView === 'piece'}
+                      onClick={() => setPreviewView('piece')}
+                      title="The lights where they physically sit"
+                    >Piece</button>
+                    <button
+                      type="button"
+                      className={previewView === 'strip' ? 'on' : undefined}
+                      aria-pressed={previewView === 'strip'}
+                      onClick={() => setPreviewView('strip')}
+                      title="The same lights in the order the card addresses them"
+                    >Strip</button>
+                  </div>
+                )}
+                {(sectionState?.message || targetWarning) && (
+                  <p className="plab-target-warning" data-testid="pattern-lab-target-warning" role="alert">{sectionState?.message || targetWarning}</p>
+                )}
               </div>
             )}
           </div>
@@ -2071,6 +2173,8 @@ export default function PatternLabScreen() {
                     onUseInProject={useInProject}
                     onSimplify={simplifyForCard}
                     onRemoveFeature={removeUnsupportedFeatures}
+                    authoringDisabled={sectionState?.supported === false}
+                    authoringDisabledMessage={sectionState?.message || ''}
                   />
                   {compatibility?.simplification?.variant
                     && compatibility.simplification.resolvesCompatibility !== true && (
@@ -2153,7 +2257,7 @@ export default function PatternLabScreen() {
                 <button
                   type="button"
                   className="btn primary"
-                  disabled={compatibility.classification === 'studio-only'}
+                  disabled={compatibility.classification === 'studio-only' || sectionState?.supported === false}
                   onClick={() => void useInProjectPrimary()}
                 >{promotedActionLabel(compatibility)}</button>
                 <span
@@ -2190,7 +2294,7 @@ export default function PatternLabScreen() {
                   id="plab-save-private"
                   type="button"
                   className="btn primary"
-                  disabled={!draft}
+                  disabled={!draft || sectionState?.supported === false}
                   onClick={saveDraft}
                 >{saveOptions?.canReplace ? 'Save as a new design' : 'Save private draft'}</button>
                 {saveOptions?.canReplace && (
@@ -2198,6 +2302,7 @@ export default function PatternLabScreen() {
                     type="button"
                     className="btn"
                     data-testid="pattern-lab-replace-draft"
+                    disabled={sectionState?.supported === false}
                     onClick={replaceSavedDraft}
                   >{saveOptions.replaceLabel}</button>
                 )}
@@ -2208,7 +2313,7 @@ export default function PatternLabScreen() {
                     labels, which is what it did the moment Replace joined
                     it. Both are back at full height, where the drafts list
                     and the browser live. */}
-                <button type="button" className="btn plab-action-file" disabled={!draft} onClick={exportRecipe}>Export recipe</button>
+                <button type="button" className="btn plab-action-file" disabled={!draft || sectionState?.supported === false} onClick={exportRecipe}>Export recipe</button>
                 <button type="button" className="btn plab-action-file" onClick={() => importRef.current?.click()}>Import recipe</button>
                 <input ref={importRef} className="plab-file-input" aria-label="Import recipe" aria-hidden="true" tabIndex={-1} type="file" accept=".lwrecipe.json,application/json" onChange={importRecipe} />
               </div>}

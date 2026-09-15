@@ -9,6 +9,80 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-15 Artwork-aware Pattern Lab — managed build (done locally)
+Manager skill + Playbook v3; Build a scoped feature recipe v2, adapted to the
+approved direction 1 first increment. User is sleeping; make routine decisions
+without waiting. Endpoint: working, tested local build and reviewable commit.
+No deployment, firmware changes or hardware commands are part of this browser work.
+Scope: named section selection on Lab artwork, contextual dimming, target-aware
+editing and durable handoff preserving other sections, explicit unresolved targets.
+Primary Astra owns target/persistence contract, browser regressions, actual-screen
+inspection and one checkpoint; only primary edits workboard.
+Dispatch: lightweaver-app → gpt-5.6-sol / medium (catalog verified): owns
+`lightweaver/src/` changes and focused unit regressions. Bounded React/model work
+reuses existing section/handoff contracts; no frontier implementation worker needed.
+Primary owns `lightweaver/tests/pattern-lab-targets.spec.ts`, coordination/docs.
+Contract: existing section IDs/membership authoritative; all target persistence
+uses current recipe/sourceLook structure; do not silently map missing targets to
+whole piece. Switching selected sections preserves authored changes. Use existing
+Patterns handoff for scoped physical preview; unsupported layered/generator scoped
+export fails closed. Whole-piece features and hardware command paths retain behavior.
+Acceptance: Petals/Centre selection, click selection, selective edits, Keep/Use,
+reload, missing-target warning, desktop/390px phone; focused red/green + unit/build.
+Additional user authorization: start direction 2 in a separate task. Dispatch:
+Native Color Journeys director → gpt-6-astra / high in a new isolated led worktree.
+Reason: versioned firmware persistence, spatial parity and hardware resource limits.
+Separate task `01a0a573-369a-7aa2-b468-9098771ec1db` is running in
+`/Users/adrianrasmussen/.codex/worktrees/aab2/led`; actual Astra/high verified
+from read-only local task metadata and wait_threads reports active.
+The new task may choose explicitly routed Sol workers after fixing its contract;
+no shared checkout writes, no release/hardware actions. Primary continues direction 1.
+Browser red: Centre handoff loads but Edit area selector is missing (expected).
+Dependencies installed from pinned lockfile; no source changes for tool setup.
+Completed: named area selector and artwork click selection, display-only dimming,
+exact per-area controls retained across switches (including Whole piece), sibling
+looks retained after pattern replacement and project handoff, reload recovery,
+missing/unmapped target warnings and guarded actions. Simple native section edits
+are supported; scoped journeys/layers/generators remain unsupported. Physical
+section preview stays on the existing Patterns route; no hardware proof claimed.
+Actual Sol/medium execution verified from local task metadata. Focused 69 unit
+checks passed. Integrated browser batch: 18/18 passed (new targets, look roundtrip,
+handoff, views and live preview). Desktop and 390px screenshots inspected; mobile
+area control is 44px and no horizontal page overflow. Integrated checkpoint:
+2,494/2,494 unit tests and production build passed; existing bundle-size/import
+warnings remain. Evidence: `.codex/artifacts/artwork-lab/` (local ignored files).
+Direction 2 remains active in its independent task; JS/C++ shared renderer samples
+passed there, with persistence/install verification continuing. No merge or deploy.
+Resumption: review local commit on `codex/artwork-aware-pattern-lab`; coordinate
+PatternLabScreen integration with the independent Color Journeys task before release.
+
+
+### 2026-09-15 Three development directions — managed research (done)
+Manager skill + Playbook v3; no recipe selected for this exploratory review.
+Scope: inspect the current project and produce three distinct, evidence-backed
+product directions with recommended first increments and implementation routing.
+Research only; no feature implementation, exhaustive Prove, release or hardware actions.
+Host collaboration catalog checked: Luna/Sol/Astra available with low/medium/high.
+Primary Astra owns strategy, architecture acceptance and final synthesis.
+Dispatch before work (read-only, no shared file writes):
+- Creative workflow opportunities → gpt-5.6-sol, medium: bounded Studio/mapper
+  UX and feature assessment with source evidence; balanced reasoning is sufficient.
+- Card autonomy and installation reliability → gpt-6-astra, high: evaluate
+  firmware persistence/runtime limits and browser/card authority across boundaries.
+- Product/backlog evidence inventory → gpt-5.6-luna, low: economical extraction
+  of documented user needs, contradictions and implemented-vs-planned evidence.
+Measured worker costs unavailable. Completion: three differentiated directions,
+ranked recommendation, concrete scope/risks/acceptance and matched agent ownership.
+Completed source-grounded report: `docs/development-directions-2026-09-15.md`.
+Recommendation: section-aware Pattern Lab first; alternatives are native Color
+Journeys and portable artwork handoff/service. Primary verified decisive source
+anchors; older TODO claims filtered against implementation. No tests, visual or
+hardware proof claimed. No implementation or release initiated.
+Explicit routing preference saved as pending memory candidate
+`01M2JPRHMSD7023NQ4QDYM2KSF`. Tool selections accepted; actual telemetry unavailable.
+Resumption: user selects a direction, then build its bounded first increment.
+
+
 ### 2026-09-15 Layout release (active)
 User authorizes going live. Primary owns exact revision release and live proof.
 Sol medium owns bounded diagnosis of existing exhaustive Patterns regression
