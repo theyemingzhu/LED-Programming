@@ -10,6 +10,14 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+V3 complete:bbad9841+6d0c58ab integrated; native recipe readback omission fixed.
+4096 real cubic18spans/1519B/173ticks, mixed24spans/1609B/187ticks.
+Worker proof:2532unit+build,70focused units,9browser,18native incl all65536
+elapsed phases,shared fixtures,ESP32 RAM68.3%/flash33.7%; actual screens seen.
+Authored geometry unchanged;<=1RGB bound is pre-output-calibration only.
+Final combined launch:source starts here; signed-artifact freshness proof follows
+protected signer at terminal main. No physical card was flashed or observed.
+
 Director decision: approve explicitly versioned bounded-affine runtime derivative
 under original<=1 RGB renderer parity; authored geometry stays unchanged.
 194Q0.16 circular phase ticks bound max-depth0.42/channel255 error to0.99599.

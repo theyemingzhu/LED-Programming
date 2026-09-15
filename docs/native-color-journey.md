@@ -1,9 +1,9 @@
 # Standalone Color Journeys
 
-Status: v1 is integrated in release-cleanup; v2 lossless phase compression is
-implemented and software-verified on `codex/scale-color-journeys`. The required
-installation count is 4,096 physical pixels. No release or real-card proof is
-implied by host tests.
+Status: v1 and lossless v2 remain supported. Bounded affine v3 is implemented
+and software-verified on `codex/scale-color-journeys` for the required 4,096
+physical pixels, including curved and mixed SVG paths. No release or real-card
+proof is implied by host tests.
 
 ## Playback contract
 
@@ -28,11 +28,16 @@ phase = normalizedArtworkX + 0.35 * normalizedArtworkY
 brightness = 1 - depth * (0.5 + 0.5 * sin(2π * (phase - elapsed / period)))
 ```
 
-The compiler stores phase modulo one turn as unsigned Q0.16 values, each encoded
-as exactly four hexadecimal characters, in physical output order. Quantization
-is bounded to half of 1/65,536 turn; the shared rendered-color acceptance tolerance
-is one RGB channel level. There is no conversion to one-dimensional strip motion.
-Layouts or recipe features that cannot preserve this mapping must be rejected.
+The compiler derives phase modulo one turn as unsigned Q0.16 values in physical
+output order. v1 and v2 preserve every derived phase exactly. v3 may approximate
+phase by at most 194 ticks, which guarantees at most one channel level of error
+in the Color Journey renderer for all motion phases, base channels through 255,
+and the maximum depth 0.42. This guarantee ends at the renderer's RGB output,
+before output gain, gamma, chipset correction, current limiting, color order,
+LED tolerances, and other physical calibration. Those later stages can amplify
+or otherwise transform a one-level renderer difference. There is no conversion
+to one-dimensional strip motion. Layouts that exceed the declared span/error
+contract are rejected.
 
 ## Wire format
 
@@ -119,13 +124,12 @@ gate: the journey estimate is 32 operations/pixel, matching firmware, so the
 default live handoff budget ends at 7,812 pixels. This estimate is not measured
 card throughput; counts beyond it remain outside the current Studio live gate.
 This is not a guarantee that arbitrary artwork or every saved-look bank fits.
-The accepted 4,096-pixel browser fixture is a real SVG-sampled straight path in
-reversed physical order. A representative 4,096-pixel cubic SVG exceeds the
-64-span exact encoding and is rejected. Complex curves and irregular pixels may
-therefore exhaust spans even at lower counts. Supporting those projects requires
-a separately approved storage change. Physical output throughput, allocation and
-frame rate remain dependent on the card and wiring; host tests cannot establish
-practical maximum FPS.
+The accepted exact 4,096-pixel browser fixture is a real SVG-sampled straight
+path in reversed physical order. Complex curves and irregular pixels may exhaust
+the exact v2 span budget; v3 handles representative curvature within the same
+fixed storage. Physical output throughput, allocation and frame rate remain
+dependent on the card and wiring; host tests cannot establish practical maximum
+FPS.
 
 New firmware additionally advertises:
 
@@ -153,6 +157,63 @@ logical indices through the existing output segments before sampling.
 Shared integer reference vectors:
 [color-journey-v2-phases.json](fixtures/color-journey-v2-phases.json), including
 negative half-rounding, wrap, reversed phases, mixed spans and extreme products.
+The same vectors run against the v3 affine sampler.
+
+## Curved journeys: bounded v3 phase spans
+
+Journey v3 uses the same `[count, start, delta]` representation and 64-span
+storage as v2, adding the mandatory `maxPhaseErrorTicks: 194` field. Studio first
+tries exact v1/v2 encoding. It emits v3 only when exact v2 exceeds 64 spans, then
+adaptively splits the unwrapped phase curve until every reconstructed sample is
+within 194 circular Q0.16 ticks. It expands and verifies the final encoding before
+installation. If 64 spans cannot meet the bound, compilation fails closed.
+
+The bound follows directly from the renderer's sinusoidal movement at the maximum
+depth and channel value:
+
+```
+255 * 0.42 * sin(pi * 194 / 65536) = 0.995989... < 1
+255 * 0.42 * sin(pi * 195 / 65536) = 1.001123... > 1
+```
+
+Firmware exhaustively checks both positive and negative 194/195-tick offsets
+across all 65,536 movement phases with its actual float and channel rounding.
+194 stays within one renderer channel; 195 reaches two.
+
+Cards advertise v3 independently:
+
+```json
+{
+  "colorJourneyV3": {
+    "version": 3,
+    "maxPixels": 65535,
+    "maxPhaseSpans": 64,
+    "maxPhaseErrorTicks": 194,
+    "phaseEncoding": "q0.16-affine-rgb1",
+    "restart": "restart"
+  }
+}
+```
+
+Studio requires every field before sending configuration. v1/v2 capabilities do
+not authorize v3, and firmware rejects missing or changed error bounds before the
+existing NVS transaction can replace known-good configuration. Existing v1/v2
+configs remain readable and are never rewritten automatically. Card readback
+retains the original v3 spans during color/timing edits, preventing repeated
+approximation drift. The exact authored Studio project remains unchanged whenever
+it is available; card-only reconstruction can preserve the installed derivative
+but cannot recreate discarded sub-channel phase detail.
+
+Measured with native Chromium SVG length sampling and reversed physical wiring:
+
+| 4,096-pixel path | v3 spans | Maximum observed phase error | Full compact config |
+| --- | ---: | ---: | ---: |
+| Cubic | 18 | 173 ticks | 1,519 bytes |
+| Mixed cubic/line/cubic | 24 | 187 ticks | 1,609 bytes |
+
+Both remain below 64 spans and the 3,968-byte whole-config limit. These fixtures
+demonstrate representative curvature; they are not a promise that every SVG fits.
+No storage schema, project repository, or runtime RAM allocation changed.
 
 ## Preservation and integration
 
@@ -224,6 +285,28 @@ Larger-journey evidence (2026-09-16):
 - The actual desktop and 390×844 phone screens were inspected for the 4,096
   fixture. Both show the standalone handoff without horizontal overflow.
 
+Bounded-curvature evidence (2026-09-16):
+
+- Commit `bbad9841` adds journey v3 without changing firmware version 1.1.38.
+- Integrated checkpoint: 2,532 unit tests passed and the production Vite build
+  passed, with existing build warnings only.
+- Focused Chromium suite: 9/9 passed. Real 4,096-pixel cubic and mixed paths
+  exercise save, full-size preflight, v2 rejection before mutation, v3 install,
+  readback, timing/color edit retention, reversed physical order, and rendered
+  color comparisons across five elapsed times.
+- PlatformIO native recipe suite: 18/18 passed. The 194/195 test covers every
+  movement phase and both signed phase directions using firmware rounding. A
+  parse/serialize/parse check proves `/api/patterns` can return the unchanged v3
+  derivative for real card reconstruction; the source contract also covers
+  undoing legacy v1 logical-frame reversal on readback.
+- Shared native sampler covers five affine fixtures as both v2 and v3, including
+  negative ties, wrapping and extreme signed products.
+- ESP32-S3 compile passed: RAM 223,712 / 327,680 bytes (68.3%); flash 2,210,181 /
+  6,553,600 bytes (33.7%). `NativeRecipe` and the fixed 64-span storage are
+  unchanged.
+- Desktop and 390×844 phone screens were inspected. No horizontal overflow or
+  blocked handoff action was visible.
+
 Repeatable verification commands from the repository root:
 
 ```sh
@@ -240,8 +323,9 @@ and the firmware build job, and the focused browser in `ci:browser-regression`.
 
 Unperformed real-card gates: close Studio and observe uninterrupted playback;
 power-cycle and observe restart at the first color; compare RGB hues and artwork
-motion on the installed LEDs. No real hardware commands, flashing, version bump,
-signing, merge or deployment are authorized for this task.
+motion on the installed LEDs; measure practical 4,096-pixel frame rate; and assess
+the final calibrated physical output. No real hardware commands, flashing,
+version bump, signing, merge or deployment are authorized for this task.
 
 ## Local handoff
 
