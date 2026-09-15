@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "LightweaverRecipe.h"
+#include "LightweaverColorJourney.h"
 
 namespace {
 
@@ -249,6 +250,180 @@ void test_registry_is_additive_bounded_and_resettable() {
   TEST_ASSERT_NULL(lightweaver::findNativeRecipe("native-dawn"));
 }
 
+const char* kValidColorJourney = R"json({
+  "version":1,
+  "kind":"color-journey",
+  "id":"gallery-dawn",
+  "journey":{
+    "version":1,
+    "stops":[
+      {"color":"#ff0000","holdMs":1000,"fadeMs":2000},
+      {"color":"#00ff00","holdMs":0,"fadeMs":1000},
+      {"color":"#0000ff","holdMs":1500,"fadeMs":3000}
+    ],
+    "easing":"linear",
+    "loop":true,
+    "restart":"restart",
+    "motionSpeedMs":18000,
+    "depth":0.25,
+    "phase16":"0000599a8333"
+  }
+})json";
+
+bool parseJourney(const char* json, uint16_t expectedPixels, NativeRecipe& destination,
+                  RecipeParseError& error, size_t reportedBytes = 0) {
+  JsonDocument doc;
+  const DeserializationError jsonError = deserializeJson(doc, json);
+  TEST_ASSERT_FALSE_MESSAGE(jsonError, jsonError.c_str());
+  return lightweaver::parseNativeRecipeV1(
+      doc.as<JsonVariantConst>(),
+      reportedBytes == 0 ? measureJson(doc) : reportedBytes,
+      destination, error, expectedPixels);
+}
+
+void test_parses_strict_color_journey_and_capability() {
+  NativeRecipe recipe;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(parseJourney(kValidColorJourney, 3, recipe, error));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(lightweaver::NativeRecipeKind::ColorJourney),
+                          static_cast<uint8_t>(recipe.kind));
+  TEST_ASSERT_EQUAL_UINT8(3, recipe.colorJourney.stopCount);
+  TEST_ASSERT_EQUAL_UINT16(0x0000, recipe.colorJourneyPhases[0]);
+  TEST_ASSERT_EQUAL_UINT16(0x599a, recipe.colorJourneyPhases[1]);
+  TEST_ASSERT_EQUAL_UINT16(0x8333, recipe.colorJourneyPhases[2]);
+  lightweaver::clearNativeRecipes();
+  TEST_ASSERT_TRUE(lightweaver::registerNativeRecipe("gallery-dawn", recipe));
+  TEST_ASSERT_TRUE(lightweaver::restartNativeRecipe("gallery-dawn", 0xfffffff0U));
+  TEST_ASSERT_EQUAL_UINT32(0xfffffff0U,
+      lightweaver::findNativeRecipe("gallery-dawn")->activationLastTickMs);
+  TEST_ASSERT_EQUAL_UINT64(0,
+      lightweaver::findNativeRecipe("gallery-dawn")->activationElapsedMs);
+
+  JsonDocument doc;
+  lightweaver::writeNativeRecipeCapabilities(doc.to<JsonObject>(), "1", "b");
+  JsonObject journey = doc["colorJourney"];
+  TEST_ASSERT_EQUAL_UINT8(1, journey["version"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_UINT16(256, journey["maxPixels"].as<uint16_t>());
+  TEST_ASSERT_EQUAL_STRING("q0.16-hex", journey["phaseEncoding"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("restart", journey["restart"].as<const char*>());
+}
+
+void test_rejects_color_journey_boundaries_without_mutating_destination() {
+  NativeRecipe destination;
+  destination.version = 77;
+  destination.seed = 0xdecafbad;
+  RecipeParseError error;
+  TEST_ASSERT_FALSE(parseJourney(kValidColorJourney, 2, destination, error));
+  TEST_ASSERT_EQUAL_STRING("recipe.journey.phase16", error.path);
+  TEST_ASSERT_EQUAL_UINT8(77, destination.version);
+  TEST_ASSERT_EQUAL_UINT32(0xdecafbad, destination.seed);
+
+  TEST_ASSERT_FALSE(parseJourney(
+      R"({"version":1,"kind":"color-journey","id":"bad","journey":{"version":1,"stops":[{"color":"#000000","holdMs":0,"fadeMs":999},{"color":"#ffffff","holdMs":0,"fadeMs":1000}],"easing":"smooth","loop":false,"restart":"restart","motionSpeedMs":4000,"depth":0.12,"phase16":"0000"}})",
+      1, destination, error));
+  TEST_ASSERT_EQUAL_STRING("recipe.journey.stops[].fadeMs", error.path);
+  TEST_ASSERT_EQUAL_UINT8(77, destination.version);
+
+  TEST_ASSERT_FALSE(parseJourney(
+      R"({"version":1,"kind":"color-journey","id":"bad","journey":{"version":1,"stops":[{"color":"#000000","holdMs":0,"fadeMs":1000},{"color":"#ffffff","holdMs":0,"fadeMs":1000}],"easing":"smooth","loop":false,"restart":"resume","motionSpeedMs":4000,"depth":0.12,"phase16":"0000"}})",
+      1, destination, error));
+  TEST_ASSERT_EQUAL_STRING("recipe.journey.restart", error.path);
+
+  TEST_ASSERT_FALSE(parseJourney(kValidColorJourney, 257, destination, error));
+  TEST_ASSERT_EQUAL_STRING("recipe.journey.phase16", error.path);
+
+  JsonDocument composite;
+  TEST_ASSERT_FALSE(deserializeJson(composite, kValidColorJourney));
+  composite["layers"].to<JsonArray>();
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(
+      composite.as<JsonVariantConst>(), measureJson(composite), destination, error, 3));
+  TEST_ASSERT_EQUAL_STRING("recipe.kind", error.path);
+  TEST_ASSERT_EQUAL_UINT8(77, destination.version);
+}
+
+void test_samples_color_journey_timing_easing_and_motion() {
+  NativeRecipe recipe;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(parseJourney(kValidColorJourney, 3, recipe, error));
+
+  lightweaver::RecipeColor color = lightweaver::sampleColorJourneyBase(recipe, 1500);
+  TEST_ASSERT_EQUAL_UINT8(191, color.red);
+  TEST_ASSERT_EQUAL_UINT8(64, color.green);
+  TEST_ASSERT_EQUAL_UINT8(0, color.blue);
+  color = lightweaver::sampleColorJourneyPixel(recipe, 0x0000, 0);
+  TEST_ASSERT_EQUAL_UINT8(223, color.red);
+  TEST_ASSERT_EQUAL_UINT8(0, color.green);
+  TEST_ASSERT_EQUAL_UINT8(0, color.blue);
+  color = lightweaver::sampleColorJourneyPixel(recipe, 0x599a, 1500);
+  TEST_ASSERT_UINT8_WITHIN(1, 143, color.red);
+  TEST_ASSERT_UINT8_WITHIN(1, 48, color.green);
+  TEST_ASSERT_EQUAL_UINT8(0, color.blue);
+
+  lightweaver::reverseColorJourneyPhaseSpan(recipe, 0, 3);
+  TEST_ASSERT_EQUAL_UINT16(0x8333, recipe.colorJourneyPhases[0]);
+  TEST_ASSERT_EQUAL_UINT16(0x599a, recipe.colorJourneyPhases[1]);
+  TEST_ASSERT_EQUAL_UINT16(0x0000, recipe.colorJourneyPhases[2]);
+}
+
+void test_rejected_journey_candidate_preserves_active_registry() {
+  NativeRecipe active;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(parseJourney(kValidColorJourney, 3, active, error));
+  lightweaver::clearNativeRecipes();
+  TEST_ASSERT_TRUE(lightweaver::registerNativeRecipe("gallery-dawn", active));
+  TEST_ASSERT_TRUE(lightweaver::restartNativeRecipe("gallery-dawn", 4242));
+
+  // Config transactions validate into a separate destination before storage or
+  // registry synchronization. Both a truncated body and a budget-rejected body
+  // leave the active registered recipe and its activation epoch untouched.
+  JsonDocument truncated;
+  TEST_ASSERT_TRUE(deserializeJson(truncated, "{\"version\":1,\"kind\":\"color-journey\""));
+  NativeRecipe candidate;
+  candidate.version = 99;
+  TEST_ASSERT_FALSE(parseJourney(kValidColorJourney, 3, candidate, error,
+                                 lightweaver::LW_RECIPE_MAX_CONFIG_BYTES + 1));
+  TEST_ASSERT_EQUAL_UINT8(99, candidate.version);
+  const NativeRecipe* stillActive = lightweaver::findNativeRecipe("gallery-dawn");
+  TEST_ASSERT_NOT_NULL(stillActive);
+  TEST_ASSERT_EQUAL_UINT32(4242, stillActive->activationLastTickMs);
+  TEST_ASSERT_EQUAL_UINT64(0, stillActive->activationElapsedMs);
+  TEST_ASSERT_EQUAL_UINT16(0x599a, stillActive->colorJourneyPhases[1]);
+}
+
+void test_journey_clock_crosses_millis_rollover_without_restarting() {
+  NativeRecipe looped;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(parseJourney(kValidColorJourney, 3, looped, error));
+  lightweaver::clearNativeRecipes();
+  TEST_ASSERT_TRUE(lightweaver::registerNativeRecipe("long-running", looped));
+  TEST_ASSERT_TRUE(lightweaver::restartNativeRecipe("long-running", 0U));
+  const NativeRecipe* active = lightweaver::findNativeRecipe("long-running");
+  TEST_ASSERT_NOT_NULL(active);
+  TEST_ASSERT_EQUAL_UINT64(UINT32_MAX,
+      lightweaver::advanceColorJourneyElapsedMs(*active, UINT32_MAX));
+  TEST_ASSERT_EQUAL_UINT64(1ULL << 32,
+      lightweaver::advanceColorJourneyElapsedMs(*active, 0U));
+  TEST_ASSERT_EQUAL_UINT64(1ULL << 32,
+      lightweaver::advanceColorJourneyElapsedMs(*active, 0U));
+
+  const lightweaver::RecipeColor continued =
+      lightweaver::sampleColorJourneyPixel(*active, 0x599a, 1ULL << 32);
+  const lightweaver::RecipeColor restarted =
+      lightweaver::sampleColorJourneyPixel(*active, 0x599a, 0);
+  TEST_ASSERT_TRUE(continued.red != restarted.red || continued.green != restarted.green ||
+                   continued.blue != restarted.blue);
+
+  NativeRecipe once;
+  TEST_ASSERT_TRUE(parseJourney(
+      R"({"version":1,"kind":"color-journey","id":"once","journey":{"version":1,"stops":[{"color":"#ff0000","holdMs":0,"fadeMs":1000},{"color":"#0000ff","holdMs":0,"fadeMs":1000}],"easing":"smooth","loop":false,"restart":"restart","motionSpeedMs":18000,"depth":0.25,"phase16":"0000"}})",
+      1, once, error));
+  const lightweaver::RecipeColor final =
+      lightweaver::sampleColorJourneyBase(once, (1ULL << 32) + 5000ULL);
+  TEST_ASSERT_EQUAL_UINT8(0, final.red);
+  TEST_ASSERT_EQUAL_UINT8(0, final.green);
+  TEST_ASSERT_EQUAL_UINT8(255, final.blue);
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -261,5 +436,10 @@ int main(int argc, char** argv) {
   RUN_TEST(test_rejects_bake_only_and_live_inputs);
   RUN_TEST(test_capability_descriptor_is_versioned_and_bounded);
   RUN_TEST(test_registry_is_additive_bounded_and_resettable);
+  RUN_TEST(test_parses_strict_color_journey_and_capability);
+  RUN_TEST(test_rejects_color_journey_boundaries_without_mutating_destination);
+  RUN_TEST(test_samples_color_journey_timing_easing_and_motion);
+  RUN_TEST(test_rejected_journey_candidate_preserves_active_registry);
+  RUN_TEST(test_journey_clock_crosses_millis_rollover_without_restarting);
   return UNITY_END();
 }

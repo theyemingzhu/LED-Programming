@@ -12,6 +12,7 @@ try {
     '-I', resolve(import.meta.dirname, 'host-stubs'),
     '-I', resolve(root, 'src'),
     resolve(root, 'src/LightweaverPatterns.cpp'),
+    resolve(root, 'src/LightweaverColorJourney.cpp'),
     resolve(import.meta.dirname, 'kaleidoscope-render-golden.cpp'),
     '-o', binary,
   ], { stdio: 'inherit' });
