@@ -9,6 +9,25 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-16 Release cleanup (active)
+User authorized reviewing LED tasks and pushing/merging completed work, closing
+completed tasks, and reporting remaining blockers. Source base origin/main
+18479a01, live Studio1888 / published firmware1819 (1.1.37).
+Integrated division count40e96624, artwork Lab69eed773, native journeysd9fcc031
+and29374eaa on codex/september-release-cleanup. Selected-section authority is
+retained; native journeys stay whole-piece/capability gated. Firmware1.1.38
+prepared for the protected signer. Combined checkpoint2511 units+build passed.
+Release remains pending: latest exhaustive main check was cancelled; fresh
+exact-main run35031272027 started. No hardware commands or flashes authorized
+by this cleanup; physical journey continuity/restart/hue remain needs-eyes.
+Four completed tasks archived: Improve pattern lab workflow, LED control
+architecture redesign, LED strip multi-pattern management, Verify Checks-panel
+transport forwarding on live HTTPS card. Their physical follow-ups remain here.
+Original root checkout's dirty product files match recovered4896c040 already
+contained in main; three other tracked differences are generated/review dates.
+Recovery checkout, stashes and archive refs preserved. Old round2 F41 branches
+are explicitly superseded/decision-pending in TODO.md, not ready-to-merge work.
+
 ### 2026-09-15 Layout release (active)
 User authorizes going live. Primary owns exact revision release and live proof.
 Sol medium owns bounded diagnosis of existing exhaustive Patterns regression
