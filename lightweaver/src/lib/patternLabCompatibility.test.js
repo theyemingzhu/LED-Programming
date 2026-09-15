@@ -88,6 +88,12 @@ test('classifies a bounded whole-piece Color Journey as native and rejects overs
   assert.ok(!native.reasons.some(reason => reason.code === 'color-journey-stream-only'));
   assert.equal(oversized.classification, 'studio-only');
   assert.ok(oversized.reasons.some(reason => reason.code === 'color-journey-pixel-limit'));
+  const scopedWithSectionHandoff = classifyPatternLabCompatibility(
+    { ...journey, targets: [{ kind: 'section', id: 'outer' }] },
+    { metrics: FIT_METRICS, allowSectionLookHandoff: true },
+  );
+  assert.equal(scopedWithSectionHandoff.classification, 'studio-only');
+  assert.ok(scopedWithSectionHandoff.reasons.some(reason => reason.code === 'color-journey-target-unsupported'));
   assert.equal(scoped.classification, 'studio-only');
   assert.ok(scoped.reasons.some(reason => reason.code === 'color-journey-target-unsupported'));
 });
