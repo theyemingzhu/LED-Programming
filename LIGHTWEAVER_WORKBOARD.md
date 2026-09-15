@@ -20,8 +20,9 @@ old-card rejection, physical reversal and readback/edit retention are covered.
 the3,968-byte full-config budget; cubic/mixed use18/24 spans and1,519/1,609B.
 Existing exact v1/v2 configurations remain readable without rewrite. Existing
 65,535 wire ceiling and7,812 Studio operations gate are representation/budget
-bounds, not physical FPS proof. Implementation commit: `bbad9841`.
-Checkpoint2532 units+build; browser9/9; native17/17 plus shared3+5 fixtures;
+bounds, not physical FPS proof. Implementation commits: `bbad9841`, `6d0c58ab`.
+The latter returns native derivatives from the real `/api/patterns` readback.
+Checkpoint2532 units+build; browser9/9; native18/18 plus shared3+5 fixtures;
 ESP32 compile RAM68.3%, flash33.7%, recipe760B. Firmware remains1.1.38.
 Desktop+390px screens inspected. Real-card4,096 FPS/playback/restart/hues remain
 unperformed, as does calibrated physical parity. No flash, signing, merge,

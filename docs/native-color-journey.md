@@ -294,11 +294,14 @@ Bounded-curvature evidence (2026-09-16):
   exercise save, full-size preflight, v2 rejection before mutation, v3 install,
   readback, timing/color edit retention, reversed physical order, and rendered
   color comparisons across five elapsed times.
-- PlatformIO native recipe suite: 17/17 passed. The 194/195 test covers every
-  movement phase and both signed phase directions using firmware rounding.
+- PlatformIO native recipe suite: 18/18 passed. The 194/195 test covers every
+  movement phase and both signed phase directions using firmware rounding. A
+  parse/serialize/parse check proves `/api/patterns` can return the unchanged v3
+  derivative for real card reconstruction; the source contract also covers
+  undoing legacy v1 logical-frame reversal on readback.
 - Shared native sampler covers five affine fixtures as both v2 and v3, including
   negative ties, wrapping and extreme signed products.
-- ESP32-S3 compile passed: RAM 223,712 / 327,680 bytes (68.3%); flash 2,207,837 /
+- ESP32-S3 compile passed: RAM 223,712 / 327,680 bytes (68.3%); flash 2,210,181 /
   6,553,600 bytes (33.7%). `NativeRecipe` and the fixed 64-span storage are
   unchanged.
 - Desktop and 390×844 phone screens were inspected. No horizontal overflow or
