@@ -12,16 +12,20 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ### 2026-09-16 Larger standalone Color Journeys (done locally)
 Branch `codex/scale-color-journeys`, based on release-cleanup `81f68ea1` / PR296.
 Required installation target confirmed as4,096 physical pixels. Implemented
-lossless bounded affine Q0.16 spans beside legacy v1; exact-card v2 capability,
+lossless affine v2 and bounded-affine v3 beside legacy v1. v3 explicitly
+advertises a194-tick phase bound that guarantees at most one renderer RGB
+channel before output calibration. Exact authored geometry remains in Studio;
 old-card rejection, physical reversal and readback/edit retention are covered.
-4,096 real straight SVG samples save/install/read back exactly within the3,968-
-byte full-config budget; representative4,096 cubic SVG is explicitly rejected
-because it exceeds64 exact spans. No geometry simplification occurs. Existing
+4,096 real straight, cubic and mixed SVG samples save/install/read back within
+the3,968-byte full-config budget; cubic/mixed use18/24 spans and1,519/1,609B.
+Existing exact v1/v2 configurations remain readable without rewrite. Existing
 65,535 wire ceiling and7,812 Studio operations gate are representation/budget
-bounds, not physical FPS proof. Checkpoint2528 units+build; browser10/10; native
-15/15 plus shared3+5 fixtures; ESP32 compile RAM68.3%, flash33.7%, recipe760B.
+bounds, not physical FPS proof. Implementation commit: `bbad9841`.
+Checkpoint2532 units+build; browser9/9; native17/17 plus shared3+5 fixtures;
+ESP32 compile RAM68.3%, flash33.7%, recipe760B. Firmware remains1.1.38.
 Desktop+390px screens inspected. Real-card4,096 FPS/playback/restart/hues remain
-unperformed. No flash, signing, merge, deployment or production commands.
+unperformed, as does calibrated physical parity. No flash, signing, merge,
+deployment or production commands.
 
 
 ### 2026-09-16 Release cleanup (active)
