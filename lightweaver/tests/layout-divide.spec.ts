@@ -40,7 +40,7 @@ test('dividing a 41-LED strip into 4 makes four strips of 11, 10, 10, 10', async
   await setStripLedCount(page, 41);
 
   const select = page.locator('[data-testid^="divide-sections-"]');
-  await select.selectOption('4');
+  await select.fill('4');
   await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('11, 10, 10, 10 LEDs');
 
   const commit = page.locator('[data-testid^="divide-commit-"]');
@@ -62,7 +62,7 @@ test('dividing into 3 spreads the remainder from the first section, and survives
   await page.locator('.la-strip-row input').press('Enter');
   await setStripLedCount(page, 41);
 
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
+  await page.locator('[data-testid^="divide-sections-"]').fill('3');
   await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('14, 14, 13 LEDs');
   await page.locator('[data-testid^="divide-commit-"]').click();
 
@@ -81,7 +81,7 @@ test('the Patterns screen lists one section target per divided piece', async ({ 
   await gotoFreshLayout(page);
   await createOneStrip(page);
   await setStripLedCount(page, 41);
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
 
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
@@ -107,21 +107,46 @@ test('a strip with fewer than 2 LEDs cannot be divided', async ({ page }) => {
   await expect(page.locator('[data-testid^="divide-sections-"]').first()).toBeDisabled();
 });
 
-test('dividing never offers more sections than there are LEDs, and caps at 12', async ({ page }) => {
+test('the section count accepts any whole number within the strip and card limits', async ({ page }) => {
   await gotoFreshLayout(page);
   await createOneStrip(page);
 
-  // 5 LEDs: at most 5 sections should be offered, never more.
   await setStripLedCount(page, 5);
-  const fiveOptions = page.locator('[data-testid^="divide-sections-"] option');
-  await expect(fiveOptions).toHaveCount(4); // 2, 3, 4, 5
-  await expect(fiveOptions.last()).toHaveText('5 sections');
+  const sections = page.locator('[data-testid^="divide-sections-"]');
+  await expect(sections).toHaveAttribute('min', '2');
+  await expect(sections).toHaveAttribute('max', '5');
+  await sections.fill('5');
+  await expect(page.locator('[data-testid^="divide-count-"]')).toHaveCount(5);
 
-  // A strip with far more LEDs than the card can address as zones stops at 12.
+  // A strip with far more LEDs than the card can address as zones is capped at 12.
   await setStripLedCount(page, 200);
-  const manyOptions = page.locator('[data-testid^="divide-sections-"] option');
-  await expect(manyOptions).toHaveCount(11); // 2..12
-  await expect(manyOptions.last()).toHaveText('12 sections');
+  await expect(sections).toHaveAttribute('max', '12');
+  await sections.fill('12');
+  await expect(page.locator('[data-testid^="divide-count-"]')).toHaveCount(12);
+});
+
+test('an invalid section count stays visible and cannot divide', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await createOneStrip(page);
+  await setStripLedCount(page, 41);
+
+  const sections = page.locator('[data-testid^="divide-sections-"]');
+  const commit = page.locator('[data-testid^="divide-commit-"]');
+  const error = page.locator('[data-testid^="divide-error-"]');
+
+  for (const value of ['', '3.5', '1', '13']) {
+    await sections.fill(value);
+    await expect(sections).toHaveValue(value);
+    await expect(sections).toHaveAttribute('aria-invalid', 'true');
+    await expect(error).toBeVisible();
+    await expect(commit).toBeDisabled();
+  }
+
+  await sections.fill('7');
+  await expect(sections).toHaveAttribute('aria-invalid', 'false');
+  await expect(error).toBeHidden();
+  await expect(page.locator('[data-testid^="divide-count-"]')).toHaveCount(7);
+  await expect(commit).toBeEnabled();
 });
 
 test('Split into two keeps working unchanged alongside the new Divide control', async ({ page }) => {
@@ -145,7 +170,7 @@ test('the Divide control fits at 390px wide with no horizontal overflow', async 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
   expect(overflow).toBe(false);
 
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('4');
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
 
   // The counts are the point of the preview: on a phone they must read in
   // full, never clipped to "11, 10,…".
@@ -171,7 +196,7 @@ test('typing a section count rebalances its neighbour and divides to those exact
   await createOneStrip(page);
   await setStripLedCount(page, 41);
 
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
+  await page.locator('[data-testid^="divide-sections-"]').fill('3');
   await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('14, 14, 13 LEDs');
 
   const first = page.locator('[data-testid^="divide-count-"][data-testid$="-1"]');
@@ -200,7 +225,7 @@ test('Divide disclosure opens by keyboard and collapses after selection changes 
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   const regionId = await toggle.getAttribute('aria-controls');
   await expect(page.locator(`[id="${regionId}"]`)).toBeVisible();
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
+  await page.locator('[data-testid^="divide-sections-"]').fill('3');
   await page.locator('[data-testid^="divide-count-"][data-testid$="-1"]').fill('10');
   const preview = await page.locator('[data-testid^="divide-preview-"]').innerText();
   await page.locator('[data-testid^="divide-sections-"]').press('Escape');
