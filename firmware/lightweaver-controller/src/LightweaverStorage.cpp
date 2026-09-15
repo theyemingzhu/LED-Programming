@@ -206,7 +206,7 @@ void synchronizeNativeRecipes(const RuntimeConfig& config) {
 // logical framebuffer, which copyLogicalToPhysicalLeds() later reverses per
 // configured segment. Reverse those same phase spans once at config load so a
 // logical pixel samples the phase of its eventual physical destination.
-// v2 affine spans stay in physical order; the renderer translates each index.
+// v2/v3 affine spans stay in physical order; the renderer translates each index.
 void mapColorJourneyPhasesToLogical(const RuntimeConfig& config,
                                     lightweaver::NativeRecipe& recipe) {
   if (recipe.kind != lightweaver::NativeRecipeKind::ColorJourney) return;

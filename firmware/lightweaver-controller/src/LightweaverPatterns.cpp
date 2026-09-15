@@ -292,9 +292,10 @@ bool renderNativeRecipe(const lightweaver::NativeRecipe& recipe, CRGB* leds,
     uint8_t cachedSpan = 0;
     for (uint16_t pixel = 0; pixel < totalPixels; pixel++) {
       uint16_t phasePixel = globalStart + pixel;
-      const bool affine = recipe.colorJourney.version == lightweaver::LW_COLOR_JOURNEY_V2_VERSION;
+      const bool affine = recipe.colorJourney.version == lightweaver::LW_COLOR_JOURNEY_V2_VERSION ||
+                          recipe.colorJourney.version == lightweaver::LW_COLOR_JOURNEY_V3_VERSION;
       if (affine && context && context->outputs) {
-        // Cache a wiring segment until its logical boundary is crossed. v2
+        // Cache a wiring segment until its logical boundary is crossed. Affine
         // stays in physical order; reversal never splits authored spans.
         if (phasePixel < cachedSegmentStart || phasePixel >= cachedSegmentEnd) {
           bool found = false;

@@ -1,11 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { encodeColorJourneyPhases, expandColorJourneyPhases } from './colorJourneyPhases.js';
+import {
+  COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS,
+  colorJourneyRenderedChannelDelta,
+  encodeBoundedColorJourneyPhases,
+  encodeColorJourneyPhases,
+  expandColorJourneyPhases,
+} from './colorJourneyPhases.js';
 const fixture = JSON.parse(readFileSync(new URL('../../../docs/fixtures/color-journey-v2-phases.json', import.meta.url)));
 for (const candidate of fixture.cases) test(`shared integer phase oracle: ${candidate.name}`, () => {
   const actual = expandColorJourneyPhases({ version: 2, phases: candidate.phases });
+  const bounded = expandColorJourneyPhases({
+    version: 3,
+    maxPhaseErrorTicks: COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS,
+    phases: candidate.phases,
+  });
   assert.equal(actual.length, candidate.pixelCount);
+  assert.deepEqual(bounded, actual);
   candidate.samples.forEach(({ pixel, phase16 }) => assert.equal(actual[pixel], phase16));
 });
 test('encoder preserves every exact Q16 value of wrapped and reversed lines', () => {
@@ -42,4 +54,53 @@ test('seeded geometries roundtrip exactly or fail with explicit complexity evide
     catch (error) { assert.match(error.message, /geometry is too complex.*64 phase spans/); continue; }
     assert.deepEqual(expandColorJourneyPhases(encoded), values);
   }
+});
+
+test('the bounded renderer contract derives 194 ticks and rejects 195', () => {
+  let largest = 0;
+  while (colorJourneyRenderedChannelDelta(largest + 1) <= 1) largest += 1;
+  assert.equal(largest, 194);
+  assert.equal(COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS, 194);
+  assert.ok(colorJourneyRenderedChannelDelta(194) < 1);
+  assert.ok(colorJourneyRenderedChannelDelta(195) > 1);
+});
+
+test('bounded affine spans fit representative curved and mixed 4096-pixel geometry', () => {
+  const curves = [
+    t => ({ x: 20 + 600 * t * t - 400 * t * t * t, y: 180 - 480 * t + 480 * t * t }),
+    t => t < 0.55
+      ? ({ x: 10 + 200 * t + 120 * t * t, y: 170 - 500 * t + 430 * t * t })
+      : ({ x: 180 + 150 * (t - 0.55) - 260 * (t - 0.55) ** 2, y: 170 - 330 * (t - 0.55) }),
+  ];
+  for (const pointAt of curves) {
+    const points = Array.from({ length: 4096 }, (_, index) => pointAt(index / 4095));
+    const minX = Math.min(...points.map(point => point.x));
+    const minY = Math.min(...points.map(point => point.y));
+    const range = Math.max(
+      Math.max(...points.map(point => point.x)) - minX,
+      Math.max(...points.map(point => point.y)) - minY,
+    );
+    const values = points.map(point => Math.round(((((point.x - minX) / range
+      + 0.35 * (point.y - minY) / range) % 1) + 1) % 1 * 65536) & 0xffff);
+    const encoded = encodeBoundedColorJourneyPhases(values);
+    assert.equal(encoded.version, 3);
+    assert.equal(encoded.maxPhaseErrorTicks, 194);
+    assert.ok(encoded.phases.length <= 64);
+    const expanded = expandColorJourneyPhases(encoded);
+    expanded.forEach((phase, index) => {
+      const delta = ((phase - values[index] + 32768) & 0xffff) - 32768;
+      assert.ok(Math.abs(delta) <= 194);
+    });
+  }
+});
+
+test('v3 validation prevents silent tolerance changes and repeated drift', () => {
+  const values = Array.from({ length: 4096 }, (_, index) => (
+    Math.round((Math.sin(index / 700) * 0.2 + index / 4095) * 65536) & 0xffff
+  ));
+  const encoded = encodeBoundedColorJourneyPhases(values);
+  const once = expandColorJourneyPhases(encoded);
+  assert.deepEqual(expandColorJourneyPhases(encodeBoundedColorJourneyPhases(once)), once);
+  assert.throws(() => expandColorJourneyPhases({ ...encoded, maxPhaseErrorTicks: 195 }), RangeError);
+  assert.throws(() => expandColorJourneyPhases({ version: 3, phases: encoded.phases }), RangeError);
 });

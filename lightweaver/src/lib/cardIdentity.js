@@ -167,16 +167,20 @@ export function normalizeCardProjectEvidence(payload = {}) {
 
 function normalizeRecipeCapabilities(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const colorJourney = value.colorJourney;
-  if (!colorJourney || typeof colorJourney !== 'object' || Array.isArray(colorJourney)) return {};
-  return {
-    colorJourney: {
-      version: Number(colorJourney.version),
-      maxPixels: Number(colorJourney.maxPixels),
-      phaseEncoding: cleanText(colorJourney.phaseEncoding, 32),
-      restart: cleanText(colorJourney.restart, 32),
-    },
-  };
+  const result = {};
+  for (const [key, expectedVersion] of [['colorJourney', 1], ['colorJourneyV2', 2], ['colorJourneyV3', 3]]) {
+    const capability = value[key];
+    if (!capability || typeof capability !== 'object' || Array.isArray(capability)) continue;
+    result[key] = {
+      version: Number(capability.version),
+      maxPixels: Number(capability.maxPixels),
+      ...(expectedVersion >= 2 ? { maxPhaseSpans: Number(capability.maxPhaseSpans) } : {}),
+      ...(expectedVersion === 3 ? { maxPhaseErrorTicks: Number(capability.maxPhaseErrorTicks) } : {}),
+      phaseEncoding: cleanText(capability.phaseEncoding, 32),
+      restart: cleanText(capability.restart, 32),
+    };
+  }
+  return result;
 }
 
 function normalizeEvidenceCapabilities(value) {

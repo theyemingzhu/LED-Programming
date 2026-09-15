@@ -124,14 +124,15 @@ bool parseColorJourney(JsonObjectConst object, uint16_t expectedPixels,
   }
   if (!journey["version"].is<uint8_t>() ||
       (journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_VERSION &&
-       journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_V2_VERSION)) {
+       journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_V2_VERSION &&
+       journey["version"].as<uint8_t>() != LW_COLOR_JOURNEY_V3_VERSION)) {
     return fail(error, RecipeParseErrorCode::UnsupportedVersion,
-                "recipe.journey.version", "only color journey v1 and v2 are supported");
+                "recipe.journey.version", "only color journey v1, v2, and v3 are supported");
   }
   for (JsonPairConst field : journey) {
     if (!fieldIsOneOf(field.key().c_str(), {
             "version", "stops", "easing", "loop", "restart",
-            "motionSpeedMs", "depth", "phase16", "phases"})) {
+            "motionSpeedMs", "depth", "phase16", "phases", "maxPhaseErrorTicks"})) {
       return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey",
                   "contains an unknown field");
     }
@@ -139,8 +140,14 @@ bool parseColorJourney(JsonObjectConst object, uint16_t expectedPixels,
   parsed.kind = NativeRecipeKind::ColorJourney;
   ColorJourneyRecipe& destination = parsed.colorJourney;
   destination.version = journey["version"].as<uint8_t>();
-  if ((destination.version == LW_COLOR_JOURNEY_VERSION && hasField(journey, "phases")) ||
-      (destination.version == LW_COLOR_JOURNEY_V2_VERSION && hasField(journey, "phase16"))) {
+  if ((destination.version == LW_COLOR_JOURNEY_VERSION &&
+       (hasField(journey, "phases") || hasField(journey, "maxPhaseErrorTicks"))) ||
+      (destination.version == LW_COLOR_JOURNEY_V2_VERSION &&
+       (hasField(journey, "phase16") || hasField(journey, "maxPhaseErrorTicks"))) ||
+      (destination.version == LW_COLOR_JOURNEY_V3_VERSION &&
+       (hasField(journey, "phase16") ||
+        !journey["maxPhaseErrorTicks"].is<uint16_t>() ||
+        journey["maxPhaseErrorTicks"].as<uint16_t>() != LW_COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS))) {
     return fail(error, RecipeParseErrorCode::InvalidValue, "recipe.journey",
                 "phase encoding must match the journey version");
   }
@@ -208,7 +215,8 @@ bool parseColorJourney(JsonObjectConst object, uint16_t expectedPixels,
   }
   destination.depth = depth;
 
-  if (destination.version == LW_COLOR_JOURNEY_V2_VERSION) {
+  if (destination.version == LW_COLOR_JOURNEY_V2_VERSION ||
+      destination.version == LW_COLOR_JOURNEY_V3_VERSION) {
     JsonArrayConst spans = journey["phases"].as<JsonArrayConst>();
     if (!expectedPixels || spans.isNull() || spans.size() == 0 ||
         spans.size() > LW_COLOR_JOURNEY_MAX_PHASE_SPANS) {
@@ -741,6 +749,13 @@ void writeNativeRecipeCapabilities(JsonObject destination,
   v2["maxPhaseSpans"] = LW_COLOR_JOURNEY_MAX_PHASE_SPANS;
   v2["phaseEncoding"] = "q0.16-affine";
   v2["restart"] = "restart";
+  JsonObject v3 = destination["colorJourneyV3"].to<JsonObject>();
+  v3["version"] = LW_COLOR_JOURNEY_V3_VERSION;
+  v3["maxPixels"] = LW_CARD_HARDWARE_MAX_PIXELS;
+  v3["maxPhaseSpans"] = LW_COLOR_JOURNEY_MAX_PHASE_SPANS;
+  v3["maxPhaseErrorTicks"] = LW_COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS;
+  v3["phaseEncoding"] = "q0.16-affine-rgb1";
+  v3["restart"] = "restart";
 }
 
 }  // namespace lightweaver

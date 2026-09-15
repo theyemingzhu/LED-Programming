@@ -1,6 +1,7 @@
 #include <ArduinoJson.h>
 #include <unity.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -311,6 +312,12 @@ void test_parses_strict_color_journey_and_capability() {
   TEST_ASSERT_EQUAL_UINT16(65535, v2["maxPixels"].as<uint16_t>());
   TEST_ASSERT_EQUAL_UINT8(64, v2["maxPhaseSpans"].as<uint8_t>());
   TEST_ASSERT_EQUAL_STRING("q0.16-affine", v2["phaseEncoding"].as<const char*>());
+  JsonObject v3 = doc["colorJourneyV3"];
+  TEST_ASSERT_EQUAL_UINT8(3, v3["version"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_UINT16(65535, v3["maxPixels"].as<uint16_t>());
+  TEST_ASSERT_EQUAL_UINT8(64, v3["maxPhaseSpans"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_UINT16(194, v3["maxPhaseErrorTicks"].as<uint16_t>());
+  TEST_ASSERT_EQUAL_STRING("q0.16-affine-rgb1", v3["phaseEncoding"].as<const char*>());
 }
 
 void test_rejects_color_journey_boundaries_without_mutating_destination() {
@@ -491,11 +498,62 @@ void test_v2_affine_journey_capacity_and_rejection() {
   TEST_ASSERT_EQUAL_UINT8(77, recipe.version);
 }
 
+void test_v3_bounded_affine_requires_exact_error_contract() {
+  JsonDocument doc;
+  TEST_ASSERT_FALSE(deserializeJson(doc, kValidColorJourney));
+  doc["journey"]["version"] = 3;
+  doc["journey"]["maxPhaseErrorTicks"] = 194;
+  doc["journey"].remove("phase16");
+  JsonArray span = doc["journey"]["phases"].to<JsonArray>().add<JsonArray>();
+  span.add(4096); span.add(65535); span.add(-65536);
+  NativeRecipe recipe;
+  RecipeParseError error;
+  TEST_ASSERT_TRUE(lightweaver::parseNativeRecipeV1(
+      doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 4096));
+  TEST_ASSERT_EQUAL_UINT8(3, recipe.colorJourney.version);
+  TEST_ASSERT_EQUAL_UINT8(1, recipe.colorJourney.phaseSpanCount);
+
+  doc["journey"]["maxPhaseErrorTicks"] = 195;
+  recipe.version = 77;
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(
+      doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 4096));
+  TEST_ASSERT_EQUAL_UINT8(77, recipe.version);
+  doc["journey"].remove("maxPhaseErrorTicks");
+  TEST_ASSERT_FALSE(lightweaver::parseNativeRecipeV1(
+      doc.as<JsonVariantConst>(), measureJson(doc), recipe, error, 4096));
+}
+
+void test_v3_error_bound_matches_firmware_rounding_for_every_motion_phase() {
+  NativeRecipe recipe;
+  recipe.kind = lightweaver::NativeRecipeKind::ColorJourney;
+  recipe.colorJourney.stopCount = 1;
+  recipe.colorJourney.stops[0].color = {255, 255, 255};
+  recipe.colorJourney.motionSpeedMs = 65536;
+  recipe.colorJourney.depth = 0.42f;
+  uint8_t maxAt194 = 0;
+  uint8_t maxAt195 = 0;
+  for (uint32_t elapsed = 0; elapsed < 65536; ++elapsed) {
+    const uint8_t baseline = lightweaver::sampleColorJourneyPixel(recipe, 0, elapsed).red;
+    for (const uint16_t shifted : {uint16_t(194), uint16_t(0U - 194U)}) {
+      const uint8_t actual = lightweaver::sampleColorJourneyPixel(recipe, shifted, elapsed).red;
+      maxAt194 = std::max<uint8_t>(maxAt194, static_cast<uint8_t>(std::abs(int(actual) - int(baseline))));
+    }
+    for (const uint16_t shifted : {uint16_t(195), uint16_t(0U - 195U)}) {
+      const uint8_t actual = lightweaver::sampleColorJourneyPixel(recipe, shifted, elapsed).red;
+      maxAt195 = std::max<uint8_t>(maxAt195, static_cast<uint8_t>(std::abs(int(actual) - int(baseline))));
+    }
+  }
+  TEST_ASSERT_EQUAL_UINT8(1, maxAt194);
+  TEST_ASSERT_EQUAL_UINT8(2, maxAt195);
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
   RUN_TEST(test_v2_affine_journey_capacity_and_rejection);
+  RUN_TEST(test_v3_bounded_affine_requires_exact_error_contract);
+  RUN_TEST(test_v3_error_bound_matches_firmware_rounding_for_every_motion_phase);
   RUN_TEST(test_v2_rejects_malformed_spans_and_preserves_destination);
   RUN_TEST(test_parses_complete_bounded_v1_recipe);
   RUN_TEST(test_rejects_unknown_version_and_nodes);
