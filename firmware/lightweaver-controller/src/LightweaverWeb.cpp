@@ -8,6 +8,7 @@
 #include "LightweaverConnectivityPolicy.h"
 #include "LightweaverControlTransaction.h"
 #include "LightweaverRecipe.h"
+#include "LightweaverColorJourney.h"
 #include "LightweaverConnectivityOrchestrator.h"
 #include "LightweaverHardwareContract.h"
 #include "LightweaverWifiChannelPolicy.h"
@@ -2674,6 +2675,26 @@ void handlePatterns() {
     p["label"] = cfg.looks[i].label;
     p["mode"] = cfg.looks[i].mode;
     p["runtimePatternId"] = cfg.looks[i].preset.length() ? cfg.looks[i].preset : cfg.looks[i].id;
+    if (cfg.looks[i].hasNativeRecipe) {
+      lightweaver::NativeRecipe readback = cfg.looks[i].nativeRecipe;
+      // v1 phases were mapped into logical framebuffer order at config load.
+      // Undo that reversible mapping for card readback. Affine v2/v3 recipes
+      // remain in physical order, so reverseColorJourneyPhaseSpan is a no-op.
+      for (uint8_t outputIndex = 0; outputIndex < cfg.outputCount; ++outputIndex) {
+        const OutputConfig& output = cfg.outputs[outputIndex];
+        uint16_t segmentStart = output.start;
+        for (uint8_t segmentIndex = 0; segmentIndex < output.segmentCount; ++segmentIndex) {
+          const OutputSegmentConfig& segment = output.segments[segmentIndex];
+          if (segment.reversed && segment.count > 1) {
+            lightweaver::reverseColorJourneyPhaseSpan(readback, segmentStart, segment.count);
+          }
+          segmentStart += segment.count;
+        }
+      }
+      if (!lightweaver::writeNativeRecipeJson(p["nativeRecipe"].to<JsonObject>(), readback)) {
+        p.remove("nativeRecipe");
+      }
+    }
     const bool supportsCustomTuning = cfg.looks[i].preset == "custom-color";
     JsonObject controls = p["controls"].to<JsonObject>();
     controls["customColor"] = supportsCustomTuning;

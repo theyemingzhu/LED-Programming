@@ -704,6 +704,74 @@ bool restartNativeRecipe(const char* routeId, uint32_t nowMs) {
   return false;
 }
 
+bool writeNativeRecipeJson(JsonObject destination, const NativeRecipe& recipe) {
+  if (recipe.version != LW_RECIPE_SCHEMA_VERSION ||
+      recipe.kind != NativeRecipeKind::ColorJourney ||
+      recipe.colorJourney.stopCount < LW_COLOR_JOURNEY_MIN_STOPS ||
+      recipe.colorJourney.stopCount > LW_COLOR_JOURNEY_MAX_STOPS) return false;
+  const ColorJourneyRecipe& source = recipe.colorJourney;
+  if (source.version != LW_COLOR_JOURNEY_VERSION &&
+      source.version != LW_COLOR_JOURNEY_V2_VERSION &&
+      source.version != LW_COLOR_JOURNEY_V3_VERSION) return false;
+
+  destination.clear();
+  destination["version"] = LW_RECIPE_SCHEMA_VERSION;
+  destination["kind"] = "color-journey";
+  destination["id"] = recipe.id;
+  JsonObject journey = destination["journey"].to<JsonObject>();
+  journey["version"] = source.version;
+  JsonArray stops = journey["stops"].to<JsonArray>();
+  constexpr char hex[] = "0123456789abcdef";
+  for (uint8_t index = 0; index < source.stopCount; ++index) {
+    const ColorJourneyStop& stop = source.stops[index];
+    char color[8] = {'#', hex[stop.color.red >> 4], hex[stop.color.red & 0x0f],
+                     hex[stop.color.green >> 4], hex[stop.color.green & 0x0f],
+                     hex[stop.color.blue >> 4], hex[stop.color.blue & 0x0f], '\0'};
+    JsonObject encoded = stops.add<JsonObject>();
+    encoded["color"] = color;
+    encoded["holdMs"] = stop.holdMs;
+    encoded["fadeMs"] = stop.fadeMs;
+  }
+  journey["easing"] = source.smooth ? "smooth" : "linear";
+  journey["loop"] = source.loop;
+  journey["restart"] = "restart";
+  journey["motionSpeedMs"] = source.motionSpeedMs;
+  journey["depth"] = source.depth;
+
+  if (source.version == LW_COLOR_JOURNEY_VERSION) {
+    if (!source.phaseCount || source.phaseCount > LW_COLOR_JOURNEY_MAX_PIXELS) return false;
+    char phase16[LW_COLOR_JOURNEY_MAX_PIXELS * 4U + 1U];
+    for (uint16_t pixel = 0; pixel < source.phaseCount; ++pixel) {
+      const uint16_t phase = recipe.colorJourneyPhases[pixel];
+      phase16[pixel * 4U] = hex[(phase >> 12) & 0x0f];
+      phase16[pixel * 4U + 1U] = hex[(phase >> 8) & 0x0f];
+      phase16[pixel * 4U + 2U] = hex[(phase >> 4) & 0x0f];
+      phase16[pixel * 4U + 3U] = hex[phase & 0x0f];
+    }
+    phase16[source.phaseCount * 4U] = '\0';
+    journey["phase16"] = phase16;
+    return true;
+  }
+
+  if (!source.phaseSpanCount || source.phaseSpanCount > LW_COLOR_JOURNEY_MAX_PHASE_SPANS) {
+    return false;
+  }
+  if (source.version == LW_COLOR_JOURNEY_V3_VERSION) {
+    journey["maxPhaseErrorTicks"] = LW_COLOR_JOURNEY_MAX_PHASE_ERROR_TICKS;
+  }
+  JsonArray spans = journey["phases"].to<JsonArray>();
+  uint32_t phaseCount = 0;
+  for (uint8_t index = 0; index < source.phaseSpanCount; ++index) {
+    const ColorJourneyPhaseSpan& span = recipe.colorJourneyPhaseSpans[index];
+    phaseCount += span.count;
+    JsonArray encoded = spans.add<JsonArray>();
+    encoded.add(span.count);
+    encoded.add(span.start);
+    encoded.add(span.delta);
+  }
+  return phaseCount == source.phaseCount;
+}
+
 void writeNativeRecipeCapabilities(JsonObject destination,
                                    const char* firmwareVersion,
                                    const char* buildId) {

@@ -193,6 +193,7 @@ bool parseNativeRecipeV1(
     NativeRecipe& destination,
     RecipeParseError& error,
     uint16_t expectedPixels = 0);
+bool writeNativeRecipeJson(JsonObject destination, const NativeRecipe& recipe);
 void writeNativeRecipeCapabilities(
     JsonObject destination,
     const char* firmwareVersion,
