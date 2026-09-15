@@ -9,7 +9,7 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
-### 2026-09-16 Release cleanup (active)
+### 2026-09-16 Release cleanup (blocked: pixel capacity)
 User authorized reviewing LED tasks and pushing/merging completed work, closing
 completed tasks, and reporting remaining blockers. Source base origin/main
 18479a01, live Studio1888 / published firmware1819 (1.1.37).
@@ -17,7 +17,13 @@ Integrated division count40e96624, artwork Lab69eed773, native journeysd9fcc031
 and29374eaa on codex/september-release-cleanup. Selected-section authority is
 retained; native journeys stay whole-piece/capability gated. Firmware1.1.38
 prepared for the protected signer. Combined checkpoint2511 units+build passed.
-Release remains pending: latest exhaustive main check was cancelled; fresh
+Pushed as draft PR296. Combined42 browser tests, firmware-sensitive contracts,
+native13 tests/shared samples and ESP32 compile passed (68.3% RAM,33.6% flash).
+Adrian requires more than256 physical pixels; capped Color Journeys must not
+merge. Separate capacity-expansion task queued from this integrated branch.
+Local broad release UI diagnosis stopped when capacity became a prerequisite;
+partial passes are not a full gate. Release remains pending: latest exhaustive
+main check was cancelled; fresh
 exact-main run35031272027 started. No hardware commands or flashes authorized
 by this cleanup; physical journey continuity/restart/hue remain needs-eyes.
 Four completed tasks archived: Improve pattern lab workflow, LED control
