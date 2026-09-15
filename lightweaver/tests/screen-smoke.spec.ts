@@ -919,13 +919,16 @@ test('Hardware color-order test reports success only after exact state readback'
     colorOrder = body.colorOrder;
     await route.fulfill({ json: { ok: true, cardId, colorOrder, stateRevision: 12 } });
   });
-  await page.goto('/#screen=card&section=settings', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await page.evaluate((id) => localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id })), cardId);
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  await page.locator('.set-row', { hasText: 'Color order' }).getByRole('button', { name: 'GRB', exact: true }).click();
+  await page.getByTestId('fact-color-order').getByRole('button', { name: 'GRB', exact: true }).click();
 
-  await expect(page.getByTestId('settings-card-status')).toContainText('read back from the exact card');
+  // Card Home is the sole owner of color order. This success text is only set
+  // after /api/control acknowledges the write and /api/status reads GRB back
+  // from the same card identity.
+  await expect(page.getByTestId('fact-color-status')).toContainText('GRB is on the strip');
   expect(colorOrder).toBe('GRB');
 });
 
