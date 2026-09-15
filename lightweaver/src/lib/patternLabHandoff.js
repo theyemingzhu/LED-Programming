@@ -108,7 +108,10 @@ export function lookFromRecipe(recipe) {
   const selectedSource = source?.sectionLooks?.[source?.selectedTargetId] || source?.defaultLook;
   const exactSource = selectedSource?.patternId === recipe.base.patternId ? selectedSource : null;
   const defaultLook = resolvePatternLabVisualLook(recipe);
-  const sectionLooks = exactSource && source.sectionLooks ? clone(source.sectionLooks) : Object.fromEntries((recipe.targets || [])
+  const keepScopedSectionLooks = source?.selectedTargetId
+    && source.selectedTargetId !== 'all'
+    && source.sectionLooks;
+  const sectionLooks = (exactSource || keepScopedSectionLooks) && source.sectionLooks ? clone(source.sectionLooks) : Object.fromEntries((recipe.targets || [])
     .filter(target => target?.kind === 'section' && String(target.id || '').trim())
     .map(target => [slug(target.id), defaultLook]));
   if (source?.selectedTargetId && source.selectedTargetId !== 'all') sectionLooks[source.selectedTargetId] = defaultLook;

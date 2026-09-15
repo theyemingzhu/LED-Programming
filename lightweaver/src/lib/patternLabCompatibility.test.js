@@ -359,6 +359,22 @@ test('known unsupported target restrictions offer an explicit simplified variant
   assert.ok(result.actions.some(action => action.id === 'simplify'));
 });
 
+test('a resolved simple section look may use the saved-look handoff without claiming general section support', () => {
+  const scopedRecipe = recipe({
+    evolution: { enabled: false, durationSeconds: 600 },
+    targets: [{ kind: 'section', id: 'centre' }],
+  });
+  const ordinary = classifyPatternLabCompatibility(scopedRecipe, { metrics: FIT_METRICS });
+  assert.notEqual(ordinary.classification, 'live-on-card');
+
+  const savedLook = classifyPatternLabCompatibility(scopedRecipe, {
+    metrics: FIT_METRICS,
+    allowSectionLookHandoff: true,
+  });
+  assert.equal(savedLook.classification, 'live-on-card');
+  assert.equal(savedLook.reasons.some(reason => reason.code === 'target-not-native'), false);
+});
+
 test('simplification does not reuse source estimates for the generated variant', () => {
   const result = classifyPatternLabCompatibility(recipe({
     targets: [{ kind: 'section', id: 'outer' }],
