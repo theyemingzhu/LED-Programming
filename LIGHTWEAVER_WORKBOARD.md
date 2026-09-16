@@ -10,6 +10,13 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+Compatibility regression repaired08520baa→9dfbb3cb: authoring guard blocked
+validated simplification recovery. Only simplify now enabled; mutations stay
+disabled. Focused red→green,6browser+46unit,actual screen verified by worker.
+Resume release from ci:browser-regression through production/unit/releaseUI/
+build/stage/verify; prior source/cloud/mapper/packaging gates passed unchanged.
+Logs:/tmp/lightweaver-managed-release-resume.log and.exit. Keep HEAD fixed.
+
 Combined launch:source at dbb3b000 stopped on pattern-lab-compatibility.spec45
 (Create simplified variant missing),114 adjacent passes. Same pixel task
 Sol/medium owns bounded diagnosis/repair; source immutability/target authority
