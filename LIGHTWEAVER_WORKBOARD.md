@@ -10,6 +10,11 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+Combined launch:source at dbb3b000 stopped on pattern-lab-compatibility.spec45
+(Create simplified variant missing),114 adjacent passes. Same pixel task
+Sol/medium owns bounded diagnosis/repair; source immutability/target authority
+must stay enforced. Full gate will resume after focused red/green; no shipment.
+
 V3 complete:bbad9841+6d0c58ab integrated; native recipe readback omission fixed.
 4096 real cubic18spans/1519B/173ticks, mixed24spans/1609B/187ticks.
 Worker proof:2532unit+build,70focused units,9browser,18native incl all65536
