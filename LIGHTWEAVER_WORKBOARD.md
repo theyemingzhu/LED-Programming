@@ -10,6 +10,11 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+Release resume166aa167 passed desktop regression groups then failed1/41mobile
+checks: pattern-lab-creative-flow.spec73 unkept color edit reload, line80.
+Same pixel task Sol/medium assigned focused recovery diagnosis/repair.
+Live remains Studio1888/published firmware1819; PR296 draft, unmerged.
+
 Compatibility regression repaired08520baa→9dfbb3cb: authoring guard blocked
 validated simplification recovery. Only simplify now enabled; mutations stay
 disabled. Focused red→green,6browser+46unit,actual screen verified by worker.
