@@ -5,6 +5,7 @@ test.beforeEach(async ({ page }) => {
   // This authoring proof must never reach a physical controller.
   await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3'))).not.toBeNull();
   await openControls(page);
 });
 
@@ -28,6 +29,7 @@ test('a color journey can be explored and kept without opening technical control
 
 test('the creative controls stay usable on a phone without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await openControls(page);
   await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
   await expect(page.getByTestId('color-journey-ribbon')).toBeVisible();
   await page.getByRole('button', { name: 'Move color 1 right', exact: true }).click();
