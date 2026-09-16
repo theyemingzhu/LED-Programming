@@ -10,6 +10,12 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-16 Managed completion (active)
+Mobile fixture repair cd48fb59 integrated: wait for project autosave identity
+before reload; reopen controls after phone resize. Exact recovery assertions kept.
+Worker: focused mobile10/10, desktop6/6, mobile6/6. Resume remaining mobile,
+production, unit, release UI and build/stage/verify with HEAD fixed.
+Log:/tmp/lightweaver-managed-release-final.log; exit in corresponding .exit.
+
 Release resume166aa167 passed desktop regression groups then failed1/41mobile
 checks: pattern-lab-creative-flow.spec73 unkept color edit reload, line80.
 Same pixel task Sol/medium assigned focused recovery diagnosis/repair.
