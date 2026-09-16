@@ -276,7 +276,8 @@ export default function PatternLabExport({
               key={action.id}
               type="button"
               className="btn"
-              disabled={authoringDisabled || (action.id === 'bake' && bakeStatus?.state === 'rendering')}
+              disabled={(authoringDisabled && action.id !== 'simplify')
+                || (action.id === 'bake' && bakeStatus?.state === 'rendering')}
               onClick={() => {
                 if (action.id === 'bake') void bakeSequence();
                 else runAction(action, compatibility, { onSimplify, onRemoveFeature });
