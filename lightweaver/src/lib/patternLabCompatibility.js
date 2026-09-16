@@ -41,7 +41,7 @@ export const DEFAULT_PATTERN_LAB_CARD_DESCRIPTOR = deepFreeze({
   version: 1,
   id: 'lightweaver-esp32-s3-v1',
   features: {
-    generators: ['lightweaver-pattern'],
+    generators: ['lightweaver-pattern', 'color-journey'],
     patterns: CORE_CARD_PATTERN_BANK.map(pattern => pattern.id),
     blendModes: ['normal'],
     transforms: [],
@@ -229,7 +229,7 @@ function layerGeneratorIssue(layer, index) {
   return null;
 }
 
-function collectRecipeFeatures(recipe) {
+function collectRecipeFeatures(recipe, options = {}) {
   const features = [];
   features.push({
     category: 'generators',
@@ -276,6 +276,7 @@ function collectRecipeFeatures(recipe) {
     });
   }
   for (const [index, target] of (recipe.targets || []).entries()) {
+    if (options.allowSectionLookHandoff === true && target?.kind === 'section') continue;
     features.push({
       category: 'targets', value: target.kind, path: ['targets', index, 'kind'],
       code: 'target-not-native', label: 'target',
@@ -439,7 +440,8 @@ export function classifyPatternLabCompatibility(recipe, options = {}) {
     throw new TypeError('Pattern Lab compatibility requires a recipe');
   }
   const descriptor = descriptorWithDefaults(options.descriptor);
-  const evaluation = evaluatePatternLabCompatibility(recipe, descriptor, options.metrics);
+  const evaluationOptions = { allowSectionLookHandoff: options.allowSectionLookHandoff === true };
+  const evaluation = evaluatePatternLabCompatibility(recipe, descriptor, options.metrics, evaluationOptions);
   const { budgets, reasons, changes, nativeEligible, bakeEligible } = evaluation;
 
   const directClassification = nativeEligible
@@ -460,7 +462,7 @@ export function classifyPatternLabCompatibility(recipe, options = {}) {
       variant,
       descriptor,
       options.simplificationMetrics,
-      { allowRecipeEstimates: false },
+      { ...evaluationOptions, allowRecipeEstimates: false },
     );
     const resultClassification = variantEvaluation.nativeEligible
       ? 'live-on-card'
@@ -515,17 +517,27 @@ function evaluatePatternLabCompatibility(recipe, descriptor, metrics, options) {
   const budgets = buildBudgets(recipe, descriptor, metrics, options);
   const reasons = [];
   const changes = [];
-  if (recipe.base?.kind === 'color-journey') {
-    reasons.push(reason('color-journey-stream-only', 'Color journeys play through Studio. Keep this phone awake; standalone recording is not available yet.', { bakeable: false }));
+  const isColorJourney = recipe.base?.kind === 'color-journey';
+  if (isColorJourney && budgets.pixelCount.known && budgets.pixelCount.used > 65535) {
+    reasons.push(reason('color-journey-pixel-limit', 'Standalone Color Journeys support at most 65535 physical pixels.', { bakeable: false }));
+  }
+  if (isColorJourney && (
+    !Array.isArray(recipe.targets)
+    || recipe.targets.length !== 1
+    || !['whole-piece', 'all'].includes(recipe.targets[0]?.kind)
+  )) {
+    reasons.push(reason('color-journey-target-unsupported', 'Standalone Color Journeys must target the whole piece.', { bakeable: false }));
   }
 
   for (const [index, layer] of (recipe.layers || []).entries()) {
     const issue = layerGeneratorIssue(layer, index);
     if (issue) reasons.push(issue);
   }
-  for (const feature of collectRecipeFeatures(recipe)) {
-    const unsupported = featureReason(feature, descriptor, changes);
+  for (const feature of collectRecipeFeatures(recipe, options)) {
+    const featureChanges = [];
+    const unsupported = featureReason(feature, descriptor, featureChanges);
     if (unsupported) reasons.push(unsupported);
+    if (!isColorJourney) changes.push(...featureChanges);
   }
   for (const [index, requirement] of (recipe.requirements || []).entries()) {
     const unsupported = requirementReason(requirement, index, descriptor, changes);

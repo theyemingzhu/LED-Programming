@@ -320,6 +320,7 @@ function rebuildRuntime(job, productionJobDigest) {
     strips: snapshot.layout.strips,
     patchBoard: snapshot.layout.patchBoard,
     wiring: snapshot.layout.wiring,
+    symSettings: snapshot.symSettings || null,
     standaloneController: snapshot.devices.standaloneController,
   });
   runtime.config.wiringRevision = job.configuration.config.wiringRevision;

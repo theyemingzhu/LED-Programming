@@ -61,6 +61,7 @@ import {
 import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
 import { createDefaultProject } from './projectModel.js';
 import { cardPartialOrigin } from './projectCopyLabel.js';
+import { colorJourneyLayoutKey, normalizeStoredNativeColorJourney, patternLabRecipeFromNativeColorJourney } from './colorJourneyNative.js';
 
 export const SAVE_FAILURE_MESSAGES = Object.freeze({
   'browser-recovery-failed': 'Studio could not create a browser recovery copy. Your current project is still open; free browser storage and retry.',
@@ -105,7 +106,10 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
   const installedZones = Array.isArray(zones?.zones) ? zones.zones : [];
   const startupPatternId = String(zones?.startupPatternId || installedZones[0]?.patternId || installedPatterns[0]?.id || 'aurora');
   const startupZone = installedZones.find(zone => zone?.patternId === startupPatternId) || installedZones[0] || {};
-  const looks = installedPatterns.map(pattern => ({
+  const looks = installedPatterns.map(pattern => {
+    let nativeRecipe = null;
+    try { nativeRecipe = normalizeStoredNativeColorJourney(pattern.nativeRecipe); } catch { nativeRecipe = null; }
+    return ({
       id: pattern.id,
       type: 'compound',
       label: pattern.label || pattern.id,
@@ -113,8 +117,19 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
       sectionLooks: Object.fromEntries((pattern.zones || [])
         .filter(zone => zone?.id)
         .map(zone => [zone.id, visualLookFromZone(zone, pattern.runtimePatternId || pattern.id || startupPatternId)])),
+      ...(nativeRecipe ? {
+        nativeRecipe,
+        nativeRecipeLayoutKey: colorJourneyLayoutKey(skeleton),
+        patternLabRecipe: patternLabRecipeFromNativeColorJourney(nativeRecipe, {
+          id: `readback-${pattern.id}`,
+          name: pattern.label || pattern.id,
+          strips: skeleton.strips,
+          wiring: skeleton.wiring,
+        }),
+      } : {}),
       updatedAt: 0,
-    }));
+    });
+  });
   const playlist = installedPatterns.map((pattern, index) => ({
     id: pattern.id,
     type: 'combo',

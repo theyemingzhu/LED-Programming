@@ -1,3 +1,4 @@
+import { normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 import { CARD_PATTERN_BANK } from './cardPatternBank.js';
 import { CARD_HARDWARE_CONTRACT, normalizeCardLedType } from './cardHardwareContract.js';
 import { chainPixelOffsets, chainRowIds } from './patchBoard.js';
@@ -184,7 +185,7 @@ export function normalizeCardRuntimeConfig(config = {}) {
     zones,
   );
   const patterns = normalizePatterns(config.patterns);
-  const looks = normalizeLooks(config.looks, patterns);
+  const looks = normalizeLooks(config.looks, patterns, totalPixels);
   const lookIds = looks.map(look => look.id);
   const patternIds = requestedCycleIds.length ? requestedCycleIds : lookIds;
   const projectIdentity = normalizeCardProjectIdentity(config);
@@ -606,7 +607,7 @@ function normalizePatternIds(ids = []) {
     .filter(Boolean))];
 }
 
-function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PATTERN_BANK)) {
+function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PATTERN_BANK), totalPixels = DEFAULT_CARD_LED.pixels) {
   const input = Array.isArray(looks) && looks.length ? looks : patterns;
   return input.slice(0, 32).map((look, index) => {
     const preset = sanitizeId(look.preset || look.patternId || look.id || `look-${index + 1}`);
@@ -632,6 +633,9 @@ function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PA
       fadeInMs: clampInt(look.fadeInMs, 420, 0, 8000),
       brightness: clampUnit(look.brightness ?? 0.65),
     };
+    if (Object.hasOwn(look, 'nativeRecipe')) {
+      normalized.nativeRecipe = normalizeNativeColorJourney(look.nativeRecipe, totalPixels);
+    }
     if (mode === 'sequence') {
       normalized.file = String(look.file || `/sequences/${String(index + 1).padStart(3, '0')}-${id}.lwseq`);
     }
@@ -640,6 +644,23 @@ function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PA
     }
     return normalized;
   });
+}
+
+function normalizeNativeColorJourney(value, totalPixels) {
+  const native = normalizeStoredNativeColorJourney(value, totalPixels);
+  const journey = native.journey;
+  return { version: 1, kind: 'color-journey', id: native.id, journey: {
+    version: journey.version,
+    stops: journey.stops.map(stop => ({ color: stop.color, holdMs: stop.holdMs, fadeMs: stop.fadeMs })),
+    easing: journey.easing, loop: journey.loop, restart: 'restart',
+    motionSpeedMs: journey.motionSpeedMs, depth: journey.depth,
+    ...(journey.version === 1
+      ? { phase16: journey.phase16 }
+      : {
+          ...(journey.version === 3 ? { maxPhaseErrorTicks: journey.maxPhaseErrorTicks } : {}),
+          phases: journey.phases,
+        }),
+  } };
 }
 
 function normalizeLookZones(zones = []) {

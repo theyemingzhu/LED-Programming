@@ -868,6 +868,7 @@ import { PatternPreview } from './PatternPreview.jsx';
     const savedLooks = normalizeSavedLooks(standaloneController?.looks);
     const activeLookId = standaloneController?.activeLookId || '';
     const editingSavedLook = savedLooks.find(item => item.id === activeLookId) || null;
+    const editingColorJourney = editingSavedLook?.patternLabRecipe?.base?.kind === 'color-journey';
     const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label);
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const latestBoardRef = useRef(board);
@@ -1070,7 +1071,7 @@ import { PatternPreview } from './PatternPreview.jsx';
     const runtimeBuild = useMemo(() => {
       try {
         return {
-          runtimePackage: buildCardRuntimePackageFromProject({ projectId, projectName, strips, patchBoard: board, compiledWiring, standaloneController }),
+          runtimePackage: buildCardRuntimePackageFromProject({ projectId, projectName, strips, patchBoard: board, wiring, compiledWiring, symSettings, standaloneController }),
           error: null,
         };
       } catch (error) {
@@ -1431,6 +1432,10 @@ import { PatternPreview } from './PatternPreview.jsx';
     };
 
     const updatePreviewLook = (patch, { push = true } = {}) => {
+      if (editingColorJourney) {
+        setLookSaveState('Open this Color Journey in Lab to change its colors, timing, or movement.');
+        return null;
+      }
       if (!selectedTarget) return null;
       const nextLook = normalizeSectionVisualLook({ ...look, ...patch });
       setDraftLooks(prev => ({ ...prev, [selectedTarget.id]: nextLook }));
@@ -1939,7 +1944,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         setStatus(error.message || 'Could not save this look.');
       }
     };
-    const savePreset = () => saveLook();
+    const savePreset = () => editingColorJourney ? openLookInLab() : saveLook();
     const renameLook = () => {
       if (!editingSavedLook || !mixName.trim()) return;
       const label = mixName.trim();
@@ -2866,7 +2871,9 @@ import { PatternPreview } from './PatternPreview.jsx';
                       data-preview-targets={visiblePatternPreviewSegments.map(segment => segment.id).join(',')}
                       data-preview-patterns={visiblePatternPreviewSegments.map(segment => segment.sourcePatternId).join(',')}
                     >
-                      {visiblePatternPreviewSegments.length ? (
+                      {editingColorJourney ? (
+                        <p className="pm-preview-empty">Color Journey · open in Lab for its exact animated preview.</p>
+                      ) : visiblePatternPreviewSegments.length ? (
                         <PatternPreview
                           strips={visiblePatternPreviewSegments}
                           hidden={{}}
@@ -2906,9 +2913,9 @@ import { PatternPreview } from './PatternPreview.jsx';
                   <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
                   <div aria-label="Keep your look" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px 16px', marginBottom: 8 }}>
                     <input className="pm-input" data-testid="look-name" style={{ flex: '1 1 180px', minWidth: 0 }} aria-label="Look name" placeholder="Name this look (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
+                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
                     {editingSavedLook && <>
-                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={() => saveLook(true)}>Save as new</button>
+                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingColorJourney ? openLookInLab : () => saveLook(true)}>Save as new</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={renameLook}>Rename</button>
                       <button type="button" className="btn" data-testid="look-delete" onClick={deleteLook}>Delete{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` · ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist uses` : ''}</button>
                     </>}

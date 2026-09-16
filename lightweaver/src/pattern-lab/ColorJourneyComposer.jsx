@@ -9,7 +9,9 @@ const PALETTES = Object.freeze([
 ]);
 
 function totalMinutes(journey) {
-  return journey.stops.reduce((total, stop) => total + stop.holdMs + stop.fadeMs, 0) / 60_000;
+  return journey.stops.reduce((total, stop, index) => (
+    total + stop.holdMs + (journey.loop || index < journey.stops.length - 1 ? stop.fadeMs : 0)
+  ), 0) / 60_000;
 }
 
 function paceFromJourney(journey) {
@@ -199,7 +201,7 @@ export default function ColorJourneyComposer({
 
       <div className="plab-creative-dials">
         <label className="plab-pace-control">
-          <span><b>Pace</b><small>{totalMinutes(journey).toFixed(totalMinutes(journey) % 1 ? 1 : 0)} minute loop</small></span>
+          <span><b>Pace</b><small>{totalMinutes(journey).toFixed(totalMinutes(journey) % 1 ? 1 : 0)} minute {journey.loop ? 'loop' : 'journey'}</small></span>
           <input type="range" min="0" max="100" value={paceFromJourney(journey)} aria-label="Pace" onChange={event => updateJourney(journeyAtPace(journey, event.target.value))} />
           <span className="plab-range-ends" aria-hidden="true"><small>Slow</small><small>Lively</small></span>
         </label>
@@ -218,12 +220,12 @@ export default function ColorJourneyComposer({
       <div className="plab-arc-overview" aria-label="Journey overview">
         <span><i style={{ background: colors[0] }} />Beginning</span>
         <span><i style={{ background: colors[Math.floor(colors.length / 2)] }} />Later</span>
-        <span><i style={{ background: colors[0] }} />Return</span>
+        <span><i style={{ background: journey.loop ? colors[0] : colors.at(-1) }} />{journey.loop ? 'Return' : 'Finish'}</span>
       </div>
       <button type="button" className="plab-rehearsal" aria-pressed={rehearsal} onClick={() => onRehearsalChange?.(!rehearsal)}>
         {rehearsal ? 'Quick rehearsal on · saved timing unchanged' : 'Quick rehearsal'}
       </button>
-      <p className="plab-studio-live-note">Live from Studio · keep this tab open for the piece to follow the journey.</p>
+      <p className="plab-studio-live-note">Preview in Studio now · after installation, the piece plays this journey on its own.</p>
 
       <div className="plab-variation-actions">
         <button type="button" className="plab-variation-trigger" onClick={onTryVariation}>Try a variation</button>
@@ -268,6 +270,17 @@ export default function ColorJourneyComposer({
       <details className="plab-journey-details">
         <summary>Journey timing</summary>
         <div>
+          <label className="plab-journey-policy">Interpolation
+            <select aria-label="Interpolation" value={journey.easing} onChange={event => updateJourney({ ...journey, easing: event.target.value })}>
+              <option value="smooth">Smooth</option>
+              <option value="linear">Linear</option>
+            </select>
+          </label>
+          <label className="plab-journey-loop">
+            <input type="checkbox" checked={journey.loop} onChange={event => updateJourney({ ...journey, loop: event.target.checked })} />
+            Loop journey
+          </label>
+          <p className="plab-journey-restart">Starts at the first color whenever this look is selected or the piece powers on. A journey without looping holds its final color.</p>
           {journey.stops.map((stop, index) => (
             <div key={stop.id}>
               <span style={{ background: stop.color }} aria-hidden="true" />

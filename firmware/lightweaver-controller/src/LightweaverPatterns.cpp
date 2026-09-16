@@ -1,4 +1,5 @@
 #include "LightweaverPatterns.h"
+#include "LightweaverColorJourney.h"
 
 #include <cmath>
 #include "LightweaverBreathe.h"
@@ -278,8 +279,67 @@ bool renderNativeRecipe(const lightweaver::NativeRecipe& recipe, CRGB* leds,
                         uint16_t totalPixels, uint32_t now,
                         const PatternModifiers& mods,
                         const PatternCoordinateContext* context) {
-  if (!leds || totalPixels == 0 || recipe.version != lightweaver::LW_RECIPE_SCHEMA_VERSION ||
-      recipe.paletteCount < lightweaver::LW_RECIPE_MIN_PALETTE_COLORS ||
+  if (!leds || totalPixels == 0 || recipe.version != lightweaver::LW_RECIPE_SCHEMA_VERSION) {
+    return false;
+  }
+  if (recipe.kind == lightweaver::NativeRecipeKind::ColorJourney) {
+    const uint16_t globalStart = context ? context->globalStart : 0;
+    if (globalStart + totalPixels > recipe.colorJourney.phaseCount) return false;
+    const uint64_t elapsedMs = lightweaver::advanceColorJourneyElapsedMs(recipe, now);
+    uint32_t cachedSegmentStart = 0, cachedSegmentEnd = 0;
+    bool cachedReversed = false;
+    uint32_t cachedSpanStart = 0, cachedSpanEnd = 0;
+    uint8_t cachedSpan = 0;
+    for (uint16_t pixel = 0; pixel < totalPixels; pixel++) {
+      uint16_t phasePixel = globalStart + pixel;
+      const bool affine = recipe.colorJourney.version == lightweaver::LW_COLOR_JOURNEY_V2_VERSION ||
+                          recipe.colorJourney.version == lightweaver::LW_COLOR_JOURNEY_V3_VERSION;
+      if (affine && context && context->outputs) {
+        // Cache a wiring segment until its logical boundary is crossed. Affine
+        // stays in physical order; reversal never splits authored spans.
+        if (phasePixel < cachedSegmentStart || phasePixel >= cachedSegmentEnd) {
+          bool found = false;
+          for (uint8_t outputIndex = 0; outputIndex < context->outputCount && !found; ++outputIndex) {
+            const OutputConfig& output = context->outputs[outputIndex];
+            uint32_t segmentStart = output.start;
+            for (uint8_t segmentIndex = 0; segmentIndex < output.segmentCount; ++segmentIndex) {
+              const OutputSegmentConfig& segment = output.segments[segmentIndex];
+              if (phasePixel >= segmentStart && phasePixel < segmentStart + segment.count) {
+                cachedSegmentStart = segmentStart;
+                cachedSegmentEnd = segmentStart + segment.count;
+                cachedReversed = segment.reversed;
+                found = true;
+                break;
+              }
+              segmentStart += segment.count;
+            }
+          }
+          if (!found) return false;
+        }
+        if (cachedReversed) phasePixel = cachedSegmentEnd - 1U - (phasePixel - cachedSegmentStart);
+      }
+      uint16_t phase;
+      if (affine) {
+        if (phasePixel < cachedSpanStart || phasePixel >= cachedSpanEnd) {
+          cachedSpanStart = 0;
+          for (cachedSpan = 0; cachedSpan < recipe.colorJourney.phaseSpanCount; ++cachedSpan) {
+            cachedSpanEnd = cachedSpanStart + recipe.colorJourneyPhaseSpans[cachedSpan].count;
+            if (phasePixel < cachedSpanEnd) break;
+            cachedSpanStart = cachedSpanEnd;
+          }
+          if (cachedSpan == recipe.colorJourney.phaseSpanCount) return false;
+        }
+        phase = lightweaver::sampleColorJourneyPhaseSpan(
+            recipe.colorJourneyPhaseSpans[cachedSpan], phasePixel - cachedSpanStart);
+      } else {
+        phase = recipe.colorJourneyPhases[phasePixel];
+      }
+      const lightweaver::RecipeColor sampled = lightweaver::sampleColorJourneyPixel(recipe, phase, elapsedMs);
+      leds[pixel] = CRGB(sampled.red, sampled.green, sampled.blue);
+    }
+    return true;
+  }
+  if (recipe.paletteCount < lightweaver::LW_RECIPE_MIN_PALETTE_COLORS ||
       recipe.layerCount > lightweaver::LW_RECIPE_MAX_LAYERS) return false;
   const uint32_t recipeNow = patternClock(now, mods);
   for (uint16_t pixel = 0; pixel < totalPixels; pixel++) {

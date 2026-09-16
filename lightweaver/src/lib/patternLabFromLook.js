@@ -18,7 +18,7 @@ export function recipeFromLook(look = {}, context = {}) {
       const selectedTargetId = saved.selectedTargetId || linked.sourceLook?.selectedTargetId;
       const visual = saved.sectionLooks?.[selectedTargetId] || saved.defaultLook;
       const previous = linked.sourceLook?.sectionLooks?.[selectedTargetId] || linked.sourceLook?.defaultLook;
-      if (!visual || visual.patternId === linked.base.patternId) {
+      if (linked.base.kind === 'color-journey' || !visual || visual.patternId === linked.base.patternId) {
         const colorChanged = previous && visual && (previous.customHue !== visual.customHue || previous.customSaturation !== visual.customSaturation);
         const palette = colorChanged ? linked.palette.map(() => cardColorToHex(visual.customHue, visual.customSaturation)) : linked.palette;
         return normalizePatternLabRecipe({

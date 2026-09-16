@@ -1,4 +1,5 @@
 #include "LightweaverStorage.h"
+#include "LightweaverColorJourney.h"
 #include "LightweaverWifiCredentialPolicy.h"
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverFirmwareUpdate.h"
@@ -197,6 +198,27 @@ void synchronizeNativeRecipes(const RuntimeConfig& config) {
     lightweaver::registerNativeRecipe(look.id.c_str(), look.nativeRecipe);
     if (look.preset.length() && look.preset != look.id) {
       lightweaver::registerNativeRecipe(look.preset.c_str(), look.nativeRecipe);
+    }
+  }
+}
+
+// Journey phase data arrives in physical output order. The renderer writes the
+// logical framebuffer, which copyLogicalToPhysicalLeds() later reverses per
+// configured segment. Reverse those same phase spans once at config load so a
+// logical pixel samples the phase of its eventual physical destination.
+// v2/v3 affine spans stay in physical order; the renderer translates each index.
+void mapColorJourneyPhasesToLogical(const RuntimeConfig& config,
+                                    lightweaver::NativeRecipe& recipe) {
+  if (recipe.kind != lightweaver::NativeRecipeKind::ColorJourney) return;
+  for (uint8_t outputIndex = 0; outputIndex < config.outputCount; outputIndex++) {
+    const OutputConfig& output = config.outputs[outputIndex];
+    uint16_t segmentStart = output.start;
+    for (uint8_t segmentIndex = 0; segmentIndex < output.segmentCount; segmentIndex++) {
+      const OutputSegmentConfig& segment = output.segments[segmentIndex];
+      if (segment.reversed && segment.count > 1) {
+        lightweaver::reverseColorJourneyPhaseSpan(recipe, segmentStart, segment.count);
+      }
+      segmentStart += segment.count;
     }
   }
 }
@@ -402,7 +424,9 @@ void applyJsonToConfig(JsonDocument& doc, RuntimeConfig& config, RuntimeSource s
     if (!recipeValue.isNull()) {
       lightweaver::RecipeParseError recipeError;
       if (lightweaver::parseNativeRecipeV1(
-              recipeValue, measureJson(recipeValue), look.nativeRecipe, recipeError)) {
+              recipeValue, measureJson(recipeValue), look.nativeRecipe, recipeError,
+              totalPixels)) {
+        mapColorJourneyPhasesToLogical(config, look.nativeRecipe);
         look.hasNativeRecipe = true;
         look.mode = "procedural";
         look.preset = look.id;
@@ -1033,7 +1057,8 @@ bool validateRuntimeConfigJsonStrict(const String& json,
       lightweaver::NativeRecipe nativeRecipe;
       lightweaver::RecipeParseError recipeError;
       if (!lightweaver::parseNativeRecipeV1(
-              recipeValue, measureJson(recipeValue), nativeRecipe, recipeError)) {
+              recipeValue, measureJson(recipeValue), nativeRecipe, recipeError,
+              static_cast<uint16_t>(totalPixels))) {
         message = String(recipeError.path ? recipeError.path : "recipe") + " " +
                   (recipeError.message ? recipeError.message : "is invalid");
         return false;

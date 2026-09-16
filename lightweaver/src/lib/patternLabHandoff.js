@@ -9,6 +9,7 @@ import {
   PATTERN_LAB_COMPATIBILITY_VERSION,
 } from './patternLabCompatibility.js';
 import { normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { compileColorJourneyNativeRecipe } from './colorJourneyNative.js';
 import { isBuiltInPattern } from './patternRegistry.js';
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
 import {
@@ -108,7 +109,10 @@ export function lookFromRecipe(recipe) {
   const selectedSource = source?.sectionLooks?.[source?.selectedTargetId] || source?.defaultLook;
   const exactSource = selectedSource?.patternId === recipe.base.patternId ? selectedSource : null;
   const defaultLook = resolvePatternLabVisualLook(recipe);
-  const sectionLooks = exactSource && source.sectionLooks ? clone(source.sectionLooks) : Object.fromEntries((recipe.targets || [])
+  const keepScopedSectionLooks = source?.selectedTargetId
+    && source.selectedTargetId !== 'all'
+    && source.sectionLooks;
+  const sectionLooks = (exactSource || keepScopedSectionLooks) && source.sectionLooks ? clone(source.sectionLooks) : Object.fromEntries((recipe.targets || [])
     .filter(target => target?.kind === 'section' && String(target.id || '').trim())
     .map(target => [slug(target.id), defaultLook]));
   if (source?.selectedTargetId && source.selectedTargetId !== 'all') sectionLooks[source.selectedTargetId] = defaultLook;
@@ -128,6 +132,17 @@ function uniqueId(preferred, used) {
   let suffix = 2;
   while (used.has(candidate) || isBuiltInPattern(candidate)) candidate = `${base}-${suffix++}`;
   return candidate;
+}
+
+export function prospectivePatternLabLookIdentity(recipe, controller = null, { saveAsNew = false } = {}) {
+  const normalized = normalizePatternLabRecipe(recipe);
+  const existing = normalizeSavedLooks(controller?.looks);
+  const updating = !saveAsNew && existing.some(look => look.id === normalized.sourceLook?.id);
+  const label = boundedString(normalized.name, MAX_LABEL_LENGTH);
+  const id = updating
+    ? normalized.sourceLook.id
+    : uniqueId(label || slug(normalized.name), new Set(existing.map(item => item.id)));
+  return { id, label, updating, existingLook: updating ? existing.find(look => look.id === id) : null };
 }
 
 function validPositiveInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
@@ -438,6 +453,12 @@ export async function createPatternLabHandoff({
   cancelled = false,
   exportError = null,
   saveAsNew = false,
+  strips = [],
+  groups = [],
+  wiring = null,
+  compiledWiring = null,
+  hidden = {},
+  symSettings = null,
 } = {}) {
   if (cancelled) return blocked('cancelled', 'Use in Project was canceled.');
   if (exportError) return blocked('export-failed', 'The Pattern Lab export did not finish.', exportError.message || exportError);
@@ -455,19 +476,46 @@ export async function createPatternLabHandoff({
   }
 
   if (compatibility.classification === 'live-on-card') {
-    if (normalized.base.kind !== 'lightweaver-pattern' || !isBuiltInPattern(normalized.base.patternId)) {
+    const isColorJourney = normalized.base.kind === 'color-journey';
+    if (!isColorJourney && (normalized.base.kind !== 'lightweaver-pattern' || !isBuiltInPattern(normalized.base.patternId))) {
       return blocked('look-unsupported', 'This recipe cannot become a native card look.');
     }
-    if (normalized.journey?.enabled === true || normalized.evolution?.enabled === true || normalized.layers.length > 0) {
+    if (!isColorJourney && (normalized.journey?.enabled === true || normalized.evolution?.enabled === true || normalized.layers.length > 0)) {
       return blocked('look-unsupported', 'Evolution and layered Pattern Lab recipes must remain baked sequences.');
     }
+    if (isColorJourney) {
+      try {
+        compileColorJourneyNativeRecipe({ recipe: normalized, strips, groups, wiring, compiledWiring, hidden, symSettings });
+      } catch (error) {
+        return blocked('look-unsupported', 'This Color Journey cannot become a standalone card look.', error.message || error);
+      }
+    }
     const existing = normalizeSavedLooks(controller?.looks);
-    const updating = !saveAsNew && existing.some(look => look.id === normalized.sourceLook?.id);
+    const identity = prospectivePatternLabLookIdentity(normalized, controller, { saveAsNew });
+    const { updating } = identity;
     if (!updating && existing.length >= MAX_SAVED_LOOKS) {
       return blocked('look-capacity', `The card already has the maximum of ${MAX_SAVED_LOOKS} saved looks.`);
     }
-    const look = lookFromRecipe(normalized);
-    look.id = updating ? normalized.sourceLook.id : uniqueId(look.label || look.id, new Set(existing.map(item => item.id)));
+    const look = isColorJourney
+      ? normalizeSavedLooks([{
+          id: identity.id,
+          label: identity.label,
+          defaultLook: {
+            patternId: 'aurora',
+            brightness: normalized.playback.brightness,
+          },
+          sectionLooks: {},
+          patternLabRecipe: normalized,
+          updatedAt: 0,
+        }])[0]
+      : lookFromRecipe(normalized);
+    look.id = identity.id;
+    look.label = identity.label;
+    const previous = identity.existingLook;
+    if (isColorJourney && previous?.nativeRecipe && previous?.nativeRecipeLayoutKey) {
+      look.nativeRecipe = previous.nativeRecipe;
+      look.nativeRecipeLayoutKey = previous.nativeRecipeLayoutKey;
+    }
     look.patternLabRecipe = normalizePatternLabRecipe({ ...normalized, sourceLook: { ...normalized.sourceLook, id: look.id, label: look.label, defaultLook: look.defaultLook, sectionLooks: look.sectionLooks } });
     return { kind: 'look', look, ...(updating ? { replaceLookId: look.id } : {}) };
   }

@@ -104,7 +104,10 @@ test('exposes card compatibility and clock-linked diagnostics without mutating t
   await expect(compatibility.locator('[data-classification]')).toHaveAttribute('data-classification', 'simplify-for-card');
   await expect(compatibility.getByLabel('Card compatibility budgets')).not.toContainText('Operations / frameUnknown');
   await expect(diagnostics).toContainText('outside the active or supported target');
-  await tools.getByRole('button', { name: 'Create simplified variant' }).click();
+  const simplify = tools.getByRole('button', { name: 'Create simplified variant' });
+  await expect(simplify).toBeEnabled();
+  await expect(compatibility.getByRole('button', { name: 'Review Use in Project' })).toBeDisabled();
+  await simplify.click();
   await expect(tools).toHaveAttribute('data-source-recipe-id', 'section-source');
   await expect(tools).toHaveAttribute('data-source-recipe-snapshot', sourceSnapshot || '');
   await expect(tools).toHaveAttribute('data-draft-recipe-id', 'section-source-simplified');

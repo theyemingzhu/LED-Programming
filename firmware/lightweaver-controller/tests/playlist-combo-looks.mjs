@@ -8,6 +8,7 @@ const srcDir = resolve(here, '../src');
 const types = readFileSync(resolve(srcDir, 'LightweaverTypes.h'), 'utf8');
 const storage = readFileSync(resolve(srcDir, 'LightweaverStorage.cpp'), 'utf8');
 const main = readFileSync(resolve(srcDir, 'main.cpp'), 'utf8');
+const web = readFileSync(resolve(srcDir, 'LightweaverWeb.cpp'), 'utf8');
 
 assert.match(types, /struct\s+LookZoneConfig\s*\{/);
 assert.match(types, /LookZoneConfig\s+zones\[LW_MAX_ZONES\]/);
@@ -46,6 +47,10 @@ assert.match(main, /uint64_t\s+requiredBytes\s*=\s*uint64_t\(LWSEQ_HEADER_BYTES\
 assert.match(main, /requiredBytes\s*>\s*file\.size\(\)/, 'sequence preflight must prove all declared frames exist, not only the header');
 
 assert.match(main, /bool\s+selectLookInstant\(int index\)/, 'instant loaded-look selection must report apply success');
+assert.match(web, /void\s+handlePatterns\(\)[\s\S]*writeNativeRecipeJson\(p\["nativeRecipe"\]/,
+  'installed-pattern readback must include native recipes instead of dropping their phase derivative');
+assert.match(web, /handlePatterns\(\)[\s\S]*reverseColorJourneyPhaseSpan\(readback, segmentStart, segment\.count\)/,
+  'legacy v1 readback must undo the logical-frame reversal before returning physical phase order');
 assert.match(main, /return\s+selectLookInstant\(/, 'global acknowledgement must derive from loaded-look apply success');
 const instantStart = main.indexOf('bool selectLookInstant(int index) {');
 const instantEnd = main.indexOf('\n}', instantStart);

@@ -7,6 +7,7 @@ import { resolvePatternLabControls } from '../lib/patternLabControls.js';
 import { createPatternLabPreviewSession } from '../lib/patternLabPreviewSession.js';
 import { lookFromRecipe } from '../lib/patternLabHandoff.js';
 import { recipeUsesNativeCardLook } from '../lib/patternLabFromLook.js';
+import { patternLabSelectedTargetId } from '../lib/patternLabSectionEditing.js';
 import { pushLivePreviewToCard } from '../lib/cardLiveControl.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import usePatternLabWorker from './usePatternLabWorker.js';
@@ -281,6 +282,8 @@ export default function PatternLabPreview({
   seedPreview = false,
   fallbackLook = {},
   onRenderStatus = null,
+  selectedStripIds = null,
+  onStripSelect = null,
 }) {
   const physicalSessionRef = useRef(null);
   const transitionRef = useRef(Promise.resolve());
@@ -307,7 +310,7 @@ export default function PatternLabPreview({
   // polling entirely.
   const cardStatus = useCardStatus({ enabled: !thumbnail });
   const usesNativeLook = recipeUsesNativeCardLook(recipe);
-  const scopedTargetId = recipe.sourceLook?.selectedTargetId;
+  const scopedTargetId = patternLabSelectedTargetId(recipe);
   const sectionPreviewUnsupported = Boolean(scopedTargetId && scopedTargetId !== 'all');
   const patternId = recipe.base.patternId;
   const evolutionRecipe = useMemo(() => seedPreview && !recipe.evolution.enabled
@@ -532,6 +535,14 @@ export default function PatternLabPreview({
           dotSize={PREVIEW_DOT_SIZE}
           dotCeiling={thumbnail ? 1 : PREVIEW_DOT_CEILING}
           targetFps={thumbnail ? 8 : PATTERN_LAB_WORKER_BUDGETS.previewFps}
+          dimmedStripIds={selectedStripIds
+            ? new Set(displayGeometry.strips.filter(strip => !selectedStripIds.has(strip.id)).map(strip => strip.id))
+            : null}
+          onStripSelect={thumbnail ? null : onStripSelect}
+          testId={thumbnail ? undefined : 'pattern-lab-artwork'}
+          ariaLabel={selectedStripIds
+            ? 'LED pattern preview. Tap a mapped area to edit it.'
+            : 'LED pattern preview'}
         />
       ) : null}
       {workerFunction && failure && !thumbnail ? (

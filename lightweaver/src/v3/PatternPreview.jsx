@@ -72,6 +72,10 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+function stripDisplayAlpha(strip, dimmedStripIds) {
+  return dimmedStripIds?.has(strip?.id) ? 0.18 : 1;
+}
+
 function whiteHighlightAlpha(r, g, b, brightness) {
   const max = Math.max(r, g, b);
   if (max <= 0) return 0;
@@ -105,7 +109,7 @@ function renderFrame(canvas, t, p) {
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, symOverlay, audioBands, blendAmount, blendType,
     perStripFns, perStripPalettes, vb, heat, motionSmoothing, previousPixels, frameDt,
-    stripPhases,
+    stripPhases, dimmedStripIds,
   } = p;
 
   // ViewBox → canvas pixel mapping (letterbox, maintain aspect ratio)
@@ -154,6 +158,7 @@ function renderFrame(canvas, t, p) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const sd of stripData) {
+      ctx.globalAlpha = stripDisplayAlpha(sd, dimmedStripIds);
       const leds = sd.leds || [];
       if (leds.length < 2) continue;
       const strokeRail = () => {
@@ -222,6 +227,7 @@ function renderFrame(canvas, t, p) {
 
     octx.clearRect(0, 0, W, H);
     for (const sd of stripData) {
+      octx.globalAlpha = stripDisplayAlpha(sd, dimmedStripIds);
       for (const l of sd.leds) {
         if ((l.r | l.g | l.b) === 0) continue;
         octx.fillStyle = `rgb(${l.r},${l.g},${l.b})`;
@@ -230,6 +236,7 @@ function renderFrame(canvas, t, p) {
         octx.fill();
       }
     }
+    octx.globalAlpha = 1;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -254,6 +261,7 @@ function renderFrame(canvas, t, p) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     for (const sd of stripData) {
+      ctx.globalAlpha = stripDisplayAlpha(sd, dimmedStripIds);
       for (const l of sd.leds) {
         ctx.fillStyle = 'rgba(255, 180, 70, 0.10)';
         ctx.beginPath();
@@ -273,6 +281,7 @@ function renderFrame(canvas, t, p) {
   ctx.save();
   ctx.globalCompositeOperation = 'source-over';
   for (const sd of stripData) {
+    ctx.globalAlpha = stripDisplayAlpha(sd, dimmedStripIds);
     for (const l of sd.leds) {
       ctx.fillStyle = restingLedColor(l);
       ctx.beginPath();
@@ -282,6 +291,7 @@ function renderFrame(canvas, t, p) {
   }
   ctx.globalCompositeOperation = 'screen';
   for (const sd of stripData) {
+    ctx.globalAlpha = stripDisplayAlpha(sd, dimmedStripIds);
     for (const l of sd.leds) {
       if ((l.r | l.g | l.b) === 0) continue;
       ctx.fillStyle = `rgba(${l.r},${l.g},${l.b},${activeLedCoronaAlpha(l).toFixed(3)})`;
@@ -292,6 +302,7 @@ function renderFrame(canvas, t, p) {
   }
   ctx.globalCompositeOperation = 'source-over';
   for (const sd of stripData) {
+    ctx.globalAlpha = stripDisplayAlpha(sd, dimmedStripIds);
     for (const l of sd.leds) {
       const coreAlpha = activeLedCoreAlpha(l);
       if (!coreAlpha) continue;
@@ -384,6 +395,9 @@ export function PatternPreview({
   heat = false,
   controlledTime = null,
   ariaLabel = 'LED pattern preview',
+  dimmedStripIds = null,
+  onStripSelect = null,
+  testId = undefined,
 }) {
   const canvasRef = useRef(null);
   const rafRef    = useRef(0);
@@ -517,7 +531,7 @@ export function PatternPreview({
     stripPhases: stripPhasesRef.current,
     gammaLUT, symSettings, symOverlay, audioBands, vb, heat,
     motionSmoothing, targetFps, controlledTime,
-    onFrame, onFps, onTick,
+    onFrame, onFps, onTick, dimmedStripIds,
   };
 
   // DPR-aware canvas sizing (fallback to offsetWidth for headless/zero-layout envs)
@@ -642,6 +656,38 @@ export function PatternPreview({
     };
   };
 
+  const pointerToViewBox = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const W = canvas.width, H = canvas.height;
+    const scale = Math.min(W / vb.w, H / vb.h);
+    const offX = (W - vb.w * scale) / 2 - vb.x * scale;
+    const offY = (H - vb.h * scale) / 2 - vb.y * scale;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height || !scale) return null;
+    const x = (e.clientX - rect.left) * (W / rect.width);
+    const y = (e.clientY - rect.top) * (H / rect.height);
+    return { x: (x - offX) / scale, y: (y - offY) / scale };
+  };
+
+  const selectNearestStrip = (e) => {
+    if (typeof onStripSelect !== 'function') return;
+    const point = pointerToViewBox(e);
+    if (!point) return;
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const strip of visibleStrips) {
+      for (const pixel of strip.pts || []) {
+        const distance = Math.hypot(pixel.x - point.x, pixel.y - point.y);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = strip;
+        }
+      }
+    }
+    if (nearest) onStripSelect(nearest.id);
+  };
+
   const handlePointerDown = (e) => {
     if (!symOverlay || !onSymChange || !symSettings?.enabled) return;
     const n = pointerToNorm(e);
@@ -691,14 +737,15 @@ export function PatternPreview({
     <canvas
       ref={canvasRef}
       aria-label={ariaLabel}
+      data-testid={testId}
       onPointerDown={symOverlay ? handlePointerDown : undefined}
       onPointerMove={symOverlay ? handlePointerMove : undefined}
-      onPointerUp={symOverlay ? endDrag : undefined}
+      onPointerUp={symOverlay ? endDrag : (onStripSelect ? selectNearestStrip : undefined)}
       onPointerCancel={symOverlay ? endDrag : undefined}
       style={{
         width: '100%', height: '100%', display: 'block', '--preview-bg': 'transparent',
         touchAction: symOverlay ? 'none' : undefined,
-        cursor: symOverlay ? 'grab' : undefined,
+        cursor: symOverlay ? 'grab' : onStripSelect ? 'pointer' : undefined,
       }}
     />
   );

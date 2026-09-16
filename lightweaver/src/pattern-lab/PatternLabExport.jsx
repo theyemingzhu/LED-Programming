@@ -83,6 +83,8 @@ export default function PatternLabExport({
   onUseInProject,
   onSimplify,
   onRemoveFeature,
+  authoringDisabled = false,
+  authoringDisabledMessage = '',
 }) {
   const project = useProject();
   const [layoutExportStatus, setLayoutExportStatus] = useState(null);
@@ -274,7 +276,8 @@ export default function PatternLabExport({
               key={action.id}
               type="button"
               className="btn"
-              disabled={action.id === 'bake' && bakeStatus?.state === 'rendering'}
+              disabled={(authoringDisabled && action.id !== 'simplify')
+                || (action.id === 'bake' && bakeStatus?.state === 'rendering')}
               onClick={() => {
                 if (action.id === 'bake') void bakeSequence();
                 else runAction(action, compatibility, { onSimplify, onRemoveFeature });
@@ -300,10 +303,12 @@ export default function PatternLabExport({
           <h3>Use in Project</h3>
           <p>Review the exact addition before Pattern Lab changes your active project.</p>
         </div>
+        {authoringDisabled && authoringDisabledMessage && <p role="alert">{authoringDisabledMessage}</p>}
         {handoffStatus?.state !== 'review' && handoffStatus?.state !== 'adding' && (
           <button
             type="button"
             className="btn primary"
+            disabled={authoringDisabled}
             onClick={() => setHandoffStatus({ state: 'review', message: handoffReviewCopy })}
           >Review Use in Project</button>
         )}
@@ -315,7 +320,7 @@ export default function PatternLabExport({
               <button
                 type="button"
                 className="btn primary"
-                disabled={!handoffReady || handoffStatus.state === 'adding'}
+                disabled={authoringDisabled || !handoffReady || handoffStatus.state === 'adding'}
                 onClick={() => void useInProject()}
               >{handoffStatus.state === 'adding' ? 'Adding…' : 'Add to project'}</button>
               <button

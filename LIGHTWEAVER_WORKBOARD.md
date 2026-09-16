@@ -9,6 +9,101 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-16 Managed completion (active)
+Mobile fixture repair cd48fb59 integrated: wait for project autosave identity
+before reload; reopen controls after phone resize. Exact recovery assertions kept.
+Worker: focused mobile10/10, desktop6/6, mobile6/6. Resume remaining mobile,
+production, unit, release UI and build/stage/verify with HEAD fixed.
+Log:/tmp/lightweaver-managed-release-final.log; exit in corresponding .exit.
+
+Release resume166aa167 passed desktop regression groups then failed1/41mobile
+checks: pattern-lab-creative-flow.spec73 unkept color edit reload, line80.
+Same pixel task Sol/medium assigned focused recovery diagnosis/repair.
+Live remains Studio1888/published firmware1819; PR296 draft, unmerged.
+
+Compatibility regression repaired08520baa→9dfbb3cb: authoring guard blocked
+validated simplification recovery. Only simplify now enabled; mutations stay
+disabled. Focused red→green,6browser+46unit,actual screen verified by worker.
+Resume release from ci:browser-regression through production/unit/releaseUI/
+build/stage/verify; prior source/cloud/mapper/packaging gates passed unchanged.
+Logs:/tmp/lightweaver-managed-release-resume.log and.exit. Keep HEAD fixed.
+
+Combined launch:source at dbb3b000 stopped on pattern-lab-compatibility.spec45
+(Create simplified variant missing),114 adjacent passes. Same pixel task
+Sol/medium owns bounded diagnosis/repair; source immutability/target authority
+must stay enforced. Full gate will resume after focused red/green; no shipment.
+
+V3 complete:bbad9841+6d0c58ab integrated; native recipe readback omission fixed.
+4096 real cubic18spans/1519B/173ticks, mixed24spans/1609B/187ticks.
+Worker proof:2532unit+build,70focused units,9browser,18native incl all65536
+elapsed phases,shared fixtures,ESP32 RAM68.3%/flash33.7%; actual screens seen.
+Authored geometry unchanged;<=1RGB bound is pre-output-calibration only.
+Final combined launch:source starts here; signed-artifact freshness proof follows
+protected signer at terminal main. No physical card was flashed or observed.
+
+Director decision: approve explicitly versioned bounded-affine runtime derivative
+under original<=1 RGB renderer parity; authored geometry stays unchanged.
+194Q0.16 circular phase ticks bound max-depth0.42/channel255 error to0.99599.
+Measured4096 cubic18spans/1512B, mixed23spans/1585B. Preserve exactv1/v2;
+new format requires explicit capability. No persistence migration. Same allotted
+Sol/medium implements/validates; retain legacy configs and readback without
+repeated approximation. New question only returns to director if numerical
+proof, geometry, storage or rollback boundary fails. Real FPS remains unproven.
+
+4096 implementation7fc8974a integrated for combined validation; source proof:
+2528unit+build,10browser,15native,shared fixtures,ESP32 RAM68.3%/flash33.7%.
+Important limitation: real4096 cubic SVG rejects (>64 exact affine spans).
+Do not treat straight-only result as unconditional artwork acceptance. Same
+allotted task Sol/high now performs bounded read-only assessment: exact codec
+versus existing-repository phase artifact, and bounded rendered-channel error
+within original1RGB tolerance. Stop at measured recommendation; director decides
+contract, then medium implementation. No storage migration authorized by inference.
+
+Required installation count confirmed by Adrian:4,096 physical pixels.
+Acceptance includes full save/install/readback, exact physical phase, and
+honest geometry limits; real hardware throughput remains an observed gate.
+Manager Playbook v6 / Build a scoped feature recipe v5; Adrian authorizes
+continuing allotted tasks through completion and shipment. One director here.
+Pixel expansion: task01a0a737-fa0f-76f1-ba52-29673578f64a exists in83d2;
+interrupted, not absent. Resume preserved work with gpt-5.6-sol / medium:
+finish existing bounded lossless-span contract, verify1024/4096 real-browser
+paths, units/shared native fixtures/compile; return specific architecture gaps.
+Release gate repair: existing UI task01a09d6c-3b60-7f41-87b7-ee32822acc2c,
+gpt-5.6-sol / medium; diagnose three exact browser failures from35031272027,
+preserve actual readback/latest-preview/no-config-write behavior. Distinct tree
+and test-only ownership independent of pixel firmware/compiler.
+Release-gate repair complete:0d8f868e integrated as4f748858. Main run had380
+passes/3 failures; all three were stale owner/fixture/selector assumptions.
+Worker red→3green +9 repeated +4 adjacent passed. Primary integrated3/3 pass
+(8.8s), preserving same-card readback/latest-preview/no-config-write checks.
+No product-source changes; UI repair task safe to archive. No extra frontier
+workers. Primary owns integration, release, workboard. Cost unknown.
+
+### 2026-09-16 Release cleanup (blocked: pixel capacity)
+User authorized reviewing LED tasks and pushing/merging completed work, closing
+completed tasks, and reporting remaining blockers. Source base origin/main
+18479a01, live Studio1888 / published firmware1819 (1.1.37).
+Integrated division count40e96624, artwork Lab69eed773, native journeysd9fcc031
+and29374eaa on codex/september-release-cleanup. Selected-section authority is
+retained; native journeys stay whole-piece/capability gated. Firmware1.1.38
+prepared for the protected signer. Combined checkpoint2511 units+build passed.
+Pushed as draft PR296. Combined42 browser tests, firmware-sensitive contracts,
+native13 tests/shared samples and ESP32 compile passed (68.3% RAM,33.6% flash).
+Adrian requires more than256 physical pixels; capped Color Journeys must not
+merge. Separate capacity-expansion task queued from this integrated branch.
+Local broad release UI diagnosis stopped when capacity became a prerequisite;
+partial passes are not a full gate. Release remains pending: latest exhaustive
+main check was cancelled; fresh
+exact-main run35031272027 started. No hardware commands or flashes authorized
+by this cleanup; physical journey continuity/restart/hue remain needs-eyes.
+Four completed tasks archived: Improve pattern lab workflow, LED control
+architecture redesign, LED strip multi-pattern management, Verify Checks-panel
+transport forwarding on live HTTPS card. Their physical follow-ups remain here.
+Original root checkout's dirty product files match recovered4896c040 already
+contained in main; three other tracked differences are generated/review dates.
+Recovery checkout, stashes and archive refs preserved. Old round2 F41 branches
+are explicitly superseded/decision-pending in TODO.md, not ready-to-merge work.
+
 ### 2026-09-15 Layout release (active)
 User authorizes going live. Primary owns exact revision release and live proof.
 Sol medium owns bounded diagnosis of existing exhaustive Patterns regression

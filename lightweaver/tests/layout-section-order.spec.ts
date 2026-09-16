@@ -26,7 +26,7 @@ test('Move up and Move down reorder sections on the wire without a drag', async 
   await count.fill('30');
   await count.blur();
   await page.locator('[data-testid^="divide-toggle-"]').click();
-  await page.locator('[data-testid^="divide-sections-"]').selectOption('3');
+  await page.locator('[data-testid^="divide-sections-"]').fill('3');
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
   const before = await rowNames(page);
@@ -73,4 +73,35 @@ test('the GPIO picker lists the connector pins first and folds the rest under Mo
   // Picking a connector pin still moves the strip to that output.
   await select.selectOption('17');
   await expect(page.getByTestId('gpio-group-17')).toBeVisible();
+});
+
+test('one divided section can move to GPIO 17 while the other sections stay on GPIO 18', async ({ page }) => {
+  await gotoFreshLayout(page);
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  const count = page.locator('.la-strip-detail input[type="number"]').first();
+  await count.fill('30');
+  await count.blur();
+  await page.getByLabel('GPIO output').selectOption('18');
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await page.locator('[data-testid^="divide-sections-"]').fill('3');
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(3);
+
+  await page.locator('.la-strip-row').nth(1).click();
+  await page.getByLabel('GPIO output').selectOption('17');
+
+  await expect(page.getByTestId('gpio-group-17').locator('.la-strip-row')).toHaveCount(1);
+  await expect(page.getByTestId('gpio-group-18').locator('.la-strip-row')).toHaveCount(2);
+  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '10 LEDs', '10 LEDs']);
+
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    return (saved?.layout?.wiring?.outputs || []).map((output: any) => ({
+      gpio: output.pin,
+      runCount: output.runIds.length,
+    }));
+  })).toEqual([
+    { gpio: 18, runCount: 2 },
+    { gpio: 17, runCount: 1 },
+  ]);
 });

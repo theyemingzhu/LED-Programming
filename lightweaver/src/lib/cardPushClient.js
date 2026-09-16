@@ -28,6 +28,7 @@ import { classifyCardReadiness } from './cardReadiness.js';
 import { stageCardWiringCandidate } from './cardWiringSafety.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
 import { BENCH_DEFAULT_PORT_PIXELS, BENCH_PROJECT_ID } from './benchConfig.js';
+import { hasColorJourneyRecipeCapability, runtimeConfigUsesColorJourney } from './colorJourneyNative.js';
 
 export function getCardHostname() {
   return readStoredCardHost();
@@ -93,6 +94,18 @@ export function assertCardKaleidoscopeSupport(runtimePackage, evidence) {
     throw new CardPushError(
       'kaleidoscope-unsupported',
       'This card can preview streamed calibration frames, but its firmware cannot install standalone Kaleidoscope reflection points. Update the card firmware, then retry.',
+    );
+  }
+  return true;
+}
+
+export function assertCardColorJourneySupport(runtimePackage, evidence) {
+  if (!runtimeConfigUsesColorJourney(runtimePackage)) return true;
+  const config = runtimePackage?.config || runtimePackage;
+  if (config.looks.some(look => look.nativeRecipe?.kind === 'color-journey' && !hasColorJourneyRecipeCapability(evidence, look.nativeRecipe.journey?.version))) {
+    throw new CardPushError(
+      'color-journey-unsupported',
+      'This card firmware cannot install standalone Color Journeys. Update the card firmware, then retry.',
     );
   }
   return true;
@@ -375,6 +388,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   // proof and the complete first project.
   if (initialBridgeConfig) {
     assertCardKaleidoscopeSupport(runtimePackage, options.cardEvidence);
+    assertCardColorJourneySupport(runtimePackage, options.cardEvidence);
     try {
       return await bridgeRequest('config', preparedPayload.config, {
         host,
@@ -406,7 +420,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           'Stopped before saving: Studio could not prove the exact paired card and firmware for this blank-card write.',
         );
       }
-      if (runtimeConfigUsesKaleidoscope(runtimePackage)) {
+      if (runtimeConfigUsesKaleidoscope(runtimePackage) || runtimeConfigUsesColorJourney(runtimePackage)) {
         const capabilityEvidence = options.cardEvidence || await readCardProjectEvidence({
           host,
           transport: 'direct',
@@ -417,6 +431,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           throw new CardPushError('wrong-card', 'The card capability evidence did not match the exact paired card.');
         }
         assertCardKaleidoscopeSupport(runtimePackage, capabilityEvidence);
+        assertCardColorJourneySupport(runtimePackage, capabilityEvidence);
       }
       const status = await readCardStatusEnvelope({
         host,
@@ -444,6 +459,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   }
   const rebootPlan = await resolveConfigRebootForCard(host, runtimePackage, options);
   assertFreshKaleidoscopeEvidence(runtimePackage, rebootPlan.current, exactIdentity);
+  assertCardColorJourneySupport(runtimePackage, rebootPlan.current);
   if (rebootPlan.projectChanged && options.allowProjectChange !== true
       && !isPromotableDiscoveryBench(rebootPlan.current)) {
     throw projectMismatchError(rebootPlan.current, runtimePackage);
@@ -509,6 +525,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           await guardDirectCardMutation(found.host, { fetchImpl: options.fetchImpl, timeoutMs: Math.min(options.timeoutMs || 6000, 1500) });
           const retryRebootPlan = await resolveConfigRebootForCard(found.host, runtimePackage, options);
           assertFreshKaleidoscopeEvidence(runtimePackage, retryRebootPlan.current);
+          assertCardColorJourneySupport(runtimePackage, retryRebootPlan.current);
           if (retryRebootPlan.projectChanged && options.allowProjectChange !== true
               && !isPromotableDiscoveryBench(retryRebootPlan.current)) {
             throw projectMismatchError(retryRebootPlan.current, runtimePackage);

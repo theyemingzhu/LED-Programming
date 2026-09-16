@@ -33,6 +33,9 @@ struct PatternCoordinateContext {
   uint16_t sourceStart = 0;
   int8_t sourceStep = 1;
   const KaleidoscopeMappingConfig* kaleidoscope = nullptr;
+  uint16_t globalStart = 0;
+  const OutputConfig* outputs = nullptr;
+  uint8_t outputCount = 0;
 };
 
 KaleidoscopeSample sampleKaleidoscope(

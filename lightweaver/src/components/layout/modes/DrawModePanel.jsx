@@ -375,7 +375,7 @@ export function DrawModePanel({
   const divideTriggerRef = useRef(null);
   const divideSelectionKey = JSON.stringify([selStripId, selLayerId, selectedStripIds]);
   useEffect(() => setDivideOpen(false), [divideSelectionKey, panelStripId]);
-  const [divideSections, setDivideSections] = useState({}); // stripId → N
+  const [divideSections, setDivideSections] = useState({}); // stripId → editable string
   // stripId → the owner's own counts, once a field has been edited. Absent
   // means the even plan; a stored set that no longer adds up to the strip
   // (the LED count changed, or N changed) falls back to the plan.
@@ -1325,16 +1325,22 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
-                // The section count the "Divide into" select currently shows
-                // for this strip: the owner's own pick if they made one,
-                // clamped to what this strip can still hold (a resize can
-                // shrink the cap below a previous choice), else 4 — the count
-                // named in the task brief's own example (41 → 11,10,10,10).
+                // Keep the typed draft verbatim so clearing, decimals and
+                // out-of-range values remain visible until the owner fixes them.
+                // The default is 4 — the task brief's example (41 → 11,10,10,10).
                 const divideCap = divideSectionsCap(s);
-                const divideSectionsValue = Math.max(2, Math.min(
-                  divideCap,
-                  divideSections[s.id] || Math.min(4, divideCap),
-                ));
+                const divideSectionsDraft = Object.prototype.hasOwnProperty.call(divideSections, s.id)
+                  ? divideSections[s.id]
+                  : String(Math.min(4, divideCap));
+                const parsedDivideSections = Number(divideSectionsDraft);
+                const divideSectionsValid = /^\d+$/.test(divideSectionsDraft)
+                  && Number.isSafeInteger(parsedDivideSections)
+                  && parsedDivideSections >= 2
+                  && parsedDivideSections <= divideCap;
+                const divideSectionsValue = divideSectionsValid ? parsedDivideSections : null;
+                const divideSectionError = `Enter a whole number from 2 to ${divideCap}.`;
+                const divideDisabledReason = divideBlockedReason(s, isSplit)
+                  || (!divideSectionsValid ? divideSectionError : '');
                 // Read-outs for the Selected strip module. Each is derived from
                 // state the project already holds; where a fact is not knowable
                 // the field shows an em-dash rather than a confident guess.
@@ -1567,23 +1573,31 @@ export function DrawModePanel({
                                  }
                                }}>
                             <div className="lw-sel-pair la-divide-pair">
-                              <select className="la-divide-select"
+                              <label className="la-divide-sections-label"
+                                     htmlFor={`divide-sections-${s.id}`}>Sections</label>
+                              <input type="number" inputMode="numeric" step={1} min={2} max={divideCap}
+                                      id={`divide-sections-${s.id}`}
+                                      className="la-divide-sections"
                                       data-testid={`divide-sections-${s.id}`}
                                       aria-label={`Number of sections to divide ${s.name} into`}
-                                      value={divideSectionsValue}
+                                      aria-invalid={!divideSectionsValid}
+                                      aria-describedby={`divide-sections-error-${s.id}`}
+                                      value={divideSectionsDraft}
                                       disabled={!!divideBlockedReason(s, isSplit)}
-                                      onChange={event => setDivideSections(prev => ({ ...prev, [s.id]: Number(event.target.value) }))}>
-                                {Array.from({ length: Math.max(0, divideCap - 1) }, (_, index) => index + 2).map(n => (
-                                  <option key={n} value={n}>{n} sections</option>
-                                ))}
-                              </select>
+                                      onChange={event => setDivideSections(prev => ({ ...prev, [s.id]: event.target.value }))} />
+                              <span id={`divide-sections-error-${s.id}`}
+                                    data-testid={`divide-error-${s.id}`}
+                                    className="la-divide-error"
+                                    hidden={divideSectionsValid}>
+                                {divideSectionError}
+                              </span>
                               {/* The counts are fields, not a readout: a 41-LED ring
                                   becomes 10, 21, 10 by typing, and the total never
                                   moves because each edit is balanced by its
                                   neighbour (applyStripSplitCount). The readout keeps
                                   its testid, so the even plan still reads as before. */}
                               <div className="la-divide-counts" role="group" aria-label={`LEDs per section of ${s.name}`}>
-                                {divideCountsFor(s, divideSectionsValue).map((count, index) => (
+                                {divideSectionsValid && divideCountsFor(s, divideSectionsValue).map((count, index) => (
                                   <input key={index} type="number" inputMode="numeric" min={1}
                                          className="la-divide-count"
                                          data-testid={`divide-count-${s.id}-${index + 1}`}
@@ -1593,18 +1607,21 @@ export function DrawModePanel({
                                          onChange={event => setDivideCount(s, divideSectionsValue, index, event.target.value)} />
                                 ))}
                                 <span className="lw-sel-v la-divide-preview" data-testid={`divide-preview-${s.id}`}>
-                                  {`${divideCountsFor(s, divideSectionsValue).join(', ')} LEDs`}
+                                  {divideSectionsValid ? `${divideCountsFor(s, divideSectionsValue).join(', ')} LEDs` : ''}
                                 </span>
                               </div>
                               <button type="button" className="btn"
                                       data-testid={`divide-commit-${s.id}`}
-                                      aria-label={`Divide ${s.name} into ${divideSectionsValue} sections`}
-                                      data-caption={divideBlockedReason(s, isSplit)
+                                      aria-label={divideSectionsValid
+                                        ? `Divide ${s.name} into ${divideSectionsValue} sections`
+                                        : `Divide ${s.name} into sections`}
+                                      data-caption={divideDisabledReason
                                         || 'Divide into several sections, each with its own pattern'}
-                                      title={divideBlockedReason(s, isSplit)
+                                      title={divideDisabledReason
                                         || 'Divide into several sections, each with its own pattern'}
-                                      disabled={!!divideBlockedReason(s, isSplit)}
+                                      disabled={!!divideDisabledReason}
                                       onClick={() => {
+                                        if (!divideSectionsValid) return;
                                         const divided = divideStripIntoSections(s.id, divideCountsFor(s, divideSectionsValue));
                                         if (divided) {
                                           setDivideOpen(false);

@@ -15,6 +15,10 @@ async function mockLocalCard(page: any, options: any = {}) {
   const buildId = 'workflow-test-build';
   const bootId = 'boot-workflow-test';
   const project = options.project || createDefaultProject();
+  // createDefaultProject carries the hidden primitive-first starter geometry.
+  // These card-ready workflow scenarios exercise the real two-section piece,
+  // so make that fixture an explicitly placed layout before fingerprinting it.
+  project.layout.starterPending = false;
   const projectFingerprint = cardProjectFingerprint(project);
   const card = {
     authorization: {
@@ -353,7 +357,7 @@ test('quiet pattern preview does not render routine notifications', async ({ pag
 
   // This case exercises successful whole-piece playback. Missing section IDs
   // correctly produce a fallback notice and are covered separately below.
-  await page.getByRole('button', { name: 'All sections', exact: true }).click();
+  await page.getByTestId('section-target-all').click();
   card.controls.length = 0;
   await page.locator('[data-pattern-id="aurora"]').click();
   await expect.poll(() => card.controls.at(-1)?.patternId).toBe('aurora');
@@ -408,9 +412,9 @@ test('the latest section preview wins rapid taps and never writes the card confi
   await gotoAuthorizedPatterns(page, card);
 
   card.operations.length = 0;
-  await page.getByRole('button', { name: 'Outer circle', exact: true }).click();
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
   await expect.poll(() => card.controls.length).toBeGreaterThan(0);
-  await page.getByRole('button', { name: 'Inner circle', exact: true }).click();
+  await page.getByTestId('section-target-patch-default-inner-circle').click();
 
   await page.waitForTimeout(1500);
   expect(card.operations.filter(item => item === 'config')).toHaveLength(0);

@@ -126,6 +126,7 @@ export function normalizeCardProjectEvidence(payload = {}) {
     throw cardIdentityError('project-identity-invalid', 'The Lightweaver card returned a partial production job identity.');
   }
   const capabilities = normalizeEvidenceCapabilities(source.capabilities);
+  const recipeCapabilities = normalizeRecipeCapabilities(source.recipeCapabilities);
   const hasMappings = Object.hasOwn(source, 'kaleidoscopeMappings');
   let kaleidoscopeMappings = [];
   if (hasMappings) {
@@ -151,6 +152,7 @@ export function normalizeCardProjectEvidence(payload = {}) {
     ...(identity.productionJobId ? { productionJobId: identity.productionJobId } : {}),
     ...(identity.productionJobDigest ? { productionJobDigest: identity.productionJobDigest } : {}),
     ...(capabilities ? { capabilities } : {}),
+    ...(recipeCapabilities ? { recipeCapabilities } : {}),
     ...(hasMappings ? { kaleidoscopeMappings } : {}),
     // The card's own answer to "is what I am holding the temporary
     // Find-my-strips setup?". It was dropped here, so every consumer fell back
@@ -161,6 +163,24 @@ export function normalizeCardProjectEvidence(payload = {}) {
     // back to the id.
     ...(typeof source.provisionalSetup === 'boolean' ? { provisionalSetup: source.provisionalSetup } : {}),
   };
+}
+
+function normalizeRecipeCapabilities(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const result = {};
+  for (const [key, expectedVersion] of [['colorJourney', 1], ['colorJourneyV2', 2], ['colorJourneyV3', 3]]) {
+    const capability = value[key];
+    if (!capability || typeof capability !== 'object' || Array.isArray(capability)) continue;
+    result[key] = {
+      version: Number(capability.version),
+      maxPixels: Number(capability.maxPixels),
+      ...(expectedVersion >= 2 ? { maxPhaseSpans: Number(capability.maxPhaseSpans) } : {}),
+      ...(expectedVersion === 3 ? { maxPhaseErrorTicks: Number(capability.maxPhaseErrorTicks) } : {}),
+      phaseEncoding: cleanText(capability.phaseEncoding, 32),
+      restart: cleanText(capability.restart, 32),
+    };
+  }
+  return result;
 }
 
 function normalizeEvidenceCapabilities(value) {
