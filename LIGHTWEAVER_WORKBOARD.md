@@ -9,6 +9,50 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-18 Public worker readiness (active, separate task)
+User explicitly requested another managed task: workers must complete the workflow
+from led.mandalacodes.com without developer/local project files. Audit as fresh
+worker, fix concrete self-contained-site gaps, test onboarding/assets/project
+access/SVG layout/counts/splits/patterns/save-reopen/card handoff, and distinguish
+public proof from local/hardware proof. Current root remains sole director.
+Routing: public worker readiness implementation | gpt-5.6-sol / high | end-to-end
+browser/assets/persistence diagnosis, bounded to worker URL workflow | fresh
+browser evidence + focused regression per fix | return cross-boundary decisions.
+Create tool must use configured default per tool rule; initial task is standby,
+then send_message selects Sol/high with the actual assignment before work starts.
+Separate worktree; don't edit active connected editor checkout. Cost unknown.
+
+
+### 2026-09-18 Connected section editor (done locally)
+Manager playbook v6; approved direction 1. Parent strip remains visible with a
+segmented bar and child sections. Add/move/remove splits, select/rename/edit
+pattern, explicit count correction, parent GPIO plus section override. Boundary
+edits conserve the parent total; actual count correction changes total/scale.
+Keep current flat strips as runtime/pattern targets; additive browser-only family
+metadata preserves original path and sibling identities through save/undo. Never
+infer old split families from names. Stable IDs/look assignments survive boundary
+edits; merge retains chosen section look with visible explanation. Re-slice original
+geometry to avoid cumulative approximation. Reject locked/multi-run/stale geometry
+operations rather than silently overwriting unrelated edits. No firmware/deploy.
+Dispatch: connected editor implementation | gpt-5.6-sol / high | bounded but
+interacting geometry, history and identity invariants need sustained reasoning |
+focused pure regressions + working UI | return unresolved identity/geometry risk.
+Dispatch: connected editor browser acceptance | gpt-5.6-terra / medium | independent
+black-box test/screen ownership | boundaries, count correction, merge, undo/reload,
+GPIO and section selection on desktop/phone | return behavior or usability gap.
+Primary owns decisions/integration/board. Workers own src and tests respectively.
+Cost unknown. Completed: parent/compact children editor first; exact or dragged
+boundaries conserve total; count correction changes total/scale; canonical pattern
+and parent/child GPIO; merge; persistent family/undo. Original path retained;
+unrelated advanced wiring runs/seams remain unchanged. Both split entry points
+create connected sections. Keyboard boundary commit supported.
+Evidence: integrated 2,546/2,546 units + production build; focused helpers9/9;
+final browser7/7 (new3 + legacy split4). Desktop/phone inspected, parent header
+clears sticky installation bar. Screens /tmp/lightweaver-connected-editor/.
+No deployment/card writes. Next: public worker-readiness task incorporates this
+commit and prior count-first changes; final deployment state must be proven live.
+
+
 ### 2026-09-18 SVG count-first layout (done locally)
 Manager skill + playbook v6 loaded; this board is the job record. Scope: imported
 layers selectable as LED paths, existing output assignment and splitting usable,

@@ -309,6 +309,23 @@ export function migrateStripIdNamespace(project) {
     }
   }
 
+  // Connected-section metadata is browser-only, but its member identity must
+  // move in the same transaction as the flat runtime strips. Leaving the old
+  // artwork id here makes an otherwise valid saved family disappear on reload.
+  if (Array.isArray(layout.sectionFamilies)) {
+    for (const family of layout.sectionFamilies) {
+      if (!family || typeof family !== 'object') continue;
+      family.parentId = oldToNew.get(family.parentId) ?? family.parentId;
+      if (Array.isArray(family.memberIds)) {
+        family.memberIds = family.memberIds.map(id => oldToNew.get(id) ?? id);
+      }
+      if (family.memberGeometry && typeof family.memberGeometry === 'object') {
+        family.memberGeometry = Object.fromEntries(Object.entries(family.memberGeometry)
+          .map(([id, signature]) => [oldToNew.get(id) ?? id, signature]));
+      }
+    }
+  }
+
   // 4. `hidden` is a shared namespace: a legacy strip and its source layer/path
   //    shared one key. Copy the flag onto the new strip key while KEEPING the old
   //    one so the artwork keeps its hidden state (editCounts stays with the layer

@@ -40,6 +40,9 @@ import { normalizeCardLedType } from '../../../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { activeBoardGpios } from '../../../lib/gpioAssignments.js';
 import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../../lib/kaleidoscope.js';
+import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/connectedSections.js';
+import { applyLookToPatchBoard } from '../../../lib/sectionLookModel.js';
+import { REAL_PATTERNS } from '../../../v3/v3-data.js';
 // The schedule below the list already measures pitch this way; the selected
 // strip must not measure it a second, slightly different way.
 import { stripPitchMm } from '../../../lib/wireBuildSheet.js';
@@ -142,7 +145,8 @@ export function DrawModePanel({
     setTotalLedCount, setStripCountAndCalibrate,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
-    divideStripIntoSections,
+    divideStripIntoSections, moveConnectedBoundary, addConnectedSplit,
+    mergeConnectedSection, correctConnectedSectionCount, detachSectionFamily,
     addPrimitiveStrip, scaleStrip,
     addStripsToGroup, groupSelectedStrips, mergeSelectedStrips,
     usbLedConnected,
@@ -169,9 +173,12 @@ export function DrawModePanel({
     error, setError, fileRef,
     createStarterPrimitive, clearStarterLayout,
     kaleidoscopeResetNotices,
-    projectWarnings,
+    projectWarnings, sectionFamilies, pushLayoutHistory,
   } = state;
-  const { wiring, updateWiring, standaloneController, setStandaloneController, patchBoard, setPatchBoard, portRoles } = useProject();
+  const {
+    wiring, updateWiring, standaloneController, setStandaloneController,
+    patchBoard, setPatchBoard, portRoles, sectionTargets,
+  } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
   // setting kept on standaloneController.led.type — the same field the card
@@ -220,6 +227,8 @@ export function DrawModePanel({
   const [totalLedDraft, setTotalLedDraft] = useState(String(totalLeds));
   const [totalLedError, setTotalLedError] = useState('');
   const [droppedStripIds, setDroppedStripIds] = useState([]);
+  const [connectedError, setConnectedError] = useState('');
+  const [boundaryDrafts, setBoundaryDrafts] = useState({});
 
   useEffect(() => setTotalLedDraft(String(totalLeds)), [totalLeds]);
 
@@ -535,6 +544,27 @@ export function DrawModePanel({
         ? 'Unlock wiring in Test & Install before changing GPIO.'
         : result.errors?.[0]?.message || 'That GPIO assignment could not be changed.');
     }
+  };
+
+  const assignFamilyGpio = (family, pin) => {
+    const selectedPin = Number(pin);
+    const memberIds = new Set(family.memberIds);
+    const result = updateWiring(draft => {
+      ensureRunsForAllStrips(draft);
+      const memberRuns = draft.runs.filter(run => run.type === 'strip' && memberIds.has(run.source?.stripId));
+      if (memberRuns.length !== memberIds.size) throw new Error('Each section needs one complete wiring run before assigning the parent GPIO.');
+      let target = draft.outputs.find(output => output.pin === selectedPin);
+      if (!target) {
+        if (draft.outputs.length >= CARD_HARDWARE_CAPABILITIES.maxOutputs) throw new Error(`This card supports up to ${CARD_HARDWARE_CAPABILITIES.maxOutputs} GPIO outputs.`);
+        target = { id: nextOutputId(draft.outputs), name: `Output ${draft.outputs.length + 1}`, pin: selectedPin, runIds: [] };
+        draft.outputs.push(target);
+      }
+      const runIds = new Set(memberRuns.map(run => run.id));
+      draft.outputs.forEach(output => { output.runIds = output.runIds.filter(runId => !runIds.has(runId)); });
+      target.runIds.push(...memberRuns.map(run => run.id));
+      draft.outputs = draft.outputs.filter((output, index) => index === 0 || output.runIds.length);
+    }, { changeKind: 'gpio' });
+    setConnectedError(result.ok ? '' : (result.errors?.[0]?.message || 'The parent GPIO could not be changed.'));
   };
 
   const moveStripsInGpioOrder = (draggedStripIds, targetStripId, placement = 'before') => {
@@ -1371,6 +1401,13 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
+                const connectedFamily = connectedFamilyForStrip(sectionFamilies, s.id);
+                const connectedMembers = connectedFamily
+                  ? connectedFamily.memberIds.map(id => stripById.get(id)).filter(Boolean)
+                  : [];
+                const connectedStatus = connectedFamily
+                  ? familyGeometryStatus(connectedFamily, strips)
+                  : { ok: true };
                 // Keep the typed draft verbatim so clearing, decimals and
                 // out-of-range values remain visible until the owner fixes them.
                 // The default is 4 — the task brief's example (41 → 11,10,10,10).
@@ -1472,16 +1509,186 @@ export function DrawModePanel({
                     </div>
                     {isOpen && (
                       <div className="la-strip-detail la-strip-inspector" onClick={e => e.stopPropagation()}>
-                        {/* The selected row names these controls. Keep sizing first. */}
-                        <div className="row lw-sel-grid">
+                        {connectedFamily ? (
+                          <section className="lw-connected-editor" data-testid="connected-section-editor"
+                                   data-family-id={connectedFamily.id} aria-label={`${connectedFamily.parentName} connected sections`}>
+                            <div className="lw-connected-parent" data-testid="connected-parent">
+                              <div>
+                                <strong>{connectedFamily.parentName}</strong>
+                                <span>{connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs · {connectedMembers.length} sections</span>
+                              </div>
+                              <label>
+                                <span>Parent GPIO</span>
+                                <select aria-label="Parent GPIO"
+                                        value={connectedMembers.every(member => outputForStrip(member.id)?.pin === outputForStrip(connectedMembers[0]?.id)?.pin)
+                                          ? outputForStrip(connectedMembers[0]?.id)?.pin ?? ''
+                                          : ''}
+                                        disabled={wiring.locked || !connectedStatus.ok}
+                                        onChange={event => assignFamilyGpio(connectedFamily, event.target.value)}>
+                                  <option value="" disabled>Mixed</option>
+                                  <GpioOptions choices={gpioChoicesForStrip(connectedMembers[0]?.id)} />
+                                </select>
+                              </label>
+                            </div>
+                            <div className="lw-connected-bar" aria-label="Section proportions">
+                              {connectedMembers.map(member => (
+                                <button key={member.id} type="button"
+                                        className={member.id === s.id ? 'selected' : ''}
+                                        style={{ flexGrow: member.pixelCount, background: member.color }}
+                                        aria-label={`Select ${member.name}, ${member.pixelCount} LEDs`}
+                                        title={`${member.name}: ${member.pixelCount} LEDs`}
+                                        onClick={() => selectStrip(member.id)}>
+                                  <span className="lw-connected-bar-name">{member.name}</span>
+                                  <span>{member.pixelCount}</span>
+                                </button>
+                              ))}
+                            </div>
+                            {!connectedStatus.ok && (
+                              <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
+                                <span>{connectedStatus.error}</span>
+                                <button type="button" className="btn" onClick={() => detachSectionFamily(connectedFamily.id)}>Detach sections</button>
+                              </div>
+                            )}
+                            {connectedStatus.ok && connectedMembers.map((member, memberIndex) => {
+                              const target = sectionTargets.find(candidate => candidate.kind === 'section' && candidate.stripId === member.id);
+                              const before = connectedMembers.slice(0, memberIndex).reduce((sum, item) => sum + item.pixelCount, 0);
+                              const boundary = before + member.pixelCount;
+                              const nextMember = connectedMembers[memberIndex + 1];
+                              const boundaryKey = `${connectedFamily.id}:${member.id}`;
+                              const boundaryValue = boundaryDrafts[boundaryKey] ?? boundary;
+                              const memberPin = outputForStrip(member.id)?.pin ?? 16;
+                              const nextPin = nextMember ? outputForStrip(nextMember.id)?.pin : memberPin;
+                              const currentPatternId = target?.look?.patternId || 'aurora';
+                              const currentPatternKnown = REAL_PATTERNS.some(pattern => pattern.id === currentPatternId);
+                              return (
+                                <div key={member.id} className={`lw-connected-child${member.id === s.id ? ' selected' : ''}`}
+                                     data-testid="connected-child" data-section-id={member.id}>
+                                  <button type="button" className="lw-connected-child-select"
+                                          aria-pressed={member.id === s.id} onClick={() => selectStrip(member.id)}>
+                                    <span>Section {memberIndex + 1} · {member.name}</span>
+                                    <span>{member.pixelCount} LEDs</span>
+                                  </button>
+                                  {member.id === s.id && <>
+                                  <input type="text" value={member.name} aria-label={`Section ${memberIndex + 1} name`}
+                                         onChange={event => renameStrip(member.id, event.target.value)} />
+                                  <label><span>Actual LEDs</span>
+                                    <input type="number" min="1" max={LED_COUNT_MAX} defaultValue={member.pixelCount}
+                                           key={`${member.id}:${member.pixelCount}`}
+                                           aria-label={`Section ${memberIndex + 1} actual LEDs`}
+                                           disabled={wiring.locked}
+                                           onBlur={event => {
+                                             const result = correctConnectedSectionCount(member.id, Number(event.target.value));
+                                             setConnectedError(result.ok ? '' : result.error);
+                                           }}
+                                           onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+                                  </label>
+                                  <label><span>Pattern</span>
+                                    <select aria-label={`Section ${memberIndex + 1} pattern`} value={currentPatternId}
+                                            onChange={event => {
+                                              if (!target) return;
+                                              pushLayoutHistory();
+                                              setPatchBoard(applyLookToPatchBoard({
+                                                patchBoard,
+                                                strips,
+                                                targetId: target.id,
+                                                look: { ...target.look, patternId: event.target.value },
+                                              }));
+                                            }}>
+                                      {!currentPatternKnown && <option value={currentPatternId}>{currentPatternId}</option>}
+                                      {REAL_PATTERNS.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}
+                                    </select>
+                                  </label>
+                                  <label><span>GPIO override</span>
+                                    <select aria-label={`Section ${memberIndex + 1} GPIO override`} value={memberPin}
+                                            disabled={wiring.locked}
+                                            onChange={event => assignStripGpio(member.id, Number(event.target.value))}>
+                                      <GpioOptions choices={gpioChoicesForStrip(member.id)} />
+                                    </select>
+                                  </label>
+                                  <button type="button" className="btn" data-testid="connected-add-split"
+                                          aria-label={`Add split inside ${member.name}`}
+                                          disabled={wiring.locked || member.pixelCount < 2}
+                                          onClick={() => {
+                                            const result = addConnectedSplit(member.id);
+                                            setConnectedError(result.ok ? '' : result.error);
+                                          }}>Add split</button>
+                                  {nextMember && <>
+                                    <label className="lw-connected-boundary">
+                                      <span>Boundary after {member.name}</span>
+                                      <input type="range" min={before + 1} max={boundary + nextMember.pixelCount - 1}
+                                             value={boundaryValue} data-testid="connected-boundary"
+                                             aria-label={`Boundary after ${member.name}`}
+                                             disabled={wiring.locked}
+                                             onChange={event => setBoundaryDrafts(current => ({ ...current, [boundaryKey]: Number(event.target.value) }))}
+                                             onPointerUp={event => {
+                                               const result = moveConnectedBoundary(connectedFamily.id, memberIndex, Number(event.currentTarget.value));
+                                               setConnectedError(result.ok ? '' : result.error);
+                                               setBoundaryDrafts(current => { const next = { ...current }; delete next[boundaryKey]; return next; });
+                                             }}
+                                             onBlur={event => {
+                                               const result = moveConnectedBoundary(connectedFamily.id, memberIndex, Number(event.currentTarget.value));
+                                               setConnectedError(result.ok ? '' : result.error);
+                                               setBoundaryDrafts(current => { const next = { ...current }; delete next[boundaryKey]; return next; });
+                                             }} />
+                                      <input type="number" min={before + 1} max={boundary + nextMember.pixelCount - 1}
+                                             value={boundaryValue} aria-label={`Exact boundary after ${member.name}`}
+                                             disabled={wiring.locked}
+                                             onChange={event => setBoundaryDrafts(current => ({ ...current, [boundaryKey]: event.target.value }))}
+                                             onBlur={event => {
+                                               const result = moveConnectedBoundary(connectedFamily.id, memberIndex, Number(event.target.value));
+                                               setConnectedError(result.ok ? '' : result.error);
+                                               setBoundaryDrafts(current => { const next = { ...current }; delete next[boundaryKey]; return next; });
+                                             }}
+                                             onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+                                    </label>
+                                    <button type="button" className="btn" data-testid="connected-merge"
+                                            aria-label={`Merge ${member.name} with ${nextMember.name}`}
+                                            title={memberPin !== nextPin
+                                              ? 'Put both sections on the same GPIO to merge'
+                                              : `Keeps ${member.name}'s pattern and name`}
+                                            disabled={wiring.locked || memberPin !== nextPin}
+                                            onClick={() => {
+                                              const result = mergeConnectedSection(member.id);
+                                              setConnectedError(result.ok ? '' : result.error);
+                                            }}>Merge with next · keep {member.name}</button>
+                                  </>}
+                                  </>}
+                                </div>
+                              );
+                            })}
+                            {connectedError && <div className="lw-connected-error" role="alert">{connectedError}</div>}
+                          </section>
+                        ) : (
+                          <div className="la-divide-disclosure">
+                            <button type="button" className="btn la-divide-toggle"
+                                    ref={divideTriggerRef}
+                                    data-testid="connected-add-split"
+                                    data-scoped-testid={`divide-toggle-${s.id}`}
+                                    aria-label={`Add split to ${s.name}`}
+                                    title={divideBlockedReason(s, isSplit) || 'Create two connected sections with independent patterns'}
+                                    disabled={!!divideBlockedReason(s, isSplit)}
+                                    onClick={() => {
+                                      const result = divideStripIntoSections(s.id, 2);
+                                      setConnectedError(result ? '' : divideBlockedReason(s, isSplit) || 'The strip could not be split.');
+                                    }}>
+                              <SplitIcon/><span>Add split</span>
+                            </button>
+                          </div>
+                        )}
+                        {/* Connected families own count, pattern and GPIO in one
+                            coherent surface. Standalone strips keep the general
+                            physical inspector below their primary Add split action. */}
+                        {!connectedFamily && <div className="row lw-sel-grid">
                           <div className="la-strip-physical-field lw-sel-stack">
                             <span className="k">LEDs</span>
                             <div className="la-led-count-field" role="group" aria-label="LED count tuning">
                               <button type="button" className="btn" aria-label="One LED fewer"
+                                      disabled={!!connectedFamily}
                                       onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount - 1))}>−</button>
                               <input type="number" min="1" max={LED_COUNT_MAX} step="1"
                                      value={s.pixelCount}
                                      aria-label="Strip LED count"
+                                     disabled={!!connectedFamily}
                                      inputMode="numeric"
                                      onFocus={e => e.target.select()}
                                      onClick={e => e.target.select()}
@@ -1489,6 +1696,7 @@ export function DrawModePanel({
                                      onBlur={e => setStripLedCount(s.id, e.target.value)}
                                      onKeyDown={e => { if (e.key === 'Enter') setStripLedCount(s.id, e.target.value); }}/>
                               <button type="button" className="btn" aria-label="One LED more"
+                                      disabled={!!connectedFamily}
                                       onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount + 1))}>+</button>
                             </div>
                           </div>
@@ -1497,6 +1705,7 @@ export function DrawModePanel({
                             <div className="la-size-ctrl">
                               <button type="button" className="btn" aria-label="Make strip smaller"
                                       title="Shrink 10%"
+                                      disabled={!!connectedFamily}
                                       onClick={() => scaleStrip(s.id, 0.9)}>−</button>
                               <label className="la-size-readout" data-testid="strip-size-readout">
                                 <input type="number" min="0.001" step="0.001"
@@ -1507,6 +1716,7 @@ export function DrawModePanel({
                                            : svgPathLength(s.pathData),
                                          pxPerMm))}
                                        aria-label="Strip length in metres"
+                                       disabled={!!connectedFamily}
                                        inputMode="decimal"
                                        onFocus={e => e.target.select()}
                                        onBlur={e => {
@@ -1518,6 +1728,7 @@ export function DrawModePanel({
                               </label>
                               <button type="button" className="btn" aria-label="Make strip bigger"
                                       title="Grow 10%"
+                                      disabled={!!connectedFamily}
                                       onClick={() => scaleStrip(s.id, 1 / 0.9)}>+</button>
                             </div>
                           </div>
@@ -1552,6 +1763,7 @@ export function DrawModePanel({
                                         className={`btn${selectedDensity === d ? ' is-selected' : ''}`}
                                         aria-label={`${d} LEDs/m`}
                                         aria-pressed={selectedDensity === d}
+                                        disabled={!!connectedFamily}
                                         data-caption={`Cut from a ${d} LEDs per metre reel`}
                                         title={`${d} LEDs per metre`}
                                         onClick={() => setStripPhysical(s.id, { ledsPerM: d })}>
@@ -1595,90 +1807,7 @@ export function DrawModePanel({
                               </div>
                             );
                           })()}
-                        </div>
-                        <div className="la-divide-disclosure">
-                          <button type="button" className="btn la-divide-toggle"
-                                  ref={divideTriggerRef}
-                                  data-testid={`divide-toggle-${s.id}`}
-                                  aria-label={`Divide ${s.name} into sections`}
-                                  aria-expanded={divideOpen}
-                                  aria-controls={`divide-panel-${s.id}`}
-                                  onClick={() => setDivideOpen(open => !open)}>
-                            <SplitIcon/>
-                            <span>Divide into sections</span>
-                            {divideOpen ? <ChevronDownIcon/> : <ChevronRightIcon/>}
-                          </button>
-                          {divideOpen && <div id={`divide-panel-${s.id}`}
-                               className="la-divide-panel" role="region"
-                               aria-label={`Divide ${s.name} into sections`}
-                               onKeyDown={event => {
-                                 if (event.key === 'Escape') {
-                                   event.stopPropagation();
-                                   setDivideOpen(false);
-                                   divideTriggerRef.current?.focus();
-                                 }
-                               }}>
-                            <div className="lw-sel-pair la-divide-pair">
-                              <label className="la-divide-sections-label"
-                                     htmlFor={`divide-sections-${s.id}`}>Sections</label>
-                              <input type="number" inputMode="numeric" step={1} min={2} max={divideCap}
-                                      id={`divide-sections-${s.id}`}
-                                      className="la-divide-sections"
-                                      data-testid={`divide-sections-${s.id}`}
-                                      aria-label={`Number of sections to divide ${s.name} into`}
-                                      aria-invalid={!divideSectionsValid}
-                                      aria-describedby={`divide-sections-error-${s.id}`}
-                                      value={divideSectionsDraft}
-                                      disabled={!!divideBlockedReason(s, isSplit)}
-                                      onChange={event => setDivideSections(prev => ({ ...prev, [s.id]: event.target.value }))} />
-                              <span id={`divide-sections-error-${s.id}`}
-                                    data-testid={`divide-error-${s.id}`}
-                                    className="la-divide-error"
-                                    hidden={divideSectionsValid}>
-                                {divideSectionError}
-                              </span>
-                              {/* The counts are fields, not a readout: a 41-LED ring
-                                  becomes 10, 21, 10 by typing, and the total never
-                                  moves because each edit is balanced by its
-                                  neighbour (applyStripSplitCount). The readout keeps
-                                  its testid, so the even plan still reads as before. */}
-                              <div className="la-divide-counts" role="group" aria-label={`LEDs per section of ${s.name}`}>
-                                {divideSectionsValid && divideCountsFor(s, divideSectionsValue).map((count, index) => (
-                                  <input key={index} type="number" inputMode="numeric" min={1}
-                                         className="la-divide-count"
-                                         data-testid={`divide-count-${s.id}-${index + 1}`}
-                                         aria-label={`Section ${index + 1} LEDs`}
-                                         value={count}
-                                         disabled={!!divideBlockedReason(s, isSplit)}
-                                         onChange={event => setDivideCount(s, divideSectionsValue, index, event.target.value)} />
-                                ))}
-                                <span className="lw-sel-v la-divide-preview" data-testid={`divide-preview-${s.id}`}>
-                                  {divideSectionsValid ? `${divideCountsFor(s, divideSectionsValue).join(', ')} LEDs` : ''}
-                                </span>
-                              </div>
-                              <button type="button" className="btn"
-                                      data-testid={`divide-commit-${s.id}`}
-                                      aria-label={divideSectionsValid
-                                        ? `Divide ${s.name} into ${divideSectionsValue} sections`
-                                        : `Divide ${s.name} into sections`}
-                                      data-caption={divideDisabledReason
-                                        || 'Divide into several sections, each with its own pattern'}
-                                      title={divideDisabledReason
-                                        || 'Divide into several sections, each with its own pattern'}
-                                      disabled={!!divideDisabledReason}
-                                      onClick={() => {
-                                        if (!divideSectionsValid) return;
-                                        const divided = divideStripIntoSections(s.id, divideCountsFor(s, divideSectionsValue));
-                                        if (divided) {
-                                          setDivideOpen(false);
-                                          divideTriggerRef.current?.focus();
-                                        }
-                                      }}>
-                                Divide
-                              </button>
-                            </div>
-                          </div>}
-                        </div>
+                        </div>}
                         <div className="actions" role="group" aria-label="Strip actions">
                           {/* Three families, separated by space rather than by
                               labels: which way it runs, the specialist mapping,
@@ -1687,6 +1816,7 @@ export function DrawModePanel({
                             <button className="btn" aria-label="Flip path direction"
                                     data-caption="Flip the drawing path so LED 1 swaps ends"
                                     title="Flip the drawing path so pixel 0 swaps ends"
+                                    disabled={!!connectedFamily}
                                     onClick={() => reverseStrip(s.id)}>
                               <span aria-hidden="true">↔</span>
                               <span className="la-strip-action-label">Flip</span>
@@ -1742,16 +1872,13 @@ export function DrawModePanel({
                             </button>
                           </div>
                           <div className="la-strip-actions-right">
-                            {/* Split, Duplicate and Remove all change how many
-                                strips exist — one family, and the row that has
-                                the width for them. */}
                             <button className="btn" data-testid={`split-strip-${s.id}`}
                                     aria-label={`Split ${s.name} into two strips`}
                                     data-caption={splitBlockedReason(s, isSplit)
                                       || `Split into two strips — ${splitPreview(s)}`}
                                     title={splitBlockedReason(s, isSplit)
                                       || `Split into two strips — ${splitPreview(s)}`}
-                                    disabled={!!splitBlockedReason(s, isSplit)}
+                                    disabled={!!connectedFamily || !!splitBlockedReason(s, isSplit)}
                                     onClick={() => splitStripInTwo(s.id)}>
                               <SplitIcon/>
                               <span className="la-strip-action-label">Split</span>
@@ -1764,8 +1891,9 @@ export function DrawModePanel({
                               <span className="la-strip-action-label">Copy</span>
                             </button>
                             <button className="btn danger" aria-label="Remove strip"
-                                    data-caption="Remove this strip from the piece"
-                                    title="Remove strip"
+                                    data-caption={connectedFamily ? 'Merge this connected section first' : 'Remove this strip from the piece'}
+                                    title={connectedFamily ? 'Merge this connected section first' : 'Remove strip'}
+                                    disabled={!!connectedFamily}
                                     onClick={() => removeStrip(s.id)}>
                               <span aria-hidden="true">×</span>
                               <span className="la-strip-action-label">Remove</span>
