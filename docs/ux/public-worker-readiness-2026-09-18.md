@@ -38,6 +38,10 @@ The candidate passes one visible worker journey in a fresh Chromium context:
 
 The same fresh entry is covered at 390 × 844 phone size. Focused layout, split, and onboarding coverage passes 9/9 tests. The project-storage unit suite passes 42/42 tests, including the JSON readback regression.
 
+The final candidate checkpoint passes 2,548/2,548 unit assertions and completes the production Vite build. The focused browser regression below also proves that the secure-library action is visible after native sign-in, saves the recovery copy before navigation, returns to the exact Studio route, and does not replace ordinary service failures with an access redirect.
+
+![Rendered secure-library handoff](public-worker-secure-library-handoff.png)
+
 ## Required inputs and remaining gates
 
 - Real artwork cannot be invented. An artwork-based job still requires its SVG, a portable Lightweaver project backup, or authorized access to an assigned team project. The public site now states these choices instead of implying that private artwork is bundled.
