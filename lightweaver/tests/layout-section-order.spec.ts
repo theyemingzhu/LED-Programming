@@ -34,13 +34,15 @@ test('Move up and Move down reorder sections on the wire without a drag', async 
 
   // Select the last section; only Move up is available there.
   await page.locator('.la-strip-row').nth(2).click();
-  const order = page.locator('[data-testid^="wire-order-"]');
+  await page.getByLabel('More strip actions', { exact: true }).click();
+  const order = page.locator('.la-strip-menu[open]');
   await expect(order).toHaveCount(1);
   await expect(order.getByRole('button', { name: /down the wire/ })).toBeDisabled();
   await order.getByRole('button', { name: /up the wire/ }).click();
   await expect.poll(() => rowNames(page)).toEqual([before[0], before[2], before[1]]);
 
   // Once more takes it to the top, where Move up disables.
+  if (!await order.isVisible()) await page.getByLabel('More strip actions', { exact: true }).click();
   await order.getByRole('button', { name: /up the wire/ }).click();
   await expect.poll(() => rowNames(page)).toEqual([before[2], before[0], before[1]]);
   await expect(order.getByRole('button', { name: /up the wire/ })).toBeDisabled();
@@ -88,7 +90,7 @@ test('one divided section can move to GPIO 17 while the other sections stay on G
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
   await page.locator('.la-strip-row').nth(1).click();
-  await page.getByLabel('GPIO output').selectOption('17');
+  await page.getByLabel('Section 2 GPIO override').selectOption('17');
 
   await expect(page.getByTestId('gpio-group-17').locator('.la-strip-row')).toHaveCount(1);
   await expect(page.getByTestId('gpio-group-18').locator('.la-strip-row')).toHaveCount(2);

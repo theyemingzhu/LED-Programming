@@ -9,6 +9,17 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-18 Compact strip inspector (done locally)
+Approved compact inspector implemented on codex/compact-strip-inspector:
+inline values/units, counts-only division fields, and selected-strip facts in
+Specs. Integrated de885d4d, preserving connected families, calibrated SVG counts,
+and sticky headers. Real Studio inspected; evidence docs/ux/compact-inspector/.
+Verification: 2,548 unit tests; production build; 61/63 focused browser checks,
+then both failures corrected and green (2/2): relocated first-light active style
+and updated connected-child GPIO selector. Final production rebuild passed.
+No firmware or card changes. Committed locally; not pushed or deployed.
+Release coordination: task 01a0b25c-cef7-79f0-adff-d84049fc8092 owns shipment.
+
 ### 2026-09-18 Public worker readiness (active, separate task)
 User explicitly requested another managed task: workers must complete the workflow
 from led.mandalacodes.com without developer/local project files. Audit as fresh

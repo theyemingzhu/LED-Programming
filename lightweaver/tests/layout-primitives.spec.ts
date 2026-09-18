@@ -200,7 +200,8 @@ test('removing the last strip keeps Add strip available and can create its repla
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
-  await page.getByLabel('Strip actions').getByRole('button', { name: 'Remove strip' }).click();
+  await page.getByLabel('More strip actions', { exact: true }).click();
+  await page.getByRole('button', { name: 'Remove strip', exact: true }).click();
 
   await expect(page.locator('.la-strip-row')).toHaveCount(0);
   const addButton = page.getByTestId('layout-add-strip');
@@ -407,8 +408,9 @@ test('size, density, and LED count stay linked', async ({ page }) => {
 
   const actions = page.getByLabel('Strip actions');
   await expect(actions.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
-  await expect(actions.getByRole('button', { name: 'Duplicate strip' })).toBeVisible();
-  await expect(actions.getByRole('button', { name: 'Remove strip' })).toBeVisible();
+  await page.getByLabel('More strip actions', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Calibrate scale from LED count' })).toHaveCount(0);
   await expect(page.getByText(/Drag on canvas to move/)).toHaveCount(0);
 });

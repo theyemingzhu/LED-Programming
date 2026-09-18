@@ -20,6 +20,55 @@ import {
   setKaleidoscopePointCount,
 } from '../lib/kaleidoscope.js';
 import { useKaleidoscopeCalibration } from './layout/hooks/useKaleidoscopeCalibration.js';
+import { stripPitchMm } from '../lib/wireBuildSheet.js';
+import { normalizeCardLedType } from '../lib/cardHardwareContract.js';
+import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
+
+function SelectedStripSpecs({ strip, wiring, pxPerMm, ledType }) {
+  if (!strip) return (
+    <section className="la-selected-specs" aria-label="Selected strip specs">
+      <p className="la-selected-specs-empty">Select a strip to see its measurements.</p>
+    </section>
+  );
+
+  const runs = wiring.runs.filter(run => run.type === 'strip' && run.source?.stripId === strip.id);
+  const run = runs.length === 1 ? runs[0] : null;
+  const pitchMm = stripPitchMm(strip, strip.pixelCount, pxPerMm);
+  const emission = strip.emit === 'omni'
+    ? 'Omni'
+    : Number.isFinite(Number(strip.angle)) ? `${Math.round(Number(strip.angle))}°` : '—';
+  const firstLight = !run
+    ? '—'
+    : run.seamLed != null
+      ? String(run.seamLed + 1)
+      : run.physicalDirection === 'source-reverse' ? String(strip.pixelCount) : '1';
+
+  const openChipsetSettings = event => {
+    const specsBody = event.currentTarget.closest('.la-specs-body');
+    const tools = specsBody?.querySelector('[data-testid="advanced-installation-tools"]');
+    if (!tools) return;
+    tools.open = true;
+    tools.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    window.requestAnimationFrame(() => tools.querySelector('summary')?.focus());
+  };
+
+  return (
+    <section className="la-selected-specs" aria-label={`Selected strip specs for ${strip.name}`}>
+      <header>
+        <strong>{strip.name}</strong>
+        <span>Selected strip</span>
+      </header>
+      <dl>
+        <div><dt>LED spacing (pitch)</dt><dd data-testid={`strip-pitch-${strip.id}`}>{pitchMm === null ? '—' : `${pitchMm.toFixed(1)} mm`}</dd></div>
+        <div><dt>Emission</dt><dd data-testid={`strip-emit-${strip.id}`}>{emission}</dd></div>
+        <div><dt>First light</dt><dd data-testid={`strip-first-led-${strip.id}`}>{firstLight}</dd></div>
+        <div><dt>Chipset · project-wide</dt><dd>{ledType}</dd></div>
+      </dl>
+      <p>Chipset applies to every output.</p>
+      <button type="button" className="btn" onClick={openChipsetSettings}>Change project chipset</button>
+    </section>
+  );
+}
 
 // ── Main component ─────────────────────────────────────────────────────────
 // All state, handlers, derived memos and effects live in useLayoutState() and
@@ -117,6 +166,12 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     // mode (Draw | Wire)
     mode, setMode,
   } = state;
+
+  const selectedSpecsStrip = strips.find(strip => strip.id === selStripId) || null;
+  const selectedSpecsLedType = normalizeCardLedType(
+    standaloneController?.led?.type,
+    DEFAULT_STANDALONE_LED.type,
+  );
 
   const beginFirstLedPicker = stripId => {
     selectStrip(stripId);
@@ -557,6 +612,12 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               <strong>Specs</strong>
             </header>
             <div className="la-specs-body">
+              <SelectedStripSpecs
+                strip={selectedSpecsStrip}
+                wiring={wiring}
+                pxPerMm={state.pxPerMm}
+                ledType={selectedSpecsLedType}
+              />
               <WirePlanTools
                 state={state}
                 connected={connected}
