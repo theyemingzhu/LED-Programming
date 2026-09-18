@@ -1508,41 +1508,47 @@ export function DrawModePanel({
                       <span className="layer-len">{s.pixelCount} LEDs</span>
                     </div>
                     {isOpen && (
-                      <div className="la-strip-detail la-strip-inspector" onClick={e => e.stopPropagation()}>
+                      <div className={`la-strip-detail la-strip-inspector${connectedFamily ? ' lw-connected-editor-shell' : ''}`}
+                           data-testid={connectedFamily ? 'connected-section-editor' : undefined}
+                           data-family-id={connectedFamily?.id}
+                           aria-label={connectedFamily ? `${connectedFamily.parentName} connected sections` : undefined}
+                           onClick={e => e.stopPropagation()}>
                         {connectedFamily ? (
-                          <section className="lw-connected-editor" data-testid="connected-section-editor"
-                                   data-family-id={connectedFamily.id} aria-label={`${connectedFamily.parentName} connected sections`}>
-                            <div className="lw-connected-parent" data-testid="connected-parent">
-                              <div>
-                                <strong>{connectedFamily.parentName}</strong>
-                                <span>{connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs · {connectedMembers.length} sections</span>
+                          <>
+                            <div className="lw-connected-summary">
+                              <div className="lw-connected-parent" data-testid="connected-parent">
+                                <div>
+                                  <strong>{connectedFamily.parentName}</strong>
+                                  <span>{connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs · {connectedMembers.length} sections</span>
+                                </div>
+                                <label>
+                                  <span>Parent GPIO</span>
+                                  <select aria-label="Parent GPIO"
+                                          value={connectedMembers.every(member => outputForStrip(member.id)?.pin === outputForStrip(connectedMembers[0]?.id)?.pin)
+                                            ? outputForStrip(connectedMembers[0]?.id)?.pin ?? ''
+                                            : ''}
+                                          disabled={wiring.locked || !connectedStatus.ok}
+                                          onChange={event => assignFamilyGpio(connectedFamily, event.target.value)}>
+                                    <option value="" disabled>Mixed</option>
+                                    <GpioOptions choices={gpioChoicesForStrip(connectedMembers[0]?.id)} />
+                                  </select>
+                                </label>
                               </div>
-                              <label>
-                                <span>Parent GPIO</span>
-                                <select aria-label="Parent GPIO"
-                                        value={connectedMembers.every(member => outputForStrip(member.id)?.pin === outputForStrip(connectedMembers[0]?.id)?.pin)
-                                          ? outputForStrip(connectedMembers[0]?.id)?.pin ?? ''
-                                          : ''}
-                                        disabled={wiring.locked || !connectedStatus.ok}
-                                        onChange={event => assignFamilyGpio(connectedFamily, event.target.value)}>
-                                  <option value="" disabled>Mixed</option>
-                                  <GpioOptions choices={gpioChoicesForStrip(connectedMembers[0]?.id)} />
-                                </select>
-                              </label>
+                              <div className="lw-connected-bar" aria-label="Section proportions">
+                                {connectedMembers.map(member => (
+                                  <button key={member.id} type="button"
+                                          className={member.id === s.id ? 'selected' : ''}
+                                          style={{ flexGrow: member.pixelCount, background: member.color }}
+                                          aria-label={`Select ${member.name}, ${member.pixelCount} LEDs`}
+                                          title={`${member.name}: ${member.pixelCount} LEDs`}
+                                          onClick={() => selectStrip(member.id)}>
+                                    <span className="lw-connected-bar-name">{member.name}</span>
+                                    <span>{member.pixelCount}</span>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                            <div className="lw-connected-bar" aria-label="Section proportions">
-                              {connectedMembers.map(member => (
-                                <button key={member.id} type="button"
-                                        className={member.id === s.id ? 'selected' : ''}
-                                        style={{ flexGrow: member.pixelCount, background: member.color }}
-                                        aria-label={`Select ${member.name}, ${member.pixelCount} LEDs`}
-                                        title={`${member.name}: ${member.pixelCount} LEDs`}
-                                        onClick={() => selectStrip(member.id)}>
-                                  <span className="lw-connected-bar-name">{member.name}</span>
-                                  <span>{member.pixelCount}</span>
-                                </button>
-                              ))}
-                            </div>
+                            <section className="lw-connected-editor-frame">
                             {!connectedStatus.ok && (
                               <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
                                 <span>{connectedStatus.error}</span>
@@ -1657,7 +1663,8 @@ export function DrawModePanel({
                               );
                             })}
                             {connectedError && <div className="lw-connected-error" role="alert">{connectedError}</div>}
-                          </section>
+                            </section>
+                          </>
                         ) : (
                           <div className="la-divide-disclosure">
                             <button type="button" className="btn la-divide-toggle"

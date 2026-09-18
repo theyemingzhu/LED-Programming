@@ -30,13 +30,17 @@ function familySnapshot(page: any) {
 }
 
 async function frameEditor(page: any, editor: any) {
-  await editor.evaluate((element: HTMLElement) => {
-    const side = element.closest('.side') as HTMLElement | null;
-    if (!side) { element.scrollIntoView({ block: 'start' }); return; }
-    const sideBox = side.getBoundingClientRect();
-    const editorBox = element.getBoundingClientRect();
-    side.scrollTop += editorBox.top - sideBox.top - 8;
+  await editor.evaluate((element: HTMLElement) => element.scrollIntoView({ block: 'start' }));
+}
+
+async function expectSummaryClearsToolbar(page: any) {
+  const geometry = await page.evaluate(() => {
+    const toolbar = document.querySelector('.la-mode-nav')?.getBoundingClientRect();
+    const summary = document.querySelector('.lw-connected-summary')?.getBoundingClientRect();
+    return toolbar && summary ? { toolbarBottom: toolbar.bottom, summaryTop: summary.top } : null;
   });
+  expect(geometry).toBeTruthy();
+  expect(geometry!.toolbarBottom).toBeLessThanOrEqual(geometry!.summaryTop + 1);
 }
 
 test('connected sections preserve a parent total at a boundary, retain identities through undo and reload', async ({ page }) => {
@@ -80,9 +84,11 @@ test('connected sections preserve a parent total at a boundary, retain identitie
   expect(afterBoundary).toEqual([20, before[0] + before[1] - 20]);
   expect(afterBoundary[0] + afterBoundary[1]).toBe(before[0] + before[1]);
   await frameEditor(page, editor);
+  await expectSummaryClearsToolbar(page);
   await page.screenshot({ path: 'test-results/connected-section-editor-desktop.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await frameEditor(page, children.first());
+  await frameEditor(page, editor);
+  await expectSummaryClearsToolbar(page);
   await page.screenshot({ path: 'test-results/connected-section-editor-phone.png' });
   await page.setViewportSize({ width: 1280, height: 720 });
 

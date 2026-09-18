@@ -9,6 +9,7 @@
   display: flex;
   flex-direction: column;
 }
+.la .side .la-mode-content.is-draw { overflow-y: visible; }
 .la .la-strip-detail.la-strip-inspector .lw-sel-grid > .la-strip-physical-field {
   padding: 5px 0;
   background: transparent;
@@ -111,14 +112,27 @@
   text-align: center;
 }
 
-.lw-connected-editor {
+.lw-connected-editor-shell { scroll-margin-block-start: 60px; }
+.lw-connected-editor-frame {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border-soft));
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: color-mix(in oklab, var(--bg-app) 90%, var(--accent) 10%);
+}
+.lw-connected-summary {
+  position: sticky;
+  z-index: 2;
+  top: 51px;
   display: grid;
   gap: 10px;
   margin-top: 10px;
-  scroll-margin-block-start: 60px;
-  padding: 10px;
+  padding: 10px 10px 8px;
   border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border-soft));
-  border-radius: 8px;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
   background: color-mix(in oklab, var(--bg-app) 90%, var(--accent) 10%);
 }
 .lw-connected-parent,
@@ -199,7 +213,7 @@
 .lw-connected-boundary input[type="range"] { width: 100%; padding: 0; }
 .lw-connected-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--danger, #c64b4b); font-size: 11px; }
 @media (max-width: 600px) {
-  .lw-connected-parent { align-items: flex-start; flex-direction: column; }
+  .lw-connected-summary { top: 95px; }
   .lw-connected-child > .btn,
   .lw-connected-child-select { min-height: 42px; }
 }
