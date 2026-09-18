@@ -9,6 +9,33 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-18 SVG count-first layout (done locally)
+Manager skill + playbook v6 loaded; this board is the job record. Scope: imported
+layers selectable as LED paths, existing output assignment and splitting usable,
+exact per-layer or whole-layout counts drive physical scale without distorting
+artwork proportions. Browser only; no release or card writes authorized.
+Director contract: retain SVG coordinates; resize physical interpretation via
+pxPerMm. Whole total distributes integer counts proportionally with exact sum;
+per-path edits preserve other counts and recompute total/scale. Reject invalid or
+unrepresentable totals. Preserve source attribution after split, count overrides,
+undo and project round-trip. Reuse existing wiring and pattern-section contracts.
+Dispatch: Studio implementation | gpt-5.6-sol / medium | bounded feature across
+existing Layout components; worker owns lightweaver/src only | focused unit red/
+green and UI integration | return ambiguous persistence/geometry contract.
+Dispatch: browser acceptance | gpt-5.6-terra / medium | independent black-box
+SVG workflow tests in lightweaver/tests only | import/count/split/output/reload
+regressions, actual screen after integration | return missing affordance/contract.
+Primary owns integration and board. Cost unknown.
+Done locally: named imported strips; exact total allocation and individual count
+calibration; SVG coordinates unchanged; GPIO/split/undo/reload preserved. Legacy
+imports supported; explicit unchanged counts pinned; rejected edits keep state.
+Final evidence: 2,537/2,537 unit tests, production build, three new SVG browser
+cases plus three existing count/split checks pass. Desktop and phone inspected.
+Browser coverage commit f49b3ec2; implementation integrated in following commit.
+No deployment or hardware writes. Resume: review count-first Layout locally;
+release only on explicit ship instruction.
+
+
 ### 2026-09-16 Managed completion (active)
 Mobile fixture repair cd48fb59 integrated: wait for project autosave identity
 before reload; reopen controls after phone resize. Exact recovery assertions kept.

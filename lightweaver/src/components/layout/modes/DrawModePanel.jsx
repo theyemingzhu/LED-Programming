@@ -139,6 +139,7 @@ export function DrawModePanel({
     stripListRef,
     // size
     getLedCount, resampleStrip, stripDensity, setStripPhysical, setStripCount,
+    setTotalLedCount, setStripCountAndCalibrate,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
     divideStripIntoSections,
@@ -216,7 +217,17 @@ export function DrawModePanel({
   const [addGpio, setAddGpio] = useState(16);
   const [pendingAddGpio, setPendingAddGpio] = useState(null);
   const [gpioError, setGpioError] = useState('');
+  const [totalLedDraft, setTotalLedDraft] = useState(String(totalLeds));
+  const [totalLedError, setTotalLedError] = useState('');
   const [droppedStripIds, setDroppedStripIds] = useState([]);
+
+  useEffect(() => setTotalLedDraft(String(totalLeds)), [totalLeds]);
+
+  const changeTotalLedCount = value => {
+    setTotalLedDraft(value);
+    const result = setTotalLedCount(value);
+    setTotalLedError(result.ok ? '' : result.error);
+  };
   const reconciledHeadroomRef = useRef(false);
 
   useEffect(() => {
@@ -252,6 +263,12 @@ export function DrawModePanel({
     setAddLengthDraft(formatMetersValue(nextLength));
   };
   const setStripLedCount = (id, raw) => {
+    const strip = strips.find(item => item.id === id);
+    if (strip?.calibratedFromArtwork || strip?.sourceLayerId || strip?.sourcePathId) {
+      const result = setStripCountAndCalibrate(id, Number(raw));
+      setTotalLedError(result.ok ? '' : result.error);
+      return;
+    }
     const count = clampLedCount(raw);
     const dens = stripDensity(id);
     if (dens > 0) {
@@ -1233,6 +1250,35 @@ export function DrawModePanel({
                 </div>
               </div>
             )}
+            {strips.length > 0 && (
+              <div className="la-total-leds" data-testid="layout-total-led-control">
+                <label>
+                  <span className="k">Total LEDs</span>
+                  <input
+                    type="number"
+                    min={strips.length}
+                    max={strips.length * LED_COUNT_MAX}
+                    step="1"
+                    value={totalLedDraft}
+                    aria-label="Total LEDs"
+                    data-testid="layout-total-led-count"
+                    inputMode="numeric"
+                    onFocus={event => event.target.select()}
+                    onChange={event => changeTotalLedCount(event.target.value)}/>
+                </label>
+                <span className="meta" data-testid="layout-total-led-summary">
+                  {totalLeds.toLocaleString()} LEDs total
+                </span>
+                <span className="la-total-led-help">
+                  Distributes LEDs by path length. Counts set the drawing&apos;s physical scale.
+                </span>
+                {totalLedError && (
+                  <span role="alert" className="la-total-led-error" data-testid="layout-total-led-error">
+                    {totalLedError}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="panel-head">
               <span className="ttl">LED strips</span>
               <span className="meta">
@@ -1439,9 +1485,9 @@ export function DrawModePanel({
                                      inputMode="numeric"
                                      onFocus={e => e.target.select()}
                                      onClick={e => e.target.select()}
-                                     onChange={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
-                                     onBlur={e => setStripLedCount(s.id, clampLedCount(e.target.value))}
-                                     onKeyDown={e => { if (e.key === 'Enter') setStripLedCount(s.id, clampLedCount(e.target.value)); }}/>
+                                     onChange={e => setStripLedCount(s.id, e.target.value)}
+                                     onBlur={e => setStripLedCount(s.id, e.target.value)}
+                                     onKeyDown={e => { if (e.key === 'Enter') setStripLedCount(s.id, e.target.value); }}/>
                               <button type="button" className="btn" aria-label="One LED more"
                                       onClick={() => setStripLedCount(s.id, clampLedCount(s.pixelCount + 1))}>+</button>
                             </div>

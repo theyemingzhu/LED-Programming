@@ -147,14 +147,19 @@ export function useLayoutState() {
     pixels: sampleStripPixels(stripData.pathData, stripData.pixelCount, stripData.reversed, stripData.x || 0, stripData.y || 0),
   });
 
-  const makeStrip = (layer, count, id) => {
+  const makeStrip = (layer, count, id, namePool = strips) => {
     const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     pathEl.setAttribute('d', layer.pathData);
     const pixels = libSamplePath(pathEl, count);
+    const artworkName = layer.name?.trim();
+    const name = artworkName && !namePool.some(strip => strip.id !== id && strip.name === artworkName)
+      ? artworkName
+      : nextStripNames(namePool, 1, id).at(-1);
     return {
-      id, name: nextStripNames(strips, Number(id.match(/\d+$/)?.[0]) || 1).at(-1),
+      id, name,
       sourceLayerId: layer.layerId, sourcePathId: null,
-      pathData: layer.pathData, pixelCount: count,
+      calibratedFromArtwork: true,
+      pathData: layer.pathData, svgLength: layer.svgLength, pixelCount: count,
       closed: isClosedPathData(layer.pathData, layer.closed ?? layer.isClosed),
       pixels, color: layer._color,
       x: 0, y: 0,
