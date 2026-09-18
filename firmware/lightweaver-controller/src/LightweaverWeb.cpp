@@ -255,6 +255,13 @@ String studioOpenScript() {
   script.reserve(2600);
   const String bridgeVersion = String(LW_BRIDGE_VERSION);
   script += F("let lwBridgeUtilityActive=false;"
+           "const lwLocalCardHost=value=>{"
+             "let host=String(value||'').trim().toLowerCase();if(!host)return'';"
+             "try{host=new URL('http://'+host).hostname.toLowerCase()}catch(_){return''}"
+             "if(host==='localhost'||/^[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.local$/.test(host))return host;"
+             "const p=host.split('.');if(p.length!==4||p.some(x=>!/^\\d{1,3}$/.test(x)||Number(x)>255))return'';"
+             "const a=Number(p[0]),b=Number(p[1]);return a===10||a===127||(a===192&&b===168)||(a===172&&b>=16&&b<=31)||(a===169&&b===254)?host:''"
+           "};"
            "const lwActivateBridgeUtility=()=>{"
              "const wrap=document.querySelector('.wrap'),utility=$('bridge-utility');"
              "if(!lwBridgeLaunch||!window.opener||window.opener.closed||!wrap||!utility)return false;"
@@ -277,10 +284,12 @@ String studioOpenScript() {
              "const requested=new URL(url,'https://led.mandalacodes.com/');"
              "const u=new URL('https://led.mandalacodes.com/');"
              "u.searchParams.set('cardBridge','1');"
-             "u.searchParams.set('cardHost',location.host);"
+             "const requestedHost=lwLocalCardHost(requested.searchParams.get('cardHost'));"
+             "const pageHost=lwLocalCardHost(location.hostname||location.host);"
+             "const cardHost=requestedHost||pageHost;if(cardHost)u.searchParams.set('cardHost',cardHost);"
              "let editing=false;for(const key of ['editPattern','editLook']){const value=requested.searchParams.get(key)||'';if(/^[a-z0-9_-]{1,64}$/i.test(value)){u.searchParams.set(key,value);editing=true;if(key==='editPattern')editPattern=value;else editLook=value}}"
              "u.hash=!editing&&requested.hash==='#screen=layout'?'#screen=layout':!editing&&requested.hash==='#screen=card&section=setup'?'#screen=card&section=setup':'#screen=card&section=overview';url=u.href"
-           "}catch(_){url='https://led.mandalacodes.com/?cardBridge=1&cardHost='+encodeURIComponent(location.host)+'#screen=card&section=overview'}"
+           "}catch(_){url='https://led.mandalacodes.com/?cardBridge=1#screen=card&section=overview'}"
            "let opener=null;try{if(lwBridgeLaunch&&window.opener&&!window.opener.closed)opener=window.opener}catch(_){}"
            "if(opener){"
              "try{opener.postMessage({app:'LightweaverCardBridge',type:'open-studio',version:");
@@ -1097,15 +1106,13 @@ void handleAdvancedRoot() {
               "<p><strong>");
     page += factoryBlank ? F("No project loaded") : F("Project needs recovery/verification");
     page += F("</strong></p>"
-              "<p class='note'>This card is online. Return to Lightweaver Studio to load, recover, or verify its project before using the lights.</p>"
-              "<p class='note'>If you are viewing this from the Lightweaver AP, rejoin gallery WiFi before returning to Studio.</p>"
-              "<a class='link' href='");
+              "<p class='note'><strong>Next:</strong> Reconnect this computer to <strong>");
+    page += escapeHtml(cfg.wifi.ssid.length() ? cfg.wifi.ssid : String("gallery"));
+    page += F("</strong> Wi&#8209;Fi.</p>"
+              "<p class='note'>Return to the Lightweaver Studio tab that is already open. Leave this card page open until you are back in Studio.</p>"
+              "<a class='link' id='commissioning-studio-link' hidden href='");
     page += escapeHtml(factoryBlank ? studioSetupUrl(cfg) : studioBridgeUrl(cfg));
-    page += F("' target='_blank' onclick=\"return lwOpenStudio(event,this.href)\">");
-    page += factoryBlank
-        ? F("Set up LED strips and install on card \xE2\x86\x92")
-        : F("Return to Lightweaver Studio \xE2\x86\x92");
-    page += F("</a></div>");
+    page += F("' target='_blank' onclick=\"return lwOpenStudio(event,this.href)\">Continue in Lightweaver Studio \xE2\x86\x92</a></div>");
   } else {
     // Live control surface
     page += F("<div class='card'>"
@@ -1237,6 +1244,7 @@ void handleAdvancedRoot() {
   page += studioOpenScript();
   page += studioBridgeScript();
   page += F(
+            "const commissioningStudioLink=$('commissioning-studio-link');if(commissioningStudioLink){try{const targetHost=lwLocalCardHost(new URL(commissioningStudioLink.href).searchParams.get('cardHost'));const pageHost=lwLocalCardHost(location.hostname||location.host);if(pageHost===targetHost&&targetHost.match(/^\\d{1,3}(?:\\.\\d{1,3}){3}$/))commissioningStudioLink.hidden=false}catch(_){}};"
             "const showHandoff=(text,kind)=>{let el=$('handoff');if(!el){el=document.createElement('div');el.id='handoff';document.querySelector('.wrap').prepend(el)}el.className='handoff '+(kind||'');el.textContent=text};"
             "const b64urlDecode=s=>{s=(s||'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s);const bytes=[];for(let i=0;i<bin.length;i++)bytes.push('%'+bin.charCodeAt(i).toString(16).padStart(2,'0'));return decodeURIComponent(bytes.join(''))};"
             "let hashInstallTail=Promise.resolve(),hashInstallGeneration=0;const hashInstallFlights=new Map();"

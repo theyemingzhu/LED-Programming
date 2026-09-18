@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createBridgeResultChannel, resumeBridgeReturnCode } from '../../lib/bridgeLaunch.js';
 import { acquireCardBridgeFromGesture } from '../../lib/cardBridge.js';
 import {
+  CARD_HOST_STORAGE_KEY,
   CARD_HOST_CHANGED_EVENT,
   isLocalCardHost,
   normalizeCardHost,
@@ -81,6 +82,7 @@ export function CardConnectionCenter({
   const [pairingBusy, setPairingBusy] = useState(false);
   const [directAttempt, setDirectAttempt] = useState(null);
   const [directBusy, setDirectBusy] = useState(false);
+  const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [usbInspection, setUsbInspection] = useState(null);
   const [usbReleaseState, setUsbReleaseState] = useState('idle');
   const capabilities = useMemo(platformCapabilities, [open]);
@@ -149,6 +151,7 @@ export function CardConnectionCenter({
     const activeAuthority = getActiveCardTransportAuthority();
     setDirectAttempt(activeAuthority);
     setDirectBusy(false);
+    setConnectionDetailsOpen(false);
     setUsbInspection(getActiveUsbInspection());
     setUsbReleaseState('idle');
     const timer = window.setTimeout(() => panelRef.current?.focus(), 0);
@@ -436,12 +439,14 @@ export function CardConnectionCenter({
   const genericFirstRunVerdict = action.id === 'recoverable-failure';
 
   const firstRunConnect = !intent
-    // A link that is already talking to a card is never a first run. Excluding
-    // only the two connected states left 'connecting' (and the reconnecting /
-    // revalidating states) rendering the first-run "Connect this card" panel
-    // OVER a live attempt: an enabled button, no busy copy, and a second
-    // connect one click away. Studio owes the busy verdict there instead.
-    && link.state === 'disconnected'
+    // A blind probe of the default local name may already be `connecting` when
+    // a fresh owner presses the setup button. With no remembered, expected, or
+    // discovered identity that probe is not evidence of a card and must not
+    // replace the USB-first setup door with an indefinite Connecting screen.
+    // Reconnecting/revalidating remain excluded because those states do carry
+    // prior exact-card evidence.
+    && (link.state === 'disconnected'
+      || (link.state === 'connecting' && link.transport !== 'bridge'))
     // The same failure one step later: a link carrying a specific DIAGNOSIS
     // fell through to the first-run panel, which replaced the verdict AND its
     // escape hatch with a generic "Connect this card". An owner whose card was
@@ -459,8 +464,14 @@ export function CardConnectionCenter({
   const setupSteps = action.id === 'recoverable-failure' && action.route === 'setup-network';
   const stableRecoveryHost = ordinaryCardRecoveryHost(link.host || host, rememberedCard);
   const ordinaryRetry = action.id === 'recoverable-failure' && action.route === 'local-card-recovery';
+  const hasRememberedAddress = Boolean(
+    rememberedCard?.hostname
+    || rememberedCard?.address
+    || (typeof window !== 'undefined' && window.localStorage.getItem(CARD_HOST_STORAGE_KEY)),
+  );
   const setupRecovery = ordinaryRetry
-    && normalizeCardHost(link.host || host) === stableRecoveryHost;
+    && (normalizeCardHost(link.host || host) === SETUP_HOST
+      || (rememberedCard?.id && !hasRememberedAddress));
   const showSetupSteps = setupSteps || setupRecovery;
   // After a failed direct connect, keep THIS panel as the one recovery
   // surface (retry, local Studio, card page, then AP / USB). Showing the
@@ -470,6 +481,10 @@ export function CardConnectionCenter({
   const failedDirectRecovery = Boolean(directAttempt)
     && directAttempt.connected === false
     && !intent
+    && !directBusy;
+  const sameWifiFailure = Boolean(directAttempt)
+    && directAttempt.connected === false
+    && intent === 'working-card'
     && !directBusy;
   // A successful id match is not "Card verified" when the next question is
   // the remembered firmware note (ui-repair B1). The direct-success panel
@@ -482,10 +497,11 @@ export function CardConnectionCenter({
     || firstRunConnect
     || (directBusy && !showSetupSteps)
     || failedDirectRecovery
+    || sameWifiFailure
   );
   const showActionBody = !usbInspection && !bridgeResult && !incompatibleFirmware
     && (firmwareNoteQuestion
-      || (!firstRunConnect && !directAttempt?.connected && !directBusy && !failedDirectRecovery));
+      || (!firstRunConnect && !directAttempt?.connected && !directBusy && !failedDirectRecovery && !sameWifiFailure));
 
   const renderPrimaryAction = () => {
     // Lifecycle-owned verdicts have exactly one rendering: the route-out
@@ -542,7 +558,7 @@ export function CardConnectionCenter({
               )}
               disabled={action.primaryDisabled}
             >
-              {setupRecovery ? 'Continue after joining' : setupSteps ? 'Continue' : ordinaryRetry ? 'Look for the card again' : action.primaryLabel}
+              {setupRecovery || (setupSteps && intent === 'factory-beacon') ? 'Continue after joining' : setupSteps ? 'Continue' : ordinaryRetry ? 'Look for the card again' : action.primaryLabel}
             </button>
             {showSetupSteps && (
               <button
@@ -563,10 +579,10 @@ export function CardConnectionCenter({
             {ordinaryRetry && !setupRecovery && (
               <>
                 <button type="button" className="btn" onClick={chooseFactoryBeacon}>
-                  Join the setup network
+                  Use Lightweaver setup Wi-Fi
                 </button>
                 <button type="button" className="btn" onClick={chooseBlankCard}>
-                  Card is new or needs firmware
+                  Inspect card over USB
                 </button>
               </>
             )}
@@ -616,15 +632,38 @@ export function CardConnectionCenter({
 
       {showDirectConnect && (
         <div className="card-windowless-connect" data-testid="windowless-card-connect">
-          <h3>{directAttempt?.connected ? directConnectHeading(lifecycle?.state) : 'Connect this card'}</h3>
-          <p>{directAttempt?.connected
-            ? directConnectVerdictCopy(lifecycle?.state)
-            : 'Your browser may ask whether Lightweaver Studio can find devices on your local network. Choose Allow so Studio can verify this exact card.'}</p>
+          <h3>{firstRunConnect
+            ? 'Set up this card'
+            : sameWifiFailure
+              ? 'Card not found on this Wi-Fi'
+              : directAttempt?.connected
+                ? directConnectHeading(lifecycle?.state)
+                : 'Connect this card'}</h3>
+          <p>{firstRunConnect
+            ? 'Plug the card into this computer by USB. Studio will inspect it before deciding whether anything needs to be installed or updated.'
+            : sameWifiFailure
+              ? 'Make sure this device and the card use the same Wi-Fi. Local names can fail even when a card is online, so you can also enter its IP address.'
+              : directAttempt?.connected
+                ? directConnectVerdictCopy(lifecycle?.state)
+                : 'Your browser may ask whether Lightweaver Studio can find devices on your local network. Choose Allow so Studio can verify this exact card.'}</p>
           {usbReleaseState === 'restarted' && (
             <p role="status">Card restarted. Its Wi-Fi may take a moment. Try again when the card rejoins the network.</p>
           )}
           <div className="card-connection-actions">
-            {directAttempt?.connected ? (
+            {firstRunConnect ? (
+              <>
+                <button type="button" className="btn primary" onClick={chooseBlankCard}>Inspect card over USB</button>
+                <button type="button" className="btn" onClick={chooseFactoryBeacon}>Use Lightweaver setup Wi-Fi</button>
+                <button type="button" className="btn" onClick={chooseWorkingCard}>Find card already on Wi-Fi</button>
+                <p className="card-connection-choice-note">Use a Wi-Fi option when USB is unavailable or the card is already broadcasting a Lightweaver network.</p>
+              </>
+            ) : sameWifiFailure ? (
+              <>
+                <button type="button" className="btn primary" onClick={chooseWorkingCard}>Try again</button>
+                <button type="button" className="btn" onClick={chooseFactoryBeacon}>Use Lightweaver setup Wi-Fi</button>
+                <button type="button" className="btn" onClick={() => setConnectionDetailsOpen(true)}>Enter a known card IP</button>
+              </>
+            ) : directAttempt?.connected ? (
               safeControlsReady
                 ? <button type="button" className="btn primary" onClick={closeAndRestore}>Done</button>
                 : <button type="button" className="btn primary" onClick={onOpenSetup}>Continue in Setup</button>
@@ -638,7 +677,7 @@ export function CardConnectionCenter({
             )}
             {failedDirectRecovery && (capabilities.canWebSerialInstall ? (
               <button type="button" className="btn" onClick={chooseBlankCard}>
-                Card is new or needs firmware
+                Inspect card over USB
               </button>
             ) : (
               <button type="button" className="btn" onClick={chooseFactoryBeacon}>
@@ -768,7 +807,11 @@ export function CardConnectionCenter({
         </div>
       )}
 
-      <details className="card-connection-details">
+      <details
+        className="card-connection-details"
+        open={connectionDetailsOpen}
+        onToggle={event => setConnectionDetailsOpen(event.currentTarget.open)}
+      >
         <summary>Connection details</summary>
         <form onSubmit={saveHost}>
           <label htmlFor="card-connection-host">Card hostname</label>

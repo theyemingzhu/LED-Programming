@@ -251,7 +251,7 @@ test('LAN connection explains and releases an active USB inspection before any s
   await dialog.getByRole('button', { name: 'Restart card for Wi-Fi connection' }).click();
   await expect(dialog).toContainText('Card restarted. Its Wi-Fi may take a moment.');
   await expect.poll(() => page.evaluate(() => (window as any).__usbInspectionDisconnects)).toBe(1);
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
   await expect(page.getByTestId('install-card-identity')).toHaveCount(0);
   expect(statusProbes).toBe(0);
 });

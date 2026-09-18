@@ -15,7 +15,7 @@ async function openFreshStudio(page) {
   await page.goto('/');
 }
 
-test('a fresh worker can choose the design, saved-project, or physical-card path', async ({ page }) => {
+test('a fresh worker sees physical card setup first, before design and saved work', async ({ page }) => {
   await openFreshStudio(page);
 
   const start = page.getByTestId('public-worker-start');
@@ -23,6 +23,10 @@ test('a fresh worker can choose the design, saved-project, or physical-card path
   await expect(page.getByRole('heading', { name: 'Start Lightweaver' })).toBeVisible();
   await expect(start).toContainText('No Lightweaver project file or developer setup is required');
   await expect(start).toContainText('Browser saves stay on this device');
+  const paths = start.locator('.lw-worker-start-paths article');
+  await expect(paths.nth(0)).toContainText('Set up this card');
+  await expect(paths.nth(0).getByRole('button', { name: 'Plug in and find card' })).toHaveClass(/primary/);
+  await expect(paths.nth(0)).toContainText('Studio inspects it');
 
   await start.getByRole('button', { name: 'Start a layout' }).click();
   await expect(page).toHaveURL(/#screen=layout/);
@@ -46,7 +50,7 @@ test('the fresh-worker start remains usable at phone width', async ({ page }) =>
   await expect(start).toBeVisible();
   await expect(start.getByRole('button', { name: 'Start a layout' })).toBeVisible();
   await expect(start.getByRole('button', { name: 'Open saved work' })).toBeVisible();
-  await expect(start.getByRole('button', { name: 'Set up a card' })).toBeVisible();
+  await expect(start.getByRole('button', { name: 'Plug in and find card' })).toBeVisible();
 });
 
 test('a worker can import artwork, count and split it, choose a pattern, save, and reopen after reload', async ({ page }) => {

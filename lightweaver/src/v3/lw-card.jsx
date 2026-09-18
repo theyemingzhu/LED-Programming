@@ -105,22 +105,22 @@ function PublicWorkerStart({ onStartLayout, onOpenProjects, onSetUpCard }) {
       </div>
       <div className="lw-worker-start-paths">
         <article>
-          <span>1 · Design</span>
-          <h3>Map the real lights</h3>
-          <p>Import SVG artwork or create a shape, enter the real LED count, then divide the route into named connected sections.</p>
-          <button type="button" className="btn primary" onClick={onStartLayout}>Start a layout</button>
+          <span>1 · Card</span>
+          <h3>Set up this card</h3>
+          <p>Plug the card into this computer by USB. Studio inspects it first, then installs or updates only when needed.</p>
+          <button type="button" className="btn primary" onClick={onSetUpCard}>Plug in and find card</button>
         </article>
         <article>
-          <span>2 · Continue</span>
+          <span>2 · Design</span>
+          <h3>Map the real lights</h3>
+          <p>Import SVG artwork or create a shape, enter the real LED count, then divide the route into named connected sections.</p>
+          <button type="button" className="btn" onClick={onStartLayout}>Start a layout</button>
+        </article>
+        <article>
+          <span>3 · Continue</span>
           <h3>Open saved work</h3>
           <p>Use a project saved in this browser, import a portable backup, or sign in to an available team library.</p>
           <button type="button" className="btn" onClick={onOpenProjects}>Open saved work</button>
-        </article>
-        <article>
-          <span>3 · Card</span>
-          <h3>Work beside the hardware</h3>
-          <p>Connect only when you are with the card. Wi-Fi works through the card page; USB setup needs Chrome or Edge.</p>
-          <button type="button" className="btn" onClick={onSetUpCard}>Set up a card</button>
         </article>
       </div>
       <p className="lw-worker-start-storage">Browser saves stay on this device. Use the online library for an assigned team project, or export a backup when the work needs to move to another device.</p>

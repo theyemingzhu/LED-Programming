@@ -522,29 +522,25 @@ test('a setup hotspot that never appears stops asking the owner to wait', async 
 // Studio guessed wrong; it was that the owner could not tell which of three
 // headings and three buttons was theirs, and the join steps for a hotspot
 // that did not exist sat there as an equal-looking option.
-test('an inconclusive post-flash observation asks one question with both answers', async ({ page }) => {
+test('an inconclusive post-flash observation guides the exact hotspot and keeps LAN recovery secondary', async ({ page }) => {
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await seedCommissioningFlow(page, 'wifi', { state: 'inconclusive' });
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   const commissioning = page.locator('.card-commissioning');
   await expect(commissioning.locator('[data-post-flash="inconclusive"]')).toBeVisible();
-  await expect(commissioning).toContainText('could not confirm how this card came back up');
+  await expect(commissioning).toContainText('Open this device\u2019s Wi-Fi settings and join Lightweaver-EEFF');
   const onWifi = page.getByTestId('post-flash-on-wifi');
-  const onHotspot = page.getByTestId('post-flash-hotspot');
   await expect(onWifi).toBeVisible();
-  await expect(onHotspot).toBeVisible();
+  await expect(onWifi).not.toHaveClass(/primary/);
+  const joined = page.getByRole('button', { name: 'I\u2019ve joined Lightweaver-EEFF', exact: true });
+  await expect(joined).toHaveClass(/primary/);
   await expect(commissioning.locator('[data-post-flash="station"]')).toHaveCount(0);
-
-  // Until the question is answered, the hotspot join steps stay out of the way
-  // and the reconnect action appears exactly once.
-  await expect(page.getByRole('button', { name: 'I\u2019ve joined Lightweaver-EEFF', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reconnect installed card', exact: true })).toHaveCount(0);
 
-  // Answering "yes, I can see it" reveals the join steps and nothing else.
-  await onHotspot.click();
-  await expect(page.getByRole('button', { name: 'I\u2019ve joined Lightweaver-EEFF', exact: true })).toBeVisible();
+  await joined.click();
   await expect(commissioning.locator('[data-post-flash="inconclusive"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toBeVisible();
 });
 
 test('an opened setup tab that never reaches the card explains why instead of spinning silently', async ({ page }) => {
@@ -565,13 +561,13 @@ test('an opened setup tab that never reaches the card explains why instead of sp
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   await page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i }).click();
 
-  const alert = page.locator('.card-commissioning [role="alert"]').first();
-  await expect(alert).toContainText('never answered at 192.168.4.1', { timeout: 15000 });
-  await expect(alert).toContainText('Lightweaver-EEFF');
+  await expect(page.locator('.card-commissioning')).toContainText('The card setup page has closed', { timeout: 15000 });
+  await expect(page.locator('.card-commissioning [role="alert"]')).toHaveCount(0);
   await expect(page.locator('.card-commissioning')).not.toContainText('the card is already on your Wi-Fi');
-  await expect(page.getByTestId('setup-joined-station-reconnect')).toBeVisible();
+  await expect(page.getByTestId('setup-joined-station-reconnect')).toHaveText('I\u2019m back on gallery Wi-Fi');
+  await expect(page.locator('.card-commissioning')).toContainText('Return to this Studio tab');
   // The tab the owner opened is theirs; Studio must not close or navigate it.
-  await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toHaveCount(0);
 });
 
 test('once 192.168.4.1 is gone Studio continues on the remembered home-network address by itself', async ({ page }) => {
@@ -598,7 +594,7 @@ test('once 192.168.4.1 is gone Studio continues on the remembered home-network a
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   await page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i }).click();
 
-  await expect(page.locator('.card-commissioning')).toContainText('The setup address stopped answering.', { timeout: 15000 });
+  await expect(page.locator('.card-commissioning')).toContainText('The card setup page has closed.', { timeout: 15000 });
   await expect.poll(async () => {
     const openedStation = await page.evaluate(() => ((window as any).__LW_OPENED_URLS__ || []).some(
       (url: string) => url.includes('192.168.18.70'),
@@ -783,7 +779,8 @@ test('retained pre-install card identity cannot bypass the explicit WiFi handoff
   await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Reconnect installed card', exact: true })).toBeVisible();
+  await expect(page.getByText(/Waiting for the card to rejoin your network/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toBeVisible();
 
   await dispatchCardLink(page, [{
     type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
