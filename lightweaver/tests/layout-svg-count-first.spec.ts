@@ -65,7 +65,7 @@ test('count-first imported layers allocate an exact total, retain geometry, and 
   // 61 apportioned over exactly 100:200:300 goes 10,20,31. The last LED is
   // the largest remainder, so the requested physical total is never lost.
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '31 LEDs']);
-  await expect(page.getByTestId('layout-total-led-summary')).toHaveText('61 LEDs total');
+  await expect(page.getByTestId('layout-total-led-count')).toHaveValue('61');
   const afterGeometry = await authoredGeometry(page);
   expect(afterGeometry).toEqual(beforeGeometry);
 
@@ -99,7 +99,7 @@ test('an imported layer count preserves its peers, updates total and scale, then
   await page.getByLabel('Strip LED count', { exact: true }).fill('36');
   await page.getByLabel('Strip LED count', { exact: true }).press('Enter');
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '36 LEDs']);
-  await expect(page.getByTestId('layout-total-led-summary')).toHaveText('66 LEDs total');
+  await expect(page.getByTestId('layout-total-led-count')).toHaveValue('66');
   expect(await authoredGeometry(page)).toEqual(beforeGeometry);
   await expect.poll(async () => (await savedLayout(page))?.pxPerMm).toBeCloseTo(600 * 60 / (66 * 1000), 9);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -125,7 +125,7 @@ test('an imported layer count preserves its peers, updates total and scale, then
   await page.getByLabel('Section 3 actual LEDs').fill('15');
   await page.getByLabel('Section 3 actual LEDs').press('Enter');
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '12 LEDs', '12 LEDs', '15 LEDs']);
-  await expect(page.getByTestId('layout-total-led-summary')).toHaveText('69 LEDs total');
+  await expect(page.getByTestId('layout-total-led-count')).toHaveValue('69');
   await expect.poll(async () => (await savedLayout(page))?.pxPerMm).toBeCloseTo(600 * 60 / (69 * 1000), 9);
 
   // Undo restores the exact pre-split count plan; reload keeps that reversible

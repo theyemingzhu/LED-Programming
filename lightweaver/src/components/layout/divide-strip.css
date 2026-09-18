@@ -62,17 +62,27 @@
   min-width: 0;
   padding-inline: 2px;
 }
-.la .la-strip-connection {
+.la .la-connected-entry {
   display: flex;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+}
+.la .la-connected-entry .btn {
+  min-height: 30px;
+  padding-inline: 9px;
+}
+.la .la-strip-connection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
   padding: 12px 0;
   border-top: 1px solid var(--border-soft);
 }
-.la .la-strip-connection .la-gpio-wrap { flex: 1 1 auto; min-width: 0; }
+.la .la-strip-connection .la-gpio-wrap { grid-column: 1 / -1; min-width: 0; }
 .la .la-strip-connection .la-gpio-select { width: 100%; }
 .la .la-strip-connection .btn {
-  flex: 1 1 auto;
+  width: 100%;
   min-height: 30px;
   padding-inline: 8px;
   white-space: nowrap;
@@ -96,7 +106,10 @@
   min-width: 0;
   min-height: 36px;
   justify-content: flex-start;
+  overflow: hidden;
 }
+.la .la-divide-toggle > span { white-space: nowrap; }
+.la .la-divide-toggle > svg { flex: 0 0 auto; }
 .la .la-divide-toggle > svg:last-child { margin-left: auto; }
 .la-divide-panel { padding: 10px 0 2px; }
 .la-divide-toggle:focus-visible,
@@ -123,6 +136,28 @@
   font-family: var(--font-mono);
   font-size: 11px;
 }
+.la-divide-stepper {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-app);
+}
+.la .la-divide-stepper .btn {
+  width: 24px;
+  min-width: 24px;
+  min-height: 0;
+  padding: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-faint);
+}
+.la .la-divide-stepper .btn:first-child { border-right: 1px solid var(--border-soft); }
+.la .la-divide-stepper .btn:last-child { border-left: 1px solid var(--border-soft); }
+.la .la-divide-stepper .la-divide-sections { border: 0; border-radius: 0; }
 
 .la-divide-error {
   display: block;
@@ -131,6 +166,7 @@
   font-size: 11px;
   line-height: 1.25;
 }
+.la-divide-error[hidden] { display: none; }
 
 .la-divide-pair {
   display: block;
@@ -227,8 +263,8 @@
 .la .la-strip-menu-popover .btn.danger { color: var(--danger); }
 
 @container (max-width: 310px) {
-  .la .la-strip-connection { flex-wrap: wrap; }
-  .la .la-strip-connection .la-gpio-wrap { flex-basis: 100%; }
+  .la .la-strip-connection { grid-template-columns: 1fr; }
+  .la .la-strip-connection .la-gpio-wrap { grid-column: 1; }
 }
 
 .lw-connected-editor-shell { scroll-margin-block-start: 60px; }

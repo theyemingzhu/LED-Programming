@@ -78,33 +78,55 @@
   .la-size-ctrl .btn { min-width: 44px; height: 44px; }
 }
 .la-total-leds {
-  display: grid;
-  gap: 6px;
+  display: block;
   margin: 10px 12px 4px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--panel) 88%, var(--accent) 12%);
+  padding: 0;
 }
 
-.la-total-leds label {
+.la-total-led-field {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  align-items: stretch;
+  overflow: hidden;
+  min-height: 32px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-app);
 }
 
-.la-total-leds input {
-  width: 96px;
+.la-total-led-field input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
   text-align: right;
 }
-
-.la-total-led-help {
+.la-total-led-field .la-inline-unit {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 9px 0 4px;
   color: var(--text-faint);
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 10px;
+  white-space: nowrap;
 }
-
+.la-total-led-field .btn {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-faint);
+}
+.la-total-led-field .btn:first-child { border-right: 1px solid var(--border-soft); }
+.la-total-led-field .btn:last-child { border-left: 1px solid var(--border-soft); }
+.la-total-led-field:focus-within { border-color: var(--accent); }
+.la-total-led-field input:focus { outline: none; }
 .la-total-led-error {
   color: var(--danger, #e46a6a);
   font-size: 11px;

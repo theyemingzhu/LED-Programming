@@ -66,7 +66,7 @@ test('section fields stay dense and keep accessible names without repeated visib
 
 test('strip menu supports Escape and keeps duplicate and remove reachable', async ({ page }) => {
   await openOneStrip(page);
-  const more = page.getByRole('button', { name: 'More strip actions', exact: true });
+  const more = page.getByLabel('More strip actions', { exact: true });
   await more.click();
   await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
@@ -76,7 +76,7 @@ test('strip menu supports Escape and keeps duplicate and remove reachable', asyn
   await more.click();
   await page.getByRole('button', { name: 'Duplicate strip', exact: true }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(2);
-  await page.getByRole('button', { name: 'More strip actions', exact: true }).click();
+  await page.getByLabel('More strip actions', { exact: true }).click();
   await page.getByRole('button', { name: 'Remove strip', exact: true }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
 });

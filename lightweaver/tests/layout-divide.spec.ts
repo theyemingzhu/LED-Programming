@@ -239,7 +239,7 @@ test('Divide disclosure opens by keyboard and collapses after selection changes 
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
   await expectSectionCounts(page, preview);
-  await page.getByRole('button', { name: 'More strip actions', exact: true }).click();
+  await page.getByLabel('More strip actions', { exact: true }).click();
   await page.getByRole('button', { name: 'Duplicate strip', exact: true }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(2);
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -248,7 +248,8 @@ test('Divide disclosure opens by keyboard and collapses after selection changes 
   await toggle.click();
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByTestId('connected-section-editor')).toBeVisible();
+  await expect(toggle).toHaveCount(0);
   await expect(page.locator('[data-testid^="divide-sections-"]')).toBeHidden();
   await page.screenshot({ path: 'test-results/layout-divide-collapsed.png' });
 });

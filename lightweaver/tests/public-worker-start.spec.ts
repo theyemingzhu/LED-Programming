@@ -64,7 +64,7 @@ test('a worker can import artwork, count and split it, choose a pattern, save, a
   const total = page.getByTestId('layout-total-led-count');
   await total.fill('60');
   await total.press('Enter');
-  await expect(page.getByTestId('layout-total-led-summary')).toHaveText('60 LEDs total');
+  await expect(total).toHaveValue('60');
 
   await page.locator('.la-strip-row').click();
   await page.getByTestId('connected-add-split').click();

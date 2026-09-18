@@ -1278,9 +1278,12 @@ export function DrawModePanel({
               </div>
             )}
             {strips.length > 0 && (
-              <div className="la-total-leds" data-testid="layout-total-led-control">
-                <label>
-                  <span className="k">Total LEDs</span>
+              <div className="la-total-leds" data-testid="layout-total-led-control"
+                   title="Distributes the total by path length and uses the counts to set the drawing’s physical scale.">
+                <div className="la-total-led-field" role="group" aria-label="Total LED count tuning">
+                  <button type="button" className="btn" aria-label="One fewer total LED"
+                          disabled={Number(totalLedDraft) <= strips.length}
+                          onClick={() => changeTotalLedCount(String(Math.max(strips.length, Number(totalLedDraft || totalLeds) - 1)))}>−</button>
                   <input
                     type="number"
                     min={strips.length}
@@ -1292,13 +1295,11 @@ export function DrawModePanel({
                     inputMode="numeric"
                     onFocus={event => event.target.select()}
                     onChange={event => changeTotalLedCount(event.target.value)}/>
-                </label>
-                <span className="meta" data-testid="layout-total-led-summary">
-                  {totalLeds.toLocaleString()} LEDs total
-                </span>
-                <span className="la-total-led-help">
-                  Distributes LEDs by path length. Counts set the drawing&apos;s physical scale.
-                </span>
+                  <span className="la-inline-unit" aria-hidden="true">LEDs total</span>
+                  <button type="button" className="btn" aria-label="One more total LED"
+                          disabled={Number(totalLedDraft) >= strips.length * LED_COUNT_MAX}
+                          onClick={() => changeTotalLedCount(String(Math.min(strips.length * LED_COUNT_MAX, Number(totalLedDraft || totalLeds) + 1)))}>+</button>
+                </div>
                 {totalLedError && (
                   <span role="alert" className="la-total-led-error" data-testid="layout-total-led-error">
                     {totalLedError}
@@ -1405,6 +1406,7 @@ export function DrawModePanel({
                 const connectedStatus = connectedFamily
                   ? familyGeometryStatus(connectedFamily, strips)
                   : { ok: true };
+                const connectedEligible = Boolean(s.calibratedFromArtwork || s.sourceLayerId || s.sourcePathId);
                 // Keep the typed draft verbatim so clearing, decimals and
                 // out-of-range values remain visible until the owner fixes them.
                 // The default is 4 — the task brief's example (41 → 11,10,10,10).
@@ -1508,7 +1510,10 @@ export function DrawModePanel({
                                       onClick={() => moveStripStep(s.id, 'down')}>Move down the wire</button>
                             </>;
                           })()}
-                          <button type="button" className="btn" onClick={() => duplicateStrip(s.id)}>Duplicate strip</button>
+                          <button type="button" className="btn"
+                                  data-caption="Duplicate this strip"
+                                  title="Duplicate strip"
+                                  onClick={() => duplicateStrip(s.id)}>Duplicate strip</button>
                           <button type="button" className="btn danger"
                                   disabled={!!connectedFamily}
                                   title={connectedFamily ? 'Merge this connected section first' : 'Remove strip'}
@@ -1675,6 +1680,22 @@ export function DrawModePanel({
                             </section>
                           </>
                         )}
+                        {!connectedFamily && connectedEligible && (
+                          <div className="la-connected-entry">
+                            <button type="button" className="btn"
+                                    ref={divideTriggerRef}
+                                    data-testid="connected-add-split"
+                                    aria-label={`Add split to ${s.name}`}
+                                    title={divideBlockedReason(s, isSplit) || 'Create two connected sections with independent patterns'}
+                                    disabled={!!divideBlockedReason(s, isSplit)}
+                                    onClick={() => {
+                                      const result = divideStripIntoSections(s.id, 2);
+                                      setConnectedError(result ? '' : divideBlockedReason(s, isSplit) || 'The strip could not be split.');
+                                    }}>
+                              <SplitIcon/><span>Add split</span>
+                            </button>
+                          </div>
+                        )}
                         {/* Connected families own count, pattern and GPIO in one
                             coherent surface. Standalone strips keep the general
                             physical inspector below their primary Add split action. */}
@@ -1775,7 +1796,13 @@ export function DrawModePanel({
                             {firstLedPicker?.stripId === s.id ? 'Cancel first light' : 'Set first light'}
                           </button>}
                         </div>
-                        <div className="la-divide-disclosure">
+                        <div className="la-divide-disclosure"
+                             onKeyDown={event => {
+                               if (event.key !== 'Escape' || !divideOpen) return;
+                               event.stopPropagation();
+                               setDivideOpen(false);
+                               divideTriggerRef.current?.focus();
+                             }}>
                           <div className="la-divide-head">
                             <button type="button" className="btn la-divide-toggle"
                                     ref={divideTriggerRef}
@@ -1784,11 +1811,14 @@ export function DrawModePanel({
                                     aria-expanded={divideOpen}
                                     aria-controls={`divide-panel-${s.id}`}
                                     onClick={() => setDivideOpen(open => !open)}>
-                              <SplitIcon/>
                               <span>Divide into sections</span>
                               {divideOpen ? <ChevronDownIcon/> : <ChevronRightIcon/>}
                             </button>
-                            {divideOpen && <input type="number" inputMode="numeric" step={1} min={2} max={divideCap}
+                            {divideOpen && <div className="la-divide-stepper" role="group" aria-label="Section count tuning">
+                              <button type="button" className="btn" aria-label="Fewer sections"
+                                      disabled={!!divideBlockedReason(s, isSplit) || (divideSectionsValid && divideSectionsValue <= 2)}
+                                      onClick={() => setDivideSections(prev => ({ ...prev, [s.id]: String(Math.max(2, (divideSectionsValue || 2) - 1)) }))}>−</button>
+                              <input type="number" inputMode="numeric" step={1} min={2} max={divideCap}
                                     id={`divide-sections-${s.id}`}
                                     className="la-divide-sections"
                                     data-testid={`divide-sections-${s.id}`}
@@ -1797,18 +1827,15 @@ export function DrawModePanel({
                                     aria-describedby={`divide-sections-error-${s.id}`}
                                     value={divideSectionsDraft}
                                     disabled={!!divideBlockedReason(s, isSplit)}
-                                    onChange={event => setDivideSections(prev => ({ ...prev, [s.id]: event.target.value }))} />}
+                                    onChange={event => setDivideSections(prev => ({ ...prev, [s.id]: event.target.value }))} />
+                              <button type="button" className="btn" aria-label="More sections"
+                                      disabled={!!divideBlockedReason(s, isSplit) || (divideSectionsValid && divideSectionsValue >= divideCap)}
+                                      onClick={() => setDivideSections(prev => ({ ...prev, [s.id]: String(Math.min(divideCap, (divideSectionsValue || 2) + 1)) }))}>+</button>
+                            </div>}
                           </div>
                           {divideOpen && <div id={`divide-panel-${s.id}`}
                                className="la-divide-panel" role="region"
-                               aria-label={`Divide ${s.name} into sections`}
-                               onKeyDown={event => {
-                                 if (event.key === 'Escape') {
-                                   event.stopPropagation();
-                                   setDivideOpen(false);
-                                   divideTriggerRef.current?.focus();
-                                 }
-                               }}>
+                               aria-label={`Divide ${s.name} into sections`}>
                             <div className="la-divide-pair">
                               <span id={`divide-sections-error-${s.id}`}
                                     data-testid={`divide-error-${s.id}`}
@@ -1830,7 +1857,7 @@ export function DrawModePanel({
                                          onChange={event => setDivideCount(s, divideSectionsValue, index, event.target.value)} />
                                 ))}
                               </div>
-                              <button type="button" className="btn"
+                              <button type="button" className="btn primary"
                                       data-testid={`divide-commit-${s.id}`}
                                       aria-label={divideSectionsValid
                                         ? `Divide ${s.name} into ${divideSectionsValue} sections`
