@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createBridgeResultChannel, resumeBridgeReturnCode } from '../../lib/bridgeLaunch.js';
 import { acquireCardBridgeFromGesture } from '../../lib/cardBridge.js';
 import {
+  CARD_HOST_STORAGE_KEY,
   CARD_HOST_CHANGED_EVENT,
   isLocalCardHost,
   normalizeCardHost,
@@ -444,7 +445,8 @@ export function CardConnectionCenter({
     // replace the USB-first setup door with an indefinite Connecting screen.
     // Reconnecting/revalidating remain excluded because those states do carry
     // prior exact-card evidence.
-    && ['disconnected', 'connecting'].includes(link.state)
+    && (link.state === 'disconnected'
+      || (link.state === 'connecting' && link.transport !== 'bridge'))
     // The same failure one step later: a link carrying a specific DIAGNOSIS
     // fell through to the first-run panel, which replaced the verdict AND its
     // escape hatch with a generic "Connect this card". An owner whose card was
@@ -462,8 +464,14 @@ export function CardConnectionCenter({
   const setupSteps = action.id === 'recoverable-failure' && action.route === 'setup-network';
   const stableRecoveryHost = ordinaryCardRecoveryHost(link.host || host, rememberedCard);
   const ordinaryRetry = action.id === 'recoverable-failure' && action.route === 'local-card-recovery';
+  const hasRememberedAddress = Boolean(
+    rememberedCard?.hostname
+    || rememberedCard?.address
+    || (typeof window !== 'undefined' && window.localStorage.getItem(CARD_HOST_STORAGE_KEY)),
+  );
   const setupRecovery = ordinaryRetry
-    && normalizeCardHost(link.host || host) === SETUP_HOST;
+    && (normalizeCardHost(link.host || host) === SETUP_HOST
+      || (rememberedCard?.id && !hasRememberedAddress));
   const showSetupSteps = setupSteps || setupRecovery;
   // After a failed direct connect, keep THIS panel as the one recovery
   // surface (retry, local Studio, card page, then AP / USB). Showing the

@@ -926,7 +926,9 @@ test('wrong-card and ordinary no-answer recovery use the stable LAN name before 
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe('192.168.18.70');
 
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });
-  await expect(actionRegion(page)).toContainText('pulsing amber');
+  await expect(page.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
+  await page.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' }).click();
+  await expect(actionRegion(page)).toContainText('name starts with');
   await expect(page.getByRole('button', { name: 'Continue after joining' })).toBeVisible();
   // The "I am not on the setup hotspot, look on the home network" escape. It
   // was labelled 'Try local network again' until 67ebba23, which renamed it and
