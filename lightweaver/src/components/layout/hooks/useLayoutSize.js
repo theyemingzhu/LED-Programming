@@ -6,6 +6,8 @@ import {
 } from '../../../lib/layoutGeometry.js';
 import { scaleStripGeometry } from '../../../lib/stripScale.js';
 import { reprojectStripKaleidoscope } from '../../../lib/kaleidoscope.js';
+import { allocateLedCountsByLength, derivePxPerMmFromCounts } from '../../../lib/layoutLedCounts.js';
+import { LED_COUNT_MAX } from '../../../lib/controlScale.js';
 
 // Geometry clamps — keep in lockstep with useLayoutStrips.js (scaleStrip),
 // which owns the same bounds for the Draw-mode − / + resize control.
@@ -107,6 +109,62 @@ export function useLayoutSize(ctx) {
       return next;
     });
   }, [pushLayoutHistory, setStrips, rebuildWithCount, setStripCountOverrides]);
+
+  const applyExactCounts = useCallback((countsById) => {
+    const countedStrips = strips.map(strip => ({
+      ...strip,
+      svgLength: Number.isFinite(strip.svgLength) && strip.svgLength > 0
+        ? strip.svgLength
+        : svgPathLength(strip.pathData),
+      pixelCount: countsById.has(strip.id) ? countsById.get(strip.id) : strip.pixelCount,
+    }));
+    const nextPxPerMm = derivePxPerMmFromCounts(countedStrips, {
+      defaultDensity: density,
+      stripDensities,
+    });
+    if (!(nextPxPerMm > 0)) {
+      return { ok: false, error: 'The artwork paths could not be measured for physical calibration.' };
+    }
+    const countsUnchanged = countedStrips.every((strip, index) => strip.pixelCount === strips[index].pixelCount);
+    const countsAlreadyPinned = countedStrips.every(strip => stripCountOverrides[strip.id]);
+    if (countsUnchanged && countsAlreadyPinned && Math.abs(nextPxPerMm - pxPerMm) < 1e-12) {
+      return { ok: true, pxPerMm, strips };
+    }
+    const nextStrips = countedStrips.map((strip, index) => strip.pixelCount === strips[index].pixelCount
+      ? strip
+      : rebuildWithCount(strip, strip.pixelCount));
+    pushLayoutHistory();
+    setStrips(nextStrips);
+    setPxPerMm(nextPxPerMm);
+    setEditCounts({});
+    setStripCountOverrides(prev => {
+      const next = { ...prev };
+      nextStrips.forEach(strip => { next[strip.id] = true; });
+      return next;
+    });
+    return { ok: true, pxPerMm: nextPxPerMm, strips: nextStrips };
+  }, [strips, density, stripDensities, stripCountOverrides, pxPerMm, rebuildWithCount, pushLayoutHistory, setStrips, setPxPerMm, setEditCounts, setStripCountOverrides]);
+
+  // Count-first sizing for imported artwork. The SVG coordinates remain
+  // untouched; exact physical LED counts back-solve one scale for the piece.
+  const setTotalLedCount = useCallback((requestedTotal) => {
+    const measurableStrips = strips.map(strip => ({
+      ...strip,
+      svgLength: Number.isFinite(strip.svgLength) && strip.svgLength > 0
+        ? strip.svgLength
+        : svgPathLength(strip.pathData),
+    }));
+    const allocation = allocateLedCountsByLength(measurableStrips, Number(requestedTotal));
+    if (!allocation.ok) return allocation;
+    return applyExactCounts(new Map(strips.map((strip, index) => [strip.id, allocation.counts[index]])));
+  }, [strips, applyExactCounts]);
+
+  const setStripCountAndCalibrate = useCallback((id, requestedCount) => {
+    const count = Number(requestedCount);
+    if (!Number.isSafeInteger(count) || count < 1) return { ok: false, error: 'Enter a whole LED count of at least 1.' };
+    if (count > LED_COUNT_MAX) return { ok: false, error: `Enter no more than ${LED_COUNT_MAX.toLocaleString('en-US')} LEDs for one strip.` };
+    return applyExactCounts(new Map([[id, count]]));
+  }, [applyExactCounts]);
 
   // Clear a strip's override and recompute its count from its density + scale.
   const resetStripCount = useCallback((id) => {
@@ -210,6 +268,8 @@ export function useLayoutSize(ctx) {
     resampleStrip,
     setStripCount,
     setStripCounts,
+    setTotalLedCount,
+    setStripCountAndCalibrate,
     resetStripCount,
     stripCountOverrides,
     stripDensities,

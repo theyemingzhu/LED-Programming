@@ -401,8 +401,10 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
               {layers.length > 0 && (
                 <button className="tb-btn" onClick={addAllStrips}
+                        data-testid="artwork-create-all-strips"
+                        aria-label={`+ All (${layers.length}) — Create LED strips from all layers`}
                         title={`Add all ${layers.length} layers as strips (A)`}>
-                  + All ({layers.length})
+                  + LED strips ({layers.length})
                 </button>
               )}
 

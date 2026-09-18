@@ -77,3 +77,36 @@
   .lw-led-nudge input[type=number] { height: 44px; }
   .la-size-ctrl .btn { min-width: 44px; height: 44px; }
 }
+.la-total-leds {
+  display: grid;
+  gap: 6px;
+  margin: 10px 12px 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--panel) 88%, var(--accent) 12%);
+}
+
+.la-total-leds label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.la-total-leds input {
+  width: 96px;
+  text-align: right;
+}
+
+.la-total-led-help {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.la-total-led-error {
+  color: var(--danger, #e46a6a);
+  font-size: 11px;
+  line-height: 1.35;
+}

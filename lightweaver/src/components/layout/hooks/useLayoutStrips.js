@@ -13,7 +13,7 @@ import {
   DEFAULT_STARTER_PIXEL_COUNT,
 } from '../../../lib/layoutPrimitives.js';
 import { scaleStripGeometry } from '../../../lib/stripScale.js';
-import { moveStripRowsInChain } from '../../../lib/patchBoard.js';
+import { moveStripRowsInChain, normalizePatchBoard } from '../../../lib/patchBoard.js';
 import { reprojectStripKaleidoscope, reverseKaleidoscope } from '../../../lib/kaleidoscope.js';
 import {
   nextSplitName,
@@ -24,6 +24,17 @@ import {
   splitStripPathsN,
 } from '../../../lib/stripSplit.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
+import {
+  connectedFamilyForStrip,
+  createSectionFamily,
+  familyGeometryStatus,
+  moveSectionBoundary,
+  reconcileSectionFamilyRuns,
+  resizeSectionFamily,
+  updateFamilyMemberGeometry,
+} from '../../../lib/connectedSections.js';
+import { derivePxPerMmFromCounts } from '../../../lib/layoutLedCounts.js';
+import { LED_COUNT_MAX } from '../../../lib/controlScale.js';
 
 // scaleStrip clamps: never shrink a strip's path below this length (px)…
 const MIN_STRIP_SVG_LENGTH = 20;
@@ -43,9 +54,11 @@ export function useLayoutStrips(ctx) {
     // change; read defensively — absent entries fall back to the global density.
     stripDensities, setStripDensities,
     layerGroups, setLayerGroups, setLayerOrder,
+    sectionFamilies, setSectionFamilies,
+    setPxPerMm,
     pushLayoutHistory,
     selectStrip, selectStrips, clearLayoutSelection,
-    updatePatchBoard,
+    patchBoard, setPatchBoard, updatePatchBoard,
     selectedStripIds, orderedStrips, stripSelectionName,
     nextColor, scrollToStrip, stripGroupMember,
     rebuildStrip,
@@ -306,6 +319,10 @@ export function useLayoutStrips(ctx) {
 
     pushLayoutHistory();
     setStrips(prev => prev.flatMap(st => (st.id === id ? [head, tail] : [st])));
+    setSectionFamilies(prev => [
+      ...prev.filter(family => !family.memberIds?.includes(id)),
+      createSectionFamily(source, [head, tail]),
+    ].filter(Boolean));
     setStripDensities(prev => ({ ...prev, [tailId]: densityFor(id) }));
     // A hand-pinned count on the original means both halves are hand-set too,
     // so a later resize does not silently recount them.
@@ -341,7 +358,7 @@ export function useLayoutStrips(ctx) {
     scrollToStrip(tailId);
     return tailId;
   }, [strips, wiring, updateWiring, nextColor, densityFor, stripCountOverrides,
-      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
+      setStripCountOverrides, setStripDensities, setSectionFamilies, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
   // Divide one strip into 2..MAX_SPLIT_SECTIONS named strips that stay
   // adjacent on the same output — the general form of splitStripInTwo above,
@@ -457,6 +474,10 @@ export function useLayoutStrips(ctx) {
     // updateWiring records the single pre-division snapshot before either
     // geometry or density changes, so one Undo restores the whole strip.
     setStrips(prev => prev.flatMap(st => (st.id === id ? pieces : [st])));
+    setSectionFamilies(prev => [
+      ...prev.filter(family => !family.memberIds?.includes(id)),
+      createSectionFamily(source, pieces),
+    ].filter(Boolean));
     setStripDensities(prev => {
       const next = { ...prev };
       const sourceDensity = densityFor(id);
@@ -479,7 +500,212 @@ export function useLayoutStrips(ctx) {
     scrollToStrip(id);
     return newIds;
   }, [strips, wiring, updateWiring, projectName, nextColor, densityFor, stripCountOverrides,
-      setStripCountOverrides, setStripDensities, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
+      setStripCountOverrides, setStripDensities, setSectionFamilies, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
+
+  const familyMutationContext = useCallback((familyId) => {
+    if (wiring.locked) return { ok: false, error: 'Wiring is locked — unlock it in Test & Install.' };
+    const family = sectionFamilies.find(candidate => candidate.id === familyId);
+    if (!family) return { ok: false, error: 'This connected strip is no longer available.' };
+    const status = familyGeometryStatus(family, strips);
+    if (!status.ok) return status;
+    for (const memberId of family.memberIds) {
+      const runs = wiring.runs.filter(run => run.type === 'strip' && run.source?.stripId === memberId);
+      if (runs.length > 1) return { ok: false, error: 'A section is divided into multiple advanced runs. Restore one run per section before editing boundaries.' };
+    }
+    const byId = new Map(strips.map(strip => [strip.id, strip]));
+    return { ok: true, family, members: family.memberIds.map(id => byId.get(id)) };
+  }, [sectionFamilies, strips, wiring]);
+
+  const resliceConnectedFamily = useCallback((family, counts, sourceStrips = strips) => {
+    if (!counts.every(count => Number.isSafeInteger(Number(count)) && Number(count) >= 1 && Number(count) <= LED_COUNT_MAX)) {
+      return { ok: false, error: `Each section must contain 1–${LED_COUNT_MAX.toLocaleString('en-US')} LEDs.` };
+    }
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    const plan = planStripSplitFromCounts(total, counts);
+    const paths = plan ? splitStripPathsN(family.source.pathData, plan, family.source.reversed) : null;
+    if (!paths) return { ok: false, error: 'The original path could not be divided at those LED boundaries.' };
+    return resizeSectionFamily({
+      family,
+      strips: sourceStrips,
+      counts,
+      paths,
+      measurePath: svgPathLength,
+      samplePixels: (member, pixelCount) => sampleStripPixels(
+        member.pathData,
+        pixelCount,
+        member.reversed,
+        member.x || 0,
+        member.y || 0,
+      ),
+    });
+  }, [strips]);
+
+  const commitConnectedGeometry = useCallback((family, nextStrips, { removedIds = [], newMember = null } = {}) => {
+    const result = updateWiring(draft => {
+      reconcileSectionFamilyRuns(draft, { family, nextStrips, removedIds, newMember });
+    }, { changeKind: 'route', strips: nextStrips });
+    if (!result?.ok) return { ok: false, error: result?.errors?.[0]?.message || 'The connected sections could not be updated.' };
+    setStrips(nextStrips);
+    setSectionFamilies(current => current.map(candidate => candidate.id === family.id ? family : candidate));
+    return { ok: true };
+  }, [setSectionFamilies, setStrips, updateWiring]);
+
+  const moveConnectedBoundary = useCallback((familyId, boundaryIndex, absoluteLed) => {
+    const context = familyMutationContext(familyId);
+    if (!context.ok) return context;
+    const counts = context.members.map(member => member.pixelCount);
+    const nextCounts = moveSectionBoundary(counts, boundaryIndex, absoluteLed);
+    if (!nextCounts) return { ok: false, error: 'Keep at least one LED on both sides of the boundary.' };
+    if (nextCounts.every((count, index) => count === counts[index])) return { ok: true, unchanged: true };
+    const resized = resliceConnectedFamily(context.family, nextCounts);
+    if (!resized.ok) return resized;
+    const commit = commitConnectedGeometry(resized.family, resized.strips);
+    if (!commit.ok) return commit;
+    setStripCountOverrides(current => ({
+      ...current,
+      ...Object.fromEntries(context.family.memberIds.map(id => [id, true])),
+    }));
+    return { ok: true };
+  }, [commitConnectedGeometry, familyMutationContext, resliceConnectedFamily, setStripCountOverrides]);
+
+  const addConnectedSplit = useCallback((memberId) => {
+    const family = connectedFamilyForStrip(sectionFamilies, memberId);
+    const context = familyMutationContext(family?.id);
+    if (!context.ok) return context;
+    const memberIndex = context.family.memberIds.indexOf(memberId);
+    const member = context.members[memberIndex];
+    if (!member || member.pixelCount < 2) return { ok: false, error: 'This section needs at least 2 LEDs to split.' };
+    const newId = nextStripId(strips);
+    const newMember = {
+      ...member,
+      id: newId,
+      name: nextSplitName(member.name, strips.map(strip => strip.name)),
+      color: nextColor(),
+      pixels: member.pixels?.slice() || [],
+      kaleidoscope: undefined,
+    };
+    const insertAt = strips.findIndex(strip => strip.id === memberId) + 1;
+    const withMember = [...strips];
+    withMember.splice(insertAt, 0, newMember);
+    const nextFamily = updateFamilyMemberGeometry({
+      ...context.family,
+      memberIds: context.family.memberIds.flatMap(id => id === memberId ? [id, newId] : [id]),
+    }, withMember);
+    const split = planStripSplitCounts(member.pixelCount, 2)?.counts;
+    const counts = context.members.flatMap(item => item.id === memberId ? split : [item.pixelCount]);
+    const resized = resliceConnectedFamily(nextFamily, counts, withMember);
+    if (!resized.ok) return resized;
+    const committedMember = resized.strips.find(strip => strip.id === newId);
+    const commit = commitConnectedGeometry(resized.family, resized.strips, { newMember: committedMember });
+    if (!commit.ok) return commit;
+    setPatchBoard(current => {
+      const board = normalizePatchBoard(current, resized.strips);
+      const sourcePatch = board.patches.find(patch => patch.source?.type === 'strip' && patch.source.stripId === memberId);
+      const newPatch = board.patches.find(patch => patch.source?.type === 'strip' && patch.source.stripId === newId);
+      if (sourcePatch && newPatch) newPatch.playback = { ...(sourcePatch.playback || {}) };
+      return board;
+    });
+    setStripDensities(current => ({ ...current, [newId]: densityFor(memberId) }));
+    setStripCountOverrides(current => ({ ...current, [memberId]: true, [newId]: true }));
+    selectStrip(newId);
+    return { ok: true, stripId: newId };
+  }, [sectionFamilies, familyMutationContext, strips, nextColor, resliceConnectedFamily,
+      commitConnectedGeometry, setPatchBoard, setStripDensities, densityFor, setStripCountOverrides, selectStrip]);
+
+  const mergeConnectedSection = useCallback((memberId) => {
+    const family = connectedFamilyForStrip(sectionFamilies, memberId);
+    const context = familyMutationContext(family?.id);
+    if (!context.ok) return context;
+    const index = context.family.memberIds.indexOf(memberId);
+    const right = context.members[index + 1];
+    if (!right) return { ok: false, error: 'Choose a section with a neighbour after it.' };
+    const leftOutput = wiring.outputs.find(output => output.runIds.some(runId => wiring.runs.find(run => run.id === runId)?.source?.stripId === memberId));
+    const rightOutput = wiring.outputs.find(output => output.runIds.some(runId => wiring.runs.find(run => run.id === runId)?.source?.stripId === right.id));
+    if (leftOutput?.pin !== rightOutput?.pin) return { ok: false, error: 'Put both sections on the same GPIO to merge.' };
+    const mergedCount = context.members[index].pixelCount + right.pixelCount;
+    if (mergedCount > LED_COUNT_MAX) return { ok: false, error: `A merged section cannot exceed ${LED_COUNT_MAX.toLocaleString('en-US')} LEDs.` };
+    const remaining = strips.filter(strip => strip.id !== right.id);
+    const memberIds = context.family.memberIds.filter(id => id !== right.id);
+    if (memberIds.length === 1) {
+      const survivor = remaining.find(strip => strip.id === memberIds[0]);
+      const restored = {
+        ...survivor,
+        id: context.family.parentId,
+        name: context.family.parentName,
+        ...context.family.source,
+        pixelCount: context.members.reduce((sum, member) => sum + member.pixelCount, 0),
+      };
+      restored.pixels = sampleStripPixels(restored.pathData, restored.pixelCount, restored.reversed, restored.x || 0, restored.y || 0);
+      const nextStrips = remaining.map(strip => strip.id === survivor.id ? restored : strip);
+      const commit = updateWiring(draft => {
+        const removedRuns = new Set(draft.runs.filter(run => run.source?.stripId === right.id).map(run => run.id));
+        draft.runs = draft.runs.filter(run => !removedRuns.has(run.id));
+        draft.outputs.forEach(output => { output.runIds = output.runIds.filter(id => !removedRuns.has(id)); });
+        const survivorRun = draft.runs.find(run => run.type === 'strip' && run.source?.stripId === survivor.id);
+        if (survivorRun) {
+          survivorRun.source = { ...survivorRun.source, stripId: restored.id, from: 0, to: Math.max(0, restored.pixelCount - 1) };
+          survivorRun.seamLed = null;
+          survivorRun.verified = false;
+        }
+      }, { changeKind: 'route', strips: nextStrips });
+      if (!commit?.ok) return { ok: false, error: commit?.errors?.[0]?.message || 'The sections could not be merged.' };
+      setStrips(nextStrips);
+      setSectionFamilies(current => current.filter(candidate => candidate.id !== context.family.id));
+      setStripDensities(current => { const next = { ...current }; delete next[right.id]; return next; });
+      setStripCountOverrides(current => { const next = { ...current }; delete next[right.id]; return next; });
+      setHidden(current => { const next = { ...current }; delete next[right.id]; return next; });
+      setEditCounts(current => { const next = { ...current }; delete next[right.id]; return next; });
+      selectStrip(restored.id);
+      return { ok: true, detached: true };
+    }
+    const counts = context.members
+      .filter(member => member.id !== right.id)
+      .map(member => member.id === memberId ? member.pixelCount + right.pixelCount : member.pixelCount);
+    const nextFamily = updateFamilyMemberGeometry({ ...context.family, memberIds }, remaining);
+    const resized = resliceConnectedFamily(nextFamily, counts, remaining);
+    if (!resized.ok) return resized;
+    const commit = commitConnectedGeometry(resized.family, resized.strips, { removedIds: [right.id] });
+    if (!commit.ok) return commit;
+    setStripDensities(current => { const next = { ...current }; delete next[right.id]; return next; });
+    setStripCountOverrides(current => { const next = { ...current }; delete next[right.id]; return next; });
+    setHidden(current => { const next = { ...current }; delete next[right.id]; return next; });
+    setEditCounts(current => { const next = { ...current }; delete next[right.id]; return next; });
+    selectStrip(memberId);
+    return { ok: true };
+  }, [sectionFamilies, familyMutationContext, wiring, strips, updateWiring, setStrips,
+      setSectionFamilies, setStripDensities, setStripCountOverrides, setHidden, setEditCounts,
+      selectStrip, resliceConnectedFamily, commitConnectedGeometry]);
+
+  const correctConnectedSectionCount = useCallback((memberId, requestedCount) => {
+    const count = Number(requestedCount);
+    if (!Number.isSafeInteger(count) || count < 1 || count > LED_COUNT_MAX) {
+      return { ok: false, error: `Enter a whole LED count from 1 to ${LED_COUNT_MAX.toLocaleString('en-US')}.` };
+    }
+    const family = connectedFamilyForStrip(sectionFamilies, memberId);
+    const context = familyMutationContext(family?.id);
+    if (!context.ok) return context;
+    const current = context.members.find(member => member.id === memberId)?.pixelCount;
+    if (current === count) return { ok: true, unchanged: true };
+    const counts = context.members.map(member => member.id === memberId ? count : member.pixelCount);
+    const resized = resliceConnectedFamily(context.family, counts);
+    if (!resized.ok) return resized;
+    const commit = commitConnectedGeometry(resized.family, resized.strips);
+    if (!commit.ok) return commit;
+    const nextPxPerMm = derivePxPerMmFromCounts(resized.strips, { defaultDensity: density, stripDensities });
+    if (nextPxPerMm > 0) setPxPerMm(nextPxPerMm);
+    setStripCountOverrides(current => ({
+      ...current,
+      ...Object.fromEntries(context.family.memberIds.map(id => [id, true])),
+    }));
+    return { ok: true };
+  }, [sectionFamilies, familyMutationContext, resliceConnectedFamily, commitConnectedGeometry,
+      density, stripDensities, setPxPerMm, setStripCountOverrides]);
+
+  const detachSectionFamily = useCallback((familyId) => {
+    if (!sectionFamilies.some(family => family.id === familyId)) return;
+    pushLayoutHistory();
+    setSectionFamilies(current => current.filter(family => family.id !== familyId));
+  }, [sectionFamilies, pushLayoutHistory, setSectionFamilies]);
 
   const createStripGroupFromIds = useCallback((stripIds, nameOverride = '') => {
     const uniqueIds = [...new Set(stripIds)].filter(Boolean);
@@ -640,6 +866,11 @@ export function useLayoutStrips(ctx) {
     duplicateStrip,
     splitStripInTwo,
     divideStripIntoSections,
+    moveConnectedBoundary,
+    addConnectedSplit,
+    mergeConnectedSection,
+    correctConnectedSectionCount,
+    detachSectionFamily,
     addPrimitiveStrip,
     scaleStrip,
     createStripGroupFromIds,

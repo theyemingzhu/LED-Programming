@@ -15,6 +15,7 @@
 import { createDefaultPatchBoard, normalizePatchBoard } from '../lib/patchBoard.js';
 import { stripSourceKey } from '../lib/layoutGeometry.js';
 import { reverseKaleidoscope } from '../lib/kaleidoscope.js';
+import { normalizeSectionFamilies } from '../lib/connectedSections.js';
 
 // The layout state slice. `selection` is the single selection model that replaces
 // the scattered selLayerId / selStripId / selectedStripIds / pathSel booleans.
@@ -49,6 +50,7 @@ export function createLayoutState(init = {}) {
     starterPending: init.starterPending === true,
     layers: init.layers || [],
     layerGroups: init.layerGroups || [],
+    sectionFamilies: normalizeSectionFamilies(init.sectionFamilies, strips),
     layerOrder: init.layerOrder || [],
     editCounts: init.editCounts || {},
     stripCountOverrides: init.stripCountOverrides || {},
@@ -550,6 +552,7 @@ export function makeLayoutSnapshot(state) {
     starterPending: state.starterPending === true,
     layers: state.layers,
     layerGroups: state.layerGroups,
+    sectionFamilies: state.sectionFamilies,
     layerOrder: state.layerOrder,
     editCounts: state.editCounts,
     stripCountOverrides: state.stripCountOverrides,
@@ -578,6 +581,7 @@ export function applyLayoutSnapshot(state, snap, rebuild = identityRebuild) {
     starterPending: snap.starterPending === true,
     layers: snap.layers,
     layerGroups: snap.layerGroups,
+    sectionFamilies: snap.sectionFamilies || [],
     layerOrder: snap.layerOrder,
     editCounts: snap.editCounts,
     stripCountOverrides: snap.stripCountOverrides,

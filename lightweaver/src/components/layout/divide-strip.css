@@ -7,6 +7,11 @@
   border: 0;
   background: transparent;
 }
+.la .la-strip-detail.la-strip-inspector {
+  display: flex;
+  flex-direction: column;
+}
+.la .side .la-mode-content.is-draw { overflow-y: visible; }
 .la .la-strip-detail.la-strip-inspector .lw-sel-grid > .la-strip-physical-field {
   min-width: 0;
   padding: 0;
@@ -131,9 +136,7 @@
   display: block;
 }
 
-/* The per-section count fields. Compact numerics that wrap as a group under
-   the section-count select on a phone; the readout after them is the same
-   "10, 21, 10 LEDs" line the even plan showed. */
+/* The per-section count fields stay compact and wrap as one numeric group. */
 .la-divide-counts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -226,4 +229,110 @@
 @container (max-width: 310px) {
   .la .la-strip-connection { flex-wrap: wrap; }
   .la .la-strip-connection .la-gpio-wrap { flex-basis: 100%; }
+}
+
+.lw-connected-editor-shell { scroll-margin-block-start: 60px; }
+.lw-connected-editor-frame {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border-soft));
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: color-mix(in oklab, var(--bg-app) 90%, var(--accent) 10%);
+}
+.lw-connected-summary {
+  position: sticky;
+  z-index: 2;
+  top: 51px;
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 10px 8px;
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border-soft));
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in oklab, var(--bg-app) 90%, var(--accent) 10%);
+}
+.lw-connected-parent,
+.lw-connected-parent > div,
+.lw-connected-parent label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lw-connected-parent { flex-wrap: wrap; align-items: flex-start; }
+.lw-connected-parent > div { align-items: baseline; flex: 1 1 110px; min-width: 100px; flex-wrap: wrap; }
+.lw-connected-parent label { flex: 1 1 118px; min-width: 0; }
+.lw-connected-parent span,
+.lw-connected-child label > span { color: var(--text-mid); font-size: 11px; }
+.lw-connected-parent select,
+.lw-connected-child input,
+.lw-connected-child select {
+  min-width: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg-app);
+  color: var(--text-hi);
+  padding: 5px 6px;
+}
+.lw-connected-bar {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  gap: 2px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+.lw-connected-bar button {
+  min-width: 18px;
+  border: 0;
+  color: white;
+  cursor: pointer;
+  opacity: .66;
+  text-shadow: 0 1px 2px #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  overflow: hidden;
+}
+.lw-connected-bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lw-connected-bar button.selected { opacity: 1; box-shadow: inset 0 0 0 2px white; }
+.lw-connected-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+.lw-connected-child > *,
+.lw-connected-child label,
+.lw-connected-child input,
+.lw-connected-child select,
+.lw-connected-child .btn { width: 100%; max-width: 100%; box-sizing: border-box; }
+.lw-connected-child.selected { border-color: var(--accent); background: var(--accent-soft); }
+.lw-connected-child-select {
+  border: 0;
+  background: none;
+  color: var(--text-hi);
+  font-weight: 650;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lw-connected-child-select span:last-child { color: var(--text-mid); font-size: 11px; white-space: nowrap; }
+.lw-connected-child label { display: grid; gap: 3px; }
+.lw-connected-boundary { grid-column: 1 / -1; grid-template-columns: 1fr 64px !important; align-items: center; }
+.lw-connected-boundary span { grid-column: 1 / -1; }
+.lw-connected-boundary input[type="range"] { width: 100%; padding: 0; }
+.lw-connected-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--danger, #c64b4b); font-size: 11px; }
+@media (max-width: 600px) {
+  .lw-connected-summary { top: 95px; }
+  .lw-connected-child > .btn,
+  .lw-connected-child-select { min-height: 42px; }
 }

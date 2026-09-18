@@ -10,13 +10,88 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 ## Sprint queue
 
 ### 2026-09-18 Compact strip inspector (active)
-Approved prototype uses inline values/units, no category or label-only rows,
-counts-only division fields, and read-only strip facts in Specs. Production
-implementation authorized in task 01a0b278-5a39-7111-9b2d-fca3612f2b58.
-Branch: codex/compact-strip-inspector. Focused regression witnessed red for
-Pitch remaining in editable inspector. Reconcile with connected-section and
-SVG-count candidate de885d4d before final verification; release remains owned
-by task 01a0b25c-cef7-79f0-adff-d84049fc8092. No concurrent deploy.
+Approved inline values/units, no category or label-only rows, counts-only
+section fields, selected-strip facts in Specs. Implementation 1e8fde9c on
+codex/compact-strip-inspector; integrating connected-section/SVG candidate
+de885d4d before browser/checkpoint proof. Regression witnessed red for Pitch
+remaining among controls. Release owned by task
+01a0b25c-cef7-79f0-adff-d84049fc8092; no concurrent deploy.
+
+### 2026-09-18 Public worker readiness (active, separate task)
+User explicitly requested another managed task: workers must complete the workflow
+from led.mandalacodes.com without developer/local project files. Audit as fresh
+worker, fix concrete self-contained-site gaps, test onboarding/assets/project
+access/SVG layout/counts/splits/patterns/save-reopen/card handoff, and distinguish
+public proof from local/hardware proof. Current root remains sole director.
+Routing: public worker readiness implementation | gpt-5.6-sol / high | end-to-end
+browser/assets/persistence diagnosis, bounded to worker URL workflow | fresh
+browser evidence + focused regression per fix | return cross-boundary decisions.
+Create tool must use configured default per tool rule; initial task is standby,
+then send_message selects Sol/high with the actual assignment before work starts.
+Active task01a0b25c-cef7-79f0-adff-d84049fc8092, Sol/high assignment sent and
+active progress verified. Initial placeholder01a0b24f-a920-7350-955c-1aecd93cfa24
+archived unused (task-list summary cache hid it; session index resolved id).
+Worker must isolate from exact013bc63e, covering count-first and connected editor.
+Director remains here. Release candidate returns to director before merge/deploy.
+Cost unknown.
+
+
+### 2026-09-18 Connected section editor (done locally)
+Manager playbook v6; approved direction 1. Parent strip remains visible with a
+segmented bar and child sections. Add/move/remove splits, select/rename/edit
+pattern, explicit count correction, parent GPIO plus section override. Boundary
+edits conserve the parent total; actual count correction changes total/scale.
+Keep current flat strips as runtime/pattern targets; additive browser-only family
+metadata preserves original path and sibling identities through save/undo. Never
+infer old split families from names. Stable IDs/look assignments survive boundary
+edits; merge retains chosen section look with visible explanation. Re-slice original
+geometry to avoid cumulative approximation. Reject locked/multi-run/stale geometry
+operations rather than silently overwriting unrelated edits. No firmware/deploy.
+Dispatch: connected editor implementation | gpt-5.6-sol / high | bounded but
+interacting geometry, history and identity invariants need sustained reasoning |
+focused pure regressions + working UI | return unresolved identity/geometry risk.
+Dispatch: connected editor browser acceptance | gpt-5.6-terra / medium | independent
+black-box test/screen ownership | boundaries, count correction, merge, undo/reload,
+GPIO and section selection on desktop/phone | return behavior or usability gap.
+Primary owns decisions/integration/board. Workers own src and tests respectively.
+Cost unknown. Completed: parent/compact children editor first; exact or dragged
+boundaries conserve total; count correction changes total/scale; canonical pattern
+and parent/child GPIO; merge; persistent family/undo. Original path retained;
+unrelated advanced wiring runs/seams remain unchanged. Both split entry points
+create connected sections. Keyboard boundary commit supported.
+Evidence: integrated 2,546/2,546 units + production build; focused helpers9/9;
+final browser7/7 (new3 + legacy split4). Desktop/phone inspected, parent header
+clears sticky installation bar. Screens /tmp/lightweaver-connected-editor/.
+No deployment/card writes. Next: public worker-readiness task incorporates this
+commit and prior count-first changes; final deployment state must be proven live.
+
+
+### 2026-09-18 SVG count-first layout (done locally)
+Manager skill + playbook v6 loaded; this board is the job record. Scope: imported
+layers selectable as LED paths, existing output assignment and splitting usable,
+exact per-layer or whole-layout counts drive physical scale without distorting
+artwork proportions. Browser only; no release or card writes authorized.
+Director contract: retain SVG coordinates; resize physical interpretation via
+pxPerMm. Whole total distributes integer counts proportionally with exact sum;
+per-path edits preserve other counts and recompute total/scale. Reject invalid or
+unrepresentable totals. Preserve source attribution after split, count overrides,
+undo and project round-trip. Reuse existing wiring and pattern-section contracts.
+Dispatch: Studio implementation | gpt-5.6-sol / medium | bounded feature across
+existing Layout components; worker owns lightweaver/src only | focused unit red/
+green and UI integration | return ambiguous persistence/geometry contract.
+Dispatch: browser acceptance | gpt-5.6-terra / medium | independent black-box
+SVG workflow tests in lightweaver/tests only | import/count/split/output/reload
+regressions, actual screen after integration | return missing affordance/contract.
+Primary owns integration and board. Cost unknown.
+Done locally: named imported strips; exact total allocation and individual count
+calibration; SVG coordinates unchanged; GPIO/split/undo/reload preserved. Legacy
+imports supported; explicit unchanged counts pinned; rejected edits keep state.
+Final evidence: 2,537/2,537 unit tests, production build, three new SVG browser
+cases plus three existing count/split checks pass. Desktop and phone inspected.
+Browser coverage commit f49b3ec2; implementation integrated in following commit.
+No deployment or hardware writes. Resume: review count-first Layout locally;
+release only on explicit ship instruction.
+
 
 ### 2026-09-16 Managed completion (active)
 Mobile fixture repair cd48fb59 integrated: wait for project autosave identity
@@ -704,3 +779,29 @@ verified by read-back, never "Push failed"). main `fb366c2f`, count 1634;
 unit 2384/2384. Open: F15 (pre-existing playlist-footer chip label, fails on
 main, outside the PR lane) and the E4 re-run with a rewire. Deploy still
 blocked by GitHub Actions billing; live is build 1551.
+
+Connected editor final local commits:52718052 +013bc63e; latter fixes sticky
+parent summary on desktop/phone. Final browser7/7, header clearance asserted.
+
+Public-worker candidate2fe3dbae integrated locally as5854cc34. Fresh start paths,
+count/split guidance, card-page recovery and JSON browser-save readback fixed.
+Worker proof:9browser,42storage,2,547unit+build. Public still Studio1913/firmware1912.
+Not worker-ready yet: actual online artwork/project access unresolved; user asked
+for project/artwork list and worker sign-in emails. Same task Sol/medium tracing
+existing library tenant/sharing semantics read-only before any new access design.
+No deployment. Resume: integrate access findings + user project/identity inputs,
+then prepare exact release candidate; do not call local fixes self-contained live.
+
+Public access followup: native worker role sees/edits all official projects;
+scoped assignments use customer accounts/drafts. Native login followed by library
+fetch can hit Cloudflare Access redirect with no visible handoff despite existing
+signIn action. Same task Sol/medium authorized bounded UI handoff fix + targeted
+regression; preserve both auth gates/no role/policy/account changes. User project
+and identity inputs still pending for actual file-free assigned-work proof.
+
+Secure-library handoff60ec9b07 integrated as664c1c28. Explicit Access-required
+action preserves native identity, flushes recovery autosave, uses existing safe
+return navigation; no automatic redirect loop, ordinary503 stays retry. Worker
+proof:36cloud-client units,5focused browser, final2,548unit+build. No account,
+policy/private-asset or hardware mutations; still not deployed. Actual projects/
+worker identities pending user input. Root branch preserves integrated candidate.
