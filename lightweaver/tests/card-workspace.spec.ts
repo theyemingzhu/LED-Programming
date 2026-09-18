@@ -779,7 +779,8 @@ test('retained pre-install card identity cannot bypass the explicit WiFi handoff
   await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Reconnect installed card', exact: true })).toBeVisible();
+  await expect(page.getByText(/Waiting for the card to rejoin your network/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Open 192\.168\.4\.1 Wi-Fi setup/i })).toBeVisible();
 
   await dispatchCardLink(page, [{
     type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
