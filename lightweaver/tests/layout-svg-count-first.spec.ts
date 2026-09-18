@@ -106,17 +106,24 @@ test('an imported layer count preserves its peers, updates total and scale, then
   await page.screenshot({ path: 'test-results/layout-svg-count-first-phone.png', fullPage: true });
 
   // One imported layer can become independently addressable pattern regions.
-  await page.locator('[data-testid^="divide-toggle-"]').click();
-  await page.locator('[data-testid^="divide-sections-"]').fill('3');
-  await page.locator('[data-testid^="divide-commit-"]').click();
+  // The connected editor now adds one physical boundary at a time: split once,
+  // place the first boundary at 12, then split the remaining 24 LEDs in half.
+  await page.getByTestId('connected-add-split').click();
+  const editor = page.getByTestId('connected-section-editor');
+  await expect(editor.getByTestId('connected-child')).toHaveCount(2);
+  const firstSectionName = await page.getByLabel('Section 1 name').inputValue();
+  await page.getByLabel(`Exact boundary after ${firstSectionName}`).fill('12');
+  await page.getByLabel(`Exact boundary after ${firstSectionName}`).press('Enter');
+  await editor.getByTestId('connected-child').nth(1).getByRole('button').first().click();
+  await editor.getByRole('button', { name: /Add split inside/ }).click();
+  await expect(editor.getByTestId('connected-child')).toHaveCount(3);
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '12 LEDs', '12 LEDs', '12 LEDs']);
 
   // Converted artwork provenance must survive the split. Tuning a single
   // pattern region must leave the other two regions and the other imported
   // routes intact, then recalibrate the physical drawing scale from all LEDs.
-  await page.locator('.la-strip-row').last().click();
-  await page.getByLabel('Strip LED count', { exact: true }).fill('15');
-  await page.getByLabel('Strip LED count', { exact: true }).press('Enter');
+  await page.getByLabel('Section 3 actual LEDs').fill('15');
+  await page.getByLabel('Section 3 actual LEDs').press('Enter');
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '12 LEDs', '12 LEDs', '15 LEDs']);
   await expect(page.getByTestId('layout-total-led-summary')).toHaveText('69 LEDs total');
   await expect.poll(async () => (await savedLayout(page))?.pxPerMm).toBeCloseTo(600 * 60 / (69 * 1000), 9);
@@ -125,6 +132,10 @@ test('an imported layer count preserves its peers, updates total and scale, then
   // count-first state and keeps the non-edited imported routes untouched.
   await page.getByTitle(/Undo/).click();
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '12 LEDs', '12 LEDs', '12 LEDs']);
+  await page.getByTitle(/Undo/).click();
+  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '12 LEDs', '24 LEDs']);
+  await page.getByTitle(/Undo/).click();
+  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '18 LEDs', '18 LEDs']);
   await page.getByTitle(/Undo/).click();
   await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '20 LEDs', '36 LEDs']);
   await expect.poll(async () => (await savedLayout(page))?.strips?.map((strip: any) => strip.pixelCount))

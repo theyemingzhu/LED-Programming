@@ -1606,7 +1606,7 @@ function Shell({ offlineUpdateController = null }) {
       if (!result?.ok) {
         const error = new Error(result?.reason === 'browser-conflict'
           ? 'Another tab saved a newer browser copy. Reopen that copy before saving again.'
-          : 'Browser save failed');
+          : 'Studio could not verify this browser save. Export a backup, then try again.');
         error.reason = result?.reason;
         throw error;
       }
@@ -1932,6 +1932,7 @@ function Shell({ offlineUpdateController = null }) {
               cardLifecycle={cardLifecycle}
               onConnectCard={onConnectCard}
               onOpenConnectionCenter={openConnectionCenter}
+              onOpenProjects={onLoad}
               go={navigateStudio}
               onOpenSection={openCardSection}
               onOpenSetupTask={openSetupTask}
