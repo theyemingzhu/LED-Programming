@@ -67,6 +67,10 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
+function storageRoundTrip(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function storageFromOptions(options = {}) {
   return options.storage || getDefaultStorage();
 }
@@ -800,7 +804,15 @@ export async function saveCurrentProjectToLibraryGuarded(project, options = {}) 
         } catch {
           return { ok: false, reason: 'browser-readback-failed' };
         }
-        const expectedReadback = deepFreeze(structuredClone({ recordId: saved.id, record: saved }));
+        // localStorage persists JSON, so optional object properties whose value
+        // is `undefined` are intentionally absent when the record is read back.
+        // Compare against that persisted representation instead of reporting a
+        // valid write as corrupt solely because the live object still has the
+        // optional key.
+        const expectedReadback = deepFreeze({
+          recordId: saved.id,
+          record: normalizeRecord(storageRoundTrip(saved)),
+        });
         if (readActiveProjectLibraryRecordId({ storage }) !== saved.id
           || !sameProjectLibraryRecordSnapshot(expectedReadback, readback)) {
           return { ok: false, reason: 'browser-readback-failed' };

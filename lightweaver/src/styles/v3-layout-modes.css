@@ -45,6 +45,7 @@
 .la-primitive-heading strong { color: var(--text-hi); font-size: 13px; }
 .la-primitive-heading span { color: var(--text-faint); font-size: 11px; line-height: 1.4; }
 .la-primitive-import { flex: 0 0 auto; color: var(--accent); font-size: 11px; font-weight: 600; }
+.la-primitive-intro { margin: 0; color: var(--text-mid); font-size: 11px; line-height: 1.5; }
 .la-primitive-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .la-primitive-grid button {
   min-width: 0;
