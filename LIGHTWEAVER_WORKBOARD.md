@@ -20,7 +20,12 @@ browser/assets/persistence diagnosis, bounded to worker URL workflow | fresh
 browser evidence + focused regression per fix | return cross-boundary decisions.
 Create tool must use configured default per tool rule; initial task is standby,
 then send_message selects Sol/high with the actual assignment before work starts.
-Separate worktree; don't edit active connected editor checkout. Cost unknown.
+Active task01a0b25c-cef7-79f0-adff-d84049fc8092, Sol/high assignment sent and
+active progress verified. Initial placeholder01a0b24f-a920-7350-955c-1aecd93cfa24
+archived unused (task-list summary cache hid it; session index resolved id).
+Worker must isolate from exact013bc63e, covering count-first and connected editor.
+Director remains here. Release candidate returns to director before merge/deploy.
+Cost unknown.
 
 
 ### 2026-09-18 Connected section editor (done locally)
@@ -766,3 +771,6 @@ verified by read-back, never "Push failed"). main `fb366c2f`, count 1634;
 unit 2384/2384. Open: F15 (pre-existing playlist-footer chip label, fails on
 main, outside the PR lane) and the E4 re-run with a rewire. Deploy still
 blocked by GitHub Actions billing; live is build 1551.
+
+Connected editor final local commits:52718052 +013bc63e; latter fixes sticky
+parent summary on desktop/phone. Final browser7/7, header clearance asserted.
