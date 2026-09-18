@@ -9,6 +9,15 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+### 2026-09-18 Compact strip inspector (active)
+Approved prototype uses inline values/units, no category or label-only rows,
+counts-only division fields, and read-only strip facts in Specs. Production
+implementation authorized in task 01a0b278-5a39-7111-9b2d-fca3612f2b58.
+Branch: codex/compact-strip-inspector. Focused regression witnessed red for
+Pitch remaining in editable inspector. Reconcile with connected-section and
+SVG-count candidate de885d4d before final verification; release remains owned
+by task 01a0b25c-cef7-79f0-adff-d84049fc8092. No concurrent deploy.
+
 ### 2026-09-16 Managed completion (active)
 Mobile fixture repair cd48fb59 integrated: wait for project autosave identity
 before reload; reopen controls after phone resize. Exact recovery assertions kept.

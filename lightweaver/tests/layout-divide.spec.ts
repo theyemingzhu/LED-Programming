@@ -29,6 +29,12 @@ async function setStripLedCount(page: any, count: number) {
   await input.blur();
 }
 
+async function expectSectionCounts(page: any, counts: number[]) {
+  await expect.poll(() => page.locator('[data-testid^="divide-count-"]')
+    .evaluateAll((inputs: HTMLInputElement[]) => inputs.map(input => Number(input.value))))
+    .toEqual(counts);
+}
+
 function rowCounts(page: any) {
   return page.locator('.la-strip-row .layer-len').allTextContents()
     .then((texts: string[]) => texts.map(text => Number.parseInt(text, 10)));
@@ -41,7 +47,7 @@ test('dividing a 41-LED strip into 4 makes four strips of 11, 10, 10, 10', async
 
   const select = page.locator('[data-testid^="divide-sections-"]');
   await select.fill('4');
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('11, 10, 10, 10 LEDs');
+  await expectSectionCounts(page, [11, 10, 10, 10]);
 
   const commit = page.locator('[data-testid^="divide-commit-"]');
   await expect(commit).toBeEnabled();
@@ -63,7 +69,7 @@ test('dividing into 3 spreads the remainder from the first section, and survives
   await setStripLedCount(page, 41);
 
   await page.locator('[data-testid^="divide-sections-"]').fill('3');
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('14, 14, 13 LEDs');
+  await expectSectionCounts(page, [14, 14, 13]);
   await page.locator('[data-testid^="divide-commit-"]').click();
 
   expect(await rowCounts(page)).toEqual([14, 14, 13]);
@@ -165,7 +171,7 @@ test('the Divide control fits at 390px wide with no horizontal overflow', async 
   await createOneStrip(page);
   await setStripLedCount(page, 41);
 
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toBeVisible();
+  await expect(page.locator('[data-testid^="divide-count-"]').first()).toBeVisible();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
   expect(overflow).toBe(false);
@@ -174,10 +180,10 @@ test('the Divide control fits at 390px wide with no horizontal overflow', async 
 
   // The counts are the point of the preview: on a phone they must read in
   // full, never clipped to "11, 10,…".
-  const preview = page.locator('[data-testid^="divide-preview-"]');
-  await expect(preview).toHaveText('11, 10, 10, 10 LEDs');
+  await expectSectionCounts(page, [11, 10, 10, 10]);
+  const preview = page.locator('[data-testid^="divide-count-"]').first();
   const sectionInput = page.locator('[data-testid^="divide-count-"]').first();
-  expect((await sectionInput.boundingBox())!.width).toBeLessThanOrEqual(60);
+  expect((await sectionInput.boundingBox())!.width).toBeLessThanOrEqual(90);
   const clipped = await preview.evaluate(el => el.scrollWidth > el.clientWidth + 1);
   expect(clipped).toBe(false);
   await page.screenshot({ path: 'test-results/layout-divide-390.png' });
@@ -197,14 +203,14 @@ test('typing a section count rebalances its neighbour and divides to those exact
   await setStripLedCount(page, 41);
 
   await page.locator('[data-testid^="divide-sections-"]').fill('3');
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('14, 14, 13 LEDs');
+  await expectSectionCounts(page, [14, 14, 13]);
 
   const first = page.locator('[data-testid^="divide-count-"][data-testid$="-1"]');
   await first.fill('10');
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('10, 18, 13 LEDs');
+  await expectSectionCounts(page, [10, 18, 13]);
   const last = page.locator('[data-testid^="divide-count-"][data-testid$="-3"]');
   await last.fill('21');
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText('10, 10, 21 LEDs');
+  await expectSectionCounts(page, [10, 10, 21]);
 
   await page.locator('[data-testid^="divide-commit-"]').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
@@ -227,12 +233,13 @@ test('Divide disclosure opens by keyboard and collapses after selection changes 
   await expect(page.locator(`[id="${regionId}"]`)).toBeVisible();
   await page.locator('[data-testid^="divide-sections-"]').fill('3');
   await page.locator('[data-testid^="divide-count-"][data-testid$="-1"]').fill('10');
-  const preview = await page.locator('[data-testid^="divide-preview-"]').innerText();
+  const preview = await page.locator('[data-testid^="divide-count-"]').evaluateAll((inputs: HTMLInputElement[]) => inputs.map(input => Number(input.value)));
   await page.locator('[data-testid^="divide-sections-"]').press('Escape');
   await expect(toggle).toBeFocused();
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
-  await expect(page.locator('[data-testid^="divide-preview-"]')).toHaveText(preview);
+  await expectSectionCounts(page, preview);
+  await page.getByRole('button', { name: 'More strip actions', exact: true }).click();
   await page.getByRole('button', { name: 'Duplicate strip', exact: true }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(2);
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');

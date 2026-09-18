@@ -81,8 +81,10 @@ test('Wire keeps strip tools visible and drops the always-true first-to-last lab
   await expect(detail.getByRole('button', { name: 'Set first LED' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Edit Kaleidoscope reflection points' })).toBeVisible();
   await expect(detail.getByRole('button', { name: /Split / })).toBeVisible();
-  await expect(detail.getByRole('button', { name: 'Duplicate strip' })).toBeVisible();
-  await expect(detail.getByRole('button', { name: 'Remove strip' })).toBeVisible();
+  await page.getByRole('button', { name: 'More strip actions', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(detail.getByLabel('GPIO output')).toBeVisible();
   await expect(page.getByTestId('strip-density-control')).toBeVisible();
   await expect(page.getByTestId('layout-add-strip')).toBeVisible();

@@ -13,6 +13,7 @@ async function oneStrip(page: any) {
 test('strip controls expose help without a permanent caption row', async ({ page }) => {
   await oneStrip(page);
   await expect(page.locator('.la-strip-caption')).toHaveCount(0);
+  await page.getByRole('button', { name: 'More strip actions', exact: true }).click();
   for (const name of ['Flip path direction', 'Duplicate strip', 'Remove strip']) {
     const button = page.getByRole('button', { name, exact: true }).first();
     await expect(button).toHaveAttribute('title', /.+/);
