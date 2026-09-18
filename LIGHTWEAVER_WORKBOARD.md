@@ -774,3 +774,12 @@ blocked by GitHub Actions billing; live is build 1551.
 
 Connected editor final local commits:52718052 +013bc63e; latter fixes sticky
 parent summary on desktop/phone. Final browser7/7, header clearance asserted.
+
+Public-worker candidate2fe3dbae integrated locally as5854cc34. Fresh start paths,
+count/split guidance, card-page recovery and JSON browser-save readback fixed.
+Worker proof:9browser,42storage,2,547unit+build. Public still Studio1913/firmware1912.
+Not worker-ready yet: actual online artwork/project access unresolved; user asked
+for project/artwork list and worker sign-in emails. Same task Sol/medium tracing
+existing library tenant/sharing semantics read-only before any new access design.
+No deployment. Resume: integrate access findings + user project/identity inputs,
+then prepare exact release candidate; do not call local fixes self-contained live.
