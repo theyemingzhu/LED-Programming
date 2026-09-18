@@ -870,6 +870,15 @@ export function SetupScreen({
   // failure hands off to it with the reason stated first.
   const findMyCard = async () => {
     if (pairState.busy) return;
+    const hasCardEvidence = Boolean(
+      cardLink?.card?.id
+      || cardLink?.expectedCard?.id
+      || cardLink?.discoveredCard?.id,
+    );
+    if (!hasCardEvidence) {
+      onOpenConnectionCenter?.();
+      return;
+    }
     setPairState({ busy: true, message: '' });
     const result = await findAndConnectCard({
       link: cardLink || {},

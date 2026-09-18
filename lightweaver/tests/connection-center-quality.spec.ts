@@ -388,9 +388,9 @@ test('direct older firmware routes the update out beneath the right-aligned buil
   };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
-  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
 
   const identity = dialog.getByTestId('direct-card-identity');
   await expect(identity).toContainText('lw-b0fe81f61b44');
@@ -423,9 +423,9 @@ test('direct current firmware keeps the inline update action hidden', async ({ p
   };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
-  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
 
   const identity = dialog.getByTestId('direct-card-identity');
   await expect(identity).toContainText(`v${signedRelease.firmwareVersion} · Build ${signedRelease.buildNumber}`);
@@ -455,9 +455,9 @@ test('F25: a direct-connect project mismatch names the verdict, never "still ver
   };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
-  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
 
   const panel = dialog.getByTestId('windowless-card-connect');
   await expect(panel.getByRole('heading', { name: 'Card connected' })).toBeVisible();
@@ -480,9 +480,9 @@ test('F25: a direct-connect card still confirming readiness keeps the waiting co
   };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
-  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
 
   const panel = dialog.getByTestId('windowless-card-connect');
   await expect(panel.getByRole('heading', { name: 'Card verified' })).toBeVisible();
@@ -499,9 +499,9 @@ test('identified incompatible firmware shows the found card, installed versus cu
   };
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('button', { name: 'Connect this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
   await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: status }));
-  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
 
   const identity = dialog.getByTestId('direct-card-identity');
   await expect(identity).toContainText('lw-b0fe81f61b44');
@@ -515,7 +515,7 @@ test('identified incompatible firmware shows the found card, installed versus cu
 test('an unreachable card stays a network or permission failure and does not guess its firmware', async ({ page }) => {
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await dialog.getByRole('button', { name: 'Connect this card' }).click();
+  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
 
   const alert = dialog.getByRole('alert');
   await expect(alert).toContainText('No reply from the card');
@@ -534,8 +534,7 @@ test('ready-browser-usb opens the fixed local install screen', async ({ page }) 
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Connect this card' }).click();
-  await page.getByRole('button', { name: 'Card is new or needs firmware' }).click();
+  await page.getByRole('button', { name: 'This board has never run Lightweaver' }).click();
 
   await expect(page).toHaveURL(/#screen=flash&mode=install$/);
   await expect(page.url()).not.toMatch(/callback|target|url=/i);
