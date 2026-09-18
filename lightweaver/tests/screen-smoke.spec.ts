@@ -271,9 +271,9 @@ test('connection center starts with one guided card-state question, not an LED q
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'I see Lightweaver Wi-Fi' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'This board has never run Lightweaver' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'My card already lights up' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Blank or not responding' })).toHaveCount(0);
 });
@@ -457,7 +457,7 @@ test('working-card choice opens the card popup path', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   allowDirect = true;
-  await page.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
+  await page.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
   await expect.poll(() => directRequests.length).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls.length)).toBe(0);
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
@@ -643,7 +643,7 @@ test('blank-card choice reaches Flash install when Web Serial is supported', asy
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'This board has never run Lightweaver' }).click();
+  await page.getByRole('button', { name: 'Inspect card over USB' }).click();
   await expect(page).toHaveURL(/#screen=flash&mode=install$/);
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toBeVisible();
@@ -751,7 +751,7 @@ test('a device that cannot install firmware is routed to the setup network, not 
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await dialog.getByRole('button', { name: 'I see Lightweaver Wi-Fi' }).click();
+  await dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' }).click();
 
   // The one offered door has to actually open onto steps the owner can follow.
   await expect(dialog.getByRole('heading', { name: 'Join the Lightweaver setup network' })).toBeVisible();
@@ -829,7 +829,7 @@ test('mobile connection sheet fits without horizontal overflow', async ({ page }
 
   const interactiveTargets = [
     dialog.getByRole('button', { name: 'Close connection center' }),
-    dialog.getByRole('button', { name: 'I see Lightweaver Wi-Fi' }),
+    dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' }),
     dialog.getByText('Connection details', { exact: true }),
   ];
   for (const target of interactiveTargets) {

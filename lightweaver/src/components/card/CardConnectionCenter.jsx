@@ -438,12 +438,13 @@ export function CardConnectionCenter({
   const genericFirstRunVerdict = action.id === 'recoverable-failure';
 
   const firstRunConnect = !intent
-    // A link that is already talking to a card is never a first run. Excluding
-    // only the two connected states left 'connecting' (and the reconnecting /
-    // revalidating states) rendering the first-run "Connect this card" panel
-    // OVER a live attempt: an enabled button, no busy copy, and a second
-    // connect one click away. Studio owes the busy verdict there instead.
-    && link.state === 'disconnected'
+    // A blind probe of the default local name may already be `connecting` when
+    // a fresh owner presses the setup button. With no remembered, expected, or
+    // discovered identity that probe is not evidence of a card and must not
+    // replace the USB-first setup door with an indefinite Connecting screen.
+    // Reconnecting/revalidating remain excluded because those states do carry
+    // prior exact-card evidence.
+    && ['disconnected', 'connecting'].includes(link.state)
     // The same failure one step later: a link carrying a specific DIAGNOSIS
     // fell through to the first-run panel, which replaced the verdict AND its
     // escape hatch with a generic "Connect this card". An owner whose card was
@@ -570,10 +571,10 @@ export function CardConnectionCenter({
             {ordinaryRetry && !setupRecovery && (
               <>
                 <button type="button" className="btn" onClick={chooseFactoryBeacon}>
-                  Join the setup network
+                  Use Lightweaver setup Wi-Fi
                 </button>
                 <button type="button" className="btn" onClick={chooseBlankCard}>
-                  Card is new or needs firmware
+                  Inspect card over USB
                 </button>
               </>
             )}
@@ -624,14 +625,14 @@ export function CardConnectionCenter({
       {showDirectConnect && (
         <div className="card-windowless-connect" data-testid="windowless-card-connect">
           <h3>{firstRunConnect
-            ? 'Set up or connect a card'
+            ? 'Set up this card'
             : sameWifiFailure
               ? 'Card not found on this Wi-Fi'
               : directAttempt?.connected
                 ? directConnectHeading(lifecycle?.state)
                 : 'Connect this card'}</h3>
           <p>{firstRunConnect
-            ? 'Power the card, then choose the description that matches what you can see.'
+            ? 'Plug the card into this computer by USB. Studio will inspect it before deciding whether anything needs to be installed or updated.'
             : sameWifiFailure
               ? 'Make sure this device and the card use the same Wi-Fi. Local names can fail even when a card is online, so you can also enter its IP address.'
               : directAttempt?.connected
@@ -643,10 +644,10 @@ export function CardConnectionCenter({
           <div className="card-connection-actions">
             {firstRunConnect ? (
               <>
-                <button type="button" className="btn primary" onClick={chooseFactoryBeacon}>I see Lightweaver Wi-Fi</button>
-                <button type="button" className="btn" onClick={chooseWorkingCard}>Card is already on Wi-Fi</button>
-                <button type="button" className="btn" onClick={chooseBlankCard}>This board has never run Lightweaver</button>
-                <p className="card-connection-choice-note">Choose the board option only for a bare ESP32 board that has never run Lightweaver. A missing Wi-Fi name alone does not prove firmware is missing.</p>
+                <button type="button" className="btn primary" onClick={chooseBlankCard}>Inspect card over USB</button>
+                <button type="button" className="btn" onClick={chooseFactoryBeacon}>Use Lightweaver setup Wi-Fi</button>
+                <button type="button" className="btn" onClick={chooseWorkingCard}>Find card already on Wi-Fi</button>
+                <p className="card-connection-choice-note">Use a Wi-Fi option when USB is unavailable or the card is already broadcasting a Lightweaver network.</p>
               </>
             ) : sameWifiFailure ? (
               <>
@@ -668,7 +669,7 @@ export function CardConnectionCenter({
             )}
             {failedDirectRecovery && (capabilities.canWebSerialInstall ? (
               <button type="button" className="btn" onClick={chooseBlankCard}>
-                Card is new or needs firmware
+                Inspect card over USB
               </button>
             ) : (
               <button type="button" className="btn" onClick={chooseFactoryBeacon}>

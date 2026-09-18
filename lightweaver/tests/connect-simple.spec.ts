@@ -33,7 +33,7 @@ async function dispatchCardLink(page, events: Record<string, unknown>[]) {
   }, events);
 }
 
-test('first-run card setup asks for observed card state before choosing a transport', async ({ page }) => {
+test('first-run card setup leads with USB inspection and keeps Wi-Fi paths secondary', async ({ page }) => {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -41,15 +41,35 @@ test('first-run card setup asks for observed card state before choosing a transp
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('heading', { name: 'Set up or connect a card' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'I see Lightweaver Wi-Fi' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Card is already on Wi-Fi' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'This board has never run Lightweaver' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
+  await expect(dialog).toContainText('Plug the card into this computer by USB');
+  await expect(dialog).toContainText('Studio will inspect it');
+  await expect(dialog.getByRole('button', { name: 'Inspect card over USB' })).toHaveClass(/primary/);
+  await expect(dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' })).not.toHaveClass(/primary/);
+  await expect(dialog.getByRole('button', { name: 'Find card already on Wi-Fi' })).not.toHaveClass(/primary/);
+  await expect(dialog).not.toContainText('never run Lightweaver');
   await expect(dialog.getByRole('button', { name: 'Connect this card' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'My card already lights up' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Blank or not responding' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Eight lights flash twice, then pause' })).toHaveCount(0);
   await expect(dialog.locator('.card-condition-choices')).toHaveCount(0);
+});
+
+test('a blind background probe cannot replace fresh USB setup with a connecting dead end', async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: 'Plug in and find card' })).toBeVisible();
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const button = [...document.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Plug in and find card');
+    if (!(button instanceof HTMLButtonElement)) throw new Error('fresh card entry missing');
+    button.click();
+    getSharedCardLink().dispatch({ type: 'connecting', via: 'direct', host: 'lightweaver.local' });
+  });
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Connecting…' })).toHaveCount(0);
 });
 
 test('a stored setup-AP host opens join steps without asking about the lights', async ({ page }) => {
@@ -216,19 +236,19 @@ test('same-Wi-Fi failure keeps retry, setup-network recovery, and known-IP entry
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await dialog.getByRole('button', { name: 'Card is already on Wi-Fi' }).click();
+  await dialog.getByRole('button', { name: 'Find card already on Wi-Fi' }).click();
   await expect(dialog.getByRole('alert')).toContainText('No reply from the card', { timeout: 15000 });
   await expect(dialog.getByRole('button', { name: 'Try again' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Enter a known card IP' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Card is new or needs firmware' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Inspect card over USB' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Open local Studio' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Open the card’s own page' })).toHaveCount(0);
   await expect(dialog.locator('.card-condition-choices')).toHaveCount(0);
   await expect(dialog.locator('.card-connection-action')).toHaveCount(0);
 });
 
-test('both fresh public card entry points open the same guided flow without opening lightweaver.local', async ({ page }) => {
+test('both fresh public card entry points open the same USB-first flow without opening lightweaver.local', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.clear();
     (window as any).__openedUrls = [];
@@ -239,14 +259,14 @@ test('both fresh public card entry points open the same guided flow without open
   });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
-  await page.getByRole('button', { name: 'Set up a card', exact: true }).click();
+  await page.getByRole('button', { name: 'Plug in and find card', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('heading', { name: 'Set up or connect a card' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close connection center' }).click();
 
   await page.getByTestId('setup-connect-card').click();
   dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog.getByRole('heading', { name: 'Set up or connect a card' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__openedUrls)).toEqual([]);
 });
 
@@ -260,23 +280,23 @@ test('setup-network route opens 192.168.4.1 only after the worker confirms joini
     }) as any;
   });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Set up a card', exact: true }).click();
+  await page.getByRole('button', { name: 'Plug in and find card', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await dialog.getByRole('button', { name: 'I see Lightweaver Wi-Fi' }).click();
+  await dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' }).click();
   await expect(dialog).toContainText('Join the card’s own Wi-Fi network (its name starts with “Lightweaver-”)');
   await expect.poll(() => page.evaluate(() => (window as any).__openedUrls)).toEqual([]);
   await dialog.getByRole('button', { name: 'Continue after joining' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__openedUrls[0] || '')).toContain('http://192.168.4.1');
 });
 
-test('USB installation requires an explicit unprepared-board choice', async ({ page }) => {
+test('USB inspection does not ask the worker to know the board firmware history', async ({ page }) => {
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Set up a card', exact: true }).click();
+  await page.getByRole('button', { name: 'Plug in and find card', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
-  await expect(dialog).toContainText('A missing Wi-Fi name alone does not prove firmware is missing.');
-  await dialog.getByRole('button', { name: 'This board has never run Lightweaver' }).click();
+  await expect(dialog).not.toContainText('never run Lightweaver');
+  await dialog.getByRole('button', { name: 'Inspect card over USB' }).click();
   await expect(page).toHaveURL(/#screen=flash&mode=install$/);
 });
 
