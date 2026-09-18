@@ -2046,9 +2046,7 @@ for (const legacy of [
   { hash: '#screen=installer', fold: 'card-advanced-fold', heading: 'Worker install' },
   { hash: '#screen=production&job=moon-batch-7', fold: null, heading: 'Batch production' },
   { hash: '#screen=settings', fold: null, heading: 'Preferences' },
-  // The old Setup rail destination lands on Card Home.
-  // The old Setup rail destination lands on Card Home, whose heading is the
-  // card's name (no card known on a fresh page: the generic one).
+  // The old Setup rail destination lands on the public-worker Card Home.
   { hash: '#screen=setup', fold: null, heading: null },
 ]) {
   test(`legacy ${legacy.hash} stays intact and opens ${legacy.fold || legacy.heading}`, async ({ page }) => {
@@ -2063,11 +2061,11 @@ for (const legacy of [
     if (legacy.heading) {
       await expect(page.getByRole('heading', { name: legacy.heading, exact: true }).first()).toBeVisible();
     } else {
-      // Card Home: the heading is the card's name (or its address before one
-      // is known), the same text the status row's Card cell carries.
+      // A fresh public-worker workspace has no observed card yet, so Card Home
+      // leads with the worker's first task while preserving the legacy hash.
       const home = page.getByTestId('card-workspace-heading');
       await expect(home).toHaveAttribute('data-home', 'true');
-      await expect(home).toHaveText(await page.locator('[data-testid="setup-identity-row"] > *').first().locator('strong').innerText());
+      await expect(home).toHaveText('Start Lightweaver');
     }
   });
 }
