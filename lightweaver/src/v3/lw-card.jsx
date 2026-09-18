@@ -1025,6 +1025,8 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   const home = HOME_SECTIONS.includes(route.section)
     || !['install', 'workshop', 'preferences'].includes(route.section);
   const freshWorkspace = currentProject?.layout?.starterPending === true;
+  const observedCard = Boolean(connected || cardLink?.card?.id || cardLink?.readiness?.cardId);
+  const showPublicWorkerStart = freshWorkspace && !observedCard;
   const installIntentOpen = typeof window !== 'undefined'
     && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   let content;
@@ -1040,7 +1042,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
-      {freshWorkspace && (
+      {showPublicWorkerStart && (
         <PublicWorkerStart
           onStartLayout={() => go('layout')}
           onOpenProjects={onOpenProjects}
@@ -1171,7 +1173,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // fact; the setup verdict now lives in the status module's header.
   const cardName = cardLink?.card?.name || cardLink?.card?.id || cardLink?.readiness?.cardId || cardLink?.host || cardHost || '';
   const heading = home
-    ? (!connected && freshWorkspace ? 'Start Lightweaver' : (cardName || 'Lightweaver card'))
+    ? (showPublicWorkerStart ? 'Start Lightweaver' : (cardName || 'Lightweaver card'))
     : SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
   return (
     <div className="screen card-workspace-screen">
