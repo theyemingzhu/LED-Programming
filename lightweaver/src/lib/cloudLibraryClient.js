@@ -52,6 +52,19 @@ function jsonContentType(response) {
   return (response.headers.get('content-type') || '').toLowerCase().startsWith('application/json');
 }
 
+function isAccessRedirect(response) {
+  if (response?.type === 'opaqueredirect') return true;
+  if (!response || response.status < 300 || response.status >= 400) return false;
+  const location = response.headers?.get?.('location') || '';
+  try {
+    const target = new URL(location, 'https://lightweaver.invalid');
+    return target.hostname.endsWith('.cloudflareaccess.com')
+      && target.pathname.startsWith('/cdn-cgi/access/');
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -191,6 +204,7 @@ export function createCloudLibraryClient({
         method,
         credentials: 'same-origin',
         cache: 'no-store',
+        redirect: 'manual',
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
@@ -198,6 +212,13 @@ export function createCloudLibraryClient({
       throw new CloudLibraryError('network_error', 'The project library could not be reached.', {
         state: 'offline',
         cause,
+      });
+    }
+
+    if (isAccessRedirect(response)) {
+      throw new CloudLibraryError('access_required', 'Continue through the secure library sign-in.', {
+        status: 401,
+        state: 'access',
       });
     }
 

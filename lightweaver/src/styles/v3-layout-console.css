@@ -338,6 +338,44 @@
   background: none;
 }
 .la .la-specs-body > .lwbs { margin: 10px 0 0; }
+.la .la-selected-specs {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-hair);
+  border-radius: var(--r-sm);
+  background: var(--bg-panel);
+}
+.la .la-selected-specs > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.la .la-selected-specs > header strong { color: var(--text-hi); font-size: 13px; }
+.la .la-selected-specs > header span,
+.la .la-selected-specs > p,
+.la .la-selected-specs-empty { color: var(--text-faint); font-size: 11px; }
+.la .la-selected-specs dl { margin: 0; }
+.la .la-selected-specs dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-hair);
+}
+.la .la-selected-specs dt { color: var(--text-mid); font-size: 11px; }
+.la .la-selected-specs dd {
+  margin: 0;
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.la .la-selected-specs > p { margin: 10px 0 6px; }
+.la .la-selected-specs > .btn { min-height: 30px; padding-inline: 9px; }
 
 /* ═══ strip schedule + build sheet ═════════════════════════
    The two read-outs somebody wires from. Both are modules in

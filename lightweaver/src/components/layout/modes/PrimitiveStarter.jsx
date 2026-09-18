@@ -55,9 +55,12 @@ export function PrimitiveStarter({ currentPixelCount, defaultDensity, ledType, o
   return (
     <section className="la-primitive-starter" data-testid="layout-primitive-picker" aria-label="Start a layout">
       <div className="la-primitive-heading">
-        <strong>Start with a shape</strong>
+        <strong>Start your layout</strong>
         <button type="button" className="la-primitive-import" onClick={onImport}>Import SVG</button>
       </div>
+      <p className="la-primitive-intro">
+        Import the artwork SVG or choose a shape. Enter the real LED count first; Layout scales the drawing to match, and you can divide it into named connected sections afterward.
+      </p>
       <div className="la-primitive-grid" role="group" aria-label="Layout shape">
         {STARTER_PRIMITIVES.map(primitive => (
           <button

@@ -394,6 +394,23 @@ test('guarded save verifies exact storage readback before acknowledging success'
   assert.deepEqual(await pending, { ok: false, reason: 'browser-readback-failed' });
 });
 
+test('guarded save accepts the exact JSON readback when optional project fields are undefined', async () => {
+  const storage = memoryStorage();
+  const lockManager = controlledLockManager();
+  const project = createDefaultProject();
+  project.layout.svgText = undefined;
+  const pending = projectStorageApi.saveCurrentProjectToLibraryGuarded(project, {
+    storage, lockManager, id: 'json-round-trip-record', now: 1000,
+  });
+
+  await lockManager.runNext();
+  const result = await pending;
+
+  assert.equal(result.ok, true);
+  assert.equal(result.record.id, 'json-round-trip-record');
+  assert.equal(result.associationSnapshot.record.project.layout.svgText, null);
+});
+
 test('guarded association stores only the exact caller-held record revision', async () => {
   assert.equal(typeof projectStorageApi.associateProjectLibraryRecordGuarded, 'function');
   const storage = memoryStorage();

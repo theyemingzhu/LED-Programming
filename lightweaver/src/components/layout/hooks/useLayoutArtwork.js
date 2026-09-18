@@ -128,8 +128,10 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
       id,
       sourceLayerId: layer.layerId,
       sourcePathId: sp.pathId,
+      calibratedFromArtwork: true,
       name: `${layer.name} · ${sp.name}`,
       pathData: sp.pathData,
+      svgLength: sp.svgLength,
       pixelCount: count,
       pixels,
       color: layer._color,
@@ -164,7 +166,8 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
         id: nextStripId(strips), name,
         // Merged from several paths: no single artwork source.
         sourceLayerId: null, sourcePathId: null,
-        pathData: combinedPathData, pixelCount: count, pixels,
+        calibratedFromArtwork: true,
+        pathData: combinedPathData, svgLength: totalLen, pixelCount: count, pixels,
         closed: pathSel.length === 1 && isClosedPathData(pathSel[0].pathData, pathSel[0].closed),
         x: 0, y: 0,
         color: nextColor(), emit: 'dir', angle: 0, reversed: false,
@@ -189,8 +192,10 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
         id: nextStripId(running),
         sourceLayerId: p.layerId ?? null,
         sourcePathId: p.pathId ?? null,
+        calibratedFromArtwork: true,
         name: p.name,
         pathData: p.pathData,
+        svgLength: p.svgLength,
         closed: isClosedPathData(p.pathData, p.closed),
         pixelCount: count,
         pixels,
@@ -233,7 +238,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
     }
     const newStrips = [];
     for (const l of layers.filter(l => l.pathData)) {
-      newStrips.push(makeStrip(l, getLedCount(l), nextStripId(newStrips)));
+      newStrips.push(makeStrip(l, getLedCount(l), nextStripId(newStrips), newStrips));
     }
     pushLayoutHistory();
     setStrips(newStrips);

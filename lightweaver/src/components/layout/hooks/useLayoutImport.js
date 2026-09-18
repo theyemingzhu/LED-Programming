@@ -23,6 +23,7 @@ export function useLayoutImport(ctx, deps) {
     density,
     pxPerMm, setPxPerMm,
     layerGroups, layerOrder, setLayerGroups, setLayerOrder,
+    setSectionFamilies,
     setPatchBoard,
     pushLayoutHistory,
     clearLayoutSelection,
@@ -99,6 +100,7 @@ export function useLayoutImport(ctx, deps) {
     setEditCounts({});
     setHidden({});
     setLayerGroups([]);
+    setSectionFamilies([]);
     setLayerOrder(newLayerOrder);
     clearLayoutSelection();
     setDrawMode(false);

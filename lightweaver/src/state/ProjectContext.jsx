@@ -101,6 +101,7 @@ function makeInitialLayoutState(layout) {
       starterPending: layout.starterPending,
       layers: layout.layers,
       layerGroups: layout.layerGroups,
+      sectionFamilies: layout.sectionFamilies,
       layerOrder: layout.layerOrder,
       editCounts: layout.editCounts,
       stripCountOverrides: layout.stripCountOverrides,
@@ -186,6 +187,7 @@ function layoutRootReducer(state, action) {
         stripCountOverrides: {},
         stripDensities: {},
         layerGroups: [],
+        sectionFamilies: [],
         layerOrder: [],
         patchBoard: action.patchBoard,
         wiring: action.wiring,
@@ -408,6 +410,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     stripCountOverrides: layoutStripCountOverrides,
     stripDensities: layoutStripDensities,
     layerGroups: layoutLayerGroups,
+    sectionFamilies,
     layerOrder: layoutLayerOrder,
     patchBoard,
     wiring,
@@ -429,6 +432,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   const setLayoutStripCountOverrides = useCallback(value => setLayoutField('stripCountOverrides', value), [setLayoutField]);
   const setLayoutStripDensities = useCallback(value => setLayoutField('stripDensities', value), [setLayoutField]);
   const setLayoutLayerGroups = useCallback(value => setLayoutField('layerGroups', value), [setLayoutField]);
+  const setSectionFamilies    = useCallback(value => setLayoutField('sectionFamilies', value), [setLayoutField]);
   const setLayoutLayerOrder  = useCallback(value => setLayoutField('layerOrder', value), [setLayoutField]);
   const setPatchBoard        = useCallback(value => setLayoutField('patchBoard', value), [setLayoutField]);
 
@@ -699,6 +703,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         stripCountOverrides: layout.stripCountOverrides || {},
         stripDensities: layout.stripDensities || {},
         layerGroups: layout.layerGroups || [],
+        sectionFamilies: layout.sectionFamilies || [],
         layerOrder: layout.layerOrder || [],
         patchBoard: normalizePatchBoard(shouldSeedDefaultLayout ? defaults.layout.patchBoard : layout.patchBoard, restoredStrips),
         wiring: migrateWiring(layout.wiring, restoredStrips, layout.patchBoard),
@@ -819,6 +824,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         stripCountOverrides: layoutStripCountOverrides,
         stripDensities: layoutStripDensities,
         layerGroups: layoutLayerGroups,
+        sectionFamilies,
         layerOrder: layoutLayerOrder,
         patchBoard: normalizePatchBoard(patchBoard, strips),
         wiring,
@@ -857,7 +863,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     return project;
   }, [
     projectId, projectName, origin, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
-    layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, layoutLayerOrder,
+    layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, sectionFamilies, layoutLayerOrder,
     activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
     masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
     motionSmoothing,
@@ -1049,6 +1055,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       layoutStripCountOverrides, setLayoutStripCountOverrides,
       layoutStripDensities, setLayoutStripDensities,
       layoutLayerGroups, setLayoutLayerGroups,
+      sectionFamilies, setSectionFamilies,
       layoutLayerOrder,  setLayoutLayerOrder,
       patchBoard,        setPatchBoard,
       updatePatchBoard,

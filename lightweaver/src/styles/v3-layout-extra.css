@@ -142,7 +142,9 @@
 }
 .la-strip-detail .actions .btn:hover { color: var(--text-hi); }
 .la-strip-detail .actions .btn.active,
-.la-strip-detail .actions .btn[aria-pressed="true"] {
+.la-strip-detail .actions .btn[aria-pressed="true"],
+.la-strip-detail .la-strip-connection .btn.active,
+.la-strip-detail .la-strip-connection .btn[aria-pressed="true"] {
   color: var(--accent);
   border-color: var(--accent-line);
   background: var(--accent-soft);

@@ -64,9 +64,10 @@ test('a second strip takes the addresses that follow the first', async ({ page }
   await freshLayout(page);
   await addLine(page);
 
-  const duplicate = page.getByRole('button', { name: /^(copy|duplicate)/i });
-  await expect(duplicate.first()).toBeVisible();
-  await duplicate.first().click();
+  await page.getByLabel('More strip actions', { exact: true }).first().click();
+  const duplicate = page.getByRole('button', { name: 'Duplicate strip', exact: true });
+  await expect(duplicate).toBeVisible();
+  await duplicate.click();
 
   await page.getByTestId('layout-specs-trigger').click();
   await expect(page.getByTestId('build-sheet')).toBeVisible();

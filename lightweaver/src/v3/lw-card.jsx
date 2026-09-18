@@ -93,6 +93,41 @@ function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
   );
 }
 
+function PublicWorkerStart({ onStartLayout, onOpenProjects, onSetUpCard }) {
+  return (
+    <section className="lw-worker-start" data-testid="public-worker-start" aria-labelledby="public-worker-start-title">
+      <div className="lw-worker-start-heading">
+        <span>Start here</span>
+        <div>
+          <h2 id="public-worker-start-title">Build the piece in this browser</h2>
+          <p>No Lightweaver project file or developer setup is required. Bring an artwork SVG only when this piece uses one; otherwise start with a shape.</p>
+        </div>
+      </div>
+      <div className="lw-worker-start-paths">
+        <article>
+          <span>1 · Design</span>
+          <h3>Map the real lights</h3>
+          <p>Import SVG artwork or create a shape, enter the real LED count, then divide the route into named connected sections.</p>
+          <button type="button" className="btn primary" onClick={onStartLayout}>Start a layout</button>
+        </article>
+        <article>
+          <span>2 · Continue</span>
+          <h3>Open saved work</h3>
+          <p>Use a project saved in this browser, import a portable backup, or sign in to an available team library.</p>
+          <button type="button" className="btn" onClick={onOpenProjects}>Open saved work</button>
+        </article>
+        <article>
+          <span>3 · Card</span>
+          <h3>Work beside the hardware</h3>
+          <p>Connect only when you are with the card. Wi-Fi works through the card page; USB setup needs Chrome or Edge.</p>
+          <button type="button" className="btn" onClick={onSetUpCard}>Set up a card</button>
+        </article>
+      </div>
+      <p className="lw-worker-start-storage">Browser saves stay on this device. Use the online library for an assigned team project, or export a backup when the work needs to move to another device.</p>
+    </section>
+  );
+}
+
 function cardEditIntent() {
   return readCardEditIntent(window.location.search);
 }
@@ -892,7 +927,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -989,6 +1024,9 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // renders it. settings/support stay Home with the matching fold open.
   const home = HOME_SECTIONS.includes(route.section)
     || !['install', 'workshop', 'preferences'].includes(route.section);
+  const freshWorkspace = currentProject?.layout?.starterPending === true;
+  const observedCard = Boolean(connected || cardLink?.card?.id || cardLink?.readiness?.cardId);
+  const showPublicWorkerStart = freshWorkspace && !observedCard;
   const installIntentOpen = typeof window !== 'undefined'
     && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   let content;
@@ -1004,6 +1042,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
+      {showPublicWorkerStart && (
+        <PublicWorkerStart
+          onStartLayout={() => go('layout')}
+          onOpenProjects={onOpenProjects}
+          onSetUpCard={onOpenConnectionCenter}
+        />
+      )}
       {cardBlackedOut && (
         // role="status", not "alert": card-state-matrix.spec.ts's own
         // connection-only invariant (expectUnaided) requires that connecting
@@ -1128,7 +1173,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // fact; the setup verdict now lives in the status module's header.
   const cardName = cardLink?.card?.name || cardLink?.card?.id || cardLink?.readiness?.cardId || cardLink?.host || cardHost || '';
   const heading = home
-    ? (cardName || 'Lightweaver card')
+    ? (showPublicWorkerStart ? 'Start Lightweaver' : (cardName || 'Lightweaver card'))
     : SECTION_HEADINGS[route.section] || SECTION_HEADINGS.setup;
   return (
     <div className="screen card-workspace-screen">

@@ -20,12 +20,15 @@ async function createTwelveLedLine(page: any) {
 test('Kaleidoscope editor exposes bounded count and per-point inline steppers', async ({ page }) => {
   await createTwelveLedLine(page);
   const actions = page.getByRole('group', { name: 'Strip actions' });
-  // Three families separated by space: the direction trio, Kaleidoscope, then
-  // Split / Duplicate / Remove. Hide moved onto the strip row itself.
-  await expect(actions.getByRole('button')).toHaveCount(7);
+  // The compact inspector keeps only the three frequent editing actions here;
+  // ordering, duplication, and removal live in the strip-row overflow menu.
+  await expect(actions.getByRole('button')).toHaveCount(3);
   await expect(actions.getByRole('button').allTextContents()).resolves.toEqual([
-    '↔Flip', '⇄Data', '◎First', '✦Points', 'Split', 'Copy', '×Remove',
+    'Flip path', 'Reflection points', 'Split in two',
   ]);
+  await page.getByLabel('More strip actions', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await expect(page.getByTestId('kaleidoscope-summary')).toHaveText('4 points · start LED 1');
