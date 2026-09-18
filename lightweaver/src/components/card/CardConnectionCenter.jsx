@@ -463,7 +463,7 @@ export function CardConnectionCenter({
   const stableRecoveryHost = ordinaryCardRecoveryHost(link.host || host, rememberedCard);
   const ordinaryRetry = action.id === 'recoverable-failure' && action.route === 'local-card-recovery';
   const setupRecovery = ordinaryRetry
-    && normalizeCardHost(link.host || host) === stableRecoveryHost;
+    && normalizeCardHost(link.host || host) === SETUP_HOST;
   const showSetupSteps = setupSteps || setupRecovery;
   // After a failed direct connect, keep THIS panel as the one recovery
   // surface (retry, local Studio, card page, then AP / USB). Showing the

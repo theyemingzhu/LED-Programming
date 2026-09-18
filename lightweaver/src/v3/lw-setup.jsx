@@ -29,6 +29,7 @@ import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdopti
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
+import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { STUDIO_HARDWARE_OPERATION_EVENT } from '../lib/studioHardwareOperation.js';
 import { useCardActions } from './CardActionsProvider.jsx';
@@ -873,7 +874,8 @@ export function SetupScreen({
     const hasCardEvidence = Boolean(
       cardLink?.card?.id
       || cardLink?.expectedCard?.id
-      || cardLink?.discoveredCard?.id,
+      || cardLink?.discoveredCard?.id
+      || readPersistedCardIdentity()?.id,
     );
     if (!hasCardEvidence) {
       onOpenConnectionCenter?.();
