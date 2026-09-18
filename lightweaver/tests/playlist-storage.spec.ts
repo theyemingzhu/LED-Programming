@@ -172,7 +172,7 @@ test('Playlist rows expose only compact item-specific controls', async ({ page }
   await gotoPlaylist(page, makePlaylistProject({ count: 3 }));
 
   const auroraRow = page.getByTestId('playlist-row-aurora');
-  await expect(auroraRow.getByRole('button')).toHaveCount(4);
+  await expect(auroraRow.getByRole('button')).toHaveCount(3);
   const reorderAurora = auroraRow.getByRole('button', { name: 'Reorder Aurora', exact: true });
   await expect(reorderAurora).toBeVisible();
   await expect(reorderAurora).toHaveAttribute('aria-describedby', 'playlist-reorder-instructions');
@@ -183,14 +183,14 @@ test('Playlist rows expose only compact item-specific controls', async ({ page }
   expect(reorderBox?.width).toBeGreaterThanOrEqual(36);
   expect(reorderBox?.height).toBeGreaterThanOrEqual(36);
   await expect(auroraRow.getByRole('button', { name: 'Live', exact: true })).toBeVisible();
-  await expect(auroraRow.getByRole('button', { name: 'Copy', exact: true })).toBeVisible();
-
-  const removeAurora = auroraRow.getByRole('button', { name: 'Remove Aurora', exact: true });
-  await expect(removeAurora).toHaveText('×');
-  await expect(removeAurora).toHaveAttribute('title', 'Remove Aurora');
-  const removeBox = await removeAurora.boundingBox();
-  expect(removeBox?.width).toBeGreaterThanOrEqual(36);
-  expect(removeBox?.height).toBeGreaterThanOrEqual(36);
+  const more = auroraRow.getByRole('button', { name: 'More actions for Aurora', exact: true });
+  await expect(more).toHaveAttribute('aria-haspopup', 'menu');
+  await more.click();
+  await expect(page.getByRole('menuitem', { name: 'Duplicate Aurora', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Remove Aurora', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menuitem', { name: 'Remove Aurora', exact: true })).toHaveCount(0);
+  await expect(more).toBeFocused();
 
   for (const name of ['Up', 'Down', 'Make first', 'Remove']) {
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
@@ -258,7 +258,7 @@ test('Playlist touch handle reorders on a coarse pointer', async ({ browser }) =
   }
 });
 
-test('Playlist coarse-pointer reorder and remove targets are at least 44px', async ({ browser }) => {
+test('Playlist coarse-pointer reorder, Live, more, and menu targets are at least 44px', async ({ browser }) => {
   const context = await browser.newContext({
     hasTouch: true,
     isMobile: true,
@@ -267,14 +267,20 @@ test('Playlist coarse-pointer reorder and remove targets are at least 44px', asy
   const page = await context.newPage();
   try {
     await gotoPlaylist(page, makePlaylistProject({ count: 3 }));
+    const more = page.getByRole('button', { name: 'More actions for Aurora', exact: true });
     for (const control of [
       page.getByRole('button', { name: 'Reorder Aurora', exact: true }),
-      page.getByRole('button', { name: 'Remove Aurora', exact: true }),
+      page.getByRole('button', { name: 'Live', exact: true }).first(),
+      more,
     ]) {
       const box = await control.boundingBox();
       expect(box?.width).toBeGreaterThanOrEqual(44);
       expect(box?.height).toBeGreaterThanOrEqual(44);
     }
+    await more.click();
+    const remove = page.getByRole('menuitem', { name: 'Remove Aurora', exact: true });
+    const removeBox = await remove.boundingBox();
+    expect(removeBox?.height).toBeGreaterThanOrEqual(44);
   } finally {
     await context.close();
   }
@@ -319,7 +325,8 @@ test('Playlist remove and pointer reorder target the named compact controls', as
   }).toPass({ timeout: 15_000 });
   await expect(page.locator('.pl-row .pl-copy > strong')).toHaveText(['Plasma', 'Fire', 'Aurora']);
 
-  await page.getByRole('button', { name: 'Remove Plasma', exact: true }).click();
+  await page.getByRole('button', { name: 'More actions for Plasma', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Remove Plasma', exact: true }).click();
   await expect(page.getByTestId('playlist-row-plasma')).toHaveCount(0);
   await expect(page.getByTestId('playlist-row-fire')).toHaveCount(1);
   await expect(page.getByTestId('playlist-row-aurora')).toHaveCount(1);
@@ -335,7 +342,8 @@ test('Playlist resolves a duplicate encoder press without pausing card setup', a
   await expect(page.getByTestId('playlist-hardware-warning')).toHaveCount(0);
 
   await expect(page.locator('.pl-row')).toHaveCount(2);
-  await page.locator('.pl-row').first().getByRole('button', { name: 'Copy', exact: true }).click();
+  await page.locator('.pl-row').first().getByRole('button', { name: 'More actions for Aurora', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate Aurora', exact: true }).click();
   await expect(page.locator('.pl-row')).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Install playlist on card' })).toBeDisabled();
   await expect(page.getByRole('button', { name: /Copy chip config/ })).toBeEnabled();
@@ -435,7 +443,8 @@ test('Playlist install stays pending, fails with Retry, then remains confirmed u
   await expect(page.getByTestId('playlist-card-status')).toContainText('Playlist installed on card.');
   await expect(page.getByTestId('playlist-card-status')).toBeVisible();
 
-  await page.locator('.pl-row').first().getByRole('button', { name: 'Copy', exact: true }).click();
+  await page.locator('.pl-row').first().getByRole('button', { name: 'More actions for Aurora', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate Aurora', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
 });
 
@@ -452,7 +461,8 @@ test('Playlist ignores a stale install success after the playlist is edited', as
   // set up any later than "the request just landed" risks missing the
   // response it is waiting for.
   const configResponse = page.waitForResponse(response => response.url().endsWith('/api/config'));
-  await page.locator('.pl-row').first().getByRole('button', { name: 'Copy', exact: true }).click();
+  await page.locator('.pl-row').first().getByRole('button', { name: 'More actions for Aurora', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate Aurora', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
 
   await configResponse;
@@ -551,7 +561,8 @@ test('Playlist ignores a stale reset failure after the playlist is edited', asyn
   await gotoPlaylist(page, project);
 
   await page.getByRole('button', { name: 'Reset live' }).click();
-  await page.locator('.pl-row').first().getByRole('button', { name: 'Copy', exact: true }).click();
+  await page.locator('.pl-row').first().getByRole('button', { name: 'More actions for Aurora', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate Aurora', exact: true }).click();
   await expect(page.getByTestId('playlist-card-status')).toHaveCount(0);
 
   const resetFailure = page.waitForEvent('requestfailed', request => request.url().endsWith('/api/recover-lights'));

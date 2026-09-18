@@ -74,6 +74,16 @@ import {
   createCardActionState,
 } from '../lib/cardAction.js';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
+import {
+  formatPlaylistLengthMinutes,
+  parsePlaylistLengthMinutes,
+} from '../lib/playlistDuration.js';
+
+function omitKey(source, key) {
+  const next = { ...source };
+  delete next[key];
+  return next;
+}
 
 function downloadJson(filename, content) {
   const blob = new Blob([content], { type: 'application/json' });
@@ -153,7 +163,10 @@ function realPatternShape(patternId) {
     const latestLiveItem = useRef(null);
     const [drag, setDrag] = useState({ from: null, over: null });
     const [reorderAnnouncement, setReorderAnnouncement] = useState('');
+    const [lengthDrafts, setLengthDrafts] = useState({});
+    const [openRowMenuId, setOpenRowMenuId] = useState(null);
     const reorderHandleRefs = useRef(new Map());
+    const rowMenuTriggerRefs = useRef(new Map());
     const pendingReorderFocus = useRef(null);
     const pointerDrag = useRef(null);
 
@@ -265,6 +278,39 @@ function realPatternShape(patternId) {
       ));
       writePlaylist(next);
     };
+
+    const setItemLengthDraft = (itemId, value) => {
+      setLengthDrafts((current) => ({ ...current, [itemId]: value }));
+    };
+
+    const resetItemLengthDraft = (itemId) => {
+      setLengthDrafts((current) => omitKey(current, itemId));
+    };
+
+    const commitItemLengthMinutes = (itemId, rawMinutes) => {
+      const parsed = parsePlaylistLengthMinutes(rawMinutes);
+      if (parsed.ok) setItemDwellSeconds(itemId, parsed.seconds);
+      resetItemLengthDraft(itemId);
+    };
+
+    const closeRowMenu = (restoreFocus = true) => {
+      const itemId = openRowMenuId;
+      setOpenRowMenuId(null);
+      if (restoreFocus && itemId) {
+        window.requestAnimationFrame(() => rowMenuTriggerRefs.current.get(itemId)?.focus());
+      }
+    };
+
+    React.useEffect(() => {
+      if (!openRowMenuId) return undefined;
+      const closeOnEscape = (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        closeRowMenu(true);
+      };
+      window.addEventListener('keydown', closeOnEscape);
+      return () => window.removeEventListener('keydown', closeOnEscape);
+    }, [openRowMenuId]);
 
     const setPlaylistTiming = (patch) => {
       setStandaloneController((prev) => {
@@ -753,10 +799,13 @@ function realPatternShape(patternId) {
     // ── derived view data (real banks, mockup shapes) ─────────────────────
     // Mixes pool: real saved looks adapted to the mockup mix shape.
     const mixShapes = savedLooks.map((look) => ({ ...adaptSavedLook(look), id: look.id, label: look.label || look.name || 'Saved mix' }));
-    // Pattern pool: real bank minus whatever is already in the playlist.
-    const pool = DEFAULT_CARD_PATTERN_BANK
-      .filter((p) => !playlistContainsPattern(playlist, p.id))
-      .map((p) => realPatternShape(p.id));
+    // Keep the bank in one canonical order. Added patterns remain in place so
+    // the library does not reshuffle under the operator's pointer or memory.
+    const patternTiles = DEFAULT_CARD_PATTERN_BANK.map((pattern) => ({
+      ...realPatternShape(pattern.id),
+      added: playlistContainsPattern(playlist, pattern.id),
+    }));
+    const playlistPatternCount = patternTiles.filter((pattern) => pattern.added).length;
     const mixesRemaining = savedLooks.some((look) => !playlistContainsCombo(playlist, look.id));
 
     // ── timed playlist: what the card itself reports right now ────────────
@@ -982,7 +1031,7 @@ function realPatternShape(patternId) {
                       its own bar. The count used to float in the card-address row
                       above, where it described something two elements away. */}
                   <div className="sec-h">
-                    <span className="t">Playlist order</span>
+                    <h2 className="t">Playlist order</h2>
                     <span className="m">{playlist.length} looks · dial press advances</span>
                     <span className="line" />
                   </div>
@@ -1012,6 +1061,7 @@ function realPatternShape(patternId) {
                       />
                       <span>Play on the card</span>
                     </label>
+                    <p className="pl-timing-note">Each look loops for its Length, then fades to the next.</p>
                   </div>
                   {playlistOverflow > 0 &&
                     <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
@@ -1071,30 +1121,57 @@ function realPatternShape(patternId) {
                         </div>
                         <div className="pl-actions">
                           <label className="pl-dwell">
-                            <span className="sf-l">Dwell</span>
+                            <span className="sf-l">Length</span>
                             <input
                               type="number"
                               className="pm-input pl-dwell-input"
-                              min="1"
-                              max="3600"
-                              step="1"
-                              value={item.dwellSeconds}
-                              onChange={(e) => setItemDwellSeconds(id, e.target.value)}
-                              aria-label={`Dwell seconds for ${item.label}`}
+                              min="0.02"
+                              max="60"
+                              step="0.1"
+                              inputMode="decimal"
+                              value={Object.hasOwn(lengthDrafts, id) ? lengthDrafts[id] : formatPlaylistLengthMinutes(item.dwellSeconds)}
+                              onChange={(e) => setItemLengthDraft(id, e.target.value)}
+                              onBlur={(e) => commitItemLengthMinutes(id, e.currentTarget.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                                if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  resetItemLengthDraft(id);
+                                }
+                              }}
+                              aria-label={`Length in minutes for ${item.label}`}
+                              aria-describedby={`playlist-length-help-${id}`}
                               data-testid={`playlist-dwell-${id}`}
                             />
-                            <span className="pl-dwell-unit">s</span>
+                            <span className="pl-dwell-unit">min</span>
+                            <span className="pl-field-help" id={`playlist-length-help-${id}`}>Enter 0.02 to 60 minutes.</span>
                           </label>
                           <button className={"plbtn" + (live === id ? " on" : "")} aria-pressed={live === id} disabled={recoveryPending} onClick={() => setLiveItem(item)}>Live</button>
-                          <button className="plbtn" onClick={() => dup(i)}>Copy</button>
-                          <button
-                            className="plbtn danger pl-remove"
-                            aria-label={`Remove ${item.label}`}
-                            title={`Remove ${item.label}`}
-                            onClick={() => remove(i)}
-                          >
-                            ×
-                          </button>
+                          <div className="pl-row-menu">
+                            <button
+                              className="plbtn pl-more"
+                              aria-label={`More actions for ${item.label}`}
+                              aria-haspopup="menu"
+                              aria-expanded={openRowMenuId === id}
+                              aria-controls={`playlist-row-menu-${id}`}
+                              ref={(node) => {
+                                if (node) rowMenuTriggerRefs.current.set(id, node);
+                                else rowMenuTriggerRefs.current.delete(id);
+                              }}
+                              onClick={() => setOpenRowMenuId((current) => current === id ? null : id)}
+                            >
+                              {I.dots}
+                            </button>
+                            {openRowMenuId === id &&
+                              <>
+                                <button className="pl-row-menu-backdrop" aria-label="Close playlist row actions" onClick={() => closeRowMenu(true)} />
+                                <div className="pl-row-menu-pop" id={`playlist-row-menu-${id}`} role="menu" aria-label={`Actions for ${item.label}`}>
+                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>Duplicate {item.label}</span></button>
+                                  <button role="menuitem" className="pl-row-menu-item danger" onClick={() => { closeRowMenu(false); remove(i); }}>{I.trash}<span>Remove {item.label}</span></button>
+                                </div>
+                              </>
+                            }
+                          </div>
                         </div>
                       </article>
                     );
@@ -1106,7 +1183,7 @@ function realPatternShape(patternId) {
                     light, name, right-aligned meta — body is three figures. */}
                 <div className="pl-cardnow" data-testid="playlist-card-now">
                   <div className={"sec-h" + (playingItem ? " is-live" : "")}>
-                    <span className="t">On the card now</span>
+                    <h2 className="t">On the card now</h2>
                     <span className="m">{cardNowMeta}</span>
                     <span className="line" />
                   </div>
@@ -1144,7 +1221,7 @@ function realPatternShape(patternId) {
 
               <aside className="pm-aside">
                 <div className="card pm-pane">
-                  <div className="sec-h"><span className="t">Saved looks</span><span className="m">{mixShapes.length}</span></div>
+                  <div className="sec-h"><h2 className="t">Saved looks</h2><span className="m">{mixShapes.length}</span></div>
                   {mixShapes.map((m) => {
                     const added = playlistContainsCombo(playlist, m.id);
                     return (
@@ -1160,16 +1237,24 @@ function realPatternShape(patternId) {
                 </div>
 
                 <div className="card pm-pane">
-                  <div className="sec-h"><span className="t">Pattern pool</span><span className="m">{pool.length} available</span></div>
+                  <div className="sec-h"><h2 className="t">Pattern pool</h2><span className="m">{playlistPatternCount} added · {patternTiles.length} total</span></div>
+                  <p className="pl-pool-help">Select a pattern to add it. Added patterns stay in place.</p>
                   <div className="pl-pool">
-                    {pool.map((p) => (
-                      <button key={p.id} className="pl-chip" disabled={recoveryPending} onClick={() => addPattern(p.id)} title={`Add ${p.label}`}>
+                    {patternTiles.map((p) => (
+                      <button
+                        key={p.id}
+                        className={"pl-chip pl-pattern-tile" + (p.added ? " is-added" : "")}
+                        disabled={recoveryPending}
+                        aria-pressed={p.added}
+                        aria-label={p.added ? `${p.label}, already in playlist; preview` : `Add ${p.label}`}
+                        onClick={() => addPattern(p.id)}
+                        title={p.added ? `Preview ${p.label}` : `Add ${p.label}`}
+                      >
                         <span className="pl-chip-art"><LedRow pal={p.pal} n={4} /></span>
                         <span className="pl-chip-nm">{p.label}</span>
-                        <span className="pl-chip-add">{I.plus}</span>
+                        <span className="pl-pattern-action">{p.added ? 'Added' : 'Add'}</span>
                       </button>
                     ))}
-                    {!pool.length && <p className="pl-empty">Every pattern is in the playlist.</p>}
                   </div>
                 </div>
               </aside>

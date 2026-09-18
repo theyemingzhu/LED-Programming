@@ -106,17 +106,21 @@ for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
     });
 
-    test('setting dwell, fade, and enable marks the project edited, and Install sends the exact playlist block', async ({ page }) => {
+    test('setting Length in decimal minutes, fade, and enable sends exact integer seconds to the card', async ({ page }) => {
       const project = makeTimedPlaylistProject({ count: 2 }); // aurora, plasma
       const [auroraId, plasmaId] = project.devices.standaloneController.playlist.map((item) => item.id);
       const card = await mockConnectedTimedCard(page, project, `lw-playlist-timed-set-${viewport.label}`);
       await gotoPlaylist(page, project);
 
-      // Dwell: change Aurora's row from the default 30s to 45s.
-      const dwellInput = page.getByTestId(`playlist-dwell-${auroraId}`);
-      await expect(dwellInput).toHaveValue('30');
-      await dwellInput.fill('45');
-      await expect(dwellInput).toHaveValue('45');
+      await expect(page.getByText(/loops for its Length, then fades to the next/i)).toBeVisible();
+
+      // Length is edited in minutes, while the saved/card contract remains seconds.
+      const lengthInput = page.getByTestId(`playlist-dwell-${auroraId}`);
+      await expect(lengthInput).toHaveValue('0.5');
+      await expect(lengthInput).toHaveAttribute('aria-label', 'Length in minutes for Aurora');
+      await lengthInput.fill('1.5');
+      await lengthInput.press('Enter');
+      await expect(lengthInput).toHaveValue('1.5');
 
       // Fade: the playlist-wide field, in seconds with one decimal.
       const fadeInput = page.getByTestId('playlist-fade-seconds');
@@ -140,13 +144,13 @@ for (const viewport of VIEWPORTS) {
         enabled: true,
         fadeMs: 800,
         entries: [
-          { patternId: auroraId, dwellSeconds: 45 },
+          { patternId: auroraId, dwellSeconds: 90 },
           { patternId: plasmaId, dwellSeconds: 30 },
         ],
       });
       await expect(page.getByTestId('playlist-card-status')).toContainText('Playlist installed on card.');
       expect(card.state.playlistEntries).toEqual([
-        { patternId: auroraId, dwellSeconds: 45 },
+        { patternId: auroraId, dwellSeconds: 90 },
         { patternId: plasmaId, dwellSeconds: 30 },
       ]);
     });
