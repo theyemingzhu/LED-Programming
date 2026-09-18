@@ -185,6 +185,37 @@ test('rejects non-JSON API successes as typed invalid responses', async () => {
   );
 });
 
+test('classifies a manual Cloudflare Access redirect without treating ordinary failures as sign-in', async () => {
+  const requests = [];
+  const responses = [
+    new Response(null, {
+      status: 302,
+      headers: { location: 'https://team.cloudflareaccess.com/cdn-cgi/access/login/app' },
+    }),
+    jsonResponse({ error: { code: 'library_unavailable', message: 'Temporary failure.' } }, { status: 503 }),
+  ];
+  const client = createCloudLibraryClient({
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return responses.shift();
+    },
+  });
+
+  await assert.rejects(client.getSession(), error => {
+    assert.ok(error instanceof CloudLibraryError);
+    assert.equal(error.code, 'access_required');
+    assert.equal(error.state, 'access');
+    return true;
+  });
+  await assert.rejects(client.getSession(), error => {
+    assert.ok(error instanceof CloudLibraryError);
+    assert.equal(error.code, 'library_unavailable');
+    assert.equal(error.state, 'error');
+    return true;
+  });
+  assert.equal(requests[0].options.redirect, 'manual');
+});
+
 test('backup downloads reject HTML and malformed JSON envelopes as typed invalid responses', async t => {
   for (const response of [
     new Response('<html>proxy error</html>', { headers: { 'content-type': 'text/html' } }),

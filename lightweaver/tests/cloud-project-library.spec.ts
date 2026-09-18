@@ -115,6 +115,7 @@ class LibraryFixture {
   private releaseDelayedUpdate: (() => void) | null = null;
   forceNextConflict = false;
   projectReadFailures: number[] = [];
+  projectListFailures: number[] = [];
   updateFailures: number[] = [];
   updateRequestIds: string[] = [];
   updateCount = 0;
@@ -143,6 +144,8 @@ class LibraryFixture {
   acceptedUpdateRequestIds = new Set<string>();
   signInNavigations: string[] = [];
   sessionProbeFailures = 0;
+  accessRequired = false;
+  accessGranted = true;
   delayNextCreate = false;
   delayedCreateStarted: Promise<void> | null = null;
   private signalDelayedCreateStarted: (() => void) | null = null;
@@ -327,6 +330,11 @@ class LibraryFixture {
     this.releaseDelayedRead = null;
   }
 
+  requireAccessSignIn() {
+    this.accessRequired = true;
+    this.accessGranted = false;
+  }
+
   async install(page: Page) {
     await page.route('**/api/**', async route => {
       const request = route.request();
@@ -394,6 +402,29 @@ class LibraryFixture {
       const segments = url.pathname.slice('/api/library/'.length).split('/').filter(Boolean);
       const method = request.method();
       if (segments[0] === 'assets' && segments.length === 2) this.assetRequestCount += 1;
+
+      if (segments[0] === 'login' && method === 'GET' && request.isNavigationRequest()) {
+        const returnTo = url.searchParams.get('returnTo') || '/';
+        this.signInNavigations.push(returnTo);
+        this.accessGranted = true;
+        if (!this.username) this.role = 'worker';
+        const response = await handleLibraryRequest({
+          request: new Request(request.url()),
+          identity: { email: this.email, role: this.role || 'worker', subject: 'fixture-access-subject' },
+          store: null,
+        });
+        await fulfillResponse(route, response);
+        return;
+      }
+
+      if (this.accessRequired && !this.accessGranted) {
+        await route.fulfill({
+          status: 302,
+          headers: { location: 'https://team.cloudflareaccess.com/cdn-cgi/access/login/lightweaver' },
+          body: '',
+        });
+        return;
+      }
 
       const currentAccount = this.username ? this.accounts.get(this.username) : null;
       if (currentAccount?.mustChangePassword && segments[0] !== 'session') {
@@ -527,21 +558,6 @@ class LibraryFixture {
         }
       }
 
-      if (segments[0] === 'login' && method === 'GET' && request.isNavigationRequest()) {
-        const returnTo = url.searchParams.get('returnTo') || '/';
-        this.signInNavigations.push(returnTo);
-        // This transition represents Cloudflare Access completing before the
-        // protected Function runs. Redirect semantics come from the real router.
-        this.role = 'worker';
-        const response = await handleLibraryRequest({
-          request: new Request(request.url()),
-          identity: { email: this.email, role: this.role, subject: 'fixture-access-subject' },
-          store: null,
-        });
-        await fulfillResponse(route, response);
-        return;
-      }
-
       if (segments[0] === 'session' && method === 'GET' && this.sessionProbeFailures > 0) {
         this.sessionProbeFailures -= 1;
         await route.abort('failed');
@@ -630,6 +646,11 @@ class LibraryFixture {
         }
       }
       if (segments[0] === 'projects' && segments.length === 1 && method === 'GET') {
+        const failure = this.projectListFailures.shift();
+        if (failure) {
+          await json(route, { error: { code: `fixture_project_list_${failure}`, message: `Fixture project list failure ${failure}.` } }, failure);
+          return;
+        }
         const archived = url.searchParams.get('state') === 'archived';
         const actor = this.username ? this.accounts.get(this.username) : null;
         const visible = [...this.projects.values()].filter(item => {
@@ -2015,6 +2036,43 @@ test('signs in with native credentials, reports bad credentials generically, and
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForTimeout(100);
   expect(fixture.assetRequestCount).toBe(assetRequestsAfterLogout);
+});
+
+test('native sign-in offers an explicit Access handoff, preserves recovery, and returns safely', async ({ page }) => {
+  const fixture = new LibraryFixture(null);
+  fixture.requireAccessSignIn();
+  fixture.seed('Assigned worker project');
+  await fixture.install(page);
+  await openLibrary(page);
+
+  await page.getByLabel('Username').fill('worker');
+  await page.getByLabel('Password').fill('temporary-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('button', { name: 'Continue to secure library' })).toBeVisible();
+  await expect(page.getByText('Your work stays in this browser while you continue.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close Projects' }).click();
+  await page.getByLabel('Project name').fill('Unsaved before secure sign-in');
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue to secure library' }).click();
+
+  await expect.poll(() => fixture.signInNavigations).toEqual(['/#screen=card&section=preferences']);
+  await expect(page).toHaveURL(/#screen=card&section=preferences$/);
+  await expect(page.getByLabel('Project name')).toHaveValue('Unsaved before secure sign-in');
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  await expect(page.getByText('@worker')).toBeVisible();
+  await expect(page.getByText('Assigned worker project', { exact: true })).toBeVisible();
+});
+
+test('ordinary library failure stays retryable without offering an Access redirect', async ({ page }) => {
+  const fixture = new LibraryFixture('worker');
+  fixture.projectListFailures.push(503);
+  await fixture.install(page);
+  await openLibrary(page);
+
+  await expect(page.getByText('The online library is unavailable')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue to secure library' })).toHaveCount(0);
 });
 
 test('requires a temporary-password session to choose and confirm a personal password', async ({ page }) => {

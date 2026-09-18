@@ -18,6 +18,7 @@ This is a scoped Sprint audit of `https://led.mandalacodes.com` for a worker who
 - A fresh workspace now opens with three explicit paths: **Start a layout**, **Open saved work**, and **Set up a card**.
 - The entry copy says that no Lightweaver project or developer setup is required, that an artwork SVG is required only for artwork-based pieces, and that a shape can be used otherwise.
 - Storage copy identifies browser saves as device-local, identifies the online library as the path for an assigned team project, and recommends export when work must move devices.
+- If a worker's Lightweaver login succeeds but the protected library still needs secure browser access, Projects now offers an explicit **Continue to secure library** action. It saves the browser recovery copy before leaving and returns to the same Studio screen. Ordinary service failures remain on the retry path and do not redirect automatically.
 - Layout start copy tells the worker to enter the real LED count before using the drawing as the installation scale, then divide the route into named connected sections.
 - Mixed-content recovery no longer tells a public worker to open Studio from `localhost`; it directs them through the supported card-page bridge.
 - Browser-library save verification now compares the normalized JSON representation that local storage actually returns. Optional `undefined` properties can no longer make a valid save report `browser-readback-failed`.
@@ -41,5 +42,6 @@ The same fresh entry is covered at 390 × 844 phone size. Focused layout, split,
 
 - Real artwork cannot be invented. An artwork-based job still requires its SVG, a portable Lightweaver project backup, or authorized access to an assigned team project. The public site now states these choices instead of implying that private artwork is bundled.
 - Team projects remain protected by Cloudflare Access. No account or private project was created or exposed during this audit.
+- A Worker login is shared workspace access and can see all official projects. A project assigned to one person uses the scoped Customer login, which opens only that person's editable assigned drafts. Both routes keep the private project library behind secure access.
 - A physical card is required to prove Wi-Fi/USB commissioning, local card-page bridging, LED output, wiring, and visual pattern correctness. This Sprint used no card commands and flashed no hardware.
 - The candidate is not deployed. Production continues to serve Studio build 1913 until the primary release workflow integrates and proves a later build.
