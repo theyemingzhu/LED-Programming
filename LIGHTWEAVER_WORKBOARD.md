@@ -783,3 +783,17 @@ for project/artwork list and worker sign-in emails. Same task Sol/medium tracing
 existing library tenant/sharing semantics read-only before any new access design.
 No deployment. Resume: integrate access findings + user project/identity inputs,
 then prepare exact release candidate; do not call local fixes self-contained live.
+
+Public access followup: native worker role sees/edits all official projects;
+scoped assignments use customer accounts/drafts. Native login followed by library
+fetch can hit Cloudflare Access redirect with no visible handoff despite existing
+signIn action. Same task Sol/medium authorized bounded UI handoff fix + targeted
+regression; preserve both auth gates/no role/policy/account changes. User project
+and identity inputs still pending for actual file-free assigned-work proof.
+
+Secure-library handoff60ec9b07 integrated as664c1c28. Explicit Access-required
+action preserves native identity, flushes recovery autosave, uses existing safe
+return navigation; no automatic redirect loop, ordinary503 stays retry. Worker
+proof:36cloud-client units,5focused browser, final2,548unit+build. No account,
+policy/private-asset or hardware mutations; still not deployed. Actual projects/
+worker identities pending user input. Root branch preserves integrated candidate.
