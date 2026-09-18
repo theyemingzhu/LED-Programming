@@ -9,7 +9,17 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
-### 2026-09-18 Compact strip inspector (done locally)
+### 2026-09-18 Task-tree management (active)
+Primary task `01a0b4e5-e6cd-7392-abab-2a844e015792` owns the LED task tree.
+Completed leaves are archived only after integration or explicit supersession.
+The prior paused release heartbeat is now the active, quiet task-tree heartbeat.
+Current live baseline: origin/main `9b6975c1`, Studio build 1940, firmware build
+1939 (v1.1.39). Only open release leaf: playlist refinement task
+`01a0b385-561a-7813-8110-de275dd26dd6`, Sol/medium, integrating verified local
+commit `6a6777ff` onto current main and returning a PR-ready branch. Primary owns
+merge, deployment, live proof, workboard state, and final task closure.
+
+### 2026-09-18 Compact strip inspector (shipped)
 Approved compact inspector implemented on codex/compact-strip-inspector:
 inline values/units, counts-only division fields, and selected-strip facts in
 Specs. Integrated de885d4d, preserving connected families, calibrated SVG counts,
@@ -17,10 +27,10 @@ and sticky headers. Real Studio inspected; evidence docs/ux/compact-inspector/.
 Verification: 2,548 unit tests; production build; 61/63 focused browser checks,
 then both failures corrected and green (2/2): relocated first-light active style
 and updated connected-child GPIO selector. Final production rebuild passed.
-No firmware or card changes. Committed locally; not pushed or deployed.
-Release coordination: task 01a0b25c-cef7-79f0-adff-d84049fc8092 owns shipment.
+No firmware or card changes. Integrated through PR297 and shipped; subsequently
+superseded by the fully proven Studio build 1940 release. Task archived.
 
-### 2026-09-18 Public worker readiness (active, separate task)
+### 2026-09-18 Public worker readiness (shipped)
 User explicitly requested another managed task: workers must complete the workflow
 from led.mandalacodes.com without developer/local project files. Audit as fresh
 worker, fix concrete self-contained-site gaps, test onboarding/assets/project
@@ -36,10 +46,15 @@ active progress verified. Initial placeholder01a0b24f-a920-7350-955c-1aecd93cfa2
 archived unused (task-list summary cache hid it; session index resolved id).
 Worker must isolate from exact013bc63e, covering count-first and connected editor.
 Director remains here. Release candidate returns to director before merge/deploy.
-Cost unknown.
+Completed through PR298. Novice setup is USB-first; captive-portal hostnames are
+rejected and the card/Studio Wi-Fi handoff is explicit. Tests, signed firmware,
+credentialed deployment and strict live graph/binary proof passed. Shipped:
+Studio build 1940, firmware build 1939 (v1.1.39). The photographed build-1912
+card still requires one physical USB update; no card was flashed here. Task
+archived after live proof. Cost unknown.
 
 
-### 2026-09-18 Connected section editor (done locally)
+### 2026-09-18 Connected section editor (shipped)
 Manager playbook v6; approved direction 1. Parent strip remains visible with a
 segmented bar and child sections. Add/move/remove splits, select/rename/edit
 pattern, explicit count correction, parent GPIO plus section override. Boundary
@@ -65,11 +80,11 @@ create connected sections. Keyboard boundary commit supported.
 Evidence: integrated 2,546/2,546 units + production build; focused helpers9/9;
 final browser7/7 (new3 + legacy split4). Desktop/phone inspected, parent header
 clears sticky installation bar. Screens /tmp/lightweaver-connected-editor/.
-No deployment/card writes. Next: public worker-readiness task incorporates this
-commit and prior count-first changes; final deployment state must be proven live.
+Integrated through PR297 and shipped. Later Studio build 1940 live proof includes
+the change. No card writes were performed. Task archived.
 
 
-### 2026-09-18 SVG count-first layout (done locally)
+### 2026-09-18 SVG count-first layout (shipped)
 Manager skill + playbook v6 loaded; this board is the job record. Scope: imported
 layers selectable as LED paths, existing output assignment and splitting usable,
 exact per-layer or whole-layout counts drive physical scale without distorting
@@ -92,11 +107,16 @@ imports supported; explicit unchanged counts pinned; rejected edits keep state.
 Final evidence: 2,537/2,537 unit tests, production build, three new SVG browser
 cases plus three existing count/split checks pass. Desktop and phone inspected.
 Browser coverage commit f49b3ec2; implementation integrated in following commit.
-No deployment or hardware writes. Resume: review count-first Layout locally;
-release only on explicit ship instruction.
+Integrated through PR297 and shipped. Later Studio build 1940 live proof includes
+the change. No hardware writes were performed. Task archived.
 
 
-### 2026-09-16 Managed completion (active)
+### 2026-09-16 Managed completion (shipped)
+PR296 merged and shipped as Studio build 1913 / firmware build 1912 (v1.1.38),
+then superseded by later proven releases. Exhaustive run 35043560719 and strict
+production graph/firmware proof passed. Completed workers were archived. Physical
+4,096-pixel throughput/playback/restart/hue proof remains a Bench observation;
+no card was flashed.
 Mobile fixture repair cd48fb59 integrated: wait for project autosave identity
 before reload; reopen controls after phone resize. Exact recovery assertions kept.
 Worker: focused mobile10/10, desktop6/6, mobile6/6. Resume remaining mobile,
@@ -166,7 +186,7 @@ Worker red→3green +9 repeated +4 adjacent passed. Primary integrated3/3 pass
 No product-source changes; UI repair task safe to archive. No extra frontier
 workers. Primary owns integration, release, workboard. Cost unknown.
 
-### 2026-09-16 Release cleanup (blocked: pixel capacity)
+### 2026-09-16 Release cleanup (shipped; blocker resolved)
 User authorized reviewing LED tasks and pushing/merging completed work, closing
 completed tasks, and reporting remaining blockers. Source base origin/main
 18479a01, live Studio1888 / published firmware1819 (1.1.37).
@@ -191,7 +211,7 @@ contained in main; three other tracked differences are generated/review dates.
 Recovery checkout, stashes and archive refs preserved. Old round2 F41 branches
 are explicitly superseded/decision-pending in TODO.md, not ready-to-merge work.
 
-### 2026-09-15 Layout release (active)
+### 2026-09-15 Layout release (shipped)
 User authorizes going live. Primary owns exact revision release and live proof.
 Sol medium owns bounded diagnosis of existing exhaustive Patterns regression
 at1509: stale test exercised direct transport instead of pending bridge.

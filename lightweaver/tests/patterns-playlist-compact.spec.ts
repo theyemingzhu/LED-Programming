@@ -198,6 +198,31 @@ test('at 390px Playlist keeps the playlist above the Saved looks / Pattern pool 
   expect(mainBox!.y).toBeLessThan(savedBox!.y);
 });
 
+test('Pattern Pool keeps the canonical grid stable and marks patterns already in the playlist', async ({ page }) => {
+  const project = makePlaylistProject({ count: 2 });
+  await gotoPlaylist(page, project);
+
+  const tiles = page.locator('.pl-pattern-tile');
+  await expect(tiles).toHaveCount(CARD_PATTERN_BANK.length);
+  await expect(tiles.nth(0)).toContainText(CARD_PATTERN_BANK[0].label);
+  await expect(tiles.nth(1)).toContainText(CARD_PATTERN_BANK[1].label);
+  await expect(page.locator('.pl-pattern-tile .pl-chip-add')).toHaveCount(0);
+
+  const selected = page.getByRole('button', { name: /Aurora.*already in playlist/i });
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(selected).toContainText('Added');
+
+  const availablePattern = CARD_PATTERN_BANK[2];
+  const available = page.getByRole('button', { name: `Add ${availablePattern.label}`, exact: true });
+  await expect(available).toHaveAttribute('aria-pressed', 'false');
+  await available.click();
+
+  await expect(tiles).toHaveCount(CARD_PATTERN_BANK.length);
+  await expect(tiles.nth(0)).toContainText(CARD_PATTERN_BANK[0].label);
+  await expect(tiles.nth(1)).toContainText(CARD_PATTERN_BANK[1].label);
+  await expect(page.getByRole('button', { name: new RegExp(`${availablePattern.label}.*already in playlist`, 'i') })).toHaveAttribute('aria-pressed', 'true');
+});
+
 // ── Item 3: the header count can never exceed its own total ────────────────
 
 test('the pattern bank header count never exceeds its own total', async ({ page }) => {

@@ -81,7 +81,6 @@
 .pl-actions {
   min-width: 0;
   max-width: 100%;
-  flex-wrap: wrap;
   justify-content: flex-end;
 }
 .pl-remove {
@@ -91,6 +90,60 @@
   padding: 0;
   font-size: 18px;
   line-height: 1;
+}
+.pl-row-menu {
+  position: relative;
+  z-index: 1;
+}
+.pl-row-menu:has(.pl-row-menu-pop) { z-index: 42; }
+.pl-row-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.pl-row-menu-pop {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 41;
+  display: grid;
+  min-width: 176px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-elev-2);
+  box-shadow: var(--lw-raise), var(--lw-lift);
+}
+.pl-row-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  color: var(--text-mid);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.pl-row-menu-item:hover,
+.pl-row-menu-item:focus-visible {
+  color: var(--text-hi);
+  background: var(--bg-elev-3);
+  outline: none;
+}
+.pl-row-menu-item.danger:hover,
+.pl-row-menu-item.danger:focus-visible { color: var(--danger); }
+.pl-row-menu-item svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
 }
 .pl-reorder-instructions,
 .pl-reorder-status {
@@ -117,5 +170,7 @@
   .pl-row { grid-template-columns: 88px 48px minmax(0, 1fr); }
   .pl-index { grid-template-columns: 44px minmax(0, 1fr); }
   .pl-grip,
-  .pl-remove { width: 44px; min-width: 44px; height: 44px; }
+  .pl-remove,
+  .pl-more { width: 44px; min-width: 44px; height: 44px; }
+  .pl-row-menu-item { min-height: 44px; }
 }
