@@ -72,12 +72,14 @@ assert.match(commissioningMarkup, /No project loaded/,
   'factory commissioning must explain that no project has been loaded');
 assert.match(commissioningMarkup, /Project needs recovery\/verification/,
   'non-factory commissioning must explain that the project needs recovery or verification');
-assert.match(commissioningMarkup, /Set up LED strips and install on card/,
-  'factory-blank commissioning must provide one explicit setup CTA');
-assert.match(commissioningMarkup, /(?:Return to|Open) Lightweaver Studio/,
-  'recovery commissioning must retain its existing Studio CTA');
-assert.match(commissioningMarkup, /If you are viewing this from the Lightweaver AP, rejoin gallery WiFi before (?:opening|returning to) Studio\./,
-  'commissioning must tell AP-connected operators to restore gallery WiFi before using Studio');
+assert.match(commissioningMarkup, /Reconnect this computer to <strong>[^<]+<\/strong> Wi&#8209;Fi/,
+  'commissioning must make reconnecting the computer to gallery Wi-Fi the primary next step');
+assert.match(commissioningMarkup, /Return to the Lightweaver Studio tab that is already open/,
+  'commissioning must direct a novice back to the existing Studio journey');
+assert.match(commissioningMarkup, /id='commissioning-studio-link'[^>]*hidden/,
+  'the public Studio action must start hidden while the browser may still be on the card AP');
+assert.match(commissioningMarkup, /Continue in Lightweaver Studio/,
+  'station-local commissioning may expose one bounded continuation action');
 assert.match(commissioningMarkup, /factoryBlank\s*\?\s*studioSetupUrl\(cfg\)\s*:\s*studioBridgeUrl\(cfg\)/,
   'factory blank must use setup while recovery retains the existing station-targeted Studio URL');
 assert.match(commissioningMarkup, /onclick=\\"return lwOpenStudio\(event,this\.href\)\\"/,
@@ -86,6 +88,8 @@ assert.doesNotMatch(commissioningMarkup, /target='lightweaver-studio'/,
   'commissioning must not bypass the verified opener with a different named browsing context');
 assert.doesNotMatch(commissioningMarkup, /id='pw'|Save and join Wi|Pattern bank|id='brightness'/,
   'station-connected blank cards must not be asked for WiFi again or receive visitor controls');
+assert.match(advancedRoot, /commissioning-studio-link[\s\S]*?pageHost===targetHost[\s\S]*?targetHost\.match/,
+  'the hidden Studio action may appear only when the card page is loaded through its exact station IPv4 address');
 
 const bridgeScript = advancedRoot.indexOf('page += studioBridgeScript();');
 assert.ok(bridgeScript > controlsStart,

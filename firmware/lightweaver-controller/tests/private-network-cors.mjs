@@ -351,8 +351,13 @@ assert.match(
 );
 assert.match(
   web,
-  /u\.searchParams\.set\('cardHost',location\.host\)/,
-  'the card page should rewrite only the local cardHost hint before opening Studio',
+  /const requestedHost=lwLocalCardHost\(requested\.searchParams\.get\('cardHost'\)\)/,
+  'the card page should preserve the validated local host compiled into its Studio handoff link',
+);
+assert.doesNotMatch(
+  web,
+  /searchParams\.set\('cardHost',location\.host\)/,
+  'a captive-portal hostname must never replace the card-generated local host',
 );
 assert.doesNotMatch(
   web,
@@ -426,6 +431,55 @@ assert.match(
   assert.deepEqual(openCalls, [],
     'a live Studio opener must be reused without opening or targeting another Studio window');
   assert.deepEqual(alerts, []);
+}
+{
+  // Windows opens captive portals at www.msftconnecttest.com even though the
+  // Lightweaver AP's wildcard DNS serves the card page. The card-generated
+  // href already contains the proven station IP and must survive that alias.
+  const openCalls = [];
+  const context = {
+    URL,
+    URLSearchParams,
+    location: { host: 'www.msftconnecttest.com', hostname: 'www.msftconnecttest.com', hash: '' },
+    alert() {},
+    window: {
+      opener: null,
+      open(url, name) {
+        openCalls.push({ url, name });
+        return { focus() {} };
+      },
+    },
+  };
+  vm.runInNewContext(`${emittedOpenScript}${emittedBridgeLaunch};globalThis.openStudio=lwOpenStudio`, context);
+  context.openStudio({ preventDefault() {} },
+    'https://led.mandalacodes.com/?cardBridge=1&cardHost=192.168.18.22#screen=card&section=setup');
+  assert.equal(openCalls[0].url,
+    'https://led.mandalacodes.com/?cardBridge=1&cardHost=192.168.18.22#screen=card&section=setup',
+    'Windows captive-portal aliases must not replace the card\'s proven station address');
+  assert.doesNotMatch(openCalls[0].url, /msftconnecttest/i,
+    'public captive-portal hostnames must never escape into Studio cardHost');
+}
+{
+  const openCalls = [];
+  const context = {
+    URL,
+    URLSearchParams,
+    location: { host: 'www.msftconnecttest.com', hostname: 'www.msftconnecttest.com', hash: '' },
+    alert() {},
+    window: {
+      opener: null,
+      open(url, name) {
+        openCalls.push({ url, name });
+        return { focus() {} };
+      },
+    },
+  };
+  vm.runInNewContext(`${emittedOpenScript}${emittedBridgeLaunch};globalThis.openStudio=lwOpenStudio`, context);
+  context.openStudio({ preventDefault() {} },
+    'https://led.mandalacodes.com/?cardBridge=1&cardHost=attacker.example#screen=card&section=setup');
+  const opened = new URL(openCalls[0].url);
+  assert.equal(opened.searchParams.has('cardHost'), false,
+    'when neither the generated hint nor page hostname is local, omit cardHost instead of emitting a public host');
 }
 {
   const openCalls = [];
