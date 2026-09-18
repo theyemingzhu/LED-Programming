@@ -210,6 +210,15 @@ export function AccountAccessPanel() {
 
   if (library.session.status === 'loading') return <p role="status">Checking online library access…</p>;
   if (library.session.status === 'password-change') return <PasswordChange key={sessionBoundary} library={library} />;
+  if (library.session.status === 'access-required') return (
+    <section className="cloud-account-form cloud-library-guidance" aria-labelledby="cloud-access-required-title">
+      <strong id="cloud-access-required-title">Finish secure library sign-in</strong>
+      <p>Your Lightweaver account is signed in. Continue once through the secure access page to open its online projects.</p>
+      <p>Your work stays in this browser while you continue.</p>
+      <button type="button" className="btn primary" onClick={library.signIn}>Continue to secure library</button>
+      <button type="button" className="btn" onClick={library.retrySession}>Try again</button>
+    </section>
+  );
   if (library.session.status === 'bootstrap') return (
     <form className="cloud-account-form cloud-library-guidance" onSubmit={createOwner}>
       <strong>Create owner account</strong><p>Create the first Lightweaver owner login for this library.</p>

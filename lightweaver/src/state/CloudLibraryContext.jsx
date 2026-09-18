@@ -297,7 +297,8 @@ function isTransientError(error) {
 }
 
 function isAuthenticationError(error) {
-  return error?.status === 401 || error?.status === 403 || error?.state === 'sign-in' || error?.state === 'permission';
+  return error?.code !== 'access_required'
+    && (error?.status === 401 || error?.status === 403 || error?.state === 'sign-in' || error?.state === 'permission');
 }
 
 function signInUrl() {
@@ -326,6 +327,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
     replaceProject,
     requestReplacementConfirmation,
     markProjectPersisted,
+    flushProjectAutosave,
   } = useProject();
 
   const [session, setSession] = useState({ status: 'loading', username: '', displayName: '', role: null, error: null });
@@ -868,6 +870,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
 
   const loadSession = useCallback(async () => {
     const authEpoch = beginAuthTransition();
+    let nativeIdentity = null;
     if (mountedRef.current) {
       const loading = { ...sessionRef.current, status: 'loading', error: null };
       sessionRef.current = loading;
@@ -879,6 +882,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         identity = typeof client.getAccountSession === 'function'
           ? await client.getAccountSession()
           : await client.getSession();
+        if (identity?.username) nativeIdentity = identity;
         if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
       } catch (accountError) {
         if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
@@ -941,6 +945,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
           generation: current.generation + 1,
         }));
       }
+      if (assetResult?.error?.code === 'access_required') throw assetResult.error;
       if (!authEpochIsCurrent(authEpoch) || isAuthenticationError(assetResult?.error)) return { ok: false, reason: 'stale-session' };
       sessionRef.current = authenticated;
       setSession(authenticated);
@@ -985,6 +990,21 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
       if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
       beginAuthTransition();
       const error = normalizeError(rawError);
+      if (nativeIdentity && error.code === 'access_required') {
+        const accessRequired = { status: 'access-required', ...nativeIdentity, error };
+        sessionRef.current = accessRequired;
+        setSession(accessRequired);
+        setProjectsByState({ active: [], archived: [] });
+        setSyncStatus('idle');
+        setWorkspaceAssets(current => ({
+          ...current,
+          status: 'local',
+          ready: true,
+          error: null,
+          generation: current.generation + 1,
+        }));
+        return { ok: false, reason: 'access-required', error };
+      }
       const next = error.state === 'sign-in'
         ? { status: 'unauthenticated', username: '', displayName: '', role: null, error }
         : { status: 'error', username: '', displayName: '', role: null, error };
@@ -1889,8 +1909,9 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
   }, [accountAction, client, refreshProjects]);
 
   const signIn = useCallback(() => {
+    flushProjectAutosave();
     window.location.assign(signInUrl());
-  }, []);
+  }, [flushProjectAutosave]);
   const syncState = useMemo(() => ({
     status: syncStatus,
     label: syncLabel(syncStatus),
