@@ -125,9 +125,10 @@ export function ladderOwnsPrimary(journey, commissioningFlow) {
 // The public start ("Plug in and find card") is only for a fresh browser
 // that still has to find a card. A remembered setup AP, an outdated card,
 // or any other named next step already owns the first action.
-export function showFreshWorkerStart({ freshWorkspace, observedCard, journeyTaskId } = {}) {
+export function showFreshWorkerStart({ freshWorkspace, observedCard, journeyTaskId, rememberedCard } = {}) {
   return Boolean(freshWorkspace)
     && !observedCard
+    && !rememberedCard
     && (!journeyTaskId || journeyTaskId === 'connect-card');
 }
 
