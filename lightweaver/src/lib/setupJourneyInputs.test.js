@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { deriveSetupJourney } from './setupJourney.js';
-import { assembleSetupJourney, journeyAgreementInputs, ladderOwnsPrimary } from './setupJourneyInputs.js';
+import { assembleSetupJourney, journeyAgreementInputs, ladderOwnsPrimary, showFreshWorkerStart } from './setupJourneyInputs.js';
 import { emptyCardJourneyEvidence, journeyEvidenceSnapshot } from './cardJourneyEvidence.js';
 
 // The defect this module exists to end: `deriveSetupJourney` is the one journey
@@ -432,4 +432,12 @@ test('ladderOwnsPrimary: install-project outside the connect phase is unaffected
     ),
     true,
   );
+});
+
+test('showFreshWorkerStart: only a fresh silent browser still looking for a card', () => {
+  assert.equal(showFreshWorkerStart({ freshWorkspace: true, observedCard: false, journeyTaskId: 'connect-card' }), true);
+  assert.equal(showFreshWorkerStart({ freshWorkspace: true, observedCard: false, journeyTaskId: 'configure-wifi' }), false);
+  assert.equal(showFreshWorkerStart({ freshWorkspace: true, observedCard: false, journeyTaskId: 'update-firmware' }), false);
+  assert.equal(showFreshWorkerStart({ freshWorkspace: true, observedCard: true, journeyTaskId: 'connect-card' }), false);
+  assert.equal(showFreshWorkerStart({ freshWorkspace: false, observedCard: false, journeyTaskId: 'connect-card' }), false);
 });

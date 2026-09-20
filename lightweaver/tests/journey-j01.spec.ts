@@ -78,26 +78,21 @@ async function bootBlank(page: Page, card: CardSimulator) {
 
 test('[J01] blank card: connect, discover one strip, install it, confirm the wiring test, and play a pattern', {
   // F4 (docs/plans/2026-09-06-unified-card-journey-execution.md): counted by
-  // hand — every `.click()` below, in source order: setup-connect-card,
+  // hand — every `.click()` below, in source order:
   // setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
   // discovery-end-yes, discovery-record-save, discovery-continue-layout,
   // setup-verify-action ("Open Patterns"), wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '13 deliberate clicks' },
+  annotation: { type: 'clicks', description: '12 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
   await bootBlank(page, card);
 
-  // Unlike every other journey-continuity fixture, a truly fresh browser has
-  // no `lw_card_identity_v1` to remember — bootstrapStudioCardConnection
-  // (src/lib/studioCardBootstrap.js) returns early with nothing to restore
-  // when there is no persisted identity, so this is the one card state in the
-  // suite where the owner must press Find my card themselves before anything
-  // connects. That IS the first-meeting journey, not a gap in it.
-  await page.getByTestId('setup-connect-card').click();
+  // A plugged-in card answering on lightweaver.local is found without a
+  // remembered identity — bootstrap probes the well-known hosts on local HTTP.
   await waitConnectedUnaided(page, 'J01 first connect to a blank card');
 
   // ── Setup ladder: connect phase is done, lights phase is current ──────────

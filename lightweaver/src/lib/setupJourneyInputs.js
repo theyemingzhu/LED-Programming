@@ -122,6 +122,15 @@ export function ladderOwnsPrimary(journey, commissioningFlow) {
       && !hasResumableCommissioning(commissioningFlow));
 }
 
+// The public start ("Plug in and find card") is only for a fresh browser
+// that still has to find a card. A remembered setup AP, an outdated card,
+// or any other named next step already owns the first action.
+export function showFreshWorkerStart({ freshWorkspace, observedCard, journeyTaskId } = {}) {
+  return Boolean(freshWorkspace)
+    && !observedCard
+    && (!journeyTaskId || journeyTaskId === 'connect-card');
+}
+
 export function assembleSetupJourney({
   cardLink,
   cardLifecycle,
@@ -129,6 +138,7 @@ export function assembleSetupJourney({
   project,
   evidence = emptyCardJourneyEvidence(),
   verification,
+  rememberedHost,
 } = {}) {
   const journey = deriveSetupJourney({
     cardLink,
@@ -138,6 +148,7 @@ export function assembleSetupJourney({
     resolution: setupJourneyResolution({ cardLink, project, evidence }),
     wiringStatus: setupJourneyWiringStatus({ cardLink, evidence }),
     verification,
+    rememberedHost,
   });
   // Merged onto the journey rather than fed into deriveSetupJourney: blackout
   // is orthogonal to every completion/task verdict that function already

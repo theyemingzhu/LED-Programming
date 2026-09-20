@@ -17,15 +17,16 @@ import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
-import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
+import { cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
+import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
-import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
+import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
@@ -129,6 +130,7 @@ export function SetupScreen({
   onCountEditor = null,
   onLoadOfferChange,
   installAction = null,
+  startOwnsPrimary = false,
 }) {
   const {
     setProjectId, setPortRoles, setStandaloneController, replaceLayoutGeometry,
@@ -153,6 +155,7 @@ export function SetupScreen({
   // or blur commits through the same path as the top bar (setProjectName),
   // Escape cancels. The blur after Enter/Escape must not double-commit.
   const [nameDraft, setNameDraft] = useState(null);
+  const [reviewLights, setReviewLights] = useState(false);
   const nameSettledRef = useRef(false);
   const projectDisplayName = currentProject?.name || currentProject?.id || 'Untitled project';
   const startRename = () => { nameSettledRef.current = false; setNameDraft(projectDisplayName); };
@@ -253,6 +256,7 @@ export function SetupScreen({
       const replacement = await replaceProject({
         ...currentProject,
         ...(status?.projectId ? { id: status.projectId } : {}),
+        name: adoptedProjectName(currentProject?.name, status),
         ...(parts?.origin ? { origin: parts.origin } : {}),
         ...(Array.isArray(parts?.portRoles) ? { portRoles: parts.portRoles } : {}),
         layout: {
@@ -487,6 +491,7 @@ export function SetupScreen({
     cardLifecycle,
     project: currentProject,
     commissioningFlow,
+    rememberedHost: readStoredCardHost() || cardHost,
     refresh: false,
   });
   const wiringTestActive = journey.taskId === 'confirm-visible-lights';
@@ -926,6 +931,8 @@ export function SetupScreen({
     : identityLifecycle.connectionLabel || identityLifecycle.label;
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
+  const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
+  const firmwareBehind = Boolean(firmwareBannerCopy);
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
       return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
@@ -1062,6 +1069,7 @@ export function SetupScreen({
             <button
               type="button"
               className="btn primary"
+              data-testid="setup-continue-wifi"
               onClick={() => openCardFlow('configure-wifi', {
                 lifecycle: cardLifecycle,
                 journey,
@@ -1103,7 +1111,7 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          <button type="button" className={ledCountEntry ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
+          <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
             {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
               ? 'Review the connected lights'
               : ledCountEntry
@@ -1129,7 +1137,7 @@ export function SetupScreen({
           </ul>
           <button
             type="button"
-            className="btn primary"
+            className={journey.setupComplete ? 'btn' : 'btn primary'}
             data-testid="setup-layout-action"
             onClick={() => go('#screen=layout&mode=draw')}
           >
@@ -1155,11 +1163,20 @@ export function SetupScreen({
           // a paragraph describing an install that had already happened.
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Install and open Patterns</button>
+            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Install and open Patterns</button>
           </>
         ) : null}
       </div>
     );
+  };
+
+  const lightsStillOpen = missingPhases(journey).some(phase => phase.id === 'lights');
+  const openLightsDoor = () => {
+    if (lightsStillOpen) {
+      document.querySelector('[data-testid="setup-phase-lights"]')?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    setReviewLights(true);
   };
 
   return (
@@ -1241,7 +1258,9 @@ export function SetupScreen({
                   )}
                   <small data-testid="setup-identity-installed">{installedText}</small>
                 </div>
-                <div className="lw-identity-lights" data-testid="setup-identity-lights"><span>Lights</span><strong>{lightsValue}</strong><small>{lightsHint}</small></div>
+                <button type="button" className="lw-setup-identity-door" data-testid="setup-identity-lights" onClick={openLightsDoor}>
+                  <span>Lights</span><strong>{lightsValue}</strong><small>{lightsHint}</small>
+                </button>
               </section>
               {/* No Patterns/Layout doors on a blank card: until the lights are
                   counted there is nothing to preview and nothing to place, and
@@ -1265,13 +1284,35 @@ export function SetupScreen({
                   {!journey.setupComplete && <small className="lw-door-tag">preview</small>}
                 </button>
                 <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
+                {firmwareBehind && (
+                  <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
+                )}
                 </>)}
                 {installDoor}
               </div>
+              {firmwareBannerCopy && (
+                <p data-testid="setup-optional-firmware">
+                  {firmwareBannerCopy.heading}. {firmwareBannerCopy.body}
+                </p>
+              )}
             </div>
           </section>
         );
       })()}
+
+      {reviewLights && !lightsStillOpen && (
+        <div className="lw-setup-task" data-testid="setup-lights-review">
+          <button
+            type="button"
+            className="btn"
+            data-testid="setup-lights-action"
+            disabled={!exactTransport}
+            onClick={() => go('#screen=discovery')}
+          >
+            Review the connected lights
+          </button>
+        </div>
+      )}
 
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
         {ledCountState.message && (
@@ -1321,7 +1362,7 @@ export function SetupScreen({
           ladder this replaces claimed an order the code never enforced and
           hid the last phase as "upcoming" while the owner was, legitimately,
           tuning patterns on lights that were not yet drawn. */}
-      {(() => {
+      {!startOwnsPrimary && (() => {
         let missing = missingPhases(journey);
         // An install in flight (`next=patterns` in the URL) keeps the verify
         // row mounted whatever the journey says mid-push: the install control

@@ -8,7 +8,7 @@ import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
 import { SetupScreen } from './lw-setup.jsx';
 import { useSetupJourney, useCommissioningFlow } from '../hooks/useSetupJourney.js';
-import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
+import { ladderOwnsPrimary as deriveLadderOwnsPrimary, showFreshWorkerStart } from '../lib/setupJourneyInputs.js';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
 import { cardLinkReasonText, getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
@@ -18,7 +18,7 @@ import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
-import { cardConnectionOptionsFor, normalizeCardHost } from '../lib/cardConnection.js';
+import { cardConnectionOptionsFor, normalizeCardHost, readStoredCardHost } from '../lib/cardConnection.js';
 import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import {
@@ -108,7 +108,7 @@ function PublicWorkerStart({ onStartLayout, onOpenProjects, onSetUpCard }) {
           <span>1 · Card</span>
           <h3>Set up this card</h3>
           <p>Plug the card into this computer by USB. Studio inspects it first, then installs or updates only when needed.</p>
-          <button type="button" className="btn primary" onClick={onSetUpCard}>Plug in and find card</button>
+          <button type="button" className="btn primary" data-testid="setup-connect-card" onClick={onSetUpCard}>Plug in and find card</button>
         </article>
         <article>
           <span>2 · Design</span>
@@ -935,11 +935,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // suppresses its duplicate offer while it is (one project, one Load).
   const [setupLoadOffer, setSetupLoadOffer] = useState(false);
   const [countEditor, setCountEditor] = useState(null);
+  const rememberedHost = readStoredCardHost() || cardHost;
   const sharedJourney = useSetupJourney({
     cardLink,
     cardLifecycle,
     project: currentProject,
     refresh: false,
+    rememberedHost,
   });
   // The card is mid light-test. Read straight from the SHARED journey (the
   // same one the Patterns/Playlist chip and the shell's task router read),
@@ -1026,7 +1028,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
     || !['install', 'workshop', 'preferences'].includes(route.section);
   const freshWorkspace = currentProject?.layout?.starterPending === true;
   const observedCard = Boolean(connected || cardLink?.card?.id || cardLink?.readiness?.cardId);
-  const showPublicWorkerStart = freshWorkspace && !observedCard;
+  const showPublicWorkerStart = showFreshWorkerStart({
+    freshWorkspace,
+    observedCard,
+    journeyTaskId: sharedJourney.taskId,
+  });
   const installIntentOpen = typeof window !== 'undefined'
     && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
   let content;
@@ -1075,6 +1081,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       )}
       <SetupScreen
         {...cardProps}
+        startOwnsPrimary={showPublicWorkerStart}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onRenameProject={onRenameProject}
         installDoor={!installIntentOpen ? (

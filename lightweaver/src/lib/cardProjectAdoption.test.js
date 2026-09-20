@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { guardedResolutionRun, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
+import { adoptedProjectName, guardedResolutionRun, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
 import { cardProjectFingerprint } from './cardProjectResolver.js';
 import { createDefaultProject } from './projectModel.js';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
@@ -535,4 +535,19 @@ test('a probe leaves an existing card-edit grant alone; a replacement still revo
   const commit = makeDeps();
   await guardedResolutionRun(commit.deps, { strategy: 'load' });
   assert.equal(commit.calls.cleared, 1);
+});
+
+test('adopting a card project takes the card’s name instead of leaving Untitled', () => {
+  assert.equal(
+    adoptedProjectName('Untitled Project', { piece: { name: 'Matrix piece' } }),
+    'Matrix piece',
+  );
+  assert.equal(
+    adoptedProjectName('Lotus Gate', { piece: { name: 'Matrix piece' } }),
+    'Lotus Gate',
+  );
+  assert.equal(
+    adoptedProjectName('Untitled Project', { piece: { name: 'Lightweaver Bench Discovery' } }),
+    'Untitled Project',
+  );
 });

@@ -95,6 +95,23 @@ test('every actionable diagnosis owns one stable Setup task and route', () => {
   }
 });
 
+test('a remembered setup AP puts Join Wi-Fi first even before the card answers', () => {
+  const journey = deriveSetupJourney({
+    rememberedHost: '192.168.4.1',
+    cardLifecycle: { state: 'disconnected', setupTaskId: 'connect-card' },
+  });
+  assert.equal(journey.taskId, 'configure-wifi');
+  assert.equal(journey.setupComplete, false);
+  assert.deepEqual(journey.blockers.map(blocker => blocker.id), ['wifi']);
+});
+
+test('a failed probe leftover must not turn an unplugged visit into Join Wi-Fi', () => {
+  const journey = deriveSetupJourney({
+    cardLink: { state: 'disconnected', host: '192.168.4.1' },
+  });
+  assert.equal(journey.taskId, 'connect-card');
+});
+
 test('firmware and Wi-Fi are conditional blockers inside connect', () => {
   const firmware = deriveSetupJourney({
     commissioningFlow: { stage: 'install-safely' },
