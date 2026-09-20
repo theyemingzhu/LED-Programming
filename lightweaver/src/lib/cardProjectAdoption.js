@@ -85,6 +85,20 @@ export function resolvedMatchKey(match) {
   return `current:${match?.project?.id || ''}`;
 }
 
+// Adopting a card's project used to keep Studio's starter name ("Untitled
+// Project") while recording the card's id as installed. The identity row then
+// said the install matched an Untitled piece the owner never made.
+export function adoptedProjectName(currentName, status) {
+  const cardName = String(status?.piece?.name || status?.projectName || '').trim();
+  const openName = String(currentName || '').trim();
+  const untitled = !openName || /^untitled(\s+project)?$/i.test(openName);
+  if (!untitled) return openName;
+  if (!cardName || cardName === 'Lightweaver Bench Discovery') {
+    return openName || 'Untitled Project';
+  }
+  return cardName;
+}
+
 function visualLookFromZone(zone = {}, fallbackPatternId = 'aurora') {
   return {
     patternId: zone.patternId || fallbackPatternId,

@@ -81,6 +81,7 @@ export function useSetupJourney({
   cardLifecycle,
   project,
   commissioningFlow: suppliedFlow,
+  rememberedHost,
   refresh = true,
 } = {}) {
   const commissioningFlow = useCommissioningFlow(suppliedFlow);
@@ -165,8 +166,10 @@ export function useSetupJourney({
   }, [exact, cardId, bootId, lwOutput, requestedBrightnessByte, actualBrightnessByte]);
 
   const journey = useMemo(
-    () => assembleSetupJourney({ cardLink, cardLifecycle, commissioningFlow, project, evidence }),
-    [cardLink, cardLifecycle, commissioningFlow, project, evidence],
+    () => assembleSetupJourney({
+      cardLink, cardLifecycle, commissioningFlow, project, evidence, rememberedHost,
+    }),
+    [cardLink, cardLifecycle, commissioningFlow, project, evidence, rememberedHost],
   );
 
   const projectId = openProjectId;

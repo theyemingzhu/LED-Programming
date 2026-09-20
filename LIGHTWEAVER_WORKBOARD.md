@@ -9,6 +9,12 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-20: **FIRST-ACTION-MANAGER on current main** — auto-detect arrivals,
+one first action, Lights stay a door. Pattern Lab already on origin/main;
+this stream does not rewind it. Ledger:
+[docs/journeys/first-action-manager.md](docs/journeys/first-action-manager.md).
+Walk 7/7 + J01 proved on this branch against current Card Home.
+
 ### 2026-09-18 Task-tree management (active)
 Primary task `01a0b4e5-e6cd-7392-abab-2a844e015792` owns the LED task tree.
 Completed leaves are archived only after integration or explicit supersession.
@@ -366,7 +372,8 @@ on firmware 1524; no hardware mutation or release is part of this checkpoint.
 
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
-| PATTERN-EDIT-VIS-001 | Exact native look entering Lab; Live preview native→Mandelbrot→Lotus→Stop; six-minute drift | Same physical hues/order and intended animation/restoration on the configured strip | Local `codex/pattern-creative-workflow`; automated mocks only | needs-eyes |
+| FIRST-ACTION-001 | Every arrival auto-detects; one first action; Lights stay a secondary door | Studio Card Home / setup journey | active | Walk 7/7 + J01 on current main. Unplugged is Plug in and find card; post-update is Continue Wi-Fi; Lights is a secondary identity door |
+| PATTERN-EDIT-VIS-001 | Exact native look entering Lab; Live preview native→Mandelbrot→Lotus→Stop; six-minute drift | Same physical hues/order and intended animation/restoration on the configured strip | on origin/main; physical strip still needs-eyes | Do not replay the stale `codex/pattern-creative-workflow` tree — it is 151 commits behind |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
 | WINDOWLESS-002 | Card HTTP streaming, owner capability, atomic project storage, and embedded local Studio server | Firmware source | done | 4 focused contracts + generated-bundle PlatformIO pass |
 | WINDOWLESS-003 | Card/PWA build targets, encrypted staging, release lanes, and integrated browser/artifact contracts | CI / release / browser tests | done | 8 tooling contracts + Pages staging + production/card builds |

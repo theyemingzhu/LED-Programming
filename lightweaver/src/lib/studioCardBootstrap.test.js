@@ -64,15 +64,59 @@ test('Studio never races direct transport against a restored bridge', async () =
   assert.equal(directCalls, 0);
 });
 
-test('Studio does not probe an unpaired card on reload', async () => {
+test('Studio does not probe an unpaired card when this page cannot reach the LAN', async () => {
   let directCalls = 0;
   await bootstrapStudioCardConnection({
     bootstrapLink: async () => ({ state: 'disconnected' }),
     isConnected: () => false,
     readIdentity: () => null,
+    canPushDirect: () => false,
     connectTransport: async () => { directCalls += 1; },
   });
   assert.equal(directCalls, 0);
+});
+
+test('Studio probes only well-known hosts for a plugged-in card this browser has never paired', async () => {
+  const calls = [];
+  let persisted = null;
+  const authority = {
+    connected: true,
+    host: 'lightweaver.local',
+    cardId: 'lw-plugged-in',
+    bootId: 'boot-first',
+    card: { id: 'lw-plugged-in', name: 'Lightweaver' },
+  };
+  const result = await bootstrapStudioCardConnection({
+    bootstrapLink: async () => ({ state: 'disconnected' }),
+    isConnected: () => false,
+    readIdentity: () => null,
+    canPushDirect: () => true,
+    unpairedHosts: ['lightweaver.local', '192.168.4.1'],
+    connectTransport: async options => { calls.push(options); return authority; },
+    persistIdentity: value => { persisted = value; return true; },
+  });
+  assert.equal(result, authority);
+  assert.deepEqual(calls, [
+    { host: 'lightweaver.local', expectedCardId: '' },
+  ]);
+  assert.equal(persisted.id, 'lw-plugged-in');
+  assert.equal(persisted.address, 'lightweaver.local');
+});
+
+test('an unpaired probe does not sweep past the well-known card addresses', async () => {
+  const calls = [];
+  await bootstrapStudioCardConnection({
+    bootstrapLink: async () => ({ state: 'disconnected' }),
+    isConnected: () => false,
+    readIdentity: () => null,
+    canPushDirect: () => true,
+    unpairedHosts: ['lightweaver.local', '192.168.4.1'],
+    connectTransport: async options => {
+      calls.push(options.host);
+      return { connected: false, host: options.host };
+    },
+  });
+  assert.deepEqual(calls, ['lightweaver.local', '192.168.4.1']);
 });
 
 // F13. This test used to assert the opposite — that a reload must KEEP the
