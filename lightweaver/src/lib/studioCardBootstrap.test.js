@@ -64,6 +64,30 @@ test('Studio never races direct transport against a restored bridge', async () =
   assert.equal(directCalls, 0);
 });
 
+test('Studio does not well-known-probe an unpaired card during Install or an in-flight update', async () => {
+  let directCalls = 0;
+  const connectTransport = async () => { directCalls += 1; };
+  await bootstrapStudioCardConnection({
+    bootstrapLink: async () => ({ state: 'disconnected' }),
+    isConnected: () => false,
+    readIdentity: () => null,
+    canPushDirect: () => true,
+    locationHash: '#screen=card&section=install',
+    connectTransport,
+  });
+  assert.equal(directCalls, 0);
+  await bootstrapStudioCardConnection({
+    bootstrapLink: async () => ({ state: 'disconnected' }),
+    isConnected: () => false,
+    readIdentity: () => null,
+    canPushDirect: () => true,
+    locationHash: '#screen=card&section=setup',
+    readUpdateSession: () => '{"phase":"valid"}',
+    connectTransport,
+  });
+  assert.equal(directCalls, 0);
+});
+
 test('Studio does not probe an unpaired card when this page cannot reach the LAN', async () => {
   let directCalls = 0;
   await bootstrapStudioCardConnection({

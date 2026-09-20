@@ -23,6 +23,14 @@ function persistAuthority(persistIdentity, expectedCard, authority) {
 // A first visit with no remembered card still probes the two well-known
 // addresses a just-plugged-in card answers on — only when this page can talk
 // to the LAN. Public HTTPS cannot, and we never sweep the subnet.
+function readPreservingUpdateSession() {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem('lw_firmware_update_session_v1');
+  } catch {
+    return null;
+  }
+}
+
 export async function bootstrapStudioCardConnection({
   bootstrapLink = bootstrapCardLink,
   connectTransport = connectCardTransport,
@@ -33,6 +41,8 @@ export async function bootstrapStudioCardConnection({
   isConnected = isCardLinkConnected,
   canPushDirect = canPushDirectlyToCard,
   unpairedHosts = CARD_HOST_FALLBACKS,
+  locationHash = typeof window === 'undefined' ? '' : window.location.hash,
+  readUpdateSession = readPreservingUpdateSession,
 } = {}) {
   const bridgeState = await bootstrapLink();
   if (isConnected(bridgeState)) return bridgeState;
@@ -40,6 +50,12 @@ export async function bootstrapStudioCardConnection({
   const expectedCard = readIdentity();
   if (!expectedCard?.id) {
     if (!canPushDirect()) return bridgeState;
+    // Install / an in-flight preserving update already owns reconnect.
+    // A well-known probe here would bind the card mid-update and hide the
+    // updater's own recovery.
+    if (/(?:^|[&#])section=install(?:&|$)/.test(String(locationHash || '')) || readUpdateSession()) {
+      return bridgeState;
+    }
     let authority = null;
     for (const host of unpairedHosts) {
       authority = await connectTransport({ host, expectedCardId: '' });
