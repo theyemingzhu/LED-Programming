@@ -18,6 +18,7 @@ import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { clearCardProject } from '../lib/cardClearProject.js';
 import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { describeResolvedCardProject } from '../lib/cardProjectResolver.js';
+import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
 import { cardConnectionOptionsFor, normalizeCardHost, readStoredCardHost } from '../lib/cardConnection.js';
 import { isBenchProjectEvidence, BENCH_PROJECT_ID } from '../lib/benchConfig.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
@@ -1032,6 +1033,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
     freshWorkspace,
     observedCard,
     journeyTaskId: sharedJourney.taskId,
+    rememberedCard: Boolean(readPersistedCardIdentity()?.id || cardLink?.expectedCard?.id),
   });
   const installIntentOpen = typeof window !== 'undefined'
     && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';

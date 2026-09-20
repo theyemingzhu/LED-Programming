@@ -440,4 +440,7 @@ test('showFreshWorkerStart: only a fresh silent browser still looking for a card
   assert.equal(showFreshWorkerStart({ freshWorkspace: true, observedCard: false, journeyTaskId: 'update-firmware' }), false);
   assert.equal(showFreshWorkerStart({ freshWorkspace: true, observedCard: true, journeyTaskId: 'connect-card' }), false);
   assert.equal(showFreshWorkerStart({ freshWorkspace: false, observedCard: false, journeyTaskId: 'connect-card' }), false);
+  assert.equal(showFreshWorkerStart({
+    freshWorkspace: true, observedCard: false, journeyTaskId: 'connect-card', rememberedCard: true,
+  }), false);
 });
