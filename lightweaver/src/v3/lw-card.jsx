@@ -96,36 +96,20 @@ function CardPageFold({ testId, summary, open, onOpen, onClose, children }) {
 
 function PublicWorkerStart({ onStartLayout, onOpenProjects, onSetUpCard }) {
   return (
-    <section className="lw-worker-start" data-testid="public-worker-start" aria-labelledby="public-worker-start-title">
-      <div className="lw-worker-start-heading">
-        <span>Start here</span>
-        <div>
-          <h2 id="public-worker-start-title">Build the piece in this browser</h2>
-          <p>No Lightweaver project file or developer setup is required. Bring an artwork SVG only when this piece uses one; otherwise start with a shape.</p>
-        </div>
-      </div>
-      <div className="lw-worker-start-paths">
-        <article>
-          <span>1 · Card</span>
-          <h3>Set up this card</h3>
-          <p>Plug the card into this computer by USB. Studio inspects it first, then installs or updates only when needed.</p>
-          <button type="button" className="btn primary" data-testid="setup-connect-card" onClick={onSetUpCard}>Plug in and find card</button>
-        </article>
-        <article>
-          <span>2 · Design</span>
-          <h3>Map the real lights</h3>
-          <p>Import SVG artwork or create a shape, enter the real LED count, then divide the route into named connected sections.</p>
-          <button type="button" className="btn" onClick={onStartLayout}>Start a layout</button>
-        </article>
-        <article>
-          <span>3 · Continue</span>
-          <h3>Open saved work</h3>
-          <p>Use a project saved in this browser, import a portable backup, or sign in to an available team library.</p>
-          <button type="button" className="btn" onClick={onOpenProjects}>Open saved work</button>
-        </article>
-      </div>
-      <p className="lw-worker-start-storage">Browser saves stay on this device. Use the online library for an assigned team project, or export a backup when the work needs to move to another device.</p>
-    </section>
+    <div className="lw-worker-start" data-testid="public-worker-start" role="group" aria-label="Start">
+      <button type="button" className="lw-worker-start-path btn primary is-primary" data-testid="setup-connect-card" onClick={onSetUpCard}>
+        <span>Card</span>
+        <strong>Set up the card</strong>
+      </button>
+      <button type="button" className="lw-worker-start-path" onClick={onStartLayout}>
+        <span>Design</span>
+        <strong>Start a layout</strong>
+      </button>
+      <button type="button" className="lw-worker-start-path" onClick={onOpenProjects}>
+        <span>Continue</span>
+        <strong>Open saved work</strong>
+      </button>
+    </div>
   );
 }
 
@@ -712,7 +696,7 @@ function CardHomePanels({
       {/* An idle generic Load next to Setup's pull/overwrite is a second door
           for a card this browser has never held. Keep the idle Load only when
           the card names a production job — that click is the digest check. */}
-      {ready && !suppressMatchingProject && !benchProject && matchingProjectOffer && (
+      {ready && !suppressMatchingProject && !benchProject && !cardHoldsOpenProject && matchingProjectOffer && (
         <section className="card-support-panel" aria-label="Matching card project">
           <h2>Matching card project</h2>
           {/* Two sentences here restated what the identity row above already
@@ -1050,13 +1034,6 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   // then Hardware and Advanced folded underneath.
   if (home) content = (
     <>
-      {showPublicWorkerStart && (
-        <PublicWorkerStart
-          onStartLayout={() => go('layout')}
-          onOpenProjects={onOpenProjects}
-          onSetUpCard={onOpenConnectionCenter}
-        />
-      )}
       {cardBlackedOut && (
         // role="status", not "alert": card-state-matrix.spec.ts's own
         // connection-only invariant (expectUnaided) requires that connecting
@@ -1084,12 +1061,21 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       <SetupScreen
         {...cardProps}
         startOwnsPrimary={showPublicWorkerStart}
+        startActions={showPublicWorkerStart ? (
+          <PublicWorkerStart
+            onStartLayout={() => go('layout')}
+            onOpenProjects={onOpenProjects}
+            onSetUpCard={onOpenConnectionCenter}
+          />
+        ) : null}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onRenameProject={onRenameProject}
-        installDoor={!installIntentOpen ? (
+        installDoor={!installIntentOpen && !ladderOwnsPrimary && !showPublicWorkerStart ? (
           // The one project writer, as the status row's third door. Hidden
           // while an install intent is in the URL: the verify row's slot owns
           // it then (installAction above), and two mounts would push twice.
+          // Hidden while Still to do or the fresh-start row owns the next
+          // step, so Save / Find my strips cannot sit above that action.
           <CardInstallAction
             compact
             connected={connected}

@@ -131,6 +131,7 @@ export function SetupScreen({
   onLoadOfferChange,
   installAction = null,
   startOwnsPrimary = false,
+  startActions = null,
 }) {
   const {
     setProjectId, setPortRoles, setStandaloneController, replaceLayoutGeometry,
@@ -929,10 +930,7 @@ export function SetupScreen({
   const identityStatus = wiringTestActive
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
-  const firmwareCurrent = firmwareStatus?.state === 'current'
-    || firmwareStatus?.state === 'development-build';
   const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
-  const firmwareBehind = Boolean(firmwareBannerCopy);
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
       return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
@@ -970,49 +968,17 @@ export function SetupScreen({
                   ? 'This card holds a different project from the one open in Studio.'
                   : 'Studio has not matched the project this card holds to the project open here.'}
             </p>
-            {/* One recommendation, three alternatives folded. This was four
-                buttons abreast at the FIRST decision point of the product,
-                three of which an owner reads as irreversible (adopt, import,
-                overwrite). Adopting what the card holds is the only one that
-                destroys nothing, so it is the one on the surface; the other
-                three stay one click away rather than competing with it. */}
             <div className="lw-setup-banner-actions">
-              {/* Load runs the shared adoption machine (cardActions); without
-                  the provider fall back to the self-contained adoption. */}
               {resolution.resolved && cardActions?.adoptCardProject ? (
                 <button type="button" className="btn primary" data-testid="setup-load-matched" onClick={byOwner(loadResolvedProject)}>
-                  {/* Card Home's "Matching card project" panel offers the same
-                      adoption, worded "Load <project> — current Studio project".
-                      Identical words on two buttons in one view read as two
-                      offers and are ambiguous to anyone driving by name. This
-                      one says what the sentence above it says. */}
                   Use the card&rsquo;s copy
                 </button>
               ) : (
-                // F27: `journey.taskId === 'load-matching-project'` is reachable
-                // while `!connectedExactCard(cardLink)` (setupJourney.js's
-                // connectBlockers, the `load-matching-project` branch is
-                // deliberately held ahead of the reconnecting-card blocker) —
-                // so this button could render, and be clicked, during a
-                // reconnecting-bridge / revalidating window with no live
-                // transport to read from. `exactTransport` is the same
-                // connection-health check the identity row's Connection field
-                // already renders live above this button, so disabling on it
-                // adds no new copy — it just stops the click from racing a
-                // connection that is not there yet.
                 <button type="button" className="btn primary" data-testid="setup-start-from-card" disabled={!exactTransport} onClick={byOwner(startFromCard)}>
                   Use this card&rsquo;s project
                 </button>
               )}
             </div>
-            <details className="lw-setup-alternatives" data-testid="setup-project-alternatives">
-              <summary>Other ways to resolve this</summary>
-              <div className="lw-setup-banner-actions">
-                <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
-                <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
-                <button type="button" className="btn" data-testid="setup-keep-open-project" onClick={() => go('#screen=discovery')}>Keep setting up the open project</button>
-              </div>
-            </details>
           </div>
         );
       }
@@ -1217,17 +1183,29 @@ export function SetupScreen({
         const lightsHint = evidence.count > 0
           ? `${colorConfirmed ? `${led.colorOrder} confirmed` : 'Color order not confirmed'} · ${drawn ? `${strips.length} strip${strips.length === 1 ? '' : 's'} drawn` : 'not drawn'}`
           : 'Find my strips counts them';
+        const openFirmware = () => go('#screen=card&section=install');
         return (
           <section className="lw-mod lw-mod-status" aria-label="Card status">
             <div className="lw-mod-head">
               <span className={`lw-led${exactTransport ? ' is-live' : ''}`} aria-hidden="true" />
               <span className="t">Status</span>
+              {firmwareBannerCopy && (
+                <button
+                  type="button"
+                  className={`lw-status-update${firmwareBannerCopy.required ? ' is-required' : ''}`}
+                  data-testid="setup-optional-firmware"
+                  onClick={openFirmware}
+                >
+                  {firmwareBannerCopy.link}
+                </button>
+              )}
               <span className="m" data-testid="setup-progress">
                 {journey.setupComplete
                   ? 'Setup complete'
                   : `Step ${Math.max(1, SETUP_CHAIN_IDS.indexOf(journey.currentPhaseId) + 1)} of ${SETUP_CHAIN_IDS.length}`}
               </span>
             </div>
+            {startActions}
             <div className="lw-status-grid">
               <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
                 <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
@@ -1284,17 +1262,9 @@ export function SetupScreen({
                   {!journey.setupComplete && <small className="lw-door-tag">preview</small>}
                 </button>
                 <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
-                {firmwareBehind && (
-                  <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
-                )}
                 </>)}
                 {installDoor}
               </div>
-              {firmwareBannerCopy && (
-                <p data-testid="setup-optional-firmware">
-                  {firmwareBannerCopy.heading}. {firmwareBannerCopy.body}
-                </p>
-              )}
             </div>
           </section>
         );

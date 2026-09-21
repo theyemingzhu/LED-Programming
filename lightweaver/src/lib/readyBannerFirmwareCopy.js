@@ -26,11 +26,13 @@ export function readyBannerFirmwareCopy(firmwareStatus) {
       required: false,
       heading: 'A newer card release is available',
       body: `Your lights keep working on ${firmwareStatus.installedBuildNumber}. Update to ${firmwareStatus.releaseBuildNumber} when convenient.`,
+      link: `${firmwareStatus.installedBuildNumber} → ${firmwareStatus.releaseBuildNumber}`,
     };
   }
   return {
     required: true,
     heading: 'This card’s software is behind',
     body: 'Update the card software before relying on it.',
+    link: 'Update software',
   };
 }

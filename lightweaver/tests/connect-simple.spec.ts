@@ -58,10 +58,10 @@ test('first-run card setup leads with USB inspection and keeps Wi-Fi paths secon
 test('a blind background probe cannot replace fresh USB setup with a connecting dead end', async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('button', { name: 'Plug in and find card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Set up the card' })).toBeVisible();
   await page.evaluate(async () => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
-    const button = [...document.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Plug in and find card');
+    const button = document.querySelector('[data-testid="setup-connect-card"]');
     if (!(button instanceof HTMLButtonElement)) throw new Error('fresh card entry missing');
     button.click();
     getSharedCardLink().dispatch({ type: 'connecting', via: 'direct', host: 'lightweaver.local' });
@@ -126,18 +126,10 @@ test('a connected card with a different project offers pull and overwrite, not a
 
   await expect(page.getByTestId('setup-card-project-note'))
     .toContainText(/different project|has not matched/, { timeout: 10000 });
-  // Adopting the card's project is the recommendation and is on the surface;
-  // it is the only one of the four that destroys nothing. Overwriting the card
-  // is real and reachable, but it sits one click inside "Other ways to resolve
-  // this" rather than standing beside the safe option as an equal.
   await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
   await expect(page.getByTestId('setup-connect-card')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
-  await expect(page.getByTestId('setup-overwrite-card')).toBeHidden();
-  await page.getByTestId('setup-project-alternatives').locator('summary').click();
-  await expect(page.getByTestId('setup-overwrite-card')).toBeVisible();
-  await page.getByTestId('setup-overwrite-card').click();
-  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
+  await expect(page.getByTestId('setup-project-alternatives')).toHaveCount(0);
 });
 
 test('an already-set-up card hides the four-phase ladder and keeps Patterns as the way forward', async ({ page }) => {
@@ -259,7 +251,7 @@ test('both fresh public card entry points open the same USB-first flow without o
   });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
-  await page.getByRole('button', { name: 'Plug in and find card', exact: true }).click();
+  await page.getByTestId('setup-connect-card').click();
   let dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close connection center' }).click();
@@ -280,7 +272,7 @@ test('setup-network route opens 192.168.4.1 only after the worker confirms joini
     }) as any;
   });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Plug in and find card', exact: true }).click();
+  await page.getByTestId('setup-connect-card').click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await dialog.getByRole('button', { name: 'Use Lightweaver setup Wi-Fi' }).click();
   await expect(dialog).toContainText('Join the card’s own Wi-Fi network (its name starts with “Lightweaver-”)');
@@ -293,7 +285,7 @@ test('USB inspection does not ask the worker to know the board firmware history'
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Plug in and find card', exact: true }).click();
+  await page.getByTestId('setup-connect-card').click();
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).not.toContainText('never run Lightweaver');
   await dialog.getByRole('button', { name: 'Inspect card over USB' }).click();

@@ -15,6 +15,7 @@ test('a compatible-but-older release is optional, worded with the exact build nu
     required: false,
     heading: 'A newer card release is available',
     body: 'Your lights keep working on 1524. Update to 1548 when convenient.',
+    link: '1524 → 1548',
   });
 });
 
@@ -30,6 +31,7 @@ test('an unnumbered legacy card keeps the original, more insistent wording', () 
     required: true,
     heading: 'This card’s software is behind',
     body: 'Update the card software before relying on it.',
+    link: 'Update software',
   });
 });
 

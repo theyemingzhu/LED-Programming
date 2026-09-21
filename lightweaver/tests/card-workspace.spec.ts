@@ -1447,16 +1447,8 @@ test('Hardware offers an exact current project without intent and auto-opens onl
     expectedCard: { id: cardStatus.cardId, firmwareVersion: cardStatus.firmwareVersion, buildId: cardStatus.buildId },
     readiness: cardStatus,
   }]);
-  // The project name belongs to the Load button (asserted just below), not to
-  // this status line as well — one panel said it three times.
-  await expect(page.getByRole('region', { name: 'Matching card project' })).toContainText(
-    'Exact match found:',
-    { timeout: 15_000 },
-  );
+  await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
   await expect(page).toHaveURL(/#screen=card&section=overview$/);
-  await expect(page.getByRole('button', {
-    name: 'Load Ordinary gallery piece — current Studio project',
-  })).toBeVisible();
 
   await page.goto('/?editPattern=aurora#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await dispatchCardLink(page, [{

@@ -21,14 +21,20 @@ test('a fresh worker sees physical card setup first, before design and saved wor
   const start = page.getByTestId('public-worker-start');
   await expect(start).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Start Lightweaver' })).toBeVisible();
-  await expect(start).toContainText('No Lightweaver project file or developer setup is required');
-  await expect(start).toContainText('Browser saves stay on this device');
-  const paths = start.locator('.lw-worker-start-paths article');
-  await expect(paths.nth(0)).toContainText('Set up this card');
-  await expect(paths.nth(0).getByRole('button', { name: 'Plug in and find card' })).toHaveClass(/primary/);
-  await expect(paths.nth(0)).toContainText('Studio inspects it');
+  const paths = start.locator('.lw-worker-start-path');
+  await expect(paths).toHaveCount(3);
+  await expect(paths.nth(0)).toHaveClass(/primary/);
+  await expect(paths.nth(0)).toContainText('Set up the card');
+  await expect(start.getByRole('button', { name: /set up the card/i })).toBeVisible();
+  await expect(page.getByTestId('setup-identity-row')).toBeVisible();
 
-  await start.getByRole('button', { name: 'Start a layout' }).click();
+  await start.getByRole('button', { name: /set up the card/i }).click();
+  const connect = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(connect.getByRole('heading', { name: 'Set up this card' })).toBeVisible();
+  await expect(connect.getByRole('button', { name: 'Inspect card over USB' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.getByTestId('public-worker-start').getByRole('button', { name: 'Start a layout' }).click();
   await expect(page).toHaveURL(/#screen=layout/);
   const layoutStart = page.getByTestId('layout-primitive-picker');
   await expect(layoutStart).toBeVisible();
@@ -50,7 +56,7 @@ test('the fresh-worker start remains usable at phone width', async ({ page }) =>
   await expect(start).toBeVisible();
   await expect(start.getByRole('button', { name: 'Start a layout' })).toBeVisible();
   await expect(start.getByRole('button', { name: 'Open saved work' })).toBeVisible();
-  await expect(start.getByRole('button', { name: 'Plug in and find card' })).toBeVisible();
+  await expect(start.getByRole('button', { name: /set up the card/i })).toBeVisible();
 });
 
 test('a worker can import artwork, count and split it, choose a pattern, save, and reopen after reload', async ({ page }) => {
