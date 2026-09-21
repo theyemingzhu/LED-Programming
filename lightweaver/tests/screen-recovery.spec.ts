@@ -69,6 +69,6 @@ test('automatic recovery preserves an edit made immediately before the failure',
   await aurora.click();
   await page.getByRole('button', { name: 'Playlist', exact: true }).click();
 
-  await expect(page.getByRole('heading', { name: 'Playlist' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Playlist', exact: true })).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.pattern?.activePatternId)).toBe('aurora');
 });
