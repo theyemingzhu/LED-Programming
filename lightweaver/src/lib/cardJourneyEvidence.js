@@ -64,6 +64,10 @@ const EMPTY = Object.freeze({
   zones: null,
   readAt: 0,
   read: false,
+  // `read` includes the blackout-only path. A working screen needs to know
+  // whether status + wiring were attempted too, or that smaller read can win
+  // the mount race and permanently suppress the evidence that owns J13.
+  fullRead: false,
   // A hardware operation finished, so whatever we hold predates it. The
   // snapshot is KEPT (dropping it makes the journey flicker back to its
   // reduced verdict mid-operation) and simply re-read.
@@ -104,6 +108,7 @@ export function journeyEvidenceSnapshot({
   matchesOpenProject = false,
   blackout,
   zones,
+  fullRead = true,
   readAt = Date.now(),
 } = {}) {
   const key = cardLink ? journeyEvidenceKey(cardLink) : { cardId: text(cardId), bootId: text(bootId), host: text(host) };
@@ -138,6 +143,7 @@ export function journeyEvidenceSnapshot({
     zones: resolvedZones,
     readAt: Number(readAt) || 0,
     read: true,
+    fullRead: fullRead === true,
     stale: false,
   });
 }
@@ -207,7 +213,7 @@ export function freshJourneyEvidence(snapshot, cardLink) {
 
 export function hasFreshCardJourneyEvidence(cardLink, snapshot = current) {
   const fresh = freshJourneyEvidence(snapshot, cardLink);
-  return fresh.read === true && fresh.stale !== true;
+  return fresh.read === true && fresh.fullRead === true && fresh.stale !== true;
 }
 
 // The blackout-specific twin of the above (F16). `read` goes true the moment
@@ -375,6 +381,7 @@ export function refreshCardJourneyBlackout({ cardLink, reason = '', openProjectI
         matchesOpenProject: previous.matchesOpenProject,
         blackout: blackoutFromZonesEnvelope(envelope),
         zones: zonesFromZonesEnvelope(envelope),
+        fullRead: previous.fullRead === true,
         reason,
       });
     })

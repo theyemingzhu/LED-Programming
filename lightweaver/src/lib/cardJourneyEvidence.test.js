@@ -64,6 +64,7 @@ test('a published snapshot is what every subscriber reads', () => {
   assert.equal(snapshot.bootId, 'boot-1');
   assert.equal(snapshot.host, '192.168.18.70');
   assert.equal(snapshot.read, true);
+  assert.equal(snapshot.fullRead, true);
   assert.equal(snapshot.matchesOpenProject, true);
   assert.equal(seen.length, 1);
   assert.equal(seen[0], snapshot);
@@ -242,6 +243,11 @@ test('the blackout-only refresh also tags a first-ever read with the caller\'s o
     const snapshot = getCardJourneyEvidence();
     assert.equal(snapshot.blackout, true);
     assert.equal(snapshot.projectId, 'lwproj-matrix-piece', 'the caller-supplied open project must not be discarded for lack of a previous publish');
+    assert.equal(
+      hasFreshCardJourneyEvidence(CARD_LINK),
+      false,
+      'a zones-only read must not prevent a working screen from fetching status and wiring evidence',
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
