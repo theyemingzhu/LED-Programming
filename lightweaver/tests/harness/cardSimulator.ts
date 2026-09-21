@@ -1323,8 +1323,13 @@ export async function readyInstallProject(page: Page, edit?: (project: Record<st
   await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('lw_autosave_v3'))), {
     timeout: HARNESS_CONNECT_BUDGET_MS,
   }).toBe(true);
-  await page.waitForTimeout(600);
   const project = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  // This fixture represents authored work that is ready for the install
+  // control. The stock project's starter flag says the opposite and lets the
+  // fresh-worker start screen win until some unrelated async layout mutation
+  // happens to clear it. State the fixture truth directly instead of waiting
+  // an arbitrary 600 ms for that race to settle.
+  project.layout.starterPending = false;
   project.layout.wiring.verified = true;
   project.layout.wiring.locked = true;
   project.layout.wiring.runs.forEach((run: Record<string, any>) => { run.verified = true; });
