@@ -1165,6 +1165,14 @@ function Shell({ offlineUpdateController = null }) {
     // the structure it named is unchanged, not only until the first look edit.
     const verified = structurallyInstalledRecord(projectLifecycle, structureFingerprint)
       || (installation?.verified === true ? installation : null);
+    // Keep the last verified Studio structure as the content-sync baseline
+    // after an edit. The edit deliberately revokes `verified` for project
+    // identity authority, but it must not erase what this tab last proved was
+    // on the card; otherwise every playlist/content change falls through to
+    // project-mismatch instead of the direct Save-to-card path.
+    const syncedStudioFingerprint = projectLifecycle.installation?.verified === true
+      ? projectLifecycle.installation.studioFingerprint
+      : '';
     return {
       ...project,
       revision: Number.isSafeInteger(verified?.projectRevision)
@@ -1172,7 +1180,7 @@ function Shell({ offlineUpdateController = null }) {
         : projectLifecycle.editedRevision,
       fingerprint: verified?.projectFingerprint || structureFingerprint,
       liveFingerprint: structureFingerprint,
-      syncedFingerprint: verified?.studioFingerprint || structureFingerprint,
+      syncedFingerprint: syncedStudioFingerprint || structureFingerprint,
       // A verified record whose card-side fingerprint is empty was bound to a
       // card flashed before fingerprint reporting. The lifecycle needs to know
       // that, or it reports a permanent mismatch against the card's own

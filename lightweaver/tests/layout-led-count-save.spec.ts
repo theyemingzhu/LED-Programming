@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { migrateProject } from '../src/lib/projectModel.js';
 
 const CARD_ID = 'lw-led-count-save';
 const PROJECT_ID = 'led-count-piece';
@@ -271,31 +273,38 @@ test('connected length drift shows Save to card and click writes length only', a
 });
 
 test('adding a playlist pattern lights Save to card on the footer', async ({ page }) => {
-  const project = seedProject();
-  project.devices.standaloneController.playlist = [{
+  const sourceProject = seedProject();
+  sourceProject.devices.standaloneController.playlist = [{
     id: 'aurora', type: 'pattern', patternId: 'aurora', label: 'Aurora', enabled: true, createdAt: 0,
   }];
-  const card = { pixels: START_COUNT, configPosts: [] as any[], wiringPosts: [] as any[], projectRevision: 0, projectFingerprint: FINGERPRINT };
+  const project = migrateProject(sourceProject)!;
+  const projectFingerprint = cardProjectFingerprint(project);
+  const card = { pixels: START_COUNT, configPosts: [] as any[], wiringPosts: [] as any[], projectRevision: 0, projectFingerprint };
   await mockCard(page, card);
-  await page.addInitScript(({ nextProject, cardId, buildId }) => {
+  await page.addInitScript(({ nextProject, cardId, buildId, fingerprint }) => {
     localStorage.clear();
     localStorage.setItem('lw_autosave_v3', JSON.stringify(nextProject));
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({
       version: 1, id: cardId, firmwareVersion: '1.4.0', buildId,
     }));
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      version: 2,
+      dirty: false,
+      persistedDestination: 'browser',
+      installation: {
+        cardId,
+        projectRevision: 0,
+        projectFingerprint: fingerprint,
+        studioFingerprint: fingerprint,
+      },
+    }));
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
-  }, { nextProject: project, cardId: CARD_ID, buildId: BUILD_ID });
+  }, { nextProject: project, cardId: CARD_ID, buildId: BUILD_ID, fingerprint: projectFingerprint });
 
   await page.goto('/#screen=playlist', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'Playlist' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Playlist', exact: true })).toBeVisible();
   const addPlasma = page.getByTitle('Add Plasma', { exact: true });
   await expect(addPlasma).toBeVisible();
-  const identity = await page.evaluate(async () => {
-    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
-    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
-    return { projectId: saved?.id, fingerprint: cardProjectFingerprint(saved) };
-  });
-  card.projectFingerprint = identity.fingerprint;
   await dispatchCardLink(page, [{
     type: 'card-verified',
     via: 'direct',
@@ -303,13 +312,14 @@ test('adding a playlist pattern lights Save to card on the footer', async ({ pag
     card: { id: CARD_ID, firmwareVersion: '1.4.0', buildId: BUILD_ID },
     expectedCard: { id: CARD_ID, firmwareVersion: '1.4.0', buildId: BUILD_ID },
     readiness: readyStatus(START_COUNT, {
-      projectId: identity.projectId,
+      projectId: project.id,
       projectRevision: 0,
-      projectFingerprint: identity.fingerprint,
+      projectFingerprint,
     }),
   }]);
 
   const footer = page.getByTestId('card-link-status');
+  await expect(footer).toHaveAttribute('data-lifecycle-state', 'ready');
   await addPlasma.click();
   await expect(footer).toContainText('Save to card');
   await expect(footer).toHaveAttribute('data-lifecycle-state', 'content-mismatch');
