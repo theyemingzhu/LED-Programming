@@ -5,6 +5,7 @@ import { applySavedLookToPatchBoard, normalizeSavedLooks, normalizeSectionVisual
 import { recipeFromLook } from '../src/lib/patternLabFromLook.js';
 import { normalizePatternLabRecipe } from '../src/lib/patternLabRecipe.js';
 import { openControls } from './helpers/pattern-lab';
+import { choosePattern } from './helpers/pattern-lab';
 
 function nativeFixture() {
   const project = createDefaultProject();
@@ -54,7 +55,7 @@ async function passThroughLab(page: Page, name: string) {
   await openControls(page);
   await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue(name);
   await expect(page.getByTestId('pattern-lab-compat-badge')).toHaveAttribute('data-classification', 'live-on-card');
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Use in Project|Update.*project/i }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
   await expect(page.getByTestId('look-name')).toHaveValue(name);
 }
@@ -115,4 +116,35 @@ test('Patterns to Lab and back preserves a linked native look, exact settings an
   await expect(page.getByTestId('look-saturation-slider')).toHaveValue('0');
   await passThroughLab(page, savedLook.label);
   await assertPreserved();
+});
+
+test('a new Lab creation is added to Patterns, selected, and reopens as the same editable look after reload', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'new-lab-look-roundtrip';
+  project.name = 'New Lab look roundtrip';
+  project.layout.starterPending = false;
+  await page.addInitScript(value => {
+    if (localStorage.getItem('new-lab-look-initialized')) return;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(value));
+    localStorage.setItem('new-lab-look-initialized', 'yes');
+  }, project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await openControls(page);
+  await choosePattern(page, 'aurora');
+  await page.getByTestId('pattern-lab-draft-name').fill('Gallery sunrise');
+
+  const handoff = page.getByTestId('pattern-lab-use-in-project-promoted');
+  await expect(handoff.getByRole('button', { name: 'Add to Patterns', exact: true })).toBeVisible();
+  await handoff.getByRole('button', { name: 'Add to Patterns', exact: true }).click();
+  await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
+  await expect(page.getByTestId('look-name')).toHaveValue('Gallery sunrise');
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('look-name')).toHaveValue('Gallery sunrise');
+  await page.getByTestId('open-pattern-lab').click();
+  await expect(page).toHaveURL(/screen=pattern-lab/);
+  await openControls(page);
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue('Gallery sunrise');
+  await expect(page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true })).toBeVisible();
 });

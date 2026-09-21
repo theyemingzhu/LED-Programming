@@ -70,10 +70,10 @@ import ColorJourneyComposer from './ColorJourneyComposer.jsx';
 import './pattern-lab.css';
 
 const WORKFLOW = [
-  ['Choose', 'Begin with a built-in pattern.', 'Choose a base pattern', <svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/><path d="M12 12v4M10 14h4"/></svg>],
-  ['Sculpt', 'Shape it with the controls that actually apply to this pattern.', 'Color, brightness, and speed always apply; movement or shape and texture depend on what you picked', <svg viewBox="0 0 24 24"><path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h10M18 17h2"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="16" cy="17" r="2"/></svg>],
+  ['Choose', 'Pick the pattern you want to begin with.', 'Choose a starting pattern', <svg viewBox="0 0 24 24"><path d="M4 7h6l2 2h8v10H4z"/><path d="M12 12v4M10 14h4"/></svg>],
+  ['Edit', 'Shape it with controls that apply to this pattern.', 'Edit color, movement, brightness, and speed', <svg viewBox="0 0 24 24"><path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h10M18 17h2"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="16" cy="17" r="2"/></svg>],
   ['Evolve', 'Build a five-to-fifteen-minute journey.', 'Build a long-changing journey', <svg viewBox="0 0 24 24"><path d="M4 14c2-5 4-5 6 0s4 5 6 0 3-4 4-2"/><path d="M4 8h16"/></svg>],
-  ['Save', 'Keep a private, repeatable variation.', 'Save this variation privately', <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 15h8v6H8z"/></svg>],
+  ['Add to Patterns', 'Add or update this look in the project.', 'Finish in Patterns', <svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 15h8v6H8z"/></svg>],
 ];
 const COMPATIBILITY_OUTCOMES = [
   ['live-on-card', 'Live on card'],
@@ -116,35 +116,15 @@ const PROMOTED_ACTION_HINTS = {
   'studio-only': 'This design can’t reach the piece yet. See Card compatibility & diagnostics below for why.',
 };
 
-const BUDGET_SHORT_LABELS = {
-  pixelCount: 'Pixels',
-  fps: 'FPS',
-  operationsPerFrame: 'Ops / frame',
-  stateBytes: 'State',
-  framebufferBytes: 'Framebuffer',
-  nativeConfigBytes: 'Config',
-  lwseqBytes: 'Baked',
-  microSdBytes: 'microSD',
-};
-
-// Two numbers on one line, from whatever the compatibility check actually
-// measured — never a figure this screen made up to fill the strip.
-function formatBudgetUsage(value) {
-  const used = Number(value?.used ?? value?.value);
-  const limit = Number(value?.limit ?? value?.max);
-  const fmt = n => (Number.isFinite(n) ? new Intl.NumberFormat().format(Math.round(n)) : '—');
-  if (!Number.isFinite(limit)) return fmt(used);
-  return `${fmt(used)} / ${fmt(limit)}`;
-}
-
 function compatibilityBadge(compatibility, recipe = null) {
   if (!compatibility) return null;
   if (recipe?.base?.kind === 'color-journey' && compatibility.classification === 'live-on-card') return 'Standalone ready';
   return COMPATIBILITY_BADGES[compatibility.classification] || null;
 }
 
-function promotedActionLabel(compatibility) {
+function promotedActionLabel(compatibility, updating = false) {
   if (!compatibility) return 'Use in Project';
+  if (compatibility.classification === 'live-on-card') return updating ? 'Update in Patterns' : 'Add to Patterns';
   return PROMOTED_ACTION_LABELS[compatibility.classification] || 'Use in Project';
 }
 
@@ -546,7 +526,6 @@ export default function PatternLabScreen() {
   const workspaceRef = useRef(null);
   const sheetDragMovedRef = useRef(false);
   const runtimeToolsRef = useRef(null);
-  const fineTuneRef = useRef(null);
   // Autoload from hash / project look runs once when the workspace is ready.
   // A ref (not draft in the dependency list) keeps a later owner clear from
   // re-triggering a project-look load over their empty session.
@@ -646,6 +625,7 @@ export default function PatternLabScreen() {
   const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
   const [workingCopyError, setWorkingCopyError] = useState('');
   const [pendingProjectSave, setPendingProjectSave] = useState(null);
+  const [projectActionBusy, setProjectActionBusy] = useState(false);
   const mobileDrawer = useMobileDrawer();
   const drawerOpen = sheetDetent !== 'closed';
   // Modal-ness is a property of ONE detent, not of "the drawer is open".
@@ -718,7 +698,7 @@ export default function PatternLabScreen() {
     setPreviewTime(Number(recovered?.previewTime) || 0);
     setMessage(recovered?.recipe ? 'Recovered your unsaved Lab work.' : '');
     setImportErrors([]);
-    setActiveWorkflowStep(0);
+    setActiveWorkflowStep(selected.base?.kind === 'color-journey' ? 1 : 0);
     setInstrumentResponse(current => ({
       sequence: current.sequence + 1,
       kind: 'pattern',
@@ -982,6 +962,10 @@ export default function PatternLabScreen() {
       allowSectionLookHandoff: sectionState?.scoped && sectionState.supported,
     }) : null,
     [draft, geometry, project, sectionState],
+  );
+  const handoffIdentity = useMemo(
+    () => draft ? prospectivePatternLabLookIdentity(draft, project.standaloneController) : null,
+    [draft, project.standaloneController],
   );
   // "Has this exact design already been kept?" is the whole question the
   // save row turns on, and it is answered by the stored list, not by a flag
@@ -1467,18 +1451,16 @@ export default function PatternLabScreen() {
 
   function openWorkflowStep(index) {
     setActiveWorkflowStep(index);
-    if (index <= 2 && fineTuneRef.current) fineTuneRef.current.open = true;
+    if (index <= 2) setOpenInspectorStep(index);
     // Step 0 is the pattern browser, which only exists at full height; the
     // other three are reachable at whatever detent the owner is already on,
     // so a tap on "Sculpt" from the play strip does not swallow the artwork.
-    if (mobileDrawer) {
-      setSheetDetent(current => (current === 'closed' || index === 0 ? 'full' : current));
-    }
+    if (mobileDrawer) setSheetDetent('full');
     const targetId = [
       'plab-base-pattern',
-      'plab-sculpt-heading',
+      draft?.base?.kind === 'color-journey' ? 'plab-creative-heading' : 'plab-sculpt-heading',
       'plab-evolution-heading',
-      'plab-save-private',
+      'plab-add-to-patterns',
     ][index];
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
@@ -1788,11 +1770,12 @@ export default function PatternLabScreen() {
   }
 
   async function useInProjectPrimary() {
-    if (!draft || !compatibility) return;
+    if (!draft || !compatibility || projectActionBusy) return;
     if (compatibility.classification !== 'live-on-card') {
       openRuntimeTools();
       return;
     }
+    setProjectActionBusy(true);
     setMessage('Adding to project…');
     try {
       const result = await useInProject({ navigateAfter: true });
@@ -1800,6 +1783,8 @@ export default function PatternLabScreen() {
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not add this pattern to the project.');
+    } finally {
+      setProjectActionBusy(false);
     }
   }
 
@@ -1870,7 +1855,6 @@ export default function PatternLabScreen() {
               sentence that makes the Lab safe to experiment in, and it was
               nowhere on the shipped screen. The way back out belongs here too;
               the Lab is entered from Patterns and had no marked exit. */}
-          <p className="plab-lede">A private workspace — your project stays exactly as it is until you send a look back to it.</p>
           <button
             type="button"
             className="plab-back"
@@ -1894,6 +1878,7 @@ export default function PatternLabScreen() {
                 onClick={() => openWorkflowStep(index)}
               >
                 <span className="plab-step-icon" aria-hidden="true">{icon}</span>
+                <span className="plab-workflow-label">{title}</span>
               </button>
             ))}
           </nav>
@@ -1919,18 +1904,6 @@ export default function PatternLabScreen() {
             <p>{draft.base?.kind === 'color-journey'
               ? compatibilityBadge(compatibility, draft)
               : compatibilityBadge(compatibility, draft)}</p>
-            <dl className="plab-verdict-nums">
-              {Object.entries(compatibility.budgets || {}).slice(0, 2).map(([key, value]) => (
-                <div key={key}>
-                  <dt>{BUDGET_SHORT_LABELS[key] || key}</dt>
-                  <dd>{formatBudgetUsage(value)}</dd>
-                </div>
-              ))}
-              <div>
-                <dt>Attention</dt>
-                <dd>{(compatibility.reasons || []).length || 'none'}</dd>
-              </div>
-            </dl>
           </div>
         )}
 
@@ -2161,30 +2134,6 @@ export default function PatternLabScreen() {
                 section. `display: contents` above the breakpoint keeps the
                 desktop two-pane column byte-identical to what it was. */}
             <div className="plab-sheet-scroll" ref={sheetScrollRef}>
-            <ColorJourneyComposer
-              recipe={draft}
-              variations={creativeVariations}
-              savedLooks={drafts.filter(saved => saved.journey)}
-              saveState={creativeSaveState}
-              hasSavedVersion={Boolean(creativeSavedVersion)}
-              rehearsal={rehearsal}
-              canUndo={Boolean(undoEntry)}
-              onStart={startSlowColorDrift}
-              onRecipeChange={changeCreativeRecipe}
-              onTryVariation={tryCreativeVariation}
-              onSelectVariation={selectCreativeVariation}
-              onKeep={keepCreativeLook}
-              onSaveAsNew={saveCreativeCopy}
-              onOpenSaved={openDraft}
-              onUndo={runUndo}
-              onRehearsalChange={setRehearsal}
-              auditionStopId={auditionStopId}
-              onPreviewColor={stopId => holdColorStop(draft, stopId)}
-            />
-            {workingCopyError && <p className="plab-working-copy-error" role="alert">{workingCopyError}</p>}
-            <details ref={fineTuneRef} className="plab-fine-tune">
-              <summary>Fine tune</summary>
-              <div className="plab-fine-tune-body">
             <div id="plab-pattern-select">
               <PatternLabControls
                 patterns={patterns}
@@ -2205,6 +2154,24 @@ export default function PatternLabScreen() {
                 onOpenStep={openWorkflowStep}
               />
             </div>
+            {(draft?.base?.kind === 'color-journey' || openInspectorStep === 0) && <ColorJourneyComposer
+              recipe={draft}
+              variations={creativeVariations}
+              savedLooks={drafts.filter(saved => saved.journey)}
+              saveState={creativeSaveState}
+              rehearsal={rehearsal}
+              canUndo={Boolean(undoEntry)}
+              onStart={startSlowColorDrift}
+              onRecipeChange={changeCreativeRecipe}
+              onTryVariation={tryCreativeVariation}
+              onSelectVariation={selectCreativeVariation}
+              onOpenSaved={openDraft}
+              onUndo={runUndo}
+              onRehearsalChange={setRehearsal}
+              auditionStopId={auditionStopId}
+              onPreviewColor={stopId => holdColorStop(draft, stopId)}
+            />}
+            {workingCopyError && <p className="plab-working-copy-error" role="alert">{workingCopyError}</p>}
             <PatternLabEvolution
               recipe={draft}
               previewTime={previewTime}
@@ -2215,8 +2182,6 @@ export default function PatternLabScreen() {
               instrumentResponse={instrumentResponse}
               onOpenStep={openWorkflowStep}
             />
-              </div>
-            </details>
 
 
             {draft && (
@@ -2323,25 +2288,6 @@ export default function PatternLabScreen() {
                 <ul>{importErrors.map((error, index) => <li key={`${error}-${index}`}>{error}</li>)}</ul>
               </div>
             )}
-            {message && <p className="plab-save-status" data-testid="pattern-lab-save-status" aria-live="polite">{message}</p>}
-
-            {draft && compatibility && (
-              <div className="plab-use-in-project-promoted" data-testid="pattern-lab-use-in-project-promoted">
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={compatibility.classification === 'studio-only' || sectionState?.supported === false}
-                  onClick={() => void useInProjectPrimary()}
-                >{promotedActionLabel(compatibility)}</button>
-                <span
-                  className="plab-compat-badge"
-                  data-testid="pattern-lab-compat-badge"
-                  data-classification={compatibility.classification}
-                >{compatibilityBadge(compatibility, draft)}</span>
-                <small className="plab-compat-hint">{promotedActionHint(compatibility, draft)}</small>
-              </div>
-            )}
-
             </div>
 
             {/* The sheet's pinned foot. The undo bar sits here rather than
@@ -2349,7 +2295,8 @@ export default function PatternLabScreen() {
                 of the sheet that is visible at EVERY detent — peek, half and
                 full — so an undo is never something the owner has to go and
                 find. */}
-            <div className="plab-sheet-footer">
+            <div className="plab-sheet-footer" data-testid="pattern-lab-primary-actions">
+              {message && <p className="plab-save-status" data-testid="pattern-lab-save-status" aria-live="polite">{message}</p>}
               {undoEntry && (
                 <div className="plab-undo-bar" data-testid="pattern-lab-undo-bar" role="status">
                   <span>{undoEntry.label}</span>
@@ -2362,22 +2309,45 @@ export default function PatternLabScreen() {
                   >×</button>
                 </div>
               )}
-              {draft?.base?.kind !== 'color-journey' && <div className="plab-actions">
+              {draft && compatibility && (
+                <div className="plab-use-in-project-promoted" data-testid="pattern-lab-use-in-project-promoted">
+                  <button
+                    id="plab-add-to-patterns"
+                    type="button"
+                    className="btn primary"
+                    disabled={projectActionBusy || compatibility.classification === 'studio-only' || sectionState?.supported === false}
+                    aria-busy={projectActionBusy ? 'true' : undefined}
+                    onClick={() => void useInProjectPrimary()}
+                  >{projectActionBusy ? 'Adding…' : promotedActionLabel(compatibility, handoffIdentity?.updating)}</button>
+                  <span
+                    className="plab-compat-badge"
+                    data-testid="pattern-lab-compat-badge"
+                    data-classification={compatibility.classification}
+                  >{compatibilityBadge(compatibility, draft)}</span>
+                  <details className="plab-footer-help">
+                    <summary>What happens?</summary>
+                    <p>{promotedActionHint(compatibility, draft)}</p>
+                  </details>
+                </div>
+              )}
+              {draft && <div className="plab-actions">
                 <button
                   id="plab-save-private"
                   type="button"
-                  className="btn primary"
+                  className="btn"
                   disabled={!draft || sectionState?.supported === false}
-                  onClick={saveDraft}
-                >{saveOptions?.canReplace ? 'Save as a new design' : 'Save private draft'}</button>
-                {saveOptions?.canReplace && (
+                  onClick={draft.base?.kind === 'color-journey' ? keepCreativeLook : saveDraft}
+                >{draft.base?.kind === 'color-journey' && creativeSavedVersion
+                    ? 'Update private draft'
+                    : saveOptions?.canReplace ? 'Save new private draft' : 'Save private draft'}</button>
+                {(draft.base?.kind === 'color-journey' ? Boolean(creativeSavedVersion) : saveOptions?.canReplace) && (
                   <button
                     type="button"
                     className="btn"
                     data-testid="pattern-lab-replace-draft"
                     disabled={sectionState?.supported === false}
-                    onClick={replaceSavedDraft}
-                  >{saveOptions.replaceLabel}</button>
+                    onClick={draft.base?.kind === 'color-journey' ? saveCreativeCopy : replaceSavedDraft}
+                  >{draft.base?.kind === 'color-journey' ? 'Save new private draft' : saveOptions.replaceLabel}</button>
                 )}
                 {/* File in/out is library housekeeping, not playing. It is
                     hidden at the peek and half detents (CSS) so the play
@@ -2386,9 +2356,14 @@ export default function PatternLabScreen() {
                     labels, which is what it did the moment Replace joined
                     it. Both are back at full height, where the drafts list
                     and the browser live. */}
-                <button type="button" className="btn plab-action-file" disabled={!draft || sectionState?.supported === false} onClick={exportRecipe}>Export recipe</button>
-                <button type="button" className="btn plab-action-file" onClick={() => importRef.current?.click()}>Import recipe</button>
-                <input ref={importRef} className="plab-file-input" aria-label="Import recipe" aria-hidden="true" tabIndex={-1} type="file" accept=".lwrecipe.json,application/json" onChange={importRecipe} />
+                <details className="plab-recipe-files">
+                  <summary>Recipe files</summary>
+                  <div>
+                    <button type="button" className="btn plab-action-file" disabled={!draft || sectionState?.supported === false} onClick={exportRecipe}>Export recipe</button>
+                    <button type="button" className="btn plab-action-file" onClick={() => importRef.current?.click()}>Import recipe</button>
+                    <input ref={importRef} className="plab-file-input" aria-label="Import recipe" aria-hidden="true" tabIndex={-1} type="file" accept=".lwrecipe.json,application/json" onChange={importRecipe} />
+                  </div>
+                </details>
               </div>}
             </div>
           </aside>

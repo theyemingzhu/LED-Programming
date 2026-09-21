@@ -43,21 +43,26 @@ test('a journey exposes a truthful standalone handoff while keeping browser save
   const handoff = page.getByTestId('pattern-lab-use-in-project-promoted');
   await expect(handoff).toBeVisible();
   await expect(handoff).toContainText(/card|project/i);
-  await page.getByRole('button', { name: 'Keep this look', exact: true }).click();
+  await page.getByRole('button', { name: 'Save private draft', exact: true }).click();
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
 });
 
 test('4096 pixels desktop and phone standalone handoff is readable without overflow', async ({ page }) => {
   await expect(page.getByTestId('pattern-lab-verdict')).toHaveAttribute('data-classification', 'live-on-card');
+  const desktopHandoff = page.getByTestId('pattern-lab-use-in-project-promoted');
+  const desktopBox = await desktopHandoff.boundingBox();
+  expect(desktopBox).not.toBeNull();
+  expect(desktopBox!.y + desktopBox!.height).toBeLessThanOrEqual(720);
   await page.screenshot({ path: '/tmp/lightweaver-journey-4096-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await openControls(page);
   const handoff = page.getByTestId('pattern-lab-use-in-project-promoted');
   await expect(handoff).toBeVisible();
-  await handoff.scrollIntoViewIfNeeded();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   const box = await handoff.boundingBox();
+  expect(box).not.toBeNull();
   expect(box?.width).toBeLessThanOrEqual(390);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(844);
   await page.screenshot({ path: '/tmp/lightweaver-journey-4096-phone.png', fullPage: true });
 });
 
@@ -65,7 +70,7 @@ test('timing controls preserve one-shot and interpolation choices after reload',
   await page.getByText('Journey timing', { exact: true }).click();
   await page.getByLabel('Interpolation', { exact: true }).selectOption('linear');
   await page.getByLabel('Loop journey', { exact: true }).uncheck();
-  await page.getByRole('button', { name: 'Keep this look', exact: true }).click();
+  await page.getByRole('button', { name: 'Save private draft', exact: true }).click();
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
   await page.reload();
   await openControls(page);
@@ -79,7 +84,9 @@ test('timing controls preserve one-shot and interpolation choices after reload',
 test('a supported mapped journey enters the project with its authored timing intact', async ({ page }) => {
   const handoff = page.getByTestId('pattern-lab-use-in-project-promoted');
   await expect(page.getByTestId('pattern-lab-verdict')).toHaveAttribute('data-classification', 'live-on-card');
-  await handoff.getByRole('button', { name: 'Use in Project', exact: true }).click();
+  await handoff.getByRole('button', { name: 'Add to Patterns', exact: true }).click();
+  await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
+  await expect(page.getByTestId('look-name')).toHaveValue('Amber violet drift');
   await expect.poll(() => page.evaluate(() => {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return project.devices?.standaloneController?.looks?.some((look: any) =>
@@ -90,13 +97,15 @@ test('a supported mapped journey enters the project with its authored timing int
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return project.devices.standaloneController.looks.find((look: any) => look.patternLabRecipe?.base?.kind === 'color-journey');
   });
-  await page.goto('/#screen=patterns');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('look-name')).toHaveValue('Amber violet drift');
   await page.locator(`button[data-pattern-id="${savedJourney.id}"]`).click();
   await expect(page.getByTestId('look-save-preset')).toHaveText('Open Color Journey in Lab');
   await page.getByTestId('look-save-as-new').click();
   await expect(page).toHaveURL(/screen=pattern-lab/);
   await openControls(page);
   await expect(page.getByTestId('color-journey-ribbon')).toBeVisible();
+  await expect(page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true })).toBeVisible();
   expect(await page.evaluate(() => {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return project.devices.standaloneController.looks.length;
@@ -106,7 +115,7 @@ test('a supported mapped journey enters the project with its authored timing int
 
 for (const targetCount of [1024, 4096]) test(`${targetCount} pixels save, capability-gated install, and readback retain exact physical phase`, async ({ page }) => {
   await expect(page.getByTestId('pattern-lab-verdict')).toHaveAttribute('data-classification', 'live-on-card');
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Use in Project', exact: true }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Add to Patterns', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
     .devices?.standaloneController?.looks?.some((look: any) => look.patternLabRecipe?.base?.kind === 'color-journey'))).toBe(true);
   const result = await page.evaluate(async (targetCount) => {
@@ -164,7 +173,7 @@ for (const targetCount of [1024, 4096]) test(`${targetCount} pixels save, capabi
 });
 
 for (const geometry of ['curved', 'mixed']) test(`4096 pixels ${geometry} save, bounded install, readback, and timed colors`, async ({ page }) => {
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Use in Project', exact: true }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Add to Patterns', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
     .devices?.standaloneController?.looks?.some((look: any) => look.patternLabRecipe?.base?.kind === 'color-journey'))).toBe(true);
   const result = await page.evaluate(async () => {

@@ -71,7 +71,7 @@ test('editing Centre keeps Petals and the default look intact through project ha
   await openControls(page);
   await openStep(page, 'sculpt');
   await page.getByRole('slider', { name: 'Brightness', exact: true }).fill('55');
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Use in Project|Update.*project/i }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/i }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
   await expect.poll(async () => (await savedLook(page))?.sectionLooks?.[CENTRE]?.brightness).toBe(0.55);
   const result = await savedLook(page);
@@ -97,7 +97,7 @@ test('switching artwork sections keeps each draft and its own controls', async (
   await area.selectOption(CENTRE);
   await expect(brightness).toHaveValue('55');
   await expect(page.getByRole('slider', { name: 'Color', exact: true })).toHaveValue('68');
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Use in Project|Update.*project/i }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/i }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
   await expect.poll(async () => {
     const look = await savedLook(page);
@@ -109,7 +109,7 @@ test('changing a section pattern preserves every other section in the saved look
   const fixture = await openSectionInLab(page);
   await choosePattern(page, 'ocean');
   await expect(page.getByRole('combobox', { name: 'Edit area', exact: true })).toHaveValue(CENTRE);
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Use in Project|Update.*project/i }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/i }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
   await expect.poll(async () => (await savedLook(page))?.sectionLooks?.[CENTRE]?.patternId).toBe('ocean');
   const result = await savedLook(page);
@@ -152,7 +152,7 @@ test('removing the selected section preserves the draft and requires an explicit
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(area).toHaveValue(CENTRE);
   await expect(page.getByRole('alert').filter({ hasText: /no longer exists/i })).toBeVisible();
-  const useInProject = page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Use in Project|Update.*project/i });
+  const useInProject = page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/i });
   await expect(useInProject).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Simplify to continue', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save private draft', exact: true })).toBeDisabled();

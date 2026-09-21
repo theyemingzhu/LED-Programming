@@ -2,7 +2,7 @@ import { type Route } from '@playwright/test';
 import { test, expect } from './studioTest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { choosePattern, closeControls, openStep, patternSearchInput, pickPatternTile } from './helpers/pattern-lab.ts';
+import { choosePattern, closeControls, openControls, openStep, patternSearchInput, pickPatternTile } from './helpers/pattern-lab.ts';
 
 const AUTOSAVE_KEY = 'lw_autosave_v3';
 const PREVIEW_SOURCE = await readFile(fileURLToPath(new URL('../src/v3/PatternPreview.jsx', import.meta.url)), 'utf8');
@@ -36,6 +36,13 @@ async function projectBytes(page) {
   return page.evaluate(key => localStorage.getItem(key), AUTOSAVE_KEY);
 }
 
+async function openRecipeFiles(page) {
+  const files = page.locator('.plab-recipe-files');
+  if (!(await files.evaluate(node => (node as HTMLDetailsElement).open))) {
+    await files.locator('summary').click();
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   cardMutationRequests = [];
   const blockCard = async (route: Route) => {
@@ -48,8 +55,25 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
 });
 
+test('makes the choose → edit → add workflow explicit without hiding pattern choice behind Fine tune', async ({ page }) => {
+  const workflow = page.getByRole('navigation', { name: 'Pattern Lab workflow' });
+  for (const label of ['Choose', 'Edit', 'Add to Patterns']) {
+    await expect(workflow.getByRole('button', { name: label, exact: true })).toBeVisible();
+    await expect(workflow.getByText(label, { exact: true })).toBeVisible();
+  }
+
+  await openControls(page);
+  await workflow.getByRole('button', { name: 'Choose', exact: true }).click();
+  await expect(page.getByTestId('pattern-lab-step-choose').getByLabel('Search patterns')).toBeVisible();
+  await expect(page.locator('.plab-fine-tune')).toHaveCount(0);
+
+  const actions = page.getByTestId('pattern-lab-primary-actions');
+  await expect(actions.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button')).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Save private draft', exact: true })).toBeVisible();
+});
+
 test('Pattern Inspector presents Choose, Sculpt, and Evolve as compact attached step groups', async ({ page }) => {
-  await page.locator('.plab-fine-tune > summary').click();
+  await choosePattern(page, 'aurora');
   await openStep(page, 'choose');
   const choose = page.getByTestId('pattern-lab-step-choose');
   const sculpt = page.getByTestId('pattern-lab-step-sculpt');
@@ -60,7 +84,7 @@ test('Pattern Inspector presents Choose, Sculpt, and Evolve as compact attached 
   await expect(choose.getByText('Base pattern', { exact: true })).toHaveCount(0);
   await expect(choose.getByText(/Start with a built-in Lightweaver look/i)).toHaveCount(0);
 
-  await expect(sculpt.getByRole('heading', { name: 'Sculpt', exact: true })).toHaveAttribute('id', 'plab-sculpt-heading');
+  await expect(sculpt.getByRole('heading', { name: 'Edit', exact: true })).toHaveAttribute('id', 'plab-sculpt-heading');
   await expect(sculpt.getByText(/Five creative controls, with no code required/i)).toHaveCount(0);
 
   const evolveHeading = evolve.locator('.plab-compact-step-heading');
@@ -134,6 +158,7 @@ test('exports Brightness and Speed as independent playback controls', async ({ p
   await expect(page.getByLabel('Brightness value')).toHaveText('25%');
   await expect(page.getByLabel('Speed value')).toHaveText('1.75×');
 
+  await openRecipeFiles(page);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export recipe' }).click();
   const downloadedPath = await (await downloadPromise).path();
@@ -146,6 +171,7 @@ test('exports Brightness and Speed as independent playback controls', async ({ p
 
 test('offers one accessible Import recipe control and imports through its file chooser', async ({ page }) => {
   await choosePattern(page, 'aurora');
+  await openRecipeFiles(page);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export recipe' }).click();
   const downloadedPath = await (await downloadPromise).path();
@@ -190,8 +216,7 @@ test('keeps the active Inspector band synchronized with direct focus and workflo
   const sculpt = page.getByTestId('pattern-lab-step-sculpt');
   const evolve = page.getByTestId('pattern-lab-step-evolve');
 
-  await expect(choose).toHaveAttribute('data-active', 'true');
-  await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
+  await expect(workflow.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-current', 'step');
 
   // The raw pick, because the point of this line is that picking a pattern
   // does NOT move the band — choosePattern deliberately opens Sculpt after.
@@ -207,7 +232,7 @@ test('keeps the active Inspector band synchronized with direct focus and workflo
   // asserted, which is what this test is for.
   await sculpt.locator('.plab-step-open').click();
   await expect(sculpt).toHaveAttribute('data-active', 'true');
-  await expect(workflow.getByRole('button', { name: 'Sculpt' })).toHaveAttribute('aria-current', 'step');
+  await expect(workflow.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-current', 'step');
   await page.getByRole('slider', { name: 'Color', exact: true }).focus();
   await expect(sculpt).toHaveAttribute('data-active', 'true');
 
@@ -372,6 +397,7 @@ test('derives offline audio lanes locally and marks the recipe as bake-only', as
   await expect(tools.getByRole('listitem').filter({ hasText: 'Bake to card' })).toHaveAttribute('aria-current', 'true');
   await expect(page.getByTestId('pattern-lab-export')).toContainText('Offline audio lanes included · Bake only');
 
+  await openRecipeFiles(page);
   const recipeDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export recipe' }).click();
   const recipePath = await (await recipeDownload).path();
@@ -482,6 +508,7 @@ test('exports canonical recipes and rejects invalid imports without mutating the
   await page.getByRole('slider', { name: 'Color', exact: true }).fill('64');
   const nameBefore = await page.getByTestId('pattern-lab-draft-name').inputValue();
 
+  await openRecipeFiles(page);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export recipe' }).click();
   const download = await downloadPromise;

@@ -95,19 +95,28 @@
 }
 
 .plab-workflow-step {
-  width: 36px;
+  width: auto;
   height: 36px;
   min-width: 36px;
   min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 6px;
+  padding: 0 9px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-mid);
   cursor: pointer;
+}
+
+.plab-workflow-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  white-space: nowrap;
 }
 
 .plab-workflow-step:hover { border-color: var(--border-soft); background: var(--bg-elev); color: var(--text-hi); }
@@ -1229,6 +1238,16 @@
   line-height: 1.5;
 }
 
+.plab-sheet-footer > .plab-save-status {
+  margin: 0;
+  padding: 5px 14px;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plab-import-errors { border-color: var(--danger); }
 .plab-import-errors strong { color: var(--text-hi); }
 .plab-import-errors ul { margin: 4px 0 0 16px; }
@@ -1239,16 +1258,19 @@
    never has to guess at meaning independent of that data. */
 .plab-use-in-project-promoted {
   display: grid;
-  gap: 8px;
-  margin: 12px 18px 0;
-  padding: 14px;
+  grid-template-columns: minmax(130px, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 10px 14px;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border-soft));
   border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-elev));
-  text-align: center;
+  text-align: left;
 }
 
 .plab-use-in-project-promoted .btn {
+  grid-row: 1 / 3;
   min-height: 44px;
   justify-content: center;
 }
@@ -1275,6 +1297,95 @@
   line-height: 1.4;
 }
 
+.plab-footer-help,
+.plab-recipe-files { position: relative; min-width: 0; }
+.plab-footer-help > summary,
+.plab-recipe-files > summary {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-mid);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.plab-footer-help > p,
+.plab-recipe-files > div {
+  position: absolute;
+  z-index: 12;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: min(280px, calc(100vw - 32px));
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev);
+  box-shadow: 0 12px 32px color-mix(in srgb, #000 38%, transparent);
+  color: var(--text-mid);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.plab-recipe-files > div { display: grid; gap: 7px; }
+.plab-recipe-files .btn { min-height: 36px; }
+
+.plab-context-heading,
+.plab-preview-distinction {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-mid);
+  font-size: 10px;
+}
+
+.plab-context-heading > b,
+.plab-preview-distinction > span {
+  color: var(--text-hi);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.plab-context-help { position: relative; }
+.plab-context-help > summary {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 50%;
+  color: var(--text-mid);
+  font: 700 10px/1 var(--font-mono);
+  cursor: pointer;
+  list-style: none;
+}
+.plab-context-help > summary::-webkit-details-marker { display: none; }
+.plab-context-help > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plab-context-help[open] > summary { border-color: var(--accent); color: var(--text-hi); }
+.plab-context-help > p {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 6px);
+  left: -8px;
+  width: min(270px, calc(100vw - 48px));
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev);
+  box-shadow: 0 12px 32px color-mix(in srgb, #000 36%, transparent);
+  color: var(--text-mid);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.plab-preview-distinction {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-hair);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev);
+}
+
 /* The pinned foot of the control column: undo bar + save/export row. They
    are wrapped together so the undo can never be scrolled away independently
    of the actions it undoes, and so that on a phone the flex column pins one
@@ -1285,6 +1396,22 @@
   z-index: 3;
   margin-top: auto;
   background: var(--bg-panel);
+}
+
+@media (min-width: 901px) {
+  .plab-controls { overflow: hidden; }
+  .plab-sheet-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .plab-sheet-footer {
+    position: static;
+    flex: 0 0 auto;
+  }
 }
 
 .plab-undo-bar {
@@ -1317,7 +1444,7 @@
 
 .plab-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 7px;
   padding: 18px;
   border-top: 1px solid var(--border-hair);
@@ -1329,7 +1456,7 @@
   justify-content: center;
 }
 
-.plab-actions .btn:first-child { grid-column: 1 / -1; }
+.plab-actions > .btn:first-child { grid-column: auto; }
 .plab-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .plab-screen button:disabled,
 .plab-screen select:disabled,
@@ -1359,7 +1486,8 @@
 }
 
 @media (max-width: 720px) {
-  .plab-workflow-step { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .plab-workflow-step { width: auto; height: 44px; min-width: 44px; min-height: 44px; padding-inline: 7px; }
+  .plab-workflow-label { font-size: 8px; }
 }
 
 @media (max-width: 640px) {
@@ -1367,6 +1495,10 @@
   .plab-toolbar { gap: 6px; padding-inline: 6px; }
   .plab-toolbar-mark { width: 20px; height: 20px; }
   .plab-workflow { gap: 2px; }
+  .plab-toolbar-identity { flex: 0 1 auto; }
+  .plab-toolbar h1 { display: none; }
+  .plab-workflow-step { gap: 4px; padding-inline: 6px; }
+  .plab-workflow-step:last-child .plab-workflow-label { max-width: 48px; overflow: hidden; text-overflow: ellipsis; }
   .plab-workspace { margin-top: 0; border-radius: 0; }
   .plab-preview { min-height: 0; }
   .plab-preview-bar { padding-inline: 12px; }
@@ -1623,19 +1755,13 @@
 }
 
 /* ── The ladder: one step open at a time ──────────────────────────────────
-   Above 900px the inspector is a fixed-height column beside the artwork, so
-   four open steps meant a scroller where the thing you were adjusting was
-   usually off screen. Only the open step shows its body now; the others keep
-   their heading and gain the value they are currently set to, so the column
-   reads as a summary of the whole design rather than a list of collapsed
-   boxes. Below 900px the inspector is a sheet that already scrolls, and
-   collapsing there would hide controls a phone reaches by scrolling — so this
-   is deliberately desktop-only. */
-@media (min-width: 901px) {
-  .plab-control-section.plab-compact-step[data-active="false"] > .plab-compact-step-body {
-    display: none;
-  }
+   One active body keeps the chosen editor directly under its heading on both
+   desktop and phone. Closed steps keep their summary and remain one tap away. */
+.plab-control-section.plab-compact-step[data-active="false"] > .plab-compact-step-body {
+  display: none;
+}
 
+@media (min-width: 901px) {
   /* The whole heading row opens its step. The row is not a button — the
      Evolve heading carries the Long Evolution checkbox, and a control inside
      a control is neither valid nor operable — so the affordance is a
@@ -2217,16 +2343,25 @@
   .plab-variation-trigger { flex: 1; }
   .plab-live-preview.plab-live-preview-headline {
     left: 10px !important;
-    right: 10px !important;
+    right: auto !important;
     bottom: 10px !important;
-    width: auto;
-    padding: 10px !important;
+    width: min(180px, calc(100% - 20px));
+    padding: 7px !important;
   }
   .plab-live-preview.plab-live-preview-headline .plab-live-preview-action {
     align-self: stretch;
     width: 100% !important;
     min-height: 44px !important;
     font-size: 13px !important;
+  }
+  .plab-live-preview.plab-live-preview-headline > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
@@ -2344,6 +2479,7 @@
 .plab-strip-calibration {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .plab-strip-calibration button {
