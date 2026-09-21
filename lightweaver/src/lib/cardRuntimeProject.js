@@ -167,15 +167,19 @@ export function buildCardRuntimePackageFromProject({
 
 function cardSafeControls(controls = {}, playlist = []) {
   const playlistLookIds = derivePlaylistLookIds(playlist);
+  const playlistLookIdSet = new Set(playlistLookIds);
   const configuredCycleIds = Array.isArray(controls?.encoder?.patternCycleIds)
     ? controls.encoder.patternCycleIds
     : [];
+  const safeConfiguredCycleIds = configuredCycleIds.filter(id => (
+    getCardPatternById(id) || playlistLookIdSet.has(id)
+  ));
   return {
     ...(controls || {}),
     encoder: {
       ...(controls?.encoder || {}),
-      patternCycleIds: configuredCycleIds.length
-        ? configuredCycleIds
+      patternCycleIds: safeConfiguredCycleIds.length
+        ? safeConfiguredCycleIds
         : playlistLookIds.length
         ? playlistLookIds
         : DEFAULT_CARD_CONTROLS.encoder.patternCycleIds,

@@ -69,10 +69,14 @@ test('project-only Pattern Lab entries are excluded from card runtime even when 
       patternLabClassification: 'studio-only',
     }],
     playlist: [{ id: 'unsafe-reference', type: 'combo', lookId: 'studio-only-journey', label: 'Studio-only journey', enabled: true }],
+    controls: { encoder: { patternCycleIds: ['fire', 'studio-only-journey'] } },
   };
 
   const runtime = buildCardRuntimePackageFromProject(value);
   const serialized = JSON.stringify(runtime.config);
+  assert.deepEqual(runtime.config.controls.encoder.patternCycleIds, ['fire']);
+  assert.equal(runtime.config.playlist?.entries?.some(entry => entry.patternId === 'studio-only-journey') ?? false, false);
+  assert.deepEqual(runtime.config.looks.map(look => look.id), ['fire']);
   assert.equal(serialized.includes('studio-only-journey'), false);
   assert.equal(serialized.includes('unsafe-reference'), false);
   assert.equal(runtime.config.startupPatternId, 'fire');
