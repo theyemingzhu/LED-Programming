@@ -347,11 +347,13 @@ test.describe('a blank card whose firmware applies its first config', () => {
   test('Test & Install sends a blank card to discovery instead of an LED check it cannot run', async ({ page }) => {
     await page.goto('/#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page, { routeToDiscovery: false });
-    await expect(page.getByTestId('wire-blank-card-message'))
-      .toHaveText('This card has no strips recorded yet. Find its strips first.');
+    const findStrips = page.getByRole('button', { name: 'Find and count the lights' });
+    await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('aria-current', 'step');
+    await expect(findStrips).toBeVisible();
     // The LED check is not offered, because it provably cannot complete here.
     await expect(page.getByTestId('start-led-check')).toHaveCount(0);
-    await page.getByTestId('wire-find-strips').click();
+    await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+    await findStrips.click();
     await expect(page).toHaveURL(/#screen=discovery/);
   });
 

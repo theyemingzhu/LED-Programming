@@ -140,9 +140,13 @@ export function CardInstallAction({
   // step. The compact Status door does not: Save to card is the one write
   // on that row, including when the open project and the card disagree.
   if (yieldPrimary && !installTaskOpen && !compact) return null;
+  // A blank card cannot accept this project's ordinary save yet. Its one
+  // truthful next step is the discovery action already rendered by Setup;
+  // a compact Save to card beside it would be a second, unusable primary.
+  if (compact && cardNeedsStripDiscovery) return null;
 
   return (
-    <WireHoverDescription className={compact ? 'lww-flow is-compact' : 'lww-flow'} data-testid="commissioning-step" aria-label="Check and install on this card">
+    <WireHoverDescription className={compact ? `lww-flow is-compact${installTaskOpen ? ' is-task-open' : ''}` : 'lww-flow'} data-testid="commissioning-step" aria-label="Check and install on this card">
       {/* This surface used to begin with a bare button sitting directly under
           the ladder's last phase description, so "Start LED check" read as
           that phase's button and was not. It is its own thing and says so.

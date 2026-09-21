@@ -1019,8 +1019,11 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
     journeyTaskId: sharedJourney.taskId,
     rememberedCard: Boolean(readPersistedCardIdentity()?.id || cardLink?.expectedCard?.id),
   });
-  const installIntentOpen = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.hash.slice(1)).get('next') === 'patterns';
+  const cardRoute = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.hash.slice(1))
+    : new URLSearchParams();
+  const installIntentOpen = cardRoute.get('next') === 'patterns';
+  const installTaskOpen = cardRoute.get('task') === 'install-project';
   let content;
   const installAction = installIntentOpen ? (
     <CardInstallAction
@@ -1070,12 +1073,13 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         ) : null}
         onOpenConnectionCenter={onOpenConnectionCenter}
         onRenameProject={onRenameProject}
-        installDoor={!installIntentOpen && !ladderOwnsPrimary && !showPublicWorkerStart ? (
+        installDoor={!installIntentOpen && (!ladderOwnsPrimary || installTaskOpen) && !showPublicWorkerStart ? (
           // The one project writer, as the status row's third door. Hidden
           // while an install intent is in the URL: the verify row's slot owns
           // it then (installAction above), and two mounts would push twice.
           // Hidden while Still to do or the fresh-start row owns the next
-          // step, so Save / Find my strips cannot sit above that action.
+          // step, unless this route explicitly names install-project: that
+          // action must stay mounted through its own state transitions.
           <CardInstallAction
             compact
             connected={connected}
