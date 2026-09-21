@@ -677,8 +677,8 @@
   gap: 8px;
 }
 .card-workspace-screen .lw-setup-doors .lww-flow.is-compact .la-card-push-label small { display: none; }
-.card-workspace-screen .lw-setup-doors .lww-flow.is-compact .la-card-push-banner.is-pending,
-.card-workspace-screen .lw-setup-doors .lww-flow.is-compact .la-card-push-banner.is-ok { display: none; }
+.card-workspace-screen .lw-setup-doors .lww-flow.is-compact:not(.is-task-open) .la-card-push-banner.is-pending,
+.card-workspace-screen .lw-setup-doors .lww-flow.is-compact:not(.is-task-open) .la-card-push-banner.is-ok { display: none; }
 .card-workspace-screen .lw-setup-doors .lww-flow.is-compact .la-card-push-banner,
 .card-workspace-screen .lw-setup-doors .lww-flow.is-compact .la-card-push-status,
 .card-workspace-screen .lw-setup-doors .lww-flow.is-compact .lw-wiring-candidate,

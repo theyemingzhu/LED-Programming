@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-// Card Home owns LED check and project install. install-project must land
-// here — not on the firmware flash screen, and not only after opening
-// Hardware settings.
+// Card Home owns project install once a card is available. A deep install
+// route must not bypass the fresh worker's truthful first action when there
+// is no connected or remembered card.
 
 test.beforeEach(async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
@@ -15,17 +15,19 @@ async function openCardInstallHome(page: { goto: Function; evaluate: Function; r
   await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
-test('install-project shows LED check on Card Home, not firmware flash', async ({ page }) => {
+test('install-project keeps card setup first when Studio has no card', async ({ page }) => {
   await openCardInstallHome(page);
 
-  await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  await expect(page.getByTestId('public-worker-start')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start Lightweaver' })).toBeVisible();
+  await expect(page.getByTestId('public-worker-start').getByRole('button', { name: /set up the card/i })).toBeVisible();
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Find your connected card/i })).toHaveCount(0);
   // Home carries no kicker; the status module is its name-plate.
   await expect(page.getByText('Lightweaver hardware')).toHaveCount(0);
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 
-  // The flow is on Home. Hardware is a fold, not a second install page.
+  // Setup is on Home. Hardware is a fold, not a second install page.
   await expect(page.getByRole('heading', { name: 'Hardware settings' })).toHaveCount(0);
   await expect(page.getByTestId('card-hardware-fold')).toBeVisible();
-  await expect(page.locator('[data-testid="start-led-check"], [data-testid="wire-find-strips"], [data-testid="layout-send-to-card"], [data-testid="unlock-and-check"]')).toBeVisible();
 });
