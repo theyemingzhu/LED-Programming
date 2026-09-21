@@ -103,12 +103,6 @@ const COMPATIBILITY_BADGES = {
 // What tapping the promoted button actually does per classification. Kept
 // next to the badge copy so the two can never drift out of sync with each
 // other or with createPatternLabHandoff's real behavior.
-const PROMOTED_ACTION_LABELS = {
-  'live-on-card': 'Use in Project',
-  'bake-to-card': 'Record to piece',
-  'simplify-for-card': 'Simplify to continue',
-  'studio-only': 'Not ready for the piece',
-};
 const PROMOTED_ACTION_HINTS = {
   'live-on-card': 'Adds a new saved look to your project right now.',
   'bake-to-card': 'Opens the recording step below — it renders a video of light the card can replay.',
@@ -124,14 +118,16 @@ function compatibilityBadge(compatibility, recipe = null) {
 
 function promotedActionLabel(compatibility, updating = false) {
   if (!compatibility) return 'Use in Project';
-  if (compatibility.classification === 'live-on-card') return updating ? 'Update in Patterns' : 'Add to Patterns';
-  return PROMOTED_ACTION_LABELS[compatibility.classification] || 'Use in Project';
+  return updating ? 'Update in Patterns' : 'Add to Patterns';
 }
 
 function promotedActionHint(compatibility, recipe = null) {
   if (!compatibility) return '';
   if (recipe?.base?.kind === 'color-journey' && compatibility.classification === 'live-on-card') {
     return 'Install on a card with Color Journey support; starts at the first color when selected or powered on.';
+  }
+  if (compatibility.classification !== 'live-on-card') {
+    return `Keeps this editable design in Patterns. ${COMPATIBILITY_BADGES[compatibility.classification]} and it will stay out of card installs until it has a safe card route.`;
   }
   return PROMOTED_ACTION_HINTS[compatibility.classification] || '';
 }
@@ -1685,18 +1681,19 @@ export default function PatternLabScreen() {
     });
   }
 
-  async function useInProject({ bakeResult = null, navigateAfter = false } = {}) {
+  async function useInProject({ bakeResult = null, navigateAfter = false, projectLibraryOnly = false } = {}) {
     if (!draft || !compatibility) {
       return { ok: false, message: 'Choose and validate a Pattern Lab recipe first.' };
     }
     if (sectionState?.supported === false) return { ok: false, message: sectionState.message };
-    if (sectionState?.scoped && compatibility.classification !== 'live-on-card') {
+    if (sectionState?.scoped && compatibility.classification !== 'live-on-card' && !projectLibraryOnly) {
       return { ok: false, message: 'This section design cannot be flattened or baked safely. Return to a simple pattern or edit the whole piece.' };
     }
     const result = await createPatternLabHandoff({
       recipe: draft,
       compatibility,
       bakeResult,
+      projectLibraryOnly,
       controller: project.standaloneController,
       strips: project.strips,
       groups: project.layoutLayerGroups,
@@ -1744,41 +1741,27 @@ export default function PatternLabScreen() {
           : `Added ${result.asset.label} as a sequence asset. Download its controller package again before loading the card.`,
       };
     }
-    const successMessage = `Added and selected ${result.look.label} in the project.`;
+    const successMessage = result.kind === 'project-look'
+      ? `Added ${result.look.label} to Patterns. Studio only — card setup was not changed.`
+      : `Added and selected ${result.look.label} in the project.`;
     return new Promise(resolve => {
       setPendingProjectSave({ message: successMessage, navigateAfter, resolve });
     });
   }
 
-  // Promoted top-level entry point for the project-handoff badge. Only
-  // "live-on-card" can succeed as a genuine one tap: createPatternLabHandoff
-  // returns blocked('bake-required') for "bake-to-card" without a completed
-  // bake, and has no direct path at all for "simplify-for-card" or
-  // "studio-only". So this button only calls the handoff for the case that
-  // can actually complete; every other classification reveals the "Card
-  // compatibility & diagnostics" section, where the real recording /
-  // simplify flow lives, instead of promising a one-click add it cannot
-  // deliver.
-  function openRuntimeTools() {
-    const node = runtimeToolsRef.current;
-    if (!node) return;
-    node.open = true;
-    requestAnimationFrame(() => {
-      node.scrollIntoView({ block: 'nearest' });
-      node.querySelector('summary')?.focus();
-    });
-  }
-
+  // The primary action always returns the design to Patterns. Card-ineligible
+  // recipes are stored there as project-only linked designs; the diagnostics
+  // below retain the separate bake/simplify paths that can later make one safe
+  // to install.
   async function useInProjectPrimary() {
     if (!draft || !compatibility || projectActionBusy) return;
-    if (compatibility.classification !== 'live-on-card') {
-      openRuntimeTools();
-      return;
-    }
     setProjectActionBusy(true);
     setMessage('Adding to project…');
     try {
-      const result = await useInProject({ navigateAfter: true });
+      const result = await useInProject({
+        navigateAfter: true,
+        projectLibraryOnly: compatibility.classification !== 'live-on-card',
+      });
       if (result.ok === true) return;
       setMessage(result.message);
     } catch (error) {
@@ -2315,7 +2298,7 @@ export default function PatternLabScreen() {
                     id="plab-add-to-patterns"
                     type="button"
                     className="btn primary"
-                    disabled={projectActionBusy || compatibility.classification === 'studio-only' || sectionState?.supported === false}
+                    disabled={projectActionBusy || sectionState?.supported === false}
                     aria-busy={projectActionBusy ? 'true' : undefined}
                     onClick={() => void useInProjectPrimary()}
                   >{projectActionBusy ? 'Adding…' : promotedActionLabel(compatibility, handoffIdentity?.updating)}</button>

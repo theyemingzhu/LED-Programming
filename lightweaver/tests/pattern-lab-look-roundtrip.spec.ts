@@ -148,3 +148,75 @@ test('a new Lab creation is added to Patterns, selected, and reopens as the same
   await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue('Gallery sunrise');
   await expect(page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true })).toBeVisible();
 });
+
+test('a Studio-only Lab creation enters Patterns and reopens without changing card-ready project state', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'studio-only-lab-roundtrip';
+  project.name = 'Studio-only Lab roundtrip';
+  project.layout.starterPending = false;
+  const originalDefaultLook = structuredClone(project.devices.standaloneController.defaultLook);
+  const originalPatchBoard = structuredClone(project.layout.patchBoard);
+  await page.addInitScript(value => {
+    if (localStorage.getItem('studio-only-lab-initialized')) return;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(value));
+    localStorage.setItem('studio-only-lab-initialized', 'yes');
+  }, project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
+  await openControls(page);
+
+  const studioOnlyRecipe = normalizePatternLabRecipe({
+    ...recipeFromLook(normalizeSavedLooks([{
+      id: 'studio-only-source',
+      label: 'Reactive gallery wash',
+      defaultLook: originalDefaultLook,
+      sectionLooks: {},
+    }])[0]),
+    id: 'reactive-gallery-wash',
+    name: 'Reactive gallery wash',
+    requirements: [{ capability: 'live-audio', required: true, bakeable: false }],
+  });
+  await page.getByLabel('Import recipe').setInputFiles({
+    name: 'reactive-gallery-wash.lwrecipe.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(studioOnlyRecipe)),
+  });
+
+  const handoff = page.getByTestId('pattern-lab-use-in-project-promoted');
+  await expect(page.getByTestId('pattern-lab-compat-badge')).toHaveAttribute('data-classification', 'studio-only');
+  await expect(handoff.getByRole('button', { name: 'Add to Patterns', exact: true })).toBeEnabled();
+  await handoff.getByRole('button', { name: 'Add to Patterns', exact: true }).click();
+  await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
+  await expect(page.getByTestId('look-name')).toHaveValue('Reactive gallery wash');
+  await expect(page.getByTestId('look-save-status')).toContainText('Studio only');
+  await expect(page.getByText('Choose a pattern or Lab look, tune it, then install card-ready designs when ready.', { exact: true })).toBeVisible();
+  const install = page.getByRole('button', { name: 'Studio only', exact: true });
+  await expect(install).toBeDisabled();
+  await expect(install).toHaveAttribute('title', 'This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.');
+
+  await expect.poll(async () => {
+    const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || '{}'));
+    const controller = saved.devices?.standaloneController;
+    return {
+      defaultLook: controller?.defaultLook,
+      projectOnly: controller?.looks?.find((look: { id?: string }) => look.id === controller?.activeLookId)?.projectOnly,
+      classification: controller?.looks?.find((look: { id?: string }) => look.id === controller?.activeLookId)?.patternLabClassification,
+      patchBoard: saved.layout?.patchBoard,
+    };
+  }).toEqual({
+    defaultLook: originalDefaultLook,
+    projectOnly: true,
+    classification: 'studio-only',
+    patchBoard: originalPatchBoard,
+  });
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('look-name')).toHaveValue('Reactive gallery wash');
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Open Studio-only design in Lab');
+  await page.getByTestId('look-save-preset').click();
+  await expect(page).toHaveURL(/screen=pattern-lab/);
+  await openControls(page);
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue('Reactive gallery wash');
+  await expect(page.getByTestId('pattern-lab-compat-badge')).toHaveAttribute('data-classification', 'studio-only');
+  await expect(page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true })).toBeEnabled();
+});

@@ -153,8 +153,8 @@ test('removing the selected section preserves the draft and requires an explicit
   await expect(area).toHaveValue(CENTRE);
   await expect(page.getByRole('alert').filter({ hasText: /no longer exists/i })).toBeVisible();
   const useInProject = page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/i });
-  await expect(useInProject).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Simplify to continue', exact: true })).toBeDisabled();
+  await expect(useInProject).toBeVisible();
+  await expect(useInProject).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Save private draft', exact: true })).toBeDisabled();
   await area.selectOption(PETALS);
   await expect(area).toHaveValue(PETALS);

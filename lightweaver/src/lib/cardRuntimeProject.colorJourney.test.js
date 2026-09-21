@@ -55,6 +55,29 @@ test('runtime package compiles a saved authored journey and survives compact con
   assert.deepEqual(authored, before, 'layout-derived phase must not mutate the authored project recipe');
 });
 
+test('project-only Pattern Lab entries are excluded from card runtime even when a stale playlist references them', () => {
+  const value = project();
+  value.standaloneController = {
+    defaultLook: { patternId: 'fire', brightness: 0.5 },
+    activeLookId: 'studio-only-journey',
+    looks: [{
+      id: 'studio-only-journey',
+      label: 'Studio-only journey',
+      defaultLook: { patternId: 'aurora', brightness: 0.7 },
+      patternLabRecipe: authored,
+      projectOnly: true,
+      patternLabClassification: 'studio-only',
+    }],
+    playlist: [{ id: 'unsafe-reference', type: 'combo', lookId: 'studio-only-journey', label: 'Studio-only journey', enabled: true }],
+  };
+
+  const runtime = buildCardRuntimePackageFromProject(value);
+  const serialized = JSON.stringify(runtime.config);
+  assert.equal(serialized.includes('studio-only-journey'), false);
+  assert.equal(serialized.includes('unsafe-reference'), false);
+  assert.equal(runtime.config.startupPatternId, 'fire');
+});
+
 test('changing physical direction recompiles phase without changing the saved authored journey', () => {
   const forward = project();
   forward.wiring = structuredClone(wiring);

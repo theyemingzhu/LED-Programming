@@ -869,6 +869,8 @@ import { PatternPreview } from './PatternPreview.jsx';
     const activeLookId = standaloneController?.activeLookId || '';
     const editingSavedLook = savedLooks.find(item => item.id === activeLookId) || null;
     const editingColorJourney = editingSavedLook?.patternLabRecipe?.base?.kind === 'color-journey';
+    const editingProjectOnly = editingSavedLook?.projectOnly === true;
+    const editingLabAuthored = editingColorJourney || editingProjectOnly;
     const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label);
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const latestBoardRef = useRef(board);
@@ -1788,6 +1790,11 @@ import { PatternPreview } from './PatternPreview.jsx';
     };
 
     const savePreviewToCard = async () => {
+      if (editingProjectOnly) {
+        setStatusKind('info');
+        setStatus('This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.');
+        return;
+      }
       if (currentPatternCardAccess() !== 'ready') {
         blockPatternCardEffect(currentPatternCardAccess());
         return;
@@ -1944,7 +1951,7 @@ import { PatternPreview } from './PatternPreview.jsx';
         setStatus(error.message || 'Could not save this look.');
       }
     };
-    const savePreset = () => editingColorJourney ? openLookInLab() : saveLook();
+    const savePreset = () => editingLabAuthored ? openLookInLab() : saveLook();
     const renameLook = () => {
       if (!editingSavedLook || !mixName.trim()) return;
       const label = mixName.trim();
@@ -1980,6 +1987,12 @@ import { PatternPreview } from './PatternPreview.jsx';
       setLookSaveState('Saving…');
     };
     const openLookInLab = () => {
+      if (editingProjectOnly) {
+        const result = writePatternLabEditHandoff(projectId, editingSavedLook);
+        if (!result.ok) { setLookSaveState(result.error); return; }
+        window.location.hash = '#screen=pattern-lab';
+        return;
+      }
       const { nextController, nextTargets } = buildCurrentHardwareState();
       const value = {
         ...(editingSavedLook || {}),
@@ -2032,6 +2045,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       }
       // saved mix card: id is the adapted look id; find the real saved look.
       const realLook = findSavedLook(id);
+      if (realLook?.projectOnly) return;
       if (realLook) setSavedLookInPlaylist(realLook, !playlistContainsCombo(playlist, realLook.id));
     };
     const inPlaylist = (id) => {
@@ -2045,6 +2059,19 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (p.mix) {
         const realLook = findSavedLook(p.id);
         if (realLook) {
+          if (realLook.projectOnly) {
+            setStandaloneController(prev => ({
+              ...(prev || {}),
+              activeLookId: realLook.id,
+              looks: savedLooks,
+            }));
+            setDraftLooks({});
+            setMixName(realLook.label);
+            setLookSaveState('Studio only · kept in Patterns; open it in Lab to preview or edit.');
+            setSelectedTargetId(ALL_SECTIONS_TARGET_ID);
+            invalidatePendingPreview();
+            return;
+          }
           const nextBoard = applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: realLook });
           setPatchBoard(nextBoard);
           setStandaloneController(prev => ({
@@ -2479,7 +2506,7 @@ import { PatternPreview } from './PatternPreview.jsx';
               <div className="pm-title">
                 <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
-                <p>Choose chip-ready patterns, tune the colors, then install the finished look on the card.</p>
+                <p>Choose a pattern or Lab look, tune it, then install card-ready designs when ready.</p>
                 {/* F18: while the pattern-gate notice is up, it already
                     carries this exact verdict as its own alert with the
                     actionable next step ("Verify project in Card status") —
@@ -2493,7 +2520,14 @@ import { PatternPreview } from './PatternPreview.jsx';
                 )}
               </div>
               <div className="pm-actions">
-                <button className="btn primary" title="Install the current look on the card" onClick={savePreviewToCard} disabled={!installGate.allowed}>{I.bolt}{cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
+                <button
+                  className="btn primary"
+                  title={editingProjectOnly
+                    ? 'This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.'
+                    : 'Install the current look on the card'}
+                  onClick={savePreviewToCard}
+                  disabled={editingProjectOnly || !installGate.allowed}
+                >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
                     booting, a mismatch resolving) are exactly when an owner
@@ -2685,7 +2719,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                         <div className="pmcard-led"><LedRow pal={p.pal} n={11} mode={ledMode} /></div>
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
-                          {p.mix && <span className="mixtag">mix</span>}
+                          {p.mix && <span className="mixtag">{p.projectOnly ? 'Lab only' : 'mix'}</span>}
                         </div>
                         <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
                       </button>
@@ -2694,7 +2728,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                             target, ~33px less height per card. Icon-only at
                             rest; the label slides out on hover/focus, where
                             there is room for it to explain itself. */}
-                        <button
+                        {!p.projectOnly && <button
                           type="button"
                           aria-pressed={cardInPlaylist}
                           aria-label={cardInPlaylist ? `Remove ${p.label} from playlist` : `Add ${p.label} to playlist`}
@@ -2706,7 +2740,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                             <svg viewBox="0 0 24 24" className="plstar" aria-hidden="true"><path d="M12 3l2.6 5.6 6 .7-4.4 4.1 1.2 6L12 16.8 6.6 19.4l1.2-6L3.4 9.3l6-.7z" /></svg>
                             <span className="pmcard-pl-lab">{cardInPlaylist ? "In playlist" : "Playlist"}</span>
                           </span>
-                        </button>
+                        </button>}
                     </div>
                       );
                     })}
@@ -2913,14 +2947,14 @@ import { PatternPreview } from './PatternPreview.jsx';
                   <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
                   <div aria-label="Keep your look" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px 16px', marginBottom: 8 }}>
                     <input className="pm-input" data-testid="look-name" style={{ flex: '1 1 180px', minWidth: 0 }} aria-label="Look name" placeholder="Name this look (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
+                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open Studio-only design in Lab' : editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
                     {editingSavedLook && <>
-                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingColorJourney ? openLookInLab : () => saveLook(true)}>Save as new</button>
+                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new'}</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={renameLook}>Rename</button>
                       <button type="button" className="btn" data-testid="look-delete" onClick={deleteLook}>Delete{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` · ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist uses` : ''}</button>
                     </>}
                     {deletedLook && <button type="button" className="btn" data-testid="look-delete-undo" onClick={undoDeleteLook}>Undo delete {deletedLook.label}</button>}
-                    <div role="status" data-testid="look-save-status" style={{ flexBasis: '100%', display: 'block', lineHeight: 1.5, minHeight: 20, paddingTop: 4 }}>{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved changes · working copy kept on this browser' : lookSaveState || (editingSavedLook ? 'In this project' : 'Choose, play, then keep your look'))}</div>
+                    <div role="status" data-testid="look-save-status" style={{ flexBasis: '100%', display: 'block', lineHeight: 1.5, minHeight: 20, paddingTop: 4 }}>{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved changes · working copy kept on this browser' : lookSaveState || (editingProjectOnly ? 'Studio only · kept in Patterns and excluded from card installs' : editingSavedLook ? 'In this project' : 'Choose, play, then keep your look'))}</div>
                   </div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
