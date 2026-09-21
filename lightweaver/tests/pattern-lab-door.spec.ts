@@ -23,7 +23,7 @@ test('Use in Project on a native look returns to Patterns', async ({ page }) => 
     'data-classification',
     'live-on-card',
   );
-  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Use in Project' }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/ }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
   await expect(page.getByTestId('pattern-preview-meta')).toContainText(/Aurora/i);
 });

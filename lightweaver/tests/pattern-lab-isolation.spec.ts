@@ -78,7 +78,7 @@ test('Pattern Lab shell exposes its current step and mapped preview safely', asy
   // An invalid pattern link falls back to the welcoming Color Drift workspace.
   await page.goto('/#screen=pattern-lab&patternId=not-a-pattern', { waitUntil: 'domcontentloaded' });
   const workflow = page.getByRole('navigation', { name: 'Pattern Lab workflow' });
-  await expect(workflow.getByRole('button', { name: 'Choose' })).toHaveAttribute('aria-current', 'step');
+  await expect(workflow.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-current', 'step');
   await expect(page.locator('canvas[aria-label="LED pattern preview"]')).toBeVisible();
 });
 
@@ -92,9 +92,9 @@ test('compact Pattern Lab progression moves focus to each authoring destination'
   expect((await toolbar.boundingBox())!.height).toBeLessThanOrEqual(56);
 
   const choose = workflow.getByRole('button', { name: 'Choose' });
-  const sculpt = workflow.getByRole('button', { name: 'Sculpt' });
+  const sculpt = workflow.getByRole('button', { name: 'Edit' });
   const evolve = workflow.getByRole('button', { name: 'Evolve' });
-  const save = workflow.getByRole('button', { name: 'Save' });
+  const save = workflow.getByRole('button', { name: 'Add to Patterns' });
   for (const step of [choose, sculpt, evolve, save]) {
     await expect(step.locator('svg')).toHaveCount(1);
     expect((await step.boundingBox())!.height).toBeGreaterThanOrEqual(36);
@@ -105,7 +105,7 @@ test('compact Pattern Lab progression moves focus to each authoring destination'
   await choosePattern(page, 'aurora');
 
   await sculpt.click();
-  await expect(page.getByRole('heading', { name: 'Sculpt', exact: true })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Edit', exact: true })).toBeFocused();
   await expect(sculpt).toHaveAttribute('aria-current', 'step');
 
   await evolve.click();
@@ -113,11 +113,11 @@ test('compact Pattern Lab progression moves focus to each authoring destination'
   await expect(evolve).toHaveAttribute('aria-current', 'step');
 
   await save.click();
-  await expect(page.getByRole('button', { name: 'Save private draft' })).toBeFocused();
+  await expect(page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: /Add to Patterns|Update in Patterns/ })).toBeFocused();
   await expect(save).toHaveAttribute('aria-current', 'step');
 });
 
-test('Pattern Lab toolbar stays one quiet icon row from workspace width to phone width', async ({ page }) => {
+test('Pattern Lab toolbar keeps labeled workflow steps in one row from workspace width to phone width', async ({ page }) => {
   for (const viewport of [
     { width: 793, height: 768 },
     { width: 390, height: 844 },
@@ -131,11 +131,11 @@ test('Pattern Lab toolbar stays one quiet icon row from workspace width to phone
     const toolbarBox = await toolbar.boundingBox();
     expect(toolbarBox).not.toBeNull();
     expect(toolbarBox!.height).toBeLessThanOrEqual(56);
-    await expect(workflow.locator('.plab-step-label')).toHaveCount(0);
+    await expect(workflow.locator('.plab-workflow-label')).toHaveCount(4);
     await expect(toolbar.getByRole('status', { name: /private workspace/i })).toBeVisible();
     await expect(toolbar.getByText(/your project and lights stay unchanged/i)).toHaveCount(0);
 
-    for (const name of ['Choose', 'Sculpt', 'Evolve', 'Save']) {
+    for (const name of ['Choose', 'Edit', 'Evolve', 'Add to Patterns']) {
       const step = workflow.getByRole('button', { name });
       await expect(step).toBeVisible();
       await expect(step.locator('svg')).toHaveCount(1);
@@ -143,7 +143,7 @@ test('Pattern Lab toolbar stays one quiet icon row from workspace width to phone
         .toBeGreaterThanOrEqual(viewport.width <= 720 ? 44 : 36);
     }
 
-    if (viewport.width <= 360) {
+    if (viewport.width <= 640) {
       await expect(toolbar.getByRole('heading', { name: 'Pattern Lab' })).toBeHidden();
     } else {
       await expect(toolbar.getByRole('heading', { name: 'Pattern Lab' })).toBeVisible();
@@ -187,15 +187,15 @@ test('icon-only actions expose immediate styled tooltips on hover and keyboard f
 
   const workflow = page.getByRole('navigation', { name: 'Pattern Lab workflow' });
   const patternTooltips = new Map([
-    ['Choose', 'Choose a base pattern'],
-    ['Sculpt', 'Color, brightness, and speed always apply; movement or shape and texture depend on what you picked'],
+    ['Choose', 'Choose a starting pattern'],
+    ['Edit', 'Edit color, movement, brightness, and speed'],
     ['Evolve', 'Build a long-changing journey'],
-    ['Save', 'Save this variation privately'],
+    ['Add to Patterns', 'Finish in Patterns'],
   ]);
   for (const [name, copy] of patternTooltips) {
     await assertCustomTooltip(workflow.getByRole('button', { name }), copy);
   }
-  for (const name of ['Sculpt', 'Evolve', 'Save']) {
+  for (const name of ['Edit', 'Evolve', 'Add to Patterns']) {
     await expect(workflow.getByRole('button', { name })).toHaveAttribute('data-tooltip-align', 'end');
   }
 
@@ -216,7 +216,7 @@ test('icon-only actions expose immediate styled tooltips on hover and keyboard f
   await choose.hover();
   await expect.poll(() => tooltipState(choose)).toMatchObject(
     hoverCapable
-      ? { content: '"Choose a base pattern"', opacity: '1', visibility: 'visible' }
+      ? { content: '"Choose a starting pattern"', opacity: '1', visibility: 'visible' }
       : { opacity: '0', visibility: 'hidden' },
   );
 

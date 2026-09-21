@@ -103,6 +103,7 @@ export default function PatternLabControls({
   const palette = Array.isArray(recipe?.palette) ? recipe.palette : [];
   const hue = Math.round(Number.isFinite(pieceColorHue) ? pieceColorHue : 30);
   const showFullPalette = !generatorId && PALETTE_VISIBLE_PATTERNS.has(selectedPatternId);
+  const showPatternEditor = recipe?.base?.kind !== 'color-journey';
 
   // What each step is currently set to, shown on its heading while the step is
   // closed. Both are read from the draft rather than remembered separately —
@@ -111,7 +112,7 @@ export default function PatternLabControls({
   // exposes, which is the same list rendered below.
   const chooseSummary = generatorId
     ? generatorId.replaceAll('-', ' ')
-    : (selectedPatternSource?.name || (recipe ? 'Custom' : 'Not chosen'));
+    : (recipe?.base?.kind === 'color-journey' ? 'Color Journey' : (selectedPatternSource?.name || (recipe ? 'Custom' : 'Not chosen')));
   const sculptSummary = recipe ? `${hue}° · ${activeControls.length} controls` : '';
 
   return (
@@ -154,7 +155,7 @@ export default function PatternLabControls({
         </div>
       </section>
 
-      <section
+      {showPatternEditor && <section
         className="plab-control-section plab-compact-step plab-sculpt-control"
         aria-labelledby="plab-sculpt-heading"
         data-testid="pattern-lab-step-sculpt"
@@ -174,12 +175,12 @@ export default function PatternLabControls({
           <button
             type="button"
             className="plab-step-open"
-            aria-label="Open Sculpt"
+            aria-label="Open Edit"
             aria-expanded={activeWorkflowStep === 1}
             onClick={() => onOpenStep?.(1)}
           />
           <span className="plab-section-index">02</span>
-          <h2 id="plab-sculpt-heading" tabIndex="-1">Sculpt</h2>
+          <h2 id="plab-sculpt-heading" tabIndex="-1">Edit</h2>
           <span className="plab-step-summary" data-testid="pattern-lab-step-summary-sculpt">{sculptSummary}</span>
         </div>
         <div className="plab-compact-step-body">
@@ -281,7 +282,7 @@ export default function PatternLabControls({
             />
           )}
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

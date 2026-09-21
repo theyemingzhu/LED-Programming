@@ -53,7 +53,7 @@ export const REAL_PATTERN_BY_ID = new Map(REAL_PATTERNS.map(p => [p.id, p]));
 
 export function adaptSavedLook(look) {
   if (!look) return null;
-  const base = adaptPattern(look.patternId || look.base || 'aurora');
+  const base = adaptPattern(look.defaultLook?.patternId || look.patternId || look.base || 'aurora');
   return {
     ...base,
     id: look.id || `mix-${base.id}`,
@@ -61,6 +61,7 @@ export function adaptSavedLook(look) {
     base: base.id,
     cat: 'mix',
     mix: true,
+    projectOnly: look.projectOnly === true,
     desc: look.desc || `Saved mix · ${base.label}.`,
   };
 }

@@ -43,13 +43,10 @@ export default function ColorJourneyComposer({
   variations = [],
   savedLooks = [],
   saveState = 'unsaved',
-  hasSavedVersion = false,
   onRecipeChange,
   onStart,
   onTryVariation,
   onSelectVariation,
-  onKeep,
-  onSaveAsNew,
   onOpenSaved,
   onUndo,
   canUndo = false,
@@ -135,6 +132,13 @@ export default function ColorJourneyComposer({
       </div>
 
       <div className="plab-color-stage">
+        <div className="plab-context-heading">
+          <b>Color order</b>
+          <details className="plab-context-help">
+            <summary aria-label="About color order and locks">?</summary>
+            <p>Colors play from left to right. Move them with the arrows. A lock keeps that color unchanged when you try a palette.</p>
+          </details>
+        </div>
         <div className="plab-color-ribbon" data-testid="color-journey-ribbon" style={ribbonStyle(colors)}>
           {journey.stops.map((stop, index) => (
             <div className="plab-color-stop-wrap" key={stop.id} style={{ left: `${((index + .5) / journey.stops.length) * 100}%` }}>
@@ -199,6 +203,13 @@ export default function ColorJourneyComposer({
         ))}
       </div>
 
+      <div className="plab-context-heading">
+        <b>Timing &amp; character</b>
+        <details className="plab-context-help">
+          <summary aria-label="About timing and character">?</summary>
+          <p>Pace sets the journey length. Character sets motion depth: restrained stays subtle, while expressive travels farther between colors.</p>
+        </details>
+      </div>
       <div className="plab-creative-dials">
         <label className="plab-pace-control">
           <span><b>Pace</b><small>{totalMinutes(journey).toFixed(totalMinutes(journey) % 1 ? 1 : 0)} minute {journey.loop ? 'loop' : 'journey'}</small></span>
@@ -225,7 +236,13 @@ export default function ColorJourneyComposer({
       <button type="button" className="plab-rehearsal" aria-pressed={rehearsal} onClick={() => onRehearsalChange?.(!rehearsal)}>
         {rehearsal ? 'Quick rehearsal on · saved timing unchanged' : 'Quick rehearsal'}
       </button>
-      <p className="plab-studio-live-note">Preview in Studio now · after installation, the piece plays this journey on its own.</p>
+      <div className="plab-preview-distinction">
+        <span>Studio preview</span>
+        <details className="plab-context-help">
+          <summary aria-label="About Studio preview and the installed piece">?</summary>
+          <p>Studio shows the mapped artwork. The installed piece plays the same saved journey on its physical LEDs after you add it to Patterns and install the project.</p>
+        </details>
+      </div>
 
       <div className="plab-variation-actions">
         <button type="button" className="plab-variation-trigger" onClick={onTryVariation}>Try a variation</button>
@@ -249,10 +266,6 @@ export default function ColorJourneyComposer({
         </div>
       )}
 
-      <div className="plab-keep-row">
-        <button type="button" className="plab-keep-look" onClick={onKeep}>{hasSavedVersion ? `Update ${recipe.name}` : 'Keep this look'}</button>
-        {hasSavedVersion && <button type="button" className="plab-save-copy" onClick={onSaveAsNew}>Save as new</button>}
-      </div>
       {savedLooks.length > 0 && (
         <div className="plab-kept-looks" aria-label="Kept looks">
           <span>Kept looks</span>

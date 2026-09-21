@@ -16,7 +16,7 @@ test('a color journey can be explored and kept without opening technical control
   await page.getByRole('button', { name: 'Try a variation', exact: true }).click();
   await expect(page.getByTestId('color-journey-variation')).toHaveCount(3);
   await page.getByTestId('color-journey-variation').first().click();
-  await page.getByRole('button', { name: 'Keep this look', exact: true }).click();
+  await page.getByRole('button', { name: 'Save private draft', exact: true }).click();
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
   const colors = await page.getByTestId('color-journey-ribbon').locator('[data-color]')
     .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-color')));
@@ -35,10 +35,10 @@ test('the creative controls stay usable on a phone without horizontal overflow',
   await page.getByRole('button', { name: 'Move color 1 right', exact: true }).click();
   await page.getByRole('button', { name: 'Try a variation', exact: true }).click();
   await page.getByTestId('color-journey-variation').first().click();
-  await page.getByRole('button', { name: 'Keep this look', exact: true }).click();
+  await page.getByRole('button', { name: 'Save private draft', exact: true }).click();
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-  const keepBox = await page.getByRole('button', { name: /Keep this look|Update/i }).first().boundingBox();
+  const keepBox = await page.getByRole('button', { name: /Save private draft|Update private draft/i }).first().boundingBox();
   expect(keepBox?.height).toBeGreaterThanOrEqual(44);
 });
 
@@ -74,7 +74,7 @@ test('dragging a color changes the journey and locked colors survive exploration
 
 test('an unkept color edit survives reload without pretending it was saved', async ({ page }) => {
   await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
-  await page.getByRole('button', { name: 'Keep this look', exact: true }).click();
+  await page.getByRole('button', { name: 'Save private draft', exact: true }).click();
   await expect(page.getByTestId('color-journey-save-state')).toContainText(/saved/i);
   await page.getByRole('button', { name: 'Move color 1 right', exact: true }).click();
   const colors = await page.getByTestId('color-journey-ribbon').locator('[data-color]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-color')));
@@ -86,9 +86,9 @@ test('an unkept color edit survives reload without pretending it was saved', asy
 test('desktop actions stay compact instead of stretching across the preview', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole('button', { name: 'Slow color drift', exact: true }).click();
-  for (const label of ['Live preview', 'Keep this look', 'Try a variation', 'Quick rehearsal']) {
+  for (const label of ['Live preview', 'Save private draft', 'Try a variation', 'Quick rehearsal']) {
     const box = await page.getByRole('button', { name: label, exact: true }).boundingBox();
     expect(box?.width, label).toBeLessThanOrEqual(320);
-    expect(box?.height, label).toBeLessThanOrEqual(40);
+    expect(box?.height, label).toBeLessThanOrEqual(label === 'Save private draft' ? 44 : 40);
   }
 });

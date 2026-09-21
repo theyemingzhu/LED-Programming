@@ -453,6 +453,7 @@ export async function createPatternLabHandoff({
   cancelled = false,
   exportError = null,
   saveAsNew = false,
+  projectLibraryOnly = false,
   strips = [],
   groups = [],
   wiring = null,
@@ -473,6 +474,41 @@ export async function createPatternLabHandoff({
     normalized = normalizePatternLabRecipe(recipe);
   } catch (error) {
     return blocked('recipe-invalid', 'The Pattern Lab recipe is invalid.', error.message || error);
+  }
+
+  // Patterns is the project's creative library; card compatibility is a
+  // separate installation decision. A valid recipe that cannot run on the
+  // current card still belongs in Patterns so it can be found and reopened in
+  // Lab. Mark it project-only and keep the controller's playable default
+  // untouched when it is applied. Card packaging filters this marker again at
+  // the runtime boundary, so a stale UI or hand-edited playlist cannot grant
+  // hardware eligibility.
+  if (projectLibraryOnly && compatibility.classification !== 'live-on-card') {
+    const existing = normalizeSavedLooks(controller?.looks);
+    const identity = prospectivePatternLabLookIdentity(normalized, controller, { saveAsNew });
+    if (!identity.updating && existing.length >= MAX_SAVED_LOOKS) {
+      return blocked('look-capacity', `The project already has the maximum of ${MAX_SAVED_LOOKS} saved looks.`);
+    }
+    const visual = lookFromRecipe(normalized);
+    const look = normalizeSavedLooks([{
+      ...visual,
+      id: identity.id,
+      label: identity.label,
+      projectOnly: true,
+      patternLabClassification: compatibility.classification,
+      patternLabRecipe: normalized,
+    }])[0];
+    look.patternLabRecipe = normalizePatternLabRecipe({
+      ...normalized,
+      sourceLook: {
+        ...normalized.sourceLook,
+        id: look.id,
+        label: look.label,
+        defaultLook: look.defaultLook,
+        sectionLooks: look.sectionLooks,
+      },
+    });
+    return { kind: 'project-look', look, ...(identity.updating ? { replaceLookId: look.id } : {}) };
   }
 
   if (compatibility.classification === 'live-on-card') {
@@ -605,7 +641,7 @@ async function validSequenceResult(result) {
 export async function applyPatternLabHandoff(controller = {}, result = {}) {
   if (!result || result.kind === 'blocked') return controller;
   const source = clone(controller || {});
-  if (result.kind === 'look') {
+  if (result.kind === 'look' || result.kind === 'project-look') {
     const existing = normalizeSavedLooks(source.looks);
     const updating = typeof result.replaceLookId === 'string' && result.replaceLookId === result.look?.id && existing.some(look => look.id === result.replaceLookId);
     if (!updating && existing.length >= MAX_SAVED_LOOKS) return controller;
@@ -613,7 +649,7 @@ export async function applyPatternLabHandoff(controller = {}, result = {}) {
     if (!normalized || (!updating && existing.some(look => look.id === normalized.id)) || isBuiltInPattern(normalized.id)) return controller;
     return {
       ...source,
-      defaultLook: clone(normalized.defaultLook),
+      ...(result.kind === 'look' ? { defaultLook: clone(normalized.defaultLook) } : {}),
       activeLookId: normalized.id,
       looks: [normalized, ...existing.filter(look => look.id !== normalized.id)],
       ...(Array.isArray(source.playlist) ? { playlist: source.playlist.map(entry => entry.lookId === normalized.id || entry.comboId === normalized.id ? { ...entry, label: normalized.label } : entry) } : {}),

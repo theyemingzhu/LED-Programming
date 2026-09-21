@@ -93,6 +93,31 @@ test('creates a new normalized look handoff without changing the recipe', async 
   assert.equal(JSON.stringify(source), before);
 });
 
+test('creates a project-only Patterns entry for a Studio-only recipe without granting card eligibility', async () => {
+  const source = recipe({
+    requirements: [{ capability: 'live-audio', required: true, bakeable: false }],
+  });
+  const before = JSON.stringify(source);
+  const result = await createPatternLabHandoff({
+    recipe: source,
+    compatibility: compatibility('studio-only', [{ code: 'required-capability-unsupported', message: 'Live audio is unavailable on the card.' }]),
+    projectLibraryOnly: true,
+  });
+
+  assert.equal(result.kind, 'project-look');
+  assert.equal(result.look.label, 'Aurora Journey');
+  assert.equal(result.look.projectOnly, true);
+  assert.equal(result.look.patternLabClassification, 'studio-only');
+  assert.equal(result.look.patternLabRecipe.requirements[0].capability, 'live-audio');
+  assert.equal(JSON.stringify(source), before);
+
+  const original = { defaultLook: { patternId: 'fire' }, looks: [] };
+  const applied = await applyPatternLabHandoff(original, result);
+  assert.deepEqual(applied.defaultLook, original.defaultLook, 'a project-only entry cannot replace the card default');
+  assert.equal(applied.activeLookId, result.look.id);
+  assert.equal(applied.looks[0].projectOnly, true);
+});
+
 test('procedural handoff copies direct playback brightness and speed', async () => {
   const source = recipe({
     version: 2,

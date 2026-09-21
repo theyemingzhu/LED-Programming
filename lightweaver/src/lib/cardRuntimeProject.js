@@ -64,7 +64,11 @@ export function buildCardRuntimePackageFromProject({
     resolvedPixels,
   });
   const visualLook = normalizeCardVisualLook(standaloneController?.defaultLook);
-  const savedLooks = normalizeSavedLooks(standaloneController?.looks);
+  // Project-only Lab entries belong in Studio's Patterns library but have not
+  // passed the card boundary. Exclude them before playlist normalization and
+  // runtime compilation even if a stale or hand-edited project references one.
+  const savedLooks = normalizeSavedLooks(standaloneController?.looks)
+    .filter(look => look.projectOnly !== true);
   const legacyCycleIds = Array.isArray(standaloneController?.controls?.encoder?.patternCycleIds) &&
     !isDefaultPatternCycle(standaloneController.controls.encoder.patternCycleIds)
     ? standaloneController.controls.encoder.patternCycleIds
@@ -163,15 +167,19 @@ export function buildCardRuntimePackageFromProject({
 
 function cardSafeControls(controls = {}, playlist = []) {
   const playlistLookIds = derivePlaylistLookIds(playlist);
+  const playlistLookIdSet = new Set(playlistLookIds);
   const configuredCycleIds = Array.isArray(controls?.encoder?.patternCycleIds)
     ? controls.encoder.patternCycleIds
     : [];
+  const safeConfiguredCycleIds = configuredCycleIds.filter(id => (
+    getCardPatternById(id) || playlistLookIdSet.has(id)
+  ));
   return {
     ...(controls || {}),
     encoder: {
       ...(controls?.encoder || {}),
-      patternCycleIds: configuredCycleIds.length
-        ? configuredCycleIds
+      patternCycleIds: safeConfiguredCycleIds.length
+        ? safeConfiguredCycleIds
         : playlistLookIds.length
         ? playlistLookIds
         : DEFAULT_CARD_CONTROLS.encoder.patternCycleIds,

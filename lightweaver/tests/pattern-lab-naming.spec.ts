@@ -78,7 +78,7 @@ test('saving a tweaked design again keeps both versions instead of overwriting t
   // Once a design is saved, the primary action stops being a plain "save":
   // it becomes an explicitly additive one, and overwriting moves to a button
   // that names what it would overwrite.
-  const primary = page.getByRole('button', { name: 'Save as a new design' });
+  const primary = page.getByRole('button', { name: 'Save new private draft' });
   await expect(primary).toBeVisible();
   const replace = page.getByTestId('pattern-lab-replace-draft');
   await expect(replace).toContainText('Rainbow Flow');

@@ -7,6 +7,7 @@ import { normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 
 export const ALL_SECTIONS_TARGET_ID = 'all';
 export const MAX_SAVED_LOOKS = 12;
+const PATTERN_LAB_CLASSIFICATIONS = new Set(['live-on-card', 'bake-to-card', 'simplify-for-card', 'studio-only']);
 export const COMPOUND_PATTERN_TYPE = 'compound-pattern';
 
 export function normalizeSectionVisualLook(look = {}) {
@@ -157,6 +158,12 @@ export function normalizeSavedLooks(looks = []) {
       defaultLook: normalizeSectionVisualLook(look.defaultLook || look.look || {}),
       sectionLooks: normalizeSectionLooks(look.sectionLooks || look.zones || {}),
       ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
+      ...(look.projectOnly === true ? {
+        projectOnly: true,
+        ...(PATTERN_LAB_CLASSIFICATIONS.has(look.patternLabClassification)
+          ? { patternLabClassification: look.patternLabClassification }
+          : {}),
+      } : {}),
       ...(nativeRecipe ? { nativeRecipe } : {}),
       ...(nativeRecipe && typeof look.nativeRecipeLayoutKey === 'string' ? { nativeRecipeLayoutKey: look.nativeRecipeLayoutKey } : {}),
       updatedAt: Number.isFinite(Number(look.updatedAt)) ? Number(look.updatedAt) : 0,
