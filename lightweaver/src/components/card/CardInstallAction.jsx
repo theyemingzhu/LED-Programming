@@ -136,9 +136,10 @@ export function CardInstallAction({
   const continueToPatterns = cardRoute.get('next') === 'patterns';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
 
-  // While Setup owns the next step, it also owns the only button. Its Open
-  // Patterns action remounts this surface with an explicit install intent.
-  if (yieldPrimary && !installTaskOpen) return null;
+  // The full Check-and-install surface stands down while Setup owns the next
+  // step. The compact Status door does not: Save to card is the one write
+  // on that row, including when the open project and the card disagree.
+  if (yieldPrimary && !installTaskOpen && !compact) return null;
 
   return (
     <WireHoverDescription className={compact ? 'lww-flow is-compact' : 'lww-flow'} data-testid="commissioning-step" aria-label="Check and install on this card">
@@ -147,7 +148,20 @@ export function CardInstallAction({
           that phase's button and was not. It is its own thing and says so.
           In the status row it is one door among three and needs no heading. */}
       {!compact && <h2 className="lww-flow-heading">Check and install on this card</h2>}
-      {cardNeedsStripDiscovery ? (
+      {compact ? (
+        <CardPushControl
+          connected={connected}
+          yieldPrimary={yieldPrimary || demote}
+          actionLabel="Save to card"
+          board={cardTransportBoard}
+          compiledWiring={compiledWiring}
+          strips={strips}
+          projectId={projectId}
+          projectName={projectName}
+          standaloneController={installController}
+          disabled={!installGate.allowed}
+        />
+      ) : cardNeedsStripDiscovery ? (
         <>
           <h3 className="lww-flow-title">Find this card&rsquo;s strips first</h3>
           <p className="lww-flow-message" data-testid="wire-blank-card-message">{STRIP_DISCOVERY_BLANK_MESSAGE}</p>
@@ -177,6 +191,7 @@ export function CardInstallAction({
             <CardPushControl
               connected={connected}
               yieldPrimary={yieldPrimary || demote}
+              actionLabel={compact ? 'Save to card' : 'Install on card'}
               board={cardTransportBoard}
               compiledWiring={compiledWiring}
               strips={strips}

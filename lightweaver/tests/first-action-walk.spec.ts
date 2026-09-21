@@ -64,7 +64,8 @@ async function readFirstAction(page: Page, step: string): Promise<FirstActionRep
       el.classList.contains('lw-setup-phase-head')
       || el.classList.contains('lw-setup-identity-door')
       || el.classList.contains('lw-identity-name')
-      || ['setup-identity-connection', 'setup-identity-lights', 'setup-project-name-edit'].includes(el.getAttribute('data-testid') || '')
+      || el.classList.contains('lw-status-update')
+      || ['setup-identity-connection', 'setup-identity-lights', 'setup-project-name-edit', 'setup-optional-firmware'].includes(el.getAttribute('data-testid') || '')
     );
     const buttons = [...main.querySelectorAll('button, [role="button"]')]
       .filter(el => visible(el) && !chromeButton(el));
@@ -186,7 +187,7 @@ test('[FA-unplugged] no card answering: Find my card is first', async ({ page })
   await expect(page.getByTestId('setup-connect-card')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   const report = await captureStep(page, 'fa-unplugged');
   expect(report.heading).toMatch(/start lightweaver|set up your lightweaver/i);
-  expectOneFirstAction(report, /plug in and find card|find my card/i, 'unplugged');
+  expectOneFirstAction(report, /set up the card|plug in and find card|find my card/i, 'unplugged');
 });
 
 test('[FA-plugged-blank] a plugged-in empty card opens on find the lights, not Find my card', async ({ page }) => {

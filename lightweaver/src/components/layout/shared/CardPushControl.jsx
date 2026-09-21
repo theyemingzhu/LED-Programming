@@ -147,6 +147,7 @@ export function CardPushControl({
   // working wiring and will put it back unless a human answers, so at that
   // moment they ARE the page's next step and nothing outranks them.
   yieldPrimary = false,
+  actionLabel = 'Install on card',
   children,
 }) {
   const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed } = useProject();
@@ -660,7 +661,7 @@ export function CardPushControl({
           data-tooltip="Send this verified project to the card, replacing its active project after card verification."
         >
           <span className={`la-card-push-dot${connected ? ' on' : ' off'}`}/>
-          <span className="la-card-push-label">{pushing ? `Sending to ${pushHost}…` : 'Install on card'}<small>{connected ? 'Ready to install' : 'Connect the card first'}</small></span>
+          <span className="la-card-push-label">{pushing ? 'Saving…' : actionLabel}<small>{connected ? 'Ready' : 'Connect first'}</small></span>
         </button>
         {children}
       </div>}
