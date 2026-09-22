@@ -62,6 +62,9 @@ function currentConfig(project: any) {
 
 async function mockCard(page: any, options: any = {}) {
   const project = projectFixture();
+  if (options.emptyScenes) {
+    project.expressionScenes = { version: 1, activeSceneId: null, playbackSceneId: null, scenes: [] };
+  }
   if (options.unsupportedScene) {
     project.expressionScenes.scenes[0].steps[0].transitionFromPrevious = { mode: 'dip-swap-rise', durationMs: 1000 };
   }
@@ -72,6 +75,7 @@ async function mockCard(page: any, options: any = {}) {
     envelope: null as any,
     runtime: null as any,
     configWrites: 0,
+    offline: false,
   };
   const status = () => {
     const config = state.runtime?.config || initialConfig;
@@ -88,6 +92,7 @@ async function mockCard(page: any, options: any = {}) {
     };
   };
   await page.route('http://lightweaver.local/**', async (route: any) => {
+    if (state.offline) return route.abort();
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (pathname === '/api/status') return route.fulfill({ json: status() });
@@ -150,10 +155,10 @@ async function mockCard(page: any, options: any = {}) {
   return state;
 }
 
-async function openSceneEditor(page: any) {
+async function openSceneEditor(page: any, expectedTitle = 'Gallery tide') {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await page.getByTestId('pattern-lab-build-scene').click();
-  await expect(page.getByLabel('Scene title')).toHaveValue('Gallery tide');
+  await expect(page.getByLabel('Scene title')).toHaveValue(expectedTitle);
 }
 
 test('installs exact scene source and runtime only after verified readbacks', async ({ page }) => {
@@ -180,6 +185,19 @@ test('installs exact scene source and runtime only after verified readbacks', as
   await expect(page.getByRole('button', { name: 'On card', exact: true })).toHaveCount(0);
 });
 
+test('a pristine new scene is committed to project source before direct install', async ({ page }) => {
+  const card = await mockCard(page, { emptyScenes: true });
+  page.on('dialog', dialog => dialog.accept());
+  await openSceneEditor(page, 'New scene');
+  const sceneId = await page.getByLabel('Scene', { exact: true }).inputValue();
+  await page.getByRole('button', { name: 'Put scene on card' }).click();
+  await expect(page.getByRole('button', { name: 'On card', exact: true })).toBeVisible();
+  expect(card.envelope.project.expressionScenes.activeSceneId).toBe(sceneId);
+  expect(card.envelope.project.expressionScenes.playbackSceneId).toBe(sceneId);
+  expect(card.envelope.project.expressionScenes.scenes).toHaveLength(1);
+  expect(card.envelope.project.expressionScenes.scenes[0].name).toBe('New scene');
+});
+
 test('pairing rejection stops before runtime delivery', async ({ page }) => {
   const card = await mockCard(page, { pairingRequired: true });
   page.on('dialog', dialog => dialog.accept());
@@ -193,6 +211,7 @@ test('pairing rejection stops before runtime delivery', async ({ page }) => {
 test('unsupported scenes cannot start delivery', async ({ page }) => {
   const card = await mockCard(page, { unsupportedScene: true });
   await openSceneEditor(page);
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText('Studio preview only')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Put scene on card' })).toBeDisabled();
   expect(card.operations).toEqual([]);
@@ -216,10 +235,25 @@ test('editing during install retains the newer draft and shows the installed sna
   await page.getByRole('button', { name: 'Put scene on card' }).click();
   await expect.poll(() => card.operations.includes('runtime-config')).toBe(true);
   await page.getByLabel('Scene title').fill('Newer local draft');
-  await expect(page.getByText('An earlier snapshot is verified on the card. This draft has newer edits.')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('An earlier snapshot is verified on the card. This project has newer edits or a different card is connected.')).toBeVisible({ timeout: 15000 });
   await expect(page.getByLabel('Scene title')).toHaveValue('Newer local draft');
   expect(card.envelope.project.expressionScenes.scenes[0].name).toBe('Gallery tide');
   expect(card.runtime.config.projectFingerprint).toBe(card.envelope.contentHash);
+});
+
+test('a non-scene edit during install keeps the newer project and does not claim current On card', async ({ page }) => {
+  const card = await mockCard(page, { delayRuntimeMs: 700 });
+  page.on('dialog', dialog => dialog.accept());
+  await openSceneEditor(page);
+  await page.getByRole('button', { name: 'Put scene on card' }).click();
+  await expect.poll(() => card.operations.includes('runtime-config')).toBe(true);
+  await page.getByTestId('project-name-edit').click();
+  await page.getByTestId('project-name-input').fill('Newer project name');
+  await page.getByTestId('project-name-input').press('Enter');
+  await expect(page.getByText('An earlier snapshot is verified on the card. This project has newer edits or a different card is connected.')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'On card', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Put scene on card', exact: true })).toBeEnabled();
+  expect(card.envelope.project.name).toBe('Expression install fixture');
 });
 
 test('runtime readback mismatch never reports the scene as on card', async ({ page }) => {
@@ -248,4 +282,31 @@ test('global Save to card preserves scene playback after a later edit', async ({
   expect(card.envelope.project.expressionScenes.playbackSceneId).toBe('scene-install');
   expect(card.runtime.config.playlist.entries[0].patternId).toBe('combo-scene-install-opening');
   expect(card.runtime.config.looks.some((look: any) => look.id === 'combo-scene-install-opening')).toBe(true);
+});
+
+test('a later project edit and disconnected target both invalidate current On card', async ({ page }) => {
+  const card = await mockCard(page);
+  page.on('dialog', dialog => dialog.accept());
+  await openSceneEditor(page);
+  await page.getByRole('button', { name: 'Put scene on card' }).click();
+  await expect(page.getByRole('button', { name: 'On card', exact: true })).toBeVisible();
+
+  await page.getByTestId('project-name-edit').click();
+  await page.getByTestId('project-name-input').fill('Edited after install');
+  await page.getByTestId('project-name-input').press('Enter');
+  await expect(page.getByRole('button', { name: 'On card', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Put scene on card', exact: true })).toBeEnabled();
+
+  await page.getByTestId('project-name-edit').click();
+  await page.getByTestId('project-name-input').fill('Expression install fixture');
+  await page.getByTestId('project-name-input').press('Enter');
+  await page.getByRole('button', { name: 'Put scene on card', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'On card', exact: true })).toBeVisible();
+  card.offline = true;
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    getSharedCardLink().dispatch({ type: 'direct-ping-missed', host: 'lightweaver.local', reason: 'card-stopped-answering' });
+  });
+  await expect(page.getByRole('button', { name: 'On card', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Put scene on card', exact: true })).toBeEnabled();
 });

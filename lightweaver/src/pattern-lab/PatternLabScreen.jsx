@@ -509,7 +509,7 @@ function SculpturePlaceholder() {
   );
 }
 
-export default function PatternLabScreen({ onSaveProject, onInstallExpressionScene }) {
+export default function PatternLabScreen({ onSaveProject, onInstallExpressionScene, expressionInstallationReceipt }) {
   const project = useProject();
   const { workspaceAssets, resolveWorkspaceAssetConflict } = useCloudLibrary();
   const [patterns, setPatterns] = useState([]);
@@ -1809,6 +1809,7 @@ export default function PatternLabScreen({ onSaveProject, onInstallExpressionSce
       project={project}
       onSaveProject={onSaveProject}
       onInstallScene={onInstallExpressionScene}
+      installationReceipt={expressionInstallationReceipt}
       onClose={() => setSceneEditorOpen(false)}
     />
   );
