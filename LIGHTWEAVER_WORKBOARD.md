@@ -1026,3 +1026,14 @@ node_modules is populated and earlier checkpoint passed. No package changes.
 Resumption:integrate UI worker's real-project scene journey, verify provider
 switch/save/reload on actual screen, then bind selected playback through exact
 source+runtime installation authority without making UI selection an install.
+
+Production editore2c7dd96 not yet accepted. Primary source/screens review found
+native preview huePalette invents HSL colors and omits modifiers; Play never
+advances steps; canonical assignments:[] crashes; unsupported status claims
+Saved prematurely; palette inputs misrepresent HSL values and truncate >3;
+fixtures duplicate identical circle geometry without valid wiring; no saved
+scene picker/New action. Returned same worker Sol/medium for one bounded
+correction using existing patternPiecePreview/previewColorModifiers and real
+step clock. Require valid wiring/native success, distinct3-section/mandala
+geometry, sparse-source reopen and desktop timeline visible at1280x720.
+No integration of this UI commit until behavior evidence meets original scope.
