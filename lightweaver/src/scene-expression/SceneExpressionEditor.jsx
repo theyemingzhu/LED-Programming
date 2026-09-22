@@ -6,6 +6,7 @@ import { normalizeSceneExpression, resolveSceneExpression } from '../lib/sceneEx
 import { compileSceneExpressionNative } from '../lib/sceneExpressionNative.js';
 import { buildSceneExpressionAreaCatalog } from '../lib/sceneExpressionTargets.js';
 import { inspectExpressionScenes } from '../lib/sceneExpressionProject.js';
+import { mapSceneExpressionPreviewFrame } from '../lib/sceneExpressionFrame.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import {
   addSceneAssignment, addSceneStep, createSceneExpression, DEFAULT_CARD_COLOR, moveSceneStep,
@@ -32,7 +33,10 @@ function unsupportedTitle(code) {
   return 'Scene source cannot be edited';
 }
 
-export default function SceneExpressionEditor({ project, onSaveProject, onInstallScene, installationReceipt, onClose }) {
+export default function SceneExpressionEditor({
+  project, onSaveProject, onInstallScene, installationReceipt,
+  onStartPhysicalPreview, physicalPreviewContextKey = '', onClose,
+}) {
   const store = project.expressionScenes;
   const storeInspection = inspectExpressionScenes(store);
   const storedScenes = Array.isArray(store?.scenes) ? store.scenes : [];
@@ -45,7 +49,11 @@ export default function SceneExpressionEditor({ project, onSaveProject, onInstal
   const [elapsedMs, setElapsedMs] = useState(0);
   const [saveState, setSaveState] = useState('idle');
   const [installState, setInstallState] = useState({ status: 'idle', message: '', source: '', reason: '' });
+  const [physicalPreviewState, setPhysicalPreviewState] = useState({ status: 'idle', message: '' });
+  const [physicalFrameReady, setPhysicalFrameReady] = useState(false);
   const playbackFrameRef = useRef(0);
+  const physicalPreviewRef = useRef(null);
+  const mappedFrameRef = useRef(null);
   const sceneRef = useRef(scene);
   const pendingSourceCommitRef = useRef(null);
   const saveProjectRef = useRef(onSaveProject);
@@ -162,6 +170,72 @@ export default function SceneExpressionEditor({ project, onSaveProject, onInstal
   );
   const availableScenes = storedScenes.some(item => item.id === scene.id) ? storedScenes : [...storedScenes, scene];
 
+  async function stopPhysicalPreview(reason = 'user') {
+    const controller = physicalPreviewRef.current;
+    if (!controller) return { restored: true };
+    physicalPreviewRef.current = null;
+    setPhysicalPreviewState({ status: 'stopping', message: 'Restoring the previous card playback…' });
+    const result = await controller.stop(reason);
+    if (result?.restored === true || result?.ownershipTransferred === true) {
+      setPhysicalPreviewState({ status: 'idle', message: '' });
+    } else {
+      setPhysicalPreviewState({
+        status: 'error',
+        message: result?.error?.message || 'The previous card playback could not be verified after preview stopped.',
+      });
+    }
+    return result;
+  }
+
+  function handlePreviewFrame(framePixels) {
+    const mapped = mapSceneExpressionPreviewFrame({ framePixels, segments: previewStrips, compiledWiring: project.compiledWiring });
+    if (!mapped.ok) {
+      mappedFrameRef.current = null;
+      setPhysicalFrameReady(false);
+      if (physicalPreviewRef.current) void stopPhysicalPreview('mapping-invalid');
+      setPhysicalPreviewState(current => current.status === 'live'
+        ? { status: 'error', message: mapped.errors[0]?.message || 'The physical pixel mapping became invalid.' }
+        : current);
+      return;
+    }
+    mappedFrameRef.current = mapped.pixels;
+    setPhysicalFrameReady(true);
+    physicalPreviewRef.current?.push(mapped.pixels);
+  }
+
+  async function togglePhysicalPreview() {
+    if (physicalPreviewRef.current) {
+      await stopPhysicalPreview('user');
+      return;
+    }
+    if (!onStartPhysicalPreview || !mappedFrameRef.current?.length) return;
+    setPhysicalPreviewState({ status: 'starting', message: 'Capturing the current card playback…' });
+    try {
+      const result = await onStartPhysicalPreview({
+        sceneId: scene.id,
+        frame: mappedFrameRef.current.slice(),
+        onStateChange: next => {
+          if (next?.state === 'error') setPhysicalPreviewState({ status: 'error', message: next.error?.message || 'Physical preview stopped before the previous playback was verified.' });
+          if (next?.state === 'superseded') {
+            physicalPreviewRef.current = null;
+            setPhysicalPreviewState({ status: 'idle', message: '' });
+          }
+        },
+      });
+      if (!result?.ok || !result.controller) throw result?.error || Object.assign(new Error(result?.message || 'Physical preview could not start.'), { reason: result?.reason });
+      physicalPreviewRef.current = result.controller;
+      setPhysicalPreviewState({ status: 'live', message: 'The card is showing this exact rendered frame.' });
+    } catch (error) {
+      setPhysicalPreviewState({ status: 'error', message: error?.message || 'Physical preview could not start.' });
+    }
+  }
+
+  useEffect(() => () => { void stopPhysicalPreview('unmount'); }, []);
+
+  useEffect(() => {
+    if (physicalPreviewRef.current) void stopPhysicalPreview('context-changed');
+  }, [physicalPreviewContextKey, scene]);
+
   useEffect(() => {
     cancelAnimationFrame(playbackFrameRef.current);
     if (!effectivePlaying) return undefined;
@@ -235,6 +309,13 @@ export default function SceneExpressionEditor({ project, onSaveProject, onInstal
   }
   async function install() {
     if (!onInstallScene || installState.status === 'installing') return;
+    if (physicalPreviewRef.current) {
+      const stopped = await stopPhysicalPreview('install');
+      if (stopped?.restored !== true && stopped?.ownershipTransferred !== true) {
+        setInstallState({ status: 'failed', message: 'The previous card playback was not verified, so installation did not start.', source: JSON.stringify(scene), reason: 'preview-restore-unverified' });
+        return;
+      }
+    }
     const source = JSON.stringify(scene);
     setInstallState({ status: 'installing', message: 'Saving the current Studio project…', source });
     try {
@@ -330,11 +411,12 @@ export default function SceneExpressionEditor({ project, onSaveProject, onInstal
     </div>
     <div className="sexp-grid">
       <section className="sexp-preview" aria-label="Scene preview">
-        <div className="sexp-preview-bar"><span>{!previewAvailability.ok ? `Preview unavailable · ${previewAvailability.message}` : `${playback.ended ? 'Finished' : effectivePlaying ? 'Playing' : 'Paused'} ${playback.stepIndex + 1}/${scene.steps.length} · ${playbackStep.label} · ${(playback.localMs / 1000).toFixed(1)}s`}</span><button type="button" disabled={!previewAvailability.ok} onClick={() => { if (playback.ended) { setElapsedMs(0); setPlaying(true); } else setPlaying(value => !value); }}>{playback.ended ? 'Replay scene' : effectivePlaying ? 'Pause' : 'Play scene'}</button></div>
+        <div className="sexp-preview-bar"><span>{!previewAvailability.ok ? `Preview unavailable · ${previewAvailability.message}` : `${playback.ended ? 'Finished' : effectivePlaying ? 'Playing' : 'Paused'} ${playback.stepIndex + 1}/${scene.steps.length} · ${playbackStep.label} · ${(playback.localMs / 1000).toFixed(1)}s`}{physicalPreviewState.message ? ` · ${physicalPreviewState.message}` : ''}</span><div className="sexp-preview-actions"><button type="button" disabled={!previewAvailability.ok} onClick={() => { if (playback.ended) { setElapsedMs(0); setPlaying(true); } else setPlaying(value => !value); }}>{playback.ended ? 'Replay scene' : effectivePlaying ? 'Pause' : 'Play scene'}</button><button type="button" data-testid="scene-physical-preview" data-state={physicalPreviewState.status} disabled={!onStartPhysicalPreview || !physicalFrameReady || ['starting', 'stopping'].includes(physicalPreviewState.status)} onClick={togglePhysicalPreview}>{physicalPreviewState.status === 'live' ? 'Stop preview' : physicalPreviewState.status === 'starting' ? 'Starting…' : physicalPreviewState.status === 'stopping' ? 'Stopping…' : 'Try on lights'}</button></div></div>
         <div className="sexp-canvas" data-preview-segments={previewStrips.length}>
           {previewStrips.length ? <PatternPreview
             patternId="aurora" playing={effectivePlaying} strips={previewStrips}
             viewBox={previewViewBox} hidden={project.hidden} controlledTime={elapsedMs / 1000}
+            onFrame={handlePreviewFrame}
             ariaLabel={`${scene.name} preview`} testId="scene-expression-preview"
           /> : <div className="sexp-empty"><strong>Draw the artwork in Layout first</strong><span>This scene will use its exact strips and groups.</span></div>}
         </div>
