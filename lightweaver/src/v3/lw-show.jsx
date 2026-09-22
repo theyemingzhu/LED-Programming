@@ -1047,6 +1047,7 @@ function ShowScreen({
   if (sceneEditorOpen) return <div className="show-scene-editor-host">
     {sceneEditorCloseError && <div className="show-scene-close-error" role="alert">{sceneEditorCloseError}</div>}
     <SceneExpressionEditor
+      hostName="Show"
       project={project}
       onSaveProject={onSaveProject}
       onInstallScene={onInstallExpressionScene}
