@@ -4,8 +4,14 @@ import {
   CARD_HOST_FALLBACKS,
   readStoredCardHost,
 } from './cardConnection.js';
-import { readPersistedCardIdentity, persistCardIdentity } from './cardIdentity.js';
-import { bootstrapCardLink, isCardLinkConnected } from './cardLink.js';
+import { normalizeCardIdentity, readPersistedCardIdentity, persistCardIdentity } from './cardIdentity.js';
+import {
+  bootstrapCardLink,
+  getCardLinkState,
+  isCardLinkConnected,
+  reportDirectCardStatus,
+} from './cardLink.js';
+import { readCardStatusEnvelope } from './cardPushClient.js';
 import { connectCardTransport } from './cardTransport.js';
 
 function persistAuthority(persistIdentity, expectedCard, authority) {
@@ -22,7 +28,9 @@ function persistAuthority(persistIdentity, expectedCard, authority) {
 // priority; ordinary public-Studio reloads use one read-only local status GET.
 // A first visit with no remembered card still probes the two well-known
 // addresses a just-plugged-in card answers on — only when this page can talk
-// to the LAN. Public HTTPS cannot, and we never sweep the subnet.
+// to the LAN. That probe only reports the card as found; the owner's explicit
+// Connect action performs the pairing. Public HTTPS cannot probe, and we never
+// sweep the subnet.
 function readPreservingUpdateSession() {
   try {
     return typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem('lw_firmware_update_session_v1');
@@ -38,6 +46,9 @@ export async function bootstrapStudioCardConnection({
   readHost = readStoredCardHost,
   candidateHosts = candidateCardHosts,
   persistIdentity = persistCardIdentity,
+  readStatus = readCardStatusEnvelope,
+  reportStatus = reportDirectCardStatus,
+  getLinkState = getCardLinkState,
   isConnected = isCardLinkConnected,
   canPushDirect = canPushDirectlyToCard,
   unpairedHosts = CARD_HOST_FALLBACKS,
@@ -56,12 +67,15 @@ export async function bootstrapStudioCardConnection({
     if (/(?:^|[&#])section=install(?:&|$)/.test(String(locationHash || '')) || readUpdateSession()) {
       return bridgeState;
     }
-    let authority = null;
     for (const host of unpairedHosts) {
-      authority = await connectTransport({ host, expectedCardId: '' });
-      if (authority?.connected) {
-        persistAuthority(persistIdentity, {}, authority);
-        return authority;
+      try {
+        const status = await readStatus({ host, transport: 'direct', timeoutMs: 900 });
+        if (!normalizeCardIdentity(status, host).id) continue;
+        reportStatus({ connected: true, host, status, allowAdopt: false });
+        return getLinkState();
+      } catch {
+        // Only the two explicit well-known addresses are tried. A failed first
+        // address is ordinary while the card is in access-point mode.
       }
     }
     return bridgeState;
