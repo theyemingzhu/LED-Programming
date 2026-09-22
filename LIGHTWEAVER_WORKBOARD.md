@@ -1083,3 +1083,17 @@ pass. Explicit leaf repeat accepts, multi-strip group pattern rejects, grouped
 color-only patch accepts. UI worker received exact commit for its explicit
 Repeat per section action and acceptance fixture. Delivery helper continues
 independently in same playback task; no extra model/effort escalation.
+
+UI group correction897f2478 integrated as5987b779;primary38/38 focused tests
+pass. Mandala fixture failure diagnosed as live autosave overwriting direct
+localStorage seeding; staged sessionStorage+before-boot init removes that race.
+Integrated browser suite and authoring checkpoint now running (logs
+/tmp/lightweaver-expression-lifecycle-final.log and
+/tmp/lightweaver-expression-authoring-checkpoint.log).
+
+Deliveryb7945467 returned for bounded authority fixes before integration:
+no hardcoded ready access for foreign project; fresh exact preflight at run
+before writes; validate full source envelope canonical hash; recheck source after
+runtime verification; freeze runtime payload nested data. Same Sol/medium worker
+adds adversarial tests for each, no protocol/firmware change. Root remains sole
+integrator. UI install binding starts only after accepted helper returns.
