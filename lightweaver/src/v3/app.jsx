@@ -115,6 +115,18 @@ import {
   readFirmwareUpdateSession,
 } from '../lib/cardFirmwareUpdater.js';
 import { persistCardIdentity, readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import { getActiveCardTransportAuthority, reacquireCardTransportAuthority } from '../lib/cardTransport.js';
+import { sha256Canonical } from '../lib/projectRepository.js';
+import {
+  prepareExpressionSceneDelivery,
+  prepareProjectPlaybackDelivery,
+  runExpressionSceneDelivery,
+} from '../lib/sceneExpressionDelivery.js';
+import {
+  createSceneDeliveryOperations,
+  readSceneDeliveryCardEvidence,
+  sceneDeliveryFailureMessage,
+} from '../scene-expression/sceneExpressionInstall.js';
 
 const PatternScreen = lazy(() => import('./lw-pattern.jsx').then(module => ({ default: module.PatternScreen })));
 const PatternLabScreen = lazy(() => import('../pattern-lab/PatternLabScreen.jsx'));
@@ -690,6 +702,12 @@ const DISABLED_OFFLINE_UPDATE_STATE = Object.freeze({ status: 'disabled', regist
 const STUDIO_FRESHNESS_EDIT_IDLE_MS = 5_000;
 const subscribeDisabledOfflineUpdate = () => () => {};
 
+function studioInstallationFingerprint(project) {
+  return project?.expressionScenes?.playbackSceneId
+    ? sha256Canonical(project)
+    : cardProjectFingerprint(project);
+}
+
 function Shell({ offlineUpdateController = null }) {
   const [bridgeBooting, setBridgeBooting] = useState(() => isBridgeCallbackLocation());
   const [bridgeResult, setBridgeResult] = useState(readStoredBridgeResult);
@@ -715,6 +733,8 @@ function Shell({ offlineUpdateController = null }) {
   const [connectionCenterOpen, setConnectionCenterOpen] = useState(false);
   const [cardSavePending, setCardSavePending] = useState(false);
   const cardSaveRef = useRef(false);
+  const expressionDeliveryRef = useRef(null);
+  const [pendingExpressionInstallCommit, setPendingExpressionInstallCommit] = useState(null);
   // The connect intent the panel was opened FOR (openCardFlow's connect-panel
   // event detail). '' for every other way in — footer chip, bridge results —
   // so the panel only pre-selects a flow when a resolver actually asked for it.
@@ -730,7 +750,7 @@ function Shell({ offlineUpdateController = null }) {
   const {
     projectName, setProjectName, serializeProject, flushProjectAutosave, replaceProject, replaceWithNewProject, requestReplacementConfirmation,
     projectLifecycle, projectLifecycleLabel, markProjectPersisted, markProjectEdited, markProjectInstalled, isProjectLifecycleMarkerCurrent,
-    projectHasUnsavedChanges, reverifyProjectInstallation,
+    projectHasUnsavedChanges, reverifyProjectInstallation, setExpressionScenes,
   } = useProject();
   const offlineUpdateState = useSyncExternalStore(
     offlineUpdateController?.subscribe || subscribeDisabledOfflineUpdate,
@@ -1146,7 +1166,7 @@ function Shell({ offlineUpdateController = null }) {
       projectRevision: readiness.projectRevision,
       projectFingerprint: readiness.projectFingerprint,
       studioProjectId: serializeProject().id,
-      studioProjectFingerprint: cardProjectFingerprint(serializeProject()),
+      studioProjectFingerprint: studioInstallationFingerprint(serializeProject()),
     });
   }, [
     cardLink.state,
@@ -1158,7 +1178,7 @@ function Shell({ offlineUpdateController = null }) {
   ]);
   const lifecycleProject = useMemo(() => {
     const project = serializeProject();
-    const structureFingerprint = cardProjectFingerprint(project);
+    const structureFingerprint = studioInstallationFingerprint(project);
     const installation = currentInstallation(projectLifecycle);
     // A card-adopted project is bound by its installation record, not by a
     // fingerprint it cannot recompute — so the record stands in for as long as
@@ -1406,6 +1426,10 @@ function Shell({ offlineUpdateController = null }) {
   ]);
   const saveProjectToCard = useCallback(async () => {
     if (cardSaveRef.current) return;
+    const playbackSceneId = serializeProject()?.expressionScenes?.playbackSceneId;
+    if (playbackSceneId) {
+      return expressionDeliveryRef.current?.({ sceneId: playbackSceneId, saveBrowserFirst: false, projectPlayback: true });
+    }
     const host = cardLink.host || cardStatus.host;
     if (!host) return;
     cardSaveRef.current = true;
@@ -1467,7 +1491,8 @@ function Shell({ offlineUpdateController = null }) {
     // (including a confirming card still being checked) → Connection Center.
     const surface = cardSurfaceForLifecycle(cardLifecycle);
     if (surface === 'length-save') {
-      void saveLedCountToCard();
+      if (serializeProject()?.expressionScenes?.playbackSceneId) void saveProjectToCard();
+      else void saveLedCountToCard();
       return;
     }
     if (surface === 'content-save') {
@@ -1483,7 +1508,7 @@ function Shell({ offlineUpdateController = null }) {
       setCardControlOpen(false);
       setConnectionCenterOpen(true);
     }
-  }, [cardLifecycle, openSetupTask, saveLedCountToCard, saveProjectToCard]);
+  }, [cardLifecycle, openSetupTask, saveLedCountToCard, saveProjectToCard, serializeProject]);
   const closeCardControl = useCallback(() => setCardControlOpen(false), []);
   const reconnectFromCardControl = useCallback(() => {
     setCardControlOpen(false);
@@ -1626,6 +1651,169 @@ function Shell({ offlineUpdateController = null }) {
       return { ok: false, reason: error?.reason || 'browser-save-failed', error };
     }
   }, [cloudLibrary, markProjectPersisted, projectAssociationSaveBlocked, saveProjectToBrowserGuarded, serializeProject, showWorkspaceEvent]);
+
+  const installExpressionScene = useCallback(async ({ sceneId, saveBrowserFirst = false, projectPlayback = false, onProgress } = {}) => {
+    if (cardSaveRef.current) return { ok: false, reason: 'busy', message: 'Another card save is already running.' };
+    if (saveBrowserFirst) {
+      const browserSave = await onSave();
+      if (!browserSave?.ok) return { ...browserSave, message: 'Save this project in Studio before installing the scene.' };
+    }
+    const host = cardLink.host || cardStatus.host;
+    const authority = getActiveCardTransportAuthority(host);
+    if (!host || !authority) {
+      openConnectionCenter();
+      return { ok: false, reason: 'disconnected', message: sceneDeliveryFailureMessage('disconnected') };
+    }
+    const snapshot = serializeProject();
+    const marker = {
+      generation: projectLifecycle.generation,
+      revision: projectLifecycle.editedRevision,
+    };
+    const sourceHash = sha256Canonical(snapshot);
+    const requestedSceneId = String(sceneId || snapshot.expressionScenes?.playbackSceneId || '');
+    const playbackChanges = snapshot.expressionScenes?.playbackSceneId !== requestedSceneId;
+    const targetRevision = marker.revision + (playbackChanges ? 1 : 0);
+    let cardEvidence;
+    let plan;
+    try {
+      cardEvidence = await readSceneDeliveryCardEvidence({
+        host,
+        transport: cardLink.transport,
+        cardLink,
+        connected,
+      });
+      const options = {
+        revision: targetRevision,
+        expectedHead: cardLink.readiness?.projectHead || null,
+        cardEvidence,
+      };
+      plan = projectPlayback
+        ? prepareProjectPlaybackDelivery(snapshot, options)
+        : prepareExpressionSceneDelivery(snapshot, { ...options, sceneId: requestedSceneId });
+    } catch (error) {
+      const reason = error?.reason || 'preflight-unavailable';
+      return { ok: false, reason, message: sceneDeliveryFailureMessage(reason), error };
+    }
+    if (!plan.ok) return { ...plan, message: sceneDeliveryFailureMessage(plan.reason) };
+
+    const replacement = plan.replacementSummary;
+    const replacementCopy = replacement
+      ? `This installs ${replacement.nextStepCount} scene step${replacement.nextStepCount === 1 ? '' : 's'} as the card playlist. Your ${replacement.previousLookCount} saved library look${replacement.previousLookCount === 1 ? '' : 's'} ${replacement.previousLookCount === 1 ? 'remains' : 'remain'} in the editable project.`
+      : 'This installs the current project playback on the card.';
+    const confirmed = window.confirm(
+      `${replacementCopy}\n\nTouch a physical control on the Lightweaver card now. Then choose Continue to request a short-lived save permission from that exact card.`,
+    );
+    if (!confirmed) return { ok: false, reason: 'cancelled', message: sceneDeliveryFailureMessage('cancelled'), replacementSummary: replacement };
+
+    cardSaveRef.current = true;
+    setCardSavePending(true);
+    try {
+      const acquireAuthority = async ({ expectedCardId }) => {
+        const current = getActiveCardTransportAuthority(host);
+        if (current && !current.revoked && current.cardId === expectedCardId) return current;
+        return reacquireCardTransportAuthority({
+          host,
+          expectedCardId,
+          transport: cardLink.transport,
+        });
+      };
+      const operations = createSceneDeliveryOperations({
+        authority,
+        host,
+        transport: cardLink.transport,
+        cardLink,
+        connected,
+        acquireAuthority,
+        onProgress,
+      });
+      const result = await runExpressionSceneDelivery(plan, operations);
+      const stillCurrent = isProjectLifecycleMarkerCurrent(marker)
+        && sha256Canonical(serializeProject()) === sourceHash;
+      if (result.ok && result.state === 'on-card' && stillCurrent) {
+        if (playbackChanges) {
+          setPendingExpressionInstallCommit({
+            marker,
+            targetRevision,
+            planHash: plan.envelope.contentHash,
+            cardId: plan.cardId,
+            projectRevision: plan.prepared.config.projectRevision,
+            projectFingerprint: plan.prepared.config.projectFingerprint,
+          });
+          setExpressionScenes(current => ({ ...current, playbackSceneId: requestedSceneId }));
+        } else {
+          markProjectPersisted('card', marker);
+          markProjectInstalled({
+            ...marker,
+            cardId: plan.cardId,
+            projectRevision: plan.prepared.config.projectRevision,
+            projectFingerprint: plan.prepared.config.projectFingerprint,
+            studioFingerprint: plan.envelope.contentHash,
+            verified: true,
+          });
+        }
+      }
+      return {
+        ...result,
+        message: result.ok ? 'Scene source and playback were verified on the card.' : sceneDeliveryFailureMessage(result.reason, result.state),
+        replacementSummary: replacement,
+        installedSceneId: requestedSceneId,
+        installedSourceHash: plan.envelope.contentHash,
+        currentDraftRetained: !stillCurrent,
+      };
+    } finally {
+      cardSaveRef.current = false;
+      setCardSavePending(false);
+    }
+  }, [
+    cardLink,
+    cardStatus.host,
+    connected,
+    isProjectLifecycleMarkerCurrent,
+    markProjectInstalled,
+    markProjectPersisted,
+    onSave,
+    openConnectionCenter,
+    projectLifecycle.editedRevision,
+    projectLifecycle.generation,
+    serializeProject,
+    setExpressionScenes,
+  ]);
+  expressionDeliveryRef.current = installExpressionScene;
+
+  useEffect(() => {
+    const pending = pendingExpressionInstallCommit;
+    if (!pending) return;
+    if (projectLifecycle.generation !== pending.marker.generation
+      || projectLifecycle.editedRevision > pending.targetRevision) {
+      setPendingExpressionInstallCommit(null);
+      return;
+    }
+    if (projectLifecycle.editedRevision !== pending.targetRevision) return;
+    const current = serializeProject();
+    if (sha256Canonical(current) !== pending.planHash) {
+      setPendingExpressionInstallCommit(null);
+      return;
+    }
+    const marker = { generation: pending.marker.generation, revision: pending.targetRevision };
+    markProjectPersisted('card', marker);
+    markProjectInstalled({
+      ...marker,
+      cardId: pending.cardId,
+      projectRevision: pending.projectRevision,
+      projectFingerprint: pending.projectFingerprint,
+      studioFingerprint: pending.planHash,
+      verified: true,
+    });
+    setPendingExpressionInstallCommit(null);
+  }, [
+    markProjectInstalled,
+    markProjectPersisted,
+    pendingExpressionInstallCommit,
+    projectLifecycle.editedRevision,
+    projectLifecycle.generation,
+    serializeProject,
+  ]);
+
   const onLaunchBridge = useCallback(async operation => {
     await launchBridgeOperation(operation, {
       persistProject: async () => {
@@ -1965,6 +2153,7 @@ function Shell({ offlineUpdateController = null }) {
               onMatchedProjectVerified={onMatchedCardProjectVerified}
               onStartNewProject={onStartNewProject}
               onSaveProject={onSave}
+              onInstallExpressionScene={installExpressionScene}
               route={underlyingCardRoute}
             />
             <ScreenReady />
