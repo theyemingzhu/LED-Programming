@@ -835,3 +835,79 @@ return navigation; no automatic redirect loop, ordinary503 stays retry. Worker
 proof:36cloud-client units,5focused browser, final2,548unit+build. No account,
 policy/private-asset or hardware mutations; still not deployed. Actual projects/
 worker identities pending user input. Root branch preserves integrated candidate.
+
+## 2026-09-22 Pattern Lab / Show integration research
+
+Manager playbook v6; Sprint discovery requested, no implementation/release/card
+mutation authorized by this research brief. Outcome: source-grounded operator
+workflow, current delivery/editing gaps, and recommended integrated product slice.
+Primary owns synthesis and board. Independent dispatches (available catalog
+checked against collaboration tool):
+- Lab authoring/handoff audit | gpt-5.6-sol / medium | bounded source tracing across
+  existing UI/helpers | cited current paths and editing/persistence gaps | return
+  uncertain cross-runtime semantics to primary.
+- Show/card playback audit | gpt-5.6-sol / high | interacting export/runtime and
+  persistence contracts | cited actual standalone capabilities and limits | return
+  architecture decisions to primary.
+Cost unknown. Resumption: integrate research into one operator-focused brief.
+
+Primary evidence:50/50 focused Node tests;12/12 Chromium native-journey and
+look-roundtrip cases, including4096 pixels, passed. Actual Show Modes/Voices UI
+and rendered Lab fixture inspected. Found separate Show browser persistence with
+ambiguous global Save to card; native journeys supported despite stale docs;
+LWSEQ bake hard limit1024 source pixels prevents universal4096-pixel fallback.
+Recommendation recorded in docs/plans/2026-09-22-pattern-lab-show-integration.md:
+finish one named native scene's create/install/reboot/edit/update lifecycle;
+portable Show authoring next; shared renderer contract and recorded delivery
+separately scoped. No product source edits, deployment, flash or physical output
+commands. Physical playback/parity/SD proof remains unperformed. Resumption:
+select first scene lifecycle implementation from the brief; default assumption
+is standalone installation pending owner's workflow preference. Cost unknown.
+Worker source audits complete in sibling2026-09-22 Lab and Show/card research
+files. Accepted after primary source checks:Show has no Lab picker/handoff;
+normal installer ignores baked sequenceAssets; native looks need Playlist
+inclusion; SD package is one-look and takes boot precedence over flash. Source
+fidelity gap:Lab Movement changes preview geometry but ordinary native handoff
+omits it; reproduce/repair or capability-gate before claiming exact preview.
+Worker also reports34 focused tests and two firmware contracts passed; these
+are supplemental, separate from primary50+12 counts. No physical proof inferred.
+
+2026-09-22 owner design correction:novice usability must be communicated by
+button hierarchy,title bars,location and continuous transitions,not long copy.
+Added authoritative design requirements to the integration brief. Next design
+artifact is one connected first-use scene journey,including phone and failure
+states; no mandatory Playlist detour for installing one scene. Acceptance
+requires unprompted novice task completion,not merely automated click success.
+
+Owner scope clarification:creative object includes multi-step pattern/color
+expression AND Layout-linked multi-strip/section/group targeting. Added where/
+when/what interaction contract and three-section/mandala examples to brief.
+Stable Layout identities; simultaneous per-area behavior distinct from time
+steps; continuous-across-selection versus repeated-per-section explicit.
+Runtime support remains to be scoped/proven; this records design requirements.
+
+## 2026-09-22 managed implementation launch
+
+Owner requests separate tasks with appropriate model/effort. One manager remains
+in this task (01a0c8ad-20b4-76f2-a866-b218f5ff7e46). Stage1 delivers a clickable
+novice journey plus integration contracts before shared production edits.
+Authoritative direction:docs/plans/2026-09-22-pattern-lab-show-integration.md.
+Dispatch choices (host catalog inspected):
+- Connected expression editor prototype | gpt-5.6-sol / high | interacting
+  spatial/temporal controls and novice UX | working desktop/phone prototype,
+  actual screen evidence | return unresolved shared interaction decisions.
+- Layout targeting adapter | gpt-5.6-terra / medium | bounded existing identity
+  mapping, pure module and fixtures | split-strip/mandala/change tests | return
+  ambiguous identity semantics; no speculative migrations.
+- Playback delivery contract | gpt-5.6-sol / high | firmware/persistence boundary
+  needs careful feasibility decisions | concrete supported matrix and exact
+  smallest implementation contract from existing research | return protocol or
+  backend expansion decisions; no firmware edits in this stage.
+Separate task worktrees; no overlapping file ownership. App prototype owns only
+prototype directory, adapter only new pure targeting module/tests, contract only
+its plan file. Only primary edits this board, settles contracts and integrates.
+New tasks bootstrap without substantive work, then receive explicit model/effort
+via follow-up before assignment; creation API uses default model by contract.
+Next stage:manager reconciles evidence, then dispatches production integration;
+no deploy, firmware flash, exhaustive Prove or new backend architecture implied.
+Cost unknown. Workers report completion back to manager task for continuation.
