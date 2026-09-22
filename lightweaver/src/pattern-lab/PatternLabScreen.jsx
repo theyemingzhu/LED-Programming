@@ -67,6 +67,7 @@ import PatternLabExport from './PatternLabExport.jsx';
 import PatternLabJourney from './PatternLabJourney.jsx';
 import PatternLabPreview from './PatternLabPreview.jsx';
 import ColorJourneyComposer from './ColorJourneyComposer.jsx';
+import SceneExpressionEditor from '../scene-expression/SceneExpressionEditor.jsx';
 import './pattern-lab.css';
 
 const WORKFLOW = [
@@ -508,10 +509,11 @@ function SculpturePlaceholder() {
   );
 }
 
-export default function PatternLabScreen() {
+export default function PatternLabScreen({ onSaveProject }) {
   const project = useProject();
   const { workspaceAssets, resolveWorkspaceAssetConflict } = useCloudLibrary();
   const [patterns, setPatterns] = useState([]);
+  const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const importRef = useRef(null);
   const drawerRef = useRef(null);
   const previewStageRef = useRef(null);
@@ -1802,6 +1804,14 @@ export default function PatternLabScreen() {
     }
   }
 
+  if (sceneEditorOpen) return (
+    <SceneExpressionEditor
+      project={project}
+      onSaveProject={onSaveProject}
+      onClose={() => setSceneEditorOpen(false)}
+    />
+  );
+
   return (
     <main
       className="screen plab-screen"
@@ -1846,6 +1856,14 @@ export default function PatternLabScreen() {
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
             Back to Patterns
+          </button>
+          <button
+            type="button"
+            className="plab-back"
+            data-testid="pattern-lab-build-scene"
+            onClick={() => setSceneEditorOpen(true)}
+          >
+            Build scene
           </button>
           <nav className="plab-workflow" aria-label="Pattern Lab workflow">
             {WORKFLOW.map(([title, description, tooltip, icon], index) => (
