@@ -51,10 +51,6 @@ function refsForPhysicalOrder(physicalOrder, sourceKeys) {
   return physicalOrder.filter(ref => sourceKeys.has(`${ref.stripId}:${ref.sourceLed}`));
 }
 
-function sourceKeysForArea(area) {
-  return new Set(area.sourceRefs.flatMap(ref => ref.sourceLeds.map(sourceLed => `${ref.stripId}:${sourceLed}`)));
-}
-
 function atomicStripIdsForArea(area) {
   return new Set(area.stripIds || []);
 }
@@ -210,6 +206,42 @@ export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain 
   if (domain === 'continuous' && selected.length && !catalog?.physicalOrderAvailable) {
     errors.push({ code: 'physical-order-unavailable', message: 'Current compiled wiring is required for a continuous expression.' });
   }
+  const sourceRefs = sourceRefsFromAreas(selected);
+  const sourceKeys = new Set(sourceRefs.flatMap(ref => ref.sourceLeds.map(sourceLed => `${ref.stripId}:${sourceLed}`)));
+  if (selected.length && sourceKeys.size === 0) {
+    errors.push({ code: 'empty-source-selection', message: 'The selected areas have no LEDs in the current Layout.' });
+  }
+  const physicalRefs = domain === 'continuous'
+    ? refsForPhysicalOrder(asArray(catalog?.physicalOrder), sourceKeys)
+    : [];
+  if (domain === 'continuous' && sourceKeys.size && catalog?.physicalOrderAvailable) {
+    const physicalCountBySource = new Map();
+    for (const ref of physicalRefs) {
+      const key = `${ref.stripId}:${ref.sourceLed}`;
+      physicalCountBySource.set(key, (physicalCountBySource.get(key) || 0) + 1);
+    }
+    const missingSourceKeys = [...sourceKeys].filter(key => !physicalCountBySource.has(key));
+    const duplicateSourceKeys = [...physicalCountBySource]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key);
+    if (physicalRefs.length === 0) {
+      errors.push({ code: 'physical-coverage-empty', message: 'Compiled wiring has no physical LEDs for the selected areas.' });
+    }
+    if (missingSourceKeys.length) {
+      errors.push({
+        code: 'physical-coverage-incomplete',
+        message: 'Compiled wiring does not cover every LED in the selected areas.',
+        sourceKeys: missingSourceKeys,
+      });
+    }
+    if (duplicateSourceKeys.length) {
+      errors.push({
+        code: 'physical-coverage-duplicate',
+        message: 'Compiled wiring addresses a selected LED more than once.',
+        sourceKeys: duplicateSourceKeys,
+      });
+    }
+  }
   if (errors.length) return {
     ok: false,
     domain,
@@ -221,8 +253,6 @@ export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain 
     instances: [],
   };
 
-  const sourceRefs = sourceRefsFromAreas(selected);
-  const sourceKeys = new Set(sourceRefs.flatMap(ref => ref.sourceLeds.map(sourceLed => `${ref.stripId}:${sourceLed}`)));
   if (domain === 'repeat') return {
     ok: true,
     domain,
@@ -244,7 +274,7 @@ export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain 
     unresolved: [],
     errors: [],
     sourceRefs,
-    physicalRefs: refsForPhysicalOrder(asArray(catalog?.physicalOrder), sourceKeys),
+    physicalRefs,
     instances: [],
   };
 }
