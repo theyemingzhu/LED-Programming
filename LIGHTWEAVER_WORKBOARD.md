@@ -923,3 +923,12 @@ Sol/high assignment saved with other exact briefs in
  docs/plans/2026-09-22-expression-worker-briefs.json.
 Resumption:resolve prototype task setup, send saved assignment with explicit
 Sol/high, then inspect returned adapter/runtime evidence for integration.
+
+Adapter review found a real missing-coverage defect:compileWiring can succeed
+for source range0..1 of a3-pixel strip; continuous selection returned ok:true
+with source3/physical2. Return bounded regression/fix to Terra before integration.
+Prototype setup recovery:original pending task never obtained a runnable ID or
+substantive brief. Reuse its6e8d checkout via projectless task
+01a0c8c8-d081-7463-8ec7-582e36b29b30; Sol/high per existing selection. Do not
+start work in original placeholder if it later materializes. No duplicate
+worktree or product implementation was started.
