@@ -294,6 +294,31 @@ test('shared editor header keeps every action visible at the compact desktop wid
   }
 });
 
+test('shared editor header stays compact and usable on a phone', async ({ page }, testInfo) => {
+  await mockCard(page);
+  await openSceneEditor(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const header = page.locator('.sexp-head');
+  const headerBox = await header.boundingBox();
+  expect(headerBox).not.toBeNull();
+  expect(headerBox!.height).toBeLessThan(500);
+  for (const name of ['New scene', 'Back to Lab', 'Save scene', 'Put scene on card']) {
+    const button = page.getByRole('button', { name, exact: true });
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  }
+  await testInfo.attach('scene-editor-phone-header', {
+    body: await page.screenshot({ fullPage: true }), contentType: 'image/png',
+  });
+  if (process.env.SCENE_EDITOR_PHONE_SCREENSHOT) {
+    await page.screenshot({ path: process.env.SCENE_EDITOR_PHONE_SCREENSHOT, fullPage: true });
+  }
+});
+
 test('installs exact scene source and runtime only after verified readbacks', async ({ page }) => {
   const card = await mockCard(page);
   page.on('dialog', dialog => dialog.accept());
