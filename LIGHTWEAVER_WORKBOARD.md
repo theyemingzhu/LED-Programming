@@ -1097,3 +1097,12 @@ before writes; validate full source envelope canonical hash; recheck source afte
 runtime verification; freeze runtime payload nested data. Same Sol/medium worker
 adds adversarial tests for each, no protocol/firmware change. Root remains sole
 integrator. UI install binding starts only after accepted helper returns.
+
+Integrated authoring checkpoint complete at38ab49e4:2,596/2,596 library/unit
+checks and production build passed;9/9 expression lifecycle browser tests
+passed, including final real divided/mandala fixture. Logs above. No mutation
+requests to card hosts occurred in suite. Source-edge helper38pass separate.
+No further authoring polish needed before delivery integration. Resumption:
+accept delivery authority correction, give exact API to sole UI owner for
+Put scene on card + generic-save routing, then focused integrated delivery
+journey with hardware fully mocked. No deploy/flash/physical playback proof.
