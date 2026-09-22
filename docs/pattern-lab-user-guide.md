@@ -56,10 +56,12 @@ checks that:
   current draft.
 
 Studio then snapshots the current playback and streams the rendered frame.
-Stopping rehearsal, leaving the editor, changing source context, or closing the
-Show editor cancels the stream and restores the previous playback. If exact
-restoration cannot be verified, Studio keeps the failure visible and does not
-silently return to normal Show controls.
+Stopping rehearsal or closing the Show editor cancels the stream and verifies
+restoration of previous playback while the same card and source context remain
+valid. A card or source-context change stops further writes; Studio does not
+restore into a different card or a superseding owner. If exact restoration cannot
+be verified, Studio keeps the failure visible and does not silently return to
+normal Show controls.
 
 ### Put scene on card
 
@@ -107,3 +109,6 @@ first, then reinstall or rehearse the scene.
 - Resolve wiring, source-fingerprint, or restoration warnings instead of
   bypassing them. Studio deliberately refuses physical output when identity or
   mapping cannot be proved.
+
+For the existing private recipe workspace, audio analysis, and sequence export,
+see the [advanced Pattern Lab guide](pattern-lab-advanced-user-guide.md).
