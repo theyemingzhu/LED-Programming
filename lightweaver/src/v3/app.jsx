@@ -1271,6 +1271,24 @@ function Shell({ offlineUpdateController = null }) {
     cardStatus.allowAdopt,
   ]);
   const connected = isCardLinkConnected(cardLink);
+  const expressionInstallationReceipt = useMemo(() => {
+    const project = serializeProject();
+    const installation = currentInstallation(projectLifecycle);
+    const activeCardId = String(cardLink.card?.id || cardLink.readiness?.cardId || '').trim();
+    const studioFingerprint = studioInstallationFingerprint(project);
+    return Object.freeze({
+      cardId: installation?.cardId || '',
+      playbackSceneId: project.expressionScenes?.playbackSceneId || null,
+      studioFingerprint,
+      verified: Boolean(
+        connected
+        && installation?.verified === true
+        && activeCardId
+        && activeCardId === installation.cardId
+        && installation.studioFingerprint === studioFingerprint
+      ),
+    });
+  }, [cardLink.card?.id, cardLink.readiness?.cardId, connected, projectLifecycle, serializeProject]);
   // Firmware is a READ of what the card already reported, so it is answered
   // from the transport, not from command readiness — a factory-blank card
   // names its build on the first status and must not be labelled "firmware
@@ -2154,6 +2172,7 @@ function Shell({ offlineUpdateController = null }) {
               onStartNewProject={onStartNewProject}
               onSaveProject={onSave}
               onInstallExpressionScene={installExpressionScene}
+              expressionInstallationReceipt={expressionInstallationReceipt}
               route={underlyingCardRoute}
             />
             <ScreenReady />
