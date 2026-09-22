@@ -23,7 +23,10 @@ async function dispatchCardLink(page: Page, events: unknown[]) {
     for (const event of nextEvents as any[]) {
       const priorBootId = link.getState().validatedBootId;
       link.dispatch(event);
-      if (event.type === 'card-verified' && event.readiness?.bootId
+      // These fixtures represent a stable exact card. A prior aborted probe
+      // puts the shared link into revalidation, where production requires two
+      // matching status envelopes before commands resume.
+      if ((event.type === 'card-verified' || event.type === 'direct-status') && event.readiness?.bootId
         && (!priorBootId || priorBootId === event.readiness.bootId)) link.dispatch(event);
     }
   }, events);
