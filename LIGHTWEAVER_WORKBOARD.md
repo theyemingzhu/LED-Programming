@@ -932,3 +932,9 @@ substantive brief. Reuse its6e8d checkout via projectless task
 01a0c8c8-d081-7463-8ec7-582e36b29b30; Sol/high per existing selection. Do not
 start work in original placeholder if it later materializes. No duplicate
 worktree or product implementation was started.
+
+Targeting adapter accepted/integrated as7c7af17c+4bbf92bd after partial-route
+regression correction. Primary rerun25/25 focused tests green. Prototype task
+instructed to consume same adapter via54f8c452+ffcf2da, not duplicate semantics.
+Continuous requires exact selected-source coverage; repeated groups remain one
+explicit domain. No production editor consumer or hardware change yet.
