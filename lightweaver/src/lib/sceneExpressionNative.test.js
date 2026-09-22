@@ -160,6 +160,47 @@ test('native compiler emits existing combo-look and playlist shapes with exact p
   });
 });
 
+test('native compiler preserves repeat-instance boundaries instead of flattening grouped patterns', () => {
+  const groupedPattern = scene({
+    steps: [{
+      id: 'grouped-pattern', label: 'Grouped pattern', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+      assignments: [{
+        selection: { areaIds: ['group:outer-pair'], domain: 'repeat' },
+        pattern: { rendererId: 'comet', speed: 0.9 },
+      }],
+    }],
+  });
+  const grouped = compile(groupedPattern);
+  assert.equal(grouped.ok, false);
+  assert.ok(grouped.reasons.some(item => item.code === 'repeat-instance-native-unsupported'));
+  assert.deepEqual(grouped.source.steps[0].assignments[0].selection.areaIds, ['group:outer-pair']);
+
+  const explicitLeaves = compile(scene({
+    steps: [{
+      id: 'leaf-patterns', label: 'Leaf patterns', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+      assignments: [{
+        selection: { areaIds: ['strip:ribbon-left', 'strip:ribbon-right'], domain: 'repeat' },
+        pattern: { rendererId: 'comet', speed: 0.9 },
+      }],
+    }],
+  }));
+  assert.equal(explicitLeaves.ok, true, JSON.stringify(explicitLeaves.reasons));
+
+  const groupedColor = compile(scene({
+    steps: [{
+      id: 'grouped-color', label: 'Grouped color', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+      assignments: [{
+        selection: { areaIds: ['group:outer-pair'], domain: 'repeat' },
+        color: { customHue: 8 },
+      }],
+    }],
+  }));
+  assert.equal(groupedColor.ok, true, JSON.stringify(groupedColor.reasons));
+});
+
 test('continuous, nonzero transition, full palette, and unsupported movement report reasons without reducing source', () => {
   const source = scene({
     steps: [{

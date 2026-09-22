@@ -131,6 +131,34 @@ function validateState(state, details, reasons) {
   }
 }
 
+function validateRepeatInstanceFidelity(source, catalog, reasons) {
+  const areasById = new Map((catalog?.areas || []).map(area => [area?.id, area]));
+  source.steps.forEach(step => {
+    step.assignments.forEach((assignment, assignmentIndex) => {
+      const pattern = assignment.pattern;
+      const emptyNativeMovement = isRecord(pattern?.movement)
+        && Object.keys(pattern.movement).every(key => key === 'kind' || key === 'params')
+        && pattern.movement.kind === 'native'
+        && isRecord(pattern.movement.params)
+        && Object.keys(pattern.movement.params).length === 0;
+      const changesPatternDomain = isRecord(pattern) && Object.entries(pattern).some(([key]) => (
+        key !== 'movement' || !emptyNativeMovement
+      ));
+      if (assignment.selection?.domain !== 'repeat'
+        || !changesPatternDomain) return;
+      const spanningAreaIds = assignment.selection.areaIds.filter(areaId => (
+        new Set(areasById.get(areaId)?.stripIds || []).size > 1
+      ));
+      if (!spanningAreaIds.length) return;
+      reasons.push(reason(
+        'repeat-instance-native-unsupported',
+        'The card runtime cannot preserve one pattern instance across a repeat area that spans multiple strips.',
+        { stepId: step.id, assignmentIndex, areaIds: spanningAreaIds },
+      ));
+    });
+  });
+}
+
 function stripLedCount(strip = {}) {
   const count = Number(strip.pixelCount ?? strip.pixels?.length ?? strip.leds ?? 0);
   return Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
@@ -269,6 +297,8 @@ export function compileSceneExpressionNative(value, {
   const resolved = resolveSceneExpression(value, catalog);
   const reasons = resolved.reasons.map(cloneJson);
   const source = resolved.source;
+
+  validateRepeatInstanceFidelity(source, catalog, reasons);
 
   if (source.loop.mode !== 'repeat') {
     reasons.push(reason('loop-native-unsupported', 'Native playlist playback currently requires a repeating scene.'));
