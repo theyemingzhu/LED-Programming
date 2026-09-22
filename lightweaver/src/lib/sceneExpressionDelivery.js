@@ -1,7 +1,7 @@
-import { evaluateCardInstallGate, readCardCommissioningVerification } from './cardInstallGate.js';
-import { prepareCardDeployment, verifyCardPostSaveState } from './cardDeployment.js';
+import { evaluateCardInstallGate, readCardAccessLevel, readCardCommissioningVerification } from './cardInstallGate.js';
+import { classifyCardChanges, prepareCardDeployment, verifyCardPostSaveState } from './cardDeployment.js';
 import { saveProjectToCardFromGesture } from './cardProjectSave.js';
-import { createProjectEnvelope } from './projectRepository.js';
+import { createProjectEnvelope, validateProjectEnvelope } from './projectRepository.js';
 import { compileSceneExpressionNative } from './sceneExpressionNative.js';
 import { buildSceneExpressionAreaCatalog } from './sceneExpressionTargets.js';
 import { compileWiring } from './wiringCompiler.js';
@@ -27,6 +27,15 @@ function exactCardReadiness(cardEvidence = {}) {
   const statusCardId = String(cardEvidence.status?.cardId || '').trim();
   if (!cardId || !statusCardId) return failure('identity-missing');
   if (cardId !== statusCardId) return failure('card-mismatch');
+  const buildId = String(cardEvidence.buildId || '').trim();
+  const statusBuildId = String(cardEvidence.status?.buildId || '').trim();
+  if (!buildId || !statusBuildId) return failure('identity-missing');
+  if (buildId !== statusBuildId) return failure('build-mismatch');
+  const wiringCardId = String(cardEvidence.wiringStatus?.cardId || '').trim();
+  const wiringBuildId = String(cardEvidence.wiringStatus?.buildId || '').trim();
+  if (!wiringCardId || !wiringBuildId) return failure('identity-missing');
+  if (wiringCardId !== cardId) return failure('card-mismatch');
+  if (wiringBuildId !== buildId) return failure('build-mismatch');
   if (cardEvidence.wiringStatus?.hasCandidate === true
     || String(cardEvidence.wiringStatus?.state || '').toLowerCase() !== 'known-good') {
     return failure('wiring-not-known-good');
@@ -35,7 +44,12 @@ function exactCardReadiness(cardEvidence = {}) {
     || READY_FLAGS.some(flag => cardEvidence.status?.[flag] !== true)) {
     return failure('card-not-ready');
   }
-  return { ok: true, cardId };
+  return {
+    ok: true,
+    cardId,
+    buildId,
+    cardAccess: readCardAccessLevel(cardEvidence.cardAccess, cardEvidence.status),
+  };
 }
 
 function capabilityFailure(prepared, cardEvidence = {}) {
@@ -148,7 +162,7 @@ function prepare(project, {
     standaloneController: snapshot.devices?.standaloneController,
   });
   const gate = evaluateCardInstallGate({
-    cardAccess: 'ready',
+    cardAccess: readiness.cardAccess,
     requiresLiveLink: true,
     wiringAffecting: prepared.changes.requiresPhysicalTest,
     wiringSendReady: compiledWiring.sendReady,
@@ -156,10 +170,11 @@ function prepare(project, {
   });
   if (!gate.allowed) return failure(gate.reason, { gate });
 
-  return Object.freeze({
+  return frozen({
     ok: true,
     kind,
     cardId: readiness.cardId,
+    buildId: readiness.buildId,
     expectedHead,
     envelope,
     snapshot,
@@ -169,6 +184,7 @@ function prepare(project, {
     requiredPatternIds: Object.freeze((prepared.config.looks || []).map(look => String(look.id))),
     requiredZoneIds: Object.freeze((prepared.config.zones || []).map(zone => String(zone.id))),
     replacementSummary,
+    commissioningVerified: commissioning.verified,
     previousRuntimeEvidence: frozen({
       status: cardEvidence.status,
       wiringStatus: cardEvidence.wiringStatus,
@@ -190,7 +206,13 @@ export function prepareProjectPlaybackDelivery(project, options = {}) {
 
 function exactSource(plan, readback) {
   if (String(readback?.cardId || '') !== plan.cardId) return failure('card-mismatch');
-  const envelope = readback?.envelope;
+  let envelope;
+  try {
+    envelope = validateProjectEnvelope(readback?.envelope);
+  } catch (error) {
+    const reason = error?.code === 'content-hash-mismatch' ? 'source-hash-mismatch' : 'source-invalid';
+    return failure(reason, { error });
+  }
   if (String(envelope?.projectId || '') !== String(plan.envelope.projectId)) return failure('source-project-mismatch');
   if (String(envelope?.contentHash || '') !== plan.envelope.contentHash) return failure('source-hash-mismatch');
   return { ok: true };
@@ -238,12 +260,41 @@ export async function runExpressionSceneDelivery(plan, operations = {}) {
   if (!authorityCardId) return failure('identity-missing');
   if (authorityCardId !== plan.cardId) return failure('card-mismatch');
   const saveSource = operations.saveProjectToCard || saveProjectToCardFromGesture;
+  const readPreflightEvidence = operations.readPreflightEvidence;
   const readSource = operations.readSource;
   const syncRuntime = operations.syncRuntime;
   const verifyRuntime = operations.verifyRuntime || (input => verifyCardPostSaveState(input));
-  if ([saveSource, readSource, syncRuntime, verifyRuntime].some(operation => typeof operation !== 'function')) {
+  if ([saveSource, readPreflightEvidence, readSource, syncRuntime, verifyRuntime]
+    .some(operation => typeof operation !== 'function')) {
     return failure('operations-missing');
   }
+
+  let freshEvidence;
+  try {
+    freshEvidence = await readPreflightEvidence({
+      cardId: plan.cardId,
+      buildId: plan.buildId,
+      signal,
+    });
+  } catch (error) {
+    return failure(reasonOf(error, 'preflight-unavailable'), { error });
+  }
+  const freshReadiness = exactCardReadiness(freshEvidence);
+  if (!freshReadiness.ok) return freshReadiness;
+  if (freshReadiness.cardId !== plan.cardId) return failure('card-mismatch');
+  if (freshReadiness.buildId !== plan.buildId) return failure('build-mismatch');
+  const freshCapacity = capabilityFailure(plan.prepared, freshEvidence);
+  if (freshCapacity) return freshCapacity;
+  const freshChanges = classifyCardChanges(freshEvidence.previousConfig, plan.prepared.config);
+  const freshGate = evaluateCardInstallGate({
+    cardAccess: freshReadiness.cardAccess,
+    requiresLiveLink: true,
+    wiringAffecting: freshChanges.requiresPhysicalTest,
+    wiringSendReady: plan.compiledWiring.sendReady,
+    commissioningVerified: plan.commissioningVerified,
+  });
+  if (!freshGate.allowed) return failure(freshGate.reason, { gate: freshGate });
+  if (signal?.aborted) return failure('cancelled');
 
   let saved;
   try {
@@ -300,6 +351,7 @@ export async function runExpressionSceneDelivery(plan, operations = {}) {
   };
 
   let runtimeAccepted = false;
+  let runtimeVerified = false;
   try {
     const delivery = await syncRuntime({
       prepared: plan.prepared,
@@ -319,10 +371,24 @@ export async function runExpressionSceneDelivery(plan, operations = {}) {
     }
     runtimeAccepted = true;
     const verification = await verify();
+    runtimeVerified = true;
+    const finalSource = await readExactSource();
+    if (!finalSource.ok) {
+      return failure(finalSource.reason, {
+        state: 'needs-verification', sourceSaved: true,
+        previousRuntimeEvidence: plan.previousRuntimeEvidence,
+      });
+    }
     return Object.freeze({ ok: true, state: 'on-card', sourceSaved: true, verification });
   } catch (error) {
     const reason = reasonOf(error, 'runtime-failed');
     if (!isLostResponse(reason)) {
+      if (runtimeVerified) {
+        return failure(reason, {
+          state: 'needs-verification', sourceSaved: true, error,
+          previousRuntimeEvidence: plan.previousRuntimeEvidence,
+        });
+      }
       return failure(runtimeAccepted ? reason : 'runtime-preservation-unproven', {
         state: 'saved-not-installed', sourceSaved: true, error,
         ...(runtimeAccepted ? {} : { runtimeReason: reason }),
@@ -333,6 +399,8 @@ export async function runExpressionSceneDelivery(plan, operations = {}) {
       const freshSource = await readExactSource();
       if (!freshSource.ok) throw Object.assign(new Error(freshSource.reason), { reason: freshSource.reason });
       const verification = await verify();
+      const finalSource = await readExactSource();
+      if (!finalSource.ok) throw Object.assign(new Error(finalSource.reason), { reason: finalSource.reason });
       return Object.freeze({ ok: true, state: 'on-card', sourceSaved: true, reconciled: true, verification });
     } catch (reconcileError) {
       return failure(reasonOf(reconcileError, 'runtime-unverified'), {
