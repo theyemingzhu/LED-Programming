@@ -377,7 +377,7 @@ test('a successful push is pending until acknowledgement and records the exact i
 
   await page.getByTestId('layout-send-to-card').click();
   await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();
-  await expect(page.getByTestId('layout-send-to-card')).toContainText(/Sending/);
+  await expect(page.getByTestId('layout-send-to-card')).toContainText(/Saving/);
 
   const banner = page.locator('.la-card-push-banner');
   await expect(banner).toBeVisible({ timeout: 10000 });
