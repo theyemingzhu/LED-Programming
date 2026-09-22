@@ -1290,3 +1290,44 @@ mocked/offline card access inaf979a46; assertions retained. Manual Tests dispatc
 manual-dispatch conservative classification (no baseline), not a firmware-source
 change. Exact origin/main..HEAD classification is firmwareBundleOnly=true.
 Keep existing firmware version; normal main event will use exact baseline.
+
+Release follow-up: all41 phone cases pass. Production67/68 then the isolated
+LAN fixture correction passed its focused rerun. Broad releaseUI357/384 passed;
+remaining cases were Card authority fixtures, retired Layout entry assertions,
+Save/Saving copy, and three freshness tests invalidated by manager commits while
+Vite was running. Final verification now freezes HEAD per browser run.
+Corrected Card project-switch10 cases and Layout route/touch cases pass in the
+145-case correction batch; manual handoff and passive-pairing remain unresolved.
+Do not count static collection as browser proof.
+
+Bounded followups retain Sol/medium owners: playback task owns Card test fixture
+authority, accepts only unchanged explicit-pair/manual-Load behavior; editor task
+owns CardInstallAction plus wiring-workspace tests. Inspection found compact Save
+bypassed mappingReady/legacy-review while the full branch guarded it. Fix must
+offer Finish Layout with concise reason, preserve valid staged installs and blank
+discovery precedence, and prove no executable Save for incomplete mapping.
+This is a real product correction, not a stale assertion to remove. No firmware,
+compiler, or hardware write change authorized by this followup. Primary integrates
+and runs hosted release gate after these concrete failures close. Not shipped.
+
+Correction batch141/145 passes. Passive pairing failures are real, not remaining
+fixture drift:30c8b484 bootstrap called owner connectTransport with empty expected
+card ID and persisted identity without an owner click. Director decision: keep
+two well-known-host read-only discovery, report found-unpaired, retain existing
+explicit Connect for authority/persistence. Playback worker Sol/medium owns
+studioCardBootstrap.js/test and first-action compatibility checks. Preserve
+paired exact restore, bridge/update exclusions, no subnet sweep. Original Card
+fixture init-script patch alone was insufficient and is not reported as a fix.
+Manual-handoff helper separately fixed by seeding project/routes before initial
+navigation(a46fa73d); focused browser proof pending. Wiring worker has browser
+slot for red/green compact mapping guard. Primary does not run a second server.
+
+Compact guard integrateda8d77c69(afterfixture3a2aab12): four red regressions
+witnessed, four green, full24wiringpass; primary inspected card-finish-layout-guard
+screen. Passive startup fixecaf0519 preserves read-only discovery and explicit
+pairing;39focused units pass. Integrated2639unit+productionbuildpass. Six targeted
+browserjourneys pass (pairing/bench/firstactions/manualLoad). ManualLoad regression
+now seeds a real saved library match distinct from current workspace, uses the
+single Setupbanner Load, and explicitly initializes abandonedintent state; the
+separate real failed-claim test retains the refusal/circuit-breaker coverage.
+No releaseUI failure is skipped. Final hosted launch:check follows fixtureclosure.
