@@ -7,6 +7,26 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current expression integration checkpoint — 2026-09-22
+
+Manager branch `codex/scene-integration-manager`; product through `f66d873a`, test correction `52ad00e0`.
+Shared Lab/Show scene source, ordered steps, real Layout targets, guarded native
+installation, and reversible mapped rehearsal integrated locally. Header reviewed
+at desktop and 390px phone widths. Show restoration regression integrated as
+`26393580`; mobile header correction `f66d873a`.
+
+Verification: 2,613 project unit tests + 72 focused expression tests + production
+build pass. Combined browser suite: 37/38 initially passed; obsolete Show shortcut
+expectation corrected in `52ad00e0`, focused rerun 1/1 passed. All 38 scenarios
+now have passing evidence; no production changes after checkpoint.
+Logs: `/tmp/lightweaver-expression-final-{checkpoint,focused,browser,rerun}.log`.
+
+Not deployed; no physical card commands or firmware changes. Remaining external
+proof: novice interaction and actual card playback/restore/edit-readback Bench.
+Native card slice supports exact builtin controls and cut steps; continuous group
+motion, true transitions, and recorded 4096-pixel SD playback are not completed
+by this slice. Scope their runtime work explicitly before firmware expansion.
+
 ## Sprint queue
 
 2026-09-20: **FIRST-ACTION-MANAGER on current main** — auto-detect arrivals,
@@ -1169,3 +1189,78 @@ clampByte), mapped via exact segment stripId/sourceLed metadata to compiled
 physical addresses. No frame is sent yet. Git worktree index required sandbox
 escalation outside cwd; auto-review approved cherry-pick. Next:connect mapper to
 existing reversible preview session after install UI correction settles.
+
+Install UI1c748e28+53efd410 integrated as09aa23a2+ad4ca6bc. Primary55/55
+expression/model/frame/delivery checks pass; worker19/19 browser+build passed.
+Actual installed desktop inspected. One coherence gap visible:editor/topbar On
+card but footer Save to card; same UI owner must prove/fix global indicator
+against full source fingerprint before final acceptance (not ignore screenshot).
+
+Next end-to-end workstream:Try on lights | same UI task Sol/medium | existing
+renderer, exact frame mapper and transport session permit bounded integration |
+explicit start/stop, verified identity/mapping, no source/config writes, restore
+prior playback, no installed-state promotion, desktop/phone browser proof |
+return transport/restoration contract gap before firmware change. Own only
+scene-expression UI/helpers/new focused tests and minimal app props. Use exact
+mapper178911a8, existing cardFrameStream/preview session with mandatory known
+snapshot; prevent install/stream races and stale restore into another owner/card.
+Stop/unmount/navigation/error tests; no real hardware. Final manager checkpoint
+follows coherent connected journey, then real Bench/novice observation here.
+
+Rehearsal7e3dec21 source review found physical preflight gap before acceptance:
+ready card + same project ID does not prove draft Layout matches installed
+wiring. Returned same UI worker Sol/medium for strict installed output/mapping
+identity check using existing config/wiring authorities; mismatched count/pin/
+reversal routes must emit zero frames and direct to install Layout first.
+Unchanged topology with pattern-only edits remains usable. No automatic config
+sync during rehearsal, no firmware fields. Worker17browser+12units+build evidence
+retained but cannot prove this newly identified case. No real card commands.
+
+Independent Show handoff dispatch:existing playback task Sol/medium, own
+lw-show.jsx,new v3/ShowSceneLibrary.jsx/style and separate browser spec only.
+Expose saved project expressionScenes as actual selectable named scenes in Show,
+open existing shared SceneExpressionEditor with same source and supplied shell
+actions (no duplicate editor/store). Preserve existing sound-reactive Show and
+stop its own live stream before handing ownership to scene rehearsal. No sound
+engine rewrite/audio-scene composition implied. Tests source identity/edit-return
+continuity and no unsolicited hardware writes; return callback/ownership gap.
+Main UI worker retains Lab/app/session edits; no overlapping source files.
+
+Rehearsal topology82e54eff adds output/pin/count/direction checks but cannot
+prove source mapping from run IDs alone (same ID/count can repoint source).
+Manager fixed final authority contract:read validated exact-card editable
+envelope,bound to installed status.projectFingerprint/contentHash;compile saved
+Layout and compare ordered source keys to draft plus hardware topology. Allow
+pattern-only draft edits. Missing/legacy source,unbound/newer source or source
+mapping mismatch refuses rehearsal with install-first guidance. Same worker
+Sol/medium owns correction;no invented firmware map/protocol. Tests include same
+run ID/count/direction with changed strip/range. No real card writes.
+
+Rehearsal7e3dec21+82e54eff+edbfd379 integrated as6a0b9c1a+74d329db+5dd9649b.
+Primary72/72 focused expression tests pass (log
+/tmp/lightweaver-expression-rehearsal-integrated.log). Installed-source envelope
+validated and hash-bound to runtime before comparing compiled physical source
+map; owner capability required, no automatic configuration change. Worker21
+focused units/build pass; browser22/23 initially with brittle storage assertion
+corrected and failing case rerun green. Final integrated browser checkpoint
+awaits Show handoff and navigation guard. Show service403 recovered through same
+worker; no work discarded. Browser slot now Show's; app owner coordinating
+Show-host preview retention plus editor-close cleanup. No real card writes.
+
+Showfd11317a integrated as3ccdc5d7 after Shell ownership guards774c60e3+ced9c615
+(as002d82c7+5c10cebc). Shared collection/selection/save/edit continuity verified
+by worker3 browser scenarios; primary reviewed source and both actual screens.
+Screens reveal inherited Lab breadcrumb/Back label in Show plus clipped header
+actions; returned bounded shared editor fix to UI owner, wrapper props to Show
+owner. Existing3 scenarios do not exercise active rehearsal exit: requested
+mocked success/failure restoration browser regression before acceptance. No
+additional features dispatched. Final checkpoint waits only these concrete
+corrections; then Bench/novice observations remain explicitly unperformed.
+
+Final coherent expression batch complete locally: Show host props/test54852e90
+integrated26393580, shared headerbcc03e03 integrated7dbb467d, mobile7838e017
+integratedf66d873a. Primary inspected corrected desktop/phone screens. Checkpoint
+2613units+72focused+build passed; browser37/38 then obsolete-entry test-only
+correctiona4aedcaf integrated52ad00e0 and1/1 rerun passed. All38 scenarios have
+passing evidence. No remaining active implementation assignments for this batch.
+Bench/novice proof unperformed; not pushed, merged, deployed, or shipped.
