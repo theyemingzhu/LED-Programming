@@ -19,10 +19,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  describeAbandonedReleaseBranch,
+  describeReleaseBranchCollision,
   describeRegister,
   emptyRegister,
-  isAbandonedReleaseBranchRejection,
+  isReleaseBranchCollision,
   isGreater,
   nextVersion,
   readableDate,
@@ -107,22 +107,26 @@ test('a waiting item must say what it is, why, and where it lives', () => {
   assert.throws(() => validateEntry(good, [good]), /already waiting/);
 });
 
-test('a non-fast-forward push rejection is recognised and named, a real error is not', () => {
+test('a non-fast-forward rejection describes a collision without guessing ownership', () => {
   const rejection = [
     'To /tmp/upstream.git',
     ' ! [rejected]        HEAD -> firmware-release/1.1.29 (non-fast-forward)',
     "error: failed to push some refs to '/tmp/upstream.git'",
     'hint: Updates were rejected because the tip of your current branch is behind',
   ].join('\n');
-  assert.equal(isAbandonedReleaseBranchRejection(rejection), true);
-  assert.equal(isAbandonedReleaseBranchRejection('ssh: connection refused'), false);
-  assert.equal(isAbandonedReleaseBranchRejection(''), false);
+  assert.equal(isReleaseBranchCollision(rejection), true);
+  assert.equal(isReleaseBranchCollision('ssh: connection refused'), false);
+  assert.equal(isReleaseBranchCollision(''), false);
+  assert.equal(isReleaseBranchCollision('! [remote rejected] HEAD -> branch (pre-receive hook declined)'), false);
+  assert.equal(isReleaseBranchCollision('! [rejected] HEAD -> branch (other reason)\nhint: non-fast-forward'), false);
 
-  const described = describeAbandonedReleaseBranch('firmware-release/1.1.29', '1.1.29');
-  assert.match(described.message, /abandoned attempt at version 1\.1\.29/);
+  const described = describeReleaseBranchCollision('firmware-release/1.1.29', '1.1.29');
+  assert.match(described.message, /existing branch is blocking version 1\.1\.29/);
   assert.match(described.message, /firmware-release\/1\.1\.29/);
-  assert.match(described.detail, /Nothing from this run was lost/);
-  assert.match(described.detail, /git push origin --delete firmware-release\/1\.1\.29/);
+  assert.match(described.detail, /may still be in use/);
+  assert.match(described.detail, /check with its owner/);
+  assert.match(described.detail, /gh pr list --state all --head firmware-release\/1\.1\.29/);
+  assert.doesNotMatch(`${described.message}\n${described.detail}`, /abandoned|--delete|force.push|Nothing from this run was lost/i);
 });
 
 test('an empty waiting list reads as plain English with no jargon', () => {
@@ -259,20 +263,17 @@ test('a parked patch folds into the single release commit, not a commit of its o
   }
 });
 
-test('an abandoned release attempt at the same version is named, not printed as a raw git error', () => {
+test('a competing release keeps both branches and offers inspection without assuming abandonment', () => {
   const { root, upstream } = buildSandbox();
   try {
-    // Simulate a started-then-abandoned attempt: someone ran `release` once,
-    // it pushed `firmware-release/1.2.4`, and the pull request was closed
-    // without merging — the branch is never deleted. Reproduced directly
-    // (push a divergent commit under that name) rather than by actually
-    // running `release` twice, since only the branch's continued existence
-    // on the shared copy matters here.
-    const abandoner = clone(root, upstream, 'abandoner');
-    run(['checkout', '--quiet', '-b', 'firmware-release/1.2.4'], abandoner);
-    writeFileSync(join(abandoner, 'carried.txt'), 'an abandoned attempt\n');
-    run(['commit', '--quiet', '-am', 'abandoned release attempt'], abandoner);
-    run(['push', '--quiet', 'origin', 'firmware-release/1.2.4'], abandoner);
+    // The competing branch may have an active PR, a closed PR, or no PR at
+    // all. Git's rejection cannot distinguish those ownership states.
+    const colleague = clone(root, upstream, 'colleague');
+    run(['checkout', '--quiet', '-b', 'firmware-release/1.2.4'], colleague);
+    writeFileSync(join(colleague, 'carried.txt'), 'a competing release\n');
+    run(['commit', '--quiet', '-am', 'release in progress'], colleague);
+    run(['push', '--quiet', 'origin', 'firmware-release/1.2.4'], colleague);
+    const remoteHead = run(['rev-parse', 'HEAD'], colleague);
 
     const author = clone(root, upstream, 'author');
     writeFileSync(join(author, 'carried.txt'), 'after\n');
@@ -292,23 +293,31 @@ test('an abandoned release attempt at the same version is named, not printed as 
     const result = queue(owner, ['release']);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Stopped\. Nothing was changed\./);
-    assert.match(result.stderr, /abandoned attempt at version 1\.2\.4/);
+    assert.match(result.stderr, /existing branch is blocking version 1\.2\.4/);
     assert.match(result.stderr, /firmware-release\/1\.2\.4/);
-    assert.match(result.stderr, /Nothing from this run was lost/);
-    assert.match(result.stderr, /git push origin --delete firmware-release\/1\.2\.4/);
+    assert.match(result.stderr, /kept locally/);
+    assert.match(result.stderr, /gh pr list --state all --head firmware-release\/1\.2\.4/);
+    assert.doesNotMatch(result.stderr, /abandoned|--delete|force.push/i);
     // A raw git rejection line must not be the thing a person reads instead.
     assert.doesNotMatch(result.stderr, /non-fast-forward/);
     // Nothing was left half-done in the tree the owner ran it from.
     assert.equal(run(['status', '--porcelain'], owner), '');
     assert.equal(run(['rev-parse', '--abbrev-ref', 'HEAD'], owner), 'main');
-    assert.equal(run(['branch', '--list', 'firmware-release/*'], owner), '');
+    const localHead = run(['rev-parse', 'firmware-release/1.2.4'], owner);
+    assert.equal(run(['show', 'firmware-release/1.2.4:carried.txt'], owner), 'after');
     assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
-    // The abandoned attempt itself is untouched — it was never overwritten.
+    assert.equal(JSON.parse(readFileSync(join(owner, 'firmware-queue/queue.json'), 'utf8')).waiting.length, 1);
+    // The competing release itself is untouched — it was never overwritten.
     run(['fetch', '--quiet', 'origin'], owner);
+    assert.equal(run(['rev-parse', 'origin/firmware-release/1.2.4'], owner), remoteHead);
     assert.equal(
       run(['show', 'origin/firmware-release/1.2.4:carried.txt'], owner),
-      'an abandoned attempt',
+      'a competing release',
     );
+    // A retry must not remove the branch retained for inspection.
+    assert.notEqual(queue(owner, ['release']).status, 0);
+    assert.equal(run(['rev-parse', 'firmware-release/1.2.4'], owner), localHead);
+    assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
