@@ -2,15 +2,15 @@
 
 Single handoff for the next agent. Do not restart the closed batches. Read this, then [Deeper work plan](https://github.com/theyemingzhu/LED-Programming/blob/cursor/continue-handoff-4b0a/docs/continue-handoff/deeper-work-plan.md) for the full sequencing and constraints. This file is the pointer; that file is the detail.
 
-Owner: Adrian. Coordinator already ran two implementation waves plus the first deeper wave. All of it was opened as **draft PRs**. Teajia and Lightweaver are already on `main`. Art-site and Mandala were still landing when this file was last updated (2026-09-22). **Re-check each PR before you redo it.** If it is merged, skip. If it is still open, finish the merge rather than re-implementing.
+Owner: Adrian. Coordinator already ran two implementation waves plus the first deeper wave. All twelve draft PRs below are on `main` as of 2026-09-22. **Re-check each PR before you redo it.** If it is merged, skip. If it is still open, finish the merge rather than re-implementing.
 
 ## Do not redo
 
 | Repo | PRs | What landed |
 |---|---|---|
 | Teajia `storyoftheleaf/teajia` | [#295](https://github.com/storyoftheleaf/teajia/pull/295), [#297](https://github.com/storyoftheleaf/teajia/pull/297), [#300](https://github.com/storyoftheleaf/teajia/pull/300) **merged** | Freight/currency tests, Compass yuan default, wholesale null-price refuse, two Saves named apart, invoice account check + edit lease, product dock grams vs dollar total, offer-led review queue removed, `src` tests in CI, worker `tsc` ratcheted at **38** known errors |
-| Art site `adroart/adrian-website` | [#137](https://github.com/adroart/Adrian-Website/pull/137), [#138](https://github.com/adroart/Adrian-Website/pull/138), [#139](https://github.com/adroart/Adrian-Website/pull/139) | Letter-schedule test, lying todo README gone, registry Piece Records docs, quiet delete red, rebuild paging at 25, holder search, collector record door (placeholder copy), Node **22.22.2** pin, invitation expiry relative |
-| Mandala Codes `adroart/mandalacodes` | [#231](https://github.com/adroart/mandalacodes/pull/231), [#232](https://github.com/adroart/mandalacodes/pull/232), [#233](https://github.com/adroart/mandalacodes/pull/233) | Cast-content pointer, atlas mocks, stewardship paper token, status-button wrap, status docs, mobile lane summary (still `continue-on-error`), TODO duplicates removed (109→76), opener counts, `workers/media.ts` typecheck |
+| Art site `adroart/adrian-website` | [#137](https://github.com/adroart/Adrian-Website/pull/137), [#138](https://github.com/adroart/Adrian-Website/pull/138), [#139](https://github.com/adroart/Adrian-Website/pull/139) **merged** | Letter-schedule test, lying todo README gone, registry Piece Records docs, quiet delete red, rebuild paging at 25, holder search, collector record door (placeholder copy), Node **22.22.2** pin, invitation expiry relative |
+| Mandala Codes `adroart/mandalacodes` | [#231](https://github.com/adroart/mandalacodes/pull/231), [#232](https://github.com/adroart/mandalacodes/pull/232), [#233](https://github.com/adroart/mandalacodes/pull/233) **merged** | Cast-content pointer, atlas mocks, stewardship paper token, status-button wrap, status docs, mobile lane summary (still `continue-on-error`), TODO duplicates removed (109→76), opener counts, `workers/media.ts` typecheck |
 | Lightweaver `theyemingzhu/LED-Programming` | [#308](https://github.com/theyemingzhu/LED-Programming/pull/308), [#310](https://github.com/theyemingzhu/LED-Programming/pull/310), [#311](https://github.com/theyemingzhu/LED-Programming/pull/311) **merged** | Firmware refusal reads `detail`, abandoned release message, band meters decay, section-zone fixture, five stranded notices, eight long-red specs measured (seven already green; wiring-workspace fixture fixed). **No VERSION bump.** |
 
 ## Blockers before Mandala CI is real
@@ -21,7 +21,7 @@ Owner: Adrian. Coordinator already ran two implementation waves plus the first d
 
 ## Next agent-runnable slices (order inside each repo)
 
-Do not start a second branch in a repo until that repo’s drafts above are merged, unless you explicitly stack.
+Those drafts are merged. Start the next slice per repo; do not re-implement the table above.
 
 ### Teajia
 
