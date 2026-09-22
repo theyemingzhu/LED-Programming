@@ -938,3 +938,12 @@ regression correction. Primary rerun25/25 focused tests green. Prototype task
 instructed to consume same adapter via54f8c452+ffcf2da, not duplicate semantics.
 Continuous requires exact selected-source coverage; repeated groups remain one
 explicit domain. No production editor consumer or hardware change yet.
+
+Playback contract6d9e45c2 reviewed but not yet integrated. Returned bounded
+reconciliation:reuse accepted target IDs/adapter; separate current child-strip
+sectionFamilies from legacy PatchBoard subranges; missing references preserve
+editable source and block compile only; verify dwell/transition clock semantics;
+prefer existing identity/readback before proposing new firmware hash fields.
+P0 remains pure compiler/resolution,not shared schema/wiring/firmware rewrite.
+Prototype informed of real transition limitation; creative prototype remains
+rich and explicitly simulated. Sol/high contract correction bounded10min.
