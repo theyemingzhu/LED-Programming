@@ -5,8 +5,11 @@ import {
   addSceneStep,
   createSceneExpression,
   moveSceneStep,
+  patchOrCreateSceneAssignment,
   patchSceneAssignment,
+  scenePlaybackAt,
 } from './sceneExpressionEditorModel.js';
+import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
 
 test('field patches preserve sibling pattern, color, and unknown source fields', () => {
   const scene = createSceneExpression({ id: 'scene-1', name: 'Quiet tide' });
@@ -32,4 +35,38 @@ test('adding and moving steps preserves stable IDs and ordered source', () => {
   assert.deepEqual(added.steps.map(step => step.id), ['scene-1-step-1', 'scene-1-step-2']);
   const moved = moveSceneStep(added, 'scene-1-step-2', -1);
   assert.deepEqual(moved.steps.map(step => step.id), ['scene-1-step-2', 'scene-1-step-1']);
+});
+
+test('playback changes steps exactly at hold boundaries and loops', () => {
+  const scene = createSceneExpression({ id: 'clock' });
+  scene.steps[0].holdMs = 1000;
+  const two = addSceneStep(scene, { id: 'clock-step-2' });
+  two.steps[1].holdMs = 2000;
+  assert.deepEqual(scenePlaybackAt(two, 999), { stepIndex: 0, stepId: 'clock-step-1', localMs: 999, totalMs: 3000 });
+  assert.deepEqual(scenePlaybackAt(two, 1000), { stepIndex: 1, stepId: 'clock-step-2', localMs: 0, totalMs: 3000 });
+  assert.deepEqual(scenePlaybackAt(two, 3001), { stepIndex: 0, stepId: 'clock-step-1', localMs: 1, totalMs: 3000 });
+});
+
+test('an inherited sparse step gains only the field the owner edits', () => {
+  const scene = createSceneExpression({ id: 'sparse' });
+  scene.steps[0].assignments = [];
+  const next = patchOrCreateSceneAssignment(scene, scene.steps[0].id, 0, { color: { customHue: 71 } });
+  assert.deepEqual(next.steps[0].assignments, [{
+    selection: { areaIds: ['all'], domain: 'repeat' },
+    color: { customHue: 71 },
+  }]);
+});
+
+test('firmware preview modifiers apply hue, breathe, and drift deterministically', () => {
+  const segment = { pixels: [{}, {}], visualLook: {
+    customHue: 90, customSaturation: 180, hueShift: 12,
+    customBreathe: true, breatheLowerPct: 40, breatheUpperPct: 80,
+    breatheCycleSeconds: 8, customDrift: true, speed: 1,
+  } };
+  const beginning = [{ r: 220, g: 80, b: 20 }, { r: 20, g: 130, b: 230 }];
+  const later = structuredClone(beginning);
+  applyPatternPreviewSegmentLooks(beginning, [segment], 0);
+  applyPatternPreviewSegmentLooks(later, [segment], 2300);
+  assert.deepEqual(beginning, [{ r: 88, g: 25, b: 34 }, { r: 26, g: 91, b: 92 }]);
+  assert.deepEqual(later, [{ r: 142, g: 91, b: 40 }, { r: 42, g: 77, b: 149 }]);
 });

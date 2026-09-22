@@ -44,6 +44,37 @@ export function patchSceneAssignment(scene, stepId, assignmentIndex, patch) {
   return next;
 }
 
+export function patchOrCreateSceneAssignment(scene, stepId, assignmentIndex, patch) {
+  const step = scene.steps.find(candidate => candidate.id === stepId);
+  if (step?.assignments?.[assignmentIndex]) return patchSceneAssignment(scene, stepId, assignmentIndex, patch);
+  const next = clone(scene);
+  const nextStep = next.steps.find(candidate => candidate.id === stepId);
+  if (!nextStep) return next;
+  nextStep.assignments.push({
+    selection: { areaIds: ['all'], domain: 'repeat' },
+    ...clone(patch),
+  });
+  return next;
+}
+
+export function scenePlaybackAt(scene, elapsedMs) {
+  const holds = scene.steps.map(step => Math.max(1, Number(step.holdMs) || 1));
+  const totalMs = holds.reduce((sum, hold) => sum + hold, 0);
+  const looped = ((Math.max(0, Number(elapsedMs) || 0) % totalMs) + totalMs) % totalMs;
+  let cursor = 0;
+  for (let stepIndex = 0; stepIndex < scene.steps.length; stepIndex += 1) {
+    const end = cursor + holds[stepIndex];
+    if (looped < end) return {
+      stepIndex,
+      stepId: scene.steps[stepIndex].id,
+      localMs: looped - cursor,
+      totalMs,
+    };
+    cursor = end;
+  }
+  return { stepIndex: 0, stepId: scene.steps[0].id, localMs: 0, totalMs };
+}
+
 export function patchSceneStep(scene, stepId, patch) {
   const next = clone(scene);
   const step = next.steps.find(candidate => candidate.id === stepId);
