@@ -1007,6 +1007,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
           <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
             {onLights ? `playing on ${activePixels} LEDs` : `${activePixels} LEDs ready`}
           </span>
+          <button type="button" className="btn" onClick={() => go('pattern-lab')}>Edit a scene</button>
           <button
             type="button"
             className={'btn' + (onLights ? ' primary' : '')}

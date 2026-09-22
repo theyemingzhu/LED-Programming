@@ -1593,7 +1593,7 @@ function Shell({ offlineUpdateController = null }) {
   const onSave = useCallback(async () => {
     if (projectAssociationSaveBlocked) {
       showWorkspaceEvent('Saving is blocked because Studio could not establish a safe destination for this project. Open another project or restore browser storage before retrying.', { kind: 'error', persistent: true, review: true });
-      return;
+      return { ok: false, reason: 'association-save-blocked' };
     }
     if (cloudLibrary.session.status === 'authenticated' && cloudLibrary.activeRemoteProject) {
       const result = await cloudLibrary.saveNow();
@@ -1603,11 +1603,11 @@ function Shell({ offlineUpdateController = null }) {
       } else if (result.reason === 'stale-session' || [401, 403].includes(Number(result.error?.status))) {
         showWorkspaceEvent('Your session changed. Sign in again from Projects.', { kind: 'error', persistent: true, review: true, source: 'cloud-save-session' });
       }
-      return;
+      return result;
     }
     if (cloudLibrary.session.status === 'authenticated' && cloudLibrary.session.role !== 'customer') {
       setSaveDialogOpen(true);
-      return;
+      return { ok: false, reason: 'destination-required' };
     }
     try {
       const result = await saveProjectToBrowserGuarded(serializeProject());
@@ -1620,8 +1620,10 @@ function Shell({ offlineUpdateController = null }) {
       }
       markProjectPersisted('browser');
       showWorkspaceEvent(formatBrowserProjectSaveLabel(result.record));
+      return result;
     } catch (error) {
       showWorkspaceEvent(error?.message || 'Browser save failed', { kind: 'error', persistent: true, review: true });
+      return { ok: false, reason: error?.reason || 'browser-save-failed', error };
     }
   }, [cloudLibrary, markProjectPersisted, projectAssociationSaveBlocked, saveProjectToBrowserGuarded, serializeProject, showWorkspaceEvent]);
   const onLaunchBridge = useCallback(async operation => {
