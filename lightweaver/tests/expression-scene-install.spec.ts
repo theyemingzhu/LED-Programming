@@ -92,6 +92,18 @@ async function mockCard(page: any, options: any = {}) {
   }
   if (options.threeSections) addThirdReversedSection(project);
   const initialConfig = currentConfig(project);
+  if (options.layoutMismatch === 'pixel-count') {
+    const strip = project.layout.strips.find((item: any) => item.id === 'third-section');
+    const last = strip.pixels.at(-1);
+    strip.pixels.push({ ...last, index: 5, x: last.x + 12 });
+    strip.pixelCount = 6;
+    project.layout.wiring.runs.find((run: any) => run.id === 'run-third-section').source.to = 5;
+    project.layout.patchBoard.patches.find((patch: any) => patch.id === 'patch-third-section').source.endLed = 5;
+  }
+  if (options.layoutMismatch === 'output-route') project.layout.wiring.outputs[0].pin = 17;
+  if (options.layoutMismatch === 'reversal') {
+    project.layout.wiring.runs.find((run: any) => run.id === 'run-third-section').physicalDirection = 'source-forward';
+  }
   const state = {
     operations: [] as string[],
     chunks: [] as string[],
@@ -401,6 +413,9 @@ test('scene rehearsal sends an exact three-section physical frame only after exp
   await expect(preview).toBeEnabled();
   expect(await browserFrames(page)).toEqual([]);
 
+  await page.getByLabel('Color', { exact: true }).fill('80');
+  await expect(preview).toBeEnabled();
+
   await preview.click();
   await expect(preview).toHaveText('Stop preview');
   await expect.poll(async () => (await browserFrames(page)).length).toBeGreaterThan(0);
@@ -416,6 +431,20 @@ test('scene rehearsal sends an exact three-section physical frame only after exp
   expect(card.playlist).toMatchObject({ configured: true, playing: false, entryIndex: 1, patternId: 'ocean' });
   expect(card.forbiddenMutations).toEqual([]);
 });
+
+for (const mismatch of ['pixel-count', 'output-route', 'reversal']) {
+  test(`same-project ${mismatch} Layout drift refuses rehearsal before any physical write`, async ({ page }) => {
+    const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, layoutMismatch: mismatch });
+    await openSceneEditor(page);
+    await page.getByTestId('scene-physical-preview').click();
+    await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
+    await expect(page.locator('.sexp-preview-bar')).toContainText('Install the Layout changes first');
+    expect(await browserFrames(page)).toEqual([]);
+    expect(card.controls).toEqual([]);
+    expect(card.configWrites).toBe(0);
+    expect(card.forbiddenMutations).toEqual([]);
+  });
+}
 
 test('navigation cancels rehearsal and restores a playing playlist without project mutations', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, advancePlaylistOnStop: true });
