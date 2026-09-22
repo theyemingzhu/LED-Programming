@@ -1155,6 +1155,18 @@ export function createMandalaEngine({ template = createMandalaSpatialTemplate() 
     time += dt;
     const t = time;
 
+    // Once listening stops, nothing calls analyze()/setFeatures() again, so
+    // without this F would hold its last snapshot forever — getLevels() (the
+    // band meters) reads exactly F, so the meters would freeze on whatever
+    // was last heard instead of falling, reading as a hung analyser. Same
+    // release-style decay as applyBands' `up()`, just aimed at silence.
+    if (!listening) {
+      const release = (o, tau) => (o < 0.001 ? 0 : o * Math.exp(-dt / tau));
+      F.bass = release(F.bass, 0.18); F.mid = release(F.mid, 0.2); F.high = release(F.high, 0.25);
+      F.energy = release(F.energy, 0.2);
+      F.flux = 0; F.beat = 0;
+    }
+
     const Ptarget = !listening ? 0 : clamp01((F.energy - 0.05) / 0.30);
     presence += (Ptarget - presence) * (Ptarget > presence ? (1 - Math.exp(-dt / 0.6)) : (1 - Math.exp(-dt / 8))); // silence eases over ~8s
 

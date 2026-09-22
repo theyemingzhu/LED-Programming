@@ -235,7 +235,8 @@ Branch `claude/led-music-responsive-controller-c096c9`, commits 6ccad1c8 and b71
   His drawing plus a plain-English paragraph, one line per voice, where each bold word is the control. `showVoiceSentence.js` already generates the tokens. Deliberately last: it reads beautifully in a document and may be fussy in the hand. ~10h.
 - [ ] **Decide the Swell reach question** _(you · quick)_
   Swell's crest moves further out when the music is loud, which the aesthetic permits (audio may move position) but which can read as the motion speeding up. It is now slew-limited rather than frozen — worst case dropped from 36× to 2.85×. Whether that is right is a judgement call only you can make, on the piece. Logged as F7.
-- [ ] **Band meters freeze on Quiet instead of falling to zero** _(agent · quick)_
+- [x] **Band meters freeze on Quiet instead of falling to zero** _(agent · quick)_
+  Done 2026-09-22: `tick()` in `mandalaEngine.js` now decays `F.bass`/`mid`/`high`/`energy` toward zero (and clears `flux`/`beat`) once `!listening`, instead of leaving them at whatever `setFeatures` last wrote; unit tests in `mandalaEngine.listeningLevels.test.js`. Studio/simulator only, no firmware port.
   Pre-existing, affects the mic and file paths identically. `mandalaEngine.getLevels()` returns the last snapshot and `setFeatures` stops being called once listening is off. Cosmetic, but it reads as the analyser having hung.
 - [ ] **Two follow-ups the reviewers flagged and nobody owned** _(agent · moderate)_
   The auto-gain caveat noted in the build log, and a voice's instrument being stored under a borrowed field name rather than its own — technical debt only, invisible on screen. Both in [docs/music-reactive-build-log.md](docs/music-reactive-build-log.md).
