@@ -21,7 +21,9 @@ expectation corrected in `52ad00e0`, focused rerun 1/1 passed. All 38 scenarios
 now have passing evidence; no production changes after checkpoint.
 Logs: `/tmp/lightweaver-expression-final-{checkpoint,focused,browser,rerun}.log`.
 
-Not deployed; no physical card commands or firmware changes. Remaining external
+Release authorized on 2026-09-23: PR313 is the active shipment record;
+release gates and production proof are in progress. No physical card commands or
+firmware source changes. Remaining external
 proof: novice interaction and actual card playback/restore/edit-readback Bench.
 Native card slice supports exact builtin controls and cut steps; continuous group
 motion, true transitions, and recorded 4096-pixel SD playback are not completed
@@ -1264,3 +1266,27 @@ integratedf66d873a. Primary inspected corrected desktop/phone screens. Checkpoin
 correctiona4aedcaf integrated52ad00e0 and1/1 rerun passed. All38 scenarios have
 passing evidence. No remaining active implementation assignments for this batch.
 Bench/novice proof unperformed; not pushed, merged, deployed, or shipped.
+
+2026-09-23 autonomous release authorized by Adrian: continue until launched;
+no further routine approval needed. PR313 https://github.com/theyemingzhu/LED-Programming/pull/313
+Current main integrated cleanly. Prototype moved out of public assets; expression
+tests added to normal release suite. Operator guide added; advanced guide retained.
+Release core/cloud/mapper/staging/freshness pass;2639unit tests pass. New scene38,
+legacyShow11, recovery3, critical6, cloud73 browser cases passed. Existing notice
+index-comparison race corrected/tested8pass; Layout unmocked-card fixture fixed6pass;
+wiring lock fixture corrected4pass. Broad browser chunks116/116 and126/127
+(the latter's known wiring fixture now corrected). Mobile33/41: eight failures
+in private Lab naming/drawer/stateful interaction assigned original UI owner.
+No merge/deploy claim yet. Hosted exhaustive runs stopped after new known
+failures emerged, rerun once coherent corrections ready. Primary sole integrator.
+
+Phone release correctionaeb1f534 integrated8ecd23a0: Edit/Evolve preserve compact
+nonmodal controls, opening saved draft lands on Edit, Choose/Add to Patterns
+expand full, compact sheet retains Save without oversized handoff panel.
+Worker19/19 focusedmobile pass;primary inspected final phone capture. Full41
+phone gate plus production/releaseUI now running. Wiring workspace defaults to
+mocked/offline card access inaf979a46; assertions retained. Manual Tests dispatch
+35755773372 passed source/production lanes so far; firmware version demand is
+manual-dispatch conservative classification (no baseline), not a firmware-source
+change. Exact origin/main..HEAD classification is firmwareBundleOnly=true.
+Keep existing firmware version; normal main event will use exact baseline.
