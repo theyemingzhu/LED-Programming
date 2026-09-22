@@ -1,6 +1,6 @@
 # Continue here
 
-Single handoff for the next agent. Do not restart the closed batches. Read this, then [Deeper work plan](deeper-work-plan.md) for the full sequencing and constraints. This file is the pointer; that file is the detail.
+Single handoff for the next agent. Do not restart the closed batches. Read this, then [Deeper work plan](https://github.com/theyemingzhu/LED-Programming/blob/cursor/continue-handoff-4b0a/docs/continue-handoff/deeper-work-plan.md) for the full sequencing and constraints. This file is the pointer; that file is the detail.
 
 Owner: Adrian. Coordinator already ran two implementation waves plus the first deeper wave. All of it was opened as **draft PRs**. Teajia and Lightweaver are already on `main`. Art-site and Mandala were still landing when this file was last updated (2026-09-22). **Re-check each PR before you redo it.** If it is merged, skip. If it is still open, finish the merge rather than re-implementing.
 
