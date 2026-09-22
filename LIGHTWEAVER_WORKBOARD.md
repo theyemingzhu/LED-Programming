@@ -1037,3 +1037,29 @@ correction using existing patternPiecePreview/previewColorModifiers and real
 step clock. Require valid wiring/native success, distinct3-section/mandala
 geometry, sparse-source reopen and desktop timeline visible at1280x720.
 No integration of this UI commit until behavior evidence meets original scope.
+
+UIe2c7dd96+679cac0c integrated as07e1dcf6+85141717 after source and actual
+screen review; primary39/39 focused tests pass. Screens now distinct3-section
+and mandala, native compile success, desktop timeline visible. Worker8/8
+browser cases+build pass. Remaining bounded source-edge corrections:once-mode
+clock currently repeats; unavailable transition/continuous/movement source must
+not silently animate as native cuts/repeats; inherited controls must resolve the
+selected area's state rather than always first strip. Same UI owner completes
+these before final integrated checkpoint. No hardware proof claimed.
+
+Next independent delivery helper:Sol/medium, same playback/source task. Own
+new sceneExpressionDelivery.js+tests only. Manager contract:editing selection
+activeSceneId never implies playback. Optional expressionScenes.playbackSceneId
+records explicit intended card program; absent/null retains ordinary controller
+behavior. Existing normalizer preserves this additive field, no schema major or
+firmware changes. Prepare immutable source snapshot+envelope+native program from
+one selected scene; legacy saved looks remain in editable source, card program
+is explicitly the selected scene's steps (replacement preview required in UI).
+Use existing source hash,project revision/fingerprint and exact-card runtime+
+look/zone readiness evidence. Require owner pairing/known-good wiring/current
+install gate; source failure must prevent runtime mutation. Source-success/runtime
+failure stays saved-not-installed; lost reply must reconcile actual readback.
+Callbacks/injected operations for bounded tests; no new network client or live
+card action. UI consumes helper only after manager integration; same UI worker
+retains sole app.jsx ownership. Return identity/gate gap before architecture
+expansion. Cost unknown.
