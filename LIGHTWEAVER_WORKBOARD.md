@@ -984,3 +984,32 @@ movement field fidelity. No escalation/model change or architecture expansion.
 Resumption:accept compiler correction, integrate only its new modules/tests,
 then dispatch production source/editor/card handoff using shared contract.
 No push, deployment, flash, or physical playback proof. Cost unknown.
+
+Compiler correction6e664940 accepted/integrated with4d4a8047 as09766494+
+1e77abcd. Manager checked safe own-property segment writes and exact coverage
+validation. Integrated checkpoint passed2,589/2,589 unit tests and production
+build (log /tmp/lightweaver-expression-checkpoint.log). Prototype regressions31/31
+passed separately. Prior focused card/firmware contracts passed at worker; no
+firmware changes. Native cut-only support remains distinct from rich preview.
+
+P1 connected authoring dispatch decisions:save editable scenes additively in
+project.expressionScenes={version:1,activeSceneId:null,scenes:[]}; no project
+major-version change, firmware or backend migration. Canonical entries use
+normalizeSceneExpression. Missing Layout refs remain source; invalid/future
+scene data must be preserved or explicitly rejected,never silently dropped.
+- Project scene persistence | Sol/medium | established envelope/context patterns
+  with bounded new collection contract | save/reopen/hash/old-project regression
+  and source authority tests | return any existing-repository incompatibility.
+  Own projectModel.js,ProjectContext.jsx,new sceneExpressionProject helpers/tests.
+- Production scene editor | Sol/medium | accepted prototype and canonical source
+  fix the interaction contract | real Layout create/edit/reorder/save/reopen on
+  desktop/phone, independent pattern/color tests | return unsupported preview
+  semantics rather than approximate silently. Own scene-expression components,
+  PatternLabScreen,v3 app/entry surfaces and focused browser spec; no overlap
+  with persistence worker. Existing tasks reused; no extra director.
+Both start clean branches from integrated1e77abcd in their existing worktrees.
+Common context API expressionScenes,setExpressionScenes. UI consumes defaults
+when unavailable; finish integration after persistence lands. Save uses existing
+guarded project-save action,with truthful outcome; autosave is recovery only.
+Card installation is next bounded integration after connected source works;
+no pretend On card state, no real card networking, no deployment. Cost unknown.
