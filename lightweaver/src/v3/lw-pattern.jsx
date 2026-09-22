@@ -2400,18 +2400,8 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     // ── screen-scoped messages into the notice layer ───────────────────────
     // The hero status used to be a static box in document flow, pushing the
-    // pattern grid down every time it appeared. Three exceptions stay in the
-    // old in-flow markup, deliberately, because the notice layer's `action`
-    // is a single button and these need more than that:
-    //   - recoveryConfirmation 'pending'/'dark' is a two-button yes/no
-    //     confirmation ("Yes, warm white is visible" / "No, lights are still
-    //     dark"), both real, both tested
-    //     (tests/patterns-v3.spec.ts: 'Recover lights asks for physical
-    //     confirmation…'). Collapsing to one action would silently drop the
-    //     "No" answer, which is exactly what constraint 6 forbids.
-    // Everything else — the plain info/success/error hero messages, the
-    // firmware-gap "Open Flash" case, the mixed-content "Open card installer"
-    // case, and the single-button preview-failure recovery case — moves.
+    // pattern grid down every time it appeared. The physical-recovery
+    // confirmation ('pending'/'dark') and everything else now float.
     const isPatternRecoveryConfirmFlow = recoveryConfirmation === 'pending' || recoveryConfirmation === 'dark';
     useEffect(() => {
       // While the pattern-gate notice (below) is up, it already carries this
@@ -2476,6 +2466,52 @@ import { PatternPreview } from './PatternPreview.jsx';
           : { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
       });
     }, [hardwareConfigurationIssue, canRemoveDuplicateAlternatePress]);
+
+    useEffect(() => {
+      if (!isPatternRecoveryConfirmFlow) {
+        dismissNoticeKey('pattern-recovery-confirm');
+        return;
+      }
+      if (recoveryConfirmation === 'pending') {
+        publishNotice({
+          key: 'pattern-recovery-confirm',
+          testId: 'pattern-card-status',
+          tone: statusKind === 'err' ? 'error' : statusKind === 'ok' ? 'success' : 'info',
+          title: status,
+          source: 'pattern-recovery',
+          actions: [
+            {
+              label: 'Yes, warm white is visible',
+              onSelect: () => {
+                setRecoveryConfirmation('confirmed');
+                setStatusKind('ok');
+                setStatus('Warm white confirmed on the real LEDs.');
+              },
+            },
+            {
+              label: 'No, lights are still dark',
+              onSelect: () => {
+                setRecoveryConfirmation('dark');
+                setStatusKind('err');
+                setStatus('The card responded, but physical light is not confirmed.');
+              },
+            },
+          ],
+        });
+        return;
+      }
+      publishNotice({
+        key: 'pattern-recovery-confirm',
+        testId: 'pattern-card-status',
+        tone: 'error',
+        title: status,
+        source: 'pattern-recovery',
+        action: {
+          label: 'Find my LED wire',
+          onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; },
+        },
+      });
+    }, [isPatternRecoveryConfirmFlow, recoveryConfirmation, status, statusKind]);
 
     // Was: published to the floating notice layer, which meant an
     // absolutely-positioned box over `.pm-target` — hiding Pixels driven and
@@ -2618,41 +2654,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                 </div>
               </div>
             </header>
-
-            {/* Two states of this same physical-recovery confirmation stay in
-                document flow, unmigrated: the notice layer's `action` is one
-                button, and "Yes, warm white is visible" / "No, lights are
-                still dark" are both real, both tested
-                (tests/patterns-v3.spec.ts: 'Recover lights asks for physical
-                confirmation…'). Everything else this box used to show —
-                plain info/success/error, the firmware-gap and mixed-content
-                cases, the single-button preview-failure recovery — is
-                published to the notice layer instead (see the
-                'pattern-card-status' effect above). */}
-            {status && isPatternRecoveryConfirmFlow &&
-              <div className={"pmx-status" + (statusKind === 'ok' ? ' is-ok' : statusKind === 'err' ? ' is-err' : '')} role={statusKind === 'err' ? 'alert' : 'status'} aria-live="polite">
-                {status}
-                {recoveryConfirmation === 'pending' &&
-                  <div className="pmx-status-actions" aria-label="Confirm physical recovery">
-                    <button type="button" className="btn primary" onClick={() => {
-                      setRecoveryConfirmation('confirmed');
-                      setStatusKind('ok');
-                      setStatus('Warm white confirmed on the real LEDs.');
-                    }}>Yes, warm white is visible</button>
-                    <button type="button" className="btn" onClick={() => {
-                      setRecoveryConfirmation('dark');
-                      setStatusKind('err');
-                      setStatus('The card responded, but physical light is not confirmed.');
-                    }}>No, lights are still dark</button>
-                  </div>
-                }
-                {recoveryConfirmation === 'dark' &&
-                  <div className="pmx-status-actions">
-                    <button type="button" className="btn primary" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Find my LED wire</button>
-                  </div>
-                }
-              </div>
-            }
 
             <div className="pm-grid">
               {/* MAIN */}

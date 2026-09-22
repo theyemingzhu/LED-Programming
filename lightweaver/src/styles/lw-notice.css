@@ -33,7 +33,10 @@
      stylesheet but wraps to ~91px on a phone, and docking against the CSS
      number put a notice 51px inside it. The fallback matches the desktop bar. */
   bottom: calc(var(--lw-statusbar-h, 32px) + 12px);
-  z-index: 720;
+  /* Above card-setup-backdrop (1200) so action buttons stay clickable while
+     discovery runs inside the setup overlay. Still below connection dialogs
+     that must fully capture input. */
+  z-index: 1300;
   width: min(420px, calc(100vw - var(--lw-rail) - 28px));
   display: flex;
   /* Plain `column`, with the newest notice rendered LAST, so the newest sits
