@@ -3,9 +3,23 @@ import { test, expect } from '@playwright/test';
 // Layout is Wire drawing only. Old Test & Install bookmarks open Card install.
 
 async function gotoLayout(page: any, hash = '#screen=layout') {
+  await page.route('http://lightweaver.local/**', (route: any) => route.abort());
+  await page.route('http://192.168.4.1/**', (route: any) => route.abort());
   await page.goto(`/${hash}`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
+}
+
+async function expectFreshCardInstallEntry(page: any) {
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
+  const start = page.getByTestId('public-worker-start');
+  await expect(start).toBeVisible();
+  await expect(start.getByRole('button', { name: /set up the card/i })).toBeVisible();
+  // This fixture deliberately clears every remembered card. A fresh browser
+  // must find a card before it can offer the project-writing control.
+  await expect(page.getByTestId('commissioning-step')).toHaveCount(0);
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-primitive-picker')).toHaveCount(0);
 }
 
 test('Layout has no Test & Install tab and keyboard 2 does not open a second mode', async ({ page }) => {
@@ -48,21 +62,13 @@ test('Wire tools stay on Layout as their own panel, not a second mode', async ({
 test('the Check and install CTA opens Card install', async ({ page }) => {
   await gotoLayout(page);
   await page.getByTestId('layout-check-and-install').click();
-  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
-  await expect(page.getByTestId('commissioning-step')).toBeVisible();
-  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(1);
-  await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
-  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
+  await expectFreshCardInstallEntry(page);
 });
 
 test('#screen=layout&mode=wire opens Card install, not a Layout tab', async ({ page }) => {
   await gotoLayout(page, '#screen=layout&mode=wire');
 
-  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
-  await expect(page.getByTestId('commissioning-step')).toBeVisible();
-  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(1);
-  await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
-  await expect(page.getByTestId('start-led-check')).toHaveCount(0);
+  await expectFreshCardInstallEntry(page);
   await expect(page.getByTestId('layout-mode-switch')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /Find your connected card/i })).toHaveCount(0);
 });
