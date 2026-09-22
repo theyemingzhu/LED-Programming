@@ -469,6 +469,10 @@ test('working-card choice opens the card popup path', async ({ page }) => {
 
 test('background direct discovery stays unpaired until an explicit one-tap pair', async ({ page }) => {
   const readyProject = await installMatchingProject(page);
+  // Establish the unpaired origin before its first document starts. Clearing
+  // after navigation races the initial mocked status probe, which can finish
+  // against the outgoing page and repopulate identity before the reload.
+  await page.addInitScript(() => localStorage.removeItem('lw_card_identity_v1'));
   const passiveCard = {
     ...readyStatus('lw-passive-card', { bootId: 'boot-passive-card', ...readyProject }),
     cardName: 'Passive card', led: { pixels: 44 }, source: 'internal-flash',
@@ -485,8 +489,6 @@ test('background direct discovery stays unpaired until an explicit one-tap pair'
     body: JSON.stringify(passiveCard),
   }));
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: 'domcontentloaded' });
 
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
   // A reachable-but-unpaired card is actionable, never green "Connected".
