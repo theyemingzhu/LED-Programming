@@ -279,6 +279,21 @@ async function openSceneEditorForPreview(page: any) {
   });
 }
 
+test('shared editor header keeps every action visible at the compact desktop width', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await mockCard(page);
+  await openSceneEditor(page);
+
+  await expect(page.getByText('Studio · Lab · Scene')).toBeVisible();
+  for (const name of ['New scene', 'Back to Lab', 'Save scene', 'Put scene on card']) {
+    const button = page.getByRole('button', { name, exact: true });
+    await expect(button).toBeVisible();
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
+  }
+});
+
 test('installs exact scene source and runtime only after verified readbacks', async ({ page }) => {
   const card = await mockCard(page);
   page.on('dialog', dialog => dialog.accept());
