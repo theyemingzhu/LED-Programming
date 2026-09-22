@@ -6,6 +6,14 @@ import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 const TEST_CARD_ID = 'lw-wiring-tests';
 
+test.beforeEach(async ({ page }) => {
+  // Card setup probes local controller hosts in the background. Keep these
+  // workspace fixtures independent of a developer's real LAN card while
+  // leaving the Playwright app origin available. Tests that model a card
+  // register their more-specific routes later, so those fixtures still win.
+  await page.route(/^http:\/\/(?!(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/).+/, route => route.abort());
+});
+
 async function installStableCardIdentity(page: any) {
   await page.addInitScript(cardId => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId }));
