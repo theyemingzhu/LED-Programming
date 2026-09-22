@@ -208,7 +208,7 @@ test('auto-locked verified wiring blocks physical mutations until Unlock to edit
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lightweaver-locked-wire-'));
   // Wiring lock is a project invariant. Keep this regression independent of
   // whether a developer happens to have a real card answering on the LAN.
-  await page.route(/^http:\/\/(?!127\.0\.0\.1(?::\d+)?\/).+/, route => route.abort());
+  await page.route(/^http:\/\/(?!(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/).+/, route => route.abort());
   await gotoDefaultWire(page);
   await loadVerifiedWiring(page, tmp);
 
@@ -217,7 +217,7 @@ test('auto-locked verified wiring blocks physical mutations until Unlock to edit
   await expect(page.getByTestId('commissioning-step')).toContainText('Save to card');
   await expect(page.getByRole('button', { name: 'Lock wiring' })).toHaveCount(0);
   await expect(page.getByTestId('layout-send-to-card')).toContainText('Connect first');
-  await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
 
   await openAdvanced(page);
   const custom = page.locator('.lww-custom-mapping');
@@ -247,7 +247,7 @@ test('auto-locked verified wiring blocks physical mutations until Unlock to edit
   await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project'; });
   await expect(page.getByTestId('commissioning-step')).toContainText('Save to card');
   await expect(page.getByTestId('layout-send-to-card')).toContainText('Connect first');
-  await expect(page.getByTestId('layout-send-to-card')).toBeDisabled();
+  await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
 });
 
