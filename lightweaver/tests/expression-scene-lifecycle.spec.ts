@@ -56,10 +56,17 @@ test('phone keeps the ordered timeline directly below the live artwork', async (
   expect(inspectorBox!.y).toBeGreaterThan(timelineBox!.y);
 });
 
-test('Show links to the same Lab scene authoring entry', async ({ page }) => {
+test('Show opens the same shared scene source in its editor', async ({ page }) => {
+  const sceneId = await page.getByLabel('Scene', { exact: true }).inputValue();
+  await page.getByLabel('Scene title').fill('Shared route scene');
   await page.getByRole('button', { name: 'Show', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit a scene' }).click();
-  await expect(page.getByTestId('pattern-lab-build-scene')).toBeVisible();
+  const sharedScene = page.locator(`[data-scene-id="${sceneId}"]`);
+  await expect(sharedScene).toContainText('Shared route scene');
+  await sharedScene.getByRole('button', { name: 'Edit scene' }).click();
+  await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
+  await expect(page.getByText('Studio · Show · Scene')).toBeVisible();
+  await expect(page.getByLabel('Scene title')).toHaveValue('Shared route scene');
+  await expect(page.getByLabel('Scene', { exact: true })).toHaveValue(sceneId);
 });
 
 test('switching to a new legacy-empty project clears the previous scene source', async ({ page }) => {
