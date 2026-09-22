@@ -263,7 +263,7 @@ test('a parked patch folds into the single release commit, not a commit of its o
   }
 });
 
-test('a competing release keeps both branches and offers inspection without assuming abandonment', () => {
+test('a competing release preserves shared work, cleans its candidate, and offers inspection', () => {
   const { root, upstream } = buildSandbox();
   try {
     // The competing branch may have an active PR, a closed PR, or no PR at
@@ -290,12 +290,15 @@ test('a competing release keeps both branches and offers inspection without assu
     });
 
     const owner = clone(root, upstream, 'owner');
+    const mainHead = run(['rev-parse', 'origin/main'], owner);
+    const queuedBefore = readFileSync(join(owner, 'firmware-queue/queue.json'), 'utf8');
+    const patchBefore = readFileSync(join(owner, 'firmware-queue/patches/trivial.patch'), 'utf8');
     const result = queue(owner, ['release']);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Stopped\. Nothing was changed\./);
     assert.match(result.stderr, /existing branch is blocking version 1\.2\.4/);
     assert.match(result.stderr, /firmware-release\/1\.2\.4/);
-    assert.match(result.stderr, /kept locally/);
+    assert.match(result.stderr, /temporary update was removed/);
     assert.match(result.stderr, /gh pr list --state all --head firmware-release\/1\.2\.4/);
     assert.doesNotMatch(result.stderr, /abandoned|--delete|force.push/i);
     // A raw git rejection line must not be the thing a person reads instead.
@@ -303,21 +306,29 @@ test('a competing release keeps both branches and offers inspection without assu
     // Nothing was left half-done in the tree the owner ran it from.
     assert.equal(run(['status', '--porcelain'], owner), '');
     assert.equal(run(['rev-parse', '--abbrev-ref', 'HEAD'], owner), 'main');
-    const localHead = run(['rev-parse', 'firmware-release/1.2.4'], owner);
-    assert.equal(run(['show', 'firmware-release/1.2.4:carried.txt'], owner), 'after');
+    assert.equal(run(['branch', '--list', 'firmware-release/*'], owner), '');
     assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
-    assert.equal(JSON.parse(readFileSync(join(owner, 'firmware-queue/queue.json'), 'utf8')).waiting.length, 1);
+    assert.equal(readFileSync(join(owner, 'firmware-queue/queue.json'), 'utf8'), queuedBefore);
+    assert.equal(readFileSync(join(owner, 'firmware-queue/patches/trivial.patch'), 'utf8'), patchBefore);
     // The competing release itself is untouched — it was never overwritten.
     run(['fetch', '--quiet', 'origin'], owner);
+    assert.equal(run(['rev-parse', 'origin/main'], owner), mainHead);
+    assert.equal(run(['rev-parse', 'HEAD'], owner), mainHead);
     assert.equal(run(['rev-parse', 'origin/firmware-release/1.2.4'], owner), remoteHead);
     assert.equal(
       run(['show', 'origin/firmware-release/1.2.4:carried.txt'], owner),
       'a competing release',
     );
-    // A retry must not remove the branch retained for inspection.
-    assert.notEqual(queue(owner, ['release']).status, 0);
-    assert.equal(run(['rev-parse', 'firmware-release/1.2.4'], owner), localHead);
+    // A retry reaches the same remote collision and also cleans its candidate.
+    const retried = queue(owner, ['release']);
+    assert.notEqual(retried.status, 0);
+    assert.match(retried.stderr, /existing branch is blocking version/);
+    assert.equal(run(['branch', '--list', 'firmware-release/*'], owner), '');
     assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
+    // Cleanup must never delete a local branch that predates the current run.
+    run(['branch', 'firmware-release/1.2.4', mainHead], owner);
+    assert.notEqual(queue(owner, ['release']).status, 0);
+    assert.equal(run(['rev-parse', 'firmware-release/1.2.4'], owner), mainHead);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
