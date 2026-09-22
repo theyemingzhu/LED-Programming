@@ -874,20 +874,28 @@ function realPatternShape(patternId) {
       });
     }, [hardwareConfigurationIssue]);
 
-    // The physicalPreview branch (live-preview / reset-live / recover-lights
-    // failures) deliberately stays in the old in-flow markup below, not
-    // migrated. Its primary button carries `disabled={recoveryPending}` —
-    // tests/playlist-storage.spec.ts's 'Playlist keeps missing runtime proof
-    // visible while recovery runs…' asserts `toBeDisabled()` on that exact
-    // button mid-recovery. The notice layer's `action` is label+onSelect
-    // only; it has no disabled state (NoticeLayer.jsx renders a plain
-    // `<button>` with no disabled/aria-disabled wiring), and adding one is
-    // out of scope here (this migration touches lw-playlist.jsx/lw-pattern.jsx
-    // only). Collapsing that distinction would make a real, currently-green
-    // spec fail, so this one case is left exactly as it was.
     React.useEffect(() => {
-      if (!playlistStatus || playlistStatus.physicalPreview) {
+      if (!playlistStatus) {
         dismissNoticeKey('playlist-card-status');
+        return;
+      }
+      if (playlistStatus.physicalPreview) {
+        const tone = playlistStatus.kind === 'ok' ? 'success'
+          : playlistStatus.kind === 'err' ? 'error'
+          : playlistStatus.kind === 'pending' ? 'progress'
+          : 'info';
+        publishNotice({
+          key: 'playlist-card-status',
+          testId: 'playlist-card-status',
+          tone,
+          title: playlistStatus.message,
+          source: 'playlist-status',
+          actions: previewFailureHandler ? [{
+            label: playlistStatus.failure.actionLabel,
+            onSelect: previewFailureHandler,
+            disabled: recoveryPending,
+          }] : [],
+        });
         return;
       }
       const tone = playlistStatus.kind === 'ok' ? 'success'
@@ -933,7 +941,7 @@ function realPatternShape(patternId) {
         source: 'playlist-status',
         action,
       });
-    }, [playlistStatus, playlistSyncing]);
+    }, [playlistStatus, playlistSyncing, recoveryPending, previewFailureHandler]);
 
     return (
       <div className="screen">
@@ -965,30 +973,6 @@ function realPatternShape(patternId) {
                 <button className="btn" onClick={openCard}>{I.open}Open card page</button>
               </div>
             </header>
-
-            {/* The hardware-configuration warning and most of the playlist
-                card status now publish to the notice layer (see the two
-                effects above this component's JSX). One branch stays here,
-                deliberately: a physicalPreview failure (live preview / reset
-                live / recover lights) whose primary button is disabled while
-                `recoveryPending` — the notice layer's action has no disabled
-                state, and tests/playlist-storage.spec.ts asserts
-                `toBeDisabled()` on this exact button mid-recovery. */}
-            {playlistStatus && playlistStatus.physicalPreview &&
-              <div
-                className={"pmx-status" + (playlistStatus.kind === 'ok' ? ' is-ok' : playlistStatus.kind === 'err' ? ' is-err' : '')}
-                data-testid="playlist-card-status"
-                role={playlistStatus.kind === 'err' ? 'alert' : 'status'}
-                aria-live="polite"
-              >
-                {playlistStatus.message}
-                <div className="pmx-status-actions">
-                  {previewFailureHandler &&
-                    <button className="btn primary" disabled={recoveryPending} onClick={previewFailureHandler}>{playlistStatus.failure.actionLabel}</button>
-                  }
-                </div>
-              </div>
-            }
 
             <div className="pm-grid">
               <section className="pm-main">

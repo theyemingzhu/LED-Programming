@@ -34,11 +34,13 @@ async function gpioGroupsOnWire(page: any) {
 }
 
 async function gotoWire(page: any) {
-  await page.goto(`/${CARD_INSTALL_HASH}`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.evaluate(async () => { await document.fonts?.ready; });
+  // CardInstallAction only mounts once a project exists. Clearing storage
+  // without re-seeding left commissioning-step missing (layout-wire-install-slim
+  // already seeds lw_autosave_v3 before expecting it).
+  await seedDefaultCircles(page, { mode: 'draw' });
+  await page.evaluate(hash => { window.location.hash = hash; }, CARD_INSTALL_HASH);
   await expect(page.getByTestId('commissioning-step')).toBeVisible();
+  await page.evaluate(async () => { await document.fonts?.ready; });
 }
 
 async function gotoLayoutTools(page: any) {
@@ -238,7 +240,9 @@ test('Test & Install shows a compact count line and one next-action CTA instead 
   await expect(step).toHaveAttribute('aria-label', 'Check and install on this card');
   // The retired guided check never mounts beside the consolidated action.
   await expect(page.getByTestId('wiring-bench-test')).toHaveCount(0);
-  await expect(step.getByTestId('layout-send-to-card')).toContainText('Install on card');
+  // install-project on Card Home mounts the compact status-row door (Save to
+  // card), not the full Check-and-install headline (Install on card).
+  await expect(step.getByTestId('layout-send-to-card')).toContainText('Save to card');
 
   await gotoLayoutTools(page);
   await expect(planMeta(page)).toContainText('44 LEDs');

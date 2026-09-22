@@ -1055,19 +1055,35 @@ export function StripDiscoveryPanel({
     });
   }, [maxMilliampsSource]);
 
-  // The final install onto the card. Its two recovery buttons stay in flow
-  // with their own testids (discovery-install-takeover,
-  // discovery-install-clear-and-retry) — see the render below.
+  // The final install onto the card, including its recovery actions.
   useEffect(() => {
     if (!installError) { dismissNoticeKey('discovery-install-failed'); return; }
+    const actions = [];
+    if (installErrorReason === 'project-mismatch') {
+      actions.push({
+        label: 'Use this card for this piece',
+        onSelect: () => { void installOnCard(true); },
+        testId: 'discovery-install-takeover',
+        disabled: busy,
+      });
+    }
+    if (installErrorReason === 'staged-existing-project') {
+      actions.push({
+        label: 'Clear the card and start over',
+        onSelect: () => { void clearCardAndRetry(); },
+        testId: 'discovery-install-clear-and-retry',
+        disabled: busy,
+      });
+    }
     publishNotice({
       key: 'discovery-install-failed',
       testId: 'discovery-install-failed',
       tone: 'error',
       body: installError,
       source: 'strip-discovery',
+      actions,
     });
-  }, [installError]);
+  }, [installError, installErrorReason, busy]);
 
   // The general run failure. The "never twice" guard — skip it when the
   // bench-install screen is already showing this exact sentence as
@@ -1088,6 +1104,43 @@ export function StripDiscoveryPanel({
     });
   }, [failure, failureDetail, phase, session?.error]);
 
+  useEffect(() => {
+    const showing = phase === 'idle' && interruptedRun;
+    if (!showing) { dismissNoticeKey('discovery-resume'); return; }
+    publishNotice({
+      key: 'discovery-resume',
+      testId: 'discovery-resume',
+      tone: 'info',
+      title: 'A Find-my-strips run was interrupted before it finished, and the card is still holding its temporary setup.',
+      body: 'You can pick up exactly where you left off — the answers already given are kept.',
+      source: 'strip-discovery',
+      actions: [
+        { label: 'Pick up where I left off', onSelect: resumeRun, testId: 'discovery-resume-continue' },
+        { label: 'Start over', onSelect: discardRun, testId: 'discovery-resume-discard' },
+      ],
+    });
+  }, [interruptedRun, phase]);
+
+  useEffect(() => {
+    const showing = phase === 'probe'
+      && (channelProof.stage === 'first' || channelProof.stage === 'second');
+    if (!showing) { dismissNoticeKey('discovery-color-proof'); return; }
+    publishNotice({
+      key: 'discovery-color-proof',
+      testId: 'discovery-color-proof',
+      tone: channelProof.retry ? 'warning' : 'info',
+      title: channelProof.stage === 'first'
+        ? 'Look at the strip and choose its color.'
+        : 'And now?',
+      source: 'strip-discovery',
+      actions: [
+        { label: 'Red', onSelect: () => answerChannelProof('red'), testId: 'discovery-color-red', disabled: cardRestartedDuringLook },
+        { label: 'Green', onSelect: () => answerChannelProof('green'), testId: 'discovery-color-green', disabled: cardRestartedDuringLook },
+        { label: 'Blue', onSelect: () => answerChannelProof('blue'), testId: 'discovery-color-blue', disabled: cardRestartedDuringLook },
+      ],
+    });
+  }, [phase, channelProof.stage, channelProof.retry, cardRestartedDuringLook]);
+
   // This screen's own notices must not outlive it — a floating "output limit"
   // or "card restarted" verdict would otherwise still be on screen after the
   // owner has navigated away to a different one entirely.
@@ -1096,6 +1149,7 @@ export function StripDiscoveryPanel({
       'discovery-stream-status', 'discovery-stream-truncated', 'discovery-card-restarted',
       'discovery-probe-error', 'discovery-output-limit', 'discovery-no-outputs',
       'discovery-power-warning', 'discovery-install-failed', 'discovery-failure',
+      'discovery-resume', 'discovery-color-proof',
     ].forEach(dismissNoticeKey);
   }, []);
 
@@ -1134,21 +1188,6 @@ export function StripDiscoveryPanel({
 
       {phase === 'idle' && (
         <section className="strip-discovery-step" data-testid="discovery-plan">
-          {interruptedRun && (
-            <div className="lw-card-banner is-inline" role="status" data-testid="discovery-resume">
-              <p>
-                A Find-my-strips run was interrupted before it finished, and the card is still
-                holding its temporary setup. You can pick up exactly where you left off — the
-                answers already given are kept.
-              </p>
-              <button type="button" className="btn primary" data-testid="discovery-resume-continue" onClick={resumeRun}>
-                Pick up where I left off
-              </button>
-              <button type="button" className="btn" data-testid="discovery-resume-discard" onClick={discardRun}>
-                Start over
-              </button>
-            </div>
-          )}
           <h3>Find your strip</h3>
           <p>Tap a port to light its first few LEDs.</p>
           {/* probeError moved to the notice layer (discovery-probe-error) —
@@ -1244,27 +1283,17 @@ export function StripDiscoveryPanel({
         <section className="strip-discovery-step" data-testid="discovery-probe">
           <h3>What color are the lights?</h3>
           <p>{portLabel(activePort)} · Two quick checks make the counting colors accurate.</p>
+          {(channelProof.stage === 'first' || channelProof.stage === 'second') && channelProof.retry && (
+            <p role="alert" data-testid="discovery-color-proof-retry">
+              Those two answers were the same colour, which cannot happen — one of them was a
+              slip. The check starts over: look again.
+            </p>
+          )}
           {(channelProof.stage === 'first' || channelProof.stage === 'second') && (
-            <div className="lw-card-banner is-inline" role="status" data-testid="discovery-color-proof">
-              <p>
-                {channelProof.stage === 'first'
-                  ? 'Look at the strip and choose its color.'
-                  : 'And now?'}
-              </p>
-              {channelProof.retry && (
-                <p role="alert" data-testid="discovery-color-proof-retry">
-                  Those two answers were the same colour, which cannot happen — one of them was a
-                  slip. The check starts over: look again.
-                </p>
-              )}
-              <div className="strip-discovery-actions">
-                <button type="button" className="btn" data-testid="discovery-color-red" disabled={cardRestartedDuringLook} onClick={() => answerChannelProof('red')}>Red</button>
-                <button type="button" className="btn" data-testid="discovery-color-green" disabled={cardRestartedDuringLook} onClick={() => answerChannelProof('green')}>Green</button>
-                <button type="button" className="btn" data-testid="discovery-color-blue" disabled={cardRestartedDuringLook} onClick={() => answerChannelProof('blue')}>Blue</button>
-                <button type="button" className="btn btn-ghost" data-testid="discovery-color-skip" disabled={cardRestartedDuringLook} onClick={skipChannelProof}>
-                  I can’t tell — skip this
-                </button>
-              </div>
+            <div className="strip-discovery-actions">
+              <button type="button" className="btn btn-ghost" data-testid="discovery-color-skip" disabled={cardRestartedDuringLook} onClick={skipChannelProof}>
+                I can’t tell — skip this
+              </button>
             </div>
           )}
         </section>
@@ -1403,32 +1432,6 @@ export function StripDiscoveryPanel({
                 Go to Layout
               </button>
             </>
-          )}
-          {/* The message itself moved to the notice layer (discovery-install-failed,
-              testid preserved there). Its two recovery buttons stay in flow —
-              they are real, separately-tested controls, and the layer's action
-              slot is a single unlabelled button with no test hook of its own. */}
-          {installError && installErrorReason === 'project-mismatch' && (
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="discovery-install-takeover"
-              disabled={busy}
-              onClick={() => void installOnCard(true)}
-            >
-              Use this card for this piece
-            </button>
-          )}
-          {installError && installErrorReason === 'staged-existing-project' && (
-            <button
-              type="button"
-              className="btn"
-              data-testid="discovery-install-clear-and-retry"
-              disabled={busy}
-              onClick={() => void clearCardAndRetry()}
-            >
-              Clear the card and start over
-            </button>
           )}
         </section>
       )}

@@ -199,6 +199,33 @@ test('the stack caps at three and counts the rest instead of stacking them', asy
   expect(order).toEqual(['Message 3', 'Message 4', 'Message 5']);
 });
 
+test('notice actions honour disabled state', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 780 });
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.status-bar');
+  await page.waitForTimeout(1200);
+
+  await page.evaluate(async () => {
+    const mod = await import('/src/lib/noticeLayer.js');
+    mod.resetNotices();
+    mod.publishNotice({
+      key: 'disabled-action',
+      tone: 'error',
+      title: 'Recovery running',
+      body: 'Wait for the card to answer.',
+      actions: [
+        { label: 'Recover lights', onSelect: () => {}, testId: 'probe-recover', disabled: true },
+        { label: 'Open card page', onSelect: () => {}, testId: 'probe-open' },
+      ],
+    });
+  });
+  await page.waitForSelector('[data-testid="notice-layer"]');
+  await page.waitForTimeout(700);
+
+  await expect(page.getByTestId('probe-recover')).toBeDisabled();
+  await expect(page.getByTestId('probe-open')).toBeEnabled();
+});
+
 test('a repeating condition keyed the same way stays one notice', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 780 });
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
