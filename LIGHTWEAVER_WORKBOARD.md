@@ -911,3 +911,15 @@ via follow-up before assignment; creation API uses default model by contract.
 Next stage:manager reconciles evidence, then dispatches production integration;
 no deploy, firmware flash, exhaustive Prove or new backend architecture implied.
 Cost unknown. Workers report completion back to manager task for continuation.
+
+Dispatch state:Layout targeting bridge01a0c8c1-29d6-7e63-ace7-92cced55d8e6
+runs Terra/medium in a59c; scene playback contract
+01a0c8c1-29d5-7861-8f89-972ba2eb2b94 runs Sol/high in bcf5. Model/effort
+verified from local runtime state after explicit follow-up. Both active by
+wait_threads snapshot; instructed to report completion to manager task.
+Prototype creation remains client-new-thread:9260027e-9fcf-497c-8dc5-bb36a6803836,
+worktree6e8d exists but no runnable task ID yet. Do not duplicate. Intended
+Sol/high assignment saved with other exact briefs in
+ docs/plans/2026-09-22-expression-worker-briefs.json.
+Resumption:resolve prototype task setup, send saved assignment with explicit
+Sol/high, then inspect returned adapter/runtime evidence for integration.
