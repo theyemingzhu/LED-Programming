@@ -66,14 +66,14 @@ test('Studio never races direct transport against a restored bridge', async () =
 
 test('Studio does not well-known-probe an unpaired card during Install or an in-flight update', async () => {
   let directCalls = 0;
-  const connectTransport = async () => { directCalls += 1; };
+  const readStatus = async () => { directCalls += 1; };
   await bootstrapStudioCardConnection({
     bootstrapLink: async () => ({ state: 'disconnected' }),
     isConnected: () => false,
     readIdentity: () => null,
     canPushDirect: () => true,
     locationHash: '#screen=card&section=install',
-    connectTransport,
+    readStatus,
   });
   assert.equal(directCalls, 0);
   await bootstrapStudioCardConnection({
@@ -83,7 +83,7 @@ test('Studio does not well-known-probe an unpaired card during Install or an in-
     canPushDirect: () => true,
     locationHash: '#screen=card&section=setup',
     readUpdateSession: () => '{"phase":"valid"}',
-    connectTransport,
+    readStatus,
   });
   assert.equal(directCalls, 0);
 });
@@ -95,20 +95,25 @@ test('Studio does not probe an unpaired card when this page cannot reach the LAN
     isConnected: () => false,
     readIdentity: () => null,
     canPushDirect: () => false,
-    connectTransport: async () => { directCalls += 1; },
+    readStatus: async () => { directCalls += 1; },
   });
   assert.equal(directCalls, 0);
 });
 
 test('Studio probes only well-known hosts for a plugged-in card this browser has never paired', async () => {
   const calls = [];
-  let persisted = null;
-  const authority = {
-    connected: true,
-    host: 'lightweaver.local',
+  const reports = [];
+  let persistCalls = 0;
+  const status = {
+    app: 'Lightweaver',
     cardId: 'lw-plugged-in',
     bootId: 'boot-first',
-    card: { id: 'lw-plugged-in', name: 'Lightweaver' },
+  };
+  const foundUnpaired = {
+    state: 'disconnected',
+    reason: 'found-unpaired',
+    host: 'lightweaver.local',
+    discoveredCard: { id: 'lw-plugged-in' },
   };
   const result = await bootstrapStudioCardConnection({
     bootstrapLink: async () => ({ state: 'disconnected' }),
@@ -116,15 +121,22 @@ test('Studio probes only well-known hosts for a plugged-in card this browser has
     readIdentity: () => null,
     canPushDirect: () => true,
     unpairedHosts: ['lightweaver.local', '192.168.4.1'],
-    connectTransport: async options => { calls.push(options); return authority; },
-    persistIdentity: value => { persisted = value; return true; },
+    readStatus: async options => { calls.push(options); return status; },
+    reportStatus: report => { reports.push(report); },
+    getLinkState: () => foundUnpaired,
+    persistIdentity: () => { persistCalls += 1; return true; },
   });
-  assert.equal(result, authority);
+  assert.equal(result, foundUnpaired);
   assert.deepEqual(calls, [
-    { host: 'lightweaver.local', expectedCardId: '' },
+    { host: 'lightweaver.local', transport: 'direct', timeoutMs: 900 },
   ]);
-  assert.equal(persisted.id, 'lw-plugged-in');
-  assert.equal(persisted.address, 'lightweaver.local');
+  assert.deepEqual(reports, [{
+    connected: true,
+    host: 'lightweaver.local',
+    status,
+    allowAdopt: false,
+  }]);
+  assert.equal(persistCalls, 0);
 });
 
 test('an unpaired probe does not sweep past the well-known card addresses', async () => {
@@ -135,9 +147,9 @@ test('an unpaired probe does not sweep past the well-known card addresses', asyn
     readIdentity: () => null,
     canPushDirect: () => true,
     unpairedHosts: ['lightweaver.local', '192.168.4.1'],
-    connectTransport: async options => {
+    readStatus: async options => {
       calls.push(options.host);
-      return { connected: false, host: options.host };
+      throw new Error('unreachable');
     },
   });
   assert.deepEqual(calls, ['lightweaver.local', '192.168.4.1']);
