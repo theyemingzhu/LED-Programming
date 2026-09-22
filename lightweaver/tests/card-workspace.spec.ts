@@ -44,11 +44,12 @@ async function renderProjectSwitchCardHarness(page, mode: 'offline' | 'duplicate
     // Card Home mounts the Setup journey too, which reads ProjectContext —
     // the harness provides it, keeping the injected-handler prop contract on
     // CardScreen itself unchanged.
-    const [{ CardScreen }, { createDefaultProject }, resolver, { ProjectProvider }, reactModule, domModule] = await Promise.all([
+    const [{ CardScreen }, { createDefaultProject }, resolver, { ProjectProvider }, cardLinkModule, reactModule, domModule] = await Promise.all([
       import('/src/v3/lw-card.jsx'),
       import('/src/lib/projectModel.js'),
       import('/src/lib/cardProjectResolver.js'),
       import('/src/state/ProjectContext.jsx'),
+      import('/src/lib/cardLink.js'),
       import(reactUrl),
       import(domUrl),
     ]);
@@ -161,13 +162,23 @@ async function renderProjectSwitchCardHarness(page, mode: 'offline' | 'duplicate
     host.dataset.testid = `project-switch-${scenario}`;
     document.body.appendChild(host);
     const root = createRoot(host);
-    const cardLink = {
-      state: 'connected-direct', transport: 'direct', host: 'lightweaver.local',
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id: status.cardId,
+      firmwareVersion: status.firmwareVersion, buildId: status.buildId,
+    }));
+    const sharedCardLink = cardLinkModule.getSharedCardLink();
+    const exactStatus = {
+      type: 'direct-status', connected: true, host: 'lightweaver.local',
       card: { id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
       expectedCard: { id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
-      readiness: status, validatedBootId: status.bootId,
-      operationGeneration: 0, revalidationGeneration: 0,
+      readiness: status,
     };
+    // The page's initial aborted probe requires the same stable pair as a
+    // real reconnect. Pass CardScreen the resulting shared snapshot so the
+    // adoption drift guard compares one authority on both sides.
+    sharedCardLink.dispatch(exactStatus);
+    sharedCardLink.dispatch(exactStatus);
+    const cardLink = sharedCardLink.getState();
     const cloudRecord = {
       id: 'remote-installed', revision: 23, embeddedProjectId: installed.id,
       title: installed.name, document: installed,
@@ -1551,21 +1562,20 @@ test('disconnected Card Home names the state and offers the exact connect task o
   await expect(page.getByTestId('setup-identity-row')).toContainText('Not connected');
   await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
-  // Still to do: connect (current), lights, verify. Artwork placement is
-  // never a step.
-  await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(3);
-  await expect(page.getByTestId('setup-phase-connect')).toHaveAttribute('aria-current', 'step');
-  const task = page.getByTestId('setup-active-task');
-  await task.getByTestId('setup-connect-card').click();
+  // A fresh browser has no project work to resume yet, so Card Home presents
+  // the public start choice before the setup phases. Its Card action is the
+  // single connect door.
+  await expect(page.locator('[data-testid^="setup-phase-"]')).toHaveCount(0);
+  await page.getByRole('button', { name: /Card Set up the card/ }).click();
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible();
 });
 
 test('direct discovery never auto-adopts; explicit pairing persists identity but not project readiness', async ({ page }) => {
   const status = readyStatus('lw-explicit-pair');
-  await page.route('**/api/status', route => route.fulfill({
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(status),
   }));
-  await page.route('**/api/firmware-info', route => route.fulfill({
+  await page.route('http://lightweaver.local/api/firmware-info', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(status),
   }));
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -1762,10 +1772,11 @@ test('an unpaired card running the bench discovery project is flagged before pai
   await page.route('http://lightweaver.local/api/firmware-info', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify(strandedCard),
   }));
+  // Clear before the first document starts. Clearing after navigation races
+  // the initial status probe, which can finish against the page being torn
+  // down and repopulate pairing state before the reload.
+  await page.addInitScript(() => localStorage.clear());
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  // No persisted pairing: this origin has never adopted a card.
-  await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
 
   // Pairing is Setup's connect task. A second "Detected state" that said
@@ -1943,7 +1954,8 @@ for (const cardState of [
     name: 'connecting',
     events: [{ type: 'connecting', via: 'bridge', host: 'lightweaver.local' }],
     status: 'Connecting',
-    action: 'Find my card',
+    action: 'Set up the card',
+    publicStart: true,
   },
   {
     name: 'stopped responding',
@@ -1983,7 +1995,8 @@ for (const cardState of [
     name: 'unreachable card',
     events: [{ type: 'direct-status', connected: false, reason: 'card-unreachable', host: 'lightweaver.local' }],
     status: 'Not connected',
-    action: 'Find my card',
+    action: 'Set up the card',
+    publicStart: true,
   },
   {
     name: 'failed operation',
@@ -2007,8 +2020,12 @@ for (const cardState of [
     await dispatchCardLink(page, cardState.events);
 
     await expect(page.getByTestId('setup-identity-row')).toContainText(cardState.status);
-    const task = page.getByTestId('setup-active-task');
-    await expect(task.getByRole('button', { name: cardState.action, exact: true })).toBeVisible();
+    if (cardState.publicStart) {
+      await expect(page.getByRole('button', { name: new RegExp(`Card ${cardState.action}`) })).toBeVisible();
+    } else {
+      const task = page.getByTestId('setup-active-task');
+      await expect(task.getByRole('button', { name: cardState.action, exact: true })).toBeVisible();
+    }
     if (cardState.detected) {
       await expect(page.getByTestId('card-detected-state')).toContainText(cardState.detected);
     } else {
