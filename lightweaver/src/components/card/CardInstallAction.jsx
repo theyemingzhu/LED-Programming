@@ -76,6 +76,10 @@ export function CardInstallAction({
   const mappingCoversEveryStrip = mappedStripIds.size === stripIds.size
     && !wiring.runs.some(run => run.type === 'strip' && !stripIds.has(run.source.stripId));
   const mappingReady = compiledWiring.ok && mappingCoversEveryStrip;
+  const needsLayoutFinish = patchBoard?.dataWireCountNeedsReview || !mappingReady;
+  const layoutFinishReason = patchBoard?.dataWireCountNeedsReview
+    ? 'Confirm each strip’s GPIO in Layout before saving to the card.'
+    : 'Every strip needs a GPIO and a place in the wiring order before saving to the card.';
   // Shared with the Playlist install gate so the two screens can never
   // disagree about what counts as a commissioned card (src/lib/cardInstallGate.js).
   const commissioning = readCardCommissioningVerification({ wiring, standaloneController });
@@ -152,7 +156,17 @@ export function CardInstallAction({
           that phase's button and was not. It is its own thing and says so.
           In the status row it is one door among three and needs no heading. */}
       {!compact && <h2 className="lww-flow-heading">Check and install on this card</h2>}
-      {compact ? (
+      {compact && needsLayoutFinish ? (
+        <>
+          <p className="lww-flow-message" data-testid="layout-finish-reason">{layoutFinishReason}</p>
+          <button
+            type="button"
+            className={cta}
+            data-testid="layout-finish-before-save"
+            onClick={onEditInWire}
+          >Finish Layout</button>
+        </>
+      ) : compact ? (
         <CardPushControl
           connected={connected}
           yieldPrimary={yieldPrimary || demote}
@@ -178,7 +192,7 @@ export function CardInstallAction({
             onClick={openStripDiscovery}
           >{STRIP_DISCOVERY_LABEL}</button>
         </>
-      ) : patchBoard?.dataWireCountNeedsReview || !mappingReady ? (
+      ) : needsLayoutFinish ? (
         <>
           <h3 className="lww-flow-title">Finish the setup in Wire</h3>
           <p className="lww-flow-message">
