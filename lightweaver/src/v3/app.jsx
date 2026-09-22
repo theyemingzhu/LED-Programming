@@ -743,6 +743,7 @@ function Shell({ offlineUpdateController = null }) {
   const expressionDeliveryRef = useRef(null);
   const expressionPreviewRef = useRef(null);
   const expressionPreviewContextRef = useRef('');
+  const [showSceneEditorOpen, setShowSceneEditorOpen] = useState(false);
   const [pendingExpressionInstallCommit, setPendingExpressionInstallCommit] = useState(null);
   // The connect intent the panel was opened FOR (openCardFlow's connect-panel
   // event detail). '' for every other way in — footer chip, bridge results —
@@ -1848,8 +1849,9 @@ function Shell({ offlineUpdateController = null }) {
   }, [cardLink, cardStatus.host, connected, projectLifecycle.editedRevision, serializeProject, stopExpressionScenePreview]);
 
   useEffect(() => {
-    if (!['pattern-lab', 'show'].includes(view) && expressionPreviewRef.current) void stopExpressionScenePreview('navigation');
-  }, [stopExpressionScenePreview, view]);
+    const editorHostActive = view === 'pattern-lab' || (view === 'show' && showSceneEditorOpen);
+    if (!editorHostActive && expressionPreviewRef.current) void stopExpressionScenePreview('navigation');
+  }, [showSceneEditorOpen, stopExpressionScenePreview, view]);
 
   const installExpressionScene = useCallback(async ({ sceneId, saveBrowserFirst = false, projectPlayback = false, onProgress } = {}) => {
     if (expressionPreviewRef.current) {
@@ -2370,6 +2372,7 @@ function Shell({ offlineUpdateController = null }) {
               expressionInstallationReceipt={expressionInstallationReceipt}
               onStartExpressionScenePreview={startExpressionScenePreview}
               onStopExpressionScenePreview={stopExpressionScenePreview}
+              onExpressionSceneEditorOpenChange={setShowSceneEditorOpen}
               expressionPreviewContextKey={expressionPreviewContextKey}
               route={underlyingCardRoute}
             />
