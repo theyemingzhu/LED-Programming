@@ -46,6 +46,49 @@ async function publish(page: Page, notices: unknown[]) {
   await page.waitForTimeout(700);
 }
 
+async function publishAndMeasureScreenShift(page: Page, notices: unknown[]) {
+  return page.evaluate(async (list) => {
+    const mod = await import('/src/lib/noticeLayer.js');
+    mod.resetNotices();
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+
+    // Retain the actual nodes across the notice-store commit. The Card screen
+    // polls independently and may replace whole subtrees; comparing two query
+    // result arrays by index turns that replacement into hundreds of invented
+    // "moves" between unrelated elements.
+    const nodes = [...document.querySelectorAll('.screen *')].slice(0, 400);
+    const before = new Map(nodes.map((element) => {
+      const box = element.getBoundingClientRect();
+      return [element, { top: box.top, left: box.left }];
+    }));
+
+    for (const entry of list as Record<string, unknown>[]) {
+      mod.publishNotice({
+        ...entry,
+        actions: ((entry.actionLabels as string[]) || []).map((label, index) => ({
+          label,
+          testId: `probe-action-${index}`,
+          onSelect: () => {},
+        })),
+      });
+    }
+
+    // Two frames cover React's external-store commit without opening a long
+    // window for the screen's unrelated card polling to change its own UI.
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    const mounted = Boolean(document.querySelector('[data-testid="notice-layer"]'));
+    const retained = nodes.filter(element => element.isConnected);
+    const moved = retained.flatMap((element) => {
+      const box = element.getBoundingClientRect();
+      const prior = before.get(element)!;
+      return box.top === prior.top && box.left === prior.left
+        ? []
+        : [{ tag: element.tagName, className: (element as HTMLElement).className, before: prior, after: { top: box.top, left: box.left } }];
+    });
+    return { mounted, retained: retained.length, moved };
+  }, notices);
+}
+
 async function geometry(page: Page) {
   return page.evaluate(() => {
     const layer = document.querySelector('.lw-notice-layer') as HTMLElement;
@@ -90,30 +133,15 @@ for (const width of [1280, 390]) {
     await page.waitForSelector('.status-bar');
     await page.waitForTimeout(1200);
 
-    // Snapshot every laid-out element in the screen, twice, with the same
-    // interval between them — once with nothing published, once with three
-    // notices published. The screen polls the card and re-renders on its own,
-    // so the control run is what makes the test run meaningful.
-    const snapshot = `[...document.querySelectorAll('.screen *')].slice(0, 400)
-      .map(el => { const b = el.getBoundingClientRect(); return b.top + ':' + b.left; })`;
-
-    const controlBefore = await page.evaluate(snapshot);
-    await page.waitForTimeout(700);
-    const controlAfter = await page.evaluate(snapshot);
-    const controlMoved = controlBefore.filter((v, i) => v !== controlAfter[i]).length;
-
-    const before = await page.evaluate(snapshot);
-    await publish(page, [
+    const result = await publishAndMeasureScreenShift(page, [
       { key: 'a', tone: 'error', title: 'Saving is paused', body: 'Studio could not find a safe place to keep this project.', actionLabels: ['Retry'] },
       { key: 'b', tone: 'warning', title: 'Hardware setup needs attention', body: 'Card actions are paused. Editing still works.', actionLabels: ['Fix wiring'] },
       { key: 'c', tone: 'progress', title: 'Sending to the card…', body: 'Look 3 of 4.' },
     ]);
-    const after = await page.evaluate(snapshot);
-    const moved = before.filter((v, i) => v !== after[i]).length;
 
-    expect(before.length).toBeGreaterThan(20);
-    // The promise: publishing moves no more than the screen moves on its own.
-    expect(moved).toBeLessThanOrEqual(controlMoved);
+    expect(result.mounted).toBe(true);
+    expect(result.retained).toBeGreaterThan(20);
+    expect(result.moved).toEqual([]);
   });
 
   test(`${width}px — notices stay inside the layer, clear of the rail and status bar`, async ({ page }) => {
