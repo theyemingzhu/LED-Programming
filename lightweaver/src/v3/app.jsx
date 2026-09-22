@@ -129,6 +129,7 @@ import {
   sceneDeliveryFailureMessage,
 } from '../scene-expression/sceneExpressionInstall.js';
 import { createSceneExpressionPreviewSession } from '../scene-expression/sceneExpressionPreviewSession.js';
+import { compareSceneExpressionPreviewTopology } from '../scene-expression/sceneExpressionPreviewTopology.js';
 
 const PatternScreen = lazy(() => import('./lw-pattern.jsx').then(module => ({ default: module.PatternScreen })));
 const PatternLabScreen = lazy(() => import('../pattern-lab/PatternLabScreen.jsx'));
@@ -1712,10 +1713,8 @@ function Shell({ offlineUpdateController = null }) {
       return { ok: false, reason: 'scene-source-mismatch', message: 'The current scene source changed before preview could start.' };
     }
     let evidence;
-    let zones;
     try {
       evidence = await readSceneDeliveryCardEvidence({ host, transport: cardLink.transport, cardLink, connected });
-      zones = await authority.request('/api/zones');
     } catch (error) {
       return { ok: false, reason: error?.reason || 'preflight-unavailable', message: 'The card state could not be captured exactly. Physical preview was not started.', error };
     }
@@ -1738,6 +1737,32 @@ function Shell({ offlineUpdateController = null }) {
     }
     if (String(status.projectId || status.piece?.id || '').trim() !== String(snapshot.id || '').trim()) {
       return { ok: false, reason: 'project-mismatch', message: 'Install this project on the connected card before trying its scene on the lights.' };
+    }
+    let desiredConfig;
+    try {
+      desiredConfig = prepareCardDeployment({
+        projectId: snapshot.id,
+        projectName: snapshot.name,
+        projectRevision: projectLifecycle.editedRevision,
+        projectFingerprint: status.projectFingerprint || undefined,
+        strips: snapshot.layout?.strips || [],
+        patchBoard: snapshot.layout?.patchBoard,
+        wiring: snapshot.layout?.wiring,
+        standaloneController: snapshot.devices?.standaloneController,
+      }).config;
+    } catch (error) {
+      return { ok: false, reason: 'wiring-identity-unavailable', message: 'This Layout could not be compiled exactly. Install the Layout changes first.', error };
+    }
+    const topology = compareSceneExpressionPreviewTopology({ cardStatus: status, desiredConfig });
+    if (!topology.ok) return topology;
+    if (expressionPreviewContextRef.current !== contextKey || getActiveCardTransportAuthority(host) !== authority) {
+      return { ok: false, reason: 'preview-context-changed', message: 'The project or card changed while physical preview was preparing.' };
+    }
+    let zones;
+    try {
+      zones = await authority.request('/api/zones');
+    } catch (error) {
+      return { ok: false, reason: error?.reason || 'card-snapshot-unavailable', message: 'The card playback snapshot could not be captured exactly. Physical preview was not started.', error };
     }
     if (expressionPreviewContextRef.current !== contextKey || getActiveCardTransportAuthority(host) !== authority) {
       return { ok: false, reason: 'preview-context-changed', message: 'The project or card changed while physical preview was preparing.' };
@@ -1782,7 +1807,7 @@ function Shell({ offlineUpdateController = null }) {
         status: () => session.status(),
       },
     };
-  }, [cardLink, cardStatus.host, connected, serializeProject, stopExpressionScenePreview]);
+  }, [cardLink, cardStatus.host, connected, projectLifecycle.editedRevision, serializeProject, stopExpressionScenePreview]);
 
   useEffect(() => {
     if (view !== 'pattern-lab' && expressionPreviewRef.current) void stopExpressionScenePreview('navigation');
