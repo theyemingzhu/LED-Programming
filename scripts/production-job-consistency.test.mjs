@@ -292,7 +292,17 @@ test('focused browser script covers core workflow without embedding the full rel
   // members rather than one exact string: adding a spec to the lane (as the
   // sections work did on 2026-09-11) must not turn main red in a lane that
   // never ran the added spec. Dropping one of these still fails.
-  assert.match(smoke, /^playwright test tests\/workflow\.spec\.ts tests\/screen-smoke\.spec\.ts tests\/card-workspace\.spec\.ts --project=chromium --workers=1 --grep "imports SVG\|every primary screen\|Hardware loads the verified production project\|Hardware offers an exact current project\|reachable recovering factory card uses URL IP"/);
+  assert.match(smoke, /^playwright test tests\/workflow\.spec\.ts tests\/screen-smoke\.spec\.ts tests\/card-workspace\.spec\.ts --project=chromium --workers=1 --grep "/);
+  for (const title of [
+    'imports SVG',
+    'every primary screen',
+    'Hardware loads the verified production project',
+    'Hardware offers an exact current project',
+    'reachable recovering factory card uses URL IP',
+    'a section preview targets the real zone once the card actually reports it',
+  ]) {
+    assert.match(smoke, new RegExp(title), `smoke lane must still select ${title}`);
+  }
   assert.match(smoke, /playwright test tests\/card-home-checks\.spec\.ts --project=chromium --workers=1 --grep "W16-https"/);
   for (const spec of [
     'notice-layer', 'strip-discovery', 'journey-continuity', 'journey-edits', 'journey-ownership',
