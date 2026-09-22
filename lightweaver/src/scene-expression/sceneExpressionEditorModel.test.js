@@ -7,7 +7,9 @@ import {
   moveSceneStep,
   patchOrCreateSceneAssignment,
   patchSceneAssignment,
+  scenePreviewAvailability,
   scenePlaybackAt,
+  selectionDisplayState,
 } from './sceneExpressionEditorModel.js';
 import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
 
@@ -42,9 +44,11 @@ test('playback changes steps exactly at hold boundaries and loops', () => {
   scene.steps[0].holdMs = 1000;
   const two = addSceneStep(scene, { id: 'clock-step-2' });
   two.steps[1].holdMs = 2000;
-  assert.deepEqual(scenePlaybackAt(two, 999), { stepIndex: 0, stepId: 'clock-step-1', localMs: 999, totalMs: 3000 });
-  assert.deepEqual(scenePlaybackAt(two, 1000), { stepIndex: 1, stepId: 'clock-step-2', localMs: 0, totalMs: 3000 });
-  assert.deepEqual(scenePlaybackAt(two, 3001), { stepIndex: 0, stepId: 'clock-step-1', localMs: 1, totalMs: 3000 });
+  assert.deepEqual(scenePlaybackAt(two, 999), { stepIndex: 0, stepId: 'clock-step-1', localMs: 999, totalMs: 3000, ended: false });
+  assert.deepEqual(scenePlaybackAt(two, 1000), { stepIndex: 1, stepId: 'clock-step-2', localMs: 0, totalMs: 3000, ended: false });
+  assert.deepEqual(scenePlaybackAt(two, 3001), { stepIndex: 0, stepId: 'clock-step-1', localMs: 1, totalMs: 3000, ended: false });
+  two.loop.mode = 'once';
+  assert.deepEqual(scenePlaybackAt(two, 3001), { stepIndex: 1, stepId: 'clock-step-2', localMs: 2000, totalMs: 3000, ended: true });
 });
 
 test('an inherited sparse step gains only the field the owner edits', () => {
@@ -69,4 +73,39 @@ test('firmware preview modifiers apply hue, breathe, and drift deterministically
   applyPatternPreviewSegmentLooks(later, [segment], 2300);
   assert.deepEqual(beginning, [{ r: 88, g: 25, b: 34 }, { r: 26, g: 91, b: 92 }]);
   assert.deepEqual(later, [{ r: 142, g: 91, b: 40 }, { r: 42, g: 77, b: 149 }]);
+});
+
+test('preview gate rejects source that the editor cannot render truthfully', () => {
+  const scene = createSceneExpression({ id: 'gate' });
+  const resolved = { ok: true, steps: [{ states: { strip: scene.defaults } }] };
+  assert.equal(scenePreviewAvailability(scene, resolved).ok, true);
+  scene.steps[0].transitionFromPrevious.durationMs = 1;
+  assert.match(scenePreviewAvailability(scene, resolved).message, /transition/i);
+  scene.steps[0].transitionFromPrevious.durationMs = 0;
+  scene.steps[0].assignments[0].selection.domain = 'continuous';
+  assert.match(scenePreviewAvailability(scene, resolved).message, /continuous/i);
+  scene.steps[0].assignments[0].selection.domain = 'repeat';
+  scene.steps[0].assignments[0].pattern.movement = { kind: 'custom', amount: 1 };
+  assert.match(scenePreviewAvailability(scene, resolved).message, /movement/i);
+  delete scene.steps[0].assignments[0].pattern.movement;
+  scene.steps[0].assignments[0].pattern.rendererId = 'future-pattern';
+  assert.match(scenePreviewAvailability(scene, resolved).message, /pattern/i);
+  assert.equal(scenePreviewAvailability(scene, { ok: false, reasons: [{ message: 'Missing Layout area.' }] }).message, 'Missing Layout area.');
+});
+
+test('sparse assignment displays inherited state from its selected nonfirst area', () => {
+  const defaults = createSceneExpression({ id: 'display' }).defaults;
+  const catalog = { areas: [
+    { id: 'all', stripIds: ['first', 'second'] },
+    { id: 'strip:second', stripIds: ['second'] },
+  ] };
+  const step = { states: {
+    first: { ...defaults, pattern: { rendererId: 'fire', speed: 1 } },
+    second: { ...defaults, pattern: { rendererId: 'ocean', speed: 0.5 } },
+  } };
+  const display = selectionDisplayState(step, catalog, { selection: { areaIds: ['strip:second'] } }, defaults);
+  assert.equal(display.state.pattern.rendererId, 'ocean');
+  assert.deepEqual(display.mixed, { pattern: false, color: false, intensity: false });
+  const whole = selectionDisplayState(step, catalog, null, defaults);
+  assert.equal(whole.mixed.pattern, true);
 });

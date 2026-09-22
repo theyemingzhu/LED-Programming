@@ -10,7 +10,7 @@ import { PatternPreview } from '../v3/PatternPreview.jsx';
 import {
   addSceneAssignment, addSceneStep, createSceneExpression, DEFAULT_CARD_COLOR, moveSceneStep,
   patchOrCreateSceneAssignment, patchSceneStep, removeSceneAssignment, removeSceneStep,
-  scenePlaybackAt,
+  scenePlaybackAt, scenePreviewAvailability, selectionDisplayState,
 } from './sceneExpressionEditorModel.js';
 import './scene-expression.css';
 
@@ -65,20 +65,6 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
     if (!scene.steps.some(step => step.id === selectedStepId)) setSelectedStepId(scene.steps[0].id);
   }, [scene, selectedStepId]);
 
-  useEffect(() => {
-    cancelAnimationFrame(playbackFrameRef.current);
-    if (!playing) return undefined;
-    let previous = performance.now();
-    const tick = now => {
-      const delta = Math.max(0, Math.min(250, now - previous));
-      previous = now;
-      setElapsedMs(value => value + delta);
-      playbackFrameRef.current = requestAnimationFrame(tick);
-    };
-    playbackFrameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(playbackFrameRef.current);
-  }, [playing, scene.id]);
-
   const catalog = useMemo(() => buildSceneExpressionAreaCatalog({
     strips: project.strips,
     sectionFamilies: project.sectionFamilies,
@@ -95,8 +81,15 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
   const selectedStep = scene.steps.find(step => step.id === selectedStepId) || scene.steps[0];
   const assignment = selectedStep.assignments[selectedAssignment] || selectedStep.assignments[0] || null;
   const resolvedStep = resolved.steps?.find(step => step.id === selectedStep.id);
-  const inheritedState = resolvedStep?.states?.[project.strips[0]?.id] || scene.defaults;
+  const selectionDisplay = useMemo(
+    () => selectionDisplayState(resolvedStep, catalog, assignment, scene.defaults),
+    [assignment, catalog, resolvedStep, scene.defaults],
+  );
+  const inheritedState = selectionDisplay.state;
+  const hasMixedSelection = Object.values(selectionDisplay.mixed).some(Boolean);
+  const previewAvailability = useMemo(() => scenePreviewAvailability(scene, resolved), [scene, resolved]);
   const playback = useMemo(() => scenePlaybackAt(scene, elapsedMs), [elapsedMs, scene]);
+  const effectivePlaying = playing && previewAvailability.ok && !playback.ended;
   const playbackStep = scene.steps[playback.stepIndex];
   const playbackResolvedStep = resolved.steps?.find(step => step.id === playback.stepId);
   const previewTargets = useMemo(() => project.strips.map(strip => {
@@ -127,6 +120,28 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
     [previewStrips, project.viewBox],
   );
   const availableScenes = storedScenes.some(item => item.id === scene.id) ? storedScenes : [...storedScenes, scene];
+
+  useEffect(() => {
+    cancelAnimationFrame(playbackFrameRef.current);
+    if (!effectivePlaying) return undefined;
+    let previous = performance.now();
+    const tick = now => {
+      const delta = Math.max(0, Math.min(250, now - previous));
+      previous = now;
+      setElapsedMs(value => value + delta);
+      playbackFrameRef.current = requestAnimationFrame(tick);
+    };
+    playbackFrameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(playbackFrameRef.current);
+  }, [effectivePlaying, scene.id]);
+
+  useEffect(() => {
+    if (!previewAvailability.ok && playing) setPlaying(false);
+    if (playback.ended) {
+      if (playing) setPlaying(false);
+      if (elapsedMs !== playback.totalMs) setElapsedMs(playback.totalMs);
+    }
+  }, [elapsedMs, playback.ended, playback.totalMs, playing, previewAvailability.ok]);
 
   function writeCanonicalSource(nextScene) {
     project.setExpressionScenes(current => ({
@@ -210,10 +225,10 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
     </div>
     <div className="sexp-grid">
       <section className="sexp-preview" aria-label="Scene preview">
-        <div className="sexp-preview-bar"><span>Playing {playback.stepIndex + 1}/{scene.steps.length} · {playbackStep.label} · {(playback.localMs / 1000).toFixed(1)}s</span><button type="button" onClick={() => setPlaying(value => !value)}>{playing ? 'Pause' : 'Play scene'}</button></div>
+        <div className="sexp-preview-bar"><span>{!previewAvailability.ok ? `Preview unavailable · ${previewAvailability.message}` : `${playback.ended ? 'Finished' : effectivePlaying ? 'Playing' : 'Paused'} ${playback.stepIndex + 1}/${scene.steps.length} · ${playbackStep.label} · ${(playback.localMs / 1000).toFixed(1)}s`}</span><button type="button" disabled={!previewAvailability.ok} onClick={() => { if (playback.ended) { setElapsedMs(0); setPlaying(true); } else setPlaying(value => !value); }}>{playback.ended ? 'Replay scene' : effectivePlaying ? 'Pause' : 'Play scene'}</button></div>
         <div className="sexp-canvas" data-preview-segments={previewStrips.length}>
           {previewStrips.length ? <PatternPreview
-            patternId="aurora" playing={playing} strips={previewStrips}
+            patternId="aurora" playing={effectivePlaying} strips={previewStrips}
             viewBox={previewViewBox} hidden={project.hidden} controlledTime={elapsedMs / 1000}
             ariaLabel={`${scene.name} preview`} testId="scene-expression-preview"
           /> : <div className="sexp-empty"><strong>Draw the artwork in Layout first</strong><span>This scene will use its exact strips and groups.</span></div>}
@@ -222,8 +237,8 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
 
       <section className="sexp-timeline" aria-label="Scene steps">
         <div className="sexp-section-head"><div><span>ORDERED STEPS</span><h2>How the scene changes</h2></div><button type="button" onClick={() => { const next = addSceneStep(scene); update(next); setSelectedStepId(next.steps.at(-1).id); setSelectedAssignment(0); }}>+ Add step</button></div>
-        <div className="sexp-step-list">{scene.steps.map((step, index) => <article key={step.id} className={step.id === selectedStep.id ? 'active' : ''} data-playing={step.id === playback.stepId ? 'true' : undefined}>
-          <button className="sexp-step-main" type="button" onClick={() => { setSelectedStepId(step.id); setSelectedAssignment(0); }}><b>{String(index + 1).padStart(2, '0')}</b><span>{step.label}<small>{Math.round(step.holdMs / 1000)} sec · {step.transitionFromPrevious.mode === 'cut' ? 'Cut' : 'Transition unavailable'}{step.id === playback.stepId ? ' · Playing' : ''}</small></span></button>
+        <div className="sexp-step-list">{scene.steps.map((step, index) => <article key={step.id} className={step.id === selectedStep.id ? 'active' : ''} data-playing={effectivePlaying && step.id === playback.stepId ? 'true' : undefined}>
+          <button className="sexp-step-main" type="button" onClick={() => { setSelectedStepId(step.id); setSelectedAssignment(0); }}><b>{String(index + 1).padStart(2, '0')}</b><span>{step.label}<small>{Math.round(step.holdMs / 1000)} sec · {step.transitionFromPrevious.mode === 'cut' ? 'Cut' : 'Transition unavailable'}{effectivePlaying && step.id === playback.stepId ? ' · Playing' : ''}</small></span></button>
           <div className="sexp-step-move"><button aria-label={`Move ${step.label} earlier`} disabled={!index} onClick={() => update(moveSceneStep(scene, step.id, -1))}>↑</button><button aria-label={`Move ${step.label} later`} disabled={index === scene.steps.length - 1} onClick={() => update(moveSceneStep(scene, step.id, 1))}>↓</button></div>
         </article>)}</div>
       </section>
@@ -234,6 +249,7 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
         <div className="sexp-divider" />
         <div className="sexp-section-head"><div><span>SIMULTANEOUS AREAS</span><h2>What plays together</h2></div><button type="button" onClick={() => { update(addSceneAssignment(scene, selectedStep.id, catalog.areas.find(area => area.kind === 'strip')?.id || 'all')); setSelectedAssignment(selectedStep.assignments.length); }}>+ Area</button></div>
         <div className="sexp-assignment-tabs">{selectedStep.assignments.length ? selectedStep.assignments.map((item, index) => <button key={`${item.selection.areaIds.join('-')}-${index}`} className={index === selectedAssignment ? 'active' : ''} onClick={() => setSelectedAssignment(index)}>{catalog.areas.find(area => area.id === item.selection.areaIds[0])?.name || 'Missing area'}</button>) : <button className="active">Inherited</button>}</div>
+        {hasMixedSelection && <p className="sexp-mixed">Mixed values across these areas. Changing a control applies that value to the selection.</p>}
         <fieldset><legend>Where</legend><div className="sexp-targets">{catalog.areas.map(area => <label key={area.id} className={area.kind !== 'strip' ? 'parent' : ''}><input type="checkbox" checked={(assignment?.selection.areaIds || ['all']).includes(area.id)} onChange={() => {
           const current = assignment?.selection.areaIds || ['all'];
           const areaIds = area.kind === 'strip'

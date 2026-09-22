@@ -1,3 +1,5 @@
+import { getCardPatternById } from '../lib/cardPatternBank.js';
+
 const clone = value => structuredClone(value);
 
 export const DEFAULT_CARD_COLOR = Object.freeze({
@@ -60,7 +62,12 @@ export function patchOrCreateSceneAssignment(scene, stepId, assignmentIndex, pat
 export function scenePlaybackAt(scene, elapsedMs) {
   const holds = scene.steps.map(step => Math.max(1, Number(step.holdMs) || 1));
   const totalMs = holds.reduce((sum, hold) => sum + hold, 0);
-  const looped = ((Math.max(0, Number(elapsedMs) || 0) % totalMs) + totalMs) % totalMs;
+  const elapsed = Math.max(0, Number(elapsedMs) || 0);
+  if (scene.loop?.mode === 'once' && elapsed >= totalMs) {
+    const stepIndex = scene.steps.length - 1;
+    return { stepIndex, stepId: scene.steps[stepIndex].id, localMs: holds[stepIndex], totalMs, ended: true };
+  }
+  const looped = ((elapsed % totalMs) + totalMs) % totalMs;
   let cursor = 0;
   for (let stepIndex = 0; stepIndex < scene.steps.length; stepIndex += 1) {
     const end = cursor + holds[stepIndex];
@@ -68,11 +75,61 @@ export function scenePlaybackAt(scene, elapsedMs) {
       stepIndex,
       stepId: scene.steps[stepIndex].id,
       localMs: looped - cursor,
-      totalMs,
+      totalMs, ended: false,
     };
     cursor = end;
   }
-  return { stepIndex: 0, stepId: scene.steps[0].id, localMs: 0, totalMs };
+  return { stepIndex: 0, stepId: scene.steps[0].id, localMs: 0, totalMs, ended: false };
+}
+
+function nativeMovementIsRenderable(movement) {
+  if (movement === undefined) return true;
+  return movement?.kind === 'native'
+    && movement.params
+    && Object.keys(movement).every(key => key === 'kind' || key === 'params')
+    && Object.keys(movement.params).length === 0;
+}
+
+export function scenePreviewAvailability(scene, resolved) {
+  if (!resolved?.ok) return { ok: false, message: resolved?.reasons?.[0]?.message || 'Resolve scene source issues before previewing.' };
+  const sourcePatterns = [scene.defaults?.pattern];
+  for (const step of scene.steps) {
+    if (step.transitionFromPrevious?.mode !== 'cut' || step.transitionFromPrevious?.durationMs !== 0) {
+      return { ok: false, message: 'This saved transition is preserved, but this Studio cannot preview it truthfully.' };
+    }
+    if (step.assignments.some(assignment => assignment.selection?.domain === 'continuous')) {
+      return { ok: false, message: 'Continuous-domain motion is preserved, but this Studio cannot preview it truthfully.' };
+    }
+    sourcePatterns.push(...step.assignments.map(assignment => assignment.pattern).filter(Boolean));
+  }
+  for (const pattern of sourcePatterns) {
+    if (pattern.rendererId !== undefined && !getCardPatternById(pattern.rendererId)) {
+      return { ok: false, message: 'This scene uses a pattern this Studio cannot preview.' };
+    }
+    if (!nativeMovementIsRenderable(pattern.movement)) {
+      return { ok: false, message: 'This scene movement is preserved, but this Studio cannot preview it truthfully.' };
+    }
+  }
+  for (const step of resolved.steps || []) {
+    for (const state of Object.values(step.states || {})) {
+      if (!getCardPatternById(state?.pattern?.rendererId)) return { ok: false, message: 'This scene uses a pattern this Studio cannot preview.' };
+      if (!nativeMovementIsRenderable(state?.pattern?.movement)) return { ok: false, message: 'This scene movement is preserved, but this Studio cannot preview it truthfully.' };
+    }
+  }
+  return { ok: true, message: '' };
+}
+
+export function selectionDisplayState(resolvedStep, catalog, assignment, defaults) {
+  const areaIds = assignment?.selection?.areaIds?.length ? assignment.selection.areaIds : ['all'];
+  const areaById = new Map((catalog?.areas || []).map(area => [area.id, area]));
+  const stripIds = [...new Set(areaIds.flatMap(areaId => areaById.get(areaId)?.stripIds || []))];
+  const states = stripIds.map(stripId => resolvedStep?.states?.[stripId]).filter(Boolean);
+  if (!states.length) return { state: clone(defaults), mixed: { pattern: false, color: false, intensity: false } };
+  const mixed = Object.fromEntries(['pattern', 'color', 'intensity'].map(field => [
+    field,
+    states.some(state => JSON.stringify(state[field]) !== JSON.stringify(states[0][field])),
+  ]));
+  return { state: clone(states[0]), mixed };
 }
 
 export function patchSceneStep(scene, stepId, patch) {

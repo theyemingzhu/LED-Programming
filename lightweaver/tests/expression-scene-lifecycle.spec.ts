@@ -108,6 +108,34 @@ test('reopens a sparse inherited step and edits it without replacing inherited f
   await expect(page.getByLabel('Scene pattern')).toHaveValue('fire');
 });
 
+test('once playback stops on its final frame and unsupported source cannot play', async ({ page }) => {
+  await page.getByLabel('Scene title').fill('Playback gate fixture');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').expressionScenes?.scenes?.length || 0)).toBe(1);
+  await page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3')!);
+    const scene = project.expressionScenes.scenes[0];
+    scene.loop.mode = 'once';
+    scene.steps[0].holdMs = 25;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('pattern-lab-build-scene').click();
+  await expect(page.getByRole('button', { name: 'Replay scene' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Scene preview' })).toContainText('Finished 1/1');
+
+  await page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3')!);
+    project.expressionScenes.scenes[0].steps[0].transitionFromPrevious.durationMs = 1;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('pattern-lab-build-scene').click();
+  await expect(page.getByRole('button', { name: 'Play scene' })).toBeDisabled();
+  const preview = page.getByRole('region', { name: 'Scene preview' });
+  await expect(preview).toContainText('Preview unavailable');
+  await expect(preview).not.toContainText('Playing');
+});
+
 test('creates and switches between multiple stable scene sources', async ({ page }) => {
   const picker = page.getByLabel('Scene', { exact: true });
   const firstId = await picker.inputValue();
