@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareSceneExpressionPreviewTopology } from './sceneExpressionPreviewTopology.js';
+import { compareSceneExpressionPreviewSourceMapping, compareSceneExpressionPreviewTopology } from './sceneExpressionPreviewTopology.js';
 
 const desiredConfig = {
   led: {
@@ -41,4 +41,38 @@ test('refuses when status omits ordered run identities and cannot prove the sour
   const incomplete = structuredClone(cardStatus);
   incomplete.outputs[0].segments = [];
   assert.equal(compareSceneExpressionPreviewTopology({ cardStatus: incomplete, desiredConfig }).reason, 'wiring-identity-unavailable');
+});
+
+function mappedProject(stripId = 'strip-a', from = 0, to = 1) {
+  return {
+    layout: {
+      strips: [
+        { id: 'strip-a', pixelCount: 2, pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
+        { id: 'strip-b', pixelCount: 2, pixels: [{ x: 0, y: 1 }, { x: 1, y: 1 }] },
+      ],
+      wiring: {
+        version: 1, locked: true, verified: true,
+        outputs: [{ id: 'out1', pin: 16, runIds: ['stable-run'] }],
+        runs: [{
+          id: 'stable-run', type: 'strip', verified: true,
+          directionPolicy: 'flexible', physicalDirection: 'source-forward', seamLed: null,
+          source: { stripId, from, to },
+        }],
+      },
+    },
+  };
+}
+
+test('rejects a stable run id and count repointed to a different source strip', () => {
+  const result = compareSceneExpressionPreviewSourceMapping({
+    installedProject: mappedProject('strip-a'),
+    draftProject: mappedProject('strip-b'),
+  });
+  assert.equal(result.reason, 'wiring-source-mismatch');
+});
+
+test('accepts pattern-only drafts whose compiled Layout source map is unchanged', () => {
+  const installedProject = mappedProject();
+  const draftProject = { ...mappedProject(), pattern: { id: 'new-pattern-only-draft' } };
+  assert.equal(compareSceneExpressionPreviewSourceMapping({ installedProject, draftProject }).ok, true);
 });

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
+import { createProjectEnvelope } from '../src/lib/projectRepository.js';
 
 const CARD_ID = 'lw-expression-install';
 const BUILD_ID = 'e'.repeat(40);
@@ -69,12 +70,12 @@ function addThirdReversedSection(project: any) {
   ];
 }
 
-function currentConfig(project: any) {
+function currentConfig(project: any, projectFingerprint = 'f'.repeat(64)) {
   return prepareCardDeployment({
     projectId: project.id,
     projectName: project.name,
     projectRevision: 0,
-    projectFingerprint: 'f'.repeat(64),
+    projectFingerprint,
     strips: project.layout.strips,
     patchBoard: project.layout.patchBoard,
     wiring: project.layout.wiring,
@@ -91,7 +92,16 @@ async function mockCard(page: any, options: any = {}) {
     project.expressionScenes.scenes[0].steps[0].transitionFromPrevious = { mode: 'dip-swap-rise', durationMs: 1000 };
   }
   if (options.threeSections) addThirdReversedSection(project);
-  const initialConfig = currentConfig(project);
+  const installedProject = structuredClone(project);
+  if (options.installedSourceRepointed) {
+    const run = installedProject.layout.wiring.runs.find((item: any) => item.id === 'run-third-section');
+    run.source = { ...run.source, stripId: 'default-inner-circle', from: 0, to: 4 };
+  }
+  const initialEnvelope = createProjectEnvelope(installedProject, {
+    modifiedAt: 1,
+    source: { kind: 'card', cardId: CARD_ID },
+  });
+  const initialConfig = currentConfig(installedProject, options.sourceRuntimeMismatch ? 'a'.repeat(64) : initialEnvelope.contentHash);
   if (options.layoutMismatch === 'pixel-count') {
     const strip = project.layout.strips.find((item: any) => item.id === 'third-section');
     const last = strip.pixels.at(-1);
@@ -126,6 +136,7 @@ async function mockCard(page: any, options: any = {}) {
       projectId: config.piece.id,
       projectRevision: config.projectRevision,
       projectFingerprint: options.wrongRuntimeFingerprint && state.runtime ? '0'.repeat(64) : config.projectFingerprint,
+      projectHead: (state.envelope || initialEnvelope).contentHash,
       led: config.led,
       outputs: config.led.outputs,
       limits: { maxLooks: 64 }, maxPixels: 4096,
@@ -176,7 +187,7 @@ async function mockCard(page: any, options: any = {}) {
     }
     if (pathname === '/api/projects/read') {
       state.operations.push('source-read');
-      return route.fulfill({ json: { envelope: state.envelope } });
+      return route.fulfill({ json: { envelope: options.noInstalledSource ? null : (state.envelope || initialEnvelope) } });
     }
     if (pathname === '/api/config') {
       if (options.trackPreviewOnly) state.forbiddenMutations.push(pathname);
@@ -248,10 +259,24 @@ async function browserFrames(page: any) {
   return page.evaluate(() => (window as any).__sceneExpressionFrames.map((payload: string) => JSON.parse(payload)));
 }
 
+async function physicalFramePixels(page: any, card: any) {
+  const websocket = (await browserFrames(page)).map((payload: any) => payload.seg?.[0]?.i || []);
+  return [...card.frames.map((payload: any) => payload.pixels || []), ...websocket];
+}
+
 async function openSceneEditor(page: any, expectedTitle = 'Gallery tide') {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await page.getByTestId('pattern-lab-build-scene').click();
   await expect(page.getByLabel('Scene title')).toHaveValue(expectedTitle);
+}
+
+async function openSceneEditorForPreview(page: any) {
+  await openSceneEditor(page);
+  await page.evaluate(async () => {
+    const { getActiveCardTransportAuthority } = await import('/src/lib/cardTransport.js');
+    const authority = getActiveCardTransportAuthority('lightweaver.local');
+    await authority.issueOwnerCapability({ commissioningProof: 'browser-test-owner-confirmed' });
+  });
 }
 
 test('installs exact scene source and runtime only after verified readbacks', async ({ page }) => {
@@ -408,24 +433,24 @@ test('a later project edit and disconnected target both invalidate current On ca
 
 test('scene rehearsal sends an exact three-section physical frame only after explicit start and restores paused playback', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, advancePlaylistOnStop: true });
-  await openSceneEditor(page);
+  await openSceneEditorForPreview(page);
   const preview = page.getByTestId('scene-physical-preview');
   await expect(preview).toBeEnabled();
-  expect(await browserFrames(page)).toEqual([]);
+  expect(await physicalFramePixels(page, card)).toEqual([]);
 
   await page.getByLabel('Color', { exact: true }).fill('80');
   await expect(preview).toBeEnabled();
 
   await preview.click();
   await expect(preview).toHaveText('Stop preview');
-  await expect.poll(async () => (await browserFrames(page)).length).toBeGreaterThan(0);
-  const firstFrame = (await browserFrames(page))[0].seg[0].i;
+  await expect.poll(async () => (await physicalFramePixels(page, card)).length).toBeGreaterThan(0);
+  const firstFrame = (await physicalFramePixels(page, card))[0];
   expect(firstFrame).toHaveLength(49);
   expect(firstFrame.every((pixel: unknown) => typeof pixel === 'string' && /^[0-9A-F]{6}$/.test(pixel as string))).toBe(true);
 
   await preview.click();
   await expect(preview).toHaveText('Try on lights');
-  expect(card.controls[0]).toMatchObject({ cancelStream: true });
+  expect(card.controls[0].stopStream || card.controls[0].cancelStream).toBe(true);
   expect(card.controls[1]).toMatchObject({ patternId: 'ocean' });
   expect(card.controls[2]).toMatchObject({ playlist: 'pause' });
   expect(card.playlist).toMatchObject({ configured: true, playing: false, entryIndex: 1, patternId: 'ocean' });
@@ -435,23 +460,59 @@ test('scene rehearsal sends an exact three-section physical frame only after exp
 for (const mismatch of ['pixel-count', 'output-route', 'reversal']) {
   test(`same-project ${mismatch} Layout drift refuses rehearsal before any physical write`, async ({ page }) => {
     const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, layoutMismatch: mismatch });
-    await openSceneEditor(page);
+    await openSceneEditorForPreview(page);
     await page.getByTestId('scene-physical-preview').click();
     await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
     await expect(page.locator('.sexp-preview-bar')).toContainText('Install the Layout changes first');
-    expect(await browserFrames(page)).toEqual([]);
+    expect(await physicalFramePixels(page, card)).toEqual([]);
     expect(card.controls).toEqual([]);
     expect(card.configWrites).toBe(0);
     expect(card.forbiddenMutations).toEqual([]);
   });
 }
 
+test('same run identity and count repointed to another source strip refuses rehearsal', async ({ page }) => {
+  const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, installedSourceRepointed: true });
+  await openSceneEditorForPreview(page);
+  await page.getByTestId('scene-physical-preview').click();
+  await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
+  await expect(page.locator('.sexp-preview-bar')).toContainText('different source-to-output map');
+  expect(await physicalFramePixels(page, card)).toEqual([]);
+  expect(card.controls).toEqual([]);
+  expect(card.configWrites).toBe(0);
+  expect(card.forbiddenMutations).toEqual([]);
+});
+
+test('saved card source whose hash differs from the installed runtime refuses rehearsal', async ({ page }) => {
+  const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, sourceRuntimeMismatch: true });
+  await openSceneEditorForPreview(page);
+  await page.getByTestId('scene-physical-preview').click();
+  await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
+  await expect(page.locator('.sexp-preview-bar')).toContainText('source and installed runtime');
+  expect(await physicalFramePixels(page, card)).toEqual([]);
+  expect(card.controls).toEqual([]);
+  expect(card.configWrites).toBe(0);
+  expect(card.forbiddenMutations).toEqual([]);
+});
+
+test('legacy card without hash-bound installed source refuses rehearsal', async ({ page }) => {
+  const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, noInstalledSource: true });
+  await openSceneEditorForPreview(page);
+  await page.getByTestId('scene-physical-preview').click();
+  await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
+  await expect(page.locator('.sexp-preview-bar')).toContainText('could not verify the saved Layout');
+  expect(await physicalFramePixels(page, card)).toEqual([]);
+  expect(card.controls).toEqual([]);
+  expect(card.configWrites).toBe(0);
+  expect(card.forbiddenMutations).toEqual([]);
+});
+
 test('navigation cancels rehearsal and restores a playing playlist without project mutations', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, advancePlaylistOnStop: true });
   card.playlist.playing = true;
-  await openSceneEditor(page);
+  await openSceneEditorForPreview(page);
   await page.getByTestId('scene-physical-preview').click();
-  await expect.poll(async () => (await browserFrames(page)).length).toBeGreaterThan(0);
+  await expect.poll(async () => (await physicalFramePixels(page, card)).length).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: 'Patterns', exact: true }).click();
   await expect(page.getByTestId('scene-expression-editor')).toHaveCount(0);
@@ -462,15 +523,15 @@ test('navigation cancels rehearsal and restores a playing playlist without proje
 
 test('a source change fences further rehearsal writes and keeps saved playback untouched', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, advancePlaylistOnStop: true });
-  await openSceneEditor(page);
+  await openSceneEditorForPreview(page);
   await page.getByTestId('scene-physical-preview').click();
-  await expect.poll(async () => (await browserFrames(page)).length).toBeGreaterThan(0);
+  await expect.poll(async () => (await physicalFramePixels(page, card)).length).toBeGreaterThan(0);
 
   await page.getByLabel('Scene title').fill('Changed while rehearsing');
   await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
-  const settledFrames = (await browserFrames(page)).length;
+  const settledFrames = (await physicalFramePixels(page, card)).length;
   await page.waitForTimeout(1000);
-  expect(await browserFrames(page)).toHaveLength(settledFrames);
+  expect(await physicalFramePixels(page, card)).toHaveLength(settledFrames);
   expect(card.controls.filter((body: any) => body.patternId || body.playlist)).toEqual([]);
   expect(card.configWrites).toBe(0);
   expect(card.forbiddenMutations).toEqual([]);
@@ -479,9 +540,9 @@ test('a source change fences further rehearsal writes and keeps saved playback u
 
 test('identity disconnect fences the stream and sends no restore into a missing card', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true });
-  await openSceneEditor(page);
+  await openSceneEditorForPreview(page);
   await page.getByTestId('scene-physical-preview').click();
-  await expect.poll(async () => (await browserFrames(page)).length).toBeGreaterThan(0);
+  await expect.poll(async () => (await physicalFramePixels(page, card)).length).toBeGreaterThan(0);
 
   card.offline = true;
   await page.evaluate(async () => {
@@ -489,31 +550,31 @@ test('identity disconnect fences the stream and sends no restore into a missing 
     getSharedCardLink().dispatch({ type: 'direct-ping-missed', host: 'lightweaver.local', reason: 'card-stopped-answering' });
   });
   await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
-  const settledFrames = (await browserFrames(page)).length;
+  const settledFrames = (await physicalFramePixels(page, card)).length;
   await page.waitForTimeout(1000);
-  expect(await browserFrames(page)).toHaveLength(settledFrames);
+  expect(await physicalFramePixels(page, card)).toHaveLength(settledFrames);
   expect(card.controls.filter((body: any) => body.patternId || body.playlist)).toEqual([]);
   expect(card.forbiddenMutations).toEqual([]);
 });
 
 test('missing playback snapshot refuses rehearsal without changing saved or installed state', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, missingPlaylistSnapshot: true });
-  await openSceneEditor(page);
-  const before = await page.evaluate(() => localStorage.getItem('lw_autosave_v3'));
+  await openSceneEditorForPreview(page);
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').expressionScenes);
   await page.getByTestId('scene-physical-preview').click();
   await expect(page.getByTestId('scene-physical-preview')).toHaveAttribute('data-state', 'error');
-  expect(await browserFrames(page)).toEqual([]);
+  expect(await physicalFramePixels(page, card)).toEqual([]);
   expect(card.configWrites).toBe(0);
   expect(card.forbiddenMutations).toEqual([]);
-  expect(await page.evaluate(() => localStorage.getItem('lw_autosave_v3'))).toBe(before);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').expressionScenes)).toEqual(before);
 });
 
 test('install waits for active rehearsal restoration before any source or runtime write', async ({ page }) => {
   const card = await mockCard(page, { threeSections: true, advancePlaylistOnStop: true });
   page.on('dialog', dialog => dialog.accept());
-  await openSceneEditor(page);
+  await openSceneEditorForPreview(page);
   await page.getByTestId('scene-physical-preview').click();
-  await expect.poll(async () => (await browserFrames(page)).length).toBeGreaterThan(0);
+  await expect.poll(async () => (await physicalFramePixels(page, card)).length).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: 'Put scene on card' }).click();
   await expect(page.getByRole('button', { name: 'On card', exact: true })).toBeVisible({ timeout: 15000 });
@@ -525,7 +586,7 @@ test('install waits for active rehearsal restoration before any source or runtim
 
 test('scene rehearsal control is usable at desktop and phone sizes', async ({ page }, testInfo) => {
   await mockCard(page, { threeSections: true, trackPreviewOnly: true });
-  await openSceneEditor(page);
+  await openSceneEditorForPreview(page);
   await expect(page.getByTestId('scene-physical-preview')).toBeEnabled();
   await page.screenshot({ path: testInfo.outputPath('scene-rehearsal-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

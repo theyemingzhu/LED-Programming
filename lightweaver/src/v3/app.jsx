@@ -109,6 +109,7 @@ import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { syncRuntimePackageToCard } from '../lib/cardSectionSync.js';
 import { readCardProjectEvidence } from '../lib/cardPushClient.js';
+import { createCardProjectRepository } from '../lib/cardProjectRepository.js';
 import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import {
   clearFirmwareUpdateSessionIfMatches,
@@ -117,7 +118,7 @@ import {
 } from '../lib/cardFirmwareUpdater.js';
 import { persistCardIdentity, readPersistedCardIdentity } from '../lib/cardIdentity.js';
 import { getActiveCardTransportAuthority, reacquireCardTransportAuthority } from '../lib/cardTransport.js';
-import { sha256Canonical } from '../lib/projectRepository.js';
+import { sha256Canonical, validateProjectEnvelope } from '../lib/projectRepository.js';
 import {
   prepareExpressionSceneDelivery,
   prepareProjectPlaybackDelivery,
@@ -129,7 +130,10 @@ import {
   sceneDeliveryFailureMessage,
 } from '../scene-expression/sceneExpressionInstall.js';
 import { createSceneExpressionPreviewSession } from '../scene-expression/sceneExpressionPreviewSession.js';
-import { compareSceneExpressionPreviewTopology } from '../scene-expression/sceneExpressionPreviewTopology.js';
+import {
+  compareSceneExpressionPreviewSourceMapping,
+  compareSceneExpressionPreviewTopology,
+} from '../scene-expression/sceneExpressionPreviewTopology.js';
 
 const PatternScreen = lazy(() => import('./lw-pattern.jsx').then(module => ({ default: module.PatternScreen })));
 const PatternLabScreen = lazy(() => import('../pattern-lab/PatternLabScreen.jsx'));
@@ -1755,6 +1759,40 @@ function Shell({ offlineUpdateController = null }) {
     }
     const topology = compareSceneExpressionPreviewTopology({ cardStatus: status, desiredConfig });
     if (!topology.ok) return topology;
+    if (!authority.ownerCapability) {
+      return {
+        ok: false,
+        reason: 'owner-capability-required',
+        message: 'Reconnect as the card owner so Studio can verify its saved Layout, then try again.',
+      };
+    }
+    let installedEnvelope;
+    try {
+      installedEnvelope = validateProjectEnvelope(
+        await createCardProjectRepository({ authority }).read(snapshot.id),
+      );
+    } catch (error) {
+      const sourceError = new Error('Studio could not verify the saved Layout on this card. Reconnect as the card owner, then install the Layout changes first.', { cause: error });
+      sourceError.reason = error?.reason || error?.code || 'installed-source-unavailable';
+      return {
+        ok: false,
+        reason: sourceError.reason,
+        message: sourceError.message,
+        error: sourceError,
+      };
+    }
+    if (String(installedEnvelope.contentHash || '').toLowerCase() !== String(status.projectFingerprint || '').toLowerCase()) {
+      return {
+        ok: false,
+        reason: 'installed-source-fingerprint-mismatch',
+        message: 'The card source and installed runtime do not identify the same Layout. Install the Layout changes first.',
+      };
+    }
+    const sourceMapping = compareSceneExpressionPreviewSourceMapping({
+      installedProject: installedEnvelope.project,
+      draftProject: snapshot,
+    });
+    if (!sourceMapping.ok) return sourceMapping;
     if (expressionPreviewContextRef.current !== contextKey || getActiveCardTransportAuthority(host) !== authority) {
       return { ok: false, reason: 'preview-context-changed', message: 'The project or card changed while physical preview was preparing.' };
     }
