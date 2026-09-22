@@ -1063,3 +1063,17 @@ Callbacks/injected operations for bounded tests; no new network client or live
 card action. UI consumes helper only after manager integration; same UI worker
 retains sole app.jsx ownership. Return identity/gate gap before architecture
 expansion. Cost unknown.
+
+Source-edge232dee76 integrated asc5d31af1;primary35units pass. Root browser
+suite8/9 pass; final mandala fixture missing Petal ring after live-localStorage
+seed/reload. Same UI worker diagnoses fixture/autosave race without weakening
+real target assertions (root log /tmp/lightweaver-expression-lifecycle.log).
+
+Final pre-delivery semantic check found repeat-instance gap:adapter explicitly
+makes group/all/family one domain, but native/preview flattened pattern to each
+member strip. Playback worker owns bounded compiler rejection+paired tests;UI
+worker owns matching preview gate and explicit Repeat per section action to
+expand stable leaf IDs only by user intent. Color-only grouped field patches
+remain allowed; new native scene uses per-strip defaults. No adapter/schema or
+firmware reinterpretation. Avoid claiming group-wide motion when rendering
+independent copies. Also tighten preview movement params object check.
