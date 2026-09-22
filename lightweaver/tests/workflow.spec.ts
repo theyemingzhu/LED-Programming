@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 // The save-picker stub this file used to carry inline now arrives with the
 // shared `test` from ./studioTest, which explains the whole trap in one place.
@@ -20,6 +21,16 @@ async function mockLocalCard(page: any, options: any = {}) {
   // so make that fixture an explicitly placed layout before fingerprinting it.
   project.layout.starterPending = false;
   const projectFingerprint = cardProjectFingerprint(project);
+  // A real card reports the zone ids it was actually flashed with, which come
+  // from the COMPILED wiring (`default-outer-circle`), never Studio's own
+  // patch ids (`patch-default-outer-circle`). Derive them the same way
+  // tests/patterns-v3.spec.ts does, so this fixture can never model a card
+  // state no real card could report.
+  const compiledZones = compileWiring({
+    wiring: project.layout.wiring,
+    strips: project.layout.strips,
+    groups: project.layout.layerGroups,
+  }).zones;
   const card = {
     authorization: {
       intent: '',
@@ -33,10 +44,7 @@ async function mockLocalCard(page: any, options: any = {}) {
       studioProjectFingerprint: projectFingerprint,
       projectGeneration: 0,
     },
-    zones: options.zones || [
-      { id: 'patch-default-outer-circle', label: 'Outer circle', ranges: [{ start: 0, count: 27 }] },
-      { id: 'patch-default-inner-circle', label: 'Inner circle', ranges: [{ start: 27, count: 17 }] },
-    ],
+    zones: options.zones || compiledZones,
     savedConfig: null as any,
     operations: [] as string[],
     controls: [] as any[],
@@ -432,6 +440,33 @@ test('the latest section preview wins rapid taps and never writes the card confi
   // Migrated to the notice layer; same message, now under the
   // 'pattern-card-status' testid instead of the old `.pmx-status` class.
   await expect(page.getByTestId('pattern-card-status')).toContainText('played on the whole piece');
+});
+
+// Regression for the fixture bug this file used to carry: mockLocalCard's
+// default /api/zones fixture reported `patch-default-outer-circle` — Studio's
+// own PATCH id, which no real card can ever send back, since a card only
+// ever reports the ids its own compiled wiring produced. That mismatch meant
+// a targeted section preview against the DEFAULT fixture always looked like
+// a card with no matching section, even though the studio project's compiled
+// wiring and the card's zones actually agree. The notice above is correct
+// when the card genuinely lacks the section (proved by the override just
+// above, with a deliberately mismatched `full-piece` zone); this proves the
+// opposite case — a card that DOES hold the section — is not swallowed by
+// the same fixture into the same fallback.
+test('a section preview targets the real zone once the card actually reports it', async ({ page }) => {
+  const card = await mockLocalCard(page); // default zones: the compiled ids a real card reports
+  await gotoAuthorizedPatterns(page, card);
+
+  card.controls.length = 0;
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
+  await page.locator('[data-pattern-id="aurora"]').click();
+  await expect.poll(() => card.controls.at(-1)?.patternId).toBe('aurora');
+
+  expect(card.controls.at(-1).zone).toBe('default-outer-circle');
+  // No fallback: the card was never told the whole piece changed, and the
+  // routine-notice test above already guards that a quiet success shows no
+  // notice at all.
+  await expect(page.getByTestId('pattern-card-status')).toHaveCount(0);
 });
 
 // ── Mandala import: repeats and transforms ────────────────────────────────

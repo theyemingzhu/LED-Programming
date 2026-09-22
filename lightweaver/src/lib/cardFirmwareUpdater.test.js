@@ -422,6 +422,68 @@ test('a no-LAN old card can resume USB correlation without inventing prior boot 
   }), { ok: true, terminal: true, phase: 'valid', reason: '' });
 });
 
+test('a card refusal surfaces the reason the card actually sent, not a generic message', async () => {
+  const calls = [];
+  const updater = createCardFirmwareUpdater({
+    authority: authority(calls, {
+      // Exactly the envelope LightweaverFirmwareUpdate.cpp's sendUpdateError
+      // sends for a 409: `ok`, `error`, and `detail` — never `message`.
+      '/api/update/preflight': {
+        ok: false, error: 'compatibility-rejected', detail: 'card holds a newer build than this update',
+      },
+    }),
+    release: release(),
+    physicalConfirmation: 'owner-confirmed-physical-control',
+  });
+  await assert.rejects(
+    updater.preflight(),
+    err => {
+      assert.equal(err.message, 'card holds a newer build than this update');
+      assert.equal(err.reason, 'compatibility-rejected');
+      return true;
+    },
+  );
+});
+
+test('a card refusal falls back to projectRepositoryMessage when detail is absent', async () => {
+  const calls = [];
+  const updater = createCardFirmwareUpdater({
+    authority: authority(calls, {
+      '/api/update/preflight': {
+        ok: false, error: 'concurrent-mutation', projectRepositoryMessage: 'project storage unreadable at boot',
+      },
+    }),
+    release: release(),
+    physicalConfirmation: 'owner-confirmed-physical-control',
+  });
+  await assert.rejects(
+    updater.preflight(),
+    err => {
+      assert.equal(err.message, 'project storage unreadable at boot');
+      return true;
+    },
+  );
+});
+
+test('a card refusal with no reason field at all keeps the generic fallback', async () => {
+  const calls = [];
+  const updater = createCardFirmwareUpdater({
+    authority: authority(calls, {
+      '/api/update/preflight': { ok: false, error: 'invalid-state' },
+    }),
+    release: release(),
+    physicalConfirmation: 'owner-confirmed-physical-control',
+  });
+  await assert.rejects(
+    updater.preflight(),
+    err => {
+      assert.equal(err.message, 'Card refused firmware update at /api/update/preflight.');
+      assert.equal(err.reason, 'invalid-state');
+      return true;
+    },
+  );
+});
+
 test('reload status is read through the real card route without restoring mutation authority', async () => {
   const calls = [];
   const status = await readFirmwareUpdateStatus({

@@ -285,6 +285,28 @@ function fail(message, detail = '') {
   return 1;
 }
 
+// Every attempt at a version uses the same branch name. A rejected push
+// proves a collision, not whether the other release is still active or who
+// owns it. Leave the shared branch and queued sources untouched, clean up
+// this run's private candidate, and leave the ownership decision to inspection.
+export function isReleaseBranchCollision(gitOutput) {
+  const text = String(gitOutput || '');
+  return /\[rejected\][^\r\n]*\(non-fast-forward\)/.test(text);
+}
+
+export function describeReleaseBranchCollision(branch, version) {
+  return {
+    message: `An existing branch is blocking version ${version} because it uses the same name `
+      + `("${branch}").`,
+    detail: 'The shared branch may still be in use. This run did not replace it or change\n'
+      + 'the waiting list on the main line. This run\'s temporary update was removed;\n'
+      + 'the queued source changes remain available for another attempt.\n\n'
+      + 'Inspect its pull requests with this read-only command, then check with its owner\n'
+      + 'before deciding how to continue. An empty result does not mean it is unused.\n\n'
+      + `  env -u GH_HOST gh pr list --state all --head ${branch}\n`,
+  };
+}
+
 function commandRelease(argv) {
   const flags = parseFlags(argv);
   const register = readRegister();
@@ -324,7 +346,7 @@ function commandRelease(argv) {
   const cleanUp = ({ keepBranch = false } = {}) => {
     if (created) tryGit(['worktree', 'remove', '--force', scratch]);
     rmSync(workspace, { recursive: true, force: true });
-    if (!keepBranch) tryGit(['branch', '-D', branch]);
+    if (created && !keepBranch) tryGit(['branch', '-D', branch]);
   };
 
   try {
@@ -450,6 +472,10 @@ function commandRelease(argv) {
     const pushed = tryGit(['push', 'origin', `HEAD:refs/heads/${branch}`], { cwd: scratch });
     if (!pushed.ok) {
       cleanUp();
+      if (isReleaseBranchCollision(pushed.out)) {
+        const collision = describeReleaseBranchCollision(branch, version);
+        return fail(collision.message, collision.detail);
+      }
       return fail('Everything fitted together, but it could not be sent to the shared copy of the project.', pushed.out);
     }
 

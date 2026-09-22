@@ -18,7 +18,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describeRegister, emptyRegister, isGreater, nextVersion, readableDate, validateEntry } from './firmware-queue.mjs';
+import {
+  describeReleaseBranchCollision,
+  describeRegister,
+  emptyRegister,
+  isReleaseBranchCollision,
+  isGreater,
+  nextVersion,
+  readableDate,
+  validateEntry,
+} from './firmware-queue.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const run = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -96,6 +105,28 @@ test('a waiting item must say what it is, why, and where it lives', () => {
   assert.throws(() => validateEntry({ ...good, what: '' }), /plain-language/);
   assert.throws(() => validateEntry({ ...good, source: {} }), /branch or a patch/);
   assert.throws(() => validateEntry(good, [good]), /already waiting/);
+});
+
+test('a non-fast-forward rejection describes a collision without guessing ownership', () => {
+  const rejection = [
+    'To /tmp/upstream.git',
+    ' ! [rejected]        HEAD -> firmware-release/1.1.29 (non-fast-forward)',
+    "error: failed to push some refs to '/tmp/upstream.git'",
+    'hint: Updates were rejected because the tip of your current branch is behind',
+  ].join('\n');
+  assert.equal(isReleaseBranchCollision(rejection), true);
+  assert.equal(isReleaseBranchCollision('ssh: connection refused'), false);
+  assert.equal(isReleaseBranchCollision(''), false);
+  assert.equal(isReleaseBranchCollision('! [remote rejected] HEAD -> branch (pre-receive hook declined)'), false);
+  assert.equal(isReleaseBranchCollision('! [rejected] HEAD -> branch (other reason)\nhint: non-fast-forward'), false);
+
+  const described = describeReleaseBranchCollision('firmware-release/1.1.29', '1.1.29');
+  assert.match(described.message, /existing branch is blocking version 1\.1\.29/);
+  assert.match(described.message, /firmware-release\/1\.1\.29/);
+  assert.match(described.detail, /may still be in use/);
+  assert.match(described.detail, /check with its owner/);
+  assert.match(described.detail, /gh pr list --state all --head firmware-release\/1\.1\.29/);
+  assert.doesNotMatch(`${described.message}\n${described.detail}`, /abandoned|--delete|force.push|Nothing from this run was lost/i);
 });
 
 test('an empty waiting list reads as plain English with no jargon', () => {
@@ -227,6 +258,77 @@ test('a parked patch folds into the single release commit, not a commit of its o
       'firmware/lightweaver-controller/VERSION',
       'firmware/lightweaver-controller/tests/firmware-version-policy.mjs',
     ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a competing release preserves shared work, cleans its candidate, and offers inspection', () => {
+  const { root, upstream } = buildSandbox();
+  try {
+    // The competing branch may have an active PR, a closed PR, or no PR at
+    // all. Git's rejection cannot distinguish those ownership states.
+    const colleague = clone(root, upstream, 'colleague');
+    run(['checkout', '--quiet', '-b', 'firmware-release/1.2.4'], colleague);
+    writeFileSync(join(colleague, 'carried.txt'), 'a competing release\n');
+    run(['commit', '--quiet', '-am', 'release in progress'], colleague);
+    run(['push', '--quiet', 'origin', 'firmware-release/1.2.4'], colleague);
+    const remoteHead = run(['rev-parse', 'HEAD'], colleague);
+
+    const author = clone(root, upstream, 'author');
+    writeFileSync(join(author, 'carried.txt'), 'after\n');
+    const patch = run(['diff'], author);
+    run(['checkout', '--', 'carried.txt'], author);
+    execFileSync('mkdir', ['-p', join(author, 'firmware-queue/patches')]);
+    writeFileSync(join(author, 'firmware-queue/patches/trivial.patch'), `${patch}\n`);
+    park(author, {
+      id: 'trivial',
+      what: 'A trivial parked change.',
+      why: 'Not worth a card update on its own.',
+      added: '2026-08-21',
+      source: { kind: 'patch', patch: 'firmware-queue/patches/trivial.patch' },
+    });
+
+    const owner = clone(root, upstream, 'owner');
+    const mainHead = run(['rev-parse', 'origin/main'], owner);
+    const queuedBefore = readFileSync(join(owner, 'firmware-queue/queue.json'), 'utf8');
+    const patchBefore = readFileSync(join(owner, 'firmware-queue/patches/trivial.patch'), 'utf8');
+    const result = queue(owner, ['release']);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Stopped\. Nothing was changed\./);
+    assert.match(result.stderr, /existing branch is blocking version 1\.2\.4/);
+    assert.match(result.stderr, /firmware-release\/1\.2\.4/);
+    assert.match(result.stderr, /temporary update was removed/);
+    assert.match(result.stderr, /gh pr list --state all --head firmware-release\/1\.2\.4/);
+    assert.doesNotMatch(result.stderr, /abandoned|--delete|force.push/i);
+    // A raw git rejection line must not be the thing a person reads instead.
+    assert.doesNotMatch(result.stderr, /non-fast-forward/);
+    // Nothing was left half-done in the tree the owner ran it from.
+    assert.equal(run(['status', '--porcelain'], owner), '');
+    assert.equal(run(['rev-parse', '--abbrev-ref', 'HEAD'], owner), 'main');
+    assert.equal(run(['branch', '--list', 'firmware-release/*'], owner), '');
+    assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
+    assert.equal(readFileSync(join(owner, 'firmware-queue/queue.json'), 'utf8'), queuedBefore);
+    assert.equal(readFileSync(join(owner, 'firmware-queue/patches/trivial.patch'), 'utf8'), patchBefore);
+    // The competing release itself is untouched — it was never overwritten.
+    run(['fetch', '--quiet', 'origin'], owner);
+    assert.equal(run(['rev-parse', 'origin/main'], owner), mainHead);
+    assert.equal(run(['rev-parse', 'HEAD'], owner), mainHead);
+    assert.equal(run(['rev-parse', 'origin/firmware-release/1.2.4'], owner), remoteHead);
+    assert.equal(
+      run(['show', 'origin/firmware-release/1.2.4:carried.txt'], owner),
+      'a competing release',
+    );
+    // A retry reaches the same remote collision and also cleans its candidate.
+    const retried = queue(owner, ['release']);
+    assert.notEqual(retried.status, 0);
+    assert.match(retried.stderr, /existing branch is blocking version/);
+    assert.equal(run(['branch', '--list', 'firmware-release/*'], owner), '');
+    assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
+    // Cleanup must never delete a local branch that predates the current run.
+    run(['branch', 'firmware-release/1.2.4', mainHead], owner);
+    assert.notEqual(queue(owner, ['release']).status, 0);
+    assert.equal(run(['rev-parse', 'firmware-release/1.2.4'], owner), mainHead);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
