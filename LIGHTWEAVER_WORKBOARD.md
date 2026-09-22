@@ -957,3 +957,12 @@ Reuse playback task; own only new sceneExpression{,Native}.js and their tests,
 plus compiler result doc. Existing targeting adapter stays unchanged. No shared
 schema, UI, wiring, firmware, deployment or card mutation. Prototype remains
 independent; manager integrates once both deliverables are ready. Cost unknown.
+
+Prototypeb82543f reviewed:desktop+phone screenshots and source. Not accepted
+for integration yet. Concrete issues:applyToSelection collapses mixed pattern/
+palette state from first member on unrelated field edits; playbackAt counts
+transition duration but renderColors never blends/implements transition; phone
+steps are below entire long inspector; selectTarget only single area so explicit
+multiple-member repeat selection cannot be exercised. Return bounded fixes to
+same worker Sol/medium with behavior tests and one desktop/phone correction pass.
+No generic polish loop. Prototype remains isolated and hardware simulated.
