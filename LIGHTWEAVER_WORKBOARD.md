@@ -1013,3 +1013,16 @@ when unavailable; finish integration after persistence lands. Save uses existing
 guarded project-save action,with truthful outcome; autosave is recovery only.
 Card installation is next bounded integration after connected source works;
 no pretend On card state, no real card networking, no deployment. Cost unknown.
+
+P1 source persistencecacdc032 accepted/integrated as9752a2bb. Primary reviewed
+projectModel and Provider apply/serialize/dirty paths and reran98/98 focused
+source/model/repository/storage/lifecycle tests. Future/malformed JSON-safe
+collections remain opaque and hashed; inspector explicitly marks noneditable;
+updates reject instead of discarding data. Missing Layout refs remain editable.
+UI worker received exact commit plus Provider functional-update/project-switch
+browser cases (still required; helper tests are not Provider browser proof).
+Worker dependency build block is local to its empty dependency target; manager
+node_modules is populated and earlier checkpoint passed. No package changes.
+Resumption:integrate UI worker's real-project scene journey, verify provider
+switch/save/reload on actual screen, then bind selected playback through exact
+source+runtime installation authority without making UI selection an install.
