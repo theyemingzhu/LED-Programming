@@ -36,6 +36,7 @@ function unsupportedTitle(code) {
 export default function SceneExpressionEditor({
   project, onSaveProject, onInstallScene, installationReceipt,
   onStartPhysicalPreview, physicalPreviewContextKey = '', onClose,
+  hostName = 'Lab', closeLabel = '',
 }) {
   const store = project.expressionScenes;
   const storeInspection = inspectExpressionScenes(store);
@@ -371,11 +372,11 @@ export default function SceneExpressionEditor({
 
   if (!storeInspection.editable) return <main className="screen sexp sexp-unsupported" data-testid="scene-expression-editor">
     <section>
-      <span className="sexp-kicker">Studio · Lab · Scene</span>
+      <span className="sexp-kicker">Studio · {hostName} · Scene</span>
       <h1>{unsupportedTitle(storeInspection.code)}</h1>
       <p>{storeInspection.message}</p>
       <p>The source is still stored exactly as it was. Open this project in a Studio version that supports it before editing scenes.</p>
-      <button className="btn" type="button" onClick={onClose}>Back to Lab</button>
+      <button className="btn" type="button" onClick={onClose}>{closeLabel || `Back to ${hostName}`}</button>
     </section>
   </main>;
 
@@ -387,14 +388,14 @@ export default function SceneExpressionEditor({
   return <main className="screen sexp" data-testid="scene-expression-editor">
     <header className="sexp-head">
       <div>
-        <span className="sexp-kicker">Studio · Lab · Scene</span>
+        <span className="sexp-kicker">Studio · {hostName} · Scene</span>
         <input aria-label="Scene title" className="sexp-title" value={scene.name} onChange={event => update({ ...scene, name: event.target.value })} />
         <p>Give each area its own behavior, then arrange how the scene changes over time.</p>
       </div>
       <div className="sexp-head-actions">
         <select aria-label="Scene" value={scene.id} onChange={event => openScene(event.target.value)}>{availableScenes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <button className="btn" type="button" onClick={newScene}>New scene</button>
-        <button className="btn" type="button" onClick={onClose}>Back to Lab</button>
+        <button className="btn" type="button" onClick={onClose}>{closeLabel || `Back to ${hostName}`}</button>
         <button className="btn" type="button" onClick={save} disabled={saveState === 'saving'}>{saveState === 'saving' ? 'Saving…' : 'Save scene'}</button>
         <button className="btn primary" type="button" onClick={install} disabled={!compilation.ok || installState.status === 'installing' || exactOnCard || !onInstallScene}>{installState.status === 'installing' ? 'Putting scene on card…' : exactOnCard ? 'On card' : 'Put scene on card'}</button>
       </div>
