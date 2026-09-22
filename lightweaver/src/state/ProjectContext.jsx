@@ -54,6 +54,7 @@ import {
 } from '../lib/projectLifecycle.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { createProjectEnvelope } from '../lib/projectRepository.js';
+import { applyExpressionScenesUpdate } from '../lib/sceneExpressionProject.js';
 
 const LS_AUTOSAVE_KEY = 'lw_autosave_v3';
 const LS_AUTOSAVE_BACKUP_KEY = 'lw_autosave_v3_backup';
@@ -506,6 +507,10 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   // moment `projectCopyKind`'s own artwork check stops treating it as partial
   // (no separate clearing action needed — see projectCopyLabel.js).
   const [origin,           setOrigin]           = useState(null);
+  const [expressionScenes, setExpressionScenesRaw] = useState(defaults.expressionScenes);
+  const setExpressionScenes = useCallback(update => {
+    setExpressionScenesRaw(current => applyExpressionScenesUpdate(current, update));
+  }, []);
   const [motionSmoothing,  setMotionSmoothing]  = useState(defaults.pattern.motionSmoothing);
 
   // ── Timeline / show ──────────────────────────────────────────────────────
@@ -685,6 +690,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     setProjectId(data.id || defaults.id);
     setProjectName(data.name || defaults.name);
     setOrigin(data.origin ?? null);
+    setExpressionScenesRaw(data.expressionScenes);
     // Reset the whole layout slice AND clear undo history — loading a project is
     // not undoable back into the previous project.
     dispatchLayout({
@@ -814,6 +820,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       id: projectId,
       name: projectName,
       origin,
+      expressionScenes,
       portRoles,
       layout: {
         strips, starterPending, viewBox, svgText, hidden, projectWarnings,
@@ -862,7 +869,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
     return project;
   }, [
-    projectId, projectName, origin, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
+    projectId, projectName, origin, expressionScenes, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
     layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, sectionFamilies, layoutLayerOrder,
     activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
     masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
@@ -1092,6 +1099,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       projectId, setProjectId,
       projectName,     setProjectName,
       origin,          setOrigin,
+      expressionScenes, setExpressionScenes,
       motionSmoothing, setMotionSmoothing,
       // Timeline
       showDuration,    setShowDuration,
