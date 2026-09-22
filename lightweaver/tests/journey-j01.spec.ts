@@ -79,13 +79,13 @@ async function bootBlank(page: Page, card: CardSimulator) {
 test('[J01] blank card: connect, discover one strip, install it, confirm the wiring test, and play a pattern', {
   // F4 (docs/plans/2026-09-06-unified-card-journey-execution.md): counted by
   // hand — every `.click()` below, in source order:
-  // setup-lights-action, discovery-probe-18, discovery-start,
+  // setup-connect-card (explicit pair), setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
   // discovery-end-yes, discovery-record-save, discovery-continue-layout,
   // setup-verify-action ("Open Patterns"), wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '12 deliberate clicks' },
+  annotation: { type: 'clicks', description: '13 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
@@ -93,7 +93,9 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
 
   // A plugged-in card answering on lightweaver.local is found without a
   // remembered identity — bootstrap probes the well-known hosts on local HTTP.
-  await waitConnectedUnaided(page, 'J01 first connect to a blank card');
+  // Discovery does not grant ownership: the owner explicitly pairs this card.
+  await page.getByRole('button', { name: 'Pair this card', exact: true }).click();
+  await waitConnectedUnaided(page, 'J01 explicit pairing of a detected blank card');
 
   // ── Setup ladder: connect phase is done, lights phase is current ──────────
   const journey = journeyLocator(page);
