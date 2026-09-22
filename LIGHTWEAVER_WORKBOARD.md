@@ -1123,3 +1123,49 @@ preserves newer draft, correct generic Save to card with playbackSceneId, reload
 unverified until fresh exact evidence. Return helper/transport mismatch before
 bypassing evidence;20-minute convergence report; revert to medium for routine
 correction. No deployment, real card calls, firmware changes or exhaustive Prove.
+
+2026-09-22 owner reaffirmed end-to-end manager responsibility:continue all agreed
+parts and bring every required owner question/physical observation back to this
+manager task. Do not redirect owner to workers. Current install UI task active;
+completion callback is the continuation mechanism (no unattended timer claimed).
+Remaining outcome ledger beyond accepted authoring checkpoint:
+- Connect/verify Put scene on card and generic updates with exact source/runtime.
+- Reopen source from card in a second browser; simulated proof then real Bench.
+- Try on lights remains an explicit separate, reversible rehearsal requirement;
+  current production editor has no live action yet. Do not call install proof
+  rehearsal proof or silently drop this from the journey.
+- Show currently links to scene authoring; shared scene performance/picker is
+  not implemented. Rich transitions, continuous group motion and recorded4096
+  delivery remain unsupported; native cuts are the first slice, not full scope.
+- Actual novice observation and physical playback/closed-browser/power-cycle
+  proof require owner participation after concrete software candidate is ready.
+- Firmware/SD/recorded expansion needs a concrete scoped proposal before action;
+  current work does not authorize live hardware writes or deployment.
+Manager continues independent implementation/verification and consolidates any
+required decision here with recommendation and evidence.
+
+Install UI1c748e28 reviewed, correction pending before integration. Core existing
+transport binding verified in source. Concrete edge gaps returned same worker
+Sol/medium:pristine New scene not in context before direct install;local On card
+uses scene JSON only and ignores full-project/target evidence and concurrent
+non-scene edits. Require context-flush before save/install and exact receipt
+invalidation on layout/project/card change, retain earlier snapshot separately.
+Test pristine create/install,non-scene edits during/after install,card switch,
+plus actual installed/blocked desktop/phone screens. No generic scope growth.
+
+Independent rehearsal prerequisite dispatch:reuse Layout task Terra/medium for
+pure preview-frame->physical-output mapper. Own new sceneExpressionFrame.js and
+tests only, no UI/network/session mutation. Match rendered pixel source refs to
+compiled wiring exact order; reject missing/duplicate/out-of-range refs rather
+than output truncated/misaddressed frame. Accept reversed/split/discontiguous
+routes and mandala groups; source geometry never defines physical order. This
+can finish independently of active install-UI corrections and makes subsequent
+Try on lights integration concrete without overlapping files. Escalate unknown
+frame authority/shape to manager. No actual LED commands. Cost unknown.
+
+Rehearsal mapperf601f2b2 integrated as178911a8;primary28/28 focused tests pass.
+Verified renderer callback provides smoothed whole-byte RGB (motionSmoothing
+clampByte), mapped via exact segment stripId/sourceLed metadata to compiled
+physical addresses. No frame is sent yet. Git worktree index required sandbox
+escalation outside cwd; auto-review approved cherry-pick. Next:connect mapper to
+existing reversible preview session after install UI correction settles.
