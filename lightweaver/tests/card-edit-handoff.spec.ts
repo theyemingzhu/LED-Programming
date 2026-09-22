@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { createDefaultProject } from '../src/lib/projectModel.js';
+import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 
 // The card→Patterns handoff must either open Patterns or explain why. What it
 // must never do is bounce: Patterns returning to the card leaves the intent in
@@ -47,26 +49,20 @@ function readyStatus(overrides = {}) {
 // sending `projectId` on /api/status. Such a card cannot prove which project
 // is installed, so Studio must refuse — visibly, once.
 async function seedCard(page: Page, { reportsProjectId = true } = {}) {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.evaluate(async (projectId) => {
-    const { createDefaultProject } = await import('/src/lib/projectModel.js');
-    const current = createDefaultProject();
-    current.id = projectId;
-    current.name = 'Ordinary gallery piece';
-    current.layout.starterPending = false;
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(current));
-    localStorage.setItem('lw_autosave_v3_backup', JSON.stringify(current));
-    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
-      version: 1, id: 'lw-ordinary-card', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40),
-    }));
-  }, PROJECT_ID);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(650);
-  const fingerprint = await page.evaluate(async () => {
-    const resolver = await import('/src/lib/cardProjectResolver.js');
-    const { migrateProject } = await import('/src/lib/projectModel.js');
-    const normalized = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
-    return resolver.cardProjectFingerprint(migrateProject(normalized));
+  const current = createDefaultProject();
+  current.id = PROJECT_ID;
+  current.name = PROJECT_NAME;
+  current.layout.starterPending = false;
+  const fingerprint = cardProjectFingerprint(current);
+  await page.addInitScript(({ project, identity }) => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    localStorage.setItem('lw_autosave_v3_backup', JSON.stringify(project));
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
+  }, {
+    project: current,
+    identity: {
+      version: 1, id: CARD_ID, firmwareVersion: '1.0.0', buildId: 'a'.repeat(40),
+    },
   });
 
   const status = readyStatus({
@@ -89,6 +85,7 @@ async function seedCard(page: Page, { reportsProjectId = true } = {}) {
       piece: { id: PROJECT_ID, name: PROJECT_NAME },
     } });
   });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   return { status, counts };
 }
 
