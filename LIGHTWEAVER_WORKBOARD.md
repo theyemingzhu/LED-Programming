@@ -1106,3 +1106,20 @@ No further authoring polish needed before delivery integration. Resumption:
 accept delivery authority correction, give exact API to sole UI owner for
 Put scene on card + generic-save routing, then focused integrated delivery
 journey with hardware fully mocked. No deploy/flash/physical playback proof.
+
+Deliveryb7945467+83862d44 accepted/integrated as5c221a78+975ec591. Primary
+64/64 focused integration tests pass. Verified actual firmware wiring-status
+includes cardId/buildId (main.cpp runtimeWiringSafetyStatus), not invented proof.
+Fresh access/identity/wiring preflight, full envelope validation, post-runtime
+source re-read, frozen payload now enforced. UI integration next.
+
+Final connected install assignment:existing UI task Sol/high, bounded to exact
+source/runtime/React lifecycle glue where mistaken success could mislabel a
+card; no new director. Own existing UI files and new browser integration test;
+helper unchanged unless manager approves a demonstrated contract gap. Acceptance:
+mocked card source-first path, pair/access failures no writes, unsupported scene
+no writes, source or readback failure no false success, editing-during-install
+preserves newer draft, correct generic Save to card with playbackSceneId, reload
+unverified until fresh exact evidence. Return helper/transport mismatch before
+bypassing evidence;20-minute convergence report; revert to medium for routine
+correction. No deployment, real card calls, firmware changes or exhaustive Prove.
