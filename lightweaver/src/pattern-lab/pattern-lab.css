@@ -1670,11 +1670,8 @@
   .plab-screen[data-sheet-detent="half"] .plab-compact-step-body { padding: 10px 14px 14px; }
   .plab-screen[data-sheet-detent="peek"] .plab-macro small,
   .plab-screen[data-sheet-detent="half"] .plab-macro small { display: none; }
-  /* One row of actions at peek instead of two. Flex rather than a fixed
-     column count because the row holds either one save button or two (once
-     a design has been saved, Replace joins it) — a 3-column grid wrapped a
-     four-button row onto a second line and clipped every label, eating the
-     height the sliders need. */
+  /* Keep saving to one compact row at the two live-preview detents. The
+     larger project handoff below is reserved for the full Save view. */
   .plab-screen[data-sheet-detent="peek"] .plab-actions,
   .plab-screen[data-sheet-detent="half"] .plab-actions {
     display: flex;
@@ -1682,6 +1679,11 @@
   }
   .plab-screen[data-sheet-detent="peek"] .plab-action-file,
   .plab-screen[data-sheet-detent="half"] .plab-action-file { display: none; }
+  /* Project handoff belongs to the full Add to Patterns step. Keeping its
+     two-row explanation in the compact play strip leaves no room for the
+     live sliders the strip exists to expose. */
+  .plab-screen[data-sheet-detent="peek"] .plab-use-in-project-promoted,
+  .plab-screen[data-sheet-detent="half"] .plab-use-in-project-promoted { display: none; }
   .plab-screen[data-sheet-detent="peek"] .plab-actions .btn,
   .plab-screen[data-sheet-detent="half"] .plab-actions .btn {
     flex: 1 1 0;

@@ -1456,10 +1456,18 @@ export default function PatternLabScreen({
   function openWorkflowStep(index) {
     setActiveWorkflowStep(index);
     if (index <= 2) setOpenInspectorStep(index);
-    // Step 0 is the pattern browser, which only exists at full height; the
-    // other three are reachable at whatever detent the owner is already on,
-    // so a tap on "Sculpt" from the play strip does not swallow the artwork.
-    if (mobileDrawer) setSheetDetent('full');
+    // Choose and Add to Patterns own the browser/library and project action,
+    // which need the full sheet. Sculpt and Evolve stay at the owner's current
+    // detent so tapping either from the play strip does not swallow the art.
+    if (mobileDrawer) {
+      setSheetDetent(current => {
+        if (index === 0 || index === 3) return 'full';
+        // Sculpt and Evolve belong beside the live artwork. Preserve a sheet
+        // the owner has already resized, but never make those steps modal just
+        // because their heading was tapped after choosing a pattern.
+        return current === 'closed' ? 'peek' : current;
+      });
+    }
     const targetId = [
       'plab-base-pattern',
       draft?.base?.kind === 'color-journey' ? 'plab-creative-heading' : 'plab-sculpt-heading',
@@ -1543,6 +1551,8 @@ export default function PatternLabScreen({
     setAuditionStopId(null);
     setMessage(`Opened ${normalized.name}`);
     setImportErrors([]);
+    setActiveWorkflowStep(1);
+    settleSheetOnSculpt();
   }
 
   // One place where a draft actually reaches storage, so the name is
