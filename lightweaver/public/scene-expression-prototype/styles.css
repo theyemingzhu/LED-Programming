@@ -89,6 +89,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .target-row.active .target-icon { color: var(--accent-hi); }
 .target-name { flex: 1; }
 .target-pattern { max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-low); font-size: 10.5px; }
+.target-check { width: 14px; height: 14px; flex: 0 0 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg); box-shadow: inset 0 0 0 3px var(--bg); }
+.target-row.active .target-check { border-color: var(--accent); background: var(--accent); }
 .layout-link { width: 100%; margin-top: 14px; }
 
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 13px; border-bottom: 1px solid var(--hairline); background: var(--bg); }
@@ -159,9 +161,9 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
   .head-actions .button { padding: 0 7px; }
   .workspace { display: flex; flex-direction: column; }
   .preview-panel { order: 1; min-height: 390px; }
-  .targets { order: 2; border-right: 0; border-top: 1px solid var(--hairline); overflow: visible; }
-  .controls { order: 3; border-left: 0; border-top: 1px solid var(--hairline); overflow: visible; }
-  .timeline { order: 4; }
+  .timeline { order: 2; }
+  .targets { order: 3; border-right: 0; border-top: 1px solid var(--hairline); overflow: visible; }
+  .controls { order: 4; border-left: 0; border-top: 1px solid var(--hairline); overflow: visible; }
   .target-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .target-pattern { display: none; }
   .layout-view { display: flex; flex-direction: column; }

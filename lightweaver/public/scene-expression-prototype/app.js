@@ -6,6 +6,12 @@ import {
   resolveSceneExpressionSelection,
 } from '/src/lib/sceneExpressionTargets.js';
 import { FIXTURES, fixtureStrips } from './fixtures.js';
+import {
+  applyBehaviorFieldPatch,
+  blendColorMaps,
+  playbackAtElapsed,
+  updateAreaSelection,
+} from './model.js';
 
 const STORAGE_KEY = 'lightweaver.expressionPrototype.scenes.v1';
 const INSTALL_KEY = 'lightweaver.expressionPrototype.installations.v1';
@@ -51,7 +57,7 @@ function makeInitialScene(fixtureKey = 'strip') {
     fixtureId: fixture.id,
     fixtureKey,
     name: fixtureKey === 'strip' ? 'Amber current' : 'Mandala breathing',
-    selection: { areaIds: ['all'], domain: 'continuous' },
+    selection: { areaIds: ['all'], domain: 'repeat' },
     selectedStepId: '',
     steps: [],
     updatedAt: new Date().toISOString(),
@@ -124,7 +130,9 @@ function stepSummary(step) {
   return ids.length === 1 ? PATTERN_NAMES[ids[0]] : `${ids.length} simultaneous behaviors`;
 }
 function targetName() {
-  if (scene.selection.areaIds.length > 1) return `${scene.selection.areaIds.length} areas`;
+  if (scene.selection.areaIds.length > 1) {
+    return scene.selection.areaIds.map(id => areaById(id)?.name).filter(Boolean).join(' + ');
+  }
   return areaById(scene.selection.areaIds[0])?.name || 'Selection';
 }
 
@@ -194,7 +202,7 @@ function editorTemplate({ fixture, step, selected, savedScenes, patternValue, sp
     <section class="preview-panel">
       <div class="preview-toolbar">
         <div class="preview-title"><strong>${escapeHtml(fixture.name)}</strong><span>${escapeHtml(targetName())} · ${escapeHtml(step.name)}</span></div>
-        <div class="preview-meta">${fixture.layout.strips.reduce((sum, strip) => sum + strip.pixelCount, 0)} LEDs · simulated hardware</div>
+        <div class="preview-meta">Browser preview · hardware simulated</div>
       </div>
       <div class="canvas-wrap">
         <canvas id="artwork" aria-label="Animated artwork preview. Select an area directly on the artwork."></canvas>
@@ -219,7 +227,7 @@ function editorTemplate({ fixture, step, selected, savedScenes, patternValue, sp
         </select>
       </div>
       <div class="field">
-        <div class="field-head"><span>Colors</span><span class="field-value">Editable source</span></div>
+        <div class="field-head"><span>Colors</span></div>
         <div class="palette">${palette.slice(0, 4).map((color, index) => `<input type="color" data-palette="${index}" value="${color}" aria-label="Palette color ${index + 1}" />`).join('')}</div>
       </div>
       <div class="field">
@@ -247,19 +255,19 @@ function editorTemplate({ fixture, step, selected, savedScenes, patternValue, sp
         <div class="field-head"><label for="transition">Transition preview</label><span class="field-value">seconds</span></div>
         <input class="number" id="transition" type="number" min="0" max="30" step="0.1" value="${step.transition}" />
       </div>
-      <div class="mapping-note">${resolution.ok ? ICONS.check : ICONS.section}<span>${resolution.ok ? 'Targets retain Layout IDs' : escapeHtml(resolution.errors[0]?.message || 'Target needs reassignment')}</span></div>
+      ${resolution.ok ? '' : `<div class="mapping-note">${ICONS.section}<span>${escapeHtml(resolution.errors[0]?.message || 'Choose this area again in Layout')}</span></div>`}
     </aside>
     ${timelineTemplate()}`;
 }
 
 function targetRow(item) {
-  const active = scene.selection.areaIds.length === 1 && scene.selection.areaIds[0] === item.id;
+  const active = scene.selection.areaIds.includes(item.id);
   const itemStrips = new Set(item.stripIds);
   const patterns = [...new Set(currentStep().behaviors.filter(entry => behaviorStripIds(entry).some(id => itemStrips.has(id))).map(entry => entry.patternId))];
   const label = patterns.length === 1 ? PATTERN_NAMES[patterns[0]] : `${patterns.length} patterns`;
-  return `<button class="target-row ${active ? 'active' : ''}" data-target-id="${item.id}">
+  return `<button class="target-row ${active ? 'active' : ''}" data-target-id="${item.id}" aria-pressed="${active}">
     <span class="target-icon">${item.kind === 'strip' ? ICONS.section : ICONS.layers}</span>
-    <span class="target-name">${escapeHtml(item.name)}</span><span class="target-pattern">${escapeHtml(label)}</span>
+    <span class="target-name">${escapeHtml(item.name)}</span><span class="target-pattern">${escapeHtml(label)}</span>${item.kind === 'strip' ? '<span class="target-check" aria-hidden="true"></span>' : ''}
   </button>`;
 }
 
@@ -305,14 +313,13 @@ function bindEvents() {
   document.querySelector('#close-layout')?.addEventListener('click', () => { layoutOpen = false; render(); });
   document.querySelector('#saved-scene')?.addEventListener('change', event => { if (event.target.value) openSaved(event.target.value); });
   document.querySelector('#play-scene')?.addEventListener('click', () => { isPlaying = !isPlaying; playStartedAt = performance.now(); playOffset = 0; render(); });
-  document.querySelector('#pattern')?.addEventListener('change', event => { if (event.target.value) applyToSelection(item => { item.patternId = event.target.value; }); });
-  document.querySelectorAll('[data-palette]').forEach(input => input.addEventListener('input', event => applyToSelection(item => { item.palette[Number(event.target.dataset.palette)] = event.target.value; }, false)));
+  document.querySelector('#pattern')?.addEventListener('change', event => { if (event.target.value) applyFieldPatch({ field: 'patternId', value: event.target.value }); });
+  document.querySelectorAll('[data-palette]').forEach(input => input.addEventListener('input', event => applyFieldPatch({ field: 'palette', index: Number(event.target.dataset.palette), value: event.target.value }, false)));
   document.querySelectorAll('[data-spatial]').forEach(button => button.addEventListener('click', () => {
-    scene.selection.domain = button.dataset.spatial;
-    applyToSelection(() => {});
+    changeSelectionDomain(button.dataset.spatial);
   }));
-  document.querySelector('#speed')?.addEventListener('input', event => applyToSelection(item => { item.speed = Number(event.target.value); }, false));
-  document.querySelector('#brightness')?.addEventListener('input', event => applyToSelection(item => { item.brightness = Number(event.target.value); }, false));
+  document.querySelector('#speed')?.addEventListener('input', event => applyFieldPatch({ field: 'speed', value: Number(event.target.value) }, false));
+  document.querySelector('#brightness')?.addEventListener('input', event => applyFieldPatch({ field: 'brightness', value: Number(event.target.value) }, false));
   document.querySelector('#hold')?.addEventListener('change', event => { currentStep().hold = bounded(event.target.value, 1, 120); setDirty(); render(); });
   document.querySelector('#transition')?.addEventListener('change', event => { currentStep().transition = bounded(event.target.value, 0, 30); setDirty(); render(); });
   document.querySelectorAll('[data-step]').forEach(button => button.addEventListener('click', event => { if (event.target.closest('[data-move]')) return; scene.selectedStepId = button.dataset.step; render(); }));
@@ -338,10 +345,23 @@ function switchFixture(key) {
 }
 
 function selectTarget(id) {
-  scene.selection = { areaIds: [id], domain: scene.selection.domain };
+  const area = areaById(id);
+  scene.selection = updateAreaSelection(scene.selection, area);
   render();
 }
-function applyToSelection(mutator, rerender = true) {
+function applyFieldPatch(patch, rerender = true) {
+  currentStep().behaviors = applyBehaviorFieldPatch({
+    behaviors: currentStep().behaviors,
+    selection: scene.selection,
+    catalog: currentCatalog(),
+    patch,
+  });
+  setDirty();
+  if (rerender) render();
+}
+function changeSelectionDomain(domain) {
+  if (scene.selection.domain === domain) return;
+  scene.selection.domain = domain;
   const step = currentStep();
   const selectedIds = selectedStripIds();
   const selectedSet = new Set(selectedIds);
@@ -370,9 +390,8 @@ function applyToSelection(mutator, rerender = true) {
     };
     step.behaviors = [...retained, targetBehavior];
   }
-  mutator(targetBehavior);
   setDirty();
-  if (rerender) render();
+  render();
 }
 function setDirty() { dirty = true; if (demoState === 'success') demoState = 'changed'; }
 
@@ -457,7 +476,7 @@ function selectArtworkArea(event) {
     const distance = Math.hypot(point.x - px, point.y - py);
     if (distance < nearest.distance) nearest = { id: section.id, distance };
   }));
-  if (nearest.id) { scene.selection = { areaIds: [`strip:${nearest.id}`], domain: 'repeat' }; render(); }
+  if (nearest.id) selectTarget(`strip:${nearest.id}`);
 }
 
 let canvasObserver;
@@ -476,16 +495,14 @@ function sizeCanvas() {
 }
 
 function playbackAt(now) {
-  if (!isPlaying) return { step: currentStep(), localTime: now / 1000 };
-  const total = scene.steps.reduce((sum, step) => sum + step.hold + step.transition, 0);
-  const elapsed = ((now - playStartedAt) / 1000 + playOffset) % total;
-  let cursor = 0;
-  for (const step of scene.steps) {
-    const duration = step.hold + step.transition;
-    if (elapsed < cursor + duration) return { step, localTime: elapsed - cursor };
-    cursor += duration;
-  }
-  return { step: scene.steps[0], localTime: 0 };
+  if (!isPlaying) return { step: currentStep(), nextStep: null, phase: 'hold', localTime: now / 1000, transitionProgress: 0 };
+  const elapsed = (now - playStartedAt) / 1000 + playOffset;
+  const sample = playbackAtElapsed(scene.steps, elapsed);
+  return {
+    ...sample,
+    step: scene.steps[sample.index],
+    nextStep: scene.steps[sample.nextIndex],
+  };
 }
 
 function drawFrame(now) {
@@ -504,11 +521,15 @@ function drawFrame(now) {
 
 function drawArtwork(ctx, width, height, now) {
   const fixture = currentFixture();
-  const { step, localTime } = playbackAt(now);
+  const { step, nextStep, phase, localTime, transitionProgress } = playbackAt(now);
   const transform = canvasTransform(fixture, width, height);
   ctx.fillStyle = 'oklch(12.8% 0.006 72)'; ctx.fillRect(0, 0, width, height);
   drawGuides(ctx, width, height, fixture);
-  const colorsById = renderColors(fixture, step, localTime);
+  renderFault = '';
+  const currentColors = renderColors(fixture, step, localTime);
+  const colorsById = phase === 'transition' && nextStep
+    ? blendColorMaps(currentColors, renderColors(fixture, nextStep, transitionProgress * Math.max(1, nextStep.hold)), transitionProgress)
+    : currentColors;
   fixture.layout.strips.forEach(section => {
     const colors = colorsById[section.id] || [];
     const selected = selectedStripIds().includes(section.id);
@@ -527,7 +548,10 @@ function drawArtwork(ctx, width, height, now) {
     }
   });
   const playingLabel = document.querySelector('#playing-step');
-  if (playingLabel && playingLabel.textContent !== step.name) playingLabel.textContent = step.name;
+  const playbackLabel = phase === 'transition' && nextStep
+    ? `${step.name} → ${nextStep.name} · ${Math.round(transitionProgress * 100)}% preview blend`
+    : step.name;
+  if (playingLabel && playingLabel.textContent !== playbackLabel) playingLabel.textContent = playbackLabel;
   document.querySelectorAll('.step-card').forEach(card => card.classList.toggle('playing', isPlaying && card.dataset.step === step.id));
 }
 
@@ -547,7 +571,6 @@ function renderColors(fixture, step, t) {
   const output = Object.fromEntries(fixture.layout.strips.map(strip => [strip.id, strip.pts.map(() => ({ r: 24, g: 22, b: 21 }))]));
   const stripsById = new Map(fixtureStrips(fixture).map(strip => [strip.id, strip]));
   const catalog = currentCatalog();
-  renderFault = '';
   step.behaviors.forEach(item => {
     const resolved = resolveSceneExpressionSelection(catalog, item.target);
     if (!resolved.ok) {

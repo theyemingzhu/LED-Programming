@@ -24,6 +24,9 @@ The prototype is intentionally served by Vite because its preview imports the ex
 - The fixtures are current Layout-shaped data (`strips`, `sectionFamilies`, `layerGroups`, and `wiring`). The prototype builds the area catalog and compiled physical order through the accepted production helpers.
 - A time step owns simultaneous per-area behaviors. Whole/group edits update the selected domain together; section edits create local overrides.
 - `Continuous across` resolves one compiled physical-order stream. `Repeat per area` preserves one instance for each explicitly selected catalog area, so a selected group remains one domain while separately selected sections remain independent.
+- Section rows are touch toggles. Multiple leaf sections can be selected without selecting their family; parent and group rows remain one exclusive domain.
+- Field edits patch only that field across the selected areas. Changing a palette keeps each area's pattern, pace and brightness; changing a pattern keeps distinct per-area palettes.
+- Hold time renders the current step unchanged, then Transition preview blends its rendered frame into the next step before the next hold begins.
 - Scene, step and area identities survive local save/reopen. The simulated installed record includes the exact editable `sceneSource`, revision and stable IDs.
 - `Try on lights` is a reversible simulated live state beside the preview. `Put on card` is a separate deliberate action beside Save. No network or card request exists in the prototype.
 - The demonstration selector exposes disconnected, changed, installing, failed and success states without hidden setup.
@@ -46,10 +49,11 @@ The prototype is intentionally served by Vite because its preview imports the ex
 ## Verification
 
 - `node --test src/lib/sceneExpressionTargets.test.js`: 7/7 passing.
+- `node --test public/scene-expression-prototype/model.test.mjs`: 6/6 passing. It covers mixed-pattern palette edits, distinct-palette pattern edits, partial group overrides, transition timing/frame blending and nonadjacent leaf selection.
 - Focused browser journey passed in Chromium: mandala group edit, local save,
   fixture switch, reopen with the same scene/step/area IDs, Layout round-trip,
   duplicate step, playback highlight, disconnected controls, installing state,
   success acknowledgement, and installed editable-source snapshot.
 - One batched desktop/phone inspection covered both fixtures, followed by one
-  correction pass for the phone header. The Impeccable detector returned no
+  correction pass for the phone header. A second bounded manager-requested correction moved the phone step strip directly below playback and added visible leaf-selection toggles. The Impeccable detector returned no
   findings for the final HTML, CSS and JavaScript.
