@@ -1,3 +1,5 @@
+import { compileWiring } from '../lib/wiringCompiler.js';
+
 function text(value) {
   return String(value || '').trim();
 }
@@ -64,3 +66,39 @@ export function compareSceneExpressionPreviewTopology({ cardStatus, desiredConfi
   return { ok: true, card, desired };
 }
 
+function compiledSourceMap(project) {
+  const compiled = compileWiring({
+    wiring: project?.layout?.wiring,
+    strips: project?.layout?.strips || [],
+  });
+  if (!compiled.ok) return null;
+  return compiled.pixels.map(pixel => ({
+    outputId: text(pixel.outputId),
+    runId: text(pixel.runId),
+    inactive: pixel.inactive === true,
+    stripId: pixel.inactive === true ? null : text(pixel.stripId),
+    sourceLed: pixel.inactive === true ? null : Number(pixel.sourceLed),
+  }));
+}
+
+export function compareSceneExpressionPreviewSourceMapping({ installedProject, draftProject } = {}) {
+  const installed = compiledSourceMap(installedProject);
+  const draft = compiledSourceMap(draftProject);
+  if (!installed || !draft) {
+    return {
+      ok: false,
+      reason: 'wiring-source-unavailable',
+      message: 'The installed Layout source map could not be verified. Install the Layout changes first.',
+    };
+  }
+  if (JSON.stringify(installed) !== JSON.stringify(draft)) {
+    return {
+      ok: false,
+      reason: 'wiring-source-mismatch',
+      message: 'This Layout uses a different source-to-output map from the card. Install the Layout changes first.',
+      installed,
+      draft,
+    };
+  }
+  return { ok: true, installed, draft };
+}
