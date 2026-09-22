@@ -966,3 +966,21 @@ steps are below entire long inspector; selectTarget only single area so explicit
 multiple-member repeat selection cannot be exercised. Return bounded fixes to
 same worker Sol/medium with behavior tests and one desktop/phone correction pass.
 No generic polish loop. Prototype remains isolated and hardware simulated.
+
+Prototype correction1bf6c15 accepted and integrated with originalb82543f0 as
+19e5d96b+6616ca1a. Primary inspected corrected desktop/phone screens and reran
+31/31 prototype+targeting+wiring tests. Independent field edits preserve mixed
+patterns/palettes; real preview blending; touch multi-selection; phone timeline
+immediately below canvas. This is an isolated prototype, not production/card
+integration; hardware remains explicitly simulated.
+
+Compiler4d4a8047 primary review reproduced two blockers:3-source/2-physical
+partial route returns compile ok; JSON __proto__ assignment mutates Object
+prototype through dotted-path setter. Same Sol/medium worker owns bounded
+correction with exact-once wiring coverage and safe segmented field paths;
+regressions must include duplicate coverage, dangerous/dotted extension keys,
+normal nested inheritance and no prototype mutation. Also tighten native
+movement field fidelity. No escalation/model change or architecture expansion.
+Resumption:accept compiler correction, integrate only its new modules/tests,
+then dispatch production source/editor/card handoff using shared contract.
+No push, deployment, flash, or physical playback proof. Cost unknown.
