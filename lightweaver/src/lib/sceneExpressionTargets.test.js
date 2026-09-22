@@ -102,6 +102,18 @@ test('continuous selection follows current physical order while repeat keeps ind
     [{ stripId: 'ribbon-2', sourceLeds: [0, 1] }],
     [{ stripId: 'ribbon-3', sourceLeds: [0, 1] }],
   ]);
+
+  const groupedRepeat = resolveSceneExpressionSelection(catalog, {
+    areaIds: ['group:petals'], domain: 'repeat',
+  });
+  assert.equal(groupedRepeat.ok, true);
+  assert.deepEqual(groupedRepeat.instances, [{
+    areaId: 'group:petals',
+    sourceRefs: [
+      { stripId: 'petal-a', sourceLeds: [0] },
+      { stripId: 'petal-b', sourceLeds: [0] },
+    ],
+  }], 'one selected group remains one repeat instance');
 });
 
 test('whole artwork is explicit and preserves physical order without changing artwork coordinates', () => {
@@ -110,6 +122,63 @@ test('whole artwork is explicit and preserves physical order without changing ar
   assert.equal(resolved.ok, true);
   assert.deepEqual(resolved.physicalRefs.map(ref => ref.outputIndex), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
   assert.equal(strips[0].pixels[0].x, 1, 'selection never rewrites layout artwork points');
+});
+
+test('continuous export rejects a compiled route that covers only part of the selected source', () => {
+  const partialStrips = [{
+    id: 'a', name: 'A', pixelCount: 3,
+    pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }],
+  }];
+  const partialWiring = compileWiring({
+    strips: partialStrips,
+    wiring: {
+      version: 1,
+      outputs: [{ id: 'out', pin: 16, runIds: ['r'] }],
+      runs: [{ id: 'r', type: 'strip', source: { stripId: 'a', from: 0, to: 1 } }],
+    },
+  });
+  assert.equal(partialWiring.ok, true);
+
+  const resolved = resolveSceneExpressionSelection(
+    buildSceneExpressionAreaCatalog({ strips: partialStrips, compiledWiring: partialWiring }),
+    { areaIds: ['all'], domain: 'continuous' },
+  );
+  assert.equal(resolved.ok, false);
+  assert.ok(resolved.errors.some(error => error.code === 'physical-coverage-incomplete'));
+  assert.deepEqual(resolved.sourceRefs, []);
+  assert.deepEqual(resolved.physicalRefs, []);
+});
+
+test('continuous export rejects duplicate physical coverage and zero-LED areas while repeat stays source-only', () => {
+  const oneStrip = [{ id: 'a', name: 'A', pixelCount: 1, pixels: [{ x: 0, y: 0 }] }];
+  const duplicated = {
+    ok: true,
+    pixels: [
+      { stripId: 'a', sourceLed: 0 },
+      { stripId: 'a', sourceLed: 0 },
+    ],
+  };
+  const duplicateResult = resolveSceneExpressionSelection(
+    buildSceneExpressionAreaCatalog({ strips: oneStrip, compiledWiring: duplicated }),
+    { areaIds: ['strip:a'], domain: 'continuous' },
+  );
+  assert.equal(duplicateResult.ok, false);
+  assert.ok(duplicateResult.errors.some(error => error.code === 'physical-coverage-duplicate'));
+
+  const zeroCatalog = buildSceneExpressionAreaCatalog({
+    strips: [{ id: 'empty', name: 'Empty', pixelCount: 0, pixels: [] }],
+  });
+  const zeroContinuous = resolveSceneExpressionSelection(zeroCatalog, {
+    areaIds: ['strip:empty'], domain: 'continuous',
+  });
+  assert.equal(zeroContinuous.ok, false);
+  assert.ok(zeroContinuous.errors.some(error => error.code === 'empty-source-selection'));
+
+  const zeroRepeated = resolveSceneExpressionSelection(zeroCatalog, {
+    areaIds: ['strip:empty'], domain: 'repeat',
+  });
+  assert.equal(zeroRepeated.ok, false);
+  assert.ok(zeroRepeated.errors.some(error => error.code === 'empty-source-selection'));
 });
 
 test('parent-child and overlapping group selections are rejected before pixels can be double selected', () => {

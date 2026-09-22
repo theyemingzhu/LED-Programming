@@ -38,11 +38,17 @@ the saved catalog IDs.
   three parts of a divided strip.
 - `domain: 'repeat'` returns `instances`, one independent source domain per
   selected area. This is the meaning of giving the three parts their own
-  simultaneous behavior.
+  simultaneous behavior. Choosing a group creates one repeated instance for
+  that group; it does not silently make one instance per member. Select the
+  member areas when independent member repetition is intended.
 
 The function rejects parent/child and overlapping-group selections before any
 pixel can appear twice. It also rejects an empty choice, an unknown domain, and
-a continuous choice without compiled wiring.
+a continuous choice without compiled wiring. A successful wiring compilation
+alone is not sufficient: a continuous choice must have exactly one compiled
+physical reference for every selected source LED. Missing coverage, zero
+matching physical LEDs, duplicate physical coverage, and zero-LED areas return
+an explicit error instead of silently shortening or duplicating an expression.
 
 Missing saved area IDs remain in `unresolved`; they never expand to `all` or a
 similarly named current strip. A family/group whose recorded member is missing
