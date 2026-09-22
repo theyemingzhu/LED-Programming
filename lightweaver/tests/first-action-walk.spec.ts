@@ -190,13 +190,16 @@ test('[FA-unplugged] no card answering: Find my card is first', async ({ page })
   expectOneFirstAction(report, /set up the card|plug in and find card|find my card/i, 'unplugged');
 });
 
-test('[FA-plugged-blank] a plugged-in empty card opens on find the lights, not Find my card', async ({ page }) => {
+test('[FA-plugged-blank] a plugged-in empty card offers one-tap pairing before find the lights', async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await waitConnectedUnaided(page, 'FA-plugged-blank auto-see');
+  await expect(page.getByTestId('setup-connect-card')).toHaveText(/pair this card/i, {
+    timeout: CONNECT_BUDGET_MS,
+  });
   const firstPaint = await captureStep(page, 'fa-plugged-blank-first');
+  expectOneFirstAction(firstPaint, /pair this card/i, 'plugged-in unpaired card');
 
   await connectIfNeeded(page, 'FA-plugged-blank connect');
   await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'discover-lights', {
@@ -204,19 +207,18 @@ test('[FA-plugged-blank] a plugged-in empty card opens on find the lights, not F
   });
   const after = await captureStep(page, 'fa-plugged-blank-connected');
   expectOneFirstAction(after, /find and count the lights/i, 'plugged-in blank card');
-  expect(
-    firstPaint.firstPrimary,
-    'a card that is already answering must not open on Find my card — detect it',
-  ).toMatch(/find and count the lights/i);
 });
 
-test('[FA-plugged-loaded] a plugged-in loaded card opens on that project, and lights stay reachable', async ({ page }) => {
+test('[FA-plugged-loaded] a plugged-in loaded card pairs explicitly, then opens on that project', async ({ page }) => {
   const spec = cardState('installed-match');
   const card = createCardSimulator(spec);
   await card.install(page);
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await waitConnectedUnaided(page, 'FA-plugged-loaded auto-see');
+  await expect(page.getByTestId('setup-connect-card')).toHaveText(/pair this card/i, {
+    timeout: CONNECT_BUDGET_MS,
+  });
   const firstPaint = await captureStep(page, 'fa-plugged-loaded-first');
+  expectOneFirstAction(firstPaint, /pair this card/i, 'plugged-in unpaired card');
 
   await connectIfNeeded(page, 'FA-plugged-loaded connect');
   await expect.poll(async () => (await readFirstAction(page, 'poll')).journeyTask, {
@@ -243,10 +245,7 @@ test('[FA-plugged-loaded] a plugged-in loaded card opens on that project, and li
   expect(back.primaryCount, 'going back to lights must not add a second primary').toBe(1);
   expect(back.firstPrimary).toMatch(/open patterns|use this card|load /i);
 
-  expect(
-    firstPaint.firstPrimary,
-    'a loaded card that is already answering must not open on Find my card',
-  ).toMatch(/use this card|load |open patterns/i);
+  expect(firstPaint.firstPrimary).toMatch(/pair this card/i);
 });
 
 test('[FA-outdated] an outdated card puts Update first', async ({ page }) => {

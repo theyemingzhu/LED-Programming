@@ -52,7 +52,10 @@ test('Pattern Lab is a lazy Studio route reachable from the rail and from Patter
 
   await expect(page).toHaveURL(/screen=pattern-lab/);
   await expect(page.getByTestId('pattern-lab-screen')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Pattern Lab' })).toBeVisible();
+  await expect(page.getByTestId('pattern-lab-toolbar')).toBeVisible();
+  const title = page.getByRole('heading', { name: 'Pattern Lab', includeHidden: true });
+  if (await isMobileDrawerViewport(page)) await expect(title).toBeHidden();
+  else await expect(title).toBeVisible();
   // The rail follows the screen: Lab owns the current page, Patterns lets go.
   await expect(lab).toHaveAttribute('aria-current', 'page');
   await expect(patterns).not.toHaveAttribute('aria-current', 'page');

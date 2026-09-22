@@ -1,0 +1,87 @@
+.sh-scene-library {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sh-scene-library > p,
+.sh-scene-library-empty > p,
+.sh-scene-library-unsupported > p {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.sh-scene-library > strong {
+  color: var(--text-hi);
+  font-size: 13px;
+}
+
+.sh-scene-list {
+  display: grid;
+  gap: 7px;
+}
+
+.sh-scene-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-hair);
+  border-radius: var(--r-md);
+  background: var(--bg-elev);
+}
+
+.sh-scene-list article.selected {
+  border-color: var(--lw-live-ink, var(--accent));
+  background: color-mix(in srgb, var(--lw-live-ink, var(--accent)) 7%, var(--bg-elev));
+}
+
+.sh-scene-choice {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sh-scene-choice strong,
+.sh-scene-choice span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-scene-choice strong {
+  color: var(--text-hi);
+  font-size: 12px;
+}
+
+.sh-scene-choice span {
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.show-scene-editor-host {
+  min-width: 0;
+  min-height: 0;
+}
+
+.show-scene-close-error {
+  margin: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-hi);
+  font-size: 12px;
+}

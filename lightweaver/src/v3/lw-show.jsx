@@ -40,6 +40,8 @@ import { canPushDirectlyToCard, readStoredCardHost } from '../lib/cardConnection
 import { createLiveControlAuthorityGate } from '../lib/cardLiveControl.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { handBackToOnlineStudio } from '../lib/runtimeMode.js';
+import SceneExpressionEditor from '../scene-expression/SceneExpressionEditor.jsx';
+import ShowSceneLibrary from './ShowSceneLibrary.jsx';
 
 const SLOW_MODES = MODE_LIBRARY.filter((m) => m.tier === 'slow');
 const LIVELY_MODES = MODE_LIBRARY.filter((m) => m.tier === 'lively');
@@ -229,8 +231,14 @@ function BandMeter({ label, value }) {
   );
 }
 
-function ShowScreen({ connected, cardLink, currentProject, go }) {
-  const { strips, hidden, patchBoard, layerGroups } = useProject();
+function ShowScreen({
+  connected, cardLink, currentProject, go,
+  onSaveProject, onInstallExpressionScene, expressionInstallationReceipt,
+  onStartExpressionScenePreview, onStopExpressionScenePreview,
+  onExpressionSceneEditorOpenChange, expressionPreviewContextKey,
+}) {
+  const project = useProject();
+  const { strips, hidden, patchBoard, layerGroups, expressionScenes, setExpressionScenes } = project;
   const mandalaTemplate = useMemo(() => createMandalaSpatialTemplate(), []);
   const connectedTemplate = useMemo(
     () => createConnectedSpatialTemplate({ strips, hidden, patchBoard }),
@@ -336,6 +344,11 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
   const [knobs, setKnobs] = useState(KNOB_DEFAULTS);
   const [tuneOpen, setTuneOpen] = useState(false);
   const [tuneStatus, setTuneStatus] = useState('');
+  const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
+  const [sceneEditorBusy, setSceneEditorBusy] = useState(false);
+  const [sceneEditorCloseError, setSceneEditorCloseError] = useState('');
+  const sceneEditorOpenChangeRef = useRef(onExpressionSceneEditorOpenChange);
+  sceneEditorOpenChangeRef.current = onExpressionSceneEditorOpenChange;
 
   // ── the ensemble ("Voices") ───────────────────────────────────────────────
   // Two ways for the same piece to listen, switchable while the music plays:
@@ -992,6 +1005,59 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
     ? 'the room'
     : (source === 'demo' ? (demoTrack?.name || 'a demo track') : (fileName || 'your song'));
 
+  const selectScene = useCallback((sceneId) => {
+    setExpressionScenes(current => ({ ...current, activeSceneId: sceneId }));
+  }, [setExpressionScenes]);
+
+  const openSceneEditor = useCallback(async (sceneId) => {
+    if (sceneEditorBusy) return;
+    if (sceneId) selectScene(sceneId);
+    setSceneEditorBusy(true);
+    goQuiet();
+    await stopLights();
+    setSceneEditorCloseError('');
+    setSceneEditorOpen(true);
+    onExpressionSceneEditorOpenChange?.(true);
+    setSceneEditorBusy(false);
+  }, [goQuiet, onExpressionSceneEditorOpenChange, sceneEditorBusy, selectScene, stopLights]);
+
+  const closeSceneEditor = useCallback(async () => {
+    if (sceneEditorBusy) return;
+    setSceneEditorBusy(true);
+    let stopped;
+    try {
+      stopped = onStopExpressionScenePreview
+        ? await onStopExpressionScenePreview('show-editor-close')
+        : { restored: true };
+    } catch (error) {
+      stopped = { restored: false, error };
+    }
+    if (stopped?.restored !== true) {
+      setSceneEditorCloseError(stopped?.error?.message || 'The previous card playback could not be restored, so Show is keeping the scene editor open.');
+      setSceneEditorBusy(false);
+      return;
+    }
+    setSceneEditorOpen(false);
+    onExpressionSceneEditorOpenChange?.(false);
+    setSceneEditorBusy(false);
+  }, [onExpressionSceneEditorOpenChange, onStopExpressionScenePreview, sceneEditorBusy]);
+
+  useEffect(() => () => sceneEditorOpenChangeRef.current?.(false), []);
+
+  if (sceneEditorOpen) return <div className="show-scene-editor-host">
+    {sceneEditorCloseError && <div className="show-scene-close-error" role="alert">{sceneEditorCloseError}</div>}
+    <SceneExpressionEditor
+      hostName="Show"
+      project={project}
+      onSaveProject={onSaveProject}
+      onInstallScene={onInstallExpressionScene}
+      installationReceipt={expressionInstallationReceipt}
+      onStartPhysicalPreview={onStartExpressionScenePreview}
+      physicalPreviewContextKey={expressionPreviewContextKey}
+      onClose={closeSceneEditor}
+    />
+  </div>;
+
   return (
     <div className="screen">
       <div className="sh">
@@ -1164,6 +1230,12 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
           {/* controls */}
           <aside className="sh-insp">
             <div className="sh-insp-body">
+              <ShowSceneLibrary
+                expressionScenes={expressionScenes}
+                onSelectScene={selectScene}
+                onOpenScene={openSceneEditor}
+                busy={sceneEditorBusy}
+              />
               {/*
                 Each inspector section is its own element, so it can be drawn
                 as a bordered module instead of a CSS band. Two of them are the

@@ -6,6 +6,14 @@ import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 const TEST_CARD_ID = 'lw-wiring-tests';
 
+test.beforeEach(async ({ page }) => {
+  // Card setup probes local controller hosts in the background. Keep these
+  // workspace fixtures independent of a developer's real LAN card while
+  // leaving the Playwright app origin available. Tests that model a card
+  // register their more-specific routes later, so those fixtures still win.
+  await page.route(/^http:\/\/(?!(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/).+/, route => route.abort());
+});
+
 async function installStableCardIdentity(page: any) {
   await page.addInitScript(cardId => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId }));
@@ -46,6 +54,12 @@ async function gotoWire(page: any) {
 async function gotoLayoutTools(page: any) {
   await page.evaluate(hash => { window.location.hash = hash; }, LAYOUT_HASH);
   await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+}
+
+async function finishLayoutFromCard(page: any) {
+  await page.getByTestId('layout-finish-before-save').click();
+  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
+  await expect(page).toHaveURL(/mode=draw/);
 }
 
 // Open wiring controls; nested advanced settings remain folded.
@@ -318,7 +332,7 @@ test('Advanced mapping inserts and removes a zero-address cable jump without cha
   await expect(page.getByRole('button', { name: 'Add a cable jump' })).toBeDisabled();
 });
 
-test('Test & Install reports a missing run without repairing it; Wire owns reconciliation', async ({ page }) => {
+test('Card install leaves a missing run untouched; Layout owns reconciliation', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   const project = await saveProject(page);
   const missingRunId = project.layout.wiring.runs.find((run: any) => run.type === 'strip' && run.source.stripId === 'default-inner-circle').id;
@@ -329,22 +343,21 @@ test('Test & Install reports a missing run without repairing it; Wire owns recon
   const missingWiring = structuredClone(project.layout.wiring);
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.goto('/?fixture=missing-run#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'Finish the setup in Wire' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Edit in Wire' })).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-finish-reason')).toContainText('Every strip needs a GPIO');
+  await expect(page.getByTestId('layout-finish-before-save')).toHaveText('Finish Layout');
 
   const unchanged = await saveProject(page);
   expect(unchanged.layout.wiring).toEqual(missingWiring);
 
-  await page.getByRole('button', { name: 'Edit in Wire' }).click();
-  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
-  await expect(page).toHaveURL(/mode=draw/);
+  await finishLayoutFromCard(page);
   const repaired = await saveProject(page);
   const repairedRun = repaired.layout.wiring.runs.find((run: any) => run.type === 'strip' && run.source.stripId === 'default-inner-circle');
   expect(repairedRun).toBeTruthy();
   expect(repaired.layout.wiring.outputs[0].runIds).toContain(repairedRun.id);
 });
 
-test('Wire reattaches an orphaned strip run without duplicating it or looping back from Test & Install', async ({ page }) => {
+test('Layout reattaches an orphaned strip run without duplicating it or looping back from Card install', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   const project = await saveProject(page);
   const orphanRun = project.layout.wiring.runs.find((run: any) => run.type === 'strip' && run.source.stripId === 'default-inner-circle');
@@ -355,13 +368,12 @@ test('Wire reattaches an orphaned strip run without duplicating it or looping ba
   const orphanedWiring = structuredClone(project.layout.wiring);
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.goto('/?fixture=orphan-run#screen=layout&mode=wire', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'Finish the setup in Wire' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Edit in Wire' })).toBeVisible();
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-finish-reason')).toContainText('Every strip needs a GPIO');
+  await expect(page.getByTestId('layout-finish-before-save')).toHaveText('Finish Layout');
   expect((await saveProject(page)).layout.wiring).toEqual(orphanedWiring);
 
-  await page.getByRole('button', { name: 'Edit in Wire' }).click();
-  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
-  await expect(page).toHaveURL(/mode=draw/);
+  await finishLayoutFromCard(page);
   const repaired = await saveProject(page);
   const matchingRuns = repaired.layout.wiring.runs.filter((run: any) => run.type === 'strip' && run.source.stripId === 'default-inner-circle');
   expect(matchingRuns).toHaveLength(1);
@@ -371,7 +383,7 @@ test('Wire reattaches an orphaned strip run without duplicating it or looping ba
   await switchMode(page, 'wire');
   await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Edit in Wire' })).toHaveCount(0);
+  await expect(page.getByTestId('layout-finish-before-save')).toHaveCount(0);
 });
 
 test('opening consolidated install never starts the retired frame-stream check', async ({ page }) => {
@@ -395,20 +407,24 @@ test('narrow inspector uses container-aware stacked controls without clipping', 
 
 test('legacy wire-count review is confirmed in Draw and clears the Wire warning', async ({ page }) => {
   await seedDefaultCircles(page, { needsReview: true, mode: 'wire' });
-  // Wire: the primary flow carries a one-line pointer to Draw.
-  await expect(page.getByText('Finish the setup in Wire')).toBeVisible();
-  await expect(page.getByText('This older project needs each strip’s GPIO confirmed before the physical check.')).toBeVisible();
+  // Card install blocks Save and links back to the one editor that owns
+  // physical wiring, naming the legacy confirmation it still needs.
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-finish-reason')).toContainText('Confirm each strip’s GPIO');
+  await expect(page.getByTestId('layout-finish-before-save')).toHaveText('Finish Layout');
 
   // Draw: the legacy banner confirms the derived GPIO assignments.
-  await switchMode(page, 'draw');
+  await finishLayoutFromCard(page);
   const banner = page.getByTestId('legacy-gpio-confirm');
   await expect(banner).toContainText("Older project — confirm each strip's GPIO looks right.");
   await banner.getByRole('button', { name: 'Looks right' }).click();
   await expect(banner).toHaveCount(0);
 
-  // Back in Wire, the pointer is gone and the check is the next action.
+  // Back on Card, the save action is the next step and no legacy editor door
+  // is reintroduced beside it.
   await switchMode(page, 'wire');
   await expect(page.getByText('Finish the setup in Wire')).toHaveCount(0);
+  await expect(page.getByTestId('layout-finish-before-save')).toHaveCount(0);
   await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
 });
@@ -469,10 +485,9 @@ test('incomplete Test & Install plans return to the canonical Wire editor', asyn
   await page.evaluate(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  await expect(page.getByText('Finish the setup in Wire')).toBeVisible();
-  await page.getByRole('button', { name: 'Edit in Wire' }).click();
-  await expect(page.getByTestId('layout-check-and-install')).toBeVisible();
-  await expect(page).toHaveURL(/mode=draw/);
+  await expect(page.getByTestId('layout-send-to-card')).toHaveCount(0);
+  await expect(page.getByTestId('layout-finish-reason')).toContainText('Every strip needs a GPIO');
+  await finishLayoutFromCard(page);
 });
 
 test('assigning a second GPIO in Wire updates hardware pin conflicts', async ({ page }) => {

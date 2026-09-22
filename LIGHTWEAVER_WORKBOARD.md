@@ -7,6 +7,28 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current expression integration checkpoint — 2026-09-22
+
+Manager branch `codex/scene-integration-manager`; product through `f66d873a`, test correction `52ad00e0`.
+Shared Lab/Show scene source, ordered steps, real Layout targets, guarded native
+installation, and reversible mapped rehearsal integrated locally. Header reviewed
+at desktop and 390px phone widths. Show restoration regression integrated as
+`26393580`; mobile header correction `f66d873a`.
+
+Verification: 2,613 project unit tests + 72 focused expression tests + production
+build pass. Combined browser suite: 37/38 initially passed; obsolete Show shortcut
+expectation corrected in `52ad00e0`, focused rerun 1/1 passed. All 38 scenarios
+now have passing evidence; no production changes after checkpoint.
+Logs: `/tmp/lightweaver-expression-final-{checkpoint,focused,browser,rerun}.log`.
+
+Release authorized on 2026-09-23: PR313 is the active shipment record;
+release gates and production proof are in progress. No physical card commands or
+firmware source changes. Remaining external
+proof: novice interaction and actual card playback/restore/edit-readback Bench.
+Native card slice supports exact builtin controls and cut steps; continuous group
+motion, true transitions, and recorded 4096-pixel SD playback are not completed
+by this slice. Scope their runtime work explicitly before firmware expansion.
+
 ## Sprint queue
 
 2026-09-20: **FIRST-ACTION-MANAGER on current main** — auto-detect arrivals,
@@ -835,3 +857,486 @@ return navigation; no automatic redirect loop, ordinary503 stays retry. Worker
 proof:36cloud-client units,5focused browser, final2,548unit+build. No account,
 policy/private-asset or hardware mutations; still not deployed. Actual projects/
 worker identities pending user input. Root branch preserves integrated candidate.
+
+## 2026-09-22 Pattern Lab / Show integration research
+
+Manager playbook v6; Sprint discovery requested, no implementation/release/card
+mutation authorized by this research brief. Outcome: source-grounded operator
+workflow, current delivery/editing gaps, and recommended integrated product slice.
+Primary owns synthesis and board. Independent dispatches (available catalog
+checked against collaboration tool):
+- Lab authoring/handoff audit | gpt-5.6-sol / medium | bounded source tracing across
+  existing UI/helpers | cited current paths and editing/persistence gaps | return
+  uncertain cross-runtime semantics to primary.
+- Show/card playback audit | gpt-5.6-sol / high | interacting export/runtime and
+  persistence contracts | cited actual standalone capabilities and limits | return
+  architecture decisions to primary.
+Cost unknown. Resumption: integrate research into one operator-focused brief.
+
+Primary evidence:50/50 focused Node tests;12/12 Chromium native-journey and
+look-roundtrip cases, including4096 pixels, passed. Actual Show Modes/Voices UI
+and rendered Lab fixture inspected. Found separate Show browser persistence with
+ambiguous global Save to card; native journeys supported despite stale docs;
+LWSEQ bake hard limit1024 source pixels prevents universal4096-pixel fallback.
+Recommendation recorded in docs/plans/2026-09-22-pattern-lab-show-integration.md:
+finish one named native scene's create/install/reboot/edit/update lifecycle;
+portable Show authoring next; shared renderer contract and recorded delivery
+separately scoped. No product source edits, deployment, flash or physical output
+commands. Physical playback/parity/SD proof remains unperformed. Resumption:
+select first scene lifecycle implementation from the brief; default assumption
+is standalone installation pending owner's workflow preference. Cost unknown.
+Worker source audits complete in sibling2026-09-22 Lab and Show/card research
+files. Accepted after primary source checks:Show has no Lab picker/handoff;
+normal installer ignores baked sequenceAssets; native looks need Playlist
+inclusion; SD package is one-look and takes boot precedence over flash. Source
+fidelity gap:Lab Movement changes preview geometry but ordinary native handoff
+omits it; reproduce/repair or capability-gate before claiming exact preview.
+Worker also reports34 focused tests and two firmware contracts passed; these
+are supplemental, separate from primary50+12 counts. No physical proof inferred.
+
+2026-09-22 owner design correction:novice usability must be communicated by
+button hierarchy,title bars,location and continuous transitions,not long copy.
+Added authoritative design requirements to the integration brief. Next design
+artifact is one connected first-use scene journey,including phone and failure
+states; no mandatory Playlist detour for installing one scene. Acceptance
+requires unprompted novice task completion,not merely automated click success.
+
+Owner scope clarification:creative object includes multi-step pattern/color
+expression AND Layout-linked multi-strip/section/group targeting. Added where/
+when/what interaction contract and three-section/mandala examples to brief.
+Stable Layout identities; simultaneous per-area behavior distinct from time
+steps; continuous-across-selection versus repeated-per-section explicit.
+Runtime support remains to be scoped/proven; this records design requirements.
+
+## 2026-09-22 managed implementation launch
+
+Owner requests separate tasks with appropriate model/effort. One manager remains
+in this task (01a0c8ad-20b4-76f2-a866-b218f5ff7e46). Stage1 delivers a clickable
+novice journey plus integration contracts before shared production edits.
+Authoritative direction:docs/plans/2026-09-22-pattern-lab-show-integration.md.
+Dispatch choices (host catalog inspected):
+- Connected expression editor prototype | gpt-5.6-sol / high | interacting
+  spatial/temporal controls and novice UX | working desktop/phone prototype,
+  actual screen evidence | return unresolved shared interaction decisions.
+- Layout targeting adapter | gpt-5.6-terra / medium | bounded existing identity
+  mapping, pure module and fixtures | split-strip/mandala/change tests | return
+  ambiguous identity semantics; no speculative migrations.
+- Playback delivery contract | gpt-5.6-sol / high | firmware/persistence boundary
+  needs careful feasibility decisions | concrete supported matrix and exact
+  smallest implementation contract from existing research | return protocol or
+  backend expansion decisions; no firmware edits in this stage.
+Separate task worktrees; no overlapping file ownership. App prototype owns only
+prototype directory, adapter only new pure targeting module/tests, contract only
+its plan file. Only primary edits this board, settles contracts and integrates.
+New tasks bootstrap without substantive work, then receive explicit model/effort
+via follow-up before assignment; creation API uses default model by contract.
+Next stage:manager reconciles evidence, then dispatches production integration;
+no deploy, firmware flash, exhaustive Prove or new backend architecture implied.
+Cost unknown. Workers report completion back to manager task for continuation.
+
+Dispatch state:Layout targeting bridge01a0c8c1-29d6-7e63-ace7-92cced55d8e6
+runs Terra/medium in a59c; scene playback contract
+01a0c8c1-29d5-7861-8f89-972ba2eb2b94 runs Sol/high in bcf5. Model/effort
+verified from local runtime state after explicit follow-up. Both active by
+wait_threads snapshot; instructed to report completion to manager task.
+Prototype creation remains client-new-thread:9260027e-9fcf-497c-8dc5-bb36a6803836,
+worktree6e8d exists but no runnable task ID yet. Do not duplicate. Intended
+Sol/high assignment saved with other exact briefs in
+ docs/plans/2026-09-22-expression-worker-briefs.json.
+Resumption:resolve prototype task setup, send saved assignment with explicit
+Sol/high, then inspect returned adapter/runtime evidence for integration.
+
+Adapter review found a real missing-coverage defect:compileWiring can succeed
+for source range0..1 of a3-pixel strip; continuous selection returned ok:true
+with source3/physical2. Return bounded regression/fix to Terra before integration.
+Prototype setup recovery:original pending task never obtained a runnable ID or
+substantive brief. Reuse its6e8d checkout via projectless task
+01a0c8c8-d081-7463-8ec7-582e36b29b30; Sol/high per existing selection. Do not
+start work in original placeholder if it later materializes. No duplicate
+worktree or product implementation was started.
+
+Targeting adapter accepted/integrated as7c7af17c+4bbf92bd after partial-route
+regression correction. Primary rerun25/25 focused tests green. Prototype task
+instructed to consume same adapter via54f8c452+ffcf2da, not duplicate semantics.
+Continuous requires exact selected-source coverage; repeated groups remain one
+explicit domain. No production editor consumer or hardware change yet.
+
+Playback contract6d9e45c2 reviewed but not yet integrated. Returned bounded
+reconciliation:reuse accepted target IDs/adapter; separate current child-strip
+sectionFamilies from legacy PatchBoard subranges; missing references preserve
+editable source and block compile only; verify dwell/transition clock semantics;
+prefer existing identity/readback before proposing new firmware hash fields.
+P0 remains pure compiler/resolution,not shared schema/wiring/firmware rewrite.
+Prototype informed of real transition limitation; creative prototype remains
+rich and explicitly simulated. Sol/high contract correction bounded10min.
+
+Playback contract62b9530f accepted after reconciliation; integrated locally.
+P0 execution dispatch:scene source resolver/native compiler | gpt-5.6-sol /
+medium | settled contract, bounded pure modules and deterministic fixture tests |
+independent field inheritance + honest eligibility +4096 native fixture |
+return semantic ambiguity or existing-packager incompatibility to manager.
+Reuse playback task; own only new sceneExpression{,Native}.js and their tests,
+plus compiler result doc. Existing targeting adapter stays unchanged. No shared
+schema, UI, wiring, firmware, deployment or card mutation. Prototype remains
+independent; manager integrates once both deliverables are ready. Cost unknown.
+
+Prototypeb82543f reviewed:desktop+phone screenshots and source. Not accepted
+for integration yet. Concrete issues:applyToSelection collapses mixed pattern/
+palette state from first member on unrelated field edits; playbackAt counts
+transition duration but renderColors never blends/implements transition; phone
+steps are below entire long inspector; selectTarget only single area so explicit
+multiple-member repeat selection cannot be exercised. Return bounded fixes to
+same worker Sol/medium with behavior tests and one desktop/phone correction pass.
+No generic polish loop. Prototype remains isolated and hardware simulated.
+
+Prototype correction1bf6c15 accepted and integrated with originalb82543f0 as
+19e5d96b+6616ca1a. Primary inspected corrected desktop/phone screens and reran
+31/31 prototype+targeting+wiring tests. Independent field edits preserve mixed
+patterns/palettes; real preview blending; touch multi-selection; phone timeline
+immediately below canvas. This is an isolated prototype, not production/card
+integration; hardware remains explicitly simulated.
+
+Compiler4d4a8047 primary review reproduced two blockers:3-source/2-physical
+partial route returns compile ok; JSON __proto__ assignment mutates Object
+prototype through dotted-path setter. Same Sol/medium worker owns bounded
+correction with exact-once wiring coverage and safe segmented field paths;
+regressions must include duplicate coverage, dangerous/dotted extension keys,
+normal nested inheritance and no prototype mutation. Also tighten native
+movement field fidelity. No escalation/model change or architecture expansion.
+Resumption:accept compiler correction, integrate only its new modules/tests,
+then dispatch production source/editor/card handoff using shared contract.
+No push, deployment, flash, or physical playback proof. Cost unknown.
+
+Compiler correction6e664940 accepted/integrated with4d4a8047 as09766494+
+1e77abcd. Manager checked safe own-property segment writes and exact coverage
+validation. Integrated checkpoint passed2,589/2,589 unit tests and production
+build (log /tmp/lightweaver-expression-checkpoint.log). Prototype regressions31/31
+passed separately. Prior focused card/firmware contracts passed at worker; no
+firmware changes. Native cut-only support remains distinct from rich preview.
+
+P1 connected authoring dispatch decisions:save editable scenes additively in
+project.expressionScenes={version:1,activeSceneId:null,scenes:[]}; no project
+major-version change, firmware or backend migration. Canonical entries use
+normalizeSceneExpression. Missing Layout refs remain source; invalid/future
+scene data must be preserved or explicitly rejected,never silently dropped.
+- Project scene persistence | Sol/medium | established envelope/context patterns
+  with bounded new collection contract | save/reopen/hash/old-project regression
+  and source authority tests | return any existing-repository incompatibility.
+  Own projectModel.js,ProjectContext.jsx,new sceneExpressionProject helpers/tests.
+- Production scene editor | Sol/medium | accepted prototype and canonical source
+  fix the interaction contract | real Layout create/edit/reorder/save/reopen on
+  desktop/phone, independent pattern/color tests | return unsupported preview
+  semantics rather than approximate silently. Own scene-expression components,
+  PatternLabScreen,v3 app/entry surfaces and focused browser spec; no overlap
+  with persistence worker. Existing tasks reused; no extra director.
+Both start clean branches from integrated1e77abcd in their existing worktrees.
+Common context API expressionScenes,setExpressionScenes. UI consumes defaults
+when unavailable; finish integration after persistence lands. Save uses existing
+guarded project-save action,with truthful outcome; autosave is recovery only.
+Card installation is next bounded integration after connected source works;
+no pretend On card state, no real card networking, no deployment. Cost unknown.
+
+P1 source persistencecacdc032 accepted/integrated as9752a2bb. Primary reviewed
+projectModel and Provider apply/serialize/dirty paths and reran98/98 focused
+source/model/repository/storage/lifecycle tests. Future/malformed JSON-safe
+collections remain opaque and hashed; inspector explicitly marks noneditable;
+updates reject instead of discarding data. Missing Layout refs remain editable.
+UI worker received exact commit plus Provider functional-update/project-switch
+browser cases (still required; helper tests are not Provider browser proof).
+Worker dependency build block is local to its empty dependency target; manager
+node_modules is populated and earlier checkpoint passed. No package changes.
+Resumption:integrate UI worker's real-project scene journey, verify provider
+switch/save/reload on actual screen, then bind selected playback through exact
+source+runtime installation authority without making UI selection an install.
+
+Production editore2c7dd96 not yet accepted. Primary source/screens review found
+native preview huePalette invents HSL colors and omits modifiers; Play never
+advances steps; canonical assignments:[] crashes; unsupported status claims
+Saved prematurely; palette inputs misrepresent HSL values and truncate >3;
+fixtures duplicate identical circle geometry without valid wiring; no saved
+scene picker/New action. Returned same worker Sol/medium for one bounded
+correction using existing patternPiecePreview/previewColorModifiers and real
+step clock. Require valid wiring/native success, distinct3-section/mandala
+geometry, sparse-source reopen and desktop timeline visible at1280x720.
+No integration of this UI commit until behavior evidence meets original scope.
+
+UIe2c7dd96+679cac0c integrated as07e1dcf6+85141717 after source and actual
+screen review; primary39/39 focused tests pass. Screens now distinct3-section
+and mandala, native compile success, desktop timeline visible. Worker8/8
+browser cases+build pass. Remaining bounded source-edge corrections:once-mode
+clock currently repeats; unavailable transition/continuous/movement source must
+not silently animate as native cuts/repeats; inherited controls must resolve the
+selected area's state rather than always first strip. Same UI owner completes
+these before final integrated checkpoint. No hardware proof claimed.
+
+Next independent delivery helper:Sol/medium, same playback/source task. Own
+new sceneExpressionDelivery.js+tests only. Manager contract:editing selection
+activeSceneId never implies playback. Optional expressionScenes.playbackSceneId
+records explicit intended card program; absent/null retains ordinary controller
+behavior. Existing normalizer preserves this additive field, no schema major or
+firmware changes. Prepare immutable source snapshot+envelope+native program from
+one selected scene; legacy saved looks remain in editable source, card program
+is explicitly the selected scene's steps (replacement preview required in UI).
+Use existing source hash,project revision/fingerprint and exact-card runtime+
+look/zone readiness evidence. Require owner pairing/known-good wiring/current
+install gate; source failure must prevent runtime mutation. Source-success/runtime
+failure stays saved-not-installed; lost reply must reconcile actual readback.
+Callbacks/injected operations for bounded tests; no new network client or live
+card action. UI consumes helper only after manager integration; same UI worker
+retains sole app.jsx ownership. Return identity/gate gap before architecture
+expansion. Cost unknown.
+
+Source-edge232dee76 integrated asc5d31af1;primary35units pass. Root browser
+suite8/9 pass; final mandala fixture missing Petal ring after live-localStorage
+seed/reload. Same UI worker diagnoses fixture/autosave race without weakening
+real target assertions (root log /tmp/lightweaver-expression-lifecycle.log).
+
+Final pre-delivery semantic check found repeat-instance gap:adapter explicitly
+makes group/all/family one domain, but native/preview flattened pattern to each
+member strip. Playback worker owns bounded compiler rejection+paired tests;UI
+worker owns matching preview gate and explicit Repeat per section action to
+expand stable leaf IDs only by user intent. Color-only grouped field patches
+remain allowed; new native scene uses per-strip defaults. No adapter/schema or
+firmware reinterpretation. Avoid claiming group-wide motion when rendering
+independent copies. Also tighten preview movement params object check.
+
+Group repeat compiler gatebf3e99d2 accepted/integrated;primary8/8 native tests
+pass. Explicit leaf repeat accepts, multi-strip group pattern rejects, grouped
+color-only patch accepts. UI worker received exact commit for its explicit
+Repeat per section action and acceptance fixture. Delivery helper continues
+independently in same playback task; no extra model/effort escalation.
+
+UI group correction897f2478 integrated as5987b779;primary38/38 focused tests
+pass. Mandala fixture failure diagnosed as live autosave overwriting direct
+localStorage seeding; staged sessionStorage+before-boot init removes that race.
+Integrated browser suite and authoring checkpoint now running (logs
+/tmp/lightweaver-expression-lifecycle-final.log and
+/tmp/lightweaver-expression-authoring-checkpoint.log).
+
+Deliveryb7945467 returned for bounded authority fixes before integration:
+no hardcoded ready access for foreign project; fresh exact preflight at run
+before writes; validate full source envelope canonical hash; recheck source after
+runtime verification; freeze runtime payload nested data. Same Sol/medium worker
+adds adversarial tests for each, no protocol/firmware change. Root remains sole
+integrator. UI install binding starts only after accepted helper returns.
+
+Integrated authoring checkpoint complete at38ab49e4:2,596/2,596 library/unit
+checks and production build passed;9/9 expression lifecycle browser tests
+passed, including final real divided/mandala fixture. Logs above. No mutation
+requests to card hosts occurred in suite. Source-edge helper38pass separate.
+No further authoring polish needed before delivery integration. Resumption:
+accept delivery authority correction, give exact API to sole UI owner for
+Put scene on card + generic-save routing, then focused integrated delivery
+journey with hardware fully mocked. No deploy/flash/physical playback proof.
+
+Deliveryb7945467+83862d44 accepted/integrated as5c221a78+975ec591. Primary
+64/64 focused integration tests pass. Verified actual firmware wiring-status
+includes cardId/buildId (main.cpp runtimeWiringSafetyStatus), not invented proof.
+Fresh access/identity/wiring preflight, full envelope validation, post-runtime
+source re-read, frozen payload now enforced. UI integration next.
+
+Final connected install assignment:existing UI task Sol/high, bounded to exact
+source/runtime/React lifecycle glue where mistaken success could mislabel a
+card; no new director. Own existing UI files and new browser integration test;
+helper unchanged unless manager approves a demonstrated contract gap. Acceptance:
+mocked card source-first path, pair/access failures no writes, unsupported scene
+no writes, source or readback failure no false success, editing-during-install
+preserves newer draft, correct generic Save to card with playbackSceneId, reload
+unverified until fresh exact evidence. Return helper/transport mismatch before
+bypassing evidence;20-minute convergence report; revert to medium for routine
+correction. No deployment, real card calls, firmware changes or exhaustive Prove.
+
+2026-09-22 owner reaffirmed end-to-end manager responsibility:continue all agreed
+parts and bring every required owner question/physical observation back to this
+manager task. Do not redirect owner to workers. Current install UI task active;
+completion callback is the continuation mechanism (no unattended timer claimed).
+Remaining outcome ledger beyond accepted authoring checkpoint:
+- Connect/verify Put scene on card and generic updates with exact source/runtime.
+- Reopen source from card in a second browser; simulated proof then real Bench.
+- Try on lights remains an explicit separate, reversible rehearsal requirement;
+  current production editor has no live action yet. Do not call install proof
+  rehearsal proof or silently drop this from the journey.
+- Show currently links to scene authoring; shared scene performance/picker is
+  not implemented. Rich transitions, continuous group motion and recorded4096
+  delivery remain unsupported; native cuts are the first slice, not full scope.
+- Actual novice observation and physical playback/closed-browser/power-cycle
+  proof require owner participation after concrete software candidate is ready.
+- Firmware/SD/recorded expansion needs a concrete scoped proposal before action;
+  current work does not authorize live hardware writes or deployment.
+Manager continues independent implementation/verification and consolidates any
+required decision here with recommendation and evidence.
+
+Install UI1c748e28 reviewed, correction pending before integration. Core existing
+transport binding verified in source. Concrete edge gaps returned same worker
+Sol/medium:pristine New scene not in context before direct install;local On card
+uses scene JSON only and ignores full-project/target evidence and concurrent
+non-scene edits. Require context-flush before save/install and exact receipt
+invalidation on layout/project/card change, retain earlier snapshot separately.
+Test pristine create/install,non-scene edits during/after install,card switch,
+plus actual installed/blocked desktop/phone screens. No generic scope growth.
+
+Independent rehearsal prerequisite dispatch:reuse Layout task Terra/medium for
+pure preview-frame->physical-output mapper. Own new sceneExpressionFrame.js and
+tests only, no UI/network/session mutation. Match rendered pixel source refs to
+compiled wiring exact order; reject missing/duplicate/out-of-range refs rather
+than output truncated/misaddressed frame. Accept reversed/split/discontiguous
+routes and mandala groups; source geometry never defines physical order. This
+can finish independently of active install-UI corrections and makes subsequent
+Try on lights integration concrete without overlapping files. Escalate unknown
+frame authority/shape to manager. No actual LED commands. Cost unknown.
+
+Rehearsal mapperf601f2b2 integrated as178911a8;primary28/28 focused tests pass.
+Verified renderer callback provides smoothed whole-byte RGB (motionSmoothing
+clampByte), mapped via exact segment stripId/sourceLed metadata to compiled
+physical addresses. No frame is sent yet. Git worktree index required sandbox
+escalation outside cwd; auto-review approved cherry-pick. Next:connect mapper to
+existing reversible preview session after install UI correction settles.
+
+Install UI1c748e28+53efd410 integrated as09aa23a2+ad4ca6bc. Primary55/55
+expression/model/frame/delivery checks pass; worker19/19 browser+build passed.
+Actual installed desktop inspected. One coherence gap visible:editor/topbar On
+card but footer Save to card; same UI owner must prove/fix global indicator
+against full source fingerprint before final acceptance (not ignore screenshot).
+
+Next end-to-end workstream:Try on lights | same UI task Sol/medium | existing
+renderer, exact frame mapper and transport session permit bounded integration |
+explicit start/stop, verified identity/mapping, no source/config writes, restore
+prior playback, no installed-state promotion, desktop/phone browser proof |
+return transport/restoration contract gap before firmware change. Own only
+scene-expression UI/helpers/new focused tests and minimal app props. Use exact
+mapper178911a8, existing cardFrameStream/preview session with mandatory known
+snapshot; prevent install/stream races and stale restore into another owner/card.
+Stop/unmount/navigation/error tests; no real hardware. Final manager checkpoint
+follows coherent connected journey, then real Bench/novice observation here.
+
+Rehearsal7e3dec21 source review found physical preflight gap before acceptance:
+ready card + same project ID does not prove draft Layout matches installed
+wiring. Returned same UI worker Sol/medium for strict installed output/mapping
+identity check using existing config/wiring authorities; mismatched count/pin/
+reversal routes must emit zero frames and direct to install Layout first.
+Unchanged topology with pattern-only edits remains usable. No automatic config
+sync during rehearsal, no firmware fields. Worker17browser+12units+build evidence
+retained but cannot prove this newly identified case. No real card commands.
+
+Independent Show handoff dispatch:existing playback task Sol/medium, own
+lw-show.jsx,new v3/ShowSceneLibrary.jsx/style and separate browser spec only.
+Expose saved project expressionScenes as actual selectable named scenes in Show,
+open existing shared SceneExpressionEditor with same source and supplied shell
+actions (no duplicate editor/store). Preserve existing sound-reactive Show and
+stop its own live stream before handing ownership to scene rehearsal. No sound
+engine rewrite/audio-scene composition implied. Tests source identity/edit-return
+continuity and no unsolicited hardware writes; return callback/ownership gap.
+Main UI worker retains Lab/app/session edits; no overlapping source files.
+
+Rehearsal topology82e54eff adds output/pin/count/direction checks but cannot
+prove source mapping from run IDs alone (same ID/count can repoint source).
+Manager fixed final authority contract:read validated exact-card editable
+envelope,bound to installed status.projectFingerprint/contentHash;compile saved
+Layout and compare ordered source keys to draft plus hardware topology. Allow
+pattern-only draft edits. Missing/legacy source,unbound/newer source or source
+mapping mismatch refuses rehearsal with install-first guidance. Same worker
+Sol/medium owns correction;no invented firmware map/protocol. Tests include same
+run ID/count/direction with changed strip/range. No real card writes.
+
+Rehearsal7e3dec21+82e54eff+edbfd379 integrated as6a0b9c1a+74d329db+5dd9649b.
+Primary72/72 focused expression tests pass (log
+/tmp/lightweaver-expression-rehearsal-integrated.log). Installed-source envelope
+validated and hash-bound to runtime before comparing compiled physical source
+map; owner capability required, no automatic configuration change. Worker21
+focused units/build pass; browser22/23 initially with brittle storage assertion
+corrected and failing case rerun green. Final integrated browser checkpoint
+awaits Show handoff and navigation guard. Show service403 recovered through same
+worker; no work discarded. Browser slot now Show's; app owner coordinating
+Show-host preview retention plus editor-close cleanup. No real card writes.
+
+Showfd11317a integrated as3ccdc5d7 after Shell ownership guards774c60e3+ced9c615
+(as002d82c7+5c10cebc). Shared collection/selection/save/edit continuity verified
+by worker3 browser scenarios; primary reviewed source and both actual screens.
+Screens reveal inherited Lab breadcrumb/Back label in Show plus clipped header
+actions; returned bounded shared editor fix to UI owner, wrapper props to Show
+owner. Existing3 scenarios do not exercise active rehearsal exit: requested
+mocked success/failure restoration browser regression before acceptance. No
+additional features dispatched. Final checkpoint waits only these concrete
+corrections; then Bench/novice observations remain explicitly unperformed.
+
+Final coherent expression batch complete locally: Show host props/test54852e90
+integrated26393580, shared headerbcc03e03 integrated7dbb467d, mobile7838e017
+integratedf66d873a. Primary inspected corrected desktop/phone screens. Checkpoint
+2613units+72focused+build passed; browser37/38 then obsolete-entry test-only
+correctiona4aedcaf integrated52ad00e0 and1/1 rerun passed. All38 scenarios have
+passing evidence. No remaining active implementation assignments for this batch.
+Bench/novice proof unperformed; not pushed, merged, deployed, or shipped.
+
+2026-09-23 autonomous release authorized by Adrian: continue until launched;
+no further routine approval needed. PR313 https://github.com/theyemingzhu/LED-Programming/pull/313
+Current main integrated cleanly. Prototype moved out of public assets; expression
+tests added to normal release suite. Operator guide added; advanced guide retained.
+Release core/cloud/mapper/staging/freshness pass;2639unit tests pass. New scene38,
+legacyShow11, recovery3, critical6, cloud73 browser cases passed. Existing notice
+index-comparison race corrected/tested8pass; Layout unmocked-card fixture fixed6pass;
+wiring lock fixture corrected4pass. Broad browser chunks116/116 and126/127
+(the latter's known wiring fixture now corrected). Mobile33/41: eight failures
+in private Lab naming/drawer/stateful interaction assigned original UI owner.
+No merge/deploy claim yet. Hosted exhaustive runs stopped after new known
+failures emerged, rerun once coherent corrections ready. Primary sole integrator.
+
+Phone release correctionaeb1f534 integrated8ecd23a0: Edit/Evolve preserve compact
+nonmodal controls, opening saved draft lands on Edit, Choose/Add to Patterns
+expand full, compact sheet retains Save without oversized handoff panel.
+Worker19/19 focusedmobile pass;primary inspected final phone capture. Full41
+phone gate plus production/releaseUI now running. Wiring workspace defaults to
+mocked/offline card access inaf979a46; assertions retained. Manual Tests dispatch
+35755773372 passed source/production lanes so far; firmware version demand is
+manual-dispatch conservative classification (no baseline), not a firmware-source
+change. Exact origin/main..HEAD classification is firmwareBundleOnly=true.
+Keep existing firmware version; normal main event will use exact baseline.
+
+Release follow-up: all41 phone cases pass. Production67/68 then the isolated
+LAN fixture correction passed its focused rerun. Broad releaseUI357/384 passed;
+remaining cases were Card authority fixtures, retired Layout entry assertions,
+Save/Saving copy, and three freshness tests invalidated by manager commits while
+Vite was running. Final verification now freezes HEAD per browser run.
+Corrected Card project-switch10 cases and Layout route/touch cases pass in the
+145-case correction batch; manual handoff and passive-pairing remain unresolved.
+Do not count static collection as browser proof.
+
+Bounded followups retain Sol/medium owners: playback task owns Card test fixture
+authority, accepts only unchanged explicit-pair/manual-Load behavior; editor task
+owns CardInstallAction plus wiring-workspace tests. Inspection found compact Save
+bypassed mappingReady/legacy-review while the full branch guarded it. Fix must
+offer Finish Layout with concise reason, preserve valid staged installs and blank
+discovery precedence, and prove no executable Save for incomplete mapping.
+This is a real product correction, not a stale assertion to remove. No firmware,
+compiler, or hardware write change authorized by this followup. Primary integrates
+and runs hosted release gate after these concrete failures close. Not shipped.
+
+Correction batch141/145 passes. Passive pairing failures are real, not remaining
+fixture drift:30c8b484 bootstrap called owner connectTransport with empty expected
+card ID and persisted identity without an owner click. Director decision: keep
+two well-known-host read-only discovery, report found-unpaired, retain existing
+explicit Connect for authority/persistence. Playback worker Sol/medium owns
+studioCardBootstrap.js/test and first-action compatibility checks. Preserve
+paired exact restore, bridge/update exclusions, no subnet sweep. Original Card
+fixture init-script patch alone was insufficient and is not reported as a fix.
+Manual-handoff helper separately fixed by seeding project/routes before initial
+navigation(a46fa73d); focused browser proof pending. Wiring worker has browser
+slot for red/green compact mapping guard. Primary does not run a second server.
+
+Compact guard integrateda8d77c69(afterfixture3a2aab12): four red regressions
+witnessed, four green, full24wiringpass; primary inspected card-finish-layout-guard
+screen. Passive startup fixecaf0519 preserves read-only discovery and explicit
+pairing;39focused units pass. Integrated2639unit+productionbuildpass. Six targeted
+browserjourneys pass (pairing/bench/firstactions/manualLoad). ManualLoad regression
+now seeds a real saved library match distinct from current workspace, uses the
+single Setupbanner Load, and explicitly initializes abandonedintent state; the
+separate real failed-claim test retains the refusal/circuit-breaker coverage.
+No releaseUI failure is skipped. Final hosted launch:check follows fixtureclosure.
+
+Finallocalmergechecks: six route/card smoke + four HTTPS bridge cases pass (one
+fixture response-disposal teardown flake passed its single focused rerun);
+78 journey/section/playlist cases pass after J01 explicitly pairs the discovered
+card; two windowless and22preserving-update browsercases pass. J01 now counts13
+deliberate clicks, including explicitpair. This last test-only correction is not
+part of launch:check's selected browser specs; hosted35761730462 continues on the
+identical product source at52f55470. No restart of that known-valid source run.
+Allfourcardhandoffcases pass. Production merge/deploy/live proof remain pending.

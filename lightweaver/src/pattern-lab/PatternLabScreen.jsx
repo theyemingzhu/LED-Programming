@@ -67,6 +67,7 @@ import PatternLabExport from './PatternLabExport.jsx';
 import PatternLabJourney from './PatternLabJourney.jsx';
 import PatternLabPreview from './PatternLabPreview.jsx';
 import ColorJourneyComposer from './ColorJourneyComposer.jsx';
+import SceneExpressionEditor from '../scene-expression/SceneExpressionEditor.jsx';
 import './pattern-lab.css';
 
 const WORKFLOW = [
@@ -508,10 +509,17 @@ function SculpturePlaceholder() {
   );
 }
 
-export default function PatternLabScreen() {
+export default function PatternLabScreen({
+  onSaveProject,
+  onInstallExpressionScene,
+  expressionInstallationReceipt,
+  onStartExpressionScenePreview,
+  expressionPreviewContextKey,
+}) {
   const project = useProject();
   const { workspaceAssets, resolveWorkspaceAssetConflict } = useCloudLibrary();
   const [patterns, setPatterns] = useState([]);
+  const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
   const importRef = useRef(null);
   const drawerRef = useRef(null);
   const previewStageRef = useRef(null);
@@ -1448,10 +1456,18 @@ export default function PatternLabScreen() {
   function openWorkflowStep(index) {
     setActiveWorkflowStep(index);
     if (index <= 2) setOpenInspectorStep(index);
-    // Step 0 is the pattern browser, which only exists at full height; the
-    // other three are reachable at whatever detent the owner is already on,
-    // so a tap on "Sculpt" from the play strip does not swallow the artwork.
-    if (mobileDrawer) setSheetDetent('full');
+    // Choose and Add to Patterns own the browser/library and project action,
+    // which need the full sheet. Sculpt and Evolve stay at the owner's current
+    // detent so tapping either from the play strip does not swallow the art.
+    if (mobileDrawer) {
+      setSheetDetent(current => {
+        if (index === 0 || index === 3) return 'full';
+        // Sculpt and Evolve belong beside the live artwork. Preserve a sheet
+        // the owner has already resized, but never make those steps modal just
+        // because their heading was tapped after choosing a pattern.
+        return current === 'closed' ? 'peek' : current;
+      });
+    }
     const targetId = [
       'plab-base-pattern',
       draft?.base?.kind === 'color-journey' ? 'plab-creative-heading' : 'plab-sculpt-heading',
@@ -1535,6 +1551,8 @@ export default function PatternLabScreen() {
     setAuditionStopId(null);
     setMessage(`Opened ${normalized.name}`);
     setImportErrors([]);
+    setActiveWorkflowStep(1);
+    settleSheetOnSculpt();
   }
 
   // One place where a draft actually reaches storage, so the name is
@@ -1802,6 +1820,18 @@ export default function PatternLabScreen() {
     }
   }
 
+  if (sceneEditorOpen) return (
+    <SceneExpressionEditor
+      project={project}
+      onSaveProject={onSaveProject}
+      onInstallScene={onInstallExpressionScene}
+      installationReceipt={expressionInstallationReceipt}
+      onStartPhysicalPreview={onStartExpressionScenePreview}
+      physicalPreviewContextKey={expressionPreviewContextKey}
+      onClose={() => setSceneEditorOpen(false)}
+    />
+  );
+
   return (
     <main
       className="screen plab-screen"
@@ -1846,6 +1876,14 @@ export default function PatternLabScreen() {
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
             Back to Patterns
+          </button>
+          <button
+            type="button"
+            className="plab-back"
+            data-testid="pattern-lab-build-scene"
+            onClick={() => setSceneEditorOpen(true)}
+          >
+            Build scene
           </button>
           <nav className="plab-workflow" aria-label="Pattern Lab workflow">
             {WORKFLOW.map(([title, description, tooltip, icon], index) => (

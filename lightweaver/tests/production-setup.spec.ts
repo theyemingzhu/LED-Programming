@@ -2101,6 +2101,8 @@ test('a stale tab cannot append a pass or complete a replacement production run'
 });
 
 test('Change job safely cancels before mutation and firmware preload retry preserves the run', async ({ page }) => {
+  // This no-card recovery fixture must not discover a developer's real LAN card.
+  await page.route(/^http:\/\/(?!(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/).+/, route => route.abort());
   await serveJob(page); await installDriver(page);
   await page.goto('/#screen=production');
   await expect(page.getByTestId('footer-firmware-status')).toHaveText(/^Card firmware unknown · latest \d+$/);

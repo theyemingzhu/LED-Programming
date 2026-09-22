@@ -189,9 +189,11 @@ test('coarse targets keep primary Layout and wire controls at least 44 pixels', 
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await install.click();
   // Layout now hands the install to Card setup. With discovery explicitly
-  // offline, the truthful next action is finding a card; Pair appears only
-  // after a specific unpaired card has actually answered.
-  box = await page.getByRole('button', { name: 'Find my card' }).boundingBox();
+  // offline and no remembered card, the public start panel is the truthful
+  // next step. Card discovery begins only after the owner chooses setup.
+  const setup = page.getByTestId('public-worker-start')
+    .getByRole('button', { name: /set up the card/i });
+  box = await setup.boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
   await page.evaluate(() => { window.location.hash = '#screen=layout&mode=draw'; });
   // Specialist tools stay behind the top-level Advanced disclosure.
@@ -281,7 +283,10 @@ test('wire scaffold is concise and recovery actions stay hidden without a mixed-
   await expect(page.getByRole('region', { name: 'Wire setup guide' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: 'Steps' })).toHaveCount(0);
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Find my card' })).toBeVisible();
+  // With no remembered card, the redirected install route starts at the
+  // public setup choice. Discovery is a later owner-triggered step.
+  await expect(page.getByTestId('public-worker-start')
+    .getByRole('button', { name: /set up the card/i })).toBeVisible();
   await expect(page.getByTestId('start-led-check')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Copy payload' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open installer' })).toHaveCount(0);

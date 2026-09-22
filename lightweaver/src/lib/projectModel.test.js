@@ -11,6 +11,7 @@ const jsonRoundTrip = value => JSON.parse(JSON.stringify(value));
 test('new projects start with one explicit physical data wire', () => {
   const project = createDefaultProject();
 
+  assert.deepEqual(project.expressionScenes, { version: 1, activeSceneId: null, scenes: [] });
   assert.equal(project.layout.patchBoard.dataWireCount, 1);
   assert.equal(project.layout.patchBoard.dataWireCountNeedsReview, false);
   assert.equal(project.layout.wiring.outputs.length, 1);
