@@ -166,26 +166,42 @@ function cloneState(state) {
   return cloneJson(state);
 }
 
-function flattenLeaves(value, prefix = '', leaves = []) {
+function flattenLeaves(value, path = [], leaves = []) {
   if (isRecord(value) && Object.keys(value).length) {
     for (const [key, nested] of Object.entries(value)) {
-      flattenLeaves(nested, prefix ? `${prefix}.${key}` : key, leaves);
+      flattenLeaves(nested, [...path, key], leaves);
     }
   } else {
-    leaves.push([prefix, cloneJson(value)]);
+    leaves.push([path, cloneJson(value)]);
   }
   return leaves;
 }
 
-function setPath(target, path, value) {
-  const keys = path.split('.');
+function defineOwn(target, key, value) {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function setPath(target, keys, value) {
   let cursor = target;
   for (let index = 0; index < keys.length - 1; index += 1) {
     const key = keys[index];
-    if (!isRecord(cursor[key])) cursor[key] = {};
+    if (!Object.hasOwn(cursor, key) || !isRecord(cursor[key])) defineOwn(cursor, key, {});
     cursor = cursor[key];
   }
-  cursor[keys.at(-1)] = cloneJson(value);
+  defineOwn(cursor, keys.at(-1), cloneJson(value));
+}
+
+function pathKey(path) {
+  return JSON.stringify(path);
+}
+
+function pathLabel(path) {
+  return path.join('.');
 }
 
 function areaSpecificity(area) {
@@ -226,11 +242,12 @@ export function resolveSceneExpression(value, catalog = {}) {
           if (!candidates.has(stripId)) continue;
           for (const field of ['pattern', 'color', 'intensity']) {
             if (!Object.hasOwn(assignment, field)) continue;
-            for (const [nestedPath, nestedValue] of flattenLeaves(assignment[field], field)) {
+            for (const [nestedPath, nestedValue] of flattenLeaves(assignment[field], [field])) {
               const byField = candidates.get(stripId);
-              const list = byField.get(nestedPath) || [];
-              list.push({ specificity, value: nestedValue, assignmentIndex, areaId });
-              byField.set(nestedPath, list);
+              const key = pathKey(nestedPath);
+              const list = byField.get(key) || [];
+              list.push({ specificity, path: nestedPath, value: nestedValue, assignmentIndex, areaId });
+              byField.set(key, list);
             }
           }
         }
@@ -238,7 +255,7 @@ export function resolveSceneExpression(value, catalog = {}) {
     });
 
     for (const stripId of stripIds) {
-      for (const [field, list] of candidates.get(stripId)) {
+      for (const list of candidates.get(stripId).values()) {
         const specificity = Math.max(...list.map(candidate => candidate.specificity));
         const winners = list.filter(candidate => candidate.specificity === specificity);
         if (winners.length > 1) {
@@ -247,13 +264,13 @@ export function resolveSceneExpression(value, catalog = {}) {
             message: 'Two equally specific assignments write the same field to one Layout strip.',
             stepId: step.id,
             stripId,
-            field,
+            field: pathLabel(winners[0].path),
             assignmentIndexes: winners.map(winner => winner.assignmentIndex),
             areaIds: winners.map(winner => winner.areaId),
           });
           continue;
         }
-        setPath(states[stripId], field, winners[0].value);
+        setPath(states[stripId], winners[0].path, winners[0].value);
       }
     }
 

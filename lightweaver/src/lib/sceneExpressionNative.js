@@ -41,6 +41,10 @@ function inIntegerRange(value, minimum, maximum) {
   return Number.isInteger(value) && value >= minimum && value <= maximum;
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function validateCardColor(color, details, reasons) {
   if (color?.kind === 'palette') {
     reasons.push(reason(
@@ -101,7 +105,11 @@ function validateState(state, details, reasons) {
   }
   if (state?.pattern?.movement !== undefined) {
     const movement = state.pattern.movement;
-    const emptyNative = movement?.kind === 'native' && Object.keys(movement?.params || {}).length === 0;
+    const emptyNative = isRecord(movement)
+      && Object.keys(movement).every(key => key === 'kind' || key === 'params')
+      && movement.kind === 'native'
+      && isRecord(movement.params)
+      && Object.keys(movement.params).length === 0;
     if (!emptyNative) {
       reasons.push(reason(
         'movement-native-unsupported',
@@ -120,6 +128,52 @@ function validateState(state, details, reasons) {
   }
   if (!Number.isFinite(state?.intensity?.brightness) || state.intensity.brightness < 0 || state.intensity.brightness > 1) {
     reasons.push(reason('brightness-native-invalid', 'Native brightness must be between 0 and 1.', details));
+  }
+}
+
+function stripLedCount(strip = {}) {
+  const count = Number(strip.pixelCount ?? strip.pixels?.length ?? strip.leds ?? 0);
+  return Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+}
+
+function validateExactPhysicalCoverage(strips, compiledWiring, reasons) {
+  const expected = new Set();
+  for (const strip of strips) {
+    if (typeof strip?.id !== 'string' || !strip.id) continue;
+    for (let sourceLed = 0; sourceLed < stripLedCount(strip); sourceLed += 1) {
+      expected.add(`${strip.id}:${sourceLed}`);
+    }
+  }
+  const actual = new Map();
+  for (const pixel of compiledWiring?.pixels || []) {
+    const key = `${pixel?.stripId}:${pixel?.sourceLed}`;
+    actual.set(key, (actual.get(key) || 0) + 1);
+  }
+  const missingSourceKeys = [...expected].filter(key => !actual.has(key));
+  const duplicateSourceKeys = [...actual]
+    .filter(([key, count]) => expected.has(key) && count > 1)
+    .map(([key]) => key);
+  const unexpectedSourceKeys = [...actual.keys()].filter(key => !expected.has(key));
+  if (missingSourceKeys.length) {
+    reasons.push(reason(
+      'physical-coverage-incomplete',
+      'Compiled wiring does not cover every authored source LED.',
+      { sourceKeys: missingSourceKeys },
+    ));
+  }
+  if (duplicateSourceKeys.length) {
+    reasons.push(reason(
+      'physical-coverage-duplicate',
+      'Compiled wiring addresses an authored source LED more than once.',
+      { sourceKeys: duplicateSourceKeys },
+    ));
+  }
+  if (unexpectedSourceKeys.length) {
+    reasons.push(reason(
+      'physical-coverage-unexpected',
+      'Compiled wiring addresses a source LED outside the authored Layout.',
+      { sourceKeys: unexpectedSourceKeys },
+    ));
   }
 }
 
@@ -221,6 +275,8 @@ export function compileSceneExpressionNative(value, {
   }
   if (!compiledWiring?.ok || !Array.isArray(compiledWiring?.zones) || !Array.isArray(compiledWiring?.pixels)) {
     reasons.push(reason('compiled-wiring-required', 'Current compiled wiring is required for native expression playback.'));
+  } else {
+    validateExactPhysicalCoverage(strips, compiledWiring, reasons);
   }
   if (source.steps.length > MAX_SAVED_LOOKS) {
     reasons.push(reason(
