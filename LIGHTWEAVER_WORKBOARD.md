@@ -947,3 +947,13 @@ prefer existing identity/readback before proposing new firmware hash fields.
 P0 remains pure compiler/resolution,not shared schema/wiring/firmware rewrite.
 Prototype informed of real transition limitation; creative prototype remains
 rich and explicitly simulated. Sol/high contract correction bounded10min.
+
+Playback contract62b9530f accepted after reconciliation; integrated locally.
+P0 execution dispatch:scene source resolver/native compiler | gpt-5.6-sol /
+medium | settled contract, bounded pure modules and deterministic fixture tests |
+independent field inheritance + honest eligibility +4096 native fixture |
+return semantic ambiguity or existing-packager incompatibility to manager.
+Reuse playback task; own only new sceneExpression{,Native}.js and their tests,
+plus compiler result doc. Existing targeting adapter stays unchanged. No shared
+schema, UI, wiring, firmware, deployment or card mutation. Prototype remains
+independent; manager integrates once both deliverables are ready. Cost unknown.
