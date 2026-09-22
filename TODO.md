@@ -20,7 +20,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 - [ ] Decide three Card and Patterns surface changes from the round-2 UX critiques _(band: you-required)_ _(effort: quick)_
   Fold the blank card's "Find my strips" box into the ladder's own task; carry the card's piece name into a project Studio adopts silently; soften Patterns while the footer is not Connected. Pictures: `.claude/ux-screens/` and `docs/ux/2026-09-09-u2-patterns-playlist-critique.md`.
-- [ ] Show the card's own reason when it refuses a firmware update _(band: agent-runnable)_ _(effort: quick)_
+- [x] Show the card's own reason when it refuses a firmware update _(band: agent-runnable)_ _(effort: quick)_
+  Done 2026-09-22: `request()` in `cardFirmwareUpdater.js` now reads `result.detail`/`result.projectRepositoryMessage` (what the card actually sends) instead of `result.message` (which it never sends); regression tests in `cardFirmwareUpdater.test.js`.
   Firmware 1.1.36 puts `projectRepositoryMessage` in the status envelope and in the 409 `detail`; Studio's `cardFirmwareUpdater.js` (~298) reads `result.message`, which the card never sends, so the owner still sees a generic refusal.
 - [ ] Finish the transport sweep inside the helpers _(band: agent-runnable)_ _(effort: moderate)_
   `readCardZonesFromCard` / `readCardPatternsFromCard` drop `options.transport` before `connectCardTransport` when no authority exists; `getCardWiringStatus` (cardWiringSafety.js) still guesses from the page protocol; CardPushControl's "local-only" direct push runs on https too. The F36 source guard covers call sites, not these internals.

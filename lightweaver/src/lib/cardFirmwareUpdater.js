@@ -296,8 +296,14 @@ export function createCardFirmwareUpdater({
     const result = await authority.request(path, init);
     assertCurrent();
     if (result?.ok === false) {
-      const error = new Error(result.message || `Card refused firmware update at ${path}.`);
-      error.reason = result.reason || 'update-refused';
+      // The card never sends `message` — its refusal reason travels in the 409
+      // `detail` field (LightweaverFirmwareUpdate.cpp `sendUpdateError`) or, for
+      // the project-repository case, `projectRepositoryMessage` (the same
+      // string firmware 1.1.36 also publishes on /api/status). Reading
+      // `result.message` here always fell through to the generic fallback.
+      const cardReason = text(result.detail, 200) || text(result.projectRepositoryMessage, 200);
+      const error = new Error(cardReason || `Card refused firmware update at ${path}.`);
+      error.reason = result.reason || result.error || 'update-refused';
       throw error;
     }
     return result || {};
