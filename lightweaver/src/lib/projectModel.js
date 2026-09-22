@@ -32,6 +32,7 @@ import {
   normalizeCardPlaylist,
 } from './cardPlaylist.js';
 import { normalizeKaleidoscope } from './kaleidoscope.js';
+import { createEmptyExpressionScenes, normalizeExpressionScenesForProject } from './sceneExpressionProject.js';
 
 export const PROJECT_VERSION = 3;
 const FOREIGN_PROJECT_FORMATS = new Set([
@@ -154,6 +155,7 @@ export function createDefaultProject() {
     // Provenance marker (defect C1b) — see normalizeProjectOrigin above.
     // null for every ordinary project; only a card reconstruction sets it.
     origin: null,
+    expressionScenes: createEmptyExpressionScenes(),
     // What each of the card's four physical ports carries — strip, control, or
     // nothing. Top-level rather than inside `layout` because it describes the
     // card's hardware, not the artwork, and discovery records it before any
@@ -446,6 +448,7 @@ export function migrateProject(data) {
       // above) so a hand-edited or corrupt save can never carry an
       // unrecognized shape into projectCopyKind's `origin.kind` check.
       origin: normalizeProjectOrigin(data.origin),
+      expressionScenes: normalizeExpressionScenesForProject(data.expressionScenes),
       // Normalized rather than spread through, so every loaded project is
       // guaranteed one complete entry per contract pin even when the save
       // predates the field or was hand-edited.
@@ -480,6 +483,7 @@ export function migrateProject(data) {
       // v1/v2 saves predate both port roles and the origin marker (defect
       // C1b) entirely, so both land on defaults.
       origin: null,
+      expressionScenes: createEmptyExpressionScenes(),
       portRoles: normalizePortRoles(data.portRoles),
       layout: {
         ...base.layout,
