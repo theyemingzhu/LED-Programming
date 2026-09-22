@@ -10,7 +10,7 @@ npm run dev -- --host 127.0.0.1
 
 Open the explicit prototype file at the URL Vite prints, for example:
 
-`http://127.0.0.1:9998/scene-expression-prototype/index.html`
+`http://127.0.0.1:9998/prototypes/scene-expression/index.html`
 
 The configured port may differ. Keep `/index.html`; the directory URL is owned
 by Studio's normal SPA fallback.
@@ -49,7 +49,7 @@ The prototype is intentionally served by Vite because its preview imports the ex
 ## Verification
 
 - `node --test src/lib/sceneExpressionTargets.test.js`: 7/7 passing.
-- `node --test public/scene-expression-prototype/model.test.mjs`: 6/6 passing. It covers mixed-pattern palette edits, distinct-palette pattern edits, partial group overrides, transition timing/frame blending and nonadjacent leaf selection.
+- `node --test prototypes/scene-expression/model.test.mjs`: 6/6 passing. It covers mixed-pattern palette edits, distinct-palette pattern edits, partial group overrides, transition timing/frame blending and nonadjacent leaf selection.
 - Focused browser journey passed in Chromium: mandala group edit, local save,
   fixture switch, reopen with the same scene/step/area IDs, Layout round-trip,
   duplicate step, playback highlight, disconnected controls, installing state,
@@ -57,3 +57,5 @@ The prototype is intentionally served by Vite because its preview imports the ex
 - One batched desktop/phone inspection covered both fixtures, followed by one
   correction pass for the phone header. A second bounded manager-requested correction moved the phone step strip directly below playback and added visible leaf-selection toggles. The Impeccable detector returned no
   findings for the final HTML, CSS and JavaScript.
+
+Release note: this development-only prototype is retained under `lightweaver/prototypes/scene-expression/` and is not copied into production public assets. The production editor is the shared React scene editor in Lab and Show.
