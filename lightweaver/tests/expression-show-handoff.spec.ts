@@ -1,7 +1,12 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 import { createDefaultProject } from '../src/lib/projectModel.js';
+import { createProjectEnvelope } from '../src/lib/projectRepository.js';
 
 let cardMutations: string[];
+let requireNoCardMutations: boolean;
+const CARD_ID = 'lw-show-rehearsal';
+const BUILD_ID = 'e'.repeat(40);
 
 function projectFixture(expressionScenes: any) {
   const project = createDefaultProject();
@@ -45,8 +50,155 @@ async function boot(page: Page, expressionScenes: any = null, screen = 'show') {
   await page.goto(`/#screen=${screen}`, { waitUntil: 'domcontentloaded' });
 }
 
+function rehearsalProjectFixture() {
+  const project = projectFixture({
+    version: 1,
+    activeSceneId: 'scene-show-rehearsal',
+    playbackSceneId: null,
+    scenes: [{
+      format: 'lightweaver-expression-scene', version: 1,
+      id: 'scene-show-rehearsal', name: 'Show rehearsal',
+      defaults: {
+        pattern: { rendererId: 'aurora', speed: 1 },
+        color: {
+          kind: 'card-controls', hueShift: 0, customHue: 32, customSaturation: 230,
+          customBreathe: false, breatheLowerPct: 85, breatheUpperPct: 100,
+          breatheCycleSeconds: 9, customDrift: false,
+        },
+        intensity: { brightness: 0.8 },
+      },
+      steps: [{
+        id: 'opening', label: 'Opening', holdMs: 30000,
+        transitionFromPrevious: { mode: 'cut', durationMs: 0 }, assignments: [],
+      }],
+      loop: { mode: 'repeat' },
+    }],
+  });
+  project.id = 'project-show-rehearsal';
+  project.name = 'Show rehearsal fixture';
+  project.layout.wiring.locked = true;
+  project.layout.wiring.verified = true;
+  project.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
+  project.devices.standaloneController.led.colorOrderConfirmed = true;
+  project.devices.standaloneController.led.confirmedColorOrder = 'RGB';
+  return project;
+}
+
+async function mockShowRehearsalCard(page: Page) {
+  requireNoCardMutations = false;
+  const project = rehearsalProjectFixture();
+  const envelope = createProjectEnvelope(project, {
+    modifiedAt: 1,
+    source: { kind: 'card', cardId: CARD_ID },
+  });
+  const config = prepareCardDeployment({
+    projectId: project.id,
+    projectName: project.name,
+    projectRevision: 0,
+    projectFingerprint: envelope.contentHash,
+    strips: project.layout.strips,
+    patchBoard: project.layout.patchBoard,
+    wiring: project.layout.wiring,
+    standaloneController: project.devices.standaloneController,
+  }).config;
+  const state = {
+    controls: [] as any[],
+    frames: [] as any[],
+    forbiddenMutations: [] as string[],
+    failRestore: false,
+    streaming: false,
+    playlist: { configured: true, playing: false, entryIndex: 1, entryCount: 3, patternId: 'ocean' },
+  };
+  const status = () => ({
+    app: 'Lightweaver', provisioningContractVersion: 1, ok: true,
+    cardId: CARD_ID, firmwareVersion: '1.2.3', buildId: BUILD_ID, bootId: 'boot-show-1',
+    runtimePhase: 'ready', knownGoodProject: true, commandReady: true, outputReady: true, playbackReady: true,
+    projectId: config.piece.id, projectRevision: config.projectRevision,
+    projectFingerprint: config.projectFingerprint, projectHead: envelope.contentHash,
+    led: config.led, outputs: config.led.outputs, limits: { maxLooks: 64 }, maxPixels: 4096,
+    streaming: state.streaming, playlist: { ...state.playlist },
+  });
+
+  await page.route('http://lightweaver.local/**', async (route: Route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() !== 'GET' && (/^\/api\/projects\//.test(pathname) || pathname === '/api/config')) {
+      state.forbiddenMutations.push(pathname);
+    }
+    if (pathname === '/api/status') return route.fulfill({ json: status() });
+    if (pathname === '/api/firmware-info') return route.fulfill({ json: { ...status(), pixels: config.led.pixels } });
+    if (pathname === '/api/wiring/status') return route.fulfill({ json: {
+      ok: true, state: 'known-good', hasCandidate: false,
+      cardId: CARD_ID, firmwareVersion: '1.2.3', buildId: BUILD_ID,
+      currentOutputs: config.led.outputs,
+    } });
+    if (pathname === '/api/projects/read') return route.fulfill({ json: { envelope } });
+    if (pathname === '/api/zones') return route.fulfill({ json: {
+      syncZones: true,
+      zones: [{ id: 'all', patternId: state.playlist.patternId, brightness: 0.7 }],
+    } });
+    if (pathname === '/api/owner/capability') return route.fulfill({ json: {
+      capability: 'owner-capability', cardId: CARD_ID, bootId: 'boot-show-1', expiresInMs: 60000,
+    } });
+    if (pathname === '/api/stream/lease') {
+      state.streaming = true;
+      return route.fulfill({ json: { ok: true, leaseId: 'show-preview-lease', expiresInMs: 30000, nextSequence: 0 } });
+    }
+    if (pathname === '/api/stream/frame') {
+      const body = JSON.parse(request.postData() || '{}');
+      state.frames.push(body);
+      return route.fulfill({ json: { ok: true, nextSequence: Number(body.sequence) + 1 } });
+    }
+    if (pathname === '/api/stream/stop') {
+      state.streaming = false;
+      state.playlist = { ...state.playlist, playing: true, entryIndex: 2, patternId: 'fire' };
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (pathname === '/api/control') {
+      const body = JSON.parse(request.postData() || '{}');
+      state.controls.push(body);
+      if (body.cancelStream) {
+        state.streaming = false;
+        state.playlist = { ...state.playlist, playing: true, entryIndex: 2, patternId: 'fire' };
+      }
+      if (body.patternId && !state.failRestore) {
+        state.playlist = { ...state.playlist, playing: false, entryIndex: 1, patternId: body.patternId };
+      }
+      if (body.playlist === 'pause') state.playlist = { ...state.playlist, playing: false };
+      if (body.playlist === 'play') state.playlist = { ...state.playlist, playing: true };
+      return route.fulfill({ json: { ok: true, cardId: CARD_ID, appliedPatternId: body.patternId || state.playlist.patternId } });
+    }
+    return route.fulfill({ status: 404, json: { ok: false } });
+  });
+  await page.addInitScript(({ cardId, buildId, seededProject }) => {
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId, firmwareVersion: '1.2.3', buildId }));
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(seededProject));
+    (window as any).__showRehearsalFrames = [];
+    class FakeWebSocket {
+      readyState = 0;
+      bufferedAmount = 0;
+      onopen: null | (() => void) = null;
+      onerror: null | (() => void) = null;
+      onclose: null | (() => void) = null;
+      constructor(_url: string) { setTimeout(() => { this.readyState = 1; this.onopen?.(); }, 0); }
+      send(payload: string) { (window as any).__showRehearsalFrames.push(payload); }
+      close() { this.readyState = 3; this.onclose?.(); }
+    }
+    Object.defineProperty(window, 'WebSocket', { configurable: true, value: FakeWebSocket });
+  }, { cardId: CARD_ID, buildId: BUILD_ID, seededProject: project });
+  return state;
+}
+
+async function showRehearsalFrameCount(page: Page, card: { frames: any[] }) {
+  const websocketCount = await page.evaluate(() => (window as any).__showRehearsalFrames?.length || 0);
+  return card.frames.length + websocketCount;
+}
+
 test.beforeEach(async ({ page }) => {
   cardMutations = [];
+  requireNoCardMutations = true;
   const blockCard = async (route: Route) => {
     if (route.request().method() !== 'GET') cardMutations.push(`${route.request().method()} ${route.request().url()}`);
     await route.abort();
@@ -55,7 +207,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('http://192.168.4.1/**', blockCard);
 });
 
-test.afterEach(() => expect(cardMutations).toEqual([]));
+test.afterEach(() => {
+  if (requireNoCardMutations) expect(cardMutations).toEqual([]);
+});
 
 test('Show selects, edits, and reopens the exact shared scene source', async ({ page }, testInfo) => {
   await boot(page, null, 'pattern-lab');
@@ -98,6 +252,8 @@ test('Show selects, edits, and reopens the exact shared scene source', async ({ 
   await expect(page.getByText(/hearing the room/i)).toBeVisible();
   await library.locator(`[data-scene-id="${tideId}"]`).getByRole('button', { name: 'Edit scene' }).click();
   await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
+  await expect(page.getByText('Studio · Show · Scene')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Back to Show' })).toBeVisible();
   await expect(page.getByLabel('Scene title')).toHaveValue('Tide room');
   await expect(page.getByRole('region', { name: 'Scene steps' }).locator('article')).toHaveCount(2);
   await page.getByRole('button', { name: /02 Step 2/ }).click();
@@ -114,7 +270,7 @@ test('Show selects, edits, and reopens the exact shared scene source', async ({ 
   await page.getByLabel('Step name').fill('Revised opening');
   await page.getByRole('button', { name: 'Save scene' }).click();
   await expect(page.getByText('Project saved')).toBeVisible();
-  await page.getByRole('button', { name: 'Back to Lab' }).click();
+  await page.getByRole('button', { name: 'Back to Show' }).click();
   await expect(page.getByRole('region', { name: 'Saved scenes' })).toContainText('Tide room revised');
 
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').expressionScenes);
@@ -130,6 +286,49 @@ test('Show selects, edits, and reopens the exact shared scene source', async ({ 
   await page.getByLabel('Scene title').fill('Tide room latest');
   await page.getByRole('button', { name: 'Show', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Saved scenes' })).toContainText('Tide room latest');
+});
+
+test('Show closes only after active rehearsal restoration and retains the editor when restoration fails', async ({ page }) => {
+  const card = await mockShowRehearsalCard(page);
+  await page.goto('/#screen=show', { waitUntil: 'domcontentloaded' });
+  const library = page.getByRole('region', { name: 'Saved scenes' });
+  await expect(library).toContainText('Show rehearsal');
+
+  const openEditor = async () => {
+    await library.getByRole('button', { name: 'Edit scene' }).click();
+    await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
+    await page.evaluate(async () => {
+      const { getActiveCardTransportAuthority } = await import('/src/lib/cardTransport.js');
+      const authority = getActiveCardTransportAuthority('lightweaver.local');
+      await authority.issueOwnerCapability({ commissioningProof: 'show-browser-test-owner-confirmed' });
+    });
+  };
+
+  await openEditor();
+  const preview = page.getByTestId('scene-physical-preview');
+  await expect(preview).toBeEnabled();
+  await preview.click();
+  await expect(preview).toHaveText('Stop preview');
+  await expect.poll(() => showRehearsalFrameCount(page, card)).toBeGreaterThan(0);
+
+  await page.getByRole('button', { name: 'Back to Show' }).click();
+  await expect(library).toBeVisible();
+  expect(card.controls.some(body => body.cancelStream === true)).toBe(true);
+  expect(card.controls.some(body => body.patternId === 'ocean')).toBe(true);
+  expect(card.controls.some(body => body.playlist === 'pause')).toBe(true);
+  expect(card.playlist).toMatchObject({ playing: false, entryIndex: 1, patternId: 'ocean' });
+
+  const firstFrameCount = await showRehearsalFrameCount(page, card);
+  await openEditor();
+  await page.getByTestId('scene-physical-preview').click();
+  await expect.poll(() => showRehearsalFrameCount(page, card)).toBeGreaterThan(firstFrameCount);
+  card.failRestore = true;
+  await page.getByRole('button', { name: 'Back to Show' }).click();
+
+  await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText(/could not be restored|not restored exactly/i);
+  await expect(library).toHaveCount(0);
+  expect(card.forbiddenMutations).toEqual([]);
 });
 
 test('Show presents an empty shared collection without starting output', async ({ page }) => {
