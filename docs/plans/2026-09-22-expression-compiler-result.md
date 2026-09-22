@@ -46,5 +46,11 @@ Both test modules failed with `ERR_MODULE_NOT_FOUND` before the implementation e
 - The native output uses one existing saved combo look per step. `normalizeSavedLooks()` currently caps this path at 12 steps, even though the firmware timed playlist supports 16 entries. The compiler reports `saved-look-capacity` rather than dropping steps.
 - P0 supports only repeat-domain assignments, repeat loops, zero-duration cuts, and whole-second holds from 1 through 3,600 seconds.
 - A compiled card zone must map to one or more strips with identical resolved native state. Different states inside one existing zone report `zone-state-conflict`.
+- Every authored source LED must appear exactly once in compiled physical wiring. Missing, duplicated, or out-of-Layout `(stripId, sourceLed)` addresses block native output even when the wiring compiler itself accepts a partial route.
 - The current 3,968-byte compact config ceiling remains authoritative and can become the limiting factor before pixel count. The 4,096-pixel fixture passes because ranges describe pixels compactly.
 - Capability negotiation with a connected physical card remains P1 work. This compiler targets the current checked-in card/runtime contract and performs no card I/O.
+
+Resolver extension keys are retained as path segments rather than dot-delimited
+strings. Writes define own data properties at every segment, so literal dotted
+keys stay distinct from nested objects and JSON keys such as `__proto__`,
+`constructor`, and `prototype` cannot traverse inherited objects.

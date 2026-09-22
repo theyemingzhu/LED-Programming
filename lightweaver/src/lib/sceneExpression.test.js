@@ -198,3 +198,79 @@ test('changed family membership preserves source and blocks current resolution',
   assert.ok(result.reasons.some(reason => reason.code === 'unresolved-areas'));
   assert.deepEqual(result.source, normalized);
 });
+
+test('JSON extension keys cannot traverse Object.prototype during assignment resolution', () => {
+  delete Object.prototype.expressionProbe;
+  const source = baseScene({
+    steps: [{
+      id: 'prototype-key', label: 'Prototype key', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+      assignments: [{
+        selection: { areaIds: ['strip:ribbon-left'], domain: 'repeat' },
+        pattern: JSON.parse('{"__proto__":{"expressionProbe":true}}'),
+      }],
+    }],
+  });
+
+  try {
+    const result = resolveSceneExpression(source, fixtureCatalog());
+    assert.equal(result.ok, true);
+    assert.equal(Object.prototype.expressionProbe, undefined);
+    assert.equal(Object.hasOwn(result.steps[0].states['ribbon-left'].pattern, '__proto__'), true);
+    assert.deepEqual(result.steps[0].states['ribbon-left'].pattern.__proto__, { expressionProbe: true });
+  } finally {
+    delete Object.prototype.expressionProbe;
+  }
+});
+
+test('constructor/prototype and literal dotted extension keys remain own distinct JSON fields', () => {
+  const pattern = JSON.parse(`{
+    "constructor":{"prototype":{"safe":true}},
+    "motion.phase":0.4,
+    "motion":{"phase":0.8}
+  }`);
+  const result = resolveSceneExpression(baseScene({
+    steps: [{
+      id: 'special-keys', label: 'Special keys', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+      assignments: [{
+        selection: { areaIds: ['strip:ribbon-left'], domain: 'repeat' },
+        pattern,
+      }],
+    }],
+  }), fixtureCatalog());
+
+  assert.equal(result.ok, true, JSON.stringify(result.reasons));
+  const resolved = result.steps[0].states['ribbon-left'].pattern;
+  assert.equal(Object.hasOwn(resolved, 'constructor'), true);
+  assert.deepEqual(resolved.constructor, { prototype: { safe: true } });
+  assert.equal(Object.prototype.safe, undefined);
+  assert.equal(resolved['motion.phase'], 0.4);
+  assert.deepEqual(resolved.motion, { phase: 0.8 });
+});
+
+test('ordinary nested extension leaves inherit independently across steps', () => {
+  const result = resolveSceneExpression(baseScene({
+    steps: [
+      {
+        id: 'nested-one', label: 'Nested one', holdMs: 1000,
+        transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+        assignments: [{
+          selection: { areaIds: ['strip:ribbon-left'], domain: 'repeat' },
+          pattern: { tuning: { phase: 0.2, depth: 0.7 } },
+        }],
+      },
+      {
+        id: 'nested-two', label: 'Nested two', holdMs: 1000,
+        transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+        assignments: [{
+          selection: { areaIds: ['strip:ribbon-left'], domain: 'repeat' },
+          pattern: { tuning: { phase: 0.9 } },
+        }],
+      },
+    ],
+  }), fixtureCatalog());
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.steps[1].states['ribbon-left'].pattern.tuning, { phase: 0.9, depth: 0.7 });
+});

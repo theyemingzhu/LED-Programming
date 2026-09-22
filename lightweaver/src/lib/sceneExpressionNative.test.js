@@ -85,6 +85,32 @@ function compile(source, fx = fixture()) {
   });
 }
 
+function singleStripCoverageFixture({ partial = false, duplicate = false } = {}) {
+  const strips = [{ id: 'only-strip', name: 'Only strip', pixelCount: 3 }];
+  const wiring = {
+    version: 1,
+    locked: true,
+    verified: true,
+    outputs: [{ id: 'out1', pin: 16, runIds: ['run-only'] }],
+    runs: [{
+      id: 'run-only', type: 'strip',
+      source: { stripId: 'only-strip', from: 0, to: partial ? 1 : 2 },
+      physicalDirection: 'source-forward', verified: true,
+    }],
+  };
+  const compiledWiring = compileWiring({ wiring, strips });
+  assert.equal(compiledWiring.ok, true);
+  if (duplicate) {
+    compiledWiring.pixels.push({ ...compiledWiring.pixels[0], index: compiledWiring.pixels.length });
+    compiledWiring.totalPixels = compiledWiring.pixels.length;
+  }
+  return {
+    strips,
+    compiledWiring,
+    catalog: buildSceneExpressionAreaCatalog({ strips, compiledWiring }),
+  };
+}
+
 test('native compiler emits existing combo-look and playlist shapes with exact per-zone behavior', () => {
   const fx = fixture([1365, 1365, 1366]);
   const input = scene();
@@ -173,6 +199,49 @@ test('missing or changed Layout IDs block compilation but preserve the normalize
   assert.equal(result.ok, false);
   assert.ok(result.reasons.some(reason => reason.code === 'unresolved-areas'));
   assert.deepEqual(result.source.steps[0].assignments[0].selection.areaIds, ['strip:removed']);
+});
+
+test('native compilation requires every authored source pixel exactly once', () => {
+  const source = scene({
+    steps: [{
+      id: 'coverage', label: 'Coverage', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 }, assignments: [],
+    }],
+  });
+
+  const missing = compile(source, singleStripCoverageFixture({ partial: true }));
+  assert.equal(missing.ok, false);
+  assert.ok(missing.reasons.some(item => item.code === 'physical-coverage-incomplete'));
+
+  const duplicate = compile(source, singleStripCoverageFixture({ duplicate: true }));
+  assert.equal(duplicate.ok, false);
+  assert.ok(duplicate.reasons.some(item => item.code === 'physical-coverage-duplicate'));
+});
+
+test('native Movement accepts only the exact empty native shape', () => {
+  const withMovement = movement => scene({
+    steps: [{
+      id: 'movement-shape', label: 'Movement shape', holdMs: 1000,
+      transitionFromPrevious: { mode: 'cut', durationMs: 0 },
+      assignments: [{
+        selection: { areaIds: ['all'], domain: 'repeat' },
+        pattern: { movement },
+      }],
+    }],
+  });
+
+  const scalarParams = compile(withMovement({ kind: 'native', params: 0 }));
+  assert.equal(scalarParams.ok, false);
+  assert.ok(scalarParams.reasons.some(item => item.code === 'movement-native-unsupported'));
+  assert.equal(scalarParams.source.steps[0].assignments[0].pattern.movement.params, 0);
+
+  const unknownField = compile(withMovement({ kind: 'native', params: {}, easing: 'linear' }));
+  assert.equal(unknownField.ok, false);
+  assert.ok(unknownField.reasons.some(item => item.code === 'movement-native-unsupported'));
+  assert.equal(unknownField.source.steps[0].assignments[0].pattern.movement.easing, 'linear');
+
+  const exactNative = compile(withMovement({ kind: 'native', params: {} }));
+  assert.equal(exactNative.ok, true, JSON.stringify(exactNative.reasons));
 });
 
 test('native card color values reject lossy clamping and unknown visual fields', () => {
