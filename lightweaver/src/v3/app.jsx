@@ -1848,7 +1848,7 @@ function Shell({ offlineUpdateController = null }) {
   }, [cardLink, cardStatus.host, connected, projectLifecycle.editedRevision, serializeProject, stopExpressionScenePreview]);
 
   useEffect(() => {
-    if (view !== 'pattern-lab' && expressionPreviewRef.current) void stopExpressionScenePreview('navigation');
+    if (!['pattern-lab', 'show'].includes(view) && expressionPreviewRef.current) void stopExpressionScenePreview('navigation');
   }, [stopExpressionScenePreview, view]);
 
   const installExpressionScene = useCallback(async ({ sceneId, saveBrowserFirst = false, projectPlayback = false, onProgress } = {}) => {
@@ -2369,6 +2369,7 @@ function Shell({ offlineUpdateController = null }) {
               onInstallExpressionScene={installExpressionScene}
               expressionInstallationReceipt={expressionInstallationReceipt}
               onStartExpressionScenePreview={startExpressionScenePreview}
+              onStopExpressionScenePreview={stopExpressionScenePreview}
               expressionPreviewContextKey={expressionPreviewContextKey}
               route={underlyingCardRoute}
             />
