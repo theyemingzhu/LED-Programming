@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { choosePattern, openControls, openStep } from './helpers/pattern-lab.ts';
+import { choosePattern, isMobileDrawerViewport, openControls } from './helpers/pattern-lab.ts';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
@@ -70,8 +70,8 @@ test('chooses and sculpts a living simulation through the simple Pattern Lab con
   // before reaching in, same as the initial choosePattern() call does.
   await openControls(page);
   await page.getByRole('button', { name: /Open Particle Drift/ }).click();
-  // Reopening a draft lands on Choose; its sliders are read back from Sculpt.
-  await openStep(page, 'sculpt');
+  // Reopening a draft lands on Sculpt so the saved values are ready to edit.
+  await expect(page.getByTestId('pattern-lab-step-sculpt')).toHaveAttribute('data-active', 'true');
   await expect(page.getByRole('slider', { name: 'Particle count' })).toHaveValue('48');
   const sourceSnapshot = JSON.parse(
     await page.getByTestId('pattern-lab-runtime-tools').getAttribute('data-source-recipe-snapshot') || '{}',
@@ -227,5 +227,8 @@ test('the real worker renders the deterministic bounded stateful generator pack'
   expect(result.accelerated.stats.at(-1)?.generatorElapsedSeconds).toBe(900);
   expect(new Set(result.realtimeSoak.stats.map(stats => stats.generatorStateBytes)).size).toBe(1);
   expect(result.realtimeSoak.stats.at(-1)?.generatorElapsedSeconds).toBeCloseTo(47 / 24, 8);
-  await expect(page.getByRole('heading', { name: 'Pattern Lab' })).toBeVisible();
+  await expect(page.getByTestId('pattern-lab-screen')).toBeVisible();
+  const title = page.getByRole('heading', { name: 'Pattern Lab', includeHidden: true });
+  if (await isMobileDrawerViewport(page)) await expect(title).toBeHidden();
+  else await expect(title).toBeVisible();
 });

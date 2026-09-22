@@ -61,6 +61,16 @@ export async function openControls(page: Page): Promise<void> {
     }
     await expect(drawer).not.toHaveAttribute('aria-hidden', 'true', { timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
+  // "Controls" means the complete browser/library/action surface. A chosen
+  // pattern deliberately leaves the sheet at peek, so expand that existing
+  // sheet just as an owner would with its handle instead of treating any open
+  // detent as equivalent to the full controls view.
+  const screen = page.getByTestId('pattern-lab-screen');
+  const handle = page.getByTestId('pattern-lab-sheet-handle');
+  for (let attempt = 0; attempt < 2 && await screen.getAttribute('data-sheet-detent') !== 'full'; attempt += 1) {
+    await handle.click();
+  }
+  await expect(screen).toHaveAttribute('data-sheet-detent', 'full');
 }
 
 // No-op on desktop (the drawer concept does not exist there). On mobile,
