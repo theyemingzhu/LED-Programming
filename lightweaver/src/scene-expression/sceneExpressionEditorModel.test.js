@@ -7,6 +7,8 @@ import {
   moveSceneStep,
   patchOrCreateSceneAssignment,
   patchSceneAssignment,
+  repeatPatternPerSectionAreaIds,
+  repeatSceneAssignmentPerSection,
   scenePreviewAvailability,
   scenePlaybackAt,
   selectionDisplayState,
@@ -15,6 +17,10 @@ import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
 
 test('field patches preserve sibling pattern, color, and unknown source fields', () => {
   const scene = createSceneExpression({ id: 'scene-1', name: 'Quiet tide' });
+  scene.steps[0].assignments.push({
+    selection: { areaIds: ['strip:first'], domain: 'repeat' },
+    pattern: { rendererId: 'aurora', speed: 1 }, color: structuredClone(scene.defaults.color),
+  });
   scene.steps[0].assignments[0].futureField = { untouched: true };
   const originalColor = structuredClone(scene.steps[0].assignments[0].color);
   const patternEdit = patchSceneAssignment(scene, scene.steps[0].id, 0, {
@@ -77,6 +83,10 @@ test('firmware preview modifiers apply hue, breathe, and drift deterministically
 
 test('preview gate rejects source that the editor cannot render truthfully', () => {
   const scene = createSceneExpression({ id: 'gate' });
+  scene.steps[0].assignments.push({
+    selection: { areaIds: ['strip:one'], domain: 'repeat' },
+    pattern: { rendererId: 'aurora', speed: 1 },
+  });
   const resolved = { ok: true, steps: [{ states: { strip: scene.defaults } }] };
   assert.equal(scenePreviewAvailability(scene, resolved).ok, true);
   scene.steps[0].transitionFromPrevious.durationMs = 1;
@@ -91,6 +101,43 @@ test('preview gate rejects source that the editor cannot render truthfully', () 
   scene.steps[0].assignments[0].pattern.rendererId = 'future-pattern';
   assert.match(scenePreviewAvailability(scene, resolved).message, /pattern/i);
   assert.equal(scenePreviewAvailability(scene, { ok: false, reasons: [{ message: 'Missing Layout area.' }] }).message, 'Missing Layout area.');
+});
+
+test('group pattern preview requires an explicit repeat-per-section transform', () => {
+  const scene = createSceneExpression({ id: 'group' });
+  const catalog = { areas: [
+    { id: 'all', kind: 'all', stripIds: ['first', 'second'] },
+    { id: 'strip:first', kind: 'strip', stripIds: ['first'] },
+    { id: 'strip:second', kind: 'strip', stripIds: ['second'] },
+  ] };
+  const resolved = { ok: true, steps: [{ states: {
+    first: structuredClone(scene.defaults), second: structuredClone(scene.defaults),
+  } }] };
+  scene.steps[0].assignments.push({
+    selection: { areaIds: ['all'], domain: 'repeat' },
+    pattern: { rendererId: 'fire', speed: 0.7 },
+    color: { ...structuredClone(scene.defaults.color), customHue: 144 },
+  });
+  assert.match(scenePreviewAvailability(scene, resolved, catalog).message, /shared domain/i);
+  assert.deepEqual(repeatPatternPerSectionAreaIds(scene.steps[0].assignments[0], catalog), ['strip:first', 'strip:second']);
+  const repeated = repeatSceneAssignmentPerSection(scene, scene.steps[0].id, 0, catalog);
+  assert.deepEqual(repeated.steps[0].assignments[0].selection.areaIds, ['strip:first', 'strip:second']);
+  assert.deepEqual(repeated.steps[0].assignments[0].pattern, { rendererId: 'fire', speed: 0.7 });
+  assert.equal(repeated.steps[0].assignments[0].color.customHue, 144);
+  assert.equal(scenePreviewAvailability(repeated, resolved, catalog).ok, true);
+
+  const colorOnly = structuredClone(scene);
+  delete colorOnly.steps[0].assignments[0].pattern;
+  assert.equal(scenePreviewAvailability(colorOnly, resolved, catalog).ok, true);
+});
+
+test('fresh scenes use per-strip defaults and scalar movement params cannot preview', () => {
+  const scene = createSceneExpression({ id: 'fresh' });
+  assert.deepEqual(scene.steps[0].assignments, []);
+  const resolved = { ok: true, steps: [{ states: { first: structuredClone(scene.defaults), second: structuredClone(scene.defaults) } }] };
+  assert.equal(scenePreviewAvailability(scene, resolved).ok, true);
+  scene.defaults.pattern.movement = { kind: 'native', params: 1 };
+  assert.match(scenePreviewAvailability(scene, resolved).message, /movement/i);
 });
 
 test('sparse assignment displays inherited state from its selected nonfirst area', () => {
