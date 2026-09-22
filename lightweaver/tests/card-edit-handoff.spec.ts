@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 
@@ -12,6 +13,7 @@ import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 const CARD_ID = 'lw-ordinary-card';
 const PROJECT_ID = 'ordinary-gallery-piece';
 const PROJECT_NAME = 'Ordinary gallery piece';
+const release = JSON.parse(await readFile(new URL('../public/firmware/release-manifest.json', import.meta.url), 'utf8'));
 
 test.beforeEach(async ({ page }) => {
   await page.route('http://lightweaver.local/**', route => route.abort());
@@ -37,9 +39,15 @@ async function dispatchCardLink(page: Page, events: unknown[]) {
 function readyStatus(overrides = {}) {
   return {
     app: 'Lightweaver', provisioningContractVersion: 1,
-    cardId: CARD_ID, firmwareVersion: '1.0.0', buildId: 'a'.repeat(40),
+    cardId: CARD_ID,
+    firmwareVersion: release.firmwareVersion,
+    buildId: release.buildId,
+    buildNumber: release.buildNumber,
     bootId: 'boot-1', runtimePhase: 'ready', knownGoodProject: true,
-    commandReady: true, outputReady: true,
+    commandReady: true, outputReady: true, projectOutputReady: true,
+    outputDriverReady: true, playbackReady: true, configValid: true,
+    safeMode: false, provisionalSetup: false,
+    outputs: [{ id: 'out1', pin: 18, pixels: 41, gpio: 18, count: 41 }],
     projectRevision: 3,
     ...overrides,
   };
@@ -48,20 +56,44 @@ function readyStatus(overrides = {}) {
 // `reportsProjectId: false` models a card flashed before the firmware began
 // sending `projectId` on /api/status. Such a card cannot prove which project
 // is installed, so Studio must refuse — visibly, once.
-async function seedCard(page: Page, { reportsProjectId = true } = {}) {
-  const current = createDefaultProject();
-  current.id = PROJECT_ID;
-  current.name = PROJECT_NAME;
-  current.layout.starterPending = false;
-  const fingerprint = cardProjectFingerprint(current);
-  await page.addInitScript(({ project, identity }) => {
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
-    localStorage.setItem('lw_autosave_v3_backup', JSON.stringify(project));
+async function seedCard(page: Page, { reportsProjectId = true, savedMatch = false } = {}) {
+  const installed = createDefaultProject();
+  installed.id = PROJECT_ID;
+  installed.name = PROJECT_NAME;
+  installed.layout.starterPending = false;
+  const current = savedMatch ? createDefaultProject() : installed;
+  if (savedMatch) {
+    current.id = 'work-in-progress';
+    current.name = 'Work in progress';
+    current.layout.starterPending = false;
+  }
+  const fingerprint = cardProjectFingerprint(installed);
+  await page.addInitScript(({ currentProject, installedProject, identity, includeSavedMatch }) => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(currentProject));
+    localStorage.setItem('lw_autosave_v3_backup', JSON.stringify(currentProject));
+    if (includeSavedMatch) {
+      localStorage.setItem('lw_project_library_v1', JSON.stringify({
+        version: 1,
+        records: [{
+          id: 'installed-project-record',
+          name: installedProject.name,
+          createdAt: 1,
+          updatedAt: 2,
+          projectVersion: installedProject.version,
+          project: installedProject,
+        }],
+      }));
+    }
     localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
   }, {
-    project: current,
+    currentProject: current,
+    installedProject: installed,
+    includeSavedMatch: savedMatch,
     identity: {
-      version: 1, id: CARD_ID, firmwareVersion: '1.0.0', buildId: 'a'.repeat(40),
+      version: 1, id: CARD_ID,
+      firmwareVersion: release.firmwareVersion,
+      buildId: release.buildId,
+      buildNumber: release.buildNumber,
     },
   });
 
@@ -159,12 +191,12 @@ test('an intent Patterns cannot claim stays local and is not handed over again',
   expect(counts.status, `resolved the card ${counts.status} times`).toBeLessThan(20);
 });
 
-test('loading the offered project by hand still honours the intent the owner arrived with', async ({ page }) => {
+test('explicit Load resumes an abandoned pattern-edit intent', async ({ page }) => {
   // The recovery path the circuit breaker must leave open: suppressing the
   // automatic hand-over must not strand the owner away from what they asked
   // for. An explicit Load re-authorizes and opens Patterns.
-  const { status } = await seedCard(page);
-  await page.goto('/?editPattern=aurora#screen=pattern', { waitUntil: 'domcontentloaded' });
+  const { status } = await seedCard(page, { savedMatch: true });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await dispatchCardLink(page, [{
     type: 'direct-status', connected: true, host: 'lightweaver.local',
     card: { id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
@@ -172,10 +204,15 @@ test('loading the offered project by hand still honours the intent the owner arr
     readiness: status,
   }]);
 
-  await page.getByRole('button', { name: 'Verify project in Card status', exact: true }).click();
-  await expect(page).toHaveURL(/#screen=card/, { timeout: 20_000 });
-  const load = page.getByRole('region', { name: 'Matching card project' }).getByRole('button', { name: /^Load / });
+  // Setup owns the single saved-match offer now; the older support panel
+  // deliberately stands down so Card Home never renders two Load buttons.
+  const load = page.getByRole('button', { name: /^Load / });
   await expect(load).toBeVisible({ timeout: 20_000 });
+  await page.evaluate(async () => {
+    const { markCardEditIntentAbandoned } = await import('/src/lib/cardEditIntent.js');
+    markCardEditIntentAbandoned('pattern:aurora');
+    history.replaceState(null, '', '/?editPattern=aurora#screen=card&section=overview');
+  });
   await load.click();
 
   await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 20_000 });

@@ -245,10 +245,7 @@ test('[FA-plugged-loaded] a plugged-in loaded card pairs explicitly, then opens 
   expect(back.primaryCount, 'going back to lights must not add a second primary').toBe(1);
   expect(back.firstPrimary).toMatch(/open patterns|use this card|load /i);
 
-  expect(
-    firstPaint.firstPrimary,
-    'a loaded card that is already answering must not open on Find my card',
-  ).toMatch(/use this card|load |open patterns/i);
+  expect(firstPaint.firstPrimary).toMatch(/pair this card/i);
 });
 
 test('[FA-outdated] an outdated card puts Update first', async ({ page }) => {
