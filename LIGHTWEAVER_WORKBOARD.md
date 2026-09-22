@@ -1077,3 +1077,9 @@ expand stable leaf IDs only by user intent. Color-only grouped field patches
 remain allowed; new native scene uses per-strip defaults. No adapter/schema or
 firmware reinterpretation. Avoid claiming group-wide motion when rendering
 independent copies. Also tighten preview movement params object check.
+
+Group repeat compiler gatebf3e99d2 accepted/integrated;primary8/8 native tests
+pass. Explicit leaf repeat accepts, multi-strip group pattern rejects, grouped
+color-only patch accepts. UI worker received exact commit for its explicit
+Repeat per section action and acceptance fixture. Delivery helper continues
+independently in same playback task; no extra model/effort escalation.
