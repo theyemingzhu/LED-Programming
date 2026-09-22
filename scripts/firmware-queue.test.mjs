@@ -18,7 +18,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describeRegister, emptyRegister, isGreater, nextVersion, readableDate, validateEntry } from './firmware-queue.mjs';
+import {
+  describeAbandonedReleaseBranch,
+  describeRegister,
+  emptyRegister,
+  isAbandonedReleaseBranchRejection,
+  isGreater,
+  nextVersion,
+  readableDate,
+  validateEntry,
+} from './firmware-queue.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const run = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -96,6 +105,24 @@ test('a waiting item must say what it is, why, and where it lives', () => {
   assert.throws(() => validateEntry({ ...good, what: '' }), /plain-language/);
   assert.throws(() => validateEntry({ ...good, source: {} }), /branch or a patch/);
   assert.throws(() => validateEntry(good, [good]), /already waiting/);
+});
+
+test('a non-fast-forward push rejection is recognised and named, a real error is not', () => {
+  const rejection = [
+    'To /tmp/upstream.git',
+    ' ! [rejected]        HEAD -> firmware-release/1.1.29 (non-fast-forward)',
+    "error: failed to push some refs to '/tmp/upstream.git'",
+    'hint: Updates were rejected because the tip of your current branch is behind',
+  ].join('\n');
+  assert.equal(isAbandonedReleaseBranchRejection(rejection), true);
+  assert.equal(isAbandonedReleaseBranchRejection('ssh: connection refused'), false);
+  assert.equal(isAbandonedReleaseBranchRejection(''), false);
+
+  const described = describeAbandonedReleaseBranch('firmware-release/1.1.29', '1.1.29');
+  assert.match(described.message, /abandoned attempt at version 1\.1\.29/);
+  assert.match(described.message, /firmware-release\/1\.1\.29/);
+  assert.match(described.detail, /Nothing from this run was lost/);
+  assert.match(described.detail, /git push origin --delete firmware-release\/1\.1\.29/);
 });
 
 test('an empty waiting list reads as plain English with no jargon', () => {
@@ -227,6 +254,61 @@ test('a parked patch folds into the single release commit, not a commit of its o
       'firmware/lightweaver-controller/VERSION',
       'firmware/lightweaver-controller/tests/firmware-version-policy.mjs',
     ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an abandoned release attempt at the same version is named, not printed as a raw git error', () => {
+  const { root, upstream } = buildSandbox();
+  try {
+    // Simulate a started-then-abandoned attempt: someone ran `release` once,
+    // it pushed `firmware-release/1.2.4`, and the pull request was closed
+    // without merging — the branch is never deleted. Reproduced directly
+    // (push a divergent commit under that name) rather than by actually
+    // running `release` twice, since only the branch's continued existence
+    // on the shared copy matters here.
+    const abandoner = clone(root, upstream, 'abandoner');
+    run(['checkout', '--quiet', '-b', 'firmware-release/1.2.4'], abandoner);
+    writeFileSync(join(abandoner, 'carried.txt'), 'an abandoned attempt\n');
+    run(['commit', '--quiet', '-am', 'abandoned release attempt'], abandoner);
+    run(['push', '--quiet', 'origin', 'firmware-release/1.2.4'], abandoner);
+
+    const author = clone(root, upstream, 'author');
+    writeFileSync(join(author, 'carried.txt'), 'after\n');
+    const patch = run(['diff'], author);
+    run(['checkout', '--', 'carried.txt'], author);
+    execFileSync('mkdir', ['-p', join(author, 'firmware-queue/patches')]);
+    writeFileSync(join(author, 'firmware-queue/patches/trivial.patch'), `${patch}\n`);
+    park(author, {
+      id: 'trivial',
+      what: 'A trivial parked change.',
+      why: 'Not worth a card update on its own.',
+      added: '2026-08-21',
+      source: { kind: 'patch', patch: 'firmware-queue/patches/trivial.patch' },
+    });
+
+    const owner = clone(root, upstream, 'owner');
+    const result = queue(owner, ['release']);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Stopped\. Nothing was changed\./);
+    assert.match(result.stderr, /abandoned attempt at version 1\.2\.4/);
+    assert.match(result.stderr, /firmware-release\/1\.2\.4/);
+    assert.match(result.stderr, /Nothing from this run was lost/);
+    assert.match(result.stderr, /git push origin --delete firmware-release\/1\.2\.4/);
+    // A raw git rejection line must not be the thing a person reads instead.
+    assert.doesNotMatch(result.stderr, /non-fast-forward/);
+    // Nothing was left half-done in the tree the owner ran it from.
+    assert.equal(run(['status', '--porcelain'], owner), '');
+    assert.equal(run(['rev-parse', '--abbrev-ref', 'HEAD'], owner), 'main');
+    assert.equal(run(['branch', '--list', 'firmware-release/*'], owner), '');
+    assert.equal(run(['worktree', 'list'], owner).split('\n').length, 1);
+    // The abandoned attempt itself is untouched — it was never overwritten.
+    run(['fetch', '--quiet', 'origin'], owner);
+    assert.equal(
+      run(['show', 'origin/firmware-release/1.2.4:carried.txt'], owner),
+      'an abandoned attempt',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

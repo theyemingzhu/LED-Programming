@@ -285,6 +285,32 @@ function fail(message, detail = '') {
   return 1;
 }
 
+// A started-then-abandoned release attempt (closed without merging, never
+// deleted) leaves its branch sitting on the shared copy under this same
+// deterministic name — every attempt at one version pushes to
+// `firmware-release/<version>`. The next attempt's push is then a
+// non-fast-forward: git's own refusal names none of that, so a human reads a
+// generic "failed to push some refs" and has no way to tell an abandoned
+// attempt apart from a real conflict. This is the one place that translates
+// git's raw rejection into what actually happened and the one command that
+// fixes it — never a stash, a rebase, or a force-push over someone's work.
+export function isAbandonedReleaseBranchRejection(gitOutput) {
+  const text = String(gitOutput || '');
+  return /\[rejected\]/.test(text) && /non-fast-forward/.test(text);
+}
+
+export function describeAbandonedReleaseBranch(branch, version) {
+  return {
+    message: `An earlier, abandoned attempt at version ${version} is still sitting on the shared `
+      + `copy of the project, under this same branch name ("${branch}").`,
+    detail: 'Nothing from this run was lost: the update just built here never touched that old\n'
+      + 'attempt, and the waiting list it carried is still intact on the main line. That old\n'
+      + 'branch is only in the way of the name, not of the work.\n\n'
+      + 'Clear it with this one command, then run this again:\n\n'
+      + `  git push origin --delete ${branch}\n`,
+  };
+}
+
 function commandRelease(argv) {
   const flags = parseFlags(argv);
   const register = readRegister();
@@ -450,6 +476,10 @@ function commandRelease(argv) {
     const pushed = tryGit(['push', 'origin', `HEAD:refs/heads/${branch}`], { cwd: scratch });
     if (!pushed.ok) {
       cleanUp();
+      if (isAbandonedReleaseBranchRejection(pushed.out)) {
+        const abandoned = describeAbandonedReleaseBranch(branch, version);
+        return fail(abandoned.message, abandoned.detail);
+      }
       return fail('Everything fitted together, but it could not be sent to the shared copy of the project.', pushed.out);
     }
 
