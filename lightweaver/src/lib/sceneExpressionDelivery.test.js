@@ -79,14 +79,14 @@ function cardEvidence(overrides = {}) {
   const cardId = 'lw-aabbccddeeff';
   const buildId = 'build-expression';
   return {
-    cardId,
+    cardId, cardAccess: 'ready',
     buildId,
     status: {
       cardId, buildId,
       knownGoodProject: true, commandReady: true,
       runtimePhase: 'ready', playbackReady: true, outputReady: true,
     },
-    wiringStatus: { state: 'known-good', hasCandidate: false },
+    wiringStatus: { cardId, buildId, state: 'known-good', hasCandidate: false },
     ...overrides,
   };
 }
@@ -123,6 +123,10 @@ function happyOperations(plan, events = []) {
   return {
     authority: { cardId: plan.cardId },
     commissioningProof: 'owner-confirmed-physical-control',
+    async readPreflightEvidence() {
+      events.push('preflight');
+      return cardEvidence();
+    },
     async saveProjectToCard(input) {
       events.push('save-source');
       assert.equal(input.envelope.contentHash, plan.envelope.contentHash);
@@ -195,7 +199,7 @@ test('happy path saves and reads source before runtime sync, then requires exact
 
   assert.equal(result.ok, true);
   assert.equal(result.state, 'on-card');
-  assert.deepEqual(events, ['save-source', 'read-source', 'sync-runtime', 'verify-runtime']);
+  assert.deepEqual(events, ['preflight', 'save-source', 'read-source', 'sync-runtime', 'verify-runtime', 'read-source']);
 });
 
 test('source save failures, conflicts, cancellation, and wrong readback never write runtime', async () => {
@@ -256,7 +260,9 @@ test('unsupported scene and unproven card readiness block before every mutation'
   assert.equal(unsupportedPlan.reason, 'scene-not-native');
 
   const unreadyPlan = prepare(projectFixture(), {
-    cardEvidence: cardEvidence({ status: { cardId: 'lw-aabbccddeeff', runtimePhase: 'ready' } }),
+    cardEvidence: cardEvidence({
+      status: { cardId: 'lw-aabbccddeeff', buildId: 'build-expression', runtimePhase: 'ready' },
+    }),
   });
   assert.equal(unreadyPlan.ok, false);
   assert.equal(unreadyPlan.reason, 'card-not-ready');
@@ -268,6 +274,46 @@ test('unsupported scene and unproven card readiness block before every mutation'
   });
   assert.equal(result.ok, false);
   assert.equal(mutations, 0);
+});
+
+test('foreign project access and stale fresh preflight evidence block before mutation', async () => {
+  const foreign = prepare(projectFixture(), {
+    cardEvidence: cardEvidence({ cardAccess: 'project' }),
+  });
+  assert.equal(foreign.ok, false);
+  assert.equal(foreign.reason, 'project-mismatch');
+
+  const plan = prepare();
+  for (const [expectedReason, evidence] of [
+    ['build-mismatch', cardEvidence({ status: { ...cardEvidence().status, buildId: 'different-build' } })],
+    ['wiring-not-known-good', cardEvidence({
+      wiringStatus: { ...cardEvidence().wiringStatus, state: 'staged', hasCandidate: true },
+    })],
+    ['project-mismatch', cardEvidence({ cardAccess: 'project' })],
+  ]) {
+    let writes = 0;
+    const result = await runExpressionSceneDelivery(plan, {
+      ...happyOperations(plan),
+      readPreflightEvidence: async () => evidence,
+      saveProjectToCard: async () => { writes += 1; return { ok: true }; },
+    });
+    assert.equal(result.reason, expectedReason);
+    assert.equal(writes, 0);
+  }
+});
+
+test('source readback validates the canonical body instead of trusting a copied hash', async () => {
+  const plan = prepare();
+  const forged = structuredClone(plan.envelope);
+  forged.project.name = 'Forged body';
+  let runtimeWrites = 0;
+  const result = await runExpressionSceneDelivery(plan, {
+    ...happyOperations(plan),
+    readSource: async () => ({ cardId: plan.cardId, envelope: forged }),
+    syncRuntime: async () => { runtimeWrites += 1; return { ok: true }; },
+  });
+  assert.equal(result.reason, 'source-hash-mismatch');
+  assert.equal(runtimeWrites, 0);
 });
 
 test('runtime failure after source commit is saved-not-installed and retains prior evidence', async () => {
@@ -303,6 +349,33 @@ test('a successful runtime POST is not promoted without complete correlated read
   assert.equal(result.reason, 'read-back-mismatch');
 });
 
+test('normal success rechecks source after runtime verification', async () => {
+  const plan = prepare();
+  let reads = 0;
+  const result = await runExpressionSceneDelivery(plan, {
+    ...happyOperations(plan),
+    readSource: async () => {
+      reads += 1;
+      return reads === 1
+        ? { cardId: plan.cardId, envelope: plan.envelope }
+        : { cardId: plan.cardId, envelope: { ...plan.envelope, contentHash: 'd'.repeat(64) } };
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.state, 'needs-verification');
+  assert.equal(result.reason, 'source-hash-mismatch');
+});
+
+test('prepared source and runtime payloads are deeply immutable', () => {
+  const plan = prepare();
+  assert.equal(Object.isFrozen(plan.prepared), true);
+  assert.equal(Object.isFrozen(plan.prepared.runtimePackage), true);
+  assert.equal(Object.isFrozen(plan.prepared.config), true);
+  const fingerprint = plan.prepared.config.projectFingerprint;
+  assert.equal(Reflect.set(plan.prepared.config, 'projectFingerprint', 'mutated'), false);
+  assert.equal(plan.prepared.config.projectFingerprint, fingerprint);
+});
+
 test('lost runtime reply promotes only after fresh exact source and runtime reconciliation', async () => {
   const plan = prepare();
   const verifiedEvents = [];
@@ -312,7 +385,7 @@ test('lost runtime reply promotes only after fresh exact source and runtime reco
   });
   assert.equal(verified.ok, true);
   assert.equal(verified.reconciled, true);
-  assert.deepEqual(verifiedEvents, ['save-source', 'read-source', 'sync-runtime', 'read-source', 'verify-runtime']);
+  assert.deepEqual(verifiedEvents, ['preflight', 'save-source', 'read-source', 'sync-runtime', 'read-source', 'verify-runtime', 'read-source']);
 
   const unverified = await runExpressionSceneDelivery(plan, {
     ...happyOperations(plan),
