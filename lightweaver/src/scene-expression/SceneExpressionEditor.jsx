@@ -10,7 +10,8 @@ import { PatternPreview } from '../v3/PatternPreview.jsx';
 import {
   addSceneAssignment, addSceneStep, createSceneExpression, DEFAULT_CARD_COLOR, moveSceneStep,
   patchOrCreateSceneAssignment, patchSceneStep, removeSceneAssignment, removeSceneStep,
-  scenePlaybackAt, scenePreviewAvailability, selectionDisplayState,
+  repeatPatternPerSectionAreaIds, repeatSceneAssignmentPerSection, scenePlaybackAt,
+  scenePreviewAvailability, selectionDisplayState,
 } from './sceneExpressionEditorModel.js';
 import './scene-expression.css';
 
@@ -87,7 +88,11 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
   );
   const inheritedState = selectionDisplay.state;
   const hasMixedSelection = Object.values(selectionDisplay.mixed).some(Boolean);
-  const previewAvailability = useMemo(() => scenePreviewAvailability(scene, resolved), [scene, resolved]);
+  const repeatPerSectionAreaIds = useMemo(
+    () => repeatPatternPerSectionAreaIds(assignment, catalog),
+    [assignment, catalog],
+  );
+  const previewAvailability = useMemo(() => scenePreviewAvailability(scene, resolved, catalog), [scene, resolved, catalog]);
   const playback = useMemo(() => scenePlaybackAt(scene, elapsedMs), [elapsedMs, scene]);
   const effectivePlaying = playing && previewAvailability.ok && !playback.ended;
   const playbackStep = scene.steps[playback.stepIndex];
@@ -250,6 +255,7 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
         <div className="sexp-section-head"><div><span>SIMULTANEOUS AREAS</span><h2>What plays together</h2></div><button type="button" onClick={() => { update(addSceneAssignment(scene, selectedStep.id, catalog.areas.find(area => area.kind === 'strip')?.id || 'all')); setSelectedAssignment(selectedStep.assignments.length); }}>+ Area</button></div>
         <div className="sexp-assignment-tabs">{selectedStep.assignments.length ? selectedStep.assignments.map((item, index) => <button key={`${item.selection.areaIds.join('-')}-${index}`} className={index === selectedAssignment ? 'active' : ''} onClick={() => setSelectedAssignment(index)}>{catalog.areas.find(area => area.id === item.selection.areaIds[0])?.name || 'Missing area'}</button>) : <button className="active">Inherited</button>}</div>
         {hasMixedSelection && <p className="sexp-mixed">Mixed values across these areas. Changing a control applies that value to the selection.</p>}
+        {repeatPerSectionAreaIds.length > 0 && <div className="sexp-repeat-choice"><p>This pattern treats the selected parent as one shared domain, which this preview cannot render.</p><button type="button" onClick={() => update(repeatSceneAssignmentPerSection(scene, selectedStep.id, selectedAssignment, catalog))}>Repeat per section</button></div>}
         <fieldset><legend>Where</legend><div className="sexp-targets">{catalog.areas.map(area => <label key={area.id} className={area.kind !== 'strip' ? 'parent' : ''}><input type="checkbox" checked={(assignment?.selection.areaIds || ['all']).includes(area.id)} onChange={() => {
           const current = assignment?.selection.areaIds || ['all'];
           const areaIds = area.kind === 'strip'

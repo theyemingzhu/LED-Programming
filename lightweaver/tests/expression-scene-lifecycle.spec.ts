@@ -159,6 +159,12 @@ test('creates and switches between multiple stable scene sources', async ({ page
 test('renders real divided-strip and grouped-mandala Layout targets', async ({ page }) => {
   await page.getByLabel('Scene title').fill('Fixture seed');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3'))).not.toBeNull();
+  await page.addInitScript(() => {
+    const staged = sessionStorage.getItem('lw_test_staged_autosave');
+    if (!staged) return;
+    localStorage.setItem('lw_autosave_v3', staged);
+    sessionStorage.removeItem('lw_test_staged_autosave');
+  });
   await page.evaluate(() => {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3')!);
     const base = project.layout.strips[0];
@@ -176,7 +182,7 @@ test('renders real divided-strip and grouped-mandala Layout targets', async ({ p
       outputs: [{ id: 'out1', pin: 16, runIds: ids.map(id => `run-${id}`) }],
       runs: ids.map(id => ({ id: `run-${id}`, type: 'strip', source: { stripId: id, from: 0, to: 17 }, directionPolicy: 'flexible', physicalDirection: 'source-forward', seamLed: null, verified: true })),
     };
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    sessionStorage.setItem('lw_test_staged_autosave', JSON.stringify(project));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByTestId('pattern-lab-build-scene').click();
@@ -185,6 +191,23 @@ test('renders real divided-strip and grouped-mandala Layout targets', async ({ p
   }
   await expect(page.locator('.sexp-canvas')).toHaveAttribute('data-preview-segments', '3');
   await expect(page.getByRole('status').filter({ hasText: 'Card compatible' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Three-part ribbon' }).check();
+  await page.getByLabel('Color', { exact: true }).fill('144');
+  await page.getByLabel('Scene pattern').selectOption('fire');
+  await expect(page.getByRole('button', { name: 'Play scene' })).toBeDisabled();
+  await expect(page.getByRole('region', { name: 'Scene preview' })).toContainText('one shared domain');
+  await page.getByRole('button', { name: 'Repeat per section' }).click();
+  await expect(page.getByRole('checkbox', { name: 'Three-part ribbon' })).not.toBeChecked();
+  for (const name of ['Left section', 'Center section', 'Right section']) {
+    await expect(page.getByRole('checkbox', { name })).toBeChecked();
+  }
+  await expect.poll(() => page.evaluate(() => {
+    const assignment = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').expressionScenes?.scenes?.[0]?.steps?.[0]?.assignments?.[0];
+    if (!assignment) return null;
+    return { areaIds: assignment.selection.areaIds, rendererId: assignment.pattern.rendererId, hue: assignment.color.customHue };
+  })).toEqual({
+    areaIds: ['strip:ribbon-left', 'strip:ribbon-center', 'strip:ribbon-right'], rendererId: 'fire', hue: 144,
+  });
   await page.screenshot({ path: '/tmp/lightweaver-scene-expression-three-section.png', fullPage: true });
 
   await page.evaluate(() => {
@@ -209,7 +232,7 @@ test('renders real divided-strip and grouped-mandala Layout targets', async ({ p
       runs: ids.map(id => ({ id: `run-${id}`, type: 'strip', source: { stripId: id, from: 0, to: id === 'center' ? 13 : 17 }, directionPolicy: 'flexible', physicalDirection: 'source-forward', seamLed: null, verified: true })),
     };
     project.expressionScenes = { version: 1, activeSceneId: null, scenes: [] };
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    sessionStorage.setItem('lw_test_staged_autosave', JSON.stringify(project));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByTestId('pattern-lab-build-scene').click();

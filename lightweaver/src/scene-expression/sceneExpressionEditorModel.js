@@ -20,12 +20,7 @@ export function createSceneExpression({ id, name = 'Untitled scene' }) {
     steps: [{
       id: `${sceneId}-step-1`, label: 'Opening', holdMs: 30000,
       transitionFromPrevious: { mode: 'cut', durationMs: 0 },
-      assignments: [{
-        selection: { areaIds: ['all'], domain: 'repeat' },
-        pattern: { rendererId: 'aurora', speed: 1 },
-        color: clone(DEFAULT_CARD_COLOR),
-        intensity: { brightness: 0.8 },
-      }],
+      assignments: [],
     }],
     loop: { mode: 'repeat' },
   };
@@ -85,12 +80,36 @@ export function scenePlaybackAt(scene, elapsedMs) {
 function nativeMovementIsRenderable(movement) {
   if (movement === undefined) return true;
   return movement?.kind === 'native'
-    && movement.params
+    && Boolean(movement.params)
+    && typeof movement.params === 'object'
+    && !Array.isArray(movement.params)
     && Object.keys(movement).every(key => key === 'kind' || key === 'params')
     && Object.keys(movement.params).length === 0;
 }
 
-export function scenePreviewAvailability(scene, resolved) {
+export function repeatPatternPerSectionAreaIds(assignment, catalog) {
+  if (!assignment?.pattern || assignment.selection?.domain !== 'repeat') return [];
+  const areasById = new Map((catalog?.areas || []).map(area => [area.id, area]));
+  const selected = (assignment.selection?.areaIds || []).map(areaId => areasById.get(areaId)).filter(Boolean);
+  if (!selected.some(area => area.kind !== 'strip' && area.stripIds?.length > 1)) return [];
+  const stripAreaIdByStripId = new Map((catalog?.areas || [])
+    .filter(area => area.kind === 'strip' && area.stripIds?.length === 1)
+    .map(area => [area.stripIds[0], area.id]));
+  return [...new Set(selected.flatMap(area => (
+    area.kind === 'strip' ? [area.id] : (area.stripIds || []).map(stripId => stripAreaIdByStripId.get(stripId))
+  )).filter(Boolean))];
+}
+
+export function repeatSceneAssignmentPerSection(scene, stepId, assignmentIndex, catalog) {
+  const assignment = scene.steps.find(step => step.id === stepId)?.assignments?.[assignmentIndex];
+  const areaIds = repeatPatternPerSectionAreaIds(assignment, catalog);
+  if (!areaIds.length) return clone(scene);
+  return patchSceneAssignment(scene, stepId, assignmentIndex, {
+    selection: { ...assignment.selection, areaIds },
+  });
+}
+
+export function scenePreviewAvailability(scene, resolved, catalog = {}) {
   if (!resolved?.ok) return { ok: false, message: resolved?.reasons?.[0]?.message || 'Resolve scene source issues before previewing.' };
   const sourcePatterns = [scene.defaults?.pattern];
   for (const step of scene.steps) {
@@ -99,6 +118,9 @@ export function scenePreviewAvailability(scene, resolved) {
     }
     if (step.assignments.some(assignment => assignment.selection?.domain === 'continuous')) {
       return { ok: false, message: 'Continuous-domain motion is preserved, but this Studio cannot preview it truthfully.' };
+    }
+    if (step.assignments.some(assignment => repeatPatternPerSectionAreaIds(assignment, catalog).length)) {
+      return { ok: false, message: 'This grouped pattern is one shared domain. Choose Repeat per section to preview independent sections.' };
     }
     sourcePatterns.push(...step.assignments.map(assignment => assignment.pattern).filter(Boolean));
   }
