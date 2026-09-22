@@ -32,7 +32,7 @@ function unsupportedTitle(code) {
   return 'Scene source cannot be edited';
 }
 
-export default function SceneExpressionEditor({ project, onSaveProject, onClose }) {
+export default function SceneExpressionEditor({ project, onSaveProject, onInstallScene, onClose }) {
   const store = project.expressionScenes;
   const storeInspection = inspectExpressionScenes(store);
   const storedScenes = Array.isArray(store?.scenes) ? store.scenes : [];
@@ -44,6 +44,7 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
   const [playing, setPlaying] = useState(true);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [saveState, setSaveState] = useState('idle');
+  const [installState, setInstallState] = useState({ status: 'idle', message: '', source: '', reason: '' });
   const playbackFrameRef = useRef(0);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
     setSelectedAssignment(0);
     setElapsedMs(0);
     setSaveState('idle');
+    setInstallState({ status: 'idle', message: '', source: '', reason: '' });
   }, [project.expressionScenes, project.projectId, sourceProjectId]);
 
   useEffect(() => {
@@ -187,6 +189,41 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
     writeCanonicalSource(scene);
     setSaveState('saving');
   }
+  async function install() {
+    if (!onInstallScene || installState.status === 'installing') return;
+    const source = JSON.stringify(scene);
+    setInstallState({ status: 'installing', message: 'Saving the current Studio project…', source });
+    try {
+      const browserSave = await onSaveProject?.();
+      if (!browserSave?.ok) {
+        setInstallState({ status: 'failed', message: 'Save this project in Studio before installing the scene.', source, reason: browserSave?.reason || 'browser-save-failed' });
+        return;
+      }
+      const result = await onInstallScene({
+        sceneId: scene.id,
+        onProgress: progress => setInstallState({
+          status: 'installing', source,
+          message: progress === 'pairing' ? 'Confirming the physical card…'
+            : progress === 'uploading' ? 'Saving the editable project source…'
+              : progress === 'verifying' ? 'Verifying the saved source…'
+                : 'Installing the scene playback…',
+        }),
+      });
+      setInstallState({
+        status: result?.ok && result.state === 'on-card' ? 'installed' : result?.sourceSaved ? 'source-saved' : 'failed',
+        message: result?.message || 'The scene was not installed. Your draft remains in Studio.',
+        reason: result?.reason || '',
+        source,
+      });
+    } catch (error) {
+      setInstallState({
+        status: 'failed',
+        message: error?.message || 'The scene was not installed. Your draft remains in Studio.',
+        reason: error?.reason || 'install-failed',
+        source,
+      });
+    }
+  }
 
   useEffect(() => {
     if (saveState !== 'saving') return undefined;
@@ -220,13 +257,19 @@ export default function SceneExpressionEditor({ project, onSaveProject, onClose 
         <select aria-label="Scene" value={scene.id} onChange={event => openScene(event.target.value)}>{availableScenes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <button className="btn" type="button" onClick={newScene}>New scene</button>
         <button className="btn" type="button" onClick={onClose}>Back to Lab</button>
-        <button className="btn primary" type="button" onClick={save} disabled={saveState === 'saving'}>{saveState === 'saving' ? 'Saving…' : 'Save scene'}</button>
+        <button className="btn" type="button" onClick={save} disabled={saveState === 'saving'}>{saveState === 'saving' ? 'Saving…' : 'Save scene'}</button>
+        <button className="btn primary" type="button" onClick={install} disabled={!compilation.ok || installState.status === 'installing' || (installState.status === 'installed' && installState.source === JSON.stringify(scene)) || !onInstallScene}>{installState.status === 'installing' ? 'Putting scene on card…' : installState.status === 'installed' && installState.source === JSON.stringify(scene) ? 'On card' : 'Put scene on card'}</button>
       </div>
     </header>
     <div className={`sexp-status ${status.tone}`} role="status">
       <strong>{status.title}</strong><span>{status.body}</span>
       {saveState === 'saved' && <em>Project saved</em>}
       {saveState === 'error' && <em>Save failed. Your edits remain open.</em>}
+    </div>
+    <div className="sexp-delivery" data-state={installState.status} data-reason={installState.reason || undefined}>
+      <strong>{scene.steps.length} scene step{scene.steps.length === 1 ? '' : 's'} will replace the card playlist.</strong>
+      <span>Your {project.standaloneController?.looks?.length || 0} saved library look{project.standaloneController?.looks?.length === 1 ? '' : 's'} {project.standaloneController?.looks?.length === 1 ? 'remains' : 'remain'} in the editable project source.</span>
+      {installState.message && <em>{installState.status === 'installed' && installState.source !== JSON.stringify(scene) ? 'An earlier snapshot is verified on the card. This draft has newer edits.' : installState.message}</em>}
     </div>
     <div className="sexp-grid">
       <section className="sexp-preview" aria-label="Scene preview">
