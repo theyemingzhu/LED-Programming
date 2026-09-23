@@ -251,6 +251,7 @@ jobs:
           pio test -d firmware/lightweaver-controller -e native
           node firmware/lightweaver-controller/tests/color-journey-samples.mjs
           node firmware/lightweaver-controller/tests/saved-network-storage-native.mjs
+          node firmware/lightweaver-controller/tests/usb-wifi-provisioning.mjs
           node firmware/lightweaver-controller/tests/card-identity-capabilities.mjs
           node firmware/lightweaver-controller/tests/windowless-card-studio.mjs
 

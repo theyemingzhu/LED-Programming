@@ -45,9 +45,9 @@ test('an older card is told which build it is on and which build it is getting',
   await openInstall(page, remembered(1));
   const plan = page.getByTestId('install-update-plan');
   await expect(plan).toBeVisible();
-  await expect(plan).toContainText('This card is on Build 1.');
-  await expect(plan).toContainText(`This updates it to Build ${target.buildNumber}.`);
-  await expect(plan).toContainText('erases the card');
+  await expect(plan).toContainText('Last known firmwareBuild 1');
+  await expect(plan).toContainText(`Build ${target.buildNumber}`);
+  await expect(plan).toContainText('This will update the card');
 });
 
 // The case that matters most: reinstalling the build already on the card still
@@ -57,9 +57,8 @@ test('reinstalling the same build says so instead of implying an upgrade', async
   await openInstall(page, remembered(target.buildNumber));
 
   const plan = page.getByTestId('install-update-plan');
-  await expect(plan).toContainText('already on the official firmware');
+  await expect(plan).toContainText('This build is already on the card');
   await expect(plan).not.toContainText('updates it to');
-  await expect(plan).toContainText('erases the card');
 });
 
 test('every setup step is clickable so an already-installed card can skip ahead or go back', async ({ page, request }) => {
@@ -87,18 +86,34 @@ test('every setup step is clickable so an already-installed card can skip ahead 
 test('a card running newer firmware is warned it is going backwards', async ({ page }) => {
   await openInstall(page, remembered(999999));
   const plan = page.getByTestId('install-update-plan');
-  await expect(plan).toContainText('which is NEWER');
-  await expect(plan).toContainText('backwards');
+  await expect(plan).toContainText('older than the firmware on this card');
   await expect(plan).toHaveClass(/is-downgrade/);
 });
 
 // Never let the target read as the answer to "what is on it".
 test('a card this browser has never met is reported as unknown', async ({ page, request }) => {
   const target = await availableRelease(request);
+  await page.addInitScript((cardId) => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
+      connection: { loader: {}, transport: { disconnect: async () => true } },
+      hardware: {
+        cardId, chipName: 'ESP32-S3', chipDescription: 'ESP32-S3',
+        flashSize: '16MB', flashBytes: 16 * 1024 * 1024,
+      },
+    });
+  }, CARD_ID);
   await openInstall(page, null);
   const plan = page.getByTestId('install-update-plan');
-  await expect(plan).toContainText('does not know what firmware is on this card yet');
-  await expect(plan).toContainText(`This installs Build ${target.buildNumber}.`);
+  await expect(plan).toContainText('Current firmwareNot checked yet');
+  await expect(plan).toContainText(`Build ${target.buildNumber}`);
+  await expect(page.locator('.install-card-check')).toContainText(`Official Lightweaver ${target.firmwareVersion}`);
+  await expect(page.locator('.install-card-check')).toContainText('Current firmware');
+  await expect(page.locator('.install-intro .install-release.ready')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Find connected card' }).click();
+  await expect(page.getByTestId('install-card-identity')).toContainText(CARD_ID);
+  await expect(plan).toContainText('Current firmwareUnknown');
+  await expect(plan).toContainText('USB confirmed the card, but its current firmware is still unknown.');
 });
 
 // The live screen printed official 1.1.30, "already on 1.1.30", and then
@@ -130,10 +145,12 @@ test('USB discovery names the card and does not print a second firmware version'
   const identity = page.getByTestId('install-card-identity');
   await expect(identity).toContainText(CARD_ID);
   await expect(identity).toContainText('ESP32-S3 · 16 MB');
+  await expect(page.locator('.install-card-check')).toContainText('Current firmware');
+  await expect(page.locator('.install-card-check')).toContainText(`Official Lightweaver ${target.firmwareVersion}`);
   await expect(identity).not.toContainText('Installed firmware');
   await expect(identity).not.toContainText('Current firmware');
   await expect(page.locator('body')).not.toContainText('9.9.9');
-  await expect(page.getByTestId('install-update-plan')).toContainText('already on the official firmware');
+  await expect(page.getByTestId('install-update-plan')).toContainText('This build is already on the card');
 });
 
 // Find Connected Card already named the bench firmware. The footer used to keep
@@ -197,7 +214,7 @@ test('USB flash identity outranks remembered firmware and clearly recommends a p
   await expect(identity).not.toContainText('Installed firmware');
 
   const panel = page.getByTestId('preserving-update-panel');
-  await expect(panel.getByRole('heading', { name: 'One-time USB update for this card' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
   await expect(panel).toContainText('1.1.1 · Build 1366faf23a29');
   await expect(panel).toContainText(`${manifest.firmwareVersion} · Build ${manifest.buildNumber}`);
   await expect(panel).not.toContainText('replaces it with');

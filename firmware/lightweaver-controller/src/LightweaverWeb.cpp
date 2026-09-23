@@ -12,6 +12,7 @@
 #include "LightweaverConnectivityOrchestrator.h"
 #include "LightweaverHardwareContract.h"
 #include "LightweaverWifiChannelPolicy.h"
+#include "LightweaverUsbWifiPolicy.h"
 #include "LightweaverOwnerCapability.h"
 #include "LightweaverHttpFrameStream.h"
 #include "LightweaverFirmwareUpdate.h"
@@ -22,6 +23,7 @@
 #include <ESPmDNS.h>
 #include <DNSServer.h>
 #include <cerrno>
+#include <atomic>
 #include <climits>
 #include <cstdlib>
 
@@ -97,6 +99,18 @@ uint32_t lastScanStartMs = 0;
 uint32_t apTeardownGeneration = 0;
 uint32_t apTeardownDeadlineMs = 0;
 String apTeardownStationIp;
+lightweaver::UsbWifiLineBuffer<1536> usbWifiLine;
+uint32_t usbWifiLastByteMs = 0;
+String usbWifiAttemptId;
+uint32_t usbWifiAttemptGeneration = 0;
+std::atomic<uint16_t> usbWifiDisconnectReason{0};
+std::atomic<bool> usbWifiObserveDisconnects{false};
+std::atomic<bool> usbWifiStationStopped{true};
+bool usbWifiJoinFailed = false;
+uint32_t usbWifiJoinStartAt = 0;
+// The WiFi event task only writes the bounded reason. It never touches the
+// runtime config, response JSON, USB stream, or a credential string.
+
 
 void startApMode(RuntimeConfig& config);
 void ensureRecoveryAp(RuntimeConfig& config);
@@ -1605,6 +1619,13 @@ void handleWifiPost() {
     server.send(400, "application/json", String("{\"ok\":false,\"error\":\"") + message + "\"}");
     return;
   }
+  // An explicit setup-page submission supersedes an outstanding USB attempt.
+  // Clear its correlation so USB polling cannot misattribute the new network.
+  usbWifiJoinStartAt = 0;
+  usbWifiObserveDisconnects = false;
+  usbWifiAttemptId = "";
+  usbWifiAttemptGeneration = 0;
+  usbWifiJoinFailed = false;
   uint32_t generation = runtimeConfigPtr->wifiRuntime.connectivity.generation + 1U;
   if (generation == 0) generation = 1;
   beginStationJoin(*runtimeConfigPtr, generation);
@@ -3018,6 +3039,14 @@ void processScheduledApTeardown(
 }
 
 void applyStationAssociation(RuntimeConfig& config, const String& stationIp) {
+  usbWifiObserveDisconnects = false;
+  if (usbWifiAttemptId.length() &&
+      usbWifiAttemptGeneration == config.wifiRuntime.connectivity.generation) {
+    // The same USB attempt can succeed on an automatic retry after its first
+    // join timed out. Keep its identity, but retire the now-stale failure.
+    usbWifiJoinFailed = false;
+    usbWifiDisconnectReason = 0;
+  }
   config.wifiRuntime.stationIp = stationIp;
   config.wifiRuntime.lastError = "";
   config.wifiRuntime.stationLinkPending = false;
@@ -3059,6 +3088,11 @@ class WebConnectivityHardwareAdapter {
   }
 
   void initialJoinTimedOut() {
+    if (usbWifiAttemptGeneration == config_.wifiRuntime.connectivity.generation &&
+        usbWifiAttemptId.length()) {
+      usbWifiObserveDisconnects = false;
+      usbWifiJoinFailed = true;
+    }
     WiFi.disconnect(false, false);
     config_.wifiRuntime.stationIp = "";
     config_.wifiRuntime.lastError = "station association timed out";
@@ -3134,6 +3168,203 @@ void maintainConnectivity() {
     markWifiCredentialsProven(cfg, associatedStationChannel());
   }
 }
+
+void writeUsbWifiStatus(JsonDocument& response) {
+  const auto& cfg = *runtimeConfigPtr;
+  const auto& state = cfg.wifiRuntime.connectivity;
+  const char* phase = "setup-ap";
+  switch (state.phase) {
+    case lightweaver::ConnectivityPhase::Joining: phase = "joining"; break;
+    case lightweaver::ConnectivityPhase::HandoffReady: phase = "handoff-ready"; break;
+    case lightweaver::ConnectivityPhase::HandoffAbandoned: phase = "handoff-abandoned"; break;
+    case lightweaver::ConnectivityPhase::Station: phase = "station"; break;
+    case lightweaver::ConnectivityPhase::Reconnecting: phase = "reconnecting"; break;
+    case lightweaver::ConnectivityPhase::RecoveryAp: phase = "recovery-ap"; break;
+    default: break;
+  }
+  response["attemptId"] = usbWifiAttemptId;
+  auto wifi = response["wifi"].to<JsonObject>();
+  wifi["transition"] = usbWifiJoinStartAt ? "joining" : phase;
+  wifi["stationIp"] = cfg.wifiRuntime.stationIp;
+  wifi["handoffGeneration"] = usbWifiAttemptId.length() ? usbWifiAttemptGeneration : state.generation;
+  wifi["apActive"] = state.apActive;
+  wifi["transitionPending"] = usbWifiJoinStartAt || lightweaver::connectivityTransitionPending(state);
+  wifi["networkBindingsPending"] = state.networkBindingsPending;
+  wifi["joinFailed"] = usbWifiJoinFailed;
+  wifi["lastError"] = cfg.wifiRuntime.lastError;
+  wifi["driverReason"] = usbWifiJoinFailed ? uint16_t(usbWifiDisconnectReason) : 0;
+  wifi["failureReason"] = usbWifiJoinFailed
+      ? lightweaver::usbWifiFailureReason(usbWifiDisconnectReason.load()) : "";
+}
+
+void writeUsbWifiScan(JsonDocument& response, bool refresh) {
+  int16_t found = WiFi.scanComplete();
+  if (refresh && found >= 0) { WiFi.scanDelete(); lastScanStartMs = 0; found = WIFI_SCAN_FAILED; }
+  auto networks = response["networks"].to<JsonArray>();
+  if (found < 0) {
+    if (found != WIFI_SCAN_RUNNING &&
+        (!lastScanStartMs || uint32_t(millis()-lastScanStartMs) >= LW_WIFI_SCAN_RETRY_MS)) {
+      lastScanStartMs = millis() ? millis() : 1;
+      WiFi.scanNetworks(true, false);
+    }
+    response["scanning"] = true;
+    return;
+  }
+  response["scanning"] = false;
+  int entries[LW_WIFI_SCAN_MAX_NETWORKS];
+  int count = 0;
+  for (int i=0;i<found;i++) {
+    String ssid = WiFi.SSID(i);
+    if (!ssid.length()) continue;
+    int duplicate = -1;
+    for (int j=0;j<count;j++) if (WiFi.SSID(entries[j]) == ssid) { duplicate=j; break; }
+    if (duplicate >= 0) {
+      if (WiFi.RSSI(i) > WiFi.RSSI(entries[duplicate])) entries[duplicate]=i;
+    } else if (count < LW_WIFI_SCAN_MAX_NETWORKS) entries[count++]=i;
+    else {
+      int weakest=0;
+      for (int j=1;j<count;j++) if (WiFi.RSSI(entries[j]) < WiFi.RSSI(entries[weakest])) weakest=j;
+      if (WiFi.RSSI(i) > WiFi.RSSI(entries[weakest])) entries[weakest]=i;
+    }
+  }
+  for (int i=0;i<count;i++) for (int j=i+1;j<count;j++) {
+    if (WiFi.RSSI(entries[j]) > WiFi.RSSI(entries[i])) { int t=entries[i]; entries[i]=entries[j]; entries[j]=t; }
+  }
+  for (int i=0;i<count;i++) {
+    auto network=networks.add<JsonObject>();
+    network["ssid"]=WiFi.SSID(entries[i]); network["rssi"]=WiFi.RSSI(entries[i]);
+    network["secure"]=WiFi.encryptionType(entries[i]) != WIFI_AUTH_OPEN;
+  }
+}
+
+bool usbWifiIdentityMatches(JsonDocument& request) {
+  return request["expectedCardId"].is<const char*>() &&
+      request["expectedCardId"].as<String>() == runtimeCardId() &&
+      request["expectedBootId"].is<const char*>() &&
+      request["expectedBootId"].as<String>() == runtimeBootId() &&
+      request["expectedFirmwareVersion"].is<const char*>() &&
+      request["expectedFirmwareVersion"].as<String>() == LW_FIRMWARE_VERSION &&
+      request["expectedBuildId"].is<const char*>() &&
+      request["expectedBuildId"].as<String>() == LW_BUILD_ID &&
+      request["expectedBuildNumber"].is<uint32_t>() &&
+      request["expectedBuildNumber"].as<uint32_t>() == LW_BUILD_NUMBER;
+}
+
+void handleUsbWifiRequest() {
+  JsonDocument request;
+  // Mutable input uses ArduinoJson's zero-copy parsing. The receive buffer is
+  // scrubbed unconditionally immediately after handling this frame.
+  if (deserializeJson(request, const_cast<char*>(usbWifiLine.data()), usbWifiLine.size()) ||
+      !request.is<JsonObject>() || request["protocol"].as<String>() != "lightweaver-usb-wifi" ||
+      !request["version"].is<unsigned>() || request["version"].as<unsigned>() != 1 ||
+      !request["id"].is<const char*>() || !lightweaver::usbWifiRequestIdValid(request["id"]) ||
+      !request["command"].is<const char*>()) return;
+  String command = request["command"].as<String>();
+  if (command != "hello" && command != "scan" && command != "status" && command != "provision") return;
+  JsonDocument response;
+  response["protocol"] = "lightweaver-usb-wifi";
+  response["version"] = 1;
+  response["id"] = request["id"].as<const char*>();
+  response["command"] = command;
+  response["cardId"] = runtimeCardId();
+  response["bootId"] = runtimeBootId();
+  response["firmwareVersion"] = LW_FIRMWARE_VERSION;
+  response["buildId"] = LW_BUILD_ID;
+  response["buildNumber"] = LW_BUILD_NUMBER;
+  response["usbWifiProvisioning"] = true;
+  bool eligible = !runtimeKnownGoodProject() && !runtimeSafeModeActive() &&
+      !runtimeConfigPtr->pieceId.length() && !runtimeConfigPtr->wifi.proven;
+  response["freshInstallEligible"] = eligible;
+  const char* error = nullptr;
+  if (command != "hello" && !usbWifiIdentityMatches(request)) error = "identity_mismatch";
+  else if ((command == "scan" || command == "provision") && !eligible) error = "fresh_install_only";
+  else if (command == "scan") {
+    if (usbWifiJoinStartAt || runtimeConfigPtr->wifiRuntime.connectivity.phase == lightweaver::ConnectivityPhase::Joining)
+      error = "busy";
+    else writeUsbWifiScan(response, request["refresh"] | false);
+  } else if (command == "provision") {
+    const auto ssid = request["ssid"].as<JsonString>();
+    const auto password = request["password"].as<JsonString>();
+    if (!request["ssid"].is<const char*>() || !request["password"].is<const char*>() ||
+        !request["clearPassword"].is<bool>() || ssid.size() < 1 || ssid.size() > 32 ||
+        password.size() > 63 || strlen(ssid.c_str()) != ssid.size() || strlen(password.c_str()) != password.size() ||
+        (password.size() > 0 && password.size() < 8) ||
+        (password.size() == 0 && !request["clearPassword"].as<bool>()) ||
+        (password.size() > 0 && request["clearPassword"].as<bool>())) error = "invalid_credentials";
+    else if (usbWifiJoinStartAt) error = "busy";
+    else if (usbWifiAttemptId == request["id"].as<String>()) {
+      // Duplicate delivery reconciles the existing attempt instead of writing
+      // credentials or advancing the handoff generation a second time.
+      response["accepted"] = true;
+    } else {
+      JsonDocument credentials;
+      credentials["ssid"] = ssid;
+      credentials["password"] = password;
+      credentials["clearPassword"] = request["clearPassword"].as<bool>();
+      String serialized, message;
+      serializeJson(credentials, serialized);
+      bool saved = saveWifiConfigJson(serialized, *runtimeConfigPtr, message);
+      for (size_t i=0;i<serialized.length();i++) serialized[i] = 0;
+      if (!saved) error = "persistence_failed";
+      else {
+        usbWifiObserveDisconnects = false;
+        usbWifiDisconnectReason = 0;
+        usbWifiJoinFailed = false;
+        usbWifiAttemptId = request["id"].as<String>();
+        usbWifiAttemptGeneration = max(usbWifiAttemptGeneration, runtimeConfigPtr->wifiRuntime.connectivity.generation) + 1U;
+        if (!usbWifiAttemptGeneration) usbWifiAttemptGeneration = 1;
+        // Stop only the station interface, retaining the setup AP. STA_STOP
+        // is an event-queue fence after the prior disconnect events; do not
+        // arm reason capture or start new credentials until it was observed.
+        WiFi.scanDelete();
+        usbWifiStationStopped = (WiFi.getMode() & WIFI_STA) == 0;
+        WiFi.enableSTA(false);
+        runtimeConfigPtr->wifiRuntime.connectivity = lightweaver::ConnectivityState();
+        runtimeConfigPtr->wifiRuntime.stationIp = "";
+        runtimeConfigPtr->wifiRuntime.lastError = "";
+        runtimeSetWifiTransitionPending(true);
+        usbWifiJoinStartAt = millis() + 300;
+        if (!usbWifiJoinStartAt) usbWifiJoinStartAt = 1;
+        response["accepted"] = true;
+      }
+    }
+  }
+  response["ok"] = error == nullptr;
+  if (error) response["error"] = error;
+  writeUsbWifiStatus(response);
+  response["handoffGeneration"] = usbWifiAttemptGeneration;
+  // No generic response serialization of the request, credentials, or NVS.
+  Serial.println();
+  serializeJson(response, Serial);
+  Serial.println();
+}
+
+void handleUsbWifi() {
+  if (!runtimeConfigPtr) return;
+  if (usbWifiJoinStartAt && int32_t(millis()-usbWifiJoinStartAt) >= 0) {
+    if (usbWifiStationStopped) {
+      usbWifiJoinStartAt = 0;
+      usbWifiDisconnectReason = 0;
+      usbWifiObserveDisconnects = true;
+      beginStationJoin(*runtimeConfigPtr, usbWifiAttemptGeneration);
+    } else if (uint32_t(millis()-usbWifiJoinStartAt) > 2000) {
+      usbWifiJoinStartAt = 0;
+      usbWifiJoinFailed = true;
+      runtimeConfigPtr->wifiRuntime.lastError = "station restart could not be confirmed";
+      runtimeSetWifiTransitionPending(false);
+    }
+  }
+  if (usbWifiLine.size() && uint32_t(millis()-usbWifiLastByteMs) > 2000) usbWifiLine.clear();
+  // A hostile or damaged USB sender cannot starve network/LED work.
+  for (size_t budget=0; budget<256 && Serial.available(); budget++) {
+    usbWifiLastByteMs = millis();
+    if (usbWifiLine.push(static_cast<char>(Serial.read()))) {
+      handleUsbWifiRequest();
+      usbWifiLine.clear();
+    }
+  }
+}
+
 }
 
 // The control endpoints are unauthenticated, so never echo "*": with the old
@@ -3174,6 +3405,15 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   totalPixelsPtr = &totalPixels;
   currentLookIndexPtr = &currentLookIndex;
 
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_STOP) usbWifiStationStopped = true;
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED && usbWifiObserveDisconnects) {
+      const uint16_t reason = info.wifi_sta_disconnected.reason;
+      // ASSOC_LEAVE is the driver's own deliberate disconnect, not evidence
+      // about a router or a password. Never let it replace a useful reason.
+      if (reason != 8) usbWifiDisconnectReason = reason;
+    }
+  });
   startApMode(config);
   // A proven network resumes with generation 0 (no handoff). Only a card whose
   // credentials have never reached Station re-opens the first-join handoff on
@@ -3276,7 +3516,8 @@ static uint32_t lastMdnsAnnounceMs = 0;
 
 void handleLightweaverWeb() {
   if (dnsServerActive) dnsServer.processNextRequest();
-  maintainConnectivity();
+  handleUsbWifi();
+  if (!usbWifiJoinStartAt) maintainConnectivity();
   handleLightweaverHttpFrameStream();
   handleLightweaverFirmwareUpdate();
   const uint32_t nowMs = millis();

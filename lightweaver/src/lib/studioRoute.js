@@ -82,6 +82,13 @@ export function isBridgeCallbackHash(hash) {
   return String(hash || '').startsWith('#bridge-result?');
 }
 
+export function isLayoutSpecsRoute(hash) {
+  const params = routeParams(hash);
+  return params.get('screen') === 'layout'
+    && params.get('mode') === 'draw'
+    && params.get('panel') === 'specs';
+}
+
 export function cardRouteFromHash(hash = '') {
   const params = routeParams(hash);
   const screen = String(params.get('screen') || '').toLowerCase();
@@ -150,6 +157,7 @@ export function canonicalStudioHash(hash, view) {
   // `mode` is the Layout screen's Wire-drawing deep link (#screen=layout&mode=draw).
   // Old `mode=wire` is handled above as a Card install entrance.
   if (view !== 'layout' || params.get('mode') === 'install') params.delete('mode');
+  if (view !== 'layout' || params.get('mode') !== 'draw' || params.get('panel') !== 'specs') params.delete('panel');
   return `#${params.toString()}`;
 }
 

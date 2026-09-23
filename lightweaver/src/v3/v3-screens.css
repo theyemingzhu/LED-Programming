@@ -549,11 +549,14 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
    build, and an unknown card are all normal things to be doing. */
 /* As wide as the two sentences it holds. Spanning the column drew a box
    around a lot of nothing. */
-.install-update-plan { box-sizing: border-box; width: max-content; max-width: 100%; padding: 11px 14px; border-radius: var(--r-sm); border: 1px solid var(--border-soft); background: var(--bg-elev); }
+.install-update-plan { box-sizing: border-box; grid-column: 1 / -1; width: 100%; padding: 11px 14px; border-radius: var(--r-sm); border: 1px solid var(--border-soft); background: var(--bg-elev); }
 .install-update-plan.is-downgrade { border-color: oklch(0.55 0.16 30 / .45); }
+.install-firmware-summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; align-items: baseline; font-size: 12px; line-height: 1.4; }
+.install-firmware-summary span { color: var(--text-lo); }
+.install-firmware-summary strong { color: var(--text-hi); font-weight: 600; overflow-wrap: anywhere; }
 .install-update-headline { margin: 0; color: var(--text-hi); font-size: 13px; line-height: 1.5; }
+.install-firmware-summary + .install-update-headline { margin-top: 8px; }
 .install-update-plan.is-downgrade .install-update-headline { color: var(--danger); }
-.install-update-caution { margin: 5px 0 0; color: var(--text-lo); font-size: 11.5px; line-height: 1.5; }
 .install-action-card { border-radius: var(--r-md); background: var(--bg-panel); }
 .install-action-card .btn-lg {
   height: auto; min-height: 36px; max-width: 240px; padding-block: 8px;
@@ -568,10 +571,15 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .preserving-update-panel .card-acknowledged-facts dd {
   text-align: right; font-variant-numeric: tabular-nums;
 }
-.preserving-update-target {
-  display: grid; justify-items: end; gap: 8px;
-}
-.preserving-update-inline-action { justify-self: end; }
+.preserving-update-panel h2 { font-size: 18px; line-height: 1.2; letter-spacing: 0; }
+.preserving-update-choice { display: grid; justify-items: end; gap: 9px; margin-top: 12px; }
+.preserving-update-choice > p { margin: 0; color: var(--text-mid); font-size: 12px; line-height: 1.5; text-align: right; }
+.preserving-update-details { margin-top: 9px; color: var(--text-lo); font-size: 11.5px; }
+.preserving-update-details summary { cursor: pointer; width: fit-content; }
+.preserving-update-details p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.preserving-update-alternative { margin-top: 1px; justify-self: end; text-align: right; }
+.preserving-update-alternative summary { margin-left: auto; }
+.preserving-update-alternative .btn { margin-top: 7px; }
 .preserving-update-notice,
 .preserving-update-usb-unavailable {
   margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-mid); text-align: right;
@@ -611,6 +619,28 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .install-confirm-action > .lwui-rail { width: 100%; min-width: 180px; }
 .install-confirm > .lwui-rail { grid-column: 1 / -1; }
 .install-observing { margin: 0 2px; }
+
+.usb-wifi-form { display: grid; gap: 16px; min-width: 0; }
+.usb-wifi-form h2 { margin: 0 0 6px; font-size: 16px; line-height: 1.4; }
+.usb-wifi-form p { margin: 0; color: var(--text-mid); line-height: 1.5; overflow-wrap: anywhere; }
+.usb-wifi-form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.usb-wifi-form label { color: var(--text-hi); font-size: 13px; }
+.usb-wifi-form input:not([type="checkbox"]),
+.usb-wifi-form select {
+  box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg-elev); color: var(--text-hi); font: inherit;
+}
+.usb-wifi-form input::placeholder { color: var(--text-lo); }
+.usb-wifi-form input:focus-visible,
+.usb-wifi-form select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.usb-wifi-form input:disabled { opacity: .55; }
+.usb-wifi-form label[for="usb-wifi-password"] { margin-top: 8px; }
+.usb-wifi-form .usb-wifi-open-network { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.usb-wifi-form input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.usb-wifi-form .install-confirm-action { grid-column: 1; grid-row: auto; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 10px; }
+.usb-wifi-form .install-confirm-action .btn { min-height: 44px; max-width: 100%; height: auto; white-space: normal; }
+
 
 .install-task > .card-commissioning-steps {
   grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; overflow: visible;

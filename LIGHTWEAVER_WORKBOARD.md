@@ -37,6 +37,42 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-23 Fresh-install USB Wi-Fi (pushed, draft PR315)
+
+Branch `codex/usb-wifi-setup` from main `f039ff8e`; installer summary `e711fd1d`
+was not in main and is integrated as `94d74e33`. Exact-card USB setup now has
+ephemeral credentials, honest join errors, retry and AP fallback. USB association
+leads into the existing station-origin bridge acknowledgement; ordinary reconnect
+can no longer replace an active exact-card handoff with a fallback hostname.
+Final checkpoint: 2,653 unit tests and production build pass. Full source core
+contracts pass; firmware compiles; native production parser/dispatcher and
+existing Wi-Fi/persistence contracts pass. Browser: 10/10 new USB flows and
+33/33 existing installer/preserving scenarios pass. Desktop, failure, verified
+station and 390px screens inspected. Evidence `/tmp/lw-usb-wifi-*.log` and
+`/tmp/lightweaver-usb-wifi-*.png`. Feature commit `1845ec97`; original task's
+preserving-update refinement `3ec27b8b` integrated cleanly as `3efe0af8`.
+Final combined branch: all 43 browser cases and 2,653 unit/build checkpoint pass.
+[Draft PR315](https://github.com/theyemingzhu/LED-Programming/pull/315) is reviewable;
+not merged, deployed or shipped. Published firmware does not yet include USB
+provisioning. Version bump/signing remain release-boundary work.
+No merge, signing, deployment or physical flash authorized. Bench observations
+remain unperformed; see [USB Wi-Fi setup](docs/usb-wifi-setup.md).
+Port 4173 belongs to another active checkout; this task uses its existing
+workspace-derived Playwright port 9253 to avoid testing another task's source;
+the test server is stopped.
+
+Production-readiness follow-up: initial frozen audit `d6e79db7` closed
+INCOMPLETE after finding lost-reply/reload recovery could strand a joined card.
+Recovery and firmware version 1.1.40 preparation are committed as `88967d1b`.
+Focused proof: 71 Studio units, 11 USB browser cases, a subsequent timeout/reopen
+case, firmware compile, 18 native firmware tests, and the production USB
+dispatcher recovery contract pass. Main's visible card Wi-Fi guidance is
+integrated; final candidate gate pending. The separate shipping task owns
+merge, protected signing, deployment, and live proof; this task owns readiness.
+The connected card is a configured fixture, not an authorized blank/spare.
+Fresh-install physical proof remains unperformed. Current scope is the canonical
+`led.mandalacodes.com` origin; custom client domains need separate trust design.
+
 ### 2026-09-23 Card Wi-Fi handoff clarity (done locally)
 After joining the Lightweaver hotspot, Studio now gives three short setup steps
 and opens the card's visible Wi-Fi form in its tracked tab. The local IP and

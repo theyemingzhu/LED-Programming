@@ -107,6 +107,31 @@ test('an installed card sends count changes to Layout; a bench card takes them i
   await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
 });
 
+for (const width of [1440, 390]) {
+  test(`Change wiring opens the actual Layout Specs controls at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const spec = cardState('installed-match');
+    await seedInstalledMatch(page, spec, {});
+    await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+    await page.getByTestId('fact-outputs').getByRole('button', { name: 'Change wiring' }).click();
+    await expect(page).toHaveURL(/#screen=layout&mode=draw&panel=specs$/);
+    await expect(page.getByTestId('layout-specs-panel')).toBeVisible();
+    await expect(page.getByTestId('layout-specs-trigger')).toHaveAttribute('aria-expanded', 'true');
+    const wiring = page.getByTestId('advanced-installation-tools');
+    await expect(wiring).toHaveAttribute('open', '');
+    await expect(wiring.getByRole('button', { name: 'Find my LED wire' })).toBeVisible();
+    await expect(wiring.getByText('Advanced mapping')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    if (width === 390) {
+      await expect.poll(async () => {
+        const box = await wiring.boundingBox();
+        return box !== null && box.y >= 0 && box.y < 900;
+      }).toBe(true);
+    }
+  });
+}
+
 test('a colour-order key tries that order on the strip and reads it back', async ({ page }) => {
   const spec = cardState('installed-match');
   const card = await seedInstalledMatch(page, spec, {});
@@ -209,4 +234,3 @@ test('a bench card takes the count typed in the row and lights the strip to it',
   }, { timeout: 10000 }).toBe(60);
   await expect(page.getByTestId('setup-identity-lights')).toContainText('60');
 });
-

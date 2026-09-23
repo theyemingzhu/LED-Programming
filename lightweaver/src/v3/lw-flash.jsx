@@ -32,10 +32,11 @@ import {
   CARD_COMMISSIONING_CHANGED_EVENT,
   completeCardInstall,
   readCardCommissioning,
+  recordCardUsbWifiAttempt,
   selectCardCommissioningStage,
   writeCardCommissioning,
 } from '../lib/cardCommissioningFlow.js';
-import { observePostFlashNetwork } from '../lib/cardPostFlashNetwork.js';
+import { openUsbWifiSession, usbWifiErrorMessage } from '../lib/usbWifiProvisioning.js';
 import {
   cardSupportsSoftwareFirmwareUpdateGrant,
   describeFirmwareUpdate,
@@ -846,51 +847,51 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     return (
       <section className="card install-action-card preserving-update-panel" data-testid="preserving-update-panel" data-card-lifecycle={cardLifecycle?.state || 'unknown'} aria-live="polite">
         <div className="install-action-copy">
-          <div className="eyebrow">Preserving firmware update</div>
-          <h2>{mode === 'wifi' ? 'Update this card over Wi-Fi' : 'One-time USB update for this card'}</h2>
+          <h2>On this card</h2>
           <p><strong>Keeps Wi-Fi, project, patterns, wiring, and settings.</strong>{mode === 'usb' ? ' Future updates use Wi-Fi.' : ''}</p>
           <dl className="card-acknowledged-facts">
             <dt>Card</dt><dd>{card.id}</dd>
             <dt>Installed</dt><dd>{installedLabel}</dd>
-            <dt>Update</dt>
-            <dd className="preserving-update-target">
-              <span>{targetLabel}</span>
-              {!confirming && phase === 'idle' && (
-                <button
-                  className="btn preserving-update-inline-action"
-                  type="button"
-                  disabled={!release}
-                  data-testid={mode === 'wifi'
-                    ? (cardCannotTakeWifiUpdate ? 'preserving-update-secondary-action' : 'preserving-update-primary-action')
-                    : undefined}
-                  onClick={() => setConfirming(true)}
-                >
-                  {actionLabel}
-                </button>
-              )}
-            </dd>
-            {readiness?.projectHead && <><dt>Project head</dt><dd>{readiness.projectHead}</dd></>}
+            <dt>New</dt><dd>{targetLabel}</dd>
           </dl>
+          {readiness?.projectHead && <details className="preserving-update-details">
+            <summary>Update details</summary>
+            <p>Project head: {readiness.projectHead}</p>
+          </details>}
         </div>
-        {mode === 'wifi' && !confirming && phase === 'idle' && (
-          <div className="install-confirm-action preserving-update-wifi-or-usb">
-            {cardCannotTakeWifiUpdate && (
+        {!confirming && phase === 'idle' && (
+          <div className="preserving-update-choice">
+            {cardCannotTakeWifiUpdate ? (
               <p className="preserving-update-notice" role="status" data-testid="preserving-update-usb-required-notice">
-                This card cannot take a Wi-Fi update yet. Use USB once; after that, Wi-Fi works.
+                This card needs USB for this update. Future updates can use Wi-Fi.
               </p>
-            )}
-            {canWebSerialInstall ? (
+            ) : mode === 'usb' ? <p>Keep the USB cable connected during the update.</p> : null}
+            {cardCannotTakeWifiUpdate && canWebSerialInstall ? (
               <button
-                className={cardCannotTakeWifiUpdate ? 'btn-lg' : 'btn'}
+                className="btn-lg"
                 type="button"
-                data-testid={cardCannotTakeWifiUpdate ? 'preserving-update-primary-action' : 'preserving-update-secondary-action'}
+                data-testid="preserving-update-primary-action"
                 onClick={onSwitchToUsb}
               >
-                Update once over USB instead
+                Continue with USB
               </button>
-            ) : (
+            ) : cardCannotTakeWifiUpdate ? (
               <p className="preserving-update-usb-unavailable">USB update needs Chrome or Edge on a computer.</p>
+            ) : (
+              <button
+                className="btn-lg"
+                type="button"
+                disabled={!release}
+                data-testid="preserving-update-primary-action"
+                onClick={() => setConfirming(true)}
+              >
+                {actionLabel}
+              </button>
             )}
+            {mode === 'wifi' && !cardCannotTakeWifiUpdate && canWebSerialInstall && <details className="preserving-update-details preserving-update-alternative">
+              <summary>Need another way?</summary>
+              <button className="btn" type="button" data-testid="preserving-update-secondary-action" onClick={onSwitchToUsb}>Use USB instead</button>
+            </details>}
           </div>
         )}
         {confirming && phase === 'idle' && (
@@ -988,6 +989,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const [progress, setProgress] = useState(0);
     const [installState, setInstallState] = useState('idle');
     const [releaseAttempt, setReleaseAttempt] = useState(0);
+    // These fields belong only to this mounted form, never the project/session.
+    const [wifiSsid, setWifiSsid] = useState('');
+    const [wifiPassword, setWifiPassword] = useState('');
+    const [wifiOpenNetwork, setWifiOpenNetwork] = useState(false);
+    const [wifiStatus, setWifiStatus] = useState({ state: 'idle', message: '' });
+    const [wifiNetworks, setWifiNetworks] = useState([]);
+    const wifiSessionRef = useRef(null);
+    const wifiInstallRef = useRef(null);
+    const wifiBusyRef = useRef(false);
     // F40: an explicit "Update once over USB instead" choice from the
     // preserving panel wins over the wifi/usb resolution below, for as long
     // as this screen stays mounted. See `preservingMode` further down.
@@ -1333,6 +1343,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
+        void wifiSessionRef.current?.close();
         if (!installingRef.current) void releaseHeldInspection({ clearRegistry: true });
       };
     }, []);
@@ -1421,6 +1432,167 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       }
     };
 
+    const completeWifiSetup = async (postFlashNetwork) => {
+      const context = wifiInstallRef.current;
+      if (!context) return;
+      await wifiSessionRef.current?.close();
+      wifiSessionRef.current = null;
+      setWifiPassword('');
+      setWifiSsid('');
+      setWifiNetworks([]);
+      const authoritative = readCardCommissioning({ flowId: context.flow.flowId }) || context.flow;
+      const completed = completeCardInstall(authoritative, {
+        operation: 'install-current-release', cardId: context.expected.cardId,
+        firmwareVersion: context.expected.firmwareVersion, buildId: context.expected.buildId,
+        postFlashNetwork,
+      });
+      await writeCardCommissioning(completed);
+      if (!mountedRef.current) return;
+      setCommissioning(completed);
+      setSelectedStage('set-up-card');
+      setInstallState('complete');
+    };
+
+    const connectWifiUsb = async () => {
+      const context = wifiInstallRef.current;
+      if (!context) return null;
+      setWifiStatus({ state: 'connecting', message: 'Verifying this card and its installed firmware over USB…' });
+      await wifiSessionRef.current?.close();
+      wifiSessionRef.current = null;
+      try {
+        const session = await openUsbWifiSession({ port: context.port, expected: context.expected });
+        if (!mountedRef.current) { await session.close(); return null; }
+        wifiSessionRef.current = session;
+        reportInstallFirmwareEvidence({ ...session.identity, id: session.identity.cardId, source: 'usb-runtime' });
+        const savedAttempt = context.flow.usbWifiAttempt;
+        if (savedAttempt) {
+          setWifiStatus({ state: 'joining', message: 'Checking the previous Wi-Fi attempt on this exact card…' });
+          try {
+            const result = await session.resumeAttempt(savedAttempt);
+            if (!mountedRef.current) return null;
+            if (result.state === 'station') {
+              await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
+              return null;
+            }
+            setWifiStatus({ state: result.state, message: result.message });
+            return session;
+          } catch (error) {
+            if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
+              await session.close();
+              wifiSessionRef.current = null;
+            }
+            setWifiStatus({ state: 'error', message: error?.code === 'attempt_mismatch'
+              ? 'This card restarted or another Wi-Fi attempt replaced the previous one. Check its local setup page, or enter the network details again.'
+              : usbWifiErrorMessage(error?.code) });
+            return wifiSessionRef.current;
+          }
+        }
+        setWifiStatus({ state: 'ready', message: 'Exact card and firmware verified. Choose a network or enter its name.' });
+        return session;
+      } catch (error) {
+        if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
+          await wifiSessionRef.current?.close();
+          wifiSessionRef.current = null;
+        }
+        if (mountedRef.current) setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) });
+        return null;
+      }
+    };
+
+    const joinWifiUsb = async (session = wifiSessionRef.current) => {
+      if (!session || wifiBusyRef.current) return;
+      wifiBusyRef.current = true;
+      const credentials = { ssid: wifiSsid, password: wifiPassword, openNetwork: wifiOpenNetwork };
+      setWifiPassword('');
+      setWifiStatus({ state: 'joining', message: 'Sending Wi-Fi details to this card over USB and waiting for it to join…' });
+      try {
+        const result = await session.join(credentials, { onAttempt: async ({ id, bootId }) => {
+          const latest = readCardCommissioning({ flowId: wifiInstallRef.current.flow.flowId }) || wifiInstallRef.current.flow;
+          const next = recordCardUsbWifiAttempt(latest, { id, bootId });
+          if (!await writeCardCommissioning(next)) throw new Error('Studio could not save the USB recovery identity before sending Wi-Fi details.');
+          wifiInstallRef.current.flow = next;
+        } });
+        credentials.password = '';
+        if (!mountedRef.current) return;
+        if (result.state === 'station') {
+          setWifiStatus({ state: 'joined', message: `This exact card joined at ${result.stationIp}. Verifying its local connection next.` });
+          await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
+        } else setWifiStatus({ state: result.state, message: result.message });
+      } catch (error) {
+        if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
+          await wifiSessionRef.current?.close();
+          wifiSessionRef.current = null;
+        }
+        if (mountedRef.current) setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) });
+      } finally { credentials.password = ''; wifiBusyRef.current = false; }
+    };
+
+    const scanWifiUsb = async () => {
+      if (!wifiSessionRef.current || wifiBusyRef.current) return;
+      wifiBusyRef.current = true;
+      setWifiStatus({ state: 'scanning', message: 'Scanning for nearby 2.4 GHz networks…' });
+      try {
+        let result = await wifiSessionRef.current.scan({ refresh: true });
+        const deadline = Date.now() + 15_000;
+        while (result.scanning && Date.now() < deadline && mountedRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 600));
+          result = await wifiSessionRef.current.scan();
+        }
+        if (!mountedRef.current) return;
+        setWifiNetworks(result.networks);
+        setWifiStatus({ state: 'ready', message: result.scanning ? 'Scan is still running. Enter the network name or scan again.' : result.networks.length ? 'Choose a network below, or enter a hidden network name.' : 'No networks found. Enter the network name or try scanning again.' });
+      } catch (error) {
+        if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
+          await wifiSessionRef.current?.close();
+          wifiSessionRef.current = null;
+        }
+        if (mountedRef.current) setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) });
+      } finally { wifiBusyRef.current = false; }
+    };
+
+    const wifiBusy = ['connecting', 'joining', 'scanning'].includes(wifiStatus.state);
+    const wifiForm = (
+      <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
+        <div className="install-action-copy">
+          <h2>Set up Wi-Fi over USB</h2>
+          <p>Keep this computer on its normal network. After installation, Studio sends these details directly to the verified card over USB. They stay in this form only and are never saved in Studio.</p>
+        </div>
+        <fieldset disabled={wifiBusy || installState === 'installing'}>
+          <label htmlFor="usb-wifi-ssid">Wi-Fi network name</label>
+          <input id="usb-wifi-ssid" data-testid="usb-wifi-ssid" value={wifiSsid} onChange={event => setWifiSsid(event.target.value)} autoComplete="off" spellCheck={false} maxLength={32} placeholder="2.4 GHz network name" />
+          <small>Wi-Fi names can use up to 32 bytes. Some non-English characters use more than one byte.</small>
+          {wifiNetworks.length > 0 && <select aria-label="Nearby Wi-Fi networks" value="" onChange={event => {
+            const network = wifiNetworks[Number(event.target.value)];
+            if (network) { setWifiSsid(network.ssid); setWifiOpenNetwork(!network.secure); setWifiPassword(''); }
+          }}><option value="">Choose a nearby network</option>{wifiNetworks.map((network, index) => <option key={`${network.ssid}-${index}`} value={index}>{network.ssid}{network.secure ? '' : ' (open)'}</option>)}</select>}
+          <label htmlFor="usb-wifi-password">Wi-Fi password</label>
+          <input id="usb-wifi-password" data-testid="usb-wifi-password" type="password" value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} autoComplete="new-password" maxLength={63} disabled={wifiOpenNetwork} />
+          <label className="usb-wifi-open-network"><input type="checkbox" checked={wifiOpenNetwork} onChange={event => { setWifiOpenNetwork(event.target.checked); setWifiPassword(''); }} /> This is an open network (no password)</label>
+          {installState !== 'wifi-setup' && <p>You can enter Wi-Fi now or choose a network after installation. The card’s setup page remains available as a fallback.</p>}
+        </fieldset>
+        {installState === 'wifi-setup' && <>
+          <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p>
+          <div className="install-confirm-action">
+            {wifiSessionRef.current ? <>
+              <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Reconnect USB setup</button>
+              <button type="button" className="btn" disabled={wifiBusy} onClick={scanWifiUsb}>Scan nearby networks</button>
+              {wifiStatus.state === 'pending' && <button type="button" className="btn" onClick={() => { void (async () => {
+                setWifiStatus({ state: 'joining', message: 'Checking the current Wi-Fi attempt on this card…' });
+                try {
+                  const result = await wifiSessionRef.current.awaitAttempt();
+                  if (result.state === 'station') await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
+                  else setWifiStatus({ state: result.state, message: result.message });
+                } catch (error) { setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) }); }
+              })(); }}>Check current attempt</button>}
+              <button type="button" className="btn primary" disabled={wifiBusy || !wifiSsid || (!wifiOpenNetwork && !wifiPassword)} onClick={() => { void joinWifiUsb(); }}>Join Wi-Fi over USB</button>
+            </> : <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Retry USB setup</button>}
+            <button type="button" className="btn" disabled={wifiBusy} onClick={() => { void completeWifiSetup({ state: 'inconclusive', stationIp: '' }); }}>Use card setup page instead</button>
+          </div>
+          <p>USB verifies the card’s identity and Wi-Fi result. Studio checks its local card page before enabling card controls.</p>
+        </>}
+      </section>
+    );
+
     const install = async () => {
       if (!eraseConfirmed || cardState.state !== 'ready' || releaseState.state !== 'ready' || installingRef.current) return;
       installingRef.current = true;
@@ -1445,6 +1617,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             id: cardState.hardware.cardId,
             firmwareVersion: releaseState.release.manifest.firmwareVersion,
             buildId: releaseState.release.manifest.buildId,
+            buildNumber: releaseState.release.manifest.buildNumber,
+            previousBootId: cardLink?.card?.id === cardState.hardware.cardId ? cardLink?.readiness?.bootId : '',
           },
         });
         await writeCardCommissioning(started);
@@ -1475,26 +1649,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           previousBootId: cardLink?.readiness?.bootId,
         });
         setCardState(previous => ({ state: 'verifying', hardware: previous.hardware, error: '' }));
-        // Flashing does not always clear NVS. A card whose saved Wi-Fi survives
-        // boots onto the LAN and never raises a setup hotspot, so Studio has to
-        // observe what actually happened instead of asserting AP mode. This
-        // never throws: an unusable port degrades to 'inconclusive'.
-        setInstallState('observing');
-        const observe = typeof window.__LW_OBSERVE_POST_FLASH_NETWORK_FOR_TEST__ === 'function'
-          ? window.__LW_OBSERVE_POST_FLASH_NETWORK_FOR_TEST__
-          : observePostFlashNetwork;
-        const postFlashNetwork = await observe({ port: serialPort });
-        const completed = completeCardInstall(started, {
-          operation: 'install-current-release',
-          cardId: cardState.hardware.cardId,
-          firmwareVersion: releaseState.release.manifest.firmwareVersion,
-          buildId: releaseState.release.manifest.buildId,
-          postFlashNetwork,
-        });
-        await writeCardCommissioning(completed);
-        setCommissioning(completed);
-        setSelectedStage('set-up-card');
-        setInstallState('complete');
+        wifiInstallRef.current = {
+          flow: started, port: serialPort,
+          expected: { cardId: cardState.hardware.cardId, firmwareVersion: manifest.firmwareVersion,
+            buildId: manifest.buildId, buildNumber: manifest.buildNumber,
+            previousBootId: cardLink?.card?.id === cardState.hardware.cardId ? cardLink?.readiness?.bootId : '' },
+        };
+        setInstallState('wifi-setup');
+        const session = await connectWifiUsb();
+        if (session && wifiSsid && (wifiOpenNetwork || wifiPassword)) await joinWifiUsb(session);
       } catch (error) {
         if (!handedToFlashWorkflow) {
           await releaseInspectedConnection(loaderRef.current, transportRef.current);
@@ -1508,7 +1671,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     };
 
     const openStage = async (stage) => {
-      if (installState === 'installing' || installState === 'observing') return;
+      if (installState === 'installing' || installState === 'observing' || installState === 'wifi-setup') return;
       let flow = readCardCommissioning() || commissioning;
       const official = releaseState.state === 'ready' ? releaseState.release.manifest : null;
       const remembered = installedFirmware || cardLink?.card || readPersistedCardIdentity();
@@ -1559,11 +1722,41 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       setSelectedStage(stage);
     };
 
-    const showCommissioningPanel = selectedStage === 'set-up-card' || selectedStage === 'check-lights'
-      || (selectedStage === 'install-safely' && interruptedInstallFlowId === commissioning?.flowId);
+    const showCommissioningPanel = installState !== 'wifi-setup' && (selectedStage === 'set-up-card' || selectedStage === 'check-lights'
+      || (selectedStage === 'install-safely' && interruptedInstallFlowId === commissioning?.flowId));
     if (showCommissioningPanel) {
+      const interruptedUsbFlow = selectedStage === 'install-safely' && commissioning?.source === 'web-serial'
+        && commissioning?.operation === 'install-current-release' && commissioning?.installTarget?.buildNumber != null
+        ? commissioning : null;
+      const resumeUsb = async () => {
+        if (!interruptedUsbFlow || releaseState.state !== 'ready') return;
+        const target = interruptedUsbFlow.installTarget;
+        const manifest = releaseState.release.manifest;
+        if (target.id === '' || target.buildId !== manifest.buildId
+          || target.firmwareVersion !== manifest.firmwareVersion || target.buildNumber !== manifest.buildNumber) {
+          setWifiStatus({ state: 'error', message: 'The signed release has changed since this card was installed. Use its local setup page to finish Wi-Fi.' });
+          return;
+        }
+        let port;
+        try { port = await navigator.serial.requestPort(); }
+        catch (error) { if (error?.name !== 'NotFoundError') setWifiStatus({ state: 'error', message: 'Could not select the installed USB card. Retry or use its local setup page.' }); return; }
+        wifiInstallRef.current = {
+          flow: interruptedUsbFlow, port,
+          expected: { cardId: target.id, firmwareVersion: target.firmwareVersion,
+            buildId: target.buildId, buildNumber: target.buildNumber,
+            previousBootId: target.previousBootId || '' },
+        };
+        setInstallState('wifi-setup');
+        await connectWifiUsb();
+      };
       return (
         <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
+          {interruptedUsbFlow && <section className="card install-action-card usb-wifi-form">
+            <h2>Resume Wi-Fi setup over USB</h2>
+            <p>Select the same installed card. Studio will verify its card, firmware, boot, and previous Wi-Fi attempt before continuing. No Wi-Fi password was saved.</p>
+            <button type="button" className="btn primary" disabled={releaseState.state !== 'ready'} onClick={() => { void resumeUsb(); }}>Select installed USB card</button>
+            {wifiStatus.state === 'error' && <p role="alert">{wifiStatus.message}</p>}
+          </section>}
           <CardCommissioningPanel
             result={null}
             link={cardLink}
@@ -1600,6 +1793,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       );
     }
 
+    if (installState === 'wifi-setup') return (
+      <div className={`install-flow${embedded ? ' embedded' : ''}`}><div className="install-task">
+        <header className="install-intro"><div className="eyebrow">Firmware installed</div><InstallHeading>Connect this card to Wi-Fi</InstallHeading></header>
+        {wifiForm}
+      </div></div>
+    );
     const releaseReady = releaseState.state === 'ready';
     return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
@@ -1629,14 +1828,13 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           <header className="install-intro">
             <div className="eyebrow">Safe automatic installer</div>
             <InstallHeading>{preservingMode ? 'Update Lightweaver' : 'Install Lightweaver'}</InstallHeading>
-            <p>{preservingMode
-              ? 'Studio verifies the signed update and keeps this card’s Wi-Fi, project, patterns, wiring, and settings.'
-              : 'Plug the card into this computer by USB. Studio verifies the official firmware and checks the card before it can erase anything.'}</p>
-            <div className={`install-release ${releaseState.state}`} role="status">
+            {(preservingMode || releaseState.state !== 'ready') && <div className={`install-release ${releaseState.state}`} role="status">
               {releaseState.state === 'loading' && 'Verifying the official Lightweaver release…'}
-              {releaseState.state === 'ready' && `Official Lightweaver ${releaseState.release.manifest.firmwareVersion} · ${formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready.`}
+              {releaseState.state === 'ready' && (preservingMode
+                ? 'Official update verified and ready.'
+                : `Official Lightweaver ${releaseState.release.manifest.firmwareVersion} · ${formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready.`)}
               {releaseState.state === 'error' && `Official firmware could not be verified. Nothing can be installed. ${releaseState.error}`}
-            </div>
+            </div>}
             {releaseState.state === 'error' && (
               <button className="btn" type="button" onClick={() => setReleaseAttempt(attempt => attempt + 1)}>Retry official firmware</button>
             )}
@@ -1662,26 +1860,18 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               onFirmwareSession={session => { if (session) setRecoverySession(session); }}
             />
           )}
-          {/* Explain exactly what this install does to the connected card. */}
-          {!preservingMode && updatePlan.headline && (
-            <div className={`install-update-plan is-${updatePlan.state}`} data-testid="install-update-plan" role="status">
-              <p className="install-update-headline">{updatePlan.headline}</p>
-              <p className="install-update-caution">{updatePlan.caution}</p>
-            </div>
-          )}
-
           {preservingMode !== 'wifi' && (
           <section className="card install-action-card install-card-check">
             <div className="install-action-copy">
-              <h2>Find your connected card</h2>
-              <p>Studio will ask which USB device to use, then confirm it is the correct ESP32-S3 card with 16 MB of flash.</p>
+              <h2>{cardState.state === 'ready' ? 'This card and its firmware' : 'Find your connected card'}</h2>
+              {cardState.state !== 'ready' && <p>Select the USB card to check its identity.</p>}
             </div>
             <button className="btn-lg" type="button" onClick={findCard} disabled={!releaseReady || cardState.state === 'finding' || installState === 'installing' || installState === 'observing'}>
               {cardState.state === 'finding' ? 'Checking this card…' : cardState.state === 'ready' ? 'Change connected card' : 'Find connected card'}
             </button>
             {cardState.state === 'ready' && (
               <div className="install-check-ok" data-testid="install-card-identity">
-                <strong>Correct card found</strong>
+                <strong>ESP32-S3 card confirmed</strong>
                 <dl>
                   <dt>Card</dt><dd>{cardState.hardware.cardId}</dd>
                   <dt>Hardware</dt><dd>ESP32-S3 · 16 MB</dd>
@@ -1699,8 +1889,27 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                 )}
               </div>
             )}
+            {!preservingMode && releaseReady && (
+              <div className={`install-update-plan is-${updatePlan.state}`} data-testid="install-update-plan" role="status">
+                <div className="install-firmware-summary">
+                  <span>{cardState.state !== 'ready' && updatePlan.installedLabel ? 'Last known firmware' : 'Current firmware'}</span>
+                  <strong>{updatePlan.installedLabel || (cardState.state === 'ready' ? 'Unknown' : 'Not checked yet')}</strong>
+                  <span>Install</span>
+                  <strong>Official Lightweaver {releaseState.release.manifest.firmwareVersion} · {formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready</strong>
+                </div>
+                {(cardState.state === 'ready' || updatePlan.state !== 'unknown') && <p className="install-update-headline">{{
+                  unknown: 'USB confirmed the card, but its current firmware is still unknown.',
+                  same: 'This build is already on the card. Reinstalling still erases it.',
+                  update: 'This will update the card to the verified build.',
+                  downgrade: 'Warning: the verified build is older than the firmware on this card.',
+                  sideways: 'These builds cannot be compared. Installing replaces the current firmware.',
+                }[updatePlan.state]}</p>}
+              </div>
+            )}
           </section>
           )}
+
+          {!preservingMode && releaseReady && wifiForm}
 
           {cardState.state === 'ready' && !preservingMode && (
             <section className="card install-action-card install-confirm">

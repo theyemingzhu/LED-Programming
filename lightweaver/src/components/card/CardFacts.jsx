@@ -161,7 +161,7 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
         <div className="lw-facts-col">
           <Row label="Outputs" testId="fact-outputs">
             <Readout dim={!pins.length}>{pins.length ? pins.map(pin => `GPIO ${pin}`).join(' · ') : 'None yet'}</Readout>
-            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=wire')}>Change wiring</button>
+            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=draw&panel=specs')}>Change wiring</button>
           </Row>
           <Row
             label={outputs.length === 1 ? 'Lights on output 1' : 'Lights'}

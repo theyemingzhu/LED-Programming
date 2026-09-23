@@ -25,6 +25,7 @@ import {
   confirmCardSetupNetworkJoined,
   stageCardProjectForPhysicalCheck,
   readCardCommissioning,
+  recordCardUsbWifiAttempt,
   readCardRestorationAttempt,
   returnCardProjectToSetupAfterLightCheck,
   returnCardToSetupNetworkPath,
@@ -961,6 +962,27 @@ function freshInstall(flowId, now = 10) {
   });
 }
 
+test('USB attempt recovery stores only exact nonsecret intent and clears it on install completion', async () => {
+  const storage = memoryStorage();
+  const sessionStorage = memoryStorage();
+  const flow = beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-usb-wifi-recovery-1', now: 10,
+    installTarget: { id: installed.cardId, firmwareVersion: installed.firmwareVersion,
+      buildId: installed.buildId, buildNumber: 2052 },
+  });
+  await writeCardCommissioning(flow, { storage, sessionStorage, now: () => 20, locks: null });
+  const attempt = recordCardUsbWifiAttempt(flow, { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', bootId: 'boot-after-flash' }, { now: 21 });
+  await writeCardCommissioning(attempt, { storage, sessionStorage, now: () => 22, locks: null });
+  const raw = storage.getItem(CARD_COMMISSIONING_STORAGE_KEY);
+  assert.match(raw, /aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/);
+  assert.doesNotMatch(raw, /ssid|password/i);
+  const reloaded = readCardCommissioning({ storage, sessionStorage, now: 23 });
+  assert.deepEqual(reloaded.usbWifiAttempt, { id: attempt.usbWifiAttempt.id, bootId: 'boot-after-flash', generation: null });
+  const completed = completeCardInstall(reloaded, installed, { now: 24 });
+  assert.equal(completed.usbWifiAttempt, null);
+});
+
 test('a card observed rejoining the LAN skips the setup-hotspot state entirely', () => {
   const next = completeCardInstall(freshInstall('flow-postflash-station-1'), {
     ...installed,
@@ -1168,4 +1190,21 @@ test('a stalled reconnect callback has a bounded wait and supports cleanup', asy
   const cancelled = waitForCommissioningReconnect(pending, { timeoutMs: 60000, signal: controller.signal });
   controller.abort();
   assert.equal(await cancelled, 'cancelled');
+});
+
+test('ordinary reconnect does not replace the exact station handoff owner', async () => {
+  const { planCommissioningReconnectAttempt } = await import('./cardCommissioningFlow.js');
+  const flow = completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-usb-handoff-123456', now: 10,
+  }), { ...installed, postFlashNetwork: { state: 'station', stationIp: '192.168.18.70' } }, { now: 20 });
+  const link = {
+    host: '192.168.18.70', handoffFlowId: flow.flowId,
+    handoffCorrelation: { host: '192.168.18.70', expectedCardId: flow.expectedCard.id,
+      expectedFirmwareVersion: flow.expectedCard.firmwareVersion, expectedBuildId: flow.expectedCard.buildId },
+  };
+  assert.deepEqual(planCommissioningReconnectAttempt(flow, link, { attempt: 1 }), {
+    state: 'inactive', reason: 'station-handoff-active', attempts: 1,
+  });
+  assert.equal(planCommissioningReconnectAttempt(flow, { ...link, handoffFlowId: 'another-flow' }, { attempt: 1 }).state, 'retry');
 });

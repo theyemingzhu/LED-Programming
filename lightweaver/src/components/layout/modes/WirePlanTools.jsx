@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getCardLinkState, subscribeCardLink } from '../../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../../lib/cardReadiness.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
@@ -28,7 +28,11 @@ const parsePositive = (raw, fallback) => {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
 
-export function WirePlanTools({ state, cardHost, onAttentionChange }) {
+export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry = false }) {
+  const advancedToolsRef = useRef(null);
+  useEffect(() => {
+    if (openOnEntry && advancedToolsRef.current) advancedToolsRef.current.open = true;
+  }, [openOnEntry]);
   const {
     strips, selStripId, pxPerMm,
     selectedWireCut, nudgeSelectedWireCut, deleteSelectedWireCut,
@@ -315,7 +319,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange }) {
       {mutationError && <p className="lw-wiring-error" role="alert">{mutationError}</p>}
       {pinError && <p className="lw-wiring-error" role="alert">{pinError}</p>}
 
-      <details className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware">
+      <details ref={advancedToolsRef} className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware">
         <summary className="panel-head">
           <span className="ttl">Wiring &amp; hardware</span>
         </summary>
