@@ -31,6 +31,13 @@ by this slice. Scope their runtime work explicitly before firmware expansion.
 
 ## Sprint queue
 
+### 2026-09-23 Card Wi-Fi handoff clarity (done locally)
+After joining the Lightweaver hotspot, Studio now gives three short setup steps
+and opens the card's visible Wi-Fi form in its tracked tab. The local IP and
+browser “Not secure” label are explained below the action. Eight focused browser
+cases passed; the revised step was inspected at desktop width. This is a local
+Sprint fix, with no firmware or deployment change.
+
 2026-09-20: **FIRST-ACTION-MANAGER on current main** — auto-detect arrivals,
 one first action, Lights stay a door. Pattern Lab already on origin/main;
 this stream does not rewind it. Ledger:

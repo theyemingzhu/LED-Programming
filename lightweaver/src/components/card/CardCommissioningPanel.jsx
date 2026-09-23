@@ -24,6 +24,7 @@ import {
   adoptCommissionedCardBridgeIdentity,
   clearCardBridgeHandoff,
   getCardBridgeState,
+  openLocalCardPage,
   retargetCardBridge,
   sendCardBridgeRequest,
 } from '../../lib/cardBridge.js';
@@ -960,9 +961,9 @@ export function CardCommissioningPanel({
   // the manual reconnect is named as the thing that moves the step.
   const canAutoDetect = canPushDirectlyToCard();
   const reconnectInstalledCard = () => onReconnect?.(reconnectHost);
-  const openCardPageAt = host => {
+  const openCardPageAt = (host, open = openSetupCard) => {
     setFailure('');
-    const opened = openSetupCard(host);
+    const opened = open(host);
     if (!opened) {
       setSetupReach({ state: 'idle' });
       setFailure('The browser blocked the tracked card page. Allow popups, then try opening the card page again.');
@@ -970,7 +971,12 @@ export function CardCommissioningPanel({
     }
     setSetupReach({ state: 'checking', flowId: flow.flowId, startedAt: Date.now(), host });
   };
-  const openSetupNetworkCard = () => openCardPageAt(SETUP_CARD_HOST);
+  // This action must reveal the card's Wi-Fi form. The ordinary connection
+  // launcher opens a compact bridge-only window and hides the form.
+  const openSetupNetworkCard = () => openCardPageAt(SETUP_CARD_HOST, host => {
+    const result = openLocalCardPage(host, { path: '/?wifiSetup=1', reason: 'commissioning-wifi' });
+    return result.ok ? result.window : null;
+  });
   const openStationCard = () => openCardPageAt(flow.stationHost);
   const useSetupNetworkPathInstead = async () => {
     setFailure('');
@@ -1275,14 +1281,15 @@ export function CardCommissioningPanel({
                 </>
               ) : (
                 <>
-                  <p><strong>{setupSsid ? `${setupSsid} joined.` : 'Setup network joined.'}</strong> If the card is still on its setup network, open it at 192.168.4.1, choose its permanent Wi-Fi, and return here. Once it rejoins your network Studio continues automatically. This progress stays saved while networks change.</p>
-                  <button type="button" className="btn" onClick={openSetupNetworkCard}>Open 192.168.4.1 Wi-Fi setup</button>
+                  <p><strong>{setupSsid ? `Connected to ${setupSsid}.` : 'Connected to the card’s setup network.'}</strong> Now tell the card which Wi-Fi to use every day:</p>
+                  <ol className="card-commissioning-next-steps">
+                    <li>Open the card page below and choose your gallery Wi-Fi.</li>
+                    <li>Enter its password and select “Save and join Wi-Fi”.</li>
+                    <li>Return this device to gallery Wi-Fi, then come back to Studio. Your progress is saved.</li>
+                  </ol>
+                  <button type="button" className="btn primary" onClick={openSetupNetworkCard}>Choose Wi-Fi on the card</button>
+                  <p className="card-commissioning-address">Card address: 192.168.4.1. Your browser may say “Not secure” because this local card page uses HTTP.</p>
                   {setupReach.state === 'checking' && <p role="status">Checking whether the card answers at 192.168.4.1…</p>}
-                  <p role="status">{detection.state === 'searching'
-                    ? `Waiting for the card to rejoin your network — looking for ${flow.expectedCard.id}…`
-                    : canAutoDetect
-                      ? 'Waiting for the card to rejoin your network…'
-                      : 'Studio continues once it can reach the card on your Wi-Fi.'}</p>
                 </>
               )}
             </div>
