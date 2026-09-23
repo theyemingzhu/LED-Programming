@@ -6,7 +6,7 @@ import { testBaseURL } from './testPort.mjs';
 const CARD_ID = 'lw-aabbccddeeff';
 const SSID = 'Gallery USB privacy sentinel';
 const PASSWORD = 'Only-USB-secret-2819';
-type Outcome = 'connected' | 'ssid-not-found' | 'authentication-failed' | 'unknown' | 'wrong-card' | 'wrong-status-card';
+type Outcome = 'connected' | 'ssid-not-found' | 'authentication-failed' | 'unknown' | 'wrong-card' | 'wrong-status-card' | 'lost-response';
 
 // Exercise the production HTTPS app and real newline USB transport. Only the
 // physical ESP loader/port is replaced; signed firmware verification and
@@ -16,15 +16,18 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
   await installHttpsStudio(page, testBaseURL);
   await page.route(/http:\/\/(?:lightweaver\.local|192\.168\.)/, route => route.abort());
   await page.addInitScript(({ cardId, release, selectedOutcome }) => {
-    localStorage.clear();
-    sessionStorage.clear();
+    if (!sessionStorage.getItem('__LW_USB_WIFI_FIXTURE_READY__')) {
+      localStorage.clear();
+      sessionStorage.clear();
+      sessionStorage.setItem('__LW_USB_WIFI_FIXTURE_READY__', '1');
+    }
     (window as any).showSaveFilePicker = undefined;
     const state = { outcome: selectedOutcome, commands: [] as any[], flashWrites: [] as any[], opens: 0, closes: 0, provisionCount: 0, generation: 0, resetCount: 0 };
     (window as any).__usbWifiFixture = state;
     let controller: ReadableStreamDefaultController<Uint8Array>;
     let pending = '';
-    let provisioned = false;
-    let attemptId = '';
+    let attemptId = sessionStorage.getItem('__LW_USB_WIFI_FIXTURE_ATTEMPT__') || '';
+    let provisioned = Boolean(attemptId);
     const port: any = {
       readable: null, writable: null,
       open: async () => {
@@ -39,18 +42,19 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
             if (!line) continue;
             const message = JSON.parse(line);
             state.commands.push(message);
-            if (message.command === 'provision') { provisioned = true; attemptId = message.id; state.provisionCount += 1; state.generation += 1; }
-            const connected = provisioned && message.command === 'status' && state.outcome === 'connected';
+            if (message.command === 'provision') { provisioned = true; attemptId = message.id; sessionStorage.setItem('__LW_USB_WIFI_FIXTURE_ATTEMPT__', attemptId); state.provisionCount += 1; state.generation += 1; }
+            const connected = provisioned && message.command === 'status' && ['connected', 'lost-response'].includes(state.outcome);
             const failure = provisioned && message.command === 'status' && !connected ? state.outcome : '';
             const response = {
               protocol: 'lightweaver-usb-wifi', version: 1, id: message.id, command: message.command, ok: true,
               cardId: (state.outcome === 'wrong-card' || (state.outcome === 'wrong-status-card' && message.command === 'status')) ? 'lw-112233445566' : cardId,
               bootId: 'usb-wifi-boot-1', firmwareVersion: release.firmwareVersion, buildId: release.buildId, buildNumber: release.buildNumber,
-              usbWifiProvisioning: true, attemptId,
-              wifi: { transition: connected ? 'handoff-ready' : failure ? 'failed' : 'setup-ap', stationIp: connected ? '192.168.18.70' : '', handoffGeneration: state.generation,
+              usbWifiProvisioning: true, freshInstallEligible: !connected, attemptId,
+              wifi: { transition: connected ? 'handoff-ready' : failure ? 'failed' : 'setup-ap', stationIp: connected ? '192.168.18.70' : '', handoffGeneration: attemptId ? Math.max(state.generation, 1) : 0,
                 joinFailed: Boolean(failure), lastError: failure, failureReason: failure === 'unknown' ? 'connection_failed' : failure.replaceAll('-', '_'), driverReason: failure === 'ssid-not-found' ? 201 : failure === 'authentication-failed' ? 202 : 0, apActive: true },
               ...(message.command === 'scan' ? { scanning: false, networks: [{ ssid: 'Gallery scanned network', rssi: -42, secure: true }] } : {}),
             };
+            if (message.command === 'provision' && state.outcome === 'lost-response') continue;
             controller.enqueue(new TextEncoder().encode(`${JSON.stringify(response)}\n`));
           }
         } });
@@ -89,7 +93,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
       location: { set href(value: string) { activeHost = new URL(value).hostname; setTimeout(ready, 0); } },
     };
     window.open = ((url: string) => { if (!bridgeStats.allowed) return null; activeHost = new URL(url).hostname; bridgeStats.opens.push(activeHost); setTimeout(ready, 0); return cardTab; }) as any;
-    Object.defineProperty(navigator, 'serial', { configurable: true, value: { getPorts: async () => [port] } });
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: { getPorts: async () => [port], requestPort: async () => port } });
     (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
       connection: {
         loader: {
@@ -236,6 +240,33 @@ test('a swapped card status cannot turn an accepted USB credential write into a 
   expect((await serialCommands(page)).filter((value: any) => value.command === 'provision')).toHaveLength(1);
   await expect(page.locator('[data-post-flash="station"]')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
+});
+
+test('reload after a lost USB provision reply resumes the same card attempt without another credential write', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'lost-response');
+  await fillWifi(page);
+  await install(page);
+  await expect.poll(async () => (await serialCommands(page)).filter((value: any) => value.command === 'provision').length).toBe(1);
+  const before = await serialCommands(page);
+  expect(before.filter((value: any) => value.command === 'provision')).toHaveLength(1);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: 'Select installed USB card' })).toBeVisible();
+  await page.getByRole('button', { name: 'Select installed USB card' }).click();
+  await expect(page.locator('[data-post-flash="station"]')).toContainText('192.168.18.70');
+  expect((await serialCommands(page)).filter((value: any) => value.command === 'provision')).toHaveLength(0);
+  const persisted = await page.evaluate(() => JSON.stringify({ ...localStorage }));
+  expect(persisted).not.toContain(SSID);
+  expect(persisted).not.toContain(PASSWORD);
+});
+
+test('USB timeout reopens the exact card and reconciles the accepted attempt', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'lost-response');
+  await fillWifi(page);
+  await install(page);
+  await expect(page.getByTestId('usb-wifi-status')).toContainText('did not answer over USB');
+  await page.getByRole('button', { name: 'Retry USB setup' }).click();
+  await expect(page.locator('[data-post-flash="station"]')).toContainText('192.168.18.70');
+  expect((await serialCommands(page)).filter((value: any) => value.command === 'provision')).toHaveLength(1);
 });
 
 test('USB Wi-Fi form stays usable on a narrow browser viewport', async ({ page, request }) => {

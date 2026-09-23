@@ -75,6 +75,33 @@ test('rejects passwords that the card cannot save without truncation', async () 
   assert.equal(port.writes.length, 1);
   await session.close();
 });
+test('recovers a lost provision reply after USB reconnect without sending credentials again', async () => {
+  let attemptId = '';
+  let savedIntent = null;
+  let opens = 0;
+  const port = fakePort(r => {
+    if (r.command === 'provision') { attemptId = r.id; return null; }
+    return response(r, {
+      freshInstallEligible: !attemptId,
+      attemptId,
+      wifi: { handoffGeneration: attemptId ? 2 : 1, transition: attemptId ? 'station' : 'setup-ap', stationIp: attemptId ? '192.168.18.70' : '' },
+    });
+  });
+  const originalOpen = port.open.bind(port);
+  port.open = async (...args) => { opens += 1; await originalOpen(...args); };
+  const first = await openUsbWifiSession({ port, expected, requestTimeoutMs: 15 });
+  await assert.rejects(first.join({ ssid: 'Gallery', password: 'secret123' }, {
+    onAttempt: intent => { savedIntent = { ...intent, generation: null }; },
+  }), { code: 'timeout' });
+  assert.equal(opens, 1);
+  const resumed = await openUsbWifiSession({ port, expected });
+  await assert.rejects(resumed.resumeAttempt({ ...savedIntent, bootId: 'another-boot' }, { timeoutMs: 0 }), { code: 'attempt_mismatch' });
+  assert.equal(port.writes.filter(r => r.command === 'status').length, 0);
+  const joined = await resumed.resumeAttempt(savedIntent, { timeoutMs: 0 });
+  assert.deepEqual(joined, { state: 'station', stationIp: '192.168.18.70', identity: resumed.identity });
+  assert.equal(port.writes.filter(r => r.command === 'provision').length, 1);
+  await resumed.close();
+});
 for (const stationIp of ['127.0.0.2', '192.168.001.20', '8.8.8.8', '192.168.4.1']) {
   test(`does not accept ${stationIp} as joined station evidence`, async () => {
     const port = fakePort(r => response(r, { attemptId: r.id, wifi: { stationIp, handoffGeneration: 1 } }));

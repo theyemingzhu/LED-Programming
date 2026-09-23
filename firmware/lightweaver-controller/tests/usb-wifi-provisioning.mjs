@@ -102,6 +102,23 @@ int main(){
  assert(accepted["ok"]==true && accepted["accepted"]==true && accepted["attemptId"]=="request1");
  assert(accepted["wifi"]["stationIp"]=="" && accepted["wifi"]["transition"]=="joining");
  assert(pending && starts==0 && saves==2);
+ // A lost provision reply or Studio reload can recover this exact attempt
+ // through hello/status, including after association makes Wi-Fi proven.
+ auto recoveredHello=send(request("hello","recovery-hello")+"}");
+ assert(recoveredHello["attemptId"]=="request1" && recoveredHello["wifi"]["handoffGeneration"]==accepted["wifi"]["handoffGeneration"]);
+ cfg.wifi.proven=true;
+ cfg.wifiRuntime.connectivity.phase=lightweaver::ConnectivityPhase::Station;
+ cfg.wifiRuntime.stationIp="192.168.1.99";
+ auto recoveredStatus=send(request("status","recovery-status")+"}");
+ assert(recoveredStatus["ok"]==true && recoveredStatus["freshInstallEligible"]==false);
+ assert(recoveredStatus["attemptId"]=="request1" && recoveredStatus["wifi"]["stationIp"]=="192.168.1.99");
+ assert(recoveredStatus["wifi"]["handoffGeneration"]==accepted["wifi"]["handoffGeneration"]);
+ auto staleBootStatus=request("status","stale-boot");
+ staleBootStatus.replace(staleBootStatus.find("boot-a"),6,"boot-b");
+ assert(send(staleBootStatus+"}")["error"]=="identity_mismatch");
+ cfg.wifi.proven=false;
+ cfg.wifiRuntime.connectivity.phase=lightweaver::ConnectivityPhase::SetupAp;
+ cfg.wifiRuntime.stationIp="";
  now=500;handleUsbWifi();assert(starts==0); // prior station event queue not fenced yet
  usbWifiStationStopped=true;handleUsbWifi();assert(starts==1 && usbWifiObserveDisconnects);
  auto duplicate=send(request("provision")+provision);assert(duplicate["ok"]==true && saves==2);

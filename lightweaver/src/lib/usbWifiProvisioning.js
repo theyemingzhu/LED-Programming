@@ -80,10 +80,13 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
       rejectPending('disconnected');
     })();
   } catch { await close(); throw failure('disconnected'); }
-  const request = async (command, payload = {}) => {
+  const request = async (command, payload = {}, { beforeSend } = {}) => {
     if (closed) throw failure('disconnected');
     if (pending) throw failure('busy');
     const id = requestId();
+    if (beforeSend) await beforeSend({ id, bootId: identity?.bootId || '' });
+    if (closed) throw failure('disconnected');
+    if (pending) throw failure('busy');
     const message = { protocol: PROTOCOL, version: 1, id, command, ...(identity ? {
       expectedCardId: identity.cardId, expectedBootId: identity.bootId,
       expectedFirmwareVersion: identity.firmwareVersion, expectedBuildId: identity.buildId,
@@ -114,35 +117,51 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
     if (!attempt || reply.attemptId !== attempt.id || reply.wifi?.handoffGeneration !== attempt.generation) throw failure('attempt_mismatch');
     return reply;
   };
-  const provision = async ({ ssid, password, openNetwork = false }) => {
+  const provision = async ({ ssid, password, openNetwork = false }, { onAttempt } = {}) => {
     const size = new TextEncoder().encode(ssid || '').length;
     if (size < 1 || size > 32 || /[\u0000-\u001f\u007f]/.test(ssid)
       || (!openNetwork && !/^[\x20-\x7e]{8,63}$/.test(password || ''))) throw failure('invalid_credentials');
-    const { reply, id } = await request('provision', { ssid, password: openNetwork ? '' : password, clearPassword: openNetwork });
+    const { reply, id } = await request('provision', { ssid, password: openNetwork ? '' : password, clearPassword: openNetwork }, { beforeSend: onAttempt });
     if (reply.attemptId !== id || !Number.isSafeInteger(reply.wifi?.handoffGeneration) || reply.wifi.handoffGeneration < 1) throw failure('attempt_mismatch');
     attempt = { id, generation: reply.wifi.handoffGeneration };
     return reply;
   };
   const status = async () => correlate((await request('status')).reply);
+  const awaitAttempt = async ({ timeoutMs = 40_000, pollMs = 600, onProgress } = {}, initialReply = null) => {
+    let reply = initialReply || await status();
+    const end = Date.now() + timeoutMs;
+    while (!closed) {
+      const ip = normalizeWifiHandoffHost(reply.wifi?.stationIp);
+      if (ip && ['handoff-ready', 'station'].includes(reply.wifi?.transition) && !reply.wifi?.joinFailed) return { state: 'station', stationIp: ip, identity };
+      if (reply.wifi?.joinFailed === true) return { state: 'failed', message: usbWifiErrorMessage(reply.wifi.failureReason || 'connection_failed') };
+      if (Date.now() >= end) return { state: 'pending', message: 'The card has not finished joining. USB remains available; check the current attempt again, or use the card setup page.' };
+      onProgress?.();
+      await delay(pollMs);
+      reply = await status();
+    }
+    throw failure('disconnected');
+  };
   return {
     identity, close, provision, status,
+    async resumeAttempt(saved, options = {}) {
+      if (!saved || typeof saved.id !== 'string' || !/^[a-f0-9-]{36}$/i.test(saved.id)
+        || saved.bootId !== identity.bootId
+        || (saved.generation != null && (!Number.isSafeInteger(saved.generation) || saved.generation < 1))) throw failure('attempt_mismatch');
+      const reply = (await request('status')).reply;
+      if (reply.attemptId !== saved.id || !Number.isSafeInteger(reply.wifi?.handoffGeneration)
+        || reply.wifi.handoffGeneration < 1
+        || (saved.generation != null && reply.wifi.handoffGeneration !== saved.generation)) throw failure('attempt_mismatch');
+      attempt = { id: saved.id, generation: reply.wifi.handoffGeneration };
+      return await awaitAttempt(options, reply);
+    },
+    awaitAttempt,
     async scan({ refresh = false } = {}) {
       const { reply } = await request('scan', { refresh });
       return { scanning: reply.scanning === true, networks: (Array.isArray(reply.networks) ? reply.networks : []).slice(0, 32).filter(n => typeof n.ssid === 'string' && n.ssid.length <= 32).map(n => ({ ssid: n.ssid, secure: n.secure !== false, rssi: Number(n.rssi) || 0 })) };
     },
-    async join(credentials, { timeoutMs = 40_000, pollMs = 600, onProgress } = {}) {
-      let reply = await provision(credentials);
-      const end = Date.now() + timeoutMs;
-      while (!closed) {
-        const ip = normalizeWifiHandoffHost(reply.wifi?.stationIp);
-        if (ip && ['handoff-ready', 'station'].includes(reply.wifi?.transition) && !reply.wifi?.joinFailed) return { state: 'station', stationIp: ip, identity };
-        if (reply.wifi?.joinFailed === true) return { state: 'failed', message: usbWifiErrorMessage(reply.wifi.failureReason || 'connection_failed') };
-        if (Date.now() >= end) return { state: 'pending', message: 'The card has not finished joining. USB remains available; check the network details and retry, or use the card setup page.' };
-        onProgress?.();
-        await delay(pollMs);
-        reply = await status();
-      }
-      throw failure('disconnected');
+    async join(credentials, options = {}) {
+      const reply = await provision(credentials, { onAttempt: options.onAttempt });
+      return await awaitAttempt(options, reply);
     },
   };
 }

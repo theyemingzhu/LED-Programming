@@ -214,7 +214,10 @@ export function beginCardCommissioning({
       id: text(installTarget.id || installTarget.cardId, 64),
       firmwareVersion: text(installTarget.firmwareVersion, 48),
       buildId: text(installTarget.buildId, 96),
+      buildNumber: Number.isSafeInteger(installTarget.buildNumber) ? installTarget.buildNumber : null,
+      previousBootId: text(installTarget.previousBootId, 96),
     } : null,
+    usbWifiAttempt: null,
     expectedCard: null,
     acceptedResultId: '',
     cardAcknowledgedAt: null,
@@ -322,9 +325,27 @@ export function completeCardInstall(flow, result = {}, { now = Date.now() } = {}
     postFlashDetection: detection.state,
     stationHost: preserved ? '' : detection.stationIp,
     expectedCard,
+    usbWifiAttempt: null,
     acceptedResultId: flow.source === 'native-bridge' ? text(result.acceptedResultId, 96) : '',
     cardAcknowledgedAt: null,
   };
+}
+
+// The request identity is saved before credentials are written over USB. It is
+// deliberately the only attempt data in browser storage: never persist an SSID
+// or password here. A lost USB response can then be reconciled by exact card,
+// release, boot, and the card-echoed random request identity.
+export function recordCardUsbWifiAttempt(flow, { id, bootId, generation = null } = {}, { now = Date.now() } = {}) {
+  requireFlow(flow);
+  if (flow.source !== 'web-serial' || flow.operation !== 'install-current-release'
+    || flow.stage !== 'install-safely' || !flow.installTarget?.id
+    || !Number.isSafeInteger(flow.installTarget.buildNumber)
+    || !/^[a-f0-9-]{36}$/i.test(id || '') || !text(bootId, 96)
+    || (generation !== null && (!Number.isSafeInteger(generation) || generation < 1))) {
+    throw new Error('USB Wi-Fi attempt lacks an exact install identity');
+  }
+  return { ...clone(flow), updatedAt: Math.max(Number(now), flow.updatedAt),
+    usbWifiAttempt: { id, bootId, generation } };
 }
 
 // A `station` classification is only load-bearing when it carries a usable LAN
@@ -792,6 +813,17 @@ function requireFlow(flow) {
       && flow.project.pendingWiring === null
       && flow.project.wiringEvidenceState === 'legacy-inconclusive')) {
     throw new Error('The saved commissioning wiring evidence state is invalid');
+  }
+  if (flow.usbWifiAttempt != null) {
+    const attempt = flow.usbWifiAttempt;
+    if (flow.source !== 'web-serial' || flow.operation !== 'install-current-release'
+      || flow.stage !== 'install-safely' || !Number.isSafeInteger(flow.installTarget?.buildNumber)
+      || !attempt || typeof attempt !== 'object' || Array.isArray(attempt)
+      || Object.keys(attempt).some(key => !['id', 'bootId', 'generation'].includes(key))
+      || !/^[a-f0-9-]{36}$/i.test(attempt.id || '') || !text(attempt.bootId, 96)
+      || (attempt.generation !== null && (!Number.isSafeInteger(attempt.generation) || attempt.generation < 1))) {
+      throw new Error('Invalid USB Wi-Fi recovery identity');
+    }
   }
   if (flow.stage !== 'install-safely') {
     const expected = flow.expectedCard || {};
