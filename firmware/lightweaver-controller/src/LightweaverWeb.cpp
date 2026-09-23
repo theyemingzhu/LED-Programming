@@ -1067,6 +1067,8 @@ void handleAdvancedRoot() {
             ".setup-mode button{min-height:44px;padding:10px 12px}"
             ".setup-network{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}"
             ".setup-network #rescan{min-width:84px}"
+            ".setup-password{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}"
+            ".setup-password #toggle-password{min-width:64px}"
             ".setup-options{background:transparent;border:0;border-radius:0;margin:4px 0 0}"
             ".setup-options summary{min-height:44px;padding:8px 0 4px;font-size:12px;color:#9a8d75}"
             ".setup-options .body{padding:0}"
@@ -1100,7 +1102,8 @@ void handleAdvancedRoot() {
                 "<button class='ghost' id='rescan' type='button'>Rescan</button>"
               "</div>"
               "<label class='field' for='pw'>Password</label>"
-              "<input type='password' id='pw' autocomplete='off'>"
+              "<div class='setup-password'><input type='password' id='pw' autocomplete='off'>"
+                "<button class='ghost' id='toggle-password' type='button' aria-controls='pw' aria-pressed='false' aria-label='Show password'>Show</button></div>"
               "<details class='setup-options' id='setup-more'>"
                 "<summary>More options</summary><div class='body'>"
                   "<label class='field' for='ssid-manual'>Hidden network name (optional)</label>"
@@ -1270,7 +1273,8 @@ void handleAdvancedRoot() {
     // running, so a single fetch lands on "No networks found" forever. Poll
     // until scanning:false (capped at ~30s), show a Scanning placeholder
     // meanwhile, and offer Rescan + a manual SSID field for hidden networks.
-    page += F("const setScanPlaceholder=text=>{const sel=$('ssid');sel.innerHTML='';const o=document.createElement('option');o.value='';o.textContent=text;sel.appendChild(o)};"
+    page += F("const passwordToggle=$('toggle-password');passwordToggle.onclick=()=>{const pw=$('pw'),show=pw.type==='password';pw.type=show?'text':'password';passwordToggle.textContent=show?'Hide':'Show';passwordToggle.setAttribute('aria-pressed',String(show));passwordToggle.setAttribute('aria-label',show?'Hide password':'Show password')};"
+              "const setScanPlaceholder=text=>{const sel=$('ssid');sel.innerHTML='';const o=document.createElement('option');o.value='';o.textContent=text;sel.appendChild(o)};"
               "const renderNets=nets=>{const sel=$('ssid');sel.innerHTML='';nets.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=n.ssid+(n.rssi?' ('+n.rssi+'dBm)':'');sel.appendChild(o)});const saved=$('saved-ssid');if(saved&&nets.some(n=>n.ssid===saved.textContent))sel.value=saved.textContent;if(!nets.length){setScanPlaceholder('No networks found — rescan or type the name below');$('setup-more').open=true}};"
               "let scanPolls=0,scanTimer=null;"
               "let scanRefresh=false;"

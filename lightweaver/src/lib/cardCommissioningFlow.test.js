@@ -1111,6 +1111,27 @@ test('a blank card already on home Wi-Fi acknowledges after setup-joined without
   }), true);
 });
 
+test('manual gallery reconnect cannot turn a pending or failed AP join or a different station card into completion', () => {
+  const ready = completeCardInstall(freshInstall('flow-manual-gallery-reconnect-1'), installed, { now: 20 });
+  const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
+  const station = readyStatus({
+    wifi: { transport: 'station', transition: 'station', transitionPending: false,
+      stationIp: '192.168.18.70', ip: '192.168.18.70' },
+  });
+  const link = status => ({ state: 'connected-bridge', host: '192.168.18.70', readiness: status });
+  for (const status of [
+    { ...station, wifi: { transport: 'ap', transition: 'setup-ap', transitionPending: false,
+      lastError: 'station association timed out' } },
+    { ...station, wifi: { ...station.wifi, transitionPending: true } },
+    { ...station, cardId: 'lw-different-card' },
+    { ...station, firmwareVersion: '9.9.9' },
+    { ...station, buildId: 'b'.repeat(40) },
+  ]) {
+    assert.equal(selectCommissioningCardAcknowledgement(joined, link(status)).ok, false);
+  }
+  assert.equal(selectCommissioningCardAcknowledgement(joined, link(station)).ok, true);
+});
+
 test('setup-joined never reconnects to the setup AP once the card should be on home Wi-Fi', () => {
   const ready = completeCardInstall(freshInstall('flow-reconnect-skip-ap-1'), installed, { now: 20 });
   const joined = confirmCardSetupNetworkJoined(ready, { now: 25 });
