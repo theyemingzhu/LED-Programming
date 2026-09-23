@@ -324,6 +324,41 @@ test('a discovered unpaired card offers one-tap pair, not another Connect this c
   await expect(dialog.getByRole('button', { name: 'Use this card instead' })).toHaveCount(0);
 });
 
+test('a found factory card on the setup AP can pair before opening its preserving update', async ({ page }) => {
+  const cardId = 'lw-factory-ap-pair';
+  const status = readyStatus(cardId, {
+    runtimePhase: 'factory', mode: 'factory-flash', source: 'defaults',
+    knownGoodProject: false, commandReady: false, outputReady: false,
+    projectId: '', projectFingerprint: '', firmwareUpdateReady: true,
+    capabilities: { firmwareUpdate: { version: 1, network: true, softwareGrant: true } },
+  });
+  await page.route('http://192.168.4.1/api/status', route => route.fulfill({ json: status }));
+  await page.route('http://192.168.4.1/api/firmware-info', route => route.fulfill({ json: status }));
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.evaluate(async (envelope) => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    getSharedCardLink().dispatch({
+      type: 'direct-status', connected: true, host: '192.168.4.1',
+      card: { id: envelope.cardId, firmwareVersion: envelope.firmwareVersion, buildId: envelope.buildId },
+      readiness: envelope, allowAdopt: false,
+    });
+  }, status);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Found . pair/);
+  await page.getByTestId('card-link-status').click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog).toContainText('Pair this Lightweaver card');
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe(cardId);
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Update Lightweaver' })).toBeVisible();
+});
+
 test('Setup connect does not keep a second Card connection options door beside Find my card', async ({ page }) => {
   await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());

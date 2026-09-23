@@ -309,6 +309,21 @@ test('offers one-tap pairing for a reachable-but-unpaired card', () => {
   assert.equal(byDiscovery.id, 'pair-local-card');
 });
 
+test('a discovered factory card on its setup network offers pairing before setup guidance', () => {
+  const action = nextCardConnectionAction({
+    intent: 'working-card',
+    link: {
+      state: 'disconnected', reason: 'found-unpaired', transport: 'bridge',
+      host: '192.168.4.1', discoveredCard: { id: CARD_ID },
+    },
+    discoveredCard: { id: CARD_ID },
+    setupNetwork: { available: true, ssid: 'Lightweaver-EEFF' },
+    capabilities: secureBrowserUsb,
+  });
+  assert.equal(action.id, 'pair-local-card');
+  assert.equal(action.primaryLabel, 'Connect');
+});
+
 test('routes classified factory evidence to install, not ready-local-card', () => {
   const action = nextCardConnectionAction({
     link: readyLink({
