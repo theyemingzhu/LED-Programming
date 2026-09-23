@@ -25,6 +25,7 @@ try {
 #include <ArduinoJson.h>
 #include "${join(root,'src/LightweaverUsbWifiPolicy.h')}"
 #include "${join(root,'src/LightweaverConnectivityPolicy.h')}"
+#include "${join(root,'src/LightweaverWifiJoinDiagnostics.h')}"
 using String=std::string;
 using std::max;
 constexpr const char* LW_FIRMWARE_VERSION="1.2.3";
@@ -35,6 +36,7 @@ constexpr int LW_WIFI_SCAN_MAX_NETWORKS=20;
 constexpr uint32_t LW_WIFI_SCAN_RETRY_MS=3000;
 struct Config {String pieceId,activeIp,activeHostname;int activeTransport=0;struct {bool proven=false;String hostname;}wifi;struct {
  lightweaver::ConnectivityState connectivity;String stationIp,lastError;bool stationLinkPending=false;
+ lightweaver::WifiJoinDiagnostics joinDiagnostics;
 }wifiRuntime;}cfg;
 using RuntimeConfig=Config;
 constexpr int WIFI_TRANSPORT_STATION=1;
@@ -44,6 +46,9 @@ uint32_t usbWifiLastByteMs=0,usbWifiAttemptGeneration=0,usbWifiJoinStartAt=0,las
 String usbWifiAttemptId;
 std::atomic<uint16_t> usbWifiDisconnectReason{0};
 std::atomic<bool> usbWifiObserveDisconnects{false},usbWifiStationStopped{true};
+std::atomic<uint16_t> wifiJoinDisconnectReason{0};
+std::atomic<bool> wifiJoinSawAssociation{false},wifiJoinObserveEvents{false};
+bool wifiJoinFencePending=false;
 bool usbWifiJoinFailed=false,knownGood=false,safeMode=false,persistOk=true,pending=false;
 uint32_t now=100;
 int saves=0,starts=0;
@@ -107,8 +112,11 @@ int main(){
  assert(saves==0);
  persistOk=false;assert(send(request("provision")+provision)["error"]=="persistence_failed");assert(starts==0);persistOk=true;
  cfg.wifiRuntime.stationIp="192.168.1.99";WiFi.mode=WIFI_STA;
+ cfg.wifiRuntime.joinDiagnostics.begin(77);
+ cfg.wifiRuntime.joinDiagnostics.disconnect(77,202);
  auto accepted=send(request("provision")+provision);
  assert(accepted["ok"]==true && accepted["accepted"]==true && accepted["attemptId"]=="request1");
+ assert(accepted["wifi"]["failureStage"]==""); // old attempt cannot color new accepted credentials
  assert(accepted["wifi"]["stationIp"]=="" && accepted["wifi"]["transition"]=="joining");
  assert(pending && starts==0 && saves==2);
  // A lost provision reply or Studio reload can recover this exact attempt
@@ -135,6 +143,7 @@ int main(){
  auto failed=send(request("status")+"}");assert(failed["wifi"]["failureReason"]=="ssid_not_found");
  usbWifiDisconnectReason=15;assert(send(request("status")+"}")["wifi"]["failureReason"]=="handshake_timeout");
  usbWifiDisconnectReason=202;assert(send(request("status")+"}")["wifi"]["failureReason"]=="authentication_failed");
+ cfg.wifiRuntime.connectivity.phase=lightweaver::ConnectivityPhase::SetupAp;
  auto retry=send(request("provision","request2")+provision);assert(retry["attemptId"]=="request2");
  assert(retry["wifi"]["failureReason"]=="" && retry["wifi"]["driverReason"]==0 && saves==3);
  auto scan=send(request("scan")+"}");assert(scan["error"]=="busy");
@@ -143,11 +152,13 @@ int main(){
  assert(scan["networks"][0]["ssid"]=="Other" && scan["networks"][1]["ssid"]=="Gallery");
  WiFi.mode=WIFI_STA;
  auto timeoutAttempt=send(request("provision","request3")+provision);
+ assert(timeoutAttempt["wifi"]["failureStage"]=="");
  uint32_t generation=timeoutAttempt["wifi"]["handoffGeneration"];
  now=4000;handleUsbWifi();assert(usbWifiJoinFailed);
  auto timedOut=send(request("status")+"}");
  assert(timedOut["wifi"]["handoffGeneration"]==generation);
  assert(timedOut["attemptId"]=="request3" && timedOut["wifi"]["failureReason"]=="connection_failed");
+ assert(timedOut["wifi"]["failureStage"]=="station"); // STA_STOP was not confirmed
  // An automatic retry may associate after the initial join timed out. The
  // accepted USB attempt must remain correlated, but its failure is no longer
  // true once the same station has an address.

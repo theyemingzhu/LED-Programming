@@ -2779,6 +2779,9 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["wifi"]["lastAttemptMs"] = wifiState.lastAttemptMs;
   doc["wifi"]["attemptCount"] = config.wifiRuntime.attemptCount;
   doc["wifi"]["lastError"] = config.wifiRuntime.lastError;
+  doc["wifi"]["failureStage"] = config.wifiRuntime.joinDiagnostics.failureStage;
+  doc["wifi"]["failureReason"] = config.wifiRuntime.joinDiagnostics.failureReason;
+  doc["wifi"]["driverReason"] = config.wifiRuntime.joinDiagnostics.driverReason;
   doc["wifi"]["networkBindingsPending"] = wifiState.networkBindingsPending;
   doc["wifi"]["wledListenerReady"] = wifiState.wledListenerReady;
   doc["wifi"]["artnetListenerReady"] = wifiState.artnetListenerReady;

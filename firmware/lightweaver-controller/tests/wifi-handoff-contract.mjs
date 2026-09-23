@@ -173,6 +173,58 @@ assert.equal(scanMore.open, true,
   'executing a zero-network result must open More options for manual SSID recovery');
 assert.match(scanSelect.children[0].textContent, /No networks found/,
   'executing a zero-network result must explain the recovery choice');
+scanContext.renderNets([
+  { ssid: 'Gallery', rssi: -54, secure: true },
+  { ssid: 'Guest', rssi: -82, secure: false },
+]);
+assert.match(scanSelect.children[0].textContent, /Gallery.*Strong signal.*Password/,
+  'the picker must name signal and password requirement for a strong protected network');
+assert.match(scanSelect.children[1].textContent, /Guest.*Weak signal.*Open/,
+  'the picker must name signal and openness for a weak guest network');
+
+const scanLoopCppEnd = advancedRoot.indexOf('"const wifiFailureText=', scanUiCppStart);
+assert.ok(scanLoopCppEnd > scanUiCppEnd, 'setup must emit scan polling before join feedback');
+const scanLoopSource = decodeCppStrings(advancedRoot.slice(scanUiCppStart, scanLoopCppEnd));
+const deferred = () => {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+};
+async function checkRescanRace(staleAnswer) {
+  const oldScan = deferred();
+  const refreshedScan = deferred();
+  const requests = [];
+  const timers = [];
+  const select = {
+    children: [],
+    set innerHTML(_) { this.children = []; },
+    appendChild(child) { this.children.push(child); },
+  };
+  const rescan = {};
+  const context = {
+    $: id => ({ ssid: select, rescan, 'setup-more': { open: false } })[id],
+    document: { createElement: () => ({ value: '', textContent: '' }) },
+    get: path => { requests.push(path); return requests.length === 1 ? oldScan.promise : refreshedScan.promise; },
+    setTimeout: callback => { const timer = { callback, active: true }; timers.push(timer); return timer; },
+    clearTimeout: timer => { timer.active = false; },
+  };
+  vm.runInNewContext(scanLoopSource, context);
+  assert.equal(requests.length, 1, 'initial scan must request once');
+  rescan.onclick();
+  assert.equal(requests.length, 2, 'Rescan must start a fresh request');
+  assert.match(requests[1], /refresh=1/);
+  refreshedScan.resolve({ scanning: false, networks: [{ ssid: 'Current', rssi: -50, secure: true }] });
+  await new Promise(setImmediate);
+  assert.equal(select.children[0].value, 'Current');
+  oldScan.resolve(staleAnswer);
+  await new Promise(setImmediate);
+  assert.equal(select.children[0].value, 'Current',
+    'an older scan response must not replace the refreshed network choices');
+  assert.equal(timers.filter(timer => timer.active).length, 0,
+    'an older scan response must not start a second polling chain');
+}
+await checkRescanRace({ scanning: false, networks: [{ ssid: 'Stale', rssi: -60, secure: true }] });
+await checkRescanRace({ scanning: true, networks: [] });
 
 assert.match(advancedRoot,
   /const manual=\$\('ssid-manual'\)\.value\.trim\(\);const ssid=manual\|\|\$\('ssid'\)\.value;/,
@@ -193,17 +245,17 @@ assert.match(advancedRoot,
   /transition\s*===\s*'handoff-ready'[\s\S]*stationIp/,
   'the setup page must wait for handoff-ready station evidence before telling the user to switch networks');
 assert.match(advancedRoot,
-  /transition\s*===\s*'setup-ap'[\s\S]*lastError/,
-  'the setup page must surface an association timeout or failure instead of waiting forever');
+  /const wifiFailureText=w=>[\s\S]*failureReason[\s\S]*lastError/,
+  'the setup page must translate observed failure telemetry and retain old-card fallback');
 assert.doesNotMatch(advancedRoot,
   /Saved\. Joining your home WiFi now[^'\"]*Then open/,
   'the setup page must not tell the user to leave the AP before station evidence is verified');
 assert.doesNotMatch(web, /keeps retrying about once a minute/,
   'the recovery page must not describe the old inert/minute retry behavior');
-assert.match(web, /keeps retrying every 10 seconds/,
+assert.match(web, /keeps trying every 10 seconds/,
   'the recovery page must describe the bounded retry cadence truthfully');
 
-const wifiPollCppStart = advancedRoot.indexOf('"let wifiJoinPollToken=0;');
+const wifiPollCppStart = advancedRoot.indexOf('"const wifiFailureText=');
 const wifiPollCppEnd = advancedRoot.indexOf('"$(\'join\').onclick', wifiPollCppStart);
 assert.notEqual(wifiPollCppStart, -1,
   'the setup page must own a replaceable WiFi polling generation');
