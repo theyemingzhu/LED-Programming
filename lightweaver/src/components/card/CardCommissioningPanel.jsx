@@ -278,6 +278,7 @@ export function CardCommissioningPanel({
   const [bridgeHandoffStatus, setBridgeHandoffStatus] = useState(null);
   const [setupReach, setSetupReach] = useState({ state: 'idle' });
   const [autoReconnect, setAutoReconnect] = useState({ state: 'idle', attempts: 0, host: '' });
+  const [manualReconnectState, setManualReconnectState] = useState('idle');
   // An inconclusive restart follows the safe setup-network path first. The
   // already-on-LAN route remains a secondary recovery instead of asking the
   // owner to diagnose which boot path the card took.
@@ -287,6 +288,7 @@ export function CardCommissioningPanel({
   const autoReconnectAttemptRef = useRef('');
   const reconnectContextRef = useRef(null);
   const autoReconcileRef = useRef('');
+  const manualReconnectTimerRef = useRef(null);
   const restoreFnRef = useRef(async () => {});
   const activeFlowIdRef = useRef(initialState.flow?.flowId || '');
   const handoffFlowIdRef = useRef('');
@@ -334,7 +336,15 @@ export function CardCommissioningPanel({
     const session = markerSessionRef.current;
     markerSessionRef.current = null;
     if (session) void session.stop().catch(() => {});
+    if (manualReconnectTimerRef.current != null) window.clearTimeout(manualReconnectTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!flow?.cardAcknowledgedAt || manualReconnectTimerRef.current == null) return;
+    window.clearTimeout(manualReconnectTimerRef.current);
+    manualReconnectTimerRef.current = null;
+    setManualReconnectState('idle');
+  }, [flow?.cardAcknowledgedAt]);
 
   useEffect(() => {
     const flowId = flow?.flowId || '';
@@ -966,6 +976,17 @@ export function CardCommissioningPanel({
   // the manual reconnect is named as the thing that moves the step.
   const canAutoDetect = canPushDirectlyToCard();
   const reconnectInstalledCard = () => onReconnect?.(reconnectHost);
+  const retryAfterGalleryReturn = () => {
+    if (manualReconnectTimerRef.current != null) window.clearTimeout(manualReconnectTimerRef.current);
+    setManualReconnectState('trying');
+    try { reconnectInstalledCard(); }
+    catch { setManualReconnectState('unverified'); return; }
+    const testBudget = Number(window.__LW_COMMISSIONING_MANUAL_RECONNECT_TIMEOUT_MS_FOR_TEST__);
+    manualReconnectTimerRef.current = window.setTimeout(() => {
+      manualReconnectTimerRef.current = null;
+      setManualReconnectState('unverified');
+    }, testBudget > 0 ? testBudget : 10_000);
+  };
   const openCardPageAt = (host, open = openSetupCard) => {
     setFailure('');
     const opened = open(host);
@@ -1290,11 +1311,14 @@ export function CardCommissioningPanel({
                   <ol className="card-commissioning-next-steps">
                     <li>Open the card page below and choose your gallery Wi-Fi.</li>
                     <li>Enter its password and select “Save and join Wi-Fi”.</li>
-                    <li>Return this device to gallery Wi-Fi, then come back to Studio. Your progress is saved.</li>
+                    <li>Wait for the card page to confirm it joined gallery Wi-Fi. If it reports a failed join, stay on {setupNetworkLabel}, correct the network name or password, and try again.</li>
+                    <li>After the card confirms, return this device to gallery Wi-Fi, then come back to Studio. Your progress is saved.</li>
                   </ol>
                   <button type="button" className="btn primary" onClick={openSetupNetworkCard}>Choose Wi-Fi on the card</button>
                   <p className="card-commissioning-address">Card address: 192.168.4.1. Your browser may say “Not secure” because this local card page uses HTTP.</p>
                   {setupReach.state === 'checking' && <p role="status">Checking whether the card answers at 192.168.4.1…</p>}
+                  <button type="button" className="btn" data-testid="setup-joined-station-reconnect" onClick={retryAfterGalleryReturn} disabled={manualReconnectState === 'trying'}>{manualReconnectState === 'trying' ? 'Checking this card…' : 'I’m back on gallery Wi-Fi — reconnect this card'}</button>
+                  {manualReconnectState === 'unverified' && <p role="status">Studio has not verified this card on gallery Wi-Fi. Check the card page and network, then reconnect this same card. Setup has not advanced.</p>}
                 </>
               )}
             </div>

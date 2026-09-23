@@ -441,6 +441,47 @@ test('Card overview opens a visible Wi-Fi form and explains the next step after 
   await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toBeVisible();
 });
 
+test('AP setup waits for a verified join and offers a bounded manual gallery reconnect', async ({ page }) => {
+  const reconnectRequests: string[] = [];
+  await page.route('http://lightweaver.local/**', route => {
+    reconnectRequests.push(route.request().url());
+    return route.abort();
+  });
+  await page.addInitScript(() => {
+    (window as any).__LW_COMMISSIONING_MANUAL_RECONNECT_TIMEOUT_MS_FOR_TEST__ = 150;
+    (window as any).__manualReconnectOpens = [];
+    window.open = ((url?: string | URL) => {
+      (window as any).__manualReconnectOpens.push(String(url || ''));
+      return { closed: false, postMessage() {}, focus() {}, location: { href: String(url || '') } } as unknown as Window;
+    }) as typeof window.open;
+  });
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'wifi');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
+
+  const commissioning = page.locator('.card-commissioning');
+  await expect(commissioning).toContainText('Wait for the card page to confirm it joined gallery Wi-Fi');
+  await expect(commissioning).toContainText('stay on Lightweaver-EEFF');
+  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
+  const reconnect = page.getByTestId('setup-joined-station-reconnect');
+  await expect(reconnect).toBeVisible();
+  await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(reconnect).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await reconnect.evaluate(button => button.getBoundingClientRect().right <= window.innerWidth && button.scrollWidth <= button.clientWidth)).toBe(true);
+  await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-narrow.png', fullPage: true });
+  await reconnect.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-narrow-button.png' });
+  await reconnect.click();
+  await expect.poll(async () => reconnectRequests.length + await page.evaluate(() => (window as any).__manualReconnectOpens.length)).toBeGreaterThan(0);
+  expect(reconnectRequests.every(url => !url.includes('192.168.4.1'))).toBe(true);
+  expect((await page.evaluate(() => (window as any).__manualReconnectOpens.at(-1) || ''))).not.toContain('192.168.4.1');
+  await expect(commissioning).toContainText('Studio has not verified this card on gallery Wi-Fi', { timeout: 5000 });
+  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
+});
+
 test('WiFi setup names the card’s real hotspot instead of a placeholder suffix', async ({ page }) => {
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await seedCommissioningFlow(page, 'wifi');

@@ -68,3 +68,28 @@ await alreadyConnected.context.submit({reuseSaved:true}, 'Gallery');
 assert.equal(posted,0,'using a connected saved network does not write or restart Wi-Fi');
 assert.match(alreadyConnected.elements.msg.textContent,/Connected to saved network/);
 console.log('lost Wi-Fi save response and saved connection recovery tests passed');
+
+assert.ok(web.includes("<label class='field' for='pw'>Password</label>"),
+ 'the password field keeps its visible label');
+assert.ok(web.includes("id='toggle-password' type='button' aria-controls='pw' aria-pressed='false'"),
+ 'the password visibility control is an accessible non-submit button');
+const visibilitySource = web.match(/"const passwordToggle=[^\n]+/);
+assert.ok(visibilitySource, 'the rendered page wires a password visibility control');
+const visibilityScript = [...visibilitySource[0].matchAll(/"((?:[^"\\]|\\.)*)"/g)]
+ .map(match => JSON.parse('"' + match[1] + '"')).join('');
+const password = { type: 'password', value: 'example-secret' };
+const toggle = { textContent: 'Show', attributes: {},
+ setAttribute(name, value) { this.attributes[name] = value; } };
+vm.runInNewContext(visibilityScript, { $: id => ({ pw: password, 'toggle-password': toggle })[id] });
+toggle.onclick();
+assert.equal(password.type, 'text');
+assert.equal(toggle.textContent, 'Hide');
+assert.equal(toggle.attributes['aria-pressed'], 'true');
+assert.equal(toggle.attributes['aria-label'], 'Hide password');
+toggle.onclick();
+assert.equal(password.type, 'password');
+assert.equal(toggle.textContent, 'Show');
+assert.equal(toggle.attributes['aria-pressed'], 'false');
+assert.equal(toggle.attributes['aria-label'], 'Show password');
+assert.equal(password.value, 'example-secret', 'showing or hiding never changes the entered password');
+console.log('card page password visibility tests passed');
