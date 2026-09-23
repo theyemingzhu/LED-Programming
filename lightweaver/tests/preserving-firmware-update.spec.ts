@@ -480,6 +480,77 @@ function realCardOlderBuildSpec(): CardStateSpec & { firmwareUpdateReady: boolea
   };
 }
 
+test('[factory-ota-door] an exact factory AP card ready for firmware update opens the preserving panel', async ({ page }) => {
+  await stubWebSerialSupport(page);
+  const spec = {
+    ...cardState('factory-blank'),
+    runtimePhase: 'factory', commandReady: false, firmwareUpdateReady: true,
+  };
+  const card = createCardSimulator(spec, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await page.addInitScript(({ id }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id, firmwareVersion: '1.1.1', buildId: '1'.repeat(40),
+    }));
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+  }, { id: CARD_ID });
+
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Update Lightweaver' })).toBeVisible();
+  await expect(page.getByText('Erase card and install Lightweaver')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Find connected card' })).toHaveCount(0);
+
+  let preflightCalls = 0;
+  await page.route('http://192.168.4.1/api/owner/capability', route => route.fulfill({ json: {
+    capability: 'simulated-owner-capability', cardId: CARD_ID, bootId: card.state.bootId,
+    expiresInMs: 60000,
+  } }));
+  await page.route('http://192.168.4.1/api/update/preflight', route => {
+    preflightCalls += 1;
+    return route.fulfill({ status: 409, json: { error: 'simulated-stop-before-write' } });
+  });
+  const statusReadsBeforeStart = card.requests.filter(request => request.method === 'GET' && request.path === '/api/status').length;
+  const panel = page.getByTestId('preserving-update-panel');
+  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
+  await panel.getByRole('checkbox', { name: /physically confirmed/i }).check();
+  await panel.getByRole('button', { name: 'Start preserving update' }).click();
+  await expect.poll(() => preflightCalls).toBe(1);
+  expect(card.requests.filter(request => request.method === 'GET' && request.path === '/api/status').length)
+    .toBeGreaterThan(statusReadsBeforeStart);
+  await expect(panel).toContainText('simulated-stop-before-write');
+  await expect(panel.getByTestId('preserving-update-usb-after-error')).toBeVisible();
+});
+
+test('[factory-ota-direct-unavailable] a bridge-proven factory card keeps the preserving USB exit when direct update transport fails', async ({ page }) => {
+  await stubWebSerialSupport(page);
+  const card = createCardSimulator({
+    ...cardState('factory-blank'), runtimePhase: 'factory', commandReady: false, firmwareUpdateReady: true,
+  }, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await page.addInitScript(({ id }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id }));
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+  }, { id: CARD_ID });
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+  const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
+  await panel.getByRole('checkbox', { name: /physically confirmed/i }).check();
+  await page.route('http://192.168.4.1/api/status', route => route.abort());
+  await panel.getByRole('button', { name: 'Start preserving update' }).click();
+  await expect(panel.getByRole('alert')).toContainText('cannot reach this card directly');
+  expect(card.requests.some(request => request.path.startsWith('/api/update/'))).toBe(false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(panel.getByTestId('preserving-update-usb-after-error')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await panel.getByTestId('preserving-update-usb-after-error').scrollIntoViewIfNeeded();
+  await panel.getByTestId('preserving-update-usb-after-error').click();
+  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toBeVisible();
+});
+
 test('[F34-one-door] a connected, capable card opens straight on the preserving Wi-Fi update panel, never the USB eraser', async ({ page }) => {
   const crashes: string[] = [];
   page.on('pageerror', error => crashes.push(String(error.message)));
