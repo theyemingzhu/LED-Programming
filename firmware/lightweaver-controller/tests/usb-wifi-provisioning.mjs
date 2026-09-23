@@ -9,6 +9,8 @@ const root = resolve(import.meta.dirname, '..');
 const json = join(root, '.pio/libdeps/esp32-s3-n16r8/ArduinoJson/src');
 assert.ok(existsSync(join(json, 'ArduinoJson.h')), 'run pio build first to install pinned ArduinoJson');
 const web = readFileSync(join(root, 'src/LightweaverWeb.cpp'), 'utf8');
+const association = web.slice(web.indexOf('void applyStationAssociation('), web.indexOf('\n}\n\nclass WebConnectivityHardwareAdapter', web.indexOf('void applyStationAssociation(')) + 2);
+assert.ok(association.includes('void applyStationAssociation('));
 const body = web.slice(web.indexOf('void writeUsbWifiStatus('), web.indexOf('\n}\n\n// The control endpoints', web.indexOf('void writeUsbWifiStatus(')));
 assert.ok(body.includes('void handleUsbWifi()'));
 const dir = mkdtempSync(join(tmpdir(), 'lw-usb-wifi-'));
@@ -31,9 +33,11 @@ constexpr uint32_t LW_BUILD_NUMBER=100;
 constexpr int WIFI_SCAN_FAILED=-2,WIFI_SCAN_RUNNING=-1,WIFI_AUTH_OPEN=0,WIFI_STA=1;
 constexpr int LW_WIFI_SCAN_MAX_NETWORKS=20;
 constexpr uint32_t LW_WIFI_SCAN_RETRY_MS=3000;
-struct Config {String pieceId;struct {bool proven=false;}wifi;struct {
- lightweaver::ConnectivityState connectivity;String stationIp,lastError;
+struct Config {String pieceId,activeIp,activeHostname;int activeTransport=0;struct {bool proven=false;String hostname;}wifi;struct {
+ lightweaver::ConnectivityState connectivity;String stationIp,lastError;bool stationLinkPending=false;
 }wifiRuntime;}cfg;
+using RuntimeConfig=Config;
+constexpr int WIFI_TRANSPORT_STATION=1;
 Config* runtimeConfigPtr=&cfg;
 lightweaver::UsbWifiLineBuffer<1536> usbWifiLine;
 uint32_t usbWifiLastByteMs=0,usbWifiAttemptGeneration=0,usbWifiJoinStartAt=0,lastScanStartMs=0;
@@ -59,14 +63,19 @@ struct Radio {
  int mode=0;int scanComplete(){return 3;}void scanDelete(){}void scanNetworks(bool,bool){}
  String SSID(int i){return i==1?"Gallery":"Other";}int RSSI(int i){return -30-i;}
  int encryptionType(int){return 1;}int getMode(){return mode;}void enableSTA(bool){mode=0;}
+ void setAutoReconnect(bool){}
 }WiFi;
 struct SerialSink {
  String output,input;
+ explicit operator bool() const {return false;}
  size_t write(uint8_t c){output+=char(c);return 1;}
  size_t write(const uint8_t* p,size_t n){output.append(reinterpret_cast<const char*>(p),n);return n;}
- void println(){output+='\\n';}int available(){return input.size();}
+ void print(const String&){}void println(const String&){}void println(){output+='\\n';}int available(){return input.size();}
  int read(){int c=input[0];input.erase(0,1);return c;}
 }Serial;
+String sanitizeHostname(const String& value){return value;}
+void announceMdns(const String&){}
+${association}
 ${body}
 String request(const String& cmd,const String& id="request1"){
  return String(R"({"protocol":"lightweaver-usb-wifi","version":1,"id":")")+id+R"(","command":")"+cmd+
@@ -139,6 +148,19 @@ int main(){
  auto timedOut=send(request("status")+"}");
  assert(timedOut["wifi"]["handoffGeneration"]==generation);
  assert(timedOut["attemptId"]=="request3" && timedOut["wifi"]["failureReason"]=="connection_failed");
+ // An automatic retry may associate after the initial join timed out. The
+ // accepted USB attempt must remain correlated, but its failure is no longer
+ // true once the same station has an address.
+ cfg.wifiRuntime.connectivity.generation=generation+1;
+ applyStationAssociation(cfg,"192.168.1.98");
+ assert(send(request("status")+"}")["wifi"]["joinFailed"]==true); // another generation is not this USB attempt
+ cfg.wifiRuntime.connectivity.generation=generation;
+ cfg.wifiRuntime.connectivity.phase=lightweaver::ConnectivityPhase::HandoffReady;
+ applyStationAssociation(cfg,"192.168.1.99");
+ auto recovered=send(request("status")+"}");
+ assert(recovered["attemptId"]=="request3" && recovered["wifi"]["handoffGeneration"]==generation);
+ assert(recovered["wifi"]["stationIp"]=="192.168.1.99" && recovered["wifi"]["joinFailed"]==false);
+ assert(recovered["wifi"]["failureReason"]=="" && recovered["wifi"]["driverReason"]==0);
  Serial.input=String(400,'x');handleUsbWifi();assert(Serial.input.size()==144); // bounded work per tick
 }
 `);

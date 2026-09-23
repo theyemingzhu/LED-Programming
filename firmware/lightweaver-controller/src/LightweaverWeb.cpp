@@ -3040,6 +3040,13 @@ void processScheduledApTeardown(
 
 void applyStationAssociation(RuntimeConfig& config, const String& stationIp) {
   usbWifiObserveDisconnects = false;
+  if (usbWifiAttemptId.length() &&
+      usbWifiAttemptGeneration == config.wifiRuntime.connectivity.generation) {
+    // The same USB attempt can succeed on an automatic retry after its first
+    // join timed out. Keep its identity, but retire the now-stale failure.
+    usbWifiJoinFailed = false;
+    usbWifiDisconnectReason = 0;
+  }
   config.wifiRuntime.stationIp = stationIp;
   config.wifiRuntime.lastError = "";
   config.wifiRuntime.stationLinkPending = false;
