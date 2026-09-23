@@ -12,6 +12,7 @@ import {
   commissioningAutoReconnectHost,
   commissioningShouldSuppressConnectOverlay,
   selectCommissioningCardAcknowledgement,
+  selectCurrentCommissioningBridgeStatus,
   selectCardCommissioningStage,
   commissioningInitialConfigAuthority,
   beginCardCommissioning,
@@ -535,6 +536,64 @@ test('commissioning reconnect stops once fresh exact blank station status is ava
   assert.deepEqual(planCommissioningReconnectAttempt(ready, link, {
     setupReach: 'unreachable', attempt: 1, startedAt: 1_000, now: 2_000,
   }), { state: 'connected', reason: 'exact-card-status', attempts: 1 });
+});
+
+test('a fresh exact factory AP read keeps old station addresses from reclaiming the card page', async () => {
+  const { planCommissioningReconnectAttempt } = await import('./cardCommissioningFlow.js');
+  const flow = completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-stale-station-123456', now: 10,
+  }), { ...installed, postFlashNetwork: { state: 'station', stationIp: '192.168.137.244' } }, { now: 20 });
+  const freshSetupApStatus = {
+    cardId: flow.expectedCard.id,
+    firmwareVersion: flow.expectedCard.firmwareVersion,
+    buildId: flow.expectedCard.buildId,
+    bootId: 'boot-after-wifi-reset',
+    wifi: { transport: 'ap', transition: 'setup-ap', apActive: true,
+      configured: false, stationIp: '' },
+  };
+  assert.deepEqual(planCommissioningReconnectAttempt(flow, {}, {
+    setupApPageOpen: true, freshSetupApStatus,
+    storedHost: '192.168.137.244', attempt: 0,
+  }), { state: 'inactive', reason: 'setup-ap-current', attempts: 0 });
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, {
+    setupApPageOpen: true, storedHost: '192.168.137.244', attempt: 0,
+  }).state, 'inactive', 'wait for the current AP page before using saved station metadata');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, {
+    usbInspectionReleasedForSetup: true,
+    setupApPageOpen: false, storedHost: '192.168.137.244', attempt: 0,
+  }).state, 'inactive', 'USB chip identity alone cannot authorize a saved station route');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, {
+    setupApPageOpen: false, stationPageOpen: false,
+    storedHost: '192.168.137.244', attempt: 0,
+  }).state, 'retry', 'a closed or unavailable tracked page retains bounded station recovery');
+  assert.equal(planCommissioningReconnectAttempt(flow, {}, {
+    stationPageOpen: true, storedHost: '192.168.137.244', attempt: 0,
+  }).state, 'inactive', 'an already tracked station page gets time to verify without repeated navigation');
+});
+
+test('a prior bridge lifecycle cannot hand off or acknowledge after USB restart', () => {
+  const flow = completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-usb-lifecycle-123456', now: 10,
+  }), installed, { now: 20 });
+  const stationStatus = {
+    ...readyStatus(),
+    wifi: { transport: 'station', transition: 'station', transitionPending: false,
+      stationIp: '192.168.18.70', ip: '192.168.18.70' },
+  };
+  const oldLink = { state: 'connected-bridge', host: '192.168.18.70', readiness: stationStatus };
+  const bridgeState = { open: true, verified: true, host: '192.168.18.70', lifecycle: 12 };
+  const stale = { flowId: flow.flowId, host: bridgeState.host, lifecycle: 11, status: stationStatus };
+  assert.equal(selectCurrentCommissioningBridgeStatus(flow, stale, bridgeState), null);
+  assert.equal(selectCommissioningCardAcknowledgement(flow, oldLink, {
+    requireFreshBridgeStatus: true, bridgeStatus: stale, bridgeState,
+  }).ok, false, 'a pre-reset connected link cannot auto-acknowledge');
+  const fresh = { ...stale, lifecycle: 12 };
+  assert.equal(selectCurrentCommissioningBridgeStatus(flow, fresh, bridgeState), stationStatus);
+  assert.equal(selectCommissioningCardAcknowledgement(flow, oldLink, {
+    requireFreshBridgeStatus: true, bridgeStatus: fresh, bridgeState,
+  }).ok, true, 'a current exact status retains automatic acknowledgement');
 });
 
 test('detection auto-advance rejects a wrong card, firmware version, or build like the manual gate', () => {

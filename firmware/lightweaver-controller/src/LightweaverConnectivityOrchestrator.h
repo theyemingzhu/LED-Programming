@@ -17,16 +17,19 @@ struct ConnectivityObservation {
   bool stationReady;
   bool stationAddressChanged;
   bool apReady;
+  bool apClientConnected;
 
   constexpr ConnectivityObservation(
       std::uint32_t now = 0,
       bool stationIsReady = false,
       bool addressChanged = false,
-      bool accessPointReady = false)
+      bool accessPointReady = false,
+      bool accessPointClientConnected = false)
       : nowMs(now),
         stationReady(stationIsReady),
         stationAddressChanged(addressChanged),
-        apReady(accessPointReady) {}
+        apReady(accessPointReady),
+        apClientConnected(accessPointClientConnected) {}
 };
 
 struct ConnectivityBindingResult {
@@ -120,6 +123,13 @@ inline ConnectivityActionPlan planConnectivityActions(
         current, {ConnectivityEvent::Tick, observed.nowMs, 0});
   }
 
+  if (plan.nextState.phase == ConnectivityPhase::RecoveryAp &&
+      observed.apReady && !plan.nextState.recoveryApReady) {
+    plan.nextState.recoveryApReady = true;
+    plan.nextState.recoveryApReadyMs = observed.nowMs;
+    plan.nextState.reconnectDue = false;
+  }
+
   if (previousPhase == ConnectivityPhase::Joining &&
       plan.nextState.phase == ConnectivityPhase::SetupAp) {
     plan.initialJoinTimedOut = true;
@@ -145,6 +155,14 @@ inline ConnectivityActionPlan planConnectivityActions(
   } else if (plan.nextState.phase == ConnectivityPhase::RecoveryAp &&
              !observed.apReady) {
     plan.ensureRecoveryAp = true;
+  }
+
+  // Recovery is a service window. A phone using this AP to repair credentials
+  // must not be kicked off by another station scan. Fresh user submissions
+  // leave RecoveryAp, so they still begin joining immediately.
+  if (plan.nextState.phase == ConnectivityPhase::RecoveryAp &&
+      observed.apClientConnected) {
+    plan.nextState.reconnectDue = false;
   }
 
   if (plan.stationAttempt == ConnectivityStationAttempt::None &&
@@ -205,12 +223,21 @@ ConnectivityState runConnectivityOrchestrator(
   } else if (plan.ensureRecoveryAp) {
     const ConnectivityApResult result = hardware.ensureRecoveryAp();
     state.apActive = result.apActive;
+    if (result.ready() && !state.recoveryApReady) {
+      state.recoveryApReady = true;
+      state.recoveryApReadyMs = observed.nowMs;
+    }
   }
 
   const bool readinessPending = connectivityTransitionPending(state);
   hardware.setReadinessPending(readinessPending);
 
-  if (plan.stationAttempt != ConnectivityStationAttempt::None &&
+  const bool recoveryQuiet = state.phase == ConnectivityPhase::RecoveryAp &&
+      state.recoveryApReady &&
+      !elapsed(observed.nowMs, state.recoveryApReadyMs,
+               kRecoveryApInitialQuietMs);
+  if (!recoveryQuiet &&
+      plan.stationAttempt != ConnectivityStationAttempt::None &&
       hardware.issueStationAttempt(plan.stationAttempt)) {
     state = recordStationAttempt(state, observed.nowMs);
   }

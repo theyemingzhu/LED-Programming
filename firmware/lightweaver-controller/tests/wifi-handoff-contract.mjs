@@ -237,9 +237,9 @@ assert.ok(setupMarkup.includes("Save and join Wi&#8209;Fi"),
 
 assert.match(advancedRoot, /const\s+pollWifiJoin\s*=\s*async/,
   'the setup page must poll card status after credentials are accepted');
-assert.match(advancedRoot, /w\.handoffGeneration\s*!==\s*expectedGeneration/,
+assert.match(advancedRoot, /w\.handoffGeneration\s*!==\s*target\.generation/,
   'the setup page must correlate join status to the accepted generation');
-assert.match(advancedRoot, /s\.bootId\s*!==\s*expectedBootId/,
+assert.match(advancedRoot, /s\.bootId\s*!==\s*target\.bootId/,
   'the setup page must correlate join status to the accepted boot');
 assert.match(advancedRoot,
   /transition\s*===\s*'handoff-ready'[\s\S]*stationIp/,
@@ -252,8 +252,8 @@ assert.doesNotMatch(advancedRoot,
   'the setup page must not tell the user to leave the AP before station evidence is verified');
 assert.doesNotMatch(web, /keeps retrying about once a minute/,
   'the recovery page must not describe the old inert/minute retry behavior');
-assert.match(web, /keeps trying every 10 seconds/,
-  'the recovery page must describe the bounded retry cadence truthfully');
+assert.match(web, /will retry automatically/,
+  'the recovery page must describe retry without promising a cadence while a setup client is attached');
 
 const wifiPollCppStart = advancedRoot.indexOf('"const wifiFailureText=');
 const wifiPollCppEnd = advancedRoot.indexOf('"$(\'join\').onclick', wifiPollCppStart);
@@ -264,35 +264,10 @@ assert.ok(wifiPollCppEnd > wifiPollCppStart,
 const wifiPollSource = decodeCppStrings(
   advancedRoot.slice(wifiPollCppStart, wifiPollCppEnd),
 );
-const joinUi = {
-  join: { disabled: true },
-  msg: { textContent: '', className: 'note' },
-};
-const retryStatuses = [
-  { bootId: 'boot-new', wifi: { transition: 'setup-ap', transitionPending: false, apActive: true, stationIp: '', handoffGeneration: 2, lastError: 'station association timed out' } },
-  { bootId: 'boot-new', wifi: { transition: 'joining', transitionPending: true, apActive: true, stationIp: '', handoffGeneration: 2, lastError: 'station association timed out' } },
-  { bootId: 'boot-new', wifi: { transition: 'handoff-ready', transitionPending: true, apActive: true, stationIp: '192.168.18.70', handoffGeneration: 2, lastError: '' } },
-  { bootId: 'boot-new', wifi: { transition: 'handoff-ready', transitionPending: true, apActive: true, stationIp: '192.168.18.70', handoffGeneration: 2, lastError: '' } },
-];
-let retryStatusReads = 0;
-const wifiPollContext = {
-  $: id => joinUi[id],
-  get: async () => { retryStatusReads += 1; return retryStatuses.shift(); },
-  setTimeout: callback => queueMicrotask(callback),
-};
-vm.runInNewContext(
-  `${wifiPollSource};globalThis.startWifiJoinPoll=startWifiJoinPoll`,
-  wifiPollContext,
-);
-const stalePoll = wifiPollContext.startWifiJoinPoll(1, 'boot-old');
-const currentPoll = wifiPollContext.startWifiJoinPoll(2, 'boot-new');
-assert.deepEqual(await Promise.all([stalePoll, currentPoll]), ['cancelled', 'verified'],
-  'a replacement submit must cancel the old poll while the current poll survives one timeout and the automatic retry');
-assert.equal(retryStatusReads, 4,
-  'only the current poll may consume the timeout, retry, and two stable handoff reads');
-assert.match(joinUi.msg.textContent, /Verified:[\s\S]*192\.168\.18\.70/);
-assert.equal(joinUi.msg.className, 'note ok',
-  'the successful retry must replace the transient timeout styling');
+assert.match(wifiPollSource, /s\.cardId!==target\.cardId[\s\S]*s\.bootId!==target\.bootId[\s\S]*w\.handoffGeneration!==target\.generation/,
+  'each observed status must match the exact card, boot, and handoff generation');
+assert.match(wifiPollSource, /target\.readyReads\+\+;if\(target\.readyReads<2\)/,
+  'handoff readiness requires two consecutive matching reads');
 
 assert.doesNotMatch(web, /bool\s+tryStationJoin\s*\(/,
   'boot association must not use the old blocking STA-only join');

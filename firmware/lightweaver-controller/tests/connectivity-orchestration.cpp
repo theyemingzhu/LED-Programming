@@ -79,8 +79,10 @@ struct FakeHardware {
 ConnectivityObservation observation(std::uint32_t now,
                                     bool stationReady,
                                     bool stationAddressChanged = false,
-                                    bool apReady = false) {
-  return {now, stationReady, stationAddressChanged, apReady};
+                                    bool apReady = false,
+                                    bool apClientConnected = false) {
+  return {now, stationReady, stationAddressChanged, apReady,
+          apClientConnected};
 }
 
 ConnectivityState run(FakeHardware& hardware,
@@ -141,9 +143,9 @@ int main() {
   state = run(hardware, state, observation(61000, false, false, false));
   assert(state.phase == ConnectivityPhase::RecoveryAp);
   assert(!state.apActive);
-  assert(hardware.stationAttempts.back() == 61000);
+  assert(hardware.stationAttempts.back() == 51000);
   assert((hardware.actions == std::vector<std::string>{
-      "ensure-recovery-ap", "readiness-pending", "station-reconnect"}));
+      "ensure-recovery-ap", "readiness-pending"}));
 
   hardware.actions.clear();
   state = run(hardware, state, observation(61250, false, false, false));
@@ -154,8 +156,52 @@ int main() {
   hardware.actions.clear();
   state = run(hardware, state, observation(61500, false, false, false));
   assert(state.apActive);
+  assert(state.recoveryApReady);
+  assert(state.recoveryApReadyMs == 61500);
   assert((hardware.recoveryApAttempts ==
           std::vector<std::uint32_t>{61000, 61250, 61500}));
+
+  // Delayed AP/DNS startup must not consume the phone's service window.
+  FakeHardware delayed;
+  delayed.recoveryApResults = {{false, false}, {false, false}, {true, true}};
+  ConnectivityState delayedState{};
+  delayedState.phase = ConnectivityPhase::RecoveryAp;
+  delayedState.apActive = false;
+  delayedState.phaseStartedMs = 61000;
+  delayedState.lastAttemptMs = 51000;
+  delayedState = run(delayed, delayedState, observation(61000, false));
+  delayedState = run(delayed, delayedState, observation(80500, false));
+  assert(delayed.stationAttempts.empty());
+  delayedState = run(delayed, delayedState, observation(80999, false));
+  assert(delayedState.recoveryApReady);
+  assert(delayedState.recoveryApReadyMs == 80999);
+  assert(delayed.stationAttempts.empty());
+  delayedState = run(delayed, delayedState, observation(100998, false, false, true));
+  assert(delayed.stationAttempts.empty());
+  delayedState = run(delayed, delayedState, observation(100999, false, false, true));
+  assert((delayed.stationAttempts == std::vector<std::uint32_t>{100999}));
+
+  // If AP startup never succeeds, station recovery is still attempted after
+  // the bounded initial startup window rather than pausing forever.
+  FakeHardware neverReady;
+  neverReady.recoveryApResults = {{false, false}, {false, false}, {true, true}};
+  ConnectivityState unavailable{};
+  unavailable.phase = ConnectivityPhase::RecoveryAp;
+  unavailable.apActive = false;
+  unavailable.phaseStartedMs = 61000;
+  unavailable.lastAttemptMs = 51000;
+  unavailable = run(neverReady, unavailable, observation(80999, false));
+  assert(neverReady.stationAttempts.empty());
+  unavailable = run(neverReady, unavailable, observation(81000, false));
+  assert((neverReady.stationAttempts == std::vector<std::uint32_t>{81000}));
+  // A later successful AP start still receives a fresh quiet window, even
+  // when a reconnect would otherwise be due on that same orchestrator tick.
+  unavailable = run(neverReady, unavailable, observation(111000, false));
+  assert(unavailable.recoveryApReadyMs == 111000);
+  assert((neverReady.stationAttempts == std::vector<std::uint32_t>{81000}));
+  unavailable = run(neverReady, unavailable, observation(131000, false, false, true));
+  assert((neverReady.stationAttempts ==
+          std::vector<std::uint32_t>{81000, 131000}));
 
   hardware.nextWledBind = true;
   hardware.nextArtnetBind = false;
@@ -191,6 +237,47 @@ int main() {
   assert(hardware.output == savedOutput);
   assert(hardware.stationAttempts.back() == 70000);
   assert(hardware.bindingAttempts.back() == 70500);
+
+  // A recovery hotspot must provide a stable editing window while the saved
+  // router is absent. It may probe again after idle, but a connected setup
+  // client suppresses scans for as long as the client remains attached.
+  FakeHardware recoveryHardware;
+  ConnectivityState recovery{};
+  recovery.phase = ConnectivityPhase::RecoveryAp;
+  recovery.apActive = true;
+  recovery.phaseStartedMs = 61000;
+  recovery.lastAttemptMs = 51000;
+  recovery = run(recoveryHardware, recovery,
+                 observation(80999, false, false, true));
+  assert(recoveryHardware.stationAttempts.empty());
+  recovery = run(recoveryHardware, recovery,
+                 observation(81000, false, false, true, true));
+  recovery = run(recoveryHardware, recovery,
+                 observation(181000, false, false, true, true));
+  assert(recoveryHardware.stationAttempts.empty());
+  recovery = run(recoveryHardware, recovery,
+                 observation(181001, false, false, true, false));
+  assert((recoveryHardware.stationAttempts ==
+          std::vector<std::uint32_t>{181001}));
+  recovery = run(recoveryHardware, recovery,
+                 observation(211000, false, false, true, false));
+  assert(recoveryHardware.stationAttempts.size() == 1);
+  recovery = run(recoveryHardware, recovery,
+                 observation(211001, false, false, true, false));
+  assert((recoveryHardware.stationAttempts ==
+          std::vector<std::uint32_t>{181001, 211001}));
+
+  // A deliberate Save is a new Joining generation and must not inherit the
+  // recovery quiet period, even while the setup client is still attached.
+  recovery = advanceConnectivity(
+      recovery, {ConnectivityEvent::CredentialsAccepted, 211100, 31});
+  assert(recovery.phase == ConnectivityPhase::Joining);
+  assert(recovery.generation == 31);
+  assert(recovery.reconnectDue);
+  // beginStationJoin() issues the new web attempt directly (after its STA_STOP
+  // fence) rather than waiting for a recovery policy tick.
+  recovery = recordStationAttempt(recovery, 211100);
+  assert(recovery.lastAttemptMs == 211100);
 
   ConnectivityState preAck{};
   preAck.phase = ConnectivityPhase::HandoffReady;

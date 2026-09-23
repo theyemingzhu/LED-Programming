@@ -68,8 +68,11 @@ import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/ca
 import { CARD_HOST_STORAGE_KEY, readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
 import { openOwnerLibrarySignIn, probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } from '../lib/ownerFirmwareUpdateGrant.js';
 import {
+  cardRestartedAfterUsbInspection,
   clearActiveUsbInspection,
   registerActiveUsbInspection,
+  releaseActiveUsbInspection,
+  requireFreshRuntimeAfterUsbInspection,
 } from '../lib/usbInspection.js';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
@@ -1040,6 +1043,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // given: before the first progress callback there is no size, and the
     // rail says so by sweeping rather than by claiming 0%.
     const [usbFirmwareRead, setUsbFirmwareRead] = useState({ state: 'idle', progress: 0, bytesRead: 0, totalBytes: 0 });
+    const [usbInspectionReleasedForSetup, setUsbInspectionReleasedForSetup] = useState(false);
     // What the card is running NOW, so the screen can say which direction this
     // install moves it. A live link is the best account; a remembered identity
     // is used only when it belongs to the card actually plugged in.
@@ -1672,7 +1676,25 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     };
 
     const openStage = async (stage) => {
-      if (installState === 'installing' || installState === 'observing' || installState === 'wifi-setup') return;
+      if (findingRef.current || installState === 'installing' || installState === 'observing' || installState === 'wifi-setup') return;
+      // USB inspection holds the ESP32-S3 in its ROM loader while reading the
+      // installed firmware. The setup and light-check steps need the running
+      // card application, so restart it and release COM before opening either
+      // step. Otherwise its setup AP disappears while Studio keeps trying an
+      // old station address.
+      if (inspectionRef.current && stage !== 'connect-card' && stage !== 'install-safely') {
+        const { released, cardId } = await releaseActiveUsbInspection();
+        if (!released) {
+          setCardState(previous => ({
+            ...previous,
+            state: 'error',
+            error: 'Studio could not restart this card after USB inspection. Close other serial tools, then try again.',
+          }));
+          return;
+        }
+        requireFreshRuntimeAfterUsbInspection(cardId);
+        setUsbInspectionReleasedForSetup(true);
+      }
       let flow = readCardCommissioning() || commissioning;
       const official = releaseState.state === 'ready' ? releaseState.release.manifest : null;
       const remembered = installedFirmware || cardLink?.card || readPersistedCardIdentity();
@@ -1765,6 +1787,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             onComplete={onCommissioningComplete}
             onSelectStage={stage => { void openStage(stage); }}
             viewStage={selectedStage}
+            usbInspectionReleasedForSetup={usbInspectionReleasedForSetup
+              || cardRestartedAfterUsbInspection(commissioning?.expectedCard?.id)}
             readProjectEvidence={readCardProjectEvidence}
             readCandidateEvidence={readCardWiringCandidateEvidence}
           />
@@ -1778,7 +1802,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           <div className="install-task">
             <CardCommissioningSteps
               stage={selectedStage}
-              disabled={false}
+              disabled={cardState.state === 'finding'}
               onSelect={stage => { void openStage(stage); }}
             />
             <header className="install-intro">
@@ -1806,7 +1830,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         <div className="install-task">
           <CardCommissioningSteps
             stage={selectedStage}
-            disabled={installState === 'installing' || installState === 'observing'}
+            disabled={cardState.state === 'finding' || installState === 'installing' || installState === 'observing'}
             onSelect={stage => { void openStage(stage); }}
           />
 

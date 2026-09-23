@@ -4,6 +4,8 @@ let nextInspectionId = 1;
 // /api/status until the owner asks. The card's radio is still coming up, and
 // a background LAN poll is what this hold exists to stop.
 let holdLanProbes = false;
+const POST_USB_RESTART_CARD_KEY = 'lw_post_usb_restart_card_v1';
+let postUsbRestartCardId = '';
 
 function cleanCardId(value) {
   return String(value || '').trim().slice(0, 64);
@@ -21,6 +23,22 @@ export function registerActiveUsbInspection({ cardId, release } = {}) {
 
 export function getActiveUsbInspection() {
   return activeInspection?.token || null;
+}
+
+export function cardRestartedAfterUsbInspection(cardId) {
+  const id = cleanCardId(cardId);
+  if (!id) return false;
+  try {
+    return (sessionStorage.getItem(POST_USB_RESTART_CARD_KEY) || postUsbRestartCardId) === id;
+  } catch {
+    return postUsbRestartCardId === id;
+  }
+}
+
+export function requireFreshRuntimeAfterUsbInspection(cardId) {
+  postUsbRestartCardId = cleanCardId(cardId);
+  if (!postUsbRestartCardId) return;
+  try { sessionStorage.setItem(POST_USB_RESTART_CARD_KEY, postUsbRestartCardId); } catch { /* session storage may be unavailable */ }
 }
 
 export function lanProbesHeld() {
