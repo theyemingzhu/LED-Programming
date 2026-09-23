@@ -144,14 +144,12 @@ test('preserving update: capable card uses Wi-Fi with exact preservation facts a
 
   const updateAction = panel.getByRole('button', { name: 'Update over Wi-Fi' });
   const targetBuild = panel.getByText('1.2.0 · Build 1300');
-  await expect(updateAction).not.toHaveClass(/btn-lg|primary/);
-  await expect(updateAction).toHaveCSS('justify-self', 'end');
+  await expect(updateAction).toHaveClass(/btn-lg/);
   const targetBox = await targetBuild.boundingBox();
   const actionBox = await updateAction.boundingBox();
   expect(targetBox).not.toBeNull();
   expect(actionBox).not.toBeNull();
   expect(actionBox!.y).toBeGreaterThan(targetBox!.y + targetBox!.height);
-  expect(Math.abs((actionBox!.x + actionBox!.width) - (targetBox!.x + targetBox!.width))).toBeLessThanOrEqual(1);
   await updateAction.click();
   await expect(panel).toContainText('securely binds this signed update to this exact card');
   await expect(panel.getByRole('checkbox', { name: /physically confirmed/i })).toHaveCount(0);
@@ -500,7 +498,7 @@ test('[F34-one-door] a connected, capable card opens straight on the preserving 
     panel,
     'a connected, capable card must open straight on the preserving Wi-Fi panel, not the destructive USB installer',
   ).toBeVisible({ timeout: 15000 });
-  await expect(panel.getByRole('heading', { name: 'Update this card over Wi-Fi' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
 
   await expect(
     page.getByRole('button', { name: 'Find connected card' }),
@@ -576,22 +574,24 @@ test('[F40-usb-door] a card that cannot take a Wi-Fi update yet leads with the o
 
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toBeVisible({ timeout: 15000 });
-  await expect(panel.getByRole('heading', { name: 'Update this card over Wi-Fi' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
+  await expect(page.locator('.install-intro .install-release.ready')).toHaveText('Official update verified and ready.');
+  await expect(page.locator('.install-intro')).not.toContainText('Build');
 
   await expect(
     panel.getByTestId('preserving-update-usb-required-notice'),
     'a card answering firmwareUpdateReady: false must say so before offering either action',
-  ).toHaveText('This card cannot take a Wi-Fi update yet. Use USB once; after that, Wi-Fi works.');
+  ).toHaveText('This card needs USB for this update. Future updates can use Wi-Fi.');
 
   const primary = panel.getByTestId('preserving-update-primary-action');
-  await expect(primary).toHaveText('Update once over USB instead');
+  await expect(primary).toHaveText('Continue with USB');
   await expect(primary).toHaveClass(/btn-lg/);
   const secondary = panel.getByTestId('preserving-update-secondary-action');
-  await expect(secondary).toHaveText('Update over Wi-Fi');
-  await expect(secondary).not.toHaveClass(/btn-lg/);
+  await expect(secondary).toHaveCount(0);
 
   await primary.click();
-  await expect(panel.getByRole('heading', { name: 'One-time USB update for this card' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toBeVisible();
 });
 
 test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and still offers the USB door', async ({ page }) => {
@@ -606,7 +606,7 @@ test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and 
 
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toBeVisible({ timeout: 15000 });
-  await expect(panel.getByRole('heading', { name: 'Update this card over Wi-Fi' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
 
   await expect(
     panel.getByTestId('preserving-update-usb-required-notice'),
@@ -616,6 +616,9 @@ test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and 
   const primary = panel.getByTestId('preserving-update-primary-action');
   await expect(primary).toHaveText('Update over Wi-Fi');
   const secondary = panel.getByTestId('preserving-update-secondary-action');
-  await expect(secondary).toHaveText('Update once over USB instead');
+  await expect(secondary).toHaveText('Use USB instead');
+  await expect(secondary).not.toBeVisible();
+  await panel.getByText('Need another way?').click();
+  await expect(secondary).toBeVisible();
   await expect(secondary).not.toHaveClass(/btn-lg/);
 });

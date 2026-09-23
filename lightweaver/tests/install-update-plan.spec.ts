@@ -214,7 +214,7 @@ test('USB flash identity outranks remembered firmware and clearly recommends a p
   await expect(identity).not.toContainText('Installed firmware');
 
   const panel = page.getByTestId('preserving-update-panel');
-  await expect(panel.getByRole('heading', { name: 'One-time USB update for this card' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
   await expect(panel).toContainText('1.1.1 · Build 1366faf23a29');
   await expect(panel).toContainText(`${manifest.firmwareVersion} · Build ${manifest.buildNumber}`);
   await expect(panel).not.toContainText('replaces it with');
