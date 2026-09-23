@@ -4,10 +4,53 @@ import {
   cardSupportsNetworkFirmwareUpdate,
   cardSupportsSoftwareFirmwareUpdateGrant,
   describeFirmwareUpdate,
+  factoryCardReadyForNetworkFirmwareUpdate,
   firmwareLabel,
   normalizeFirmwareUpdateCard,
   resolveInstalledFirmware,
 } from './firmwareUpdatePlan.js';
+
+const factoryUpdateStatus = () => ({
+  app: 'Lightweaver', provisioningContractVersion: 1,
+  cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.42', buildId: 'a'.repeat(40),
+  bootId: 'boot-current', runtimePhase: 'factory', knownGoodProject: false,
+  commandReady: false, outputReady: false, mode: 'factory-flash', source: 'defaults',
+  firmwareUpdateReady: true,
+  capabilities: { firmwareUpdate: { version: 1, network: true } },
+});
+
+const factoryUpdateLink = (status = factoryUpdateStatus()) => ({
+  state: 'connected-direct', host: '192.168.4.1',
+  card: { id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
+  expectedCard: { id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
+  validatedBootId: status.bootId, requiresStableRevalidation: false, readiness: status,
+});
+
+test('only a fresh exact factory card with explicit OTA readiness gets the command-blocked update door', () => {
+  const status = factoryUpdateStatus();
+  const link = factoryUpdateLink(status);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link), true);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, state: 'revalidating' }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, requiresStableRevalidation: true }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, validatedBootId: 'boot-before' }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, readiness: null }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, card: { ...link.card, id: 'lw-other' } }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, expectedCard: { id: 'lw-other' } }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, card: { ...link.card, buildId: 'b'.repeat(40) } }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, readiness: { ...status, firmwareUpdateReady: false } }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, readiness: { ...status, capabilities: { firmwareUpdate: { version: 1, network: false } } } }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate({ ...link, readiness: { ...status, capabilities: undefined, firmwareUpdate: { version: 1, network: true } } }), false);
+});
+
+test('a bridge factory update door requires the live verified host and lifecycle', () => {
+  const link = { ...factoryUpdateLink(), state: 'connected-bridge', bridgeLifecycle: 7 };
+  const bridge = { open: true, verified: true, host: link.host, lifecycle: 7 };
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link, { bridge, bridgePageOpen: true }), true);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link, { bridge, bridgePageOpen: false }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link, { bridge: { ...bridge, verified: false }, bridgePageOpen: true }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link, { bridge: { ...bridge, host: '192.168.137.244' }, bridgePageOpen: true }), false);
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link, { bridge: { ...bridge, lifecycle: 8 }, bridgePageOpen: true }), false);
+});
 
 test('network update capability is read from the exact firmware status envelope', () => {
   assert.equal(cardSupportsNetworkFirmwareUpdate({

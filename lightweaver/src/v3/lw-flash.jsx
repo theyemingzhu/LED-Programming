@@ -40,10 +40,13 @@ import { openUsbWifiSession, usbWifiErrorMessage } from '../lib/usbWifiProvision
 import {
   cardSupportsSoftwareFirmwareUpdateGrant,
   describeFirmwareUpdate,
+  factoryCardReadyForNetworkFirmwareUpdate,
   normalizeFirmwareUpdateCard,
   resolveInstalledFirmware,
 } from '../lib/firmwareUpdatePlan.js';
+import { getCardBridgeState } from '../lib/cardBridge.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import { classifyCardReadiness } from '../lib/cardReadiness.js';
 import { CARD_LINK_CONNECT_TIMEOUT_MS, isCardLinkConnected } from '../lib/cardLink.js';
 import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
 import {
@@ -514,6 +517,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
   function PreservingUpdatePanel({
     mode,
     card,
+    factoryUpdateReady = false,
     cardLifecycle,
     readiness,
     release,
@@ -751,8 +755,29 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       try {
         if (mode === 'wifi') {
           const testFactory = import.meta.env.DEV && window.__LW_CREATE_FIRMWARE_UPDATER_FOR_TEST__;
-          const authority = getActiveCardTransportAuthority(readiness?.host || '')
+          let authority = getActiveCardTransportAuthority(readiness?.host || '')
             || getActiveCardTransportAuthority();
+          if (factoryUpdateReady && !testFactory) {
+            // The card-page bridge proves which factory card is answering, but
+            // it cannot relay update writes. Acquire the existing direct
+            // transport through a fresh exact-card status read before preflight.
+            const direct = await connectCardTransport({ host: reconnectHost, expectedCardId: card.id });
+            if (!direct?.connected) {
+              throw new Error('This browser cannot reach this card directly for a Wi-Fi update. Keep its setup page open, or use the preserving USB update.');
+            }
+            authority = direct;
+            const status = direct.readiness || {};
+            const freshFactory = classifyCardReadiness(status, { expectedCardId: card.id });
+            if (direct.cardId !== card.id || direct.bootId !== readiness?.bootId
+              || direct.card?.firmwareVersion !== card.firmwareVersion
+              || direct.card?.buildId !== card.buildId
+              || freshFactory.state !== 'blank' || freshFactory.runtimePhase !== 'factory'
+              || status.firmwareUpdateReady !== true
+              || status.capabilities?.firmwareUpdate?.version !== 1
+              || status.capabilities.firmwareUpdate.network !== true) {
+              throw new Error('The card changed since Studio opened this update. Reconnect the exact card and review its firmware before retrying.');
+            }
+          }
           if (!testFactory && !authority) throw new Error('Reconnect this exact card before updating over Wi-Fi.');
           let softwareGrant;
           let physicalConfirmation;
@@ -971,6 +996,14 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           </button>
         )}
         {error && <div className="install-check-error" role="alert">{error}</div>}
+        {error && factoryUpdateReady && mode === 'wifi' && canWebSerialInstall && (
+          <button className="btn" type="button" data-testid="preserving-update-usb-after-error" onClick={() => {
+            setConfirming(false);
+            setPhysicalConfirmed(false);
+            setError('');
+            onSwitchToUsb?.();
+          }}>Use preserving USB update instead</button>
+        )}
         {rollback && (
           <div className="install-check-error" role="alert">
             <strong>Update rolled back.</strong> The card restored Build {rollback.restoredBuildNumber || 'unknown'}. Reason: {rollback.reason}.
@@ -1114,7 +1147,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       && updateReadiness.capabilities.firmwareUpdate.network === true,
     );
     const cardLinkIsConnected = Boolean(preservingFixture) || isCardLinkConnected(cardLink);
-    const connectedUpdateCard = cardAdvertisesNetworkUpdate && cardLinkIsConnected
+    const bridge = cardLink?.state === 'connected-bridge' ? getCardBridgeState() : null;
+    const factoryUpdateReady = factoryCardReadyForNetworkFirmwareUpdate(cardLink, {
+      bridgePageOpen: Boolean(bridge?.open),
+      bridge,
+    });
+    const connectedUpdateCard = cardAdvertisesNetworkUpdate && (cardLinkIsConnected || factoryUpdateReady)
       && connectedCardCandidate && !alreadyOnPublishedFirmware
       ? { ...connectedCardCandidate, bootId: updateReadiness.bootId, projectHead: updateReadiness.projectHead }
       : null;
@@ -1869,6 +1907,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             <PreservingUpdatePanel
               mode={preservingMode}
               card={preservingCard}
+              factoryUpdateReady={factoryUpdateReady}
               cardLifecycle={cardLifecycle}
               readiness={updateReadiness}
               release={updateReleaseState.state === 'ready' ? updateReleaseState.release : null}

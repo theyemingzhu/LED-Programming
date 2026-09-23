@@ -16,6 +16,10 @@
 // never met has an UNKNOWN current firmware, and the screen must say so rather
 // than quietly showing only the target and letting it read as the answer.
 
+import { isLocalCardHost } from './cardConnection.js';
+import { isCardTransportConnected } from './cardConnectionFlow.js';
+import { classifyCardReadiness } from './cardReadiness.js';
+
 function buildNumberOf(source) {
   const value = Number(source?.buildNumber);
   return Number.isSafeInteger(value) && value > 0 ? value : 0;
@@ -29,6 +33,37 @@ export function cardSupportsNetworkFirmwareUpdate(readiness = {}) {
   return capability?.version === 1
     && capability.network === true
     && readiness.firmwareUpdateReady !== false;
+}
+
+// A factory card cannot accept ordinary lighting commands, but its firmware
+// updater can independently report that it is ready. Admit that one narrow
+// update door only from the link's current, exact status envelope. The normal
+// command-ready update path remains separate, including its USB fallback when
+// firmwareUpdateReady is temporarily false.
+export function factoryCardReadyForNetworkFirmwareUpdate(link = {}, {
+  bridge = null,
+  bridgePageOpen = false,
+} = {}) {
+  if (!isCardTransportConnected(link) || !isLocalCardHost(link.host)
+    || !link.readiness || !link.card || link.requiresStableRevalidation) return false;
+  const status = link.readiness;
+  const classified = classifyCardReadiness(status, {
+    expectedCard: link.expectedCard || link.card,
+    expectedCardId: link.card.id || link.card.cardId || '',
+  });
+  if (classified.state !== 'blank' || classified.runtimePhase !== 'factory'
+    || classified.commandReady !== false || classified.firmwareUpdateReady !== true
+    || !classified.bootId || classified.bootId !== link.validatedBootId
+    || classified.cardId !== (link.card.id || link.card.cardId)
+    || classified.firmwareVersion !== link.card.firmwareVersion
+    || classified.buildId !== link.card.buildId
+    || !cardSupportsNetworkFirmwareUpdate(status)) return false;
+  if (link.state === 'connected-bridge') {
+    if (!bridgePageOpen || !bridge?.verified || bridge.host !== link.host
+      || !Number.isSafeInteger(link.bridgeLifecycle)
+      || bridge.lifecycle !== link.bridgeLifecycle) return false;
+  }
+  return true;
 }
 
 // Software authorization arrived after the preserving network updater. Keep
