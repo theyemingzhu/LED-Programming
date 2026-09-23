@@ -319,7 +319,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
       {mutationError && <p className="lw-wiring-error" role="alert">{mutationError}</p>}
       {pinError && <p className="lw-wiring-error" role="alert">{pinError}</p>}
 
-      <details ref={advancedToolsRef} className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware" defaultOpen={openOnEntry}>
+      <details ref={advancedToolsRef} className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wiring & hardware">
         <summary className="panel-head">
           <span className="ttl">Wiring &amp; hardware</span>
         </summary>
