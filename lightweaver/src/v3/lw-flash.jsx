@@ -1555,7 +1555,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
         <div className="install-action-copy">
           <h2>Set up Wi-Fi over USB</h2>
-          <p>Keep this computer on its normal network. After installation, Studio sends these details directly to the verified card over USB. They stay in this form only and are never saved in Studio.</p>
+          <p>Keep this computer on its normal network. Enter the gallery or home 2.4 GHz Wi-Fi, not the Lightweaver setup hotspot. If you do not know its name, leave the fields blank and scan nearby networks from this card after installation. Keep USB connected. Details go only to this verified card over USB and are never saved in Studio.</p>
         </div>
         <fieldset disabled={wifiBusy || installState === 'installing'}>
           <label htmlFor="usb-wifi-ssid">Wi-Fi network name</label>
@@ -1572,6 +1572,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         </fieldset>
         {installState === 'wifi-setup' && <>
           <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p>
+          {wifiStatus.state === 'failed' && !wifiOpenNetwork && !wifiPassword && <p role="status" data-testid="usb-wifi-retry-guidance">Keep USB connected. Check or choose the gallery network, re-enter its password, then select “Join Wi-Fi over USB” again. You do not need to reinstall firmware.</p>}
           <div className="install-confirm-action">
             {wifiSessionRef.current ? <>
               <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Reconnect USB setup</button>

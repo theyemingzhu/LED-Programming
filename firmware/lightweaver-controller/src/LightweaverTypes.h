@@ -9,6 +9,7 @@
 #include "LightweaverHardwareContract.h"
 #include "LightweaverProvisioningPolicy.h"
 #include "LightweaverConnectivityPolicy.h"
+#include "LightweaverWifiJoinDiagnostics.h"
 #include "LightweaverKaleidoscope.h"
 
 // Pure VALIDATION bound, not an allocation size. Every pixel-scaled buffer is
@@ -254,6 +255,7 @@ struct WifiConfig {
 // are durable and private, while this state is transient and safe to expose.
 struct WifiRuntimeState {
   lightweaver::ConnectivityState connectivity;
+  lightweaver::WifiJoinDiagnostics joinDiagnostics;
   String stationIp;
   String lastError;
   uint32_t attemptCount = 0;

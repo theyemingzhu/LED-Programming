@@ -134,6 +134,34 @@ test('fresh installer accepts Wi-Fi locally before any erase and keeps the setup
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-before-install.png', fullPage: true });
 });
 
+test('USB setup distinguishes gallery Wi-Fi from the card hotspot and explains cleared-password retry', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'unknown');
+  const form = page.getByTestId('usb-wifi-setup');
+  await expect(form).toContainText('gallery or home 2.4 GHz Wi-Fi');
+  await expect(form).toContainText('not the Lightweaver setup hotspot');
+  await expect(form).toContainText('leave the fields blank and scan nearby networks from this card after installation');
+  await expect(page.getByRole('button', { name: 'Scan nearby networks', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-guidance-desktop.png', fullPage: true });
+
+  await fillWifi(page);
+  await install(page);
+  await expect(page.getByTestId('usb-wifi-status')).toContainText('did not report a specific cause');
+  await expect(page.getByTestId('usb-wifi-password')).toHaveValue('');
+  const guidance = page.getByTestId('usb-wifi-retry-guidance');
+  await expect(guidance).toContainText('re-enter its password');
+  await expect(guidance).toContainText('You do not need to reinstall firmware');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await guidance.scrollIntoViewIfNeeded();
+  expect(await form.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-guidance-narrow.png' });
+  await page.getByTestId('usb-wifi-password').fill('corrected-password');
+  await expect(guidance).toHaveCount(0);
+  const retry = page.getByRole('button', { name: 'Join Wi-Fi over USB', exact: true });
+  await expect(retry).toBeEnabled();
+  await retry.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-retry-narrow.png' });
+});
+
 test('Wi-Fi credentials never enter browser storage, exported projects, HTTP requests, or console output', async ({ page, request }) => {
   const requests: string[] = [];
   const logs: string[] = [];

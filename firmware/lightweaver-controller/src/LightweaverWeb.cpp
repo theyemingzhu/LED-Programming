@@ -106,6 +106,13 @@ uint32_t usbWifiAttemptGeneration = 0;
 std::atomic<uint16_t> usbWifiDisconnectReason{0};
 std::atomic<bool> usbWifiObserveDisconnects{false};
 std::atomic<bool> usbWifiStationStopped{true};
+std::atomic<uint16_t> wifiJoinDisconnectReason{0};
+std::atomic<bool> wifiJoinSawAssociation{false};
+std::atomic<bool> wifiJoinObserveEvents{false};
+bool webJoinRequiresFence = false;
+bool webJoinWaitsForPriorStop = false;
+bool wifiJoinFencePending = false;
+uint32_t wifiJoinFenceStartMs = 0;
 bool usbWifiJoinFailed = false;
 uint32_t usbWifiJoinStartAt = 0;
 // The WiFi event task only writes the bounded reason. It never touches the
@@ -696,8 +703,8 @@ void handleRoot() {
     page += F("<div class='handoff err' id='wifi-warn'>"
               "<strong>WiFi isn&#39;t connecting.</strong> This card couldn&#39;t join \"");
     page += escapeHtml(cfg.wifi.ssid);
-    page += F("\" — the password may be wrong, or the network is out of range. "
-              "It keeps retrying every 10 seconds while this setup network stays available. If the password changed, re-enter it:"
+    page += F("\". The card keeps trying every 10 seconds while this setup network stays available. "
+              "Open network setup to check the name, password, and 2.4 GHz router settings:"
               "<button class='off-btn' id='wifi-retry-btn' type='button' style='display:block;margin-top:10px'>Change network</button>"
               "</div>");
   }
@@ -1097,6 +1104,7 @@ void handleAdvancedRoot() {
     }
     page += F("<div class='card'><h2>Join Wi&#8209;Fi</h2>"
               "<label class='field' for='ssid'>Network</label>"
+              "<p class='note'>This card can join 2.4 GHz Wi&#8209;Fi. Choose a nearby network, or enter a hidden network below.</p>"
               "<div class='setup-network'>"
                 "<select id='ssid'><option value=''>Scanning…</option></select>"
                 "<button class='ghost' id='rescan' type='button'>Rescan</button>"
@@ -1275,22 +1283,23 @@ void handleAdvancedRoot() {
     // meanwhile, and offer Rescan + a manual SSID field for hidden networks.
     page += F("const passwordToggle=$('toggle-password');passwordToggle.onclick=()=>{const pw=$('pw'),show=pw.type==='password';pw.type=show?'text':'password';passwordToggle.textContent=show?'Hide':'Show';passwordToggle.setAttribute('aria-pressed',String(show));passwordToggle.setAttribute('aria-label',show?'Hide password':'Show password')};"
               "const setScanPlaceholder=text=>{const sel=$('ssid');sel.innerHTML='';const o=document.createElement('option');o.value='';o.textContent=text;sel.appendChild(o)};"
-              "const renderNets=nets=>{const sel=$('ssid');sel.innerHTML='';nets.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;o.textContent=n.ssid+(n.rssi?' ('+n.rssi+'dBm)':'');sel.appendChild(o)});const saved=$('saved-ssid');if(saved&&nets.some(n=>n.ssid===saved.textContent))sel.value=saved.textContent;if(!nets.length){setScanPlaceholder('No networks found — rescan or type the name below');$('setup-more').open=true}};"
-              "let scanPolls=0,scanTimer=null;"
+              "const renderNets=nets=>{const sel=$('ssid');sel.innerHTML='';nets.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;const signal=n.rssi>=-60?'Strong':n.rssi>=-75?'Fair':'Weak';o.textContent=n.ssid+' — '+signal+' signal, '+(n.secure?'Password':'Open');sel.appendChild(o)});const saved=$('saved-ssid');if(saved&&nets.some(n=>n.ssid===saved.textContent))sel.value=saved.textContent;if(!nets.length){setScanPlaceholder('No networks found — rescan or type the name below');$('setup-more').open=true}};"
+              "let scanPolls=0,scanTimer=null,scanToken=0;"
               "let scanRefresh=false;"
-              "const pollScan=async()=>{scanTimer=null;try{const d=await get('/api/wifi/scan'+(scanRefresh?'?refresh=1':''));scanRefresh=false;if(d.scanning){if(scanPolls++<30){scanTimer=setTimeout(pollScan,1500)}else{renderNets([])}return}renderNets(d.networks||[])}catch(_){scanRefresh=false;if(scanPolls++<30){scanTimer=setTimeout(pollScan,1500)}else{renderNets([])}}};"
-              "const startScan=(refresh)=>{scanPolls=0;scanRefresh=!!refresh;if(scanTimer){clearTimeout(scanTimer);scanTimer=null}setScanPlaceholder('Scanning…');pollScan()};"
+              "const pollScan=async token=>{if(token!==scanToken)return;scanTimer=null;try{const d=await get('/api/wifi/scan'+(scanRefresh?'?refresh=1':''));if(token!==scanToken)return;scanRefresh=false;if(d.scanning){if(scanPolls++<30){scanTimer=setTimeout(()=>pollScan(token),1500)}else{renderNets([])}return}renderNets(d.networks||[])}catch(_){if(token!==scanToken)return;scanRefresh=false;if(scanPolls++<30){scanTimer=setTimeout(()=>pollScan(token),1500)}else{renderNets([])}}};"
+              "const startScan=(refresh)=>{const token=++scanToken;scanPolls=0;scanRefresh=!!refresh;if(scanTimer){clearTimeout(scanTimer);scanTimer=null}setScanPlaceholder('Scanning…');pollScan(token)};"
               "$('rescan').onclick=()=>startScan(true);"
               "startScan(false);"
+              "const wifiFailureText=w=>{switch(w.failureReason){case'no_compatible_access_point':return'No compatible access point found. Check the network name, signal, and router security settings.';case'authentication_failed':return'Authentication failed. Check the password and router security settings.';case'handshake_incomplete':return'The WiFi security handshake did not finish. Check signal and router security settings.';case'no_ip_address':return'The card reached the router, but did not receive an IP address. Check the router DHCP settings.';case'station_restart_unconfirmed':return'The card could not restart its WiFi radio. Try again or reboot the card.';case'connection_timed_out':return'The card could not join before the timeout. Check the network name, signal, and password.';case'connection_failed':return'The WiFi driver reported a connection failure. Check the network and router settings.';case'station_connection_lost':return'The connection to the router was lost.';default:return w.lastError||''}};"
               "let wifiJoinPollToken=0;"
-              "const pollWifiJoin=async(expectedGeneration,expectedBootId,pollToken)=>{const btn=$('join'),m=$('msg');let polls=0,readyReads=0;const deadline=Date.now()+67500;while(polls++<90&&Date.now()<deadline){"
+              "const pollWifiJoin=async(expectedGeneration,expectedBootId,pollToken)=>{const btn=$('join'),m=$('msg');let polls=0,readyReads=0,lastFailure='';const deadline=Date.now()+67500;while(polls++<90&&Date.now()<deadline){"
               "await new Promise(resolve=>setTimeout(resolve,750));if(pollToken!==wifiJoinPollToken)return'cancelled';let s;try{s=await get('/api/status',Math.max(1,Math.min(5000,deadline-Date.now())))}catch(_){continue}if(pollToken!==wifiJoinPollToken)return'cancelled';const w=s&&s.wifi||{};"
               "if(s.bootId!==expectedBootId||w.handoffGeneration!==expectedGeneration){m.textContent='The card restarted or began another WiFi setup. Reopen this setup page and try again.';m.className='note err';btn.disabled=false;return'replaced'}"
               "if(w.transition==='handoff-ready'&&w.transitionPending===true&&w.apActive===true&&w.stationIp){readyReads++;if(readyReads<2)continue;m.textContent='Verified: this card joined gallery WiFi at '+w.stationIp+'. Return this device to gallery WiFi, then return to Studio to continue.';m.className='note ok';return'verified'}"
               "if(w.transition==='station'&&w.transport==='station'&&w.stationIp){m.textContent='Connected to gallery WiFi at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';btn.disabled=false;return'verified'}"
-              "readyReads=0;if(w.transition==='setup-ap'&&w.lastError){m.textContent='First gallery WiFi attempt did not connect: '+w.lastError+'. The card is retrying automatically every 10 seconds. You can also correct the network name or password and submit again.';m.className='note err';btn.disabled=false;continue}"
+              "readyReads=0;const failure=wifiFailureText(w);if(failure){lastFailure=failure;m.textContent=failure+' The card keeps trying every 10 seconds while this setup network stays available. You can correct the network details and submit again.';m.className='note err';btn.disabled=false;continue}"
               "m.textContent='Credentials saved. Waiting for this card to verify its gallery WiFi connection…';m.className='note'}"
-              "m.textContent='The card did not verify gallery WiFi in time. Stay on Lightweaver-XXXX, check the network name and password, then try again.';m.className='note err';btn.disabled=false;return'timeout'};"
+              "m.textContent=lastFailure?lastFailure+' The card is still trying. Check the network details or try again.':'The card did not verify gallery WiFi in time. Stay on Lightweaver-XXXX, check the network name and password, then try again.';m.className='note err';btn.disabled=false;return'timeout'};"
               "const startWifiJoinPoll=(expectedGeneration,expectedBootId)=>pollWifiJoin(expectedGeneration,expectedBootId,++wifiJoinPollToken);"
               "let pendingWifiSubmission=null;"
               "const reconcileWifiJoin=async(pollToken)=>{if(!pendingWifiSubmission)return false;const pending=pendingWifiSubmission;const s=await get('/api/status');if(pollToken!==wifiJoinPollToken)return true;const w=s.wifi||{};if(s.cardId!==pending.cardId)throw new Error('A different card answered. Reopen setup for the intended card.');if(w.ssid!==pending.ssid)return false;if(s.bootId===pending.bootId&&w.handoffGeneration===pending.generation)return false;pendingWifiSubmission=null;await pollWifiJoin(w.handoffGeneration,s.bootId,pollToken);return true};"
@@ -1625,12 +1634,16 @@ void handleWifiPost() {
   }
   // An explicit setup-page submission supersedes an outstanding USB attempt.
   // Clear its correlation so USB polling cannot misattribute the new network.
+  uint32_t priorGeneration = max(runtimeConfigPtr->wifiRuntime.connectivity.generation,
+                                 usbWifiAttemptGeneration);
+  webJoinWaitsForPriorStop = usbWifiJoinStartAt && !usbWifiStationStopped;
   usbWifiJoinStartAt = 0;
   usbWifiObserveDisconnects = false;
   usbWifiAttemptId = "";
   usbWifiAttemptGeneration = 0;
   usbWifiJoinFailed = false;
-  uint32_t generation = runtimeConfigPtr->wifiRuntime.connectivity.generation + 1U;
+  webJoinRequiresFence = true;
+  uint32_t generation = priorGeneration + 1U;
   if (generation == 0) generation = 1;
   beginStationJoin(*runtimeConfigPtr, generation);
   JsonDocument response;
@@ -2921,11 +2934,18 @@ void syncWifiReadiness(const RuntimeConfig& config) {
 bool issueStationAttempt(
     RuntimeConfig& config,
     lightweaver::ConnectivityStationAttempt attempt) {
+  wifiJoinObserveEvents = false;
+  wifiJoinDisconnectReason = 0;
+  wifiJoinSawAssociation = false;
+  config.wifiRuntime.joinDiagnostics.retry(config.wifiRuntime.connectivity.generation);
   String hostname = sanitizeHostname(config.wifi.hostname);
   WiFi.mode(config.wifiRuntime.connectivity.apActive ? WIFI_AP_STA : WIFI_STA);
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(false);
   WiFi.setHostname(hostname.c_str());
+  // Only events after the station has been fenced for new credentials are
+  // attributed to this physical attempt. The callback only writes atomics.
+  wifiJoinObserveEvents = true;
   if (attempt == lightweaver::ConnectivityStationAttempt::Reconnect) {
     if (!WiFi.reconnect()) {
       WiFi.begin(config.wifi.ssid.c_str(), config.wifi.password.c_str());
@@ -2963,6 +2983,9 @@ void beginStationJoin(RuntimeConfig& config, uint32_t generation) {
   apTeardownDeadlineMs = 0;
   apTeardownStationIp = "";
   config.wifiRuntime.attemptCount = 0;
+  wifiJoinObserveEvents = false;
+  wifiJoinDisconnectReason = 0;
+  wifiJoinSawAssociation = false;
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(false, false);
   uint32_t now = millis();
@@ -2974,13 +2997,27 @@ void beginStationJoin(RuntimeConfig& config, uint32_t generation) {
        now, generation});
   config.wifiRuntime.stationIp = "";
   config.wifiRuntime.lastError = "";
+  config.wifiRuntime.joinDiagnostics.begin(config.wifiRuntime.connectivity.generation);
   config.wifiRuntime.stationLinkPending = false;
   config.activeTransport = WIFI_TRANSPORT_AP;
   config.activeIp = WiFi.softAPIP().toString();
   config.activeHostname = "";
   alignSetupApChannel(config);
   syncWifiReadiness(config);
-  startStationAttempt(config, now);
+  if (webJoinRequiresFence) {
+    webJoinRequiresFence = false;
+    // The web submission has changed credentials. A queued event from the old
+    // station may otherwise look like evidence about the new network. The
+    // STA_STOP event is the queue fence; the AP stays up throughout.
+    usbWifiStationStopped = !webJoinWaitsForPriorStop &&
+                            (WiFi.getMode() & WIFI_STA) == 0;
+    webJoinWaitsForPriorStop = false;
+    WiFi.enableSTA(false);
+    wifiJoinFenceStartMs = now;
+    wifiJoinFencePending = true;
+  } else {
+    startStationAttempt(config, now);
+  }
 }
 
 void scheduleApTeardown(uint32_t generation) {
@@ -3043,6 +3080,10 @@ void processScheduledApTeardown(
 }
 
 void applyStationAssociation(RuntimeConfig& config, const String& stationIp) {
+  wifiJoinObserveEvents = false;
+  wifiJoinDisconnectReason = 0;
+  wifiJoinSawAssociation = false;
+  config.wifiRuntime.joinDiagnostics.succeed(config.wifiRuntime.connectivity.generation);
   usbWifiObserveDisconnects = false;
   if (usbWifiAttemptId.length() &&
       usbWifiAttemptGeneration == config.wifiRuntime.connectivity.generation) {
@@ -3071,6 +3112,8 @@ class WebConnectivityHardwareAdapter {
       : config_(config), stationIp_(stationIp) {}
 
   void stationLost(bool preAck) {
+    wifiJoinObserveEvents = false;
+    config_.wifiRuntime.joinDiagnostics.linkLost(config_.wifiRuntime.connectivity.generation);
     config_.wifiRuntime.stationLinkPending = false;
     config_.wifiRuntime.stationIp = "";
     config_.wifiRuntime.lastError = "station connection lost";
@@ -3092,6 +3135,8 @@ class WebConnectivityHardwareAdapter {
   }
 
   void initialJoinTimedOut() {
+    wifiJoinObserveEvents = false;
+    config_.wifiRuntime.joinDiagnostics.timeout(config_.wifiRuntime.connectivity.generation);
     if (usbWifiAttemptGeneration == config_.wifiRuntime.connectivity.generation &&
         usbWifiAttemptId.length()) {
       usbWifiObserveDisconnects = false;
@@ -3099,7 +3144,10 @@ class WebConnectivityHardwareAdapter {
     }
     WiFi.disconnect(false, false);
     config_.wifiRuntime.stationIp = "";
-    config_.wifiRuntime.lastError = "station association timed out";
+    config_.wifiRuntime.lastError =
+        strcmp(config_.wifiRuntime.joinDiagnostics.failureStage, "ip") == 0
+            ? "router did not assign an IP address"
+            : "station association timed out";
     config_.wifiRuntime.stationLinkPending = false;
   }
 
@@ -3138,12 +3186,37 @@ void maintainConnectivity() {
   lightweaver::ConnectivityState& state = cfg.wifiRuntime.connectivity;
   uint32_t now = millis();
 
+  if (wifiJoinFencePending) {
+    if (usbWifiStationStopped) {
+      wifiJoinFencePending = false;
+      startStationAttempt(cfg, now);
+    } else if (uint32_t(now - wifiJoinFenceStartMs) > 2000) {
+      wifiJoinFencePending = false;
+      wifiJoinObserveEvents = false;
+      cfg.wifiRuntime.joinDiagnostics.stationStartFailed(state.generation);
+      cfg.wifiRuntime.lastError = "station restart could not be confirmed";
+      state.phase = lightweaver::ConnectivityPhase::SetupAp;
+      state.phaseStartedMs = now;
+      state.lastAttemptMs = now;
+      syncWifiReadiness(cfg);
+    }
+    return;
+  }
+
   processScheduledApTeardown(cfg, state, now);
   if (apTeardownScheduled) return;
 
   static uint32_t lastPollMs = 0;
   if (uint32_t(now - lastPollMs) < 250) return;
   lastPollMs = now;
+
+  if (wifiJoinSawAssociation.exchange(false)) {
+    cfg.wifiRuntime.joinDiagnostics.associated(state.generation);
+  }
+  const uint16_t observedReason = wifiJoinDisconnectReason.exchange(0);
+  if (observedReason) {
+    cfg.wifiRuntime.joinDiagnostics.disconnect(state.generation, observedReason);
+  }
 
   bool connected = WiFi.status() == WL_CONNECTED;
   String currentStationIp = connected ? WiFi.localIP().toString() : String();
@@ -3196,6 +3269,7 @@ void writeUsbWifiStatus(JsonDocument& response) {
   wifi["networkBindingsPending"] = state.networkBindingsPending;
   wifi["joinFailed"] = usbWifiJoinFailed;
   wifi["lastError"] = cfg.wifiRuntime.lastError;
+  wifi["failureStage"] = cfg.wifiRuntime.joinDiagnostics.failureStage;
   wifi["driverReason"] = usbWifiJoinFailed ? uint16_t(usbWifiDisconnectReason) : 0;
   wifi["failureReason"] = usbWifiJoinFailed
       ? lightweaver::usbWifiFailureReason(usbWifiDisconnectReason.load()) : "";
@@ -3295,11 +3369,13 @@ void handleUsbWifiRequest() {
         (password.size() > 0 && password.size() < 8) ||
         (password.size() == 0 && !request["clearPassword"].as<bool>()) ||
         (password.size() > 0 && request["clearPassword"].as<bool>())) error = "invalid_credentials";
-    else if (usbWifiJoinStartAt) error = "busy";
     else if (usbWifiAttemptId == request["id"].as<String>()) {
       // Duplicate delivery reconciles the existing attempt instead of writing
       // credentials or advancing the handoff generation a second time.
       response["accepted"] = true;
+    } else if (usbWifiJoinStartAt || wifiJoinFencePending ||
+               runtimeConfigPtr->wifiRuntime.connectivity.phase == lightweaver::ConnectivityPhase::Joining) {
+      error = "busy";
     } else {
       JsonDocument credentials;
       credentials["ssid"] = ssid;
@@ -3317,6 +3393,10 @@ void handleUsbWifiRequest() {
         usbWifiAttemptId = request["id"].as<String>();
         usbWifiAttemptGeneration = max(usbWifiAttemptGeneration, runtimeConfigPtr->wifiRuntime.connectivity.generation) + 1U;
         if (!usbWifiAttemptGeneration) usbWifiAttemptGeneration = 1;
+        wifiJoinObserveEvents = false;
+        wifiJoinDisconnectReason = 0;
+        wifiJoinSawAssociation = false;
+        runtimeConfigPtr->wifiRuntime.joinDiagnostics.begin(usbWifiAttemptGeneration);
         // Stop only the station interface, retaining the setup AP. STA_STOP
         // is an event-queue fence after the prior disconnect events; do not
         // arm reason capture or start new credentials until it was observed.
@@ -3354,6 +3434,7 @@ void handleUsbWifi() {
     } else if (uint32_t(millis()-usbWifiJoinStartAt) > 2000) {
       usbWifiJoinStartAt = 0;
       usbWifiJoinFailed = true;
+      runtimeConfigPtr->wifiRuntime.joinDiagnostics.stationStartFailed(usbWifiAttemptGeneration);
       runtimeConfigPtr->wifiRuntime.lastError = "station restart could not be confirmed";
       runtimeSetWifiTransitionPending(false);
     }
@@ -3411,11 +3492,17 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
 
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     if (event == ARDUINO_EVENT_WIFI_STA_STOP) usbWifiStationStopped = true;
+    if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED && wifiJoinObserveEvents)
+      wifiJoinSawAssociation = true;
     if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED && usbWifiObserveDisconnects) {
       const uint16_t reason = info.wifi_sta_disconnected.reason;
       // ASSOC_LEAVE is the driver's own deliberate disconnect, not evidence
       // about a router or a password. Never let it replace a useful reason.
       if (reason != 8) usbWifiDisconnectReason = reason;
+    }
+    if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED && wifiJoinObserveEvents) {
+      const uint16_t reason = info.wifi_sta_disconnected.reason;
+      if (reason != 8) wifiJoinDisconnectReason = reason;
     }
   });
   startApMode(config);

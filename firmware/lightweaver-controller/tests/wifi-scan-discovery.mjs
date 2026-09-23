@@ -64,7 +64,7 @@ assert.match(scan, /WiFi\.scanDelete\(\)/,
 // The page has to keep polling long enough to outlast one failed join attempt
 // (15s) plus the gap before the card retries, or it gives up before the radio
 // is ever free to scan.
-const pollBudget = web.match(/scanPolls\+\+<(\d+)\)\{scanTimer=setTimeout\(pollScan,(\d+)\)/);
+const pollBudget = web.match(/scanPolls\+\+<(\d+)\)\{scanTimer=setTimeout\(\(\)=>pollScan\(token\),(\d+)\)/);
 assert.ok(pollBudget, 'setup page scan polling loop not found');
 const windowMs = Number(pollBudget[1]) * Number(pollBudget[2]);
 assert.ok(windowMs >= 40000,
