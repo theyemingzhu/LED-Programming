@@ -240,7 +240,15 @@ test('calibration is active only for the selected strip in Draw mode and reports
 
 test('malformed saved Kaleidoscope metadata renders an actionable recovery warning', async ({ page }) => {
   await createTwelveLedLine(page);
-  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('lw_autosave_v3')))).toBe(true);
+  // The initial empty project also has an autosave. Wait for the new strip's
+  // complete write before replacing both copies with the malformed fixture.
+  await expect.poll(() => page.evaluate(() => {
+    const primary = localStorage.getItem('lw_autosave_v3');
+    const backup = localStorage.getItem('lw_autosave_v3_backup');
+    if (!primary || primary !== backup) return false;
+    const saved = JSON.parse(primary);
+    return saved.layout?.strips?.length === 1 && saved.layout.strips[0].pixelCount === 12;
+  })).toBe(true);
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
     saved.layout.strips[0].kaleidoscope = {
