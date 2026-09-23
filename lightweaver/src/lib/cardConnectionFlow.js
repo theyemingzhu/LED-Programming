@@ -371,6 +371,14 @@ export function nextCardConnectionAction(input = {}) {
 
   if (requiresInstaller(input.intent, reason)) return installationRoute(capabilities);
 
+  // A verified card already discovered on the setup network needs its
+  // explicit Pair action before any setup guidance. Otherwise the generic
+  // "Finish card setup" route masks the only action that can turn
+  // found-unpaired into a current exact-card connection.
+  if (reason === 'found-unpaired' && hasCardIdentity(link.discoveredCard || input.discoveredCard)) {
+    return action('pair-local-card');
+  }
+
   if (input.intent === 'factory-beacon') {
     return action('recoverable-failure', {
       route: 'setup-network',
