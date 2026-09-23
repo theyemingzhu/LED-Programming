@@ -706,7 +706,7 @@ function scheduleBridgeHandoffNavigationRetry({ target, url, correlation, flowId
   return { ok: true, deadline, work };
 }
 
-function applyAuthoritativeBridgeStatus(status, host = bridgeHost) {
+function applyAuthoritativeBridgeStatus(status, host = bridgeHost, { verifiedCurrentBridge = false } = {}) {
   bridgeRuntimeCommandReady = false;
   bridgeRuntimePlaybackReady = false;
   bridgeInitialConfigAvailable = false;
@@ -778,6 +778,24 @@ function applyAuthoritativeBridgeStatus(status, host = bridgeHost) {
   // and classify against it. A different card id still lands in the refusal
   // below as `wrong-card`.
   const readiness = classifyPairedCardReadiness(status || {}, { expectedCard: expected });
+  if (!expected?.id
+    && verifiedCurrentBridge
+    && readiness.contractSupported === true
+    && readiness.identityValid === true
+    && Boolean(readiness.bootId)
+    && readiness.state !== 'checking'
+    && readiness.state !== 'identity-mismatch') {
+    // A complete status from this exact card-page lifecycle is valid discovery
+    // even when Studio has no saved pairing. Keep it read-only: the owner must
+    // explicitly pair before bridge identity, commands, or update authority
+    // can be granted. Without this, the first status retry after a timeout
+    // mislabels a healthy factory card as missing firmware identity.
+    bridgeDiscoveredCard = normalizeCardIdentity(status, host);
+    bridgeStationIdentityVerified = false;
+    bridgeCard = null;
+    bridgeIdentityError = '';
+    return null;
+  }
   if (!expected?.id || readiness.state === 'checking' || isDifferentCardMismatch(readiness)) {
     bridgeStationIdentityVerified = false;
     bridgeCard = null;
@@ -1144,16 +1162,17 @@ function handleBridgeMessage(event) {
       return;
     }
   }
-  if (request.type === 'status') {
-    applyAuthoritativeBridgeStatus(responsePayload, request.host || bridgeHost);
-  }
-  if (request.type === 'wifi-handoff-ack') bridgeHandoffAckReady = false;
-
   // A response whose origin matches a local card origin is a verified handshake
   // (the request's targetOrigin was already enforced on postMessage), so mark
   // the bridge ready for subsequent privileged sends.
   const verifiedReady = isLocalCardHost(hostFromOrigin(event.origin))
     && (!request.origin || event.origin === request.origin);
+  if (request.type === 'status') {
+    applyAuthoritativeBridgeStatus(responsePayload, request.host || bridgeHost, {
+      verifiedCurrentBridge: verifiedReady,
+    });
+  }
+  if (request.type === 'wifi-handoff-ack') bridgeHandoffAckReady = false;
   // v1 card pages stamp every relay reply with their protocol version, which
   // covers the iframe flow where the ready event can be missed.
   if (verifiedReady && data.version !== undefined) bridgeVersion = Number(data.version) || 0;

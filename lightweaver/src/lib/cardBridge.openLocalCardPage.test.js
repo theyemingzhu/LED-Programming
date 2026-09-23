@@ -15,6 +15,9 @@ import {
   retargetCardBridge,
   sendCardBridgeRequest,
 } from './cardBridge.js';
+import { getSharedCardLink, reportCardStatusEnvelope } from './cardLink.js';
+import { pairDiscoveredCard } from './cardPairing.js';
+import { factoryCardReadyForNetworkFirmwareUpdate } from './firmwareUpdatePlan.js';
 
 // cardBridge.js keeps module-level bridge state, so each test below uses a
 // distinct host and installs a fresh stubbed window (same stubbing style as
@@ -82,6 +85,124 @@ function fakeCardTab() {
     },
   };
 }
+
+test('a verified unpaired factory status after a bridge timeout offers pairing, never a firmware update', async () => {
+  const host = '192.168.50.94';
+  const tab = fakeCardTab();
+  const { values, emitMessage } = stubWindow({ openResult: tab });
+  const link = getSharedCardLink();
+  assert.equal(openCardBridge(host), tab);
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 2 },
+  });
+  const identityRequest = tab.postMessages.at(-1).message;
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', id: identityRequest.id, ok: false, reason: 'bridge-timeout' },
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  // A page reload revokes any old discovery. The first identity request may
+  // time out, while the ordinary status retry still receives a full envelope.
+  link.dispatch({ type: 'connecting', via: 'bridge', host });
+  link.dispatch({ type: 'bridge-lost', reason: 'no-answer', host });
+  const statusPromise = sendCardBridgeRequest('status', {}, { host, timeoutMs: 100 });
+  const request = tab.postMessages.at(-1).message;
+  const factoryStatus = {
+    app: 'Lightweaver', provisioningContractVersion: 1,
+    cardId: 'lw-factory-94', firmwareVersion: '1.1.42', buildId: 'build-2070',
+    bootId: 'boot-factory-94', runtimePhase: 'factory', mode: 'factory-flash', source: 'defaults',
+    knownGoodProject: false, commandReady: false, outputReady: false,
+    firmwareUpdateReady: true,
+    capabilities: { firmwareUpdate: { version: 1, network: true, softwareGrant: true } },
+  };
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: {
+      app: 'LightweaverCardBridge', id: request.id, ok: true, version: 2,
+      response: factoryStatus,
+    },
+  });
+  await statusPromise;
+  assert.equal(values.has('lw_card_identity_v1'), false, 'a status read never pairs the card');
+  assert.equal(getCardBridgeState().discoveredCard?.id, 'lw-factory-94');
+  assert.equal(getCardBridgeState().card, null, 'no command identity is granted');
+  assert.equal(getCardBridgeState().identityVerified, false);
+  assert.equal(link.getState().reason, 'found-unpaired');
+  assert.equal(link.getState().card, null);
+  const pair = pairDiscoveredCard(link.getState());
+  const pairRequest = tab.postMessages.at(-1).message;
+  assert.equal(pairRequest.type, 'status', 'explicit Pair rechecks live status');
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', id: pairRequest.id, ok: true, version: 2, response: factoryStatus },
+  });
+  assert.deepEqual(await pair, { ok: true });
+  assert.equal(JSON.parse(values.get('lw_card_identity_v1')).id, 'lw-factory-94');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const readinessRequest = tab.postMessages.at(-1).message;
+  assert.equal(readinessRequest.type, 'status', 'pairing refreshes current blank-card evidence');
+  emitMessage({
+    origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', id: readinessRequest.id, ok: true, version: 2, response: factoryStatus },
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(link.getState().state, 'revalidating', 'the timed-out link still needs stable revalidation');
+  reportCardStatusEnvelope({ host, status: factoryStatus, transport: 'bridge' });
+  assert.equal(factoryCardReadyForNetworkFirmwareUpdate(link.getState(), {
+    bridge: getCardBridgeState(), bridgePageOpen: true,
+  }), true, 'explicit Pair makes the exact factory card eligible for preserving update');
+  link.destroy();
+});
+
+test('malformed or unsupported unpaired status never becomes a discovered card', async () => {
+  const cases = [
+    {
+      host: '192.168.50.95',
+      status: {
+        app: 'Lightweaver', provisioningContractVersion: 1,
+        cardId: 'lw-factory-95', firmwareVersion: '1.1.42',
+        bootId: 'boot-factory-95', knownGoodProject: false,
+        commandReady: false, outputReady: false,
+      },
+    },
+    {
+      host: '192.168.50.96',
+      status: {
+        app: 'Lightweaver', provisioningContractVersion: 999,
+        cardId: 'lw-factory-96', firmwareVersion: '1.1.42', buildId: 'build-2070',
+        bootId: 'boot-factory-96', knownGoodProject: false,
+        commandReady: false, outputReady: false,
+      },
+    },
+  ];
+  for (const { host, status } of cases) {
+    const tab = fakeCardTab();
+    const { values, emitMessage } = stubWindow({ openResult: tab });
+    assert.equal(openCardBridge(host), tab);
+    emitMessage({
+      origin: `http://${host}`, source: tab,
+      data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 2 },
+    });
+    const identityRequest = tab.postMessages.at(-1).message;
+    emitMessage({
+      origin: `http://${host}`, source: tab,
+      data: { app: 'LightweaverCardBridge', id: identityRequest.id, ok: false, reason: 'bridge-timeout' },
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const statusPromise = sendCardBridgeRequest('status', {}, { host, timeoutMs: 100 });
+    const statusRequest = tab.postMessages.at(-1).message;
+    emitMessage({
+      origin: `http://${host}`, source: tab,
+      data: { app: 'LightweaverCardBridge', id: statusRequest.id, ok: true, version: 2, response: status },
+    });
+    await statusPromise;
+    assert.equal(values.has('lw_card_identity_v1'), false);
+    assert.equal(getCardBridgeState().discoveredCard, null);
+    assert.equal(getCardBridgeState().identityVerified, false);
+    assert.equal(getCardBridgeState().identityError, 'identity-missing');
+  }
+});
 
 test('a non-local host is rejected before window.open runs', () => {
   const { opened } = stubWindow({ openResult: fakeCardTab() });
