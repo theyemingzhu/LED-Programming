@@ -9,6 +9,7 @@ import {
   DEFAULT_CARD_SECTION,
   FIRST_RUN_CARD_SECTION,
   isBridgeCallbackHash,
+  isLayoutSpecsRoute,
   normalizeStudioView,
   STUDIO_ROUTE_EVENT,
   studioViewFromHash,
@@ -108,6 +109,15 @@ test('layout keeps draw as its only mode; old mode=wire opens Card install', () 
   // `install` is not a Layout mode.
   assert.equal(reconcile('#screen=layout&mode=install'), '#screen=layout');
   assert.equal(reconcile('#screen=pattern&mode=wire'), '#screen=pattern');
+});
+
+test('the Layout Specs deep link is valid only on the drawing workspace', () => {
+  assert.equal(reconcile('#screen=layout&mode=draw&panel=specs'), '#screen=layout&mode=draw&panel=specs');
+  assert.equal(isLayoutSpecsRoute('#screen=layout&mode=draw&panel=specs'), true);
+  assert.equal(isLayoutSpecsRoute('#screen=layout&mode=draw&panel=other'), false);
+  assert.equal(reconcile('#screen=layout&mode=draw&panel=other'), '#screen=layout&mode=draw');
+  assert.equal(reconcile('#screen=card&section=overview&panel=specs'), '#screen=card&section=overview');
+  assert.equal(reconcile('#screen=layout&mode=wire&panel=specs'), '#screen=card&section=setup&task=install-project');
 });
 
 test('legacy card entrances still resolve and are left in the URL as written', () => {

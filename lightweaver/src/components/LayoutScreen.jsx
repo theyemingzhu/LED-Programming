@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { TbIcon } from './layout/shared/InspectorPrimitives.jsx';
 import { GLOW_MODES, svgPt, sampleStripPixels } from '../lib/layoutGeometry.js';
 import { createPrimitiveStripDefinition } from '../lib/layoutPrimitives.js';
@@ -23,6 +23,7 @@ import { useKaleidoscopeCalibration } from './layout/hooks/useKaleidoscopeCalibr
 import { stripPitchMm } from '../lib/wireBuildSheet.js';
 import { normalizeCardLedType } from '../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
+import { isLayoutSpecsRoute } from '../lib/studioRoute.js';
 
 function SelectedStripSpecs({ strip, wiring, pxPerMm, ledType }) {
   if (!strip) return (
@@ -80,9 +81,16 @@ function SelectedStripSpecs({ strip, wiring, pxPerMm, ledType }) {
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
-  const [specsOpen, setSpecsOpen] = useState(false);
+  const specsDeepLink = typeof window !== 'undefined' && isLayoutSpecsRoute(window.location.hash);
+  const [specsOpen, setSpecsOpen] = useState(specsDeepLink);
   const [specsAttention, setSpecsAttention] = useState(false);
   const specsButtonRef = useRef(null);
+  const specsPanelRef = useRef(null);
+  useEffect(() => {
+    if (!specsDeepLink || typeof window === 'undefined' || !window.matchMedia('(max-width: 600px)').matches) return;
+    const frame = requestAnimationFrame(() => specsPanelRef.current?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [specsDeepLink]);
   const closeSpecs = () => {
     setSpecsOpen(false);
     requestAnimationFrame(() => specsButtonRef.current?.focus());
@@ -593,6 +601,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
                            onStarterPreviewChange={setStarterPreview}/>
           </div>
           <section
+            ref={specsPanelRef}
             className="la-specs-panel"
             id="layout-specs-panel"
             data-testid="layout-specs-panel"
@@ -622,6 +631,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
                 state={state}
                 connected={connected}
                 cardHost={cardHost}
+                openOnEntry={specsDeepLink}
                 onAttentionChange={setSpecsAttention}
               />
               {/* The sheet reads from the compiled wire order produced by the
