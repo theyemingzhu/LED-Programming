@@ -571,10 +571,15 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .preserving-update-panel .card-acknowledged-facts dd {
   text-align: right; font-variant-numeric: tabular-nums;
 }
-.preserving-update-target {
-  display: grid; justify-items: end; gap: 8px;
-}
-.preserving-update-inline-action { justify-self: end; }
+.preserving-update-panel h2 { font-size: 18px; line-height: 1.2; letter-spacing: 0; }
+.preserving-update-choice { display: grid; justify-items: end; gap: 9px; margin-top: 12px; }
+.preserving-update-choice > p { margin: 0; color: var(--text-mid); font-size: 12px; line-height: 1.5; text-align: right; }
+.preserving-update-details { margin-top: 9px; color: var(--text-lo); font-size: 11.5px; }
+.preserving-update-details summary { cursor: pointer; width: fit-content; }
+.preserving-update-details p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.preserving-update-alternative { margin-top: 1px; justify-self: end; text-align: right; }
+.preserving-update-alternative summary { margin-left: auto; }
+.preserving-update-alternative .btn { margin-top: 7px; }
 .preserving-update-notice,
 .preserving-update-usb-unavailable {
   margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-mid); text-align: right;

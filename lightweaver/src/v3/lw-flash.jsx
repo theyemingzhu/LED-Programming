@@ -846,51 +846,51 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     return (
       <section className="card install-action-card preserving-update-panel" data-testid="preserving-update-panel" data-card-lifecycle={cardLifecycle?.state || 'unknown'} aria-live="polite">
         <div className="install-action-copy">
-          <div className="eyebrow">Preserving firmware update</div>
-          <h2>{mode === 'wifi' ? 'Update this card over Wi-Fi' : 'One-time USB update for this card'}</h2>
+          <h2>On this card</h2>
           <p><strong>Keeps Wi-Fi, project, patterns, wiring, and settings.</strong>{mode === 'usb' ? ' Future updates use Wi-Fi.' : ''}</p>
           <dl className="card-acknowledged-facts">
             <dt>Card</dt><dd>{card.id}</dd>
             <dt>Installed</dt><dd>{installedLabel}</dd>
-            <dt>Update</dt>
-            <dd className="preserving-update-target">
-              <span>{targetLabel}</span>
-              {!confirming && phase === 'idle' && (
-                <button
-                  className="btn preserving-update-inline-action"
-                  type="button"
-                  disabled={!release}
-                  data-testid={mode === 'wifi'
-                    ? (cardCannotTakeWifiUpdate ? 'preserving-update-secondary-action' : 'preserving-update-primary-action')
-                    : undefined}
-                  onClick={() => setConfirming(true)}
-                >
-                  {actionLabel}
-                </button>
-              )}
-            </dd>
-            {readiness?.projectHead && <><dt>Project head</dt><dd>{readiness.projectHead}</dd></>}
+            <dt>New</dt><dd>{targetLabel}</dd>
           </dl>
+          {readiness?.projectHead && <details className="preserving-update-details">
+            <summary>Update details</summary>
+            <p>Project head: {readiness.projectHead}</p>
+          </details>}
         </div>
-        {mode === 'wifi' && !confirming && phase === 'idle' && (
-          <div className="install-confirm-action preserving-update-wifi-or-usb">
-            {cardCannotTakeWifiUpdate && (
+        {!confirming && phase === 'idle' && (
+          <div className="preserving-update-choice">
+            {cardCannotTakeWifiUpdate ? (
               <p className="preserving-update-notice" role="status" data-testid="preserving-update-usb-required-notice">
-                This card cannot take a Wi-Fi update yet. Use USB once; after that, Wi-Fi works.
+                This card needs USB for this update. Future updates can use Wi-Fi.
               </p>
-            )}
-            {canWebSerialInstall ? (
+            ) : mode === 'usb' ? <p>Keep the USB cable connected during the update.</p> : null}
+            {cardCannotTakeWifiUpdate && canWebSerialInstall ? (
               <button
-                className={cardCannotTakeWifiUpdate ? 'btn-lg' : 'btn'}
+                className="btn-lg"
                 type="button"
-                data-testid={cardCannotTakeWifiUpdate ? 'preserving-update-primary-action' : 'preserving-update-secondary-action'}
+                data-testid="preserving-update-primary-action"
                 onClick={onSwitchToUsb}
               >
-                Update once over USB instead
+                Continue with USB
               </button>
-            ) : (
+            ) : cardCannotTakeWifiUpdate ? (
               <p className="preserving-update-usb-unavailable">USB update needs Chrome or Edge on a computer.</p>
+            ) : (
+              <button
+                className="btn-lg"
+                type="button"
+                disabled={!release}
+                data-testid="preserving-update-primary-action"
+                onClick={() => setConfirming(true)}
+              >
+                {actionLabel}
+              </button>
             )}
+            {mode === 'wifi' && !cardCannotTakeWifiUpdate && canWebSerialInstall && <details className="preserving-update-details preserving-update-alternative">
+              <summary>Need another way?</summary>
+              <button className="btn" type="button" data-testid="preserving-update-secondary-action" onClick={onSwitchToUsb}>Use USB instead</button>
+            </details>}
           </div>
         )}
         {confirming && phase === 'idle' && (
@@ -1757,10 +1757,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           <header className="install-intro">
             <div className="eyebrow">Safe automatic installer</div>
             <InstallHeading>{preservingMode ? 'Update Lightweaver' : 'Install Lightweaver'}</InstallHeading>
-            {preservingMode && <p>Studio verifies the signed update and keeps this card’s Wi-Fi, project, patterns, wiring, and settings.</p>}
             {(preservingMode || releaseState.state !== 'ready') && <div className={`install-release ${releaseState.state}`} role="status">
               {releaseState.state === 'loading' && 'Verifying the official Lightweaver release…'}
-              {releaseState.state === 'ready' && `Official Lightweaver ${releaseState.release.manifest.firmwareVersion} · ${formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready.`}
+              {releaseState.state === 'ready' && (preservingMode
+                ? 'Official update verified and ready.'
+                : `Official Lightweaver ${releaseState.release.manifest.firmwareVersion} · ${formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready.`)}
               {releaseState.state === 'error' && `Official firmware could not be verified. Nothing can be installed. ${releaseState.error}`}
             </div>}
             {releaseState.state === 'error' && (
