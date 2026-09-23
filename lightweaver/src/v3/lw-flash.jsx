@@ -1629,14 +1629,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           <header className="install-intro">
             <div className="eyebrow">Safe automatic installer</div>
             <InstallHeading>{preservingMode ? 'Update Lightweaver' : 'Install Lightweaver'}</InstallHeading>
-            <p>{preservingMode
-              ? 'Studio verifies the signed update and keeps this card’s Wi-Fi, project, patterns, wiring, and settings.'
-              : 'Plug the card into this computer by USB. Studio verifies the official firmware and checks the card before it can erase anything.'}</p>
-            <div className={`install-release ${releaseState.state}`} role="status">
+            {preservingMode && <p>Studio verifies the signed update and keeps this card’s Wi-Fi, project, patterns, wiring, and settings.</p>}
+            {(preservingMode || releaseState.state !== 'ready') && <div className={`install-release ${releaseState.state}`} role="status">
               {releaseState.state === 'loading' && 'Verifying the official Lightweaver release…'}
               {releaseState.state === 'ready' && `Official Lightweaver ${releaseState.release.manifest.firmwareVersion} · ${formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready.`}
               {releaseState.state === 'error' && `Official firmware could not be verified. Nothing can be installed. ${releaseState.error}`}
-            </div>
+            </div>}
             {releaseState.state === 'error' && (
               <button className="btn" type="button" onClick={() => setReleaseAttempt(attempt => attempt + 1)}>Retry official firmware</button>
             )}
@@ -1662,26 +1660,18 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               onFirmwareSession={session => { if (session) setRecoverySession(session); }}
             />
           )}
-          {/* Explain exactly what this install does to the connected card. */}
-          {!preservingMode && updatePlan.headline && (
-            <div className={`install-update-plan is-${updatePlan.state}`} data-testid="install-update-plan" role="status">
-              <p className="install-update-headline">{updatePlan.headline}</p>
-              <p className="install-update-caution">{updatePlan.caution}</p>
-            </div>
-          )}
-
           {preservingMode !== 'wifi' && (
           <section className="card install-action-card install-card-check">
             <div className="install-action-copy">
-              <h2>Find your connected card</h2>
-              <p>Studio will ask which USB device to use, then confirm it is the correct ESP32-S3 card with 16 MB of flash.</p>
+              <h2>{cardState.state === 'ready' ? 'This card and its firmware' : 'Find your connected card'}</h2>
+              {cardState.state !== 'ready' && <p>Select the USB card to check its identity.</p>}
             </div>
             <button className="btn-lg" type="button" onClick={findCard} disabled={!releaseReady || cardState.state === 'finding' || installState === 'installing' || installState === 'observing'}>
               {cardState.state === 'finding' ? 'Checking this card…' : cardState.state === 'ready' ? 'Change connected card' : 'Find connected card'}
             </button>
             {cardState.state === 'ready' && (
               <div className="install-check-ok" data-testid="install-card-identity">
-                <strong>Correct card found</strong>
+                <strong>ESP32-S3 card confirmed</strong>
                 <dl>
                   <dt>Card</dt><dd>{cardState.hardware.cardId}</dd>
                   <dt>Hardware</dt><dd>ESP32-S3 · 16 MB</dd>
@@ -1697,6 +1687,23 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                     state={usbFirmwareRead.totalBytes > 0 ? 'active' : 'waiting'}
                   />
                 )}
+              </div>
+            )}
+            {!preservingMode && releaseReady && (
+              <div className={`install-update-plan is-${updatePlan.state}`} data-testid="install-update-plan" role="status">
+                <div className="install-firmware-summary">
+                  <span>{cardState.state !== 'ready' && updatePlan.installedLabel ? 'Last known firmware' : 'Current firmware'}</span>
+                  <strong>{updatePlan.installedLabel || (cardState.state === 'ready' ? 'Unknown' : 'Not checked yet')}</strong>
+                  <span>Install</span>
+                  <strong>Official Lightweaver {releaseState.release.manifest.firmwareVersion} · {formatFirmwareBuildLabel(releaseState.release.manifest)} verified and ready</strong>
+                </div>
+                {(cardState.state === 'ready' || updatePlan.state !== 'unknown') && <p className="install-update-headline">{{
+                  unknown: 'USB confirmed the card, but its current firmware is still unknown.',
+                  same: 'This build is already on the card. Reinstalling still erases it.',
+                  update: 'This will update the card to the verified build.',
+                  downgrade: 'Warning: the verified build is older than the firmware on this card.',
+                  sideways: 'These builds cannot be compared. Installing replaces the current firmware.',
+                }[updatePlan.state]}</p>}
               </div>
             )}
           </section>
