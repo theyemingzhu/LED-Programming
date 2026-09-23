@@ -547,6 +547,17 @@ export function planCommissioningReconnectAttempt(flow, link = {}, {
   if (selectCommissioningCardAcknowledgement(flow, link, { now }).ok) {
     return { state: 'connected', reason: 'exact-card-status', attempts };
   }
+  // The correlated station page owns verification and its one acknowledgement.
+  // A generic fallback retry would navigate that same named tab to another
+  // host, revoke its correlation, and strand a successful USB Wi-Fi join.
+  const handoff = link?.handoffCorrelation;
+  if (link?.handoffFlowId === flow.flowId
+    && usableReconnectHost(handoff?.host) && handoff.host === link.host
+    && handoff?.expectedCardId === flow.expectedCard?.id
+    && handoff?.expectedFirmwareVersion === flow.expectedCard?.firmwareVersion
+    && handoff?.expectedBuildId === flow.expectedCard?.buildId) {
+    return { state: 'inactive', reason: 'station-handoff-active', attempts };
+  }
   const retryEligible = flow.networkState === 'station-detected'
     || (flow.networkState === 'setup-joined' && (direct || setupReach === 'unreachable'));
   if (!retryEligible) return { state: 'inactive', reason: 'network-path-pending', attempts };

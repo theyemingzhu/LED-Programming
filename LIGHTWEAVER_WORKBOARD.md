@@ -31,6 +31,26 @@ by this slice. Scope their runtime work explicitly before firmware expansion.
 
 ## Sprint queue
 
+### 2026-09-23 Fresh-install USB Wi-Fi (verified locally)
+
+Branch `codex/usb-wifi-setup` from main `f039ff8e`; installer summary `e711fd1d`
+was not in main and is integrated as `94d74e33`. Exact-card USB setup now has
+ephemeral credentials, honest join errors, retry and AP fallback. USB association
+leads into the existing station-origin bridge acknowledgement; ordinary reconnect
+can no longer replace an active exact-card handoff with a fallback hostname.
+Final checkpoint: 2,653 unit tests and production build pass. Full source core
+contracts pass; firmware compiles; native production parser/dispatcher and
+existing Wi-Fi/persistence contracts pass. Browser: 10/10 new USB flows and
+33/33 existing installer/preserving scenarios pass. Desktop, failure, verified
+station and 390px screens inspected. Evidence `/tmp/lw-usb-wifi-*.log` and
+`/tmp/lightweaver-usb-wifi-*.png`. Original task's preserving-update UI refinement
+is pending integration when its commit arrives; preserving panel not edited here.
+No merge, signing, deployment or physical flash authorized. Bench observations
+remain unperformed; see [USB Wi-Fi setup](docs/usb-wifi-setup.md).
+Port 4173 belongs to another active checkout; this task uses its existing
+workspace-derived Playwright port 9253 to avoid testing another task's source;
+the test server is stopped.
+
 2026-09-20: **FIRST-ACTION-MANAGER on current main** — auto-detect arrivals,
 one first action, Lights stay a door. Pattern Lab already on origin/main;
 this stream does not rewind it. Ledger:

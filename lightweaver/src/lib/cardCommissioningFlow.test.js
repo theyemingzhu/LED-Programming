@@ -1169,3 +1169,20 @@ test('a stalled reconnect callback has a bounded wait and supports cleanup', asy
   controller.abort();
   assert.equal(await cancelled, 'cancelled');
 });
+
+test('ordinary reconnect does not replace the exact station handoff owner', async () => {
+  const { planCommissioningReconnectAttempt } = await import('./cardCommissioningFlow.js');
+  const flow = completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-usb-handoff-123456', now: 10,
+  }), { ...installed, postFlashNetwork: { state: 'station', stationIp: '192.168.18.70' } }, { now: 20 });
+  const link = {
+    host: '192.168.18.70', handoffFlowId: flow.flowId,
+    handoffCorrelation: { host: '192.168.18.70', expectedCardId: flow.expectedCard.id,
+      expectedFirmwareVersion: flow.expectedCard.firmwareVersion, expectedBuildId: flow.expectedCard.buildId },
+  };
+  assert.deepEqual(planCommissioningReconnectAttempt(flow, link, { attempt: 1 }), {
+    state: 'inactive', reason: 'station-handoff-active', attempts: 1,
+  });
+  assert.equal(planCommissioningReconnectAttempt(flow, { ...link, handoffFlowId: 'another-flow' }, { attempt: 1 }).state, 'retry');
+});

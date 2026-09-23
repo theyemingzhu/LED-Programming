@@ -536,7 +536,13 @@ export function CardCommissioningPanel({
     const next = async () => {
       if (!active) return;
       const current = reconnectContextRef.current || {};
-      const plan = planCommissioningReconnectAttempt(current.flow, current.link, {
+      // Read the live bridge before navigation: React's last link render can
+      // predate a handoff accepted synchronously by the station status reader.
+      const bridge = getCardBridgeState();
+      const currentLink = bridge.handoffCorrelation
+        ? { ...current.link, host: bridge.host, handoffFlowId: bridge.handoffFlowId, handoffCorrelation: bridge.handoffCorrelation }
+        : current.link;
+      const plan = planCommissioningReconnectAttempt(current.flow, currentLink, {
         setupReach: current.setupReach,
         storedHost: current.storedHost,
         history: current.history,
@@ -583,7 +589,7 @@ export function CardCommissioningPanel({
       !flow
       || flow.stage !== 'set-up-card'
       || flow.cardAcknowledgedAt
-      || flow.networkState !== 'setup-joined'
+      || !['setup-joined', 'station-detected'].includes(flow.networkState)
       || canPushDirectlyToCard()
       || detection.state === 'return-to-gallery'
     ) return undefined;
@@ -592,7 +598,7 @@ export function CardCommissioningPanel({
     const poll = async () => {
       try {
         const status = await sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
-          host: '192.168.4.1', timeoutMs: 3000, retryOnTimeout: false,
+          host: flow.networkState === 'station-detected' ? flow.stationHost : '192.168.4.1', timeoutMs: 3000, retryOnTimeout: false,
         });
         if (active) {
           setBridgeHandoffStatus({ flowId: flow.flowId, status });
@@ -939,10 +945,9 @@ export function CardCommissioningPanel({
     label: setupNetworkLabel,
   });
 
-  // What the USB serial port said the card did after the flash. `station-detected`
-  // means the card's saved Wi-Fi survived the install: it went straight onto the
-  // LAN and never raised a setup hotspot, so the 192.168.4.1 instructions would
-  // point at an address that can never answer.
+  // USB station evidence may come from saved Wi-Fi or the fresh-install USB
+  // setup. It provides an address, never network mutation authority. The local
+  // page must still verify identity and complete the station-origin handoff.
   const stationDetected = flow.stage === 'set-up-card'
     && flow.networkState === 'station-detected'
     && Boolean(flow.stationHost);
@@ -1205,7 +1210,7 @@ export function CardCommissioningPanel({
           <h3>Set up card</h3>
           {!flow.cardAcknowledgedAt && detection.state === 'return-to-gallery' && (
             <div className="card-commissioning-network">
-              <p role="status"><strong>Wi-Fi saved on the exact card.</strong> Return this device to gallery WiFi. Studio is reusing the same card page and will continue after it verifies this exact card on the gallery network.</p>
+              <p role="status"><strong>Wi-Fi saved on the exact card.</strong> {stationDetected ? 'Keep this computer on the target Wi-Fi network.' : 'Return this device to gallery WiFi.'} Studio is reusing the same card page and will continue after it verifies this exact card on the gallery network.</p>
               {detection.retryable && <button type="button" className="btn" onClick={retryStationRetarget}>Retry verified card page</button>}
             </div>
           )}
@@ -1216,7 +1221,7 @@ export function CardCommissioningPanel({
           )}
           {!flow.cardAcknowledgedAt && !['found', 'return-to-gallery'].includes(detection.state) && stationDetected && (
             <div className="card-commissioning-network" data-post-flash="station">
-              <p><strong>No hotspot to join — the card kept its Wi-Fi.</strong> Studio watched this card boot over USB and saw it join your network at <strong>{flow.stationHost}</strong>. It never started a {setupNetworkLabel}, so there is nothing to join and the 192.168.4.1 setup address will never answer.</p>
+              <p><strong>This card joined Wi-Fi.</strong> Studio verified its network address over USB: <strong>{flow.stationHost}</strong>. Keep this computer on that network and open the card page so Studio can verify the local connection. The card’s setup hotspot may remain available until that check completes.</p>
               <button type="button" className="btn primary" onClick={openStationCard}>Open the card at {flow.stationHost}</button>
               {setupReach.state === 'checking' && <p role="status">Checking whether the card answers at {flow.stationHost}…</p>}
               {setupReach.state === 'unreachable' && (
