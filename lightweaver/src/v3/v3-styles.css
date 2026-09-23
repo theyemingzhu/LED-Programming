@@ -945,6 +945,8 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .card-commissioning-steps li.complete { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
 .card-commissioning-steps li.active { color: var(--text-hi); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .card-commissioning-network { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.card-commissioning-next-steps { display: grid; gap: 6px; margin: 0; padding-left: 22px; line-height: 1.5; }
+.card-commissioning-address { color: var(--text-lo); font-size: 12px; }
 /* The setup-hotspot wait. Reads as guidance while the network is still coming,
    and as something to act on once it is overdue — the phase drives the tint so
    an owner scanning the screen can tell "keep waiting" from "do something". */
