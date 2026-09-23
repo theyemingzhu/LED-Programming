@@ -7,27 +7,33 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
-## Current expression integration checkpoint — 2026-09-22
+## Current expression integration status — 2026-09-23
 
-Manager branch `codex/scene-integration-manager`; product through `f66d873a`, test correction `52ad00e0`.
-Shared Lab/Show scene source, ordered steps, real Layout targets, guarded native
-installation, and reversible mapped rehearsal integrated locally. Header reviewed
-at desktop and 390px phone widths. Show restoration regression integrated as
-`26393580`; mobile header correction `f66d873a`.
+**Implementation and release: done. Shipped — Studio build 2048, firmware build
+1939.** [PR313](https://github.com/theyemingzhu/LED-Programming/pull/313) merged
+as `f039ff8eb9014df19bb7287d2e2ca85d4f2bcbb4`. Credentialed deployment and
+independent live verification passed; details are in the release completion entry
+below. Lab and Show share editable scenes, ordered steps, named Layout targets,
+temporary rehearsal, and verified native-card installation.
 
-Verification: 2,613 project unit tests + 72 focused expression tests + production
-build pass. Combined browser suite: 37/38 initially passed; obsolete Show shortcut
-expectation corrected in `52ad00e0`, focused rerun 1/1 passed. All 38 scenarios
-now have passing evidence; no production changes after checkpoint.
-Logs: `/tmp/lightweaver-expression-final-{checkpoint,focused,browser,rerun}.log`.
+**Acceptance: needs-eyes.** Physical mapping, rehearsal restoration, offline
+power-cycle playback, edit/reinstall, and unassisted novice use remain unobserved.
+On a configured card, create two native cut steps for three named sections, try
+and stop rehearsal, install, close Studio and power-cycle, then reopen and edit
+one color and reinstall. Repeat with the mandala layout. Do not factory-flash
+the card for this check. Watch a first-time user complete the same workflow
+without coaching before marking novice acceptance done.
 
-Release authorized on 2026-09-23: PR313 is the active shipment record;
-release gates and production proof are in progress. No physical card commands or
-firmware source changes. Remaining external
-proof: novice interaction and actual card playback/restore/edit-readback Bench.
-Native card slice supports exact builtin controls and cut steps; continuous group
-motion, true transitions, and recorded 4096-pixel SD playback are not completed
-by this slice. Scope their runtime work explicitly before firmware expansion.
+Native delivery supports exact built-in card controls and timed cuts. Richer
+transitions, continuous motion across multiple strips, and recorded 4096-pixel
+SD playback are outside this delivered slice. The legacy preview preference
+fixture remains nonblocking test maintenance, documented in PR313.
+
+Cleanup: no remaining sub-agents or preview/test processes belonging to this
+release were found. Removed the disposable local test-run marker. Release logs
+and build evidence remain available. Completion notes are committed locally;
+no production deployment is needed for this documentation cleanup. Branches,
+worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
@@ -54,6 +60,25 @@ remain unperformed; see [USB Wi-Fi setup](docs/usb-wifi-setup.md).
 Port 4173 belongs to another active checkout; this task uses its existing
 workspace-derived Playwright port 9253 to avoid testing another task's source;
 the test server is stopped.
+
+Production-readiness follow-up: initial frozen audit `d6e79db7` closed
+INCOMPLETE after finding lost-reply/reload recovery could strand a joined card.
+Recovery and firmware version 1.1.40 preparation are committed as `88967d1b`.
+Focused proof: 71 Studio units, 11 USB browser cases, a subsequent timeout/reopen
+case, firmware compile, 18 native firmware tests, and the production USB
+dispatcher recovery contract pass. Main's visible card Wi-Fi guidance is
+integrated; final candidate gate pending. The separate shipping task owns
+merge, protected signing, deployment, and live proof; this task owns readiness.
+The connected card is a configured fixture, not an authorized blank/spare.
+Fresh-install physical proof remains unperformed. Current scope is the canonical
+`led.mandalacodes.com` origin; custom client domains need separate trust design.
+
+### 2026-09-23 Card Wi-Fi handoff clarity (done locally)
+After joining the Lightweaver hotspot, Studio now gives three short setup steps
+and opens the card's visible Wi-Fi form in its tracked tab. The local IP and
+browser “Not secure” label are explained below the action. Eight focused browser
+cases passed; the revised step was inspected at desktop width. This is a local
+Sprint fix, with no firmware or deployment change.
 
 2026-09-20: **FIRST-ACTION-MANAGER on current main** — auto-detect arrivals,
 one first action, Lights stay a door. Pattern Lab already on origin/main;
@@ -1364,3 +1389,30 @@ deliberate clicks, including explicitpair. This last test-only correction is not
 part of launch:check's selected browser specs; hosted35761730462 continues on the
 identical product source at52f55470. No restart of that known-valid source run.
 Allfourcardhandoffcases pass. Production merge/deploy/live proof remain pending.
+
+## Release completion — 2026-09-23
+
+**Shipped — Studio build 2048, firmware build 1939.** PR313 merged to
+`f039ff8eb9014df19bb7287d2e2ca85d4f2bcbb4`; terminal origin/main was verified at
+that revision. Exact-merge Tests 35765613236 passed all selected lanes. Production
+deploy 35766592489 used real Cloudflare credentials and completed publication plus
+its live check. Independent `PROD_CHECK_REQUIRED=1 npm run check:prod` passed:
+strict no-store Studio marker 2048, all 63 staged Studio files, signed firmware
+factory/update release graphs, production job, and private library denial.
+Live: https://led.mandalacodes.com
+Release evidence: https://github.com/theyemingzhu/LED-Programming/pull/313
+
+Lab/Show share saved editable scenes and selection; steps target named Layout
+areas; temporary rehearsal and verified native-card installation are separate
+actions. Phone controls, incomplete-Layout save guard, and explicit card pairing
+are included. No firmware flash or real-card commands were performed.
+
+Remaining explicit limits: physical LED appearance/power-cycle playback and a
+novice observation are unperformed. Unsupported richer expressions remain marked
+preview-only; native delivery supports built-in card controls and timed cuts.
+Legacy test debt: patterns-v3's removed `lw_local_chip_default` preference case
+passed on retry in both hosted selections. The exact obsolete assumption and
+evidence are recorded in PR313; no production failure was identified from it.
+No active implementation assignment or launch blocker remains for this release.
+This completion entry is a local documentation commit after live verification;
+the production source remains the exact revision named above.
