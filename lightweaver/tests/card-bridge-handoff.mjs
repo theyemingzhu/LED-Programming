@@ -11,6 +11,7 @@ import {
   cardBridgeAutoPreviewEnabled,
   clearCardBridgeHandoff,
   getCardBridgeState,
+  hasCardBridge,
   isCardBridgeLaunch,
   openCardBridge,
   openLocalCardPage,
@@ -665,6 +666,8 @@ globalThis.window = popupHarness.win;
 // A bridge tab that was verified and later closed is not reusable; the next
 // gesture must synchronously reopen the named tab and wait for a new handshake.
 popupBridge.closed = true;
+takeoverBridge.closed = true;
+assert.equal(hasCardBridge(), false, 'a closed retained WindowProxy is not an open tracked page');
 const replacementBridge = {
   closed: false,
   postMessage(message) {

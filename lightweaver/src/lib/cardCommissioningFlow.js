@@ -513,10 +513,28 @@ export function commissioningReconnectHosts(flow, link = {}, {
 // envelope. The old gate also demanded command-ready (which a factory-blank
 // card never is) and a fresh AP-join acknowledgement timestamp (which is
 // older than the "I've joined" click). Both blocked the exact next step.
-export function selectCommissioningCardAcknowledgement(flow, link = {}, { now = Date.now() } = {}) {
+// A status belongs to the currently tracked card page only when the response
+// came from this flow, host, and WindowProxy lifecycle. A reload or retarget
+// invalidates a previous response even if the host and card ID look identical.
+export function selectCurrentCommissioningBridgeStatus(flow, evidence, bridgeState) {
+  if (!flow?.flowId || !evidence?.status || evidence.flowId !== flow.flowId
+    || !bridgeState?.open || !bridgeState.verified
+    || evidence.host !== bridgeState.host
+    || evidence.lifecycle !== bridgeState.lifecycle) return null;
+  return evidence.status;
+}
+
+export function selectCommissioningCardAcknowledgement(flow, link = {}, {
+  now = Date.now(), requireFreshBridgeStatus = false, bridgeStatus = null, bridgeState = null,
+} = {}) {
   try { requireFlow(flow); } catch { return { ok: false, reason: 'not-awaiting-card' }; }
   if (flow.stage !== 'set-up-card' || flow.cardAcknowledgedAt) {
     return { ok: false, reason: 'not-awaiting-card' };
+  }
+  if (requireFreshBridgeStatus) {
+    const status = selectCurrentCommissioningBridgeStatus(flow, bridgeStatus, bridgeState);
+    return status ? acknowledgeCommissionedCardFromStatus(flow, status, { now })
+      : { ok: false, reason: 'checking-card' };
   }
   const exactStationAuthority = link?.handoffStationVerified === true
     && link?.handoffFlowId === flow.flowId;
@@ -553,6 +571,10 @@ export function commissioningAutoReconnectHost(flow, {
 export function planCommissioningReconnectAttempt(flow, link = {}, {
   direct = false,
   setupReach = '',
+  usbInspectionReleasedForSetup = false,
+  setupApPageOpen = false,
+  stationPageOpen = false,
+  freshSetupApStatus = null,
   storedHost = '',
   history = [],
   attempt = 0,
@@ -564,6 +586,11 @@ export function planCommissioningReconnectAttempt(flow, link = {}, {
   const attempts = Math.max(0, Math.trunc(Number(attempt) || 0));
   if (!flow || flow.stage !== 'set-up-card' || flow.cardAcknowledgedAt) {
     return { state: 'inactive', reason: 'not-awaiting-card', attempts };
+  }
+  // Releasing USB restarts the application. Neither the link nor any saved
+  // handoff from the previous boot can establish its new network route.
+  if (usbInspectionReleasedForSetup) {
+    return { state: 'inactive', reason: 'awaiting-runtime-after-usb', attempts };
   }
   if (selectCommissioningCardAcknowledgement(flow, link, { now }).ok) {
     return { state: 'connected', reason: 'exact-card-status', attempts };
@@ -578,6 +605,27 @@ export function planCommissioningReconnectAttempt(flow, link = {}, {
     && handoff?.expectedFirmwareVersion === flow.expectedCard?.firmwareVersion
     && handoff?.expectedBuildId === flow.expectedCard?.buildId) {
     return { state: 'inactive', reason: 'station-handoff-active', attempts };
+  }
+  // A saved station address is only a route from an earlier boot. When the
+  // tracked AP page is answering for this exact card on a fresh factory boot,
+  // leave that page in place so its Wi-Fi form remains usable. While the AP
+  // page is open but the first status read is still in flight, wait for that
+  // read before considering any remembered station route.
+  const wifi = freshSetupApStatus?.wifi;
+  if (setupApPageOpen && freshSetupApStatus?.cardId === flow.expectedCard?.id
+    && freshSetupApStatus?.firmwareVersion === flow.expectedCard?.firmwareVersion
+    && freshSetupApStatus?.buildId === flow.expectedCard?.buildId
+    && Boolean(freshSetupApStatus?.bootId)
+    && wifi?.transport === 'ap' && wifi?.transition === 'setup-ap'
+    && wifi?.apActive === true && wifi?.configured === false
+    && !wifi?.stationIp) {
+    return { state: 'inactive', reason: 'setup-ap-current', attempts };
+  }
+  if (setupApPageOpen && !freshSetupApStatus) {
+    return { state: 'inactive', reason: 'checking-setup-ap', attempts };
+  }
+  if (stationPageOpen) {
+    return { state: 'inactive', reason: 'checking-station-page', attempts };
   }
   const retryEligible = flow.networkState === 'station-detected'
     || (flow.networkState === 'setup-joined' && (direct || setupReach === 'unreachable'));

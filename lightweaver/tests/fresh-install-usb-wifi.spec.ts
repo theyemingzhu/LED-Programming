@@ -64,7 +64,8 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
     };
     let activeHost = '192.168.18.70';
     let acked = false;
-    const bridgeStats = { allowed: false, types: [] as string[], opens: [] as string[], acked: false };
+    const bridgeStats = { allowed: false, captureAttempts: sessionStorage.getItem('__LW_CAPTURE_WINDOW_ATTEMPTS__') === '1',
+      types: [] as string[], opens: [] as string[], attempts: [] as string[], acked: false };
     (window as any).__usbWifiBridge = bridgeStats;
     const bridgeStatus = () => ({
       app: 'Lightweaver', provisioningContractVersion: 1, cardId,
@@ -92,7 +93,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
       },
       location: { set href(value: string) { activeHost = new URL(value).hostname; setTimeout(ready, 0); } },
     };
-    window.open = ((url: string) => { if (!bridgeStats.allowed) return null; activeHost = new URL(url).hostname; bridgeStats.opens.push(activeHost); setTimeout(ready, 0); return cardTab; }) as any;
+    window.open = ((url: string) => { if (!bridgeStats.allowed) { if (bridgeStats.captureAttempts) bridgeStats.attempts.push(String(url)); return null; } activeHost = new URL(url).hostname; if (bridgeStats.captureAttempts) bridgeStats.attempts.push(activeHost); bridgeStats.opens.push(activeHost); setTimeout(ready, 0); return cardTab; }) as any;
     Object.defineProperty(navigator, 'serial', { configurable: true, value: { getPorts: async () => [port], requestPort: async () => port } });
     (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
       connection: {
@@ -242,8 +243,46 @@ test('USB handoff-ready reaches final exact-card station proof through the local
     return { verified: state.handoffStationVerified, cardId: state.card?.id, host: state.host, bootId: state.validatedBootId };
   })).toEqual({ verified: true, cardId: CARD_ID, host: '192.168.18.70', bootId: 'usb-wifi-boot-1' });
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__usbWifiBridge.opens)).toEqual(['192.168.18.70']);
   expect(await page.evaluate(() => (window as any).__usbWifiBridge.types.filter((type: string) => type === 'wifi-handoff-ack').length)).toBe(1);
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-verified.png', fullPage: true });
+});
+
+test('Step 3 after a fresh USB inspection does not auto-open a saved station route without runtime proof', async ({ page, request }) => {
+  await openFreshInstaller(page, request);
+  await fillWifi(page);
+  await install(page);
+  await expect(page.locator('[data-post-flash="station"]')).toContainText('192.168.18.70');
+
+  await page.getByRole('button', { name: 'Install safely', exact: true }).click();
+  await page.getByRole('button', { name: 'Find connected card', exact: true }).click();
+  await expect(page.getByTestId('install-card-identity')).toContainText(CARD_ID);
+  await page.evaluate(() => {
+    sessionStorage.setItem('__LW_CAPTURE_WINDOW_ATTEMPTS__', '1');
+    (window as any).__usbWifiBridge.captureAttempts = true;
+    (window as any).__usbWifiBridge.attempts.length = 0;
+  });
+  await page.getByRole('button', { name: 'Set up card', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+  // The old flow remembers a station address, but this USB read identified
+  // hardware only. The card might now be on a different boot/setup AP.
+  await page.waitForTimeout(2500);
+  expect(await page.evaluate(() => (window as any).__usbWifiBridge.attempts)).toEqual([]);
+  await page.goto(`${STUDIO_ORIGIN}/#screen=studio`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toHaveCount(0);
+  await page.goto(`${STUDIO_ORIGIN}/#screen=flash&mode=install`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+  await page.waitForTimeout(2500);
+  expect(await page.evaluate(() => (window as any).__usbWifiBridge.attempts)).toEqual([]);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+  expect(await page.evaluate(async () => {
+    const commissioning = await import('/src/lib/cardCommissioningFlow.js');
+    const flow = commissioning.readCardCommissioning();
+    return { stage: flow?.stage, networkState: flow?.networkState, stationHost: flow?.stationHost };
+  })).toEqual({ stage: 'set-up-card', networkState: 'station-detected', stationHost: '192.168.18.70' });
+  await page.waitForTimeout(2500);
+  expect(await page.evaluate(() => (window as any).__usbWifiBridge.attempts)).toEqual([]);
 });
 
 test('network scan selects a card-observed SSID and fallback releases USB for the card setup page', async ({ page, request }) => {

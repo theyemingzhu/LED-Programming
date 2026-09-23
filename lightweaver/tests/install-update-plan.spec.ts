@@ -273,6 +273,75 @@ test('LAN connection explains and releases an active USB inspection before any s
   expect(statusProbes).toBe(0);
 });
 
+test('opening Set up card releases the USB loader so the card application can restart', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    (window as any).__usbSetupRelease = { resets: 0, disconnects: 0, reads: 0 };
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
+      connection: {
+        loader: {
+          chip: { CHIP_NAME: 'ESP32-S3' },
+          readFlash: async () => {
+            (window as any).__usbSetupRelease.reads += 1;
+            await new Promise(resolve => setTimeout(resolve, 50));
+            return new Uint8Array(0x10000);
+          },
+          writeReg: async () => { (window as any).__usbSetupRelease.resets += 1; },
+        },
+        transport: {
+          setDTR: async () => {},
+          disconnect: async () => { (window as any).__usbSetupRelease.disconnects += 1; },
+        },
+      },
+      hardware: {
+        cardId: 'lw-301bd5a172e0', chipName: 'ESP32-S3', chipDescription: 'ESP32-S3',
+        flashSize: '16MB', flashBytes: 16 * 1024 * 1024,
+      },
+    });
+  });
+  await page.goto('/#screen=flash&mode=install', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Find connected card' }).click();
+  await expect(page.getByTestId('install-card-identity')).toContainText('lw-301bd5a172e0');
+  await expect(page.getByTestId('install-card-installed-firmware')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__usbSetupRelease.reads)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(async () => (await import('/src/lib/usbInspection.js')).getActiveUsbInspection()?.cardId)).toBe('lw-301bd5a172e0');
+
+  await page.getByRole('button', { name: 'Set up card', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__usbSetupRelease.resets)).toBe(4);
+  await expect.poll(() => page.evaluate(() => (window as any).__usbSetupRelease.disconnects)).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+});
+
+test('Set up card waits for a pending USB find before a loader can be left behind', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    (window as any).__pendingUsbFind = { disconnects: 0, finish: null };
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = () => new Promise(resolve => {
+      (window as any).__pendingUsbFind.finish = () => resolve({
+        connection: {
+          loader: {},
+          transport: { disconnect: async () => { (window as any).__pendingUsbFind.disconnects += 1; } },
+        },
+        hardware: {
+          cardId: 'lw-301bd5a172e0', chipName: 'ESP32-S3', chipDescription: 'ESP32-S3',
+          flashSize: '16MB', flashBytes: 16 * 1024 * 1024,
+        },
+      });
+    });
+  });
+  await page.goto('/#screen=flash&mode=install', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Find connected card' }).click();
+  await expect(page.getByRole('button', { name: 'Checking this card…' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Set up card', exact: true })).toBeDisabled();
+  await page.evaluate(() => (window as any).__pendingUsbFind.finish());
+  await expect(page.getByTestId('install-card-identity')).toContainText('lw-301bd5a172e0');
+  await page.getByRole('button', { name: 'Set up card', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__pendingUsbFind.disconnects)).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+});
+
 // F11 — a browser that remembers a configured card (identity AND the host it
 // last reached, as the card-state-matrix spec's seedKnownCard does) must not
 // headline the destructive factory installer while the card link is still

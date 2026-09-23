@@ -24,6 +24,7 @@ import {
   adoptCommissionedCardBridgeIdentity,
   clearCardBridgeHandoff,
   getCardBridgeState,
+  hasCardBridge,
   openLocalCardPage,
   retargetCardBridge,
   sendCardBridgeRequest,
@@ -66,6 +67,7 @@ import {
   resumeInstalledCardAfterInterruption,
   returnCardToSetupNetworkPath,
   selectCommissioningCardAcknowledgement,
+  selectCurrentCommissioningBridgeStatus,
   stageCardProjectForPhysicalCheck,
   writeCardCommissioning,
 } from '../../lib/cardCommissioningFlow.js';
@@ -241,6 +243,7 @@ export function CardCommissioningPanel({
   onComplete,
   onSelectStage,
   viewStage = '',
+  usbInspectionReleasedForSetup = false,
   openSetupCard = connectCardLink,
   pushProject = pushConfigToCard,
   readProjectEvidence = readCardProjectEvidence,
@@ -444,8 +447,12 @@ export function CardCommissioningPanel({
 
   const cardAcknowledgement = useMemo(() => {
     if (!flow || flow.stage !== 'set-up-card') return null;
-    return selectCommissioningCardAcknowledgement(flow, link);
-  }, [flow, link]);
+    return selectCommissioningCardAcknowledgement(flow, link, {
+      requireFreshBridgeStatus: usbInspectionReleasedForSetup,
+      bridgeStatus: bridgeHandoffStatus,
+      bridgeState: getCardBridgeState(),
+    });
+  }, [flow, link, bridgeHandoffStatus, usbInspectionReleasedForSetup]);
 
   const interruptedInstallEvidence = useMemo(() => {
     const verifiedBlankCard = (link?.state === 'connected-bridge' || link?.state === 'connected-direct')
@@ -473,6 +480,8 @@ export function CardCommissioningPanel({
     flow,
     link,
     setupReach: setupReach.state,
+    usbInspectionReleasedForSetup,
+    bridgeHandoffStatus,
     storedHost: readStoredCardHost(),
     history: readStoredCardHostHistory(),
     onReconnect,
@@ -529,8 +538,16 @@ export function CardCommissioningPanel({
 
   useEffect(() => {
     if (canPushDirectlyToCard()) return undefined;
+    const trackedPageOpen = hasCardBridge();
+    const bridge = getCardBridgeState();
+    const setupApPageOpen = trackedPageOpen && bridge.verified && bridge.host === SETUP_CARD_HOST;
     const initial = planCommissioningReconnectAttempt(flow, link, {
       setupReach: setupReach.state,
+      usbInspectionReleasedForSetup,
+      setupApPageOpen,
+      stationPageOpen: trackedPageOpen && bridge.host === flow?.stationHost,
+      freshSetupApStatus: setupApPageOpen
+        ? selectCurrentCommissioningBridgeStatus(flow, bridgeHandoffStatus, bridge) : null,
       storedHost: readStoredCardHost(),
       history: readStoredCardHostHistory(),
       attempt: 0,
@@ -549,12 +566,19 @@ export function CardCommissioningPanel({
       const current = reconnectContextRef.current || {};
       // Read the live bridge before navigation: React's last link render can
       // predate a handoff accepted synchronously by the station status reader.
+      const trackedPageOpen = hasCardBridge();
       const bridge = getCardBridgeState();
       const currentLink = bridge.handoffCorrelation
         ? { ...current.link, host: bridge.host, handoffFlowId: bridge.handoffFlowId, handoffCorrelation: bridge.handoffCorrelation }
         : current.link;
+      const currentSetupApPageOpen = trackedPageOpen && bridge.verified && bridge.host === SETUP_CARD_HOST;
       const plan = planCommissioningReconnectAttempt(current.flow, currentLink, {
         setupReach: current.setupReach,
+        usbInspectionReleasedForSetup: current.usbInspectionReleasedForSetup,
+        setupApPageOpen: currentSetupApPageOpen,
+        stationPageOpen: trackedPageOpen && bridge.host === current.flow?.stationHost,
+        freshSetupApStatus: currentSetupApPageOpen
+          ? selectCurrentCommissioningBridgeStatus(current.flow, current.bridgeHandoffStatus, bridge) : null,
         storedHost: current.storedHost,
         history: current.history,
         attempt,
@@ -584,7 +608,7 @@ export function CardCommissioningPanel({
       if (timer != null) window.clearTimeout(timer);
       if (autoReconnectAttemptRef.current === key) autoReconnectAttemptRef.current = '';
     };
-  }, [flow?.flowId, flow?.networkState, setupReach.state]);
+  }, [bridgeHandoffStatus, flow?.flowId, flow?.networkState, setupReach.state, usbInspectionReleasedForSetup]);
 
   // Read back a write that already happened; never start a new one. See
   // reconcileRestoreOnly above.
@@ -608,11 +632,21 @@ export function CardCommissioningPanel({
     let timer = null;
     const poll = async () => {
       try {
+        const bridge = getCardBridgeState();
+        const host = bridge.open && bridge.verified && bridge.host === SETUP_CARD_HOST
+          ? SETUP_CARD_HOST
+          : flow.networkState === 'station-detected' ? flow.stationHost : SETUP_CARD_HOST;
         const status = await sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
-          host: flow.networkState === 'station-detected' ? flow.stationHost : '192.168.4.1', timeoutMs: 3000, retryOnTimeout: false,
+          host, timeoutMs: 3000, retryOnTimeout: false,
         });
+        const currentBridge = getCardBridgeState();
+        // sendCardBridgeRequest rejects a reply from a replaced page. Use the
+        // lifecycle at its resolved response: opening the page can legitimately
+        // advance it while this poll is in flight.
+        if (active && currentBridge.host === host && currentBridge.open && currentBridge.verified) {
+          setBridgeHandoffStatus({ flowId: flow.flowId, host, lifecycle: currentBridge.lifecycle, status });
+        }
         if (active) {
-          setBridgeHandoffStatus({ flowId: flow.flowId, status });
           timer = window.setTimeout(poll, 2500);
         }
       } catch {
@@ -654,7 +688,20 @@ export function CardCommissioningPanel({
       ));
       return;
     }
-    const status = bridgeHandoffStatus?.status || link.readiness;
+    // A saved link envelope may belong to the prior boot. After USB inspection
+    // only a fresh card-page response can initiate a new handoff. On an
+    // ordinary install a link already validated on this exact bridge lifecycle
+    // is also fresh authority; this preserves the station-detected path.
+    const bridgeStatus = [SETUP_CARD_HOST, flow.stationHost].includes(bridge.host)
+      ? selectCurrentCommissioningBridgeStatus(flow, bridgeHandoffStatus, bridge) : null;
+    const linkedStatus = !usbInspectionReleasedForSetup
+      && link?.state === 'connected-bridge'
+      && link?.host === bridge.host
+      && link?.bridgeLifecycle === bridge.lifecycle
+      && link?.validatedBootId === link?.readiness?.bootId
+      ? link.readiness : null;
+    const status = bridgeStatus || linkedStatus;
+    if (!status) return;
     let correlation = existing;
     if (!correlation) {
       correlation = acceptWifiHandoff({
@@ -679,7 +726,7 @@ export function CardCommissioningPanel({
       state: 'return-to-gallery', correlation,
       retryable: retargeted.retryable !== false,
     });
-  }, [bridgeHandoffStatus, flow, link?.readiness]);
+  }, [bridgeHandoffStatus, flow, link?.readiness, usbInspectionReleasedForSetup]);
 
   // Reality-driven auto-advance: while the wizard is waiting for the card to
   // rejoin home WiFi (stage 'set-up-card', not yet acknowledged), poll the LAN
