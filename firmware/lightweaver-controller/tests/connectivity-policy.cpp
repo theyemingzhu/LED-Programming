@@ -16,6 +16,8 @@ using lightweaver::kHandoffMaxMs;
 using lightweaver::kNetworkBindingRetryMs;
 using lightweaver::kReconnectCadenceMs;
 using lightweaver::kRecoveryApThresholdMs;
+using lightweaver::kRecoveryApInitialQuietMs;
+using lightweaver::kRecoveryApRetryCadenceMs;
 using lightweaver::recordNetworkBindingAttempt;
 using lightweaver::recordStationAttempt;
 
@@ -25,6 +27,10 @@ static_assert(kReconnectCadenceMs == 10000,
               "reconnect cadence must remain 10 seconds");
 static_assert(kRecoveryApThresholdMs == 60000,
               "recovery AP threshold must remain 60 seconds");
+static_assert(kRecoveryApInitialQuietMs == 20000,
+              "recovery AP must open before another station scan");
+static_assert(kRecoveryApRetryCadenceMs == 30000,
+              "idle recovery retry cadence must remain bounded");
 static_assert(kHandoffMaxMs == 300000,
               "abandoned handoff AP maximum must remain five minutes");
 static_assert(kNetworkBindingRetryMs == 2000,
@@ -257,23 +263,31 @@ int main() {
   assert(state.phase == ConnectivityPhase::RecoveryAp);
   assert(state.apActive);
   assert(!state.stationAssociated);
-  assert(state.reconnectDue);
+  assert(!state.reconnectDue);
 
-  const std::uint32_t recoveryAttempt = state.lastAttemptMs;
+  const std::uint32_t recoveryStarted = 5000 + kRecoveryApThresholdMs;
   state = advanceConnectivity(
       state, input(ConnectivityEvent::Tick,
-                   recoveryAttempt + kReconnectCadenceMs - 1));
+                   recoveryStarted + kRecoveryApInitialQuietMs - 1));
   assert(state.phase == ConnectivityPhase::RecoveryAp);
   assert(state.apActive);
   assert(!state.reconnectDue);
   state = advanceConnectivity(
       state, input(ConnectivityEvent::Tick,
-                   recoveryAttempt + kReconnectCadenceMs));
+                   recoveryStarted + kRecoveryApInitialQuietMs));
   assert(state.reconnectDue);
-  assert(state.lastAttemptMs == recoveryAttempt);
+  assert(state.lastAttemptMs == 5000 + kReconnectCadenceMs);
   state = recordStationAttempt(
-      state, recoveryAttempt + kReconnectCadenceMs);
-  assert(state.lastAttemptMs == recoveryAttempt + kReconnectCadenceMs);
+      state, recoveryStarted + kRecoveryApInitialQuietMs);
+  assert(state.lastAttemptMs == recoveryStarted + kRecoveryApInitialQuietMs);
+  state = advanceConnectivity(
+      state, input(ConnectivityEvent::Tick,
+                   state.lastAttemptMs + kRecoveryApRetryCadenceMs - 1));
+  assert(!state.reconnectDue);
+  state = advanceConnectivity(
+      state, input(ConnectivityEvent::Tick,
+                   state.lastAttemptMs + kRecoveryApRetryCadenceMs));
+  assert(state.reconnectDue);
 
   state = advanceConnectivity(
       state, input(ConnectivityEvent::StationAssociated,

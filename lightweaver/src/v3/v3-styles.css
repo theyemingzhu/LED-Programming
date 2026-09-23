@@ -946,6 +946,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 .card-commissioning-steps li.active { color: var(--text-hi); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .card-commissioning-network { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
 .card-commissioning-network > .btn { min-width: 0; height: auto; white-space: normal; }
+.card-commissioning-ap-handoff > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; }
 .card-commissioning-next-steps { display: grid; gap: 6px; margin: 0; padding-left: 22px; line-height: 1.5; }
 .card-commissioning-address { color: var(--text-lo); font-size: 12px; }
 /* The setup-hotspot wait. Reads as guidance while the network is still coming,

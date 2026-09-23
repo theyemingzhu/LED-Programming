@@ -1295,7 +1295,7 @@ export function CardCommissioningPanel({
             </div>
           )}
           {!flow.cardAcknowledgedAt && !['found', 'return-to-gallery'].includes(detection.state) && flow.networkState === 'setup-joined' && (
-            <div className="card-commissioning-network">
+            <div className="card-commissioning-network card-commissioning-ap-handoff">
               {setupReach.state === 'unreachable' ? (
                 <>
                   <p role="status"><strong>The card setup page has closed.</strong> Rejoin gallery Wi-Fi on this device. Return to this Studio tab, then continue.</p>
@@ -1307,18 +1307,16 @@ export function CardCommissioningPanel({
                 </>
               ) : (
                 <>
-                  <p><strong>{setupSsid ? `Connected to ${setupSsid}.` : 'Connected to the card’s setup network.'}</strong> Now tell the card which Wi-Fi to use every day:</p>
+                  <p><strong>Card setup hotspot: {setupNetworkLabel}.</strong> Keep this device on it until the card joins gallery Wi-Fi.</p>
                   <ol className="card-commissioning-next-steps">
-                    <li>Open the card page below and choose your gallery Wi-Fi.</li>
-                    <li>Enter its password and select “Save and join Wi-Fi”.</li>
-                    <li>Wait for the card page to confirm it joined gallery Wi-Fi. If it reports a failed join, stay on {setupNetworkLabel}, correct the network name or password, and try again.</li>
-                    <li>After the card confirms, return this device to gallery Wi-Fi, then come back to Studio. Your progress is saved.</li>
+                    <li>Open Wi-Fi setup, choose your gallery Wi-Fi, enter its password, and select “Save and join Wi-Fi”. If it fails, stay on {setupNetworkLabel} and retry there.</li>
+                    <li>When the card confirms it joined, reconnect this exact card below. If this device cannot reach it, join the gallery network and retry.</li>
                   </ol>
-                  <button type="button" className="btn primary" onClick={openSetupNetworkCard}>Choose Wi-Fi on the card</button>
-                  <p className="card-commissioning-address">Card address: 192.168.4.1. Your browser may say “Not secure” because this local card page uses HTTP.</p>
+                  <button type="button" className="btn primary" onClick={openSetupNetworkCard}>Open Wi-Fi setup</button>
+                  <p className="card-commissioning-address">Local card page: 192.168.4.1. “Not secure” is expected for this HTTP page.</p>
                   {setupReach.state === 'checking' && <p role="status">Checking whether the card answers at 192.168.4.1…</p>}
-                  <button type="button" className="btn" data-testid="setup-joined-station-reconnect" onClick={retryAfterGalleryReturn} disabled={manualReconnectState === 'trying'}>{manualReconnectState === 'trying' ? 'Checking this card…' : 'I’m back on gallery Wi-Fi — reconnect this card'}</button>
-                  {manualReconnectState === 'unverified' && <p role="status">Studio has not verified this card on gallery Wi-Fi. Check the card page and network, then reconnect this same card. Setup has not advanced.</p>}
+                  <button type="button" className="btn" data-testid="setup-joined-station-reconnect" onClick={retryAfterGalleryReturn} disabled={manualReconnectState === 'trying'}>{manualReconnectState === 'trying' ? 'Checking this card…' : 'Reconnect card'}</button>
+                  {manualReconnectState === 'unverified' && <p role="status">Studio has not verified this card on gallery Wi-Fi. Check this device’s network and retry here. Setup has not advanced.</p>}
                 </>
               )}
             </div>

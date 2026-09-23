@@ -7,6 +7,9 @@ namespace lightweaver {
 constexpr std::uint32_t kInitialJoinTimeoutMs = 15000;
 constexpr std::uint32_t kReconnectCadenceMs = 10000;
 constexpr std::uint32_t kRecoveryApThresholdMs = 60000;
+// Give a phone time to attach before the single radio scans for an absent SSID.
+constexpr std::uint32_t kRecoveryApInitialQuietMs = 20000;
+constexpr std::uint32_t kRecoveryApRetryCadenceMs = 30000;
 constexpr std::uint32_t kNetworkBindingRetryMs = 2000;
 constexpr std::uint32_t kHandoffMaxMs = 300000;
 
@@ -64,6 +67,10 @@ struct ConnectivityState {
   std::uint32_t lastAttemptMs = 0;
   std::uint32_t lastBindingAttemptMs = 0;
   std::uint32_t generation = 0;
+  // The recovery quiet window starts when AP and DNS are actually ready, not
+  // when the state machine first asks the radio to start them.
+  bool recoveryApReady = false;
+  std::uint32_t recoveryApReadyMs = 0;
 };
 
 constexpr bool elapsed(std::uint32_t nowMs,
@@ -128,6 +135,7 @@ inline ConnectivityState advanceConnectivity(
       next.wledListenerReady = false;
       next.artnetListenerReady = false;
       next.phaseStartedMs = input.nowMs;
+      next.recoveryApReady = false;
       next.handoffRequired =
           input.event == ConnectivityEvent::CredentialsAccepted;
       // A resumed join mints no generation: there is no acknowledgement to
@@ -163,6 +171,7 @@ inline ConnectivityState advanceConnectivity(
       next.wledListenerReady = false;
       next.artnetListenerReady = false;
       next.phaseStartedMs = input.nowMs;
+      next.recoveryApReady = false;
       return next;
 
     case ConnectivityEvent::StationLost:
@@ -236,11 +245,20 @@ inline ConnectivityState advanceConnectivity(
     next.phase = ConnectivityPhase::RecoveryAp;
     next.apActive = true;
     next.phaseStartedMs = input.nowMs;
+    next.recoveryApReady = false;
+    next.recoveryApReadyMs = 0;
   }
 
-  if ((next.phase == ConnectivityPhase::Reconnecting ||
-       next.phase == ConnectivityPhase::RecoveryAp) &&
+  if (next.phase == ConnectivityPhase::Reconnecting &&
       elapsed(input.nowMs, current.lastAttemptMs, kReconnectCadenceMs)) {
+    next.reconnectDue = true;
+  } else if (next.phase == ConnectivityPhase::RecoveryAp &&
+             elapsed(input.nowMs,
+                     next.recoveryApReady ? next.recoveryApReadyMs
+                                          : next.phaseStartedMs,
+                     kRecoveryApInitialQuietMs) &&
+             elapsed(input.nowMs, current.lastAttemptMs,
+                     kRecoveryApRetryCadenceMs)) {
     next.reconnectDue = true;
   }
 

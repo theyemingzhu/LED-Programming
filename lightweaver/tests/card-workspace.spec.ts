@@ -420,13 +420,13 @@ test('Card overview opens a visible Wi-Fi form and explains the next step after 
   // proves that every entrance resolves through the same exact Setup task first.
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toHaveCount(0);
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   const commissioning = page.locator('.card-commissioning');
   await expect(commissioning).toContainText('choose your gallery Wi-Fi');
   await expect(commissioning).toContainText('192.168.4.1');
   await expect(commissioning).toContainText('Not secure');
-  const setupButton = page.getByRole('button', { name: 'Choose Wi-Fi on the card' });
+  const setupButton = page.getByRole('button', { name: 'Open Wi-Fi setup' });
   await expect(setupButton).toBeVisible();
   await setupButton.click();
   await expect.poll(() => page.evaluate(() => (window as any).__commissioningOpens.at(-1))).toMatchObject({
@@ -438,7 +438,7 @@ test('Card overview opens a visible Wi-Fi form and explains the next step after 
   expect(openedUrl).not.toContain('bridgeUtility=1');
 
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toBeVisible();
 });
 
 test('AP setup waits for a verified join and offers a bounded manual gallery reconnect', async ({ page }) => {
@@ -461,16 +461,30 @@ test('AP setup waits for a verified join and offers a bounded manual gallery rec
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
 
   const commissioning = page.locator('.card-commissioning');
-  await expect(commissioning).toContainText('Wait for the card page to confirm it joined gallery Wi-Fi');
+  await expect(commissioning.locator('.card-commissioning-next-steps > li')).toHaveCount(2);
+  await expect(commissioning).toContainText('When the card confirms it joined');
+  await expect(commissioning).toContainText('If this device cannot reach it, join the gallery network and retry');
+  await expect(commissioning).not.toContainText('move this device to gallery Wi-Fi');
   await expect(commissioning).toContainText('stay on Lightweaver-EEFF');
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
+  const openSetup = page.getByRole('button', { name: 'Open Wi-Fi setup', exact: true });
+  await expect(openSetup).toBeVisible();
   const reconnect = page.getByTestId('setup-joined-station-reconnect');
   await expect(reconnect).toBeVisible();
+  const handoff = page.locator('.card-commissioning-ap-handoff');
+  const handoffWidth = (await handoff.boundingBox())!.width;
+  expect((await openSetup.boundingBox())!.width).toBeLessThan(handoffWidth * 0.7);
+  expect((await reconnect.boundingBox())!.width).toBeLessThan(handoffWidth * 0.7);
   await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(openSetup).toBeVisible();
   await expect(reconnect).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  expect(await reconnect.evaluate(button => button.getBoundingClientRect().right <= window.innerWidth && button.scrollWidth <= button.clientWidth)).toBe(true);
+  for (const button of [openSetup, reconnect]) {
+    const box = (await button.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
   await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-narrow.png', fullPage: true });
   await reconnect.scrollIntoViewIfNeeded();
   await page.screenshot({ path: '/tmp/lightweaver-ap-reconnect-narrow-button.png' });
@@ -495,7 +509,7 @@ test('WiFi setup names the card’s real hotspot instead of a placeholder suffix
   await expect(commissioning).not.toContainText('Lightweaver-XXXX');
 
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
-  await expect(commissioning).toContainText('Connected to Lightweaver-EEFF.');
+  await expect(commissioning).toContainText('Card setup hotspot: Lightweaver-EEFF.');
   await expect(commissioning).not.toContainText('Lightweaver-XXXX');
 });
 
@@ -515,7 +529,7 @@ test('a card that kept its WiFi through the flash never shows the hotspot step',
 
   // None of the hotspot instructions may appear: there is no hotspot.
   await expect(page.getByRole('button', { name: /I.ve joined Lightweaver-EEFF/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toHaveCount(0);
   await expect(commissioning).not.toContainText('The clean installation reset Wi-Fi');
 
   // The owner keeps an escape if their eyes disagree with the serial evidence.
@@ -537,7 +551,7 @@ test('a genuinely factory-blank card still gets the unchanged hotspot step', asy
   await expect(commissioning.locator('[data-post-flash="inconclusive"]')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'I\u2019ve joined Lightweaver-EEFF', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toBeVisible();
 });
 
 // The reported confusion: told to join Lightweaver-EEFF, the owner opens Wi-Fi
@@ -599,7 +613,7 @@ test('an inconclusive post-flash observation guides the exact hotspot and keeps 
 
   await joined.click();
   await expect(commissioning.locator('[data-post-flash="inconclusive"]')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toBeVisible();
 });
 
 test('an opened setup tab that never reaches the card explains why instead of spinning silently', async ({ page }) => {
@@ -618,7 +632,7 @@ test('an opened setup tab that never reaches the card explains why instead of sp
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
-  await page.getByRole('button', { name: 'Choose Wi-Fi on the card' }).click();
+  await page.getByRole('button', { name: 'Open Wi-Fi setup' }).click();
 
   await expect(page.locator('.card-commissioning')).toContainText('The card setup page has closed', { timeout: 15000 });
   await expect(page.locator('.card-commissioning [role="alert"]')).toHaveCount(0);
@@ -626,7 +640,7 @@ test('an opened setup tab that never reaches the card explains why instead of sp
   await expect(page.getByTestId('setup-joined-station-reconnect')).toHaveText('I\u2019m back on gallery Wi-Fi');
   await expect(page.locator('.card-commissioning')).toContainText('Return to this Studio tab');
   // The tab the owner opened is theirs; Studio must not close or navigate it.
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toHaveCount(0);
 });
 
 test('once 192.168.4.1 is gone Studio continues on the remembered home-network address by itself', async ({ page }) => {
@@ -651,7 +665,7 @@ test('once 192.168.4.1 is gone Studio continues on the remembered home-network a
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
-  await page.getByRole('button', { name: 'Choose Wi-Fi on the card' }).click();
+  await page.getByRole('button', { name: 'Open Wi-Fi setup' }).click();
 
   await expect(page.locator('.card-commissioning')).toContainText('The card setup page has closed.', { timeout: 15000 });
   await expect.poll(async () => {
@@ -763,9 +777,9 @@ test('reality-driven detection replaces the dead 192.168.4.1 link with the resto
   // While the card is still on its setup AP (unreachable on the LAN — the
   // beforeEach aborts every card host) the dead-AP fallback link is the only
   // setup affordance and the restore path is not yet offered.
-  const setupLink = page.getByRole('button', { name: 'Choose Wi-Fi on the card' });
+  const setupLink = page.getByRole('button', { name: 'Open Wi-Fi setup' });
   await expect(setupLink).toBeVisible();
-  await expect(page.getByText(/Now tell the card which Wi-Fi to use every day/i)).toBeVisible();
+  await expect(page.getByText(/Card setup hotspot: Lightweaver-EEFF/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
 
   // The card leaves its AP and rejoins home WiFi: it now answers /api/status in
@@ -812,8 +826,8 @@ test('a wrong card answering on the LAN never auto-advances setup past the ident
     }),
   }));
 
-  await expect(page.getByText(/Now tell the card which Wi-Fi to use every day/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toBeVisible();
+  await expect(page.getByText(/Card setup hotspot: Lightweaver-EEFF/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toBeVisible();
   // Give the poll several cycles; the mismatched card must never unlock restore.
   await page.waitForTimeout(3_000);
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
@@ -838,8 +852,8 @@ test('retained pre-install card identity cannot bypass the explicit WiFi handoff
   await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
   await page.getByRole('button', { name: 'I’ve joined Lightweaver-EEFF', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toHaveCount(0);
-  await expect(page.getByText(/Now tell the card which Wi-Fi to use every day/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toBeVisible();
+  await expect(page.getByText(/Card setup hotspot: Lightweaver-EEFF/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toBeVisible();
 
   await dispatchCardLink(page, [{
     type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
@@ -2864,5 +2878,5 @@ test('updated factory-blank station card advances to project setup without anoth
   await page.route('**/api/status', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(blank) }));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole('button', { name: 'Choose Wi-Fi on the card' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toHaveCount(0);
 });

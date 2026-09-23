@@ -703,7 +703,7 @@ void handleRoot() {
     page += F("<div class='handoff err' id='wifi-warn'>"
               "<strong>WiFi isn&#39;t connecting.</strong> This card couldn&#39;t join \"");
     page += escapeHtml(cfg.wifi.ssid);
-    page += F("\". The card keeps trying every 10 seconds while this setup network stays available. "
+    page += F("\". The card will retry automatically while this setup network stays available. "
               "Open network setup to check the name, password, and 2.4 GHz router settings:"
               "<button class='off-btn' id='wifi-retry-btn' type='button' style='display:block;margin-top:10px'>Change network</button>"
               "</div>");
@@ -1080,6 +1080,7 @@ void handleAdvancedRoot() {
             ".setup-options summary{min-height:44px;padding:8px 0 4px;font-size:12px;color:#9a8d75}"
             ".setup-options .body{padding:0}"
             ".setup-mode .join-row{margin-top:10px}"
+            ".setup-mode .join-row button{flex:none;min-width:188px}"
             ".setup-mode .foot{margin-top:14px}"
             "@media(max-width:300px){.setup-network{grid-template-columns:1fr}.setup-network #rescan{width:100%}}"
             "</style></head><body class='");
@@ -1100,11 +1101,11 @@ void handleAdvancedRoot() {
       page += F("<div class='card'><p>Saved network: <strong id='saved-ssid'>");
       page += escapeHtml(cfg.wifi.ssid);
       page += F("</strong></p><button class='primary' id='reuse-wifi'>Use saved network</button>"
-                "<p class='note'>Your network details are saved on this card. Leave the password blank to reuse them for the same network.</p></div>");
+                "<p class='note'>Saved on this card. Leave password blank to reuse it.</p></div>");
     }
     page += F("<div class='card'><h2>Join Wi&#8209;Fi</h2>"
               "<label class='field' for='ssid'>Network</label>"
-              "<p class='note'>This card can join 2.4 GHz Wi&#8209;Fi. Choose a nearby network, or enter a hidden network below.</p>"
+              "<p class='note'>2.4 GHz only. Choose a nearby network or enter a hidden name under More options.</p>"
               "<div class='setup-network'>"
                 "<select id='ssid'><option value=''>Scanning…</option></select>"
                 "<button class='ghost' id='rescan' type='button'>Rescan</button>"
@@ -1281,7 +1282,12 @@ void handleAdvancedRoot() {
     // running, so a single fetch lands on "No networks found" forever. Poll
     // until scanning:false (capped at ~30s), show a Scanning placeholder
     // meanwhile, and offer Rescan + a manual SSID field for hidden networks.
-    page += F("const passwordToggle=$('toggle-password');passwordToggle.onclick=()=>{const pw=$('pw'),show=pw.type==='password';pw.type=show?'text':'password';passwordToggle.textContent=show?'Hide':'Show';passwordToggle.setAttribute('aria-pressed',String(show));passwordToggle.setAttribute('aria-label',show?'Hide password':'Show password')};"
+    page += F("const setupPageCardId='");
+    page += runtimeCardId();  // Fixed MAC-derived lw-hex identity.
+    page += F("',setupPageBootId='");
+    page += runtimeBootId();  // Fixed boot-hex identity.
+    page += F("';"
+              "const passwordToggle=$('toggle-password');passwordToggle.onclick=()=>{const pw=$('pw'),show=pw.type==='password';pw.type=show?'text':'password';passwordToggle.textContent=show?'Hide':'Show';passwordToggle.setAttribute('aria-pressed',String(show));passwordToggle.setAttribute('aria-label',show?'Hide password':'Show password')};"
               "const setScanPlaceholder=text=>{const sel=$('ssid');sel.innerHTML='';const o=document.createElement('option');o.value='';o.textContent=text;sel.appendChild(o)};"
               "const renderNets=nets=>{const sel=$('ssid');sel.innerHTML='';nets.forEach(n=>{const o=document.createElement('option');o.value=n.ssid;const signal=n.rssi>=-60?'Strong':n.rssi>=-75?'Fair':'Weak';o.textContent=n.ssid+' — '+signal+' signal, '+(n.secure?'Password':'Open');sel.appendChild(o)});const saved=$('saved-ssid');if(saved&&nets.some(n=>n.ssid===saved.textContent))sel.value=saved.textContent;if(!nets.length){setScanPlaceholder('No networks found — rescan or type the name below');$('setup-more').open=true}};"
               "let scanPolls=0,scanTimer=null,scanToken=0;"
@@ -1291,23 +1297,34 @@ void handleAdvancedRoot() {
               "$('rescan').onclick=()=>startScan(true);"
               "startScan(false);"
               "const wifiFailureText=w=>{switch(w.failureReason){case'no_compatible_access_point':return'No compatible access point found. Check the network name, signal, and router security settings.';case'authentication_failed':return'Authentication failed. Check the password and router security settings.';case'handshake_incomplete':return'The WiFi security handshake did not finish. Check signal and router security settings.';case'no_ip_address':return'The card reached the router, but did not receive an IP address. Check the router DHCP settings.';case'station_restart_unconfirmed':return'The card could not restart its WiFi radio. Try again or reboot the card.';case'connection_timed_out':return'The card could not join before the timeout. Check the network name, signal, and password.';case'connection_failed':return'The WiFi driver reported a connection failure. Check the network and router settings.';case'station_connection_lost':return'The connection to the router was lost.';default:return w.lastError||''}};"
-              "let wifiJoinPollToken=0;"
-              "const pollWifiJoin=async(expectedGeneration,expectedBootId,pollToken)=>{const btn=$('join'),m=$('msg');let polls=0,readyReads=0,lastFailure='';const deadline=Date.now()+67500;while(polls++<90&&Date.now()<deadline){"
-              "await new Promise(resolve=>setTimeout(resolve,750));if(pollToken!==wifiJoinPollToken)return'cancelled';let s;try{s=await get('/api/status',Math.max(1,Math.min(5000,deadline-Date.now())))}catch(_){continue}if(pollToken!==wifiJoinPollToken)return'cancelled';const w=s&&s.wifi||{};"
-              "if(s.bootId!==expectedBootId||w.handoffGeneration!==expectedGeneration){m.textContent='The card restarted or began another WiFi setup. Reopen this setup page and try again.';m.className='note err';btn.disabled=false;return'replaced'}"
-              "if(w.transition==='handoff-ready'&&w.transitionPending===true&&w.apActive===true&&w.stationIp){readyReads++;if(readyReads<2)continue;m.textContent='Verified: this card joined gallery WiFi at '+w.stationIp+'. Return this device to gallery WiFi, then return to Studio to continue.';m.className='note ok';return'verified'}"
-              "if(w.transition==='station'&&w.transport==='station'&&w.stationIp){m.textContent='Connected to gallery WiFi at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';btn.disabled=false;return'verified'}"
-              "readyReads=0;const failure=wifiFailureText(w);if(failure){lastFailure=failure;m.textContent=failure+' The card keeps trying every 10 seconds while this setup network stays available. You can correct the network details and submit again.';m.className='note err';btn.disabled=false;continue}"
-              "m.textContent='Credentials saved. Waiting for this card to verify its gallery WiFi connection…';m.className='note'}"
-              "m.textContent=lastFailure?lastFailure+' The card is still trying. Check the network details or try again.':'The card did not verify gallery WiFi in time. Stay on Lightweaver-XXXX, check the network name and password, then try again.';m.className='note err';btn.disabled=false;return'timeout'};"
-              "const startWifiJoinPoll=(expectedGeneration,expectedBootId)=>pollWifiJoin(expectedGeneration,expectedBootId,++wifiJoinPollToken);"
+              "let wifiJoinPollToken=0,wifiJoinTimer=null,wifiJoinFlight=null,wifiJoinTarget=null,wifiJoinVisibilityEpoch=0,wifiSubmitToken=0,wifiJoinBootstrapPending=true,wifiJoinBootstrapFlight=null,wifiJoinBootstrapErrors=0;"
+              "const wifiIntentSignature=(payload,ssid)=>{const data=JSON.stringify([ssid,payload.reuseSaved===true,payload.password??null,payload.hostname??null,payload.clearPassword===true]);let a=2166136261,b=2246822519;for(let i=0;i<data.length;i++){const c=data.charCodeAt(i);a=Math.imul(a^c,16777619);b=Math.imul(b+c,3266489917)}return data.length+':'+(a>>>0)+':'+(b>>>0)};"
+              "const clearWifiJoinTimer=()=>{if(wifiJoinTimer!==null){clearTimeout(wifiJoinTimer);wifiJoinTimer=null}};"
+              "const stopWifiJoinPoll=()=>{++wifiJoinPollToken;clearWifiJoinTimer();wifiJoinTarget=null};"
+              "const scheduleWifiJoinPoll=(delay,token)=>{if(token!==wifiJoinPollToken||!wifiJoinTarget||document.hidden)return;clearWifiJoinTimer();wifiJoinTimer=setTimeout(()=>pollWifiJoin(token),delay)};"
+              "const scheduleWifiJoinBootstrap=delay=>{if(!wifiJoinBootstrapPending||document.hidden)return;clearWifiJoinTimer();wifiJoinTimer=setTimeout(()=>{wifiJoinTimer=null;observeExistingWifiJoin()},delay)};"
+              "const pollWifiJoin=async token=>{wifiJoinTimer=null;if(token!==wifiJoinPollToken||!wifiJoinTarget||document.hidden)return;"
+              "if(wifiJoinFlight){scheduleWifiJoinPoll(750,token);return}const target=wifiJoinTarget,epoch=wifiJoinVisibilityEpoch,m=$('msg');"
+              "const flight=get('/api/status',5000);wifiJoinFlight=flight;let s;try{s=await flight;if(!s||typeof s!=='object')throw new Error('invalid status')}catch(_){if(token===wifiJoinPollToken&&target===wifiJoinTarget&&!document.hidden&&epoch===wifiJoinVisibilityEpoch){target.errors++;m.textContent='Card connection interrupted. Checking again…';m.className='note err';scheduleWifiJoinPoll(Math.min(30000,5000*Math.pow(2,Math.min(target.errors-1,3))),token)}return}finally{if(wifiJoinFlight===flight)wifiJoinFlight=null}"
+              "if(token!==wifiJoinPollToken||target!==wifiJoinTarget||document.hidden||epoch!==wifiJoinVisibilityEpoch)return;target.errors=0;const w=s&&s.wifi||{};"
+              "if(s.cardId!==target.cardId||s.bootId!==target.bootId||w.handoffGeneration!==target.generation||w.ssid!==target.ssid){m.textContent='This card restarted or began another WiFi setup. Reopen setup to check it.';m.className='note err';stopWifiJoinPoll();return}"
+              "if(w.transition==='handoff-ready'&&w.transitionPending===true&&w.apActive===true&&w.stationIp){target.readyReads++;if(target.readyReads<2){scheduleWifiJoinPoll(750,token);return}m.textContent='Connected at '+w.stationIp+'. Return this device to gallery WiFi, then continue in Studio.';m.className='note ok';stopWifiJoinPoll();return}"
+              "if(w.transition==='station'&&w.transport==='station'&&w.stationIp){m.textContent='Connected at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';stopWifiJoinPoll();return}"
+              "target.readyReads=0;const failure=wifiFailureText(w);if(failure){m.textContent=failure+(w.transition==='recovery-ap'?' Edit the network details while setup stays available.':' Retrying… Edit details and save again if needed.');m.className='note err'}else{m.textContent='Checking gallery WiFi…';m.className='note'}"
+              "scheduleWifiJoinPoll(Date.now()-target.startedAt<30000?1500:5000,token)};"
+              "const startWifiJoinPoll=(cardId,generation,bootId,ssid)=>{stopWifiJoinPoll();wifiJoinTarget={cardId,generation,bootId,ssid,startedAt:Date.now(),readyReads:0,errors:0};scheduleWifiJoinPoll(750,wifiJoinPollToken)};"
+              "document.addEventListener('visibilitychange',()=>{wifiJoinVisibilityEpoch++;if(document.hidden)clearWifiJoinTimer();else if(wifiJoinTarget)scheduleWifiJoinPoll(100,wifiJoinPollToken);else if(wifiJoinBootstrapPending)scheduleWifiJoinBootstrap(100)});"
+              "window.addEventListener('pagehide',stopWifiJoinPoll);"
+              "window.addEventListener('pageshow',e=>{if(e.persisted&&!wifiJoinTarget)observeExistingWifiJoin()});"
               "let pendingWifiSubmission=null;"
-              "const reconcileWifiJoin=async(pollToken)=>{if(!pendingWifiSubmission)return false;const pending=pendingWifiSubmission;const s=await get('/api/status');if(pollToken!==wifiJoinPollToken)return true;const w=s.wifi||{};if(s.cardId!==pending.cardId)throw new Error('A different card answered. Reopen setup for the intended card.');if(w.ssid!==pending.ssid)return false;if(s.bootId===pending.bootId&&w.handoffGeneration===pending.generation)return false;pendingWifiSubmission=null;await pollWifiJoin(w.handoffGeneration,s.bootId,pollToken);return true};"
-              "const submitWifi=async(payload,ssid)=>{const btn=$('join'),m=$('msg');const submitToken=++wifiJoinPollToken;btn.disabled=true;m.textContent='Checking the card…';m.className='note';try{if(await reconcileWifiJoin(submitToken))return;const before=await get('/api/status');if(submitToken!==wifiJoinPollToken)return;const w=before.wifi||{};if(payload.reuseSaved&&w.transport==='station'&&w.transition==='station'){m.textContent='Connected to saved network '+w.ssid+' at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';return}pendingWifiSubmission={cardId:before.cardId,bootId:before.bootId,generation:w.handoffGeneration,ssid};m.textContent='Saving…';const r=await post('/api/wifi',payload);if(submitToken!==wifiJoinPollToken)return;pendingWifiSubmission=null;await pollWifiJoin(r.handoffGeneration,r.bootId,submitToken)}catch(e){try{if(await reconcileWifiJoin(submitToken))return}catch(_){}if(submitToken===wifiJoinPollToken){m.textContent=e.message+' Retry will check whether the card already saved this network.';m.className='note err'}}finally{if(submitToken===wifiJoinPollToken)btn.disabled=false}};"
+              "const reconcileWifiJoin=async(pollToken,signature,explicitRetry=false)=>{if(!pendingWifiSubmission)return false;const pending=pendingWifiSubmission;const s=await get('/api/status',5000);if(pollToken!==wifiJoinPollToken)return true;const w=s.wifi||{};if(s.cardId!==pending.cardId||s.bootId!==pending.bootId)throw new Error('This setup page is stale. Reopen it for this card.');const advanced=w.ssid===pending.ssid&&Number.isInteger(w.handoffGeneration)&&w.handoffGeneration>pending.generation;if(signature!==pending.signature){pendingWifiSubmission=null;return false}if(advanced){pendingWifiSubmission=null;startWifiJoinPoll(s.cardId,w.handoffGeneration,s.bootId,pending.ssid);return true}if(explicitRetry){pendingWifiSubmission=null;return false}$('msg').textContent='Save is still unconfirmed. Select Save again to retry.';$('msg').className='note err';return true};"
+              "const submitWifi=async(payload,ssid)=>{const btn=$('join'),reuse=$('reuse-wifi'),m=$('msg');stopWifiJoinPoll();const submitToken=wifiJoinPollToken,submitId=++wifiSubmitToken,signature=wifiIntentSignature(payload,ssid),retryPending=pendingWifiSubmission;wifiJoinBootstrapPending=false;btn.disabled=true;if(reuse)reuse.disabled=true;m.textContent='Checking the card…';m.className='note';try{if(await reconcileWifiJoin(submitToken,signature,true))return;const before=await get('/api/status',5000);if(submitToken!==wifiJoinPollToken)return;if(before.cardId!==setupPageCardId||before.bootId!==setupPageBootId)throw new Error('This setup page is stale. Reopen it for this card.');const w=before.wifi||{};if(retryPending&&signature===retryPending.signature&&w.handoffGeneration!==retryPending.generation){if(w.ssid===retryPending.ssid&&Number.isInteger(w.handoffGeneration)&&w.handoffGeneration>retryPending.generation){startWifiJoinPoll(before.cardId,w.handoffGeneration,before.bootId,retryPending.ssid);return}throw new Error('Card WiFi changed during retry. Review it before saving again.')}if(payload.reuseSaved&&w.transport==='station'&&w.transition==='station'){m.textContent='Connected to saved network '+w.ssid+' at '+w.stationIp+'. Return to Studio to continue.';m.className='note ok';return}pendingWifiSubmission={cardId:before.cardId,bootId:before.bootId,generation:w.handoffGeneration,ssid,signature};m.textContent='Saving…';const r=await post('/api/wifi',payload);if(submitToken!==wifiJoinPollToken)return;pendingWifiSubmission=null;if(r.bootId!==before.bootId)throw new Error('The card restarted during setup. Reopen this page.');startWifiJoinPoll(before.cardId,r.handoffGeneration,r.bootId,ssid)}catch(e){try{if(await reconcileWifiJoin(submitToken,signature))return}catch(reconcileError){e=reconcileError}if(submitToken===wifiJoinPollToken){m.textContent=e.message+' Check this card before saving again.';m.className='note err'}}finally{if(submitId===wifiSubmitToken){btn.disabled=false;if(reuse)reuse.disabled=false}}};"
+              "const observeExistingWifiJoin=async()=>{const token=wifiJoinPollToken,epoch=wifiJoinVisibilityEpoch;if(!wifiJoinBootstrapPending||document.hidden)return;if(wifiJoinBootstrapFlight){scheduleWifiJoinBootstrap(750);return}const flight=get('/api/status',5000);wifiJoinBootstrapFlight=flight;try{const s=await flight;if(token!==wifiJoinPollToken||epoch!==wifiJoinVisibilityEpoch||document.hidden)return;wifiJoinBootstrapPending=false;wifiJoinBootstrapErrors=0;const w=s.wifi||{};if(s.cardId!==setupPageCardId||s.bootId!==setupPageBootId){$('msg').textContent='This setup page is stale. Reopen it for this card.';$('msg').className='note err';return}const active=(w.apActive&&['setup-ap','joining','reconnecting','recovery-ap','handoff-ready'].includes(w.transition))||(w.transition==='station'&&w.transport==='station'&&!!w.stationIp);if(w.configured&&w.ssid&&active)startWifiJoinPoll(s.cardId,w.handoffGeneration,s.bootId,w.ssid)}catch(_){if(token===wifiJoinPollToken&&epoch===wifiJoinVisibilityEpoch&&!document.hidden&&wifiJoinBootstrapPending){wifiJoinBootstrapErrors++;$('msg').textContent='Card connection interrupted. Checking again…';$('msg').className='note err';scheduleWifiJoinBootstrap(Math.min(30000,5000*Math.pow(2,Math.min(wifiJoinBootstrapErrors-1,3))))}}finally{if(wifiJoinBootstrapFlight===flight)wifiJoinBootstrapFlight=null}};"
               "const reuseWifi=$('reuse-wifi');if(reuseWifi)reuseWifi.onclick=async()=>{reuseWifi.disabled=true;try{await submitWifi({reuseSaved:true},$('saved-ssid').textContent)}finally{reuseWifi.disabled=false}};"
               "$('join').onclick=async()=>{const m=$('msg');const manual=$('ssid-manual').value.trim();const ssid=manual||$('ssid').value;"
               "if(!ssid){m.textContent='Choose a network or type its name first.';m.className='note err';return}"
-              "await submitWifi({ssid:ssid,password:$('pw').value,hostname:$('hn').value,clearPassword:$('clear-password').checked},ssid)};");
+              "await submitWifi({ssid:ssid,password:$('pw').value,hostname:$('hn').value,clearPassword:$('clear-password').checked},ssid)};"
+              "observeExistingWifiJoin();");
   } else if (!needsCommissioning) {
     page += F("let patterns=[],currentId='',blackoutOn=false;"
               "const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');"
@@ -3228,6 +3245,7 @@ void maintainConnectivity() {
       stationReady && state.phase == lightweaver::ConnectivityPhase::Station &&
           currentStationIp != cfg.wifiRuntime.stationIp,
       apRadioStarted && dnsServerActive,
+      apRadioStarted && WiFi.softAPgetStationNum() > 0,
   };
   WebConnectivityHardwareAdapter hardware(cfg, currentStationIp);
   state = lightweaver::runConnectivityOrchestrator(
