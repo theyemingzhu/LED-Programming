@@ -292,7 +292,8 @@ test('focused browser script covers core workflow without embedding the full rel
   // members rather than one exact string: adding a spec to the lane (as the
   // sections work did on 2026-09-11) must not turn main red in a lane that
   // never ran the added spec. Dropping one of these still fails.
-  assert.match(smoke, /^playwright test tests\/workflow\.spec\.ts tests\/screen-smoke\.spec\.ts tests\/card-workspace\.spec\.ts --project=chromium --workers=1 --grep "/);
+  assert.match(smoke, /(?:^| && )playwright test tests\/fresh-install-usb-wifi\.spec\.ts --project=chromium --workers=1(?: && |$)/);
+  assert.match(smoke, /(?:^| && )playwright test tests\/workflow\.spec\.ts tests\/screen-smoke\.spec\.ts tests\/card-workspace\.spec\.ts --project=chromium --workers=1 --grep "/);
   for (const title of [
     'imports SVG',
     'every primary screen',
