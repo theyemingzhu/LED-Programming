@@ -395,8 +395,8 @@ export function nextCardConnectionAction(input = {}) {
     return action('recoverable-failure', {
       route: 'setup-network',
       title: 'Finish card setup',
-      explanation: 'Join the Lightweaver setup network, finish Wi-Fi setup, then return to Studio.',
-      primaryLabel: 'Continue',
+      explanation: `Power the card, join ${setupNetworkLabelForCardId(input.expectedCard?.id || input.rememberedCard?.id || '')}, finish Wi-Fi setup on the card page, then return to Studio.`,
+      primaryLabel: 'Continue after setup',
     });
   }
 

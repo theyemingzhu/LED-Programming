@@ -165,7 +165,24 @@ test('an interrupted browser install inspects the exact result and never flashes
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByText(/will not flash again automatically/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Reconnect and inspect card' })).toBeVisible();
+  const reconnect = page.getByRole('button', { name: 'Reconnect and inspect card' });
+  await expect(reconnect).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const recovery = page.locator('.card-commissioning[data-stage="install-safely"]');
+  const recoveryBox = await recovery.boundingBox();
+  const buttonBox = await reconnect.boundingBox();
+  expect(recoveryBox).not.toBeNull();
+  expect(buttonBox).not.toBeNull();
+  expect(buttonBox!.width).toBeLessThan(recoveryBox!.width - 16);
+  expect(buttonBox!.x - recoveryBox!.x).toBeLessThan(32);
+  expect(buttonBox!.height).toBeGreaterThanOrEqual(44);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const desktopRecoveryBox = await recovery.boundingBox();
+  const desktopButtonBox = await reconnect.boundingBox();
+  expect(desktopRecoveryBox).not.toBeNull();
+  expect(desktopButtonBox).not.toBeNull();
+  expect(desktopButtonBox!.width).toBeLessThan(desktopRecoveryBox!.width - 16);
+  expect(desktopButtonBox!.x - desktopRecoveryBox!.x).toBeLessThan(32);
   await expect(page.getByRole('button', { name: /Erase card and install/i })).toHaveCount(0);
 
   await page.evaluate(async () => {
@@ -205,6 +222,16 @@ test('an interrupted install does not offer USB Wi-Fi resume for a freshly verif
   await page.reload({ waitUntil: 'domcontentloaded' });
   const recovery = page.getByTestId('interrupted-usb-recovery');
   await expect(recovery.getByRole('button', { name: 'Resume with USB' })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const recoveryBox = await recovery.boundingBox();
+  expect(recoveryBox).not.toBeNull();
+  for (const label of ['Resume with USB', 'Reconnect over Wi-Fi']) {
+    const button = recovery.getByRole('button', { name: label });
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeLessThan(recoveryBox!.width - 16);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
   await page.evaluate(async () => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     const event = {

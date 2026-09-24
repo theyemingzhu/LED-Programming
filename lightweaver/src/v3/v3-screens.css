@@ -366,7 +366,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 }
 .card-setup-overlay-safety { display: flex; flex-wrap: wrap; gap: 8px; }
 .card-setup-overlay-foot > p { margin: 0; color: var(--text-lo); font-size: 11.5px; line-height: 1.4; }
-.card-setup-overlay-foot .btn { min-height: 44px; }
+.card-setup-overlay-foot .btn { min-height: 44px; max-width: 100%; height: auto; white-space: normal; text-align: left; }
 .card-setup-overlay-foot .btn:disabled { cursor: wait; opacity: .42; }
 .card-setup-light-status,
 .card-setup-release-error { grid-column: 1 / -1; }
@@ -410,8 +410,8 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
   .card-setup-overlay-foot {
     grid-template-columns: minmax(0, 1fr); padding: 11px 14px max(11px, env(safe-area-inset-bottom));
   }
-  .card-setup-overlay-foot .btn { width: 100%; justify-content: center; }
-  .card-setup-overlay-safety { display: grid; }
+  .card-setup-overlay-foot .btn { justify-self: start; width: fit-content; }
+  .card-setup-overlay-safety { display: flex; flex-wrap: wrap; }
   .strip-discovery.is-embedded { width: calc(100% - 24px); padding: 14px 0 24px; }
 
   .sh { overflow-x: hidden; overflow-y: auto; }
@@ -643,6 +643,7 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .card-commissioning-recovery { display: grid; gap: 12px; min-width: 0; }
 .card-commissioning-recovery > .btn,
 .card-commissioning-recovery-alternative > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; height: auto; white-space: normal; text-align: left; }
+.card-commissioning[data-stage='install-safely'] > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; height: auto; white-space: normal; text-align: left; }
 .card-commissioning-recovery-alternative { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
 .card-commissioning-recovery-alternative h4 { margin: 0; font-size: 13px; }
 
@@ -687,12 +688,12 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
   .install-intro { padding-top: 2px; }
   .install-task > .card-commissioning-steps li { padding-right: 5px; font-size: 9.5px; }
   .install-card-check { grid-template-columns: 1fr; }
-  .install-card-check .btn-lg { width: 100%; min-height: 48px; }
+  .install-card-check .btn-lg { justify-self: start; width: fit-content; max-width: 100%; min-height: 48px; }
   .install-check-ok,
   .install-check-error { grid-column: 1; }
   .install-confirm { grid-template-columns: 1fr; }
-  .install-confirm-action { grid-column: 1; grid-row: auto; width: 100%; justify-items: stretch; }
-  .install-confirm-action .btn-lg { width: 100%; min-height: 48px; }
+  .install-confirm-action { grid-column: 1; grid-row: auto; width: 100%; justify-items: start; }
+  .install-confirm-action .btn-lg { width: fit-content; max-width: 100%; min-height: 48px; }
   .install-confirm label { grid-column: 1; }
 }
 
