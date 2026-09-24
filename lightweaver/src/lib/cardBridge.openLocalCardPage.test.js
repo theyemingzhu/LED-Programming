@@ -15,7 +15,7 @@ import {
   retargetCardBridge,
   sendCardBridgeRequest,
 } from './cardBridge.js';
-import { getSharedCardLink, reportCardStatusEnvelope } from './cardLink.js';
+import { connectCardLink, getSharedCardLink, reportCardStatusEnvelope } from './cardLink.js';
 import { pairDiscoveredCard } from './cardPairing.js';
 import { factoryCardReadyForNetworkFirmwareUpdate } from './firmwareUpdatePlan.js';
 
@@ -1171,4 +1171,33 @@ test('releaseInheritedBridgeWindowName only clears a window that actually carrie
   win.name = CARD_BRIDGE_WINDOW_NAME;
   assert.equal(releaseInheritedBridgeWindowName(win), true);
   assert.equal(win.name, '');
+});
+
+test('background recovery reuses a live card popup without navigating or reopening one after close', () => {
+  const host = '192.168.50.119';
+  const tab = fakeCardTab();
+  const { opened } = stubWindow({ openResult: tab });
+
+  assert.equal(connectCardLink(host, { background: true }), null,
+    'background recovery must not create a popup when none is already owned');
+  assert.equal(opened.length, 0);
+
+  assert.equal(openCardBridge(host), tab);
+  assert.equal(opened.length, 1);
+
+  assert.equal(connectCardLink('192.168.50.120', { background: true }), null,
+    'a popup for another host must not be treated as this recovery target');
+  assert.equal(opened.length, 1);
+
+  assert.equal(connectCardLink(host, { background: true }), tab);
+  assert.equal(opened.length, 1, 'background recovery must not navigate or focus the card popup');
+  assert.equal(tab.focusCalls, 0);
+
+  tab.closed = true;
+  assert.equal(connectCardLink(host, { background: true }), null);
+  assert.equal(opened.length, 1, 'closing the popup cancels background reopening');
+
+  tab.closed = false;
+  assert.equal(connectCardLink(host), tab, 'an explicit connect still opens the card page');
+  assert.equal(opened.length, 2);
 });
