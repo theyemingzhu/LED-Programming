@@ -44,7 +44,7 @@ import {
   normalizeFirmwareUpdateCard,
   resolveInstalledFirmware,
 } from '../lib/firmwareUpdatePlan.js';
-import { getCardBridgeState } from '../lib/cardBridge.js';
+import { getCardBridgeState, openLocalCardPage } from '../lib/cardBridge.js';
 import { readPersistedCardIdentity } from '../lib/cardIdentity.js';
 import { classifyCardReadiness } from '../lib/cardReadiness.js';
 import { CARD_LINK_CONNECT_TIMEOUT_MS, isCardLinkConnected } from '../lib/cardLink.js';
@@ -1098,6 +1098,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const [wifiPasswordVisible, setWifiPasswordVisible] = useState(false);
     const [wifiOpenNetwork, setWifiOpenNetwork] = useState(false);
     const [wifiStatus, setWifiStatus] = useState({ state: 'idle', message: '' });
+    const [wifiPageError, setWifiPageError] = useState('');
     const [wifiNetworks, setWifiNetworks] = useState([]);
     const wifiSessionRef = useRef(null);
     const wifiInstallRef = useRef(null);
@@ -1960,8 +1961,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               })(); }}>Check current attempt</button>}
               <button type="button" className="btn primary" disabled={wifiBusy || !wifiSsid || (!wifiOpenNetwork && !wifiPassword)} onClick={() => { void joinWifiUsb(); }}>Join Wi-Fi over USB</button>
             </> : <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Retry USB setup</button>}
-            <button type="button" className="btn" disabled={wifiBusy} onClick={() => { void completeWifiSetup({ state: 'inconclusive', stationIp: '' }); }}>Use card setup page instead</button>
+            <button type="button" className="btn" disabled={wifiBusy} onClick={() => {
+              const result = openLocalCardPage('192.168.4.1', { path: '/?wifiSetup=1', reason: 'usb-wifi-fallback' });
+              setWifiPageError(result.ok ? '' : 'The card setup page could not open. Allow the popup, then try again. USB setup remains available here.');
+            }}>Use card setup page instead</button>
           </div>
+          {wifiPageError && <p role="alert">{wifiPageError}</p>}
           <p>USB verifies this exact card and its Wi-Fi result. Studio checks its local page before enabling controls.</p>
         </>}
       </section>

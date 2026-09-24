@@ -15,6 +15,7 @@ import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourne
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
 import { hasResumableCommissioning, hasResumablePreservingUsbUpdate, openCardFlow } from '../lib/cardFlowEntry.js';
 import { readFirmwareUpdateSession } from '../lib/cardFirmwareUpdater.js';
+import { openLocalCardPage } from '../lib/cardBridge.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
@@ -153,6 +154,7 @@ export function SetupScreen({
   // role="alert" — a status line, not a warning.
   const [adoptionNotice, setAdoptionNotice] = useState('');
   const [pairState, setPairState] = useState({ busy: false, message: '' });
+  const [wifiPageError, setWifiPageError] = useState('');
   const [ledCountDraft, setLedCountDraft] = useState('');
   // Rename the project right in the status row: click the name, type, Enter
   // or blur commits through the same path as the top bar (setProjectName),
@@ -177,6 +179,8 @@ export function SetupScreen({
   resolveInputsRef.current = { currentProject, activeCloudProjects, browserProjects };
 
   const exactTransport = CONNECTED_CARD_LINK_STATES.includes(cardLink?.state);
+  const verifiedSetupAp = exactTransport && cardLink?.host === '192.168.4.1'
+    && Boolean(cardLink?.card?.id) && cardLink?.readiness?.cardId === cardLink.card.id;
   const cardReachable = exactTransport || connected
     || (cardLink?.state === 'revalidating' && Boolean(cardLink?.card?.id || cardLink?.readiness?.cardId));
 
@@ -933,6 +937,16 @@ export function SetupScreen({
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
   const firmwareBannerCopy = readyBannerFirmwareCopy(firmwareStatus);
+  const continueWifiInStudio = () => openCardFlow('configure-wifi', {
+    lifecycle: cardLifecycle,
+    journey,
+    resumableCommissioning: hasResumableCommissioning(commissioningFlow),
+    resumablePreservingUsbUpdate: hasResumablePreservingUsbUpdate({
+      session: readFirmwareUpdateSession(),
+      cardId: cardLink?.card?.id || cardLink?.expectedCard?.id || readPersistedCardIdentity()?.id || '',
+      releaseManifest: firmwareReleaseManifest,
+    }),
+  });
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
       return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
@@ -1029,26 +1043,23 @@ export function SetupScreen({
               </p>
             )
           ) : taskId === 'configure-wifi' ? (
-            // The one entry contract decides where Wi-Fi continues: Install's
-            // commissioning panel while a stage is resumable, otherwise the
-            // Connect panel's setup-network join steps (phase 6). This screen
-            // already tracks the live commissioning flow, so it passes what it
-            // knows instead of having openCardFlow re-read storage.
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="setup-continue-wifi"
-              onClick={() => openCardFlow('configure-wifi', {
-                lifecycle: cardLifecycle,
-                journey,
-                resumableCommissioning: hasResumableCommissioning(commissioningFlow),
-                resumablePreservingUsbUpdate: hasResumablePreservingUsbUpdate({
-                  session: readFirmwareUpdateSession(),
-                  cardId: cardLink?.card?.id || cardLink?.expectedCard?.id || readPersistedCardIdentity()?.id || '',
-                  releaseManifest: firmwareReleaseManifest,
-                }),
-              })}
-            >Continue Wi-Fi setup</button>
+            <>
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="setup-continue-wifi"
+                onClick={() => {
+                  if (verifiedSetupAp) {
+                    const result = openLocalCardPage('192.168.4.1', { path: '/?wifiSetup=1', reason: 'setup-wifi' });
+                    setWifiPageError(result.ok ? '' : 'The card setup page could not open. Allow the popup, then try again.');
+                    return;
+                  }
+                  continueWifiInStudio();
+                }}
+              >Continue Wi-Fi setup</button>
+              {verifiedSetupAp && <button type="button" className="btn" onClick={continueWifiInStudio}>Use Studio setup instead</button>}
+              {wifiPageError && <p role="alert">{wifiPageError}</p>}
+            </>
           ) : (
             <>
               {canFindInPlace ? (

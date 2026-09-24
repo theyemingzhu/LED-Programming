@@ -441,6 +441,42 @@ test('Card overview opens a visible Wi-Fi form and explains the next step after 
   await expect(page.getByRole('button', { name: 'Open Wi-Fi setup' })).toBeVisible();
 });
 
+test('a verified card on its setup AP opens its Wi-Fi page from Continue Wi-Fi setup', async ({ page }) => {
+  const cardId = 'lw-aabbccddeeff';
+  const status = readyStatus(cardId, {
+    firmwareVersion: '1.2.3', runtimePhase: 'factory', knownGoodProject: false,
+    commandReady: false, outputReady: false, playbackReady: false,
+    wifi: { configured: false, transport: 'ap', transition: 'setup-ap', apActive: true, ip: '192.168.4.1' },
+  });
+  await page.route('http://192.168.4.1/api/status', route => route.fulfill({ json: status }));
+  await page.addInitScript(identity => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    (window as any).__wifiPageOpens = [];
+    window.open = ((url?: string | URL) => {
+      (window as any).__wifiPageOpens.push(String(url || ''));
+      return { closed: false, focus() {}, postMessage() {}, location: { href: String(url || '') } } as unknown as Window;
+    }) as typeof window.open;
+  }, { version: 1, id: cardId, firmwareVersion: '1.2.3', buildId: 'a'.repeat(40) });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'wifi', { state: 'setup-ap' });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await dispatchCardLink(page, [{
+    type: 'direct-status', connected: true, host: '192.168.4.1',
+    card: { id: cardId, firmwareVersion: '1.2.3', buildId: 'a'.repeat(40) },
+    expectedCard: { id: cardId }, readiness: status, acknowledgedAt: new Date().toISOString(),
+  }]);
+  await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'configure-wifi');
+  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
+  const opened = await page.evaluate(() => (window as any).__wifiPageOpens as string[]);
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toContain('http://192.168.4.1/?wifiSetup=1');
+  expect(opened[0]).not.toContain('bridgeUtility=1');
+  await expect(page).toHaveURL(/#screen=card&section=overview$/);
+  await page.getByRole('button', { name: 'Use Studio setup instead', exact: true }).click();
+  await expect(page).toHaveURL(/#screen=card&section=install$/);
+});
+
 test('AP setup waits for a verified join and offers a bounded manual gallery reconnect', async ({ page }) => {
   const reconnectRequests: string[] = [];
   await page.route('http://lightweaver.local/**', route => {
