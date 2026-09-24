@@ -61,13 +61,14 @@ export function classifyFooterFirmwareStatus(installed, verifiedRelease, { check
   if (!card) {
     return result('release-unknown', null, release?.buildNumber ?? null, `Card firmware unknown · latest ${release?.buildNumber ?? 'unknown'}`, false);
   }
+  const usbProof = installed?.source === 'usb-runtime' ? ' · USB verified' : '';
 
   if (!release) {
     return result(
       'release-unknown',
       card.buildNumber,
       null,
-      `Card firmware ${installedName(card)} · latest unknown`,
+      `Card firmware ${installedName(card)} · latest unknown${usbProof}`,
       false,
     );
   }
@@ -77,19 +78,19 @@ export function classifyFooterFirmwareStatus(installed, verifiedRelease, { check
   // equality is still exact release evidence; use the release's known number
   // for the owner-facing label without claiming USB read that number.
   if (card.buildNumber === null && card.buildId === release.buildId) {
-    return result('current', card.buildNumber, release.buildNumber, `Card firmware ${release.buildNumber} ✓`, false);
+    return result('current', card.buildNumber, release.buildNumber, `Card firmware ${release.buildNumber} ✓${usbProof}`, false);
   }
 
   if (card.buildNumber === null) {
-    return result('legacy', null, release.buildNumber, `Card firmware ${installedName(card)} → ${release.buildNumber}`, true);
+    return result('legacy', null, release.buildNumber, `Card firmware ${installedName(card)} → ${release.buildNumber}${usbProof}`, true);
   }
   if (card.buildNumber > release.buildNumber) {
-    return result('development-build', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} · latest ${release.buildNumber}`, false);
+    return result('development-build', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} · latest ${release.buildNumber}${usbProof}`, false);
   }
   if (card.buildNumber < release.buildNumber || card.buildId !== release.buildId) {
-    return result('update-available', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} → ${release.buildNumber}`, true);
+    return result('update-available', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} → ${release.buildNumber}${usbProof}`, true);
   }
-  return result('current', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} ✓`, false);
+  return result('current', card.buildNumber, release.buildNumber, `Card firmware ${card.buildNumber} ✓${usbProof}`, false);
 }
 
 // Wi-Fi transport is the live answer. USB Find Card is the answer when that

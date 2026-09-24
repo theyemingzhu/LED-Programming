@@ -174,6 +174,8 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
     (window as any).__preservingUsbWifi = state;
     let appReady = !['sending', 'verification-unknown'].includes(savedPhase);
     let controller: ReadableStreamDefaultController<Uint8Array>;
+    let requestBuffer = '';
+    let requestDecoder = new TextDecoder();
     const initial = JSON.parse(sessionStorage.getItem('lw_firmware_update_session_v1') || 'null')?.usbWifiAttempt;
     let attemptId = initial?.id || '';
     let generation = attemptId ? 1 : 0;
@@ -182,9 +184,15 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
       open: async () => {
         if (!appReady) throw new Error('Card is still in ROM loader');
         state.opens += 1;
+        requestBuffer = '';
+        requestDecoder = new TextDecoder();
         port.readable = new ReadableStream({ start(value) { controller = value; } });
         port.writable = new WritableStream({ write(bytes) {
-          const request = JSON.parse(new TextDecoder().decode(bytes).trim());
+          requestBuffer += requestDecoder.decode(bytes, { stream: true });
+          const newline = requestBuffer.indexOf('\n');
+          if (newline < 0) return;
+          const request = JSON.parse(requestBuffer.slice(0, newline));
+          requestBuffer = requestBuffer.slice(newline + 1);
           state.requests.push(request);
           if (request.command === 'hello') state.hellos += 1;
           if (request.command === 'hello' && state.hellos <= missedHelloReplies) return;
@@ -290,6 +298,9 @@ test('[usb-unknown-recovery] legacy sending session with no old boot resets exac
   await panel.getByTestId('preserving-usb-wifi-resume').click();
   await expect(page.getByTestId('usb-wifi-setup')).toBeVisible();
   await expect(page.getByTestId('usb-wifi-status')).toContainText('Exact card and firmware verified');
+  await expect(page.getByTestId('footer-firmware-status')).toContainText('USB verified');
+  await expect(page.getByTestId('footer-firmware-status')).not.toContainText('unknown');
+  await expect(page.getByTestId('card-link-status')).not.toHaveText(/Connected/);
   expect(await page.evaluate(() => (window as any).__preservingUsbWifi.romConnects)).toBe(1);
   expect(await page.evaluate(() => (window as any).__preservingUsbWifi.resets)).toBeGreaterThan(0);
   expect(await page.evaluate(() => (window as any).__preservingUsbWifi.requests.map((request: any) => request.command))).toEqual(['hello']);
@@ -330,6 +341,7 @@ for (const scenario of ['wrong-rom-card', 'old-build', 'stale-boot', 'no-hello']
     const panel = page.getByTestId('preserving-update-panel');
     await panel.getByTestId('preserving-usb-wifi-resume').click();
     await expect(panel.getByRole('alert')).toContainText(/unknown|different card/i);
+    await expect(page.getByTestId('footer-firmware-status')).not.toContainText('USB verified');
     await expect(panel).toContainText('Not verified after USB transfer');
     await expect(page.getByTestId('usb-wifi-setup')).toHaveCount(0);
     expect(await page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(0);
