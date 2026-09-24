@@ -80,6 +80,32 @@ test('stalled USB writer is bounded and never sends credentials', async () => {
   assert.ok(Date.now() - started < 1000);
   assert.equal(canceled, true);
 });
+test('retries only hello while the exact card application is still booting', async () => {
+  let hellos = 0;
+  const port = fakePort(request => {
+    hellos += 1;
+    return hellos === 1 ? null : response(request);
+  });
+  const session = await openUsbWifiSession({ port, expected, openTimeoutMs: 100, requestTimeoutMs: 20, helloReadyTimeoutMs: 100 });
+  assert.equal(session.identity.cardId, expected.cardId);
+  assert.deepEqual(port.writes.map(request => request.command), ['hello', 'hello']);
+  await session.close();
+});
+test('a non-answering card stays unverified after bounded hello retries', async () => {
+  const port = fakePort(() => null);
+  const started = Date.now();
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 75, requestTimeoutMs: 20,
+    helloReadyTimeoutMs: 75 }), { code: 'timeout' });
+  assert.ok(Date.now() - started < 500);
+  assert.ok(port.writes.length >= 2 && port.writes.length <= 5);
+  assert.ok(port.writes.every(request => request.command === 'hello'));
+});
+test('a wrong hello identity fails immediately even while boot retries are allowed', async () => {
+  const port = fakePort(request => response(request, { cardId: 'lw-wrong' }));
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 100, requestTimeoutMs: 20,
+    helloReadyTimeoutMs: 100 }), { code: 'identity_mismatch' });
+  assert.deepEqual(port.writes.map(request => request.command), ['hello']);
+});
 test('rejects passwords that the card cannot save without truncation', async () => {
   const port = fakePort(r => response(r));
   const session = await openUsbWifiSession({ port, expected });

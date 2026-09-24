@@ -1045,7 +1045,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             }).catch(cause => setError(cause?.message || 'Could not verify the updated card over USB. The update result remains unknown.'))
               .finally(() => { usbCheckBusyRef.current = false; setUsbCheckBusy(false); });
           }}>
-            {usbResultUnknown ? 'Check running firmware over USB' : 'Resume Wi-Fi setup with USB'}
+            {usbCheckBusy ? 'Checking card…' : usbResultUnknown ? 'Check running firmware over USB' : 'Resume Wi-Fi setup with USB'}
           </button>
         )}
         {usbCheckNote && <p role="status">{usbCheckNote}</p>}
@@ -1640,7 +1640,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       await wifiSessionRef.current?.close();
       wifiSessionRef.current = null;
       try {
-        const session = await openUsbWifiSession({ port: context.port, expected: context.expected });
+        const session = await openUsbWifiSession({ port: context.port, expected: context.expected,
+          helloReadyTimeoutMs: context.helloReadyTimeoutMs || 0 });
         if (!mountedRef.current) { await session.close(); return null; }
         if (context.kind === 'preserving-update') {
           preservingUsbRuntimeVerifiedRef.current = true;
@@ -1757,6 +1758,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       }
       wifiInstallRef.current = {
         kind: 'preserving-update', port: selectedPort, attempt: saved.usbWifiAttempt || null,
+        helloReadyTimeoutMs: resultUnknown ? 12_000 : 0,
         expected: { cardId: saved.cardId, firmwareVersion: saved.targetFirmwareVersion,
           buildId: saved.targetBuildId, buildNumber: saved.targetBuildNumber,
           previousBootId: saved.previousBootId || '' },
