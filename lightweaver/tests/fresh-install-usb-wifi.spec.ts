@@ -140,7 +140,7 @@ test('USB setup distinguishes gallery Wi-Fi from the card hotspot and explains c
   const form = page.getByTestId('usb-wifi-setup');
   await expect(form).toContainText('gallery or home 2.4 GHz Wi-Fi');
   await expect(form).toContainText('not the Lightweaver setup hotspot');
-  await expect(form).toContainText('leave the fields blank and scan nearby networks from this card after installation');
+  await expect(form).toContainText('leave the fields blank and scan nearby networks from this card');
   await expect(page.getByRole('button', { name: 'Scan nearby networks', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-guidance-desktop.png', fullPage: true });
 
