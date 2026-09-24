@@ -17,6 +17,18 @@ test('footer firmware status requires both the numbered build and exact revision
   });
 });
 
+test('exact runtime firmware verified over USB is named without implying a LAN connection', () => {
+  const usb = { id: 'lw-b0fe81f61b44', buildNumber: 1154, buildId: BUILD_ID, source: 'usb-runtime' };
+  const selected = resolveFooterFirmwareInstalled({ transportConnected: false, usbInspectedFirmware: usb });
+  assert.equal(selected, usb);
+  assert.deepEqual(classifyFooterFirmwareStatus(selected, RELEASE), {
+    state: 'current', installedBuildNumber: 1154, releaseBuildNumber: 1154,
+    label: 'Card firmware 1154 ✓ · USB verified', actionable: false,
+  });
+  const lan = { id: 'lw-another-card', buildNumber: 1100, buildId: OTHER_BUILD_ID };
+  assert.equal(resolveFooterFirmwareInstalled({ transportConnected: true, connectedCard: lan, usbInspectedFirmware: usb }), lan);
+});
+
 test('footer firmware status offers the verified release when the card has an older build', () => {
   assert.deepEqual(classifyFooterFirmwareStatus({ buildNumber: 1123, buildId: BUILD_ID }, RELEASE), {
     state: 'update-available',

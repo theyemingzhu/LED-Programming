@@ -21,6 +21,13 @@ export function usbWifiErrorMessage(code) { return MESSAGES[code] || 'USB setup 
 function failure(code) { return Object.assign(new Error(usbWifiErrorMessage(code)), { code }); }
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function requestId() { return globalThis.crypto.randomUUID(); }
+// The ESP32-S3's pinned HWCDC core has a 256-byte receive queue. The app
+// drains at most 256 bytes per loop and its factory/blank loop waits 10 ms,
+// so a whole authenticated JSON frame in one write can lose its tail before
+// the parser sees a newline. Small writes spaced across loop ticks keep the
+// exact same request and deadline without changing the card protocol.
+const SERIAL_WRITE_CHUNK_BYTES = 64;
+const SERIAL_WRITE_PACE_MS = 20;
 
 // No HTTP, browser storage, logging, or event bus participates in this channel.
 // Only this explicitly selected, freshly verified USB port receives secrets.
@@ -100,13 +107,26 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
     const response = new Promise((resolve, reject) => {
       pending = { id, command, resolve, reject, timer: setTimeout(() => rejectPending('timeout'), timeoutMs) };
     });
+    const frame = new TextEncoder().encode(JSON.stringify(message) + '\n');
     // Always attach the response rejection before awaiting writes, so a cable
     // removal during a write cannot leak an unhandled rejection or its input.
     try {
       // A hung writer must not hold the UI beyond the response deadline.
-      void writer.write(new TextEncoder().encode(JSON.stringify(message) + '\n')).catch(() => {
-        if (pending?.id === id) rejectPending('disconnected');
-      });
+      // Stop before each remaining chunk if this request timed out, was
+      // replaced, or its port was disconnected. Never retry a credential frame.
+      void (async () => {
+        try {
+          for (let offset = 0; offset < frame.length; offset += SERIAL_WRITE_CHUNK_BYTES) {
+            if (closed || pending?.id !== id) return;
+            await writer.write(frame.subarray(offset, offset + SERIAL_WRITE_CHUNK_BYTES));
+            if (offset + SERIAL_WRITE_CHUNK_BYTES < frame.length) await delay(SERIAL_WRITE_PACE_MS);
+          }
+        } catch {
+          if (pending?.id === id) rejectPending('disconnected');
+        } finally {
+          frame.fill(0);
+        }
+      })();
       const reply = await response;
       return { reply: validate(reply), id };
     } catch (error) {
@@ -114,6 +134,7 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
         || (error?.code === 'timeout' && !keepOpenOnTimeout)) await close();
       throw error;
     } finally {
+      frame.fill(0);
       if (Object.hasOwn(message, 'password')) message.password = '';
     }
   };

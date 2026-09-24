@@ -1175,9 +1175,13 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // already printed, including through the USB write — inspection is cleared
     // when flashing starts, but the card on the desk has not become unknown.
     useEffect(() => {
+      // A fresh exact runtime hello outranks the older ROM image inspected
+      // before the update. Keep that USB proof visible while this screen owns
+      // the session; it does not make the Wi-Fi transport connected.
+      if (preservingUsbRuntimeVerified) return;
       if (cardState.state === 'ready') reportInstallFirmwareEvidence(installedFirmware);
       else clearInstallFirmwareEvidence({ preserveVerification: true });
-    }, [cardState.state, installedFirmware]);
+    }, [cardState.state, installedFirmware, preservingUsbRuntimeVerified]);
     useEffect(() => () => clearInstallFirmwareEvidence({ preserveVerification: true }), []);
     const updateReadiness = preservingFixture?.readiness || cardLink?.readiness || null;
     const connectedCardCandidate = preservingFixture?.card || cardLink?.card || null;
@@ -1648,6 +1652,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         if (context.kind === 'preserving-update') {
           preservingUsbRuntimeVerifiedRef.current = true;
           setPreservingUsbRuntimeVerified(true);
+          reportInstallFirmwareEvidence({ ...session.identity, id: session.identity.cardId, source: 'usb-runtime' });
           const saved = readFirmwareUpdateSession();
           if (saved?.mode === 'usb' && saved.cardId === session.identity.cardId
             && saved.targetBuildId === session.identity.buildId
