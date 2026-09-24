@@ -207,6 +207,10 @@ test('[J07] Card Home tracks an active light test, agrees again once the card le
     'Card Home must show the live light test the moment the card reports one',
   ).toHaveAttribute('data-journey-task', 'confirm-visible-lights', { timeout: CONNECT_BUDGET_MS });
 
+  await expect.poll(async () => (await readProject(page)).id, {
+    message: 'the initial project adoption must persist before the probation baseline',
+    timeout: CONNECT_BUDGET_MS,
+  }).toBeTruthy();
   const projectBefore = await readProject(page);
 
   // Part 2 — the card's own probation clock elapses with nobody confirming or
