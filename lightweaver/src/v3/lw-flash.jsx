@@ -1720,6 +1720,35 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       }
     };
 
+    const checkCurrentWifiUsbAttempt = async () => {
+      const context = wifiInstallRef.current;
+      const session = wifiSessionRef.current;
+      const savedAttempt = context?.kind === 'preserving-update'
+        ? readFirmwareUpdateSession()?.usbWifiAttempt || context.attempt
+        : context?.flow?.usbWifiAttempt;
+      if (!session || !savedAttempt) { await connectWifiUsb(); return; }
+      if (wifiBusyRef.current) return;
+      wifiBusyRef.current = true;
+      setWifiStatus({ state: 'joining', message: 'Checking the current Wi-Fi attempt on this card…' });
+      try {
+        // A live verified USB session can read the exact attempt without
+        // closing and reopening the native serial port. Reopening is reserved
+        // for a genuinely disconnected session.
+        const result = await session.resumeAttempt(savedAttempt);
+        if (!mountedRef.current) return;
+        if (result.state === 'station') await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
+        else setWifiStatus({ state: result.state, message: result.message, diagnostics: result.diagnostics });
+      } catch (error) {
+        if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
+          await session.close();
+          if (wifiSessionRef.current === session) wifiSessionRef.current = null;
+        }
+        if (mountedRef.current) setWifiStatus({ state: 'error', message: error?.code === 'attempt_mismatch'
+          ? 'This card restarted or another Wi-Fi attempt replaced the previous one. Check its local setup page, or enter the network details again.'
+          : usbWifiErrorMessage(error?.code) });
+      } finally { wifiBusyRef.current = false; }
+    };
+
     const resumePreservingUsbWifi = async ({ port = null } = {}) => {
       const saved = readFirmwareUpdateSession();
       const target = updateReleaseState.state === 'ready' ? updateReleaseState.release.manifest : null;
@@ -1846,6 +1875,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     };
 
     const wifiBusy = ['connecting', 'joining', 'scanning'].includes(wifiStatus.state);
+    const hasSavedWifiAttempt = Boolean(wifiInstallRef.current?.kind === 'preserving-update'
+      ? readFirmwareUpdateSession()?.usbWifiAttempt || wifiInstallRef.current.attempt
+      : wifiInstallRef.current?.flow?.usbWifiAttempt);
     const preservingUsbWifi = wifiInstallRef.current?.kind === 'preserving-update';
     const wifiForm = (
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
@@ -1888,7 +1920,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           {wifiStatus.state === 'failed' && !wifiOpenNetwork && !wifiPassword && <p role="status" data-testid="usb-wifi-retry-guidance">Keep USB connected. Check or choose the gallery network, re-enter its password, then select “Join Wi-Fi over USB” again. You do not need to reinstall firmware.</p>}
           <div className="install-confirm-action">
             {wifiSessionRef.current ? <>
-              <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Reconnect USB setup</button>
+              <button type="button" className="btn" disabled={wifiBusy} onClick={checkCurrentWifiUsbAttempt}>{hasSavedWifiAttempt ? 'Check current attempt' : 'Reconnect USB setup'}</button>
               <button type="button" className="btn" disabled={wifiBusy} onClick={scanWifiUsb}>Scan nearby networks</button>
               {wifiStatus.state === 'pending' && <button type="button" className="btn" onClick={() => { void (async () => {
                 setWifiStatus({ state: 'joining', message: 'Checking the current Wi-Fi attempt on this card…' });

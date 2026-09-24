@@ -288,6 +288,42 @@ test('[FA-post-update-wifi] after an update, join the Lightweaver network first'
   ).toMatch(/wifi|wi-fi|join|setup network|continue wi-fi/i);
 });
 
+test('[FA-resume-usb-wifi] saved exact preserving update opens its USB resume action from Card Home', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    localStorage.setItem('lw_card_host', '192.168.4.1');
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: 'lw-aabbccddeeff' }));
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: { requestPort: async () => ({}) } });
+  });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  const manifest = await page.evaluate(async () => (await (await fetch('/firmware/release-manifest.json')).json()));
+  await page.evaluate(release => {
+    sessionStorage.setItem('lw_firmware_update_session_v1', JSON.stringify({
+      version: 1, mode: 'usb', phase: 'restarting', cardId: 'lw-aabbccddeeff',
+      previousBootId: 'boot-before-update', expectedProjectHead: '', expectedProjectFingerprint: '',
+      targetFirmwareVersion: release.firmwareVersion, targetBuildId: release.buildId,
+      targetBuildNumber: release.buildNumber, ticketSha256: 'a'.repeat(64), acknowledgedBytes: 0,
+    }));
+  }, manifest);
+  await expect(page.getByTestId('setup-journey')).toHaveAttribute('data-journey-task', 'configure-wifi', {
+    timeout: CONNECT_BUDGET_MS,
+  });
+  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
+  await expect(page).toHaveURL(/#screen=card&section=install$/);
+  await expect(page.getByTestId('preserving-usb-wifi-resume')).toBeVisible();
+
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    const key = 'lw_firmware_update_session_v1';
+    const saved = JSON.parse(sessionStorage.getItem(key) || '{}');
+    sessionStorage.setItem(key, JSON.stringify({ ...saved, targetBuildId: 'b'.repeat(40) }));
+  });
+  await page.getByRole('button', { name: 'Continue Wi-Fi setup', exact: true }).click();
+  await expect(page).toHaveURL(/#screen=card&section=overview$/);
+  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toBeVisible();
+});
+
+
 test('[FA-wifi-saved] saved home Wi-Fi continues to the next unfinished step', async ({ page }) => {
   const spec = cardState('installed-match');
   const card = createCardSimulator(spec);

@@ -5,6 +5,7 @@ import {
   CARD_FLOW_INTENTS,
   OPEN_CONNECT_PANEL_EVENT,
   hasResumableCommissioning,
+  hasResumablePreservingUsbUpdate,
   openCardFlow,
   resolveCardIntent,
 } from './cardFlowEntry.js';
@@ -139,6 +140,31 @@ test('configure-wifi routes to Install only while a commissioning stage is resum
       { action: 'connect-panel', connectIntent: 'setup-network' },
     );
   }
+});
+
+test('saved preserving USB update routes Wi-Fi setup to Install only for the exact card and verified release', () => {
+  const session = {
+    mode: 'usb', phase: 'restarting', cardId: 'lw-aabbccddeeff',
+    targetFirmwareVersion: '1.2.3', targetBuildId: 'a'.repeat(40), targetBuildNumber: 2105,
+  };
+  const releaseManifest = { firmwareVersion: '1.2.3', buildId: 'a'.repeat(40), buildNumber: 2105 };
+  const eligible = { session, cardId: session.cardId, releaseManifest };
+  assert.equal(hasResumablePreservingUsbUpdate(eligible), true);
+  assert.deepEqual(resolveCardIntent('configure-wifi', { resumablePreservingUsbUpdate: true }), {
+    action: 'route', hash: '#screen=card&section=install',
+  });
+  for (const context of [
+    { ...eligible, cardId: 'lw-other' },
+    { ...eligible, cardId: '' },
+    { ...eligible, releaseManifest: null },
+    { ...eligible, releaseManifest: { ...releaseManifest, buildId: 'b'.repeat(40) } },
+    { ...eligible, releaseManifest: { ...releaseManifest, buildNumber: 2106 } },
+    { ...eligible, session: { ...session, mode: 'wifi' } },
+    { ...eligible, session: { ...session, phase: 'rolled-back' } },
+  ]) assert.equal(hasResumablePreservingUsbUpdate(context), false);
+  assert.deepEqual(resolveCardIntent('configure-wifi', { resumablePreservingUsbUpdate: false }), {
+    action: 'connect-panel', connectIntent: 'setup-network',
+  });
 });
 
 test('hasResumableCommissioning recognizes exactly the resumable stages', () => {
