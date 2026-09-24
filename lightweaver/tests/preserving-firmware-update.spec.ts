@@ -132,10 +132,10 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
 
 async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongCard = false, wrongBuild = false,
   staleBoot = false, noHello = false, wrongRomCard = false, savedAttempt = false, savedUpdate = true,
-  savedPhase = 'restarting', bootstrapFailure = false, emptyPriorBoot = false, missedHelloReplies = 0, failedJoinStage = '' }: { eligible?: boolean, wrongCard?: boolean, wrongBuild?: boolean,
+  savedPhase = 'restarting', bootstrapFailure = false, emptyPriorBoot = false, missedHelloReplies = 0, failedJoinStage = '', rebootOnReopen = false }: { eligible?: boolean, wrongCard?: boolean, wrongBuild?: boolean,
   staleBoot?: boolean, noHello?: boolean, wrongRomCard?: boolean, savedAttempt?: boolean,
-  savedUpdate?: boolean, savedPhase?: string, bootstrapFailure?: boolean, emptyPriorBoot?: boolean, missedHelloReplies?: number, failedJoinStage?: string } = {}) {
-  await page.addInitScript(({ cardId, oldBuild, targetBuild, eligible, wrongCard, wrongBuild, staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage }) => {
+  savedUpdate?: boolean, savedPhase?: string, bootstrapFailure?: boolean, emptyPriorBoot?: boolean, missedHelloReplies?: number, failedJoinStage?: string, rebootOnReopen?: boolean } = {}) {
+  await page.addInitScript(({ cardId, oldBuild, targetBuild, eligible, wrongCard, wrongBuild, staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage, rebootOnReopen }) => {
     if (!sessionStorage.getItem('__LW_PRESERVING_USB_WIFI_FIXTURE__')) {
       localStorage.clear();
       sessionStorage.clear();
@@ -179,10 +179,12 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
     const initial = JSON.parse(sessionStorage.getItem('lw_firmware_update_session_v1') || 'null')?.usbWifiAttempt;
     let attemptId = initial?.id || '';
     let generation = attemptId ? 1 : 0;
+    let bootId = 'boot-new';
     const port: any = {
       readable: null, writable: null,
       open: async () => {
         if (!appReady) throw new Error('Card is still in ROM loader');
+        if (rebootOnReopen && state.opens > 0) { bootId = 'boot-reopened'; attemptId = ''; generation = 0; }
         state.opens += 1;
         requestBuffer = '';
         requestDecoder = new TextDecoder();
@@ -201,7 +203,7 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
           const reply = {
             protocol: 'lightweaver-usb-wifi', version: 1, id: request.id, command: request.command,
             ok: true, cardId: wrongCard ? 'lw-112233445566' : cardId,
-            bootId: staleBoot ? 'boot-old' : 'boot-new', firmwareVersion: '1.2.0',
+            bootId: staleBoot ? 'boot-old' : bootId, firmwareVersion: '1.2.0',
             buildId: wrongBuild ? oldBuild : targetBuild, buildNumber: 1300,
             usbWifiProvisioning: true, freshInstallEligible: eligible, attemptId,
             wifi: { transition: attemptId ? 'handoff-ready' : 'setup-ap', stationIp: attemptId && !failedJoinStage ? '192.168.18.70' : '',
@@ -235,7 +237,7 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
         source: 'usb-flash', firmwareVersion: '1.1.1', buildId: oldBuild, buildNumber: 1198 },
     });
   }, { cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, eligible, wrongCard, wrongBuild,
-    staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage });
+    staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage, rebootOnReopen });
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15_000 });
 }
@@ -302,6 +304,30 @@ test('[preserving-usb-wifi] a failed saved attempt shows safe card diagnostics w
   await expect(details).toContainText('Driver reason: 0');
   await expect(details).toContainText('Card note: router did not assign an IP address');
   expect(await page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(0);
+});
+
+test('[preserving-usb-wifi] same-form attempt check keeps the live USB session and failure details', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page, { failedJoinStage: 'association', rebootOnReopen: true });
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await expect(form.getByTestId('usb-wifi-status')).toContainText('Exact card and firmware verified');
+  await form.getByTestId('usb-wifi-ssid').fill('Gallery network');
+  await form.getByTestId('usb-wifi-password').fill('gallerypass123');
+  await form.getByRole('button', { name: 'Join Wi-Fi over USB' }).click();
+  await expect(form.getByTestId('usb-wifi-failure-details')).toBeVisible();
+  const before = await page.evaluate(() => ({
+    opens: (window as any).__preservingUsbWifi.opens,
+    closes: (window as any).__preservingUsbWifi.closes,
+    provisions: (window as any).__preservingUsbWifi.provisions,
+  }));
+  await form.getByRole('button', { name: /^(Reconnect USB setup|Check current attempt)$/ }).click();
+  await expect(form.getByTestId('usb-wifi-failure-details')).toBeVisible();
+  await expect(form.getByTestId('usb-wifi-status')).not.toContainText('another Wi-Fi attempt');
+  expect(await page.evaluate(() => ({
+    opens: (window as any).__preservingUsbWifi.opens,
+    closes: (window as any).__preservingUsbWifi.closes,
+    provisions: (window as any).__preservingUsbWifi.provisions,
+  }))).toEqual(before);
 });
 
 test('[usb-unknown-recovery] legacy sending session with no old boot resets exact ROM card and verifies target runtime without a second write', async ({ page }) => {

@@ -99,7 +99,7 @@ import { bootstrapStudioCardConnection } from '../lib/studioCardBootstrap.js';
 import { CONNECTED_CARD_LINK_STATES } from '../lib/setupJourney.js';
 import { assembleSetupJourney } from '../lib/setupJourneyInputs.js';
 import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
-import { OPEN_CONNECT_PANEL_EVENT } from '../lib/cardFlowEntry.js';
+import { OPEN_CONNECT_PANEL_EVENT, hasResumablePreservingUsbUpdate } from '../lib/cardFlowEntry.js';
 import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
@@ -2352,6 +2352,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
               firmwareStatus={firmwareStatus}
+              firmwareReleaseManifest={firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null}
               onRenameProject={setProjectName}
               replaceProject={replaceProject}
               currentProject={serializeProject()}
@@ -2432,6 +2433,14 @@ function Shell({ offlineUpdateController = null }) {
         lifecycle={cardLifecycle}
         onOpenSetup={() => {
           closeConnectionCenter();
+          if (footerJourney.taskId === 'configure-wifi' && hasResumablePreservingUsbUpdate({
+            session: readFirmwareUpdateSession(),
+            cardId: cardLink.card?.id || cardLink.expectedCard?.id || readPersistedCardIdentity()?.id || '',
+            releaseManifest: firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null,
+          })) {
+            openCardSection('install');
+            return;
+          }
           openSetupTask();
         }}
         onClose={closeConnectionCenter}
