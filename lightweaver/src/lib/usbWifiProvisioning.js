@@ -24,10 +24,15 @@ function requestId() { return globalThis.crypto.randomUUID(); }
 
 // No HTTP, browser storage, logging, or event bus participates in this channel.
 // Only this explicitly selected, freshly verified USB port receives secrets.
-export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_000, requestTimeoutMs = 3_000 } = {}) {
+export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_000, requestTimeoutMs = 3_000,
+  helloReadyTimeoutMs = 0 } = {}) {
   if (!port?.open || !expected?.cardId || !expected?.buildId || !expected?.firmwareVersion
     || !Number.isSafeInteger(expected?.buildNumber)) throw failure('identity_mismatch');
-  const deadline = Date.now() + openTimeoutMs;
+  const startedAt = Date.now();
+  const deadline = startedAt + openTimeoutMs;
+  // Recovery may open the USB port before the restarted application's serial
+  // handler reaches its main loop. Share the existing open budget with hello.
+  const helloDeadline = helloReadyTimeoutMs > 0 ? startedAt + Math.min(openTimeoutMs, helloReadyTimeoutMs) : 0;
   while (true) {
     try { await port.open({ baudRate: 115200 }); break; }
     catch { if (Date.now() >= deadline) throw failure('disconnected'); await delay(400); }
@@ -80,7 +85,7 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
       rejectPending('disconnected');
     })();
   } catch { await close(); throw failure('disconnected'); }
-  const request = async (command, payload = {}, { beforeSend } = {}) => {
+  const request = async (command, payload = {}, { beforeSend, timeoutMs = requestTimeoutMs, keepOpenOnTimeout = false } = {}) => {
     if (closed) throw failure('disconnected');
     if (pending) throw failure('busy');
     const id = requestId();
@@ -93,24 +98,40 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
       expectedBuildNumber: identity.buildNumber,
     } : {}), ...payload };
     const response = new Promise((resolve, reject) => {
-      pending = { id, command, resolve, reject, timer: setTimeout(() => rejectPending('timeout'), requestTimeoutMs) };
+      pending = { id, command, resolve, reject, timer: setTimeout(() => rejectPending('timeout'), timeoutMs) };
     });
     // Always attach the response rejection before awaiting writes, so a cable
     // removal during a write cannot leak an unhandled rejection or its input.
     try {
       // A hung writer must not hold the UI beyond the response deadline.
-      void writer.write(new TextEncoder().encode(JSON.stringify(message) + '\n')).catch(() => { rejectPending('disconnected'); });
+      void writer.write(new TextEncoder().encode(JSON.stringify(message) + '\n')).catch(() => {
+        if (pending?.id === id) rejectPending('disconnected');
+      });
       const reply = await response;
       return { reply: validate(reply), id };
     } catch (error) {
-      if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) await close();
+      if (['disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)
+        || (error?.code === 'timeout' && !keepOpenOnTimeout)) await close();
       throw error;
     } finally {
       if (Object.hasOwn(message, 'password')) message.password = '';
     }
   };
   try {
-    const { reply } = await request('hello');
+    let reply;
+    while (true) {
+      const remainingMs = helloDeadline - Date.now();
+      if (helloDeadline && remainingMs <= 0) throw failure('timeout');
+      try {
+        ({ reply } = await request('hello', {}, {
+          timeoutMs: helloDeadline ? Math.min(requestTimeoutMs, remainingMs) : requestTimeoutMs,
+          keepOpenOnTimeout: Boolean(helloDeadline),
+        }));
+        break;
+      } catch (error) {
+        if (error?.code !== 'timeout' || !helloDeadline || Date.now() >= helloDeadline) throw error;
+      }
+    }
     identity = Object.freeze({ cardId: reply.cardId, bootId: reply.bootId, firmwareVersion: reply.firmwareVersion,
       buildId: reply.buildId, buildNumber: reply.buildNumber,
       freshInstallEligible: reply.freshInstallEligible === true });
