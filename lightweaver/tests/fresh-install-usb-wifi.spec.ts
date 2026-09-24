@@ -131,7 +131,12 @@ test('fresh installer accepts Wi-Fi locally before any erase and keeps the setup
   await fillWifi(page);
   expect(await serialCommands(page)).toEqual([]);
   expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([]);
-  await expect(page.getByTestId('usb-wifi-setup')).toContainText('setup page remains available as a fallback');
+  const help = page.locator('.usb-wifi-help');
+  await expect(help).not.toHaveAttribute('open');
+  await help.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(help).toHaveAttribute('open');
+  await expect(help).toContainText('set up Wi-Fi later on the card setup page');
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-before-install.png', fullPage: true });
 });
 
@@ -160,9 +165,12 @@ test('USB Wi-Fi password visibility is keyboard controlled and resets after send
 test('USB setup distinguishes gallery Wi-Fi from the card hotspot and explains cleared-password retry', async ({ page, request }) => {
   await openFreshInstaller(page, request, 'unknown');
   const form = page.getByTestId('usb-wifi-setup');
-  await expect(form).toContainText('gallery or home 2.4 GHz Wi-Fi');
-  await expect(form).toContainText('not the Lightweaver setup hotspot');
-  await expect(form).toContainText('leave the fields blank and scan nearby networks from this card');
+  await expect(form.locator('.install-action-copy > p')).toContainText('home or gallery 2.4 GHz Wi-Fi, or scan after installation');
+  await expect(form.locator('.usb-wifi-help')).not.toHaveAttribute('open');
+  await form.locator('.usb-wifi-help summary').click();
+  await expect(form.locator('.usb-wifi-help')).toContainText('not the Lightweaver setup hotspot');
+  await expect(form.locator('.usb-wifi-help')).toContainText('leave the fields blank and scan nearby networks from this card');
+  await expect(form.locator('.usb-wifi-help')).toContainText('Studio never saves them');
   await expect(page.getByRole('button', { name: 'Scan nearby networks', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-guidance-desktop.png', fullPage: true });
 

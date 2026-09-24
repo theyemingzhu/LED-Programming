@@ -623,6 +623,10 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .usb-wifi-form { display: grid; gap: 16px; min-width: 0; }
 .usb-wifi-form h2 { margin: 0 0 6px; font-size: 16px; line-height: 1.4; }
 .usb-wifi-form p { margin: 0; color: var(--text-mid); line-height: 1.5; overflow-wrap: anywhere; }
+.usb-wifi-help { margin-top: 6px; color: var(--text-mid); font-size: 12px; }
+.usb-wifi-help > summary { box-sizing: border-box; width: fit-content; max-width: 100%; min-height: 44px; padding: 12px 0; cursor: pointer; color: var(--text-hi); }
+.usb-wifi-help > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.usb-wifi-help > div { display: grid; gap: 6px; padding: 4px 0 6px; }
 .usb-wifi-form fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .usb-wifi-form label { color: var(--text-hi); font-size: 13px; }
 .usb-wifi-form input:not([type="checkbox"]),
