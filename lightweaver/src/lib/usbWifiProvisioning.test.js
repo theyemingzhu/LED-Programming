@@ -25,6 +25,18 @@ test('verifies exact runtime before sending credentials and pins each request', 
   assert.equal(port.writes[1].password, 'secret123');
   await session.close();
 });
+test('verified hello exposes fresh-install Wi-Fi eligibility without trusting later replies', async () => {
+  const port = fakePort(r => response(r, { freshInstallEligible: r.command === 'hello' }));
+  const session = await openUsbWifiSession({ port, expected });
+  assert.equal(session.identity.freshInstallEligible, true);
+  await session.scan();
+  assert.equal(session.identity.freshInstallEligible, true);
+  await session.close();
+
+  const unavailable = await openUsbWifiSession({ port: fakePort(r => response(r)), expected });
+  assert.equal(unavailable.identity.freshInstallEligible, false);
+  await unavailable.close();
+});
 for (const [field, value] of [['cardId', 'lw-wrong'], ['buildId', 'b'.repeat(40)], ['buildNumber', 124], ['firmwareVersion', '1.2.4']]) {
   test(`rejects wrong ${field} before secrets leave Studio`, async () => {
     const port = fakePort(r => response(r, { [field]: value }));

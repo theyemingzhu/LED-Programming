@@ -222,6 +222,27 @@ test('USB flash identity outranks remembered firmware and clearly recommends a p
   await expect(page.getByTestId('install-update-plan')).toHaveCount(0);
 });
 
+test('stored app0 bytes with an unproven boot slot never become current firmware or a preserving update', async ({ page }) => {
+  await page.addInitScript(card => {
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify(card));
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
+      connection: { loader: {}, transport: { disconnect: async () => true } },
+      hardware: {
+        cardId: 'lw-plan-test', chipName: 'ESP32-S3', flashSize: '16MB', flashBytes: 16 * 1024 * 1024,
+        firmwareVersion: '1.1.42', buildId: '64b1f5da6725d472d54e59cfa8352c8b0bf864d9',
+        buildNumber: 2070, source: 'usb-app0-image',
+      },
+    });
+  }, remembered(2070));
+  await page.goto('/#screen=flash&mode=install', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Find connected card' }).click();
+  await expect(page.getByTestId('install-update-plan')).toContainText('Current firmwareUnknown');
+  await expect(page.getByTestId('preserving-update-panel')).toHaveCount(0);
+  await expect(page.getByTestId('footer-firmware-status')).toContainText('unknown');
+});
+
 test('LAN connection explains and releases an active USB inspection before any status probe', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.clear();
@@ -312,6 +333,50 @@ test('opening Set up card releases the USB loader so the card application can re
   await expect.poll(() => page.evaluate(() => (window as any).__usbSetupRelease.disconnects)).toBe(1);
   await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
 });
+
+for (const failure of ['read-error', 'incomplete-read'] as const) {
+  test(`failed USB firmware ${failure} releases the held card and requires a fresh chooser before any write`, async ({ page }) => {
+    await page.addInitScript(({ failure }) => {
+      localStorage.clear();
+      (window as any).__failedUsbRead = { finds: 0, resets: 0, disconnects: 0, writes: 0, restoredTimeout: false };
+      Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+      (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => {
+        const state = (window as any).__failedUsbRead;
+        state.finds += 1;
+        const loader = {
+          FLASH_READ_TIMEOUT: 100_000,
+          readFlash: async (_address: number, size: number) => {
+            if (state.finds === 1) {
+              if (failure === 'read-error') throw new Error('USB read timed out');
+              return new Uint8Array(4);
+            }
+            return new Uint8Array(size).fill(0xff);
+          },
+          flashBegin: async () => { state.resets += 1; },
+          flashFinish: async () => { state.resets += 1; },
+          writeFlash: async () => { state.writes += 1; },
+        };
+        if (state.finds === 1) state.firstLoader = loader;
+        return {
+          connection: { loader, transport: { disconnect: async () => { state.disconnects += 1; } } },
+          hardware: { cardId: 'lw-301bd5a172e0', chipName: 'ESP32-S3', chipDescription: 'ESP32-S3',
+            flashSize: '16MB', flashBytes: 16 * 1024 * 1024 },
+        };
+      };
+    }, { failure });
+    await page.goto('/#screen=flash&mode=install', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Find connected card' }).click();
+    await expect(page.getByText(/USB firmware inspection stopped after a read error/)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).__failedUsbRead.disconnects)).toBe(1);
+    expect(await page.evaluate(() => (window as any).__failedUsbRead.firstLoader.FLASH_READ_TIMEOUT)).toBe(100_000);
+    await expect(page.getByTestId('install-card-identity')).toHaveCount(0);
+    await expect(page.getByTestId('preserving-update-panel')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Erase card and install/i })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__failedUsbRead.writes)).toBe(0);
+    await page.getByRole('button', { name: 'Find connected card' }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).__failedUsbRead.finds)).toBe(2);
+  });
+}
 
 test('Set up card waits for a pending USB find before a loader can be left behind', async ({ page }) => {
   await page.addInitScript(() => {

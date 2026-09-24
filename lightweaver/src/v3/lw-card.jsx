@@ -254,6 +254,8 @@ function CardHomePanels({
   // `connected` — honor it as the ready presentation, as the old ladder did.
   const lifecycleState = !cardLink && connected ? 'ready' : lifecycle.state;
   const lifecycleReason = cardLink ? lifecycle.reason : '';
+  const factoryCardAwaitingSetup = lifecycleState === 'setup-required' && blankCard
+    && !benchProject && !String(cardLink?.readiness?.projectId || '').trim();
 
   const presentations = {
     operationFailed: () => ({
@@ -285,8 +287,10 @@ function CardHomePanels({
       message: 'Studio is looking for the card. Keep the card page open while its identity is verified.',
     }),
     blank: () => ({
-      tone: 'failure',
-      message: 'Blank — load a project, or find this card’s strips first.',
+      tone: factoryCardAwaitingSetup ? 'connected' : 'failure',
+      message: factoryCardAwaitingSetup
+        ? 'This factory card is connected and ready for setup. Continue with the next setup step.'
+        : 'Blank — load a project, or find this card’s strips first.',
     }),
     bench: () => ({
       tone: 'connecting',
@@ -763,11 +767,9 @@ function CardHomePanels({
           names Recover lights as the remedy, so a card that is answering
           without a ready runtime, or is holding the temporary setup, still
           finds this section open with no click. */}
-      {/* The facts, always, each with its one-click editor — and Health as a
-          row among them: Verify hardware and Recover lights (and Clear
-          temporary setup on a bench card). Gated on being able to TALK to
-          the card, not on the card being well: the Patterns gate routes an
-          unwell card here and names Recover lights as the remedy. */}
+      {/* Health stays available for a card that answers but is unwell. A blank
+          factory card continues setup here; configured cards keep the
+          hardware checks and recovery actions. */}
       <CardFacts
         currentProject={currentProject}
         cardLink={cardLink}
@@ -777,9 +779,12 @@ function CardHomePanels({
         go={hash => { window.location.hash = hash; }}
         health={(ready || verifiedTransport) ? {
           busy: hardwareActionState.status === 'loading',
-          note: !ready && !wiringTestActive
+          note: factoryCardAwaitingSetup && !wiringTestActive && !blackedOut
+            ? 'This factory card is answering. Finish its setup before checking the lights.'
+            : !ready && !wiringTestActive
             ? 'This card is answering but is not reporting a ready runtime. Recover lights is the check to run first — the card accepts it in this state.'
             : '',
+          setup: factoryCardAwaitingSetup && !wiringTestActive && !blackedOut ? () => onOpenSection?.('setup') : null,
           verify: () => void verifyHardware(),
           // One Recover lights per page: while the lights-off notice at the
           // top of Home is offering it as the primary, this row does not.
@@ -1150,6 +1155,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
   else if (route.section === 'install') content = (
     <AutomaticInstallScreen
       embedded
+      updateIntent={cardRoute.get('intent') === 'update-card'}
       cardLink={cardLink}
       cardLifecycle={cardLifecycle}
       onFirmwareRecoveryState={onFirmwareRecoveryState}

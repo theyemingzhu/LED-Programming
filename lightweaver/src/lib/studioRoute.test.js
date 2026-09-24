@@ -80,6 +80,8 @@ test('reconciling a route is idempotent, so repeating it can never move the owne
 test('the card workspace keeps its section, and defaults only when the hash names none', () => {
   assert.equal(reconcile('#screen=card&section=setup'), '#screen=card&section=setup');
   assert.equal(reconcile('#screen=card&section=install'), '#screen=card&section=install');
+  assert.equal(reconcile('#screen=card&section=install&intent=update-card'), '#screen=card&section=install&intent=update-card');
+  assert.equal(reconcile('#screen=card&section=overview&intent=update-card'), '#screen=card&section=overview');
   assert.equal(reconcile('#screen=card'), `#screen=card&section=${DEFAULT_CARD_SECTION}`);
   assert.equal(reconcile('#screen=card&section=nonsense'), `#screen=card&section=${DEFAULT_CARD_SECTION}`);
   // A section is meaningless off the card workspace and must not follow the

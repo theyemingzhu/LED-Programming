@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 import {
   PRESERVING_BOOTSTRAP_RANGE,
+  LIGHTWEAVER_OTA_SELECTION_RANGE,
   inspectPreservingBootstrapEvidence,
+  inspectUsbOtaSelection,
+  parseUsbOtaSelection,
   planPreservingBootstrap,
   runPreservingUsbBootstrap,
 } from './preservingUsbBootstrap.js';
@@ -15,6 +19,10 @@ const TARGET_BUILD = '2'.repeat(40);
 const TABLE = new Uint8Array(4096).fill(0xff);
 TABLE.set([0xaa, 0x50, 0x01, 0x02], 0);
 const TABLE_SHA = createHash('sha256').update(TABLE).digest('hex');
+const OTA = new Uint8Array(0x2000).fill(0xff);
+OTA.set([1, 0, 0, 0], 0);
+OTA.set([0x9a, 0x98, 0x43, 0x47], 28);
+const OTA_SHA = createHash('sha256').update(OTA).digest('hex');
 const IMAGE = new Uint8Array(8193).fill(7);
 IMAGE[0] = 0xe9;
 const IMAGE_SHA = createHash('sha256').update(IMAGE).digest('hex');
@@ -46,7 +54,8 @@ function evidence() {
     cardId: CARD_ID, chipName: 'ESP32-S3', flashBytes: 16 * 1024 * 1024,
     firmwareVersion: '1.1.1', buildId: SOURCE_BUILD, buildNumber: 1198,
     source: 'usb-flash', partitionTableSha256: TABLE_SHA,
-    installedAppOffset: 0x10000,
+    installedAppOffset: 0x10000, activeAppOffset: 0x10000,
+    otaSequence: 1, otaState: 0xffffffff, otaDataSha256: OTA_SHA,
   };
 }
 
@@ -64,6 +73,8 @@ test('preserving USB plan requires direct exact evidence and permits one app0-on
     { source: 'remembered' },
     { partitionTableSha256: '0'.repeat(64) },
     { installedAppOffset: 0x650000 },
+    { activeAppOffset: 0x650000 },
+    { otaDataSha256: 'unverified' },
     { buildNumber: 1197 },
     { chipName: 'ESP32' },
   ]) {
@@ -78,19 +89,26 @@ test('preserving USB plan requires direct exact evidence and permits one app0-on
 test('USB inspection hashes exactly raw [0x8000,0x9000) bytes and never reads NVS', async () => {
   const reads = [];
   const loader = {
-    async readFlash(address, size) { reads.push([address, size]); return TABLE; },
+    async readFlash(address, size) {
+      reads.push([address, size]);
+      return address === 0x8000 ? TABLE : OTA;
+    },
   };
   const inspected = await inspectPreservingBootstrapEvidence(loader, evidence());
   assert.equal(inspected.partitionTableSha256, TABLE_SHA);
-  assert.deepEqual(reads, [[0x8000, 0x1000]]);
+  assert.equal(inspected.activeAppOffset, 0x10000);
+  assert.equal(inspected.otaDataSha256, OTA_SHA);
+  assert.deepEqual(reads, [[0x8000, 0x1000], [0xe000, 0x2000]]);
 });
 
 test('bootstrap writes app0 without erase, verifies exact SHA-256 readback, resets, and releases USB', async () => {
   const events = [];
   const loader = {
+    FLASH_READ_TIMEOUT: 100_000,
     async readFlash(address, size) {
+      assert.equal(this.FLASH_READ_TIMEOUT, 5_000);
       events.push(['read', address, size]);
-      return address === 0x8000 ? TABLE : IMAGE.slice(0, size);
+      return address === 0x8000 ? TABLE : address === 0xe000 ? OTA : IMAGE.slice(0, size);
     },
   };
   const result = await runPreservingUsbBootstrap({
@@ -102,8 +120,11 @@ test('bootstrap writes app0 without erase, verifies exact SHA-256 readback, rese
     disconnect: async () => events.push(['disconnect']),
   });
   assert.equal(result.ok, true);
+  assert.equal(loader.FLASH_READ_TIMEOUT, 100_000);
   assert.deepEqual(events, [
     ['read', 0x8000, 0x1000],
+    ['read', 0xe000, 0x2000],
+    ['read', 0xe000, 0x2000],
     ['write', 0x10000, false, IMAGE.byteLength],
     ['read', 0x10000, IMAGE.byteLength],
     ['reset'], ['disconnect'],
@@ -119,6 +140,7 @@ test('bootstrap announces readback verification as soon as the full USB write is
   const loader = {
     async readFlash(address) {
       if (address === 0x8000) return TABLE;
+      if (address === 0xe000) return OTA;
       markReadbackStarted();
       return readback;
     },
@@ -142,8 +164,13 @@ test('bootstrap announces readback verification as soon as the full USB write is
 
 test('interrupted bootstrap always releases USB and says preserved data remains repeatable', async () => {
   const events = [];
+  const loader = {
+    FLASH_READ_TIMEOUT: 100_000,
+    readFlash: async address => address === 0x8000 ? TABLE.slice() : OTA.slice(),
+  };
   await assert.rejects(() => runPreservingUsbBootstrap({
-    loader: { readFlash: async () => TABLE.slice() }, transport: {}, evidence: evidence(), release: release(),
+    loader,
+    transport: {}, evidence: evidence(), release: release(),
     writeApplication: async () => { throw new Error('cable removed'); },
     disconnect: async () => events.push('disconnect'),
   }), error => {
@@ -152,4 +179,103 @@ test('interrupted bootstrap always releases USB and says preserved data remains 
     return true;
   });
   assert.deepEqual(events, ['disconnect']);
+  assert.equal(loader.FLASH_READ_TIMEOUT, 100_000);
+});
+
+test('the actual signed build 2070 factory selector proves app0 without reading NVS', async () => {
+  const factory = new Uint8Array(await readFile(new URL(
+    '../../public/firmware/releases/1.1.42/64b1f5da6725d472d54e59cfa8352c8b0bf864d9/lightweaver-controller-esp32s3-factory.bin',
+    import.meta.url,
+  )));
+  const ota = factory.subarray(LIGHTWEAVER_OTA_SELECTION_RANGE.start, LIGHTWEAVER_OTA_SELECTION_RANGE.end);
+  assert.deepEqual(parseUsbOtaSelection(ota), {
+    activeAppOffset: 0x10000, otaSequence: 1, otaState: 0xffffffff,
+  });
+  const selection = await inspectUsbOtaSelection({ readFlash: async () => ota });
+  assert.equal(selection.activeAppOffset, 0x10000);
+  assert.equal(selection.otaDataSha256, createHash('sha256').update(ota).digest('hex'));
+});
+
+test('OTA selector accepts stable newer app0 and rejects app1, pending, invalid and ambiguous records', () => {
+  const entry = (sequence, state, crcBytes) => {
+    const data = new Uint8Array(32).fill(0xff);
+    new DataView(data.buffer).setUint32(0, sequence, true);
+    new DataView(data.buffer).setUint32(24, state, true);
+    data.set(crcBytes, 28);
+    return data;
+  };
+  const withEntries = (first, second) => {
+    const data = new Uint8Array(0x2000).fill(0xff);
+    if (first) data.set(first, 0);
+    if (second) data.set(second, 0x1000);
+    return data;
+  };
+  const seq1 = entry(1, 0xffffffff, [0x9a, 0x98, 0x43, 0x47]);
+  const seq2 = entry(2, 2, [0x74, 0x37, 0xf6, 0x55]);
+  const seq3 = entry(3, 2, [0x11, 0x50, 0x4a, 0xed]);
+  assert.equal(parseUsbOtaSelection(withEntries(seq1, seq2)).activeAppOffset, 0x650000);
+  assert.equal(parseUsbOtaSelection(withEntries(seq2, seq3)).activeAppOffset, 0x10000);
+  for (const invalid of [
+    withEntries(null, null), withEntries(seq2, null),
+    withEntries(seq1, entry(2, 0, [0x74, 0x37, 0xf6, 0x55])),
+    withEntries(seq1, entry(2, 1, [0x74, 0x37, 0xf6, 0x55])),
+    withEntries(seq1, entry(2, 5, [0x74, 0x37, 0xf6, 0x55])),
+    withEntries(entry(1, 0, [0x9a, 0x98, 0x43, 0x47]), null),
+    withEntries(entry(1, 1, [0x9a, 0x98, 0x43, 0x47]), null),
+    withEntries(entry(1, 3, [0x9a, 0x98, 0x43, 0x47]), null),
+    withEntries(entry(1, 4, [0x9a, 0x98, 0x43, 0x47]), null),
+    withEntries(entry(1, 2, [0, 0, 0, 0]), null),
+    withEntries(seq1, seq1),
+    new Uint8Array(32),
+  ]) {
+    const selection = parseUsbOtaSelection(invalid);
+    assert.ok(!selection || selection.activeAppOffset !== 0x10000);
+  }
+});
+
+test('changed OTA selector after preflight stops before any preserving write', async () => {
+  const newer = OTA.slice();
+  newer.set([3, 0, 0, 0], 0x1000);
+  newer.set([0x11, 0x50, 0x4a, 0xed], 0x1000 + 28);
+  let otaReads = 0;
+  let writes = 0;
+  await assert.rejects(() => runPreservingUsbBootstrap({
+    loader: {
+      async readFlash(address) {
+        if (address === 0x8000) return TABLE;
+        if (address === 0xe000) return ++otaReads === 1 ? OTA : newer;
+        return IMAGE;
+      },
+    },
+    evidence: evidence(), release: release(),
+    writeApplication: async () => { writes += 1; },
+  }), /selector changed/i);
+  assert.equal(writes, 0);
+});
+
+test('app1, pending, malformed and unreadable OTA selectors never reach a preserving write', async () => {
+  const app1 = OTA.slice();
+  app1.set([2, 0, 0, 0], 0x1000);
+  app1.set([2, 0, 0, 0], 0x1000 + 24);
+  app1.set([0x74, 0x37, 0xf6, 0x55], 0x1000 + 28);
+  const pending = OTA.slice();
+  pending.set([2, 0, 0, 0], 0x1000);
+  pending.set([1, 0, 0, 0], 0x1000 + 24);
+  pending.set([0x74, 0x37, 0xf6, 0x55], 0x1000 + 28);
+  const newlySelected = pending.slice();
+  newlySelected.set([0, 0, 0, 0], 0x1000 + 24);
+  const unknownSelected = pending.slice();
+  unknownSelected.set([5, 0, 0, 0], 0x1000 + 24);
+  const malformed = OTA.slice();
+  malformed[28] ^= 1;
+  for (const selection of [app1, pending, newlySelected, unknownSelected, malformed,
+    new Uint8Array(0x2000).fill(0xff), OTA.subarray(0, 31)]) {
+    let writes = 0;
+    await assert.rejects(() => runPreservingUsbBootstrap({
+      loader: { readFlash: async address => address === 0x8000 ? TABLE : selection },
+      evidence: evidence(), release: release(),
+      writeApplication: async () => { writes += 1; },
+    }));
+    assert.equal(writes, 0);
+  }
 });

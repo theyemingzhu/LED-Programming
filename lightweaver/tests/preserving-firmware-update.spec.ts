@@ -130,6 +130,129 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
   })).toBeVisible({ timeout: 15_000 });
 }
 
+async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongCard = false, savedAttempt = false,
+  savedUpdate = true }: { eligible?: boolean, wrongCard?: boolean, savedAttempt?: boolean, savedUpdate?: boolean } = {}) {
+  await page.addInitScript(({ cardId, oldBuild, targetBuild, eligible, wrongCard, savedAttempt, savedUpdate }) => {
+    if (!sessionStorage.getItem('__LW_PRESERVING_USB_WIFI_FIXTURE__')) {
+      localStorage.clear();
+      sessionStorage.clear();
+      sessionStorage.setItem('__LW_PRESERVING_USB_WIFI_FIXTURE__', '1');
+      if (savedUpdate) sessionStorage.setItem('lw_firmware_update_session_v1', JSON.stringify({
+        version: 1, mode: 'usb', cardId, previousBootId: 'boot-old', expectedProjectHead: '',
+        expectedProjectFingerprint: '', targetFirmwareVersion: '1.2.0', targetBuildId: targetBuild,
+        targetBuildNumber: 1300, ticketSha256: '4'.repeat(64), phase: 'restarting', acknowledgedBytes: 3,
+        ...(savedAttempt ? { usbWifiAttempt: { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', bootId: 'boot-new', generation: null } } : {}),
+      }));
+    }
+    (window as any).__LW_PRESERVING_UPDATE_FIXTURE__ = {
+      mode: 'usb', card: { id: cardId, cardId, firmwareVersion: '1.1.1', buildId: oldBuild, buildNumber: 1198,
+        source: 'usb-flash', chipName: 'ESP32-S3', flashBytes: 16 * 1024 * 1024 },
+      readiness: { cardId, bootId: 'boot-old', firmwareVersion: '1.1.1', buildId: oldBuild,
+        runtimePhase: 'factory', configValid: false, knownGoodProject: false, commandReady: false,
+        outputReady: false, firmwareUpdateReady: true,
+        capabilities: { firmwareUpdate: { version: 1, network: false, softwareGrant: false } } },
+    };
+    (window as any).__LW_LOAD_UPDATE_RELEASE_FOR_TEST__ = async () => ({
+      manifest: { target: 'esp32-s3-n16r8', firmwareVersion: '1.2.0', buildId: targetBuild, buildNumber: 1300 },
+      ticket: { schemaVersion: 1, target: 'esp32-s3-n16r8', firmwareVersion: '1.2.0', buildId: targetBuild, buildNumber: 1300,
+        image: { size: 3, sha256: '0'.repeat(64) },
+        partition: { layout: 'default_16MB.csv', tableSha256: '3'.repeat(64), app0Offset: 0x10000, app1Offset: 0x650000, slotSize: 0x640000 },
+        compatibility: { minimumBootstrapBuild: 1198 }, preservation: { dataPartitionsIncluded: false } },
+      ticketBytes: new Uint8Array([1]), ticketSha256: '4'.repeat(64), ticketSignature: new Uint8Array(64), imageBytes: new Uint8Array([0xe9, 1, 2]),
+    });
+    (window as any).__LW_RUN_PRESERVING_USB_BOOTSTRAP_FOR_TEST__ = async () => ({ ok: true });
+    const state = { opens: 0, closes: 0, requests: [] as any[], provisions: 0 };
+    (window as any).__preservingUsbWifi = state;
+    let controller: ReadableStreamDefaultController<Uint8Array>;
+    const initial = JSON.parse(sessionStorage.getItem('lw_firmware_update_session_v1') || 'null')?.usbWifiAttempt;
+    let attemptId = initial?.id || '';
+    let generation = attemptId ? 1 : 0;
+    const port: any = {
+      readable: null, writable: null,
+      open: async () => {
+        state.opens += 1;
+        port.readable = new ReadableStream({ start(value) { controller = value; } });
+        port.writable = new WritableStream({ write(bytes) {
+          const request = JSON.parse(new TextDecoder().decode(bytes).trim());
+          state.requests.push(request);
+          if (request.command === 'provision') { state.provisions += 1; attemptId = request.id; generation += 1; }
+          const reply = {
+            protocol: 'lightweaver-usb-wifi', version: 1, id: request.id, command: request.command,
+            ok: true, cardId: wrongCard ? 'lw-112233445566' : cardId,
+            bootId: 'boot-new', firmwareVersion: '1.2.0', buildId: targetBuild, buildNumber: 1300,
+            usbWifiProvisioning: true, freshInstallEligible: eligible, attemptId,
+            wifi: { transition: attemptId ? 'handoff-ready' : 'setup-ap', stationIp: attemptId ? '192.168.18.70' : '',
+              handoffGeneration: generation, joinFailed: false },
+            ...(request.command === 'scan' ? { scanning: false, networks: [{ ssid: 'Gallery network', secure: true, rssi: -43 }] } : {}),
+          };
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(reply)}\n`));
+        } });
+      },
+      close: async () => { state.closes += 1; },
+    };
+    (window as any).__preservingUsbPort = port;
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: { requestPort: async () => port } });
+    (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
+      connection: { loader: {}, transport: { device: port, disconnect: async () => true } },
+      hardware: { cardId, chipName: 'ESP32-S3', flashSize: '16MB', flashBytes: 16 * 1024 * 1024,
+        source: 'usb-flash', firmwareVersion: '1.1.1', buildId: oldBuild, buildNumber: 1198 },
+    });
+  }, { cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, eligible, wrongCard, savedAttempt, savedUpdate });
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15_000 });
+}
+
+test('[preserving-usb-wifi] a verified preserving USB write continues through fresh exact-card Wi-Fi setup', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPreservingUsbWifiFixture(page, { savedUpdate: false });
+  await page.getByRole('button', { name: 'Find connected card' }).click();
+  const panel = page.getByTestId('preserving-update-panel');
+  await panel.getByRole('button', { name: 'Update once over USB' }).click();
+  await panel.getByRole('checkbox', { name: /selected USB card.*lw-b0fe81f61b44/i }).check();
+  await panel.getByRole('button', { name: 'Start preserving update' }).click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await expect(form.getByTestId('usb-wifi-status')).toContainText('Exact card and firmware verified');
+  await form.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/lightweaver-preserving-usb-wifi-narrow.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await form.getByTestId('usb-wifi-ssid').fill('Gallery network');
+  await form.getByTestId('usb-wifi-password').fill('gallerypass123');
+  await form.getByRole('button', { name: 'Join Wi-Fi over USB' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(1);
+  expect(await page.evaluate(async () => (await import('/src/lib/cardCommissioningFlow.js')).readCardCommissioning())).toBeNull();
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('gallerypass123');
+});
+
+test('[preserving-usb-wifi] a configured card is not offered USB Wi-Fi mutation after update', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page, { eligible: false });
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await expect(form.getByTestId('usb-wifi-status')).toContainText('already has Wi-Fi or a project');
+  await expect(form.getByRole('button', { name: 'Join Wi-Fi over USB' })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__preservingUsbWifi.requests.map((request: any) => request.command))).toEqual(['hello']);
+});
+
+test('[preserving-usb-wifi] a different card cannot resume the saved update over USB', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page, { wrongCard: true });
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await expect(form.getByTestId('usb-wifi-status')).toContainText('different card or firmware build');
+  expect(await page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(0);
+});
+
+test('[preserving-usb-wifi] reload resumes the saved exact attempt without resending credentials', async ({ page }) => {
+  // The card can mark Wi-Fi proven before Studio gets the provision reply.
+  // A read-only status reconciliation must still work when new writes are no
+  // longer eligible.
+  await openPreservingUsbWifiFixture(page, { savedAttempt: true, eligible: false });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  await expect.poll(() => page.evaluate(() => (window as any).__preservingUsbWifi.requests.map((request: any) => request.command)))
+    .toEqual(['hello', 'status']);
+  expect(await page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(0);
+  expect(await page.evaluate(async () => (await import('/src/lib/cardCommissioningFlow.js')).readCardCommissioning())).toBeNull();
+});
+
 test('preserving update: capable card uses Wi-Fi with exact preservation facts and acknowledged phases', async ({ page }) => {
   await openPreservingFixture(page, 'wifi');
   const panel = page.getByTestId('preserving-update-panel');
@@ -409,7 +532,8 @@ test('preserving update: completed USB send visibly acknowledges readback verifi
   await openPreservingFixture(page, 'usb', 'usb-verifying');
   const panel = page.getByTestId('preserving-update-panel');
   await panel.getByRole('button', { name: 'Update once over USB' }).click();
-  await panel.getByRole('checkbox', { name: /physically confirmed/i }).check();
+  await expect(panel).not.toContainText('Briefly press BOOT');
+  await panel.getByRole('checkbox', { name: /selected USB card.*lw-b0fe81f61b44/i }).check();
   await panel.getByRole('button', { name: 'Start preserving update' }).click();
   await expect(panel.getByRole('status')).toHaveText('Upload complete · checking the saved update');
   await expect(panel.getByRole('status')).not.toContainText('Sending signed update');
@@ -419,7 +543,7 @@ test('preserving update: USB reset ends with an actionable bounded reconnect fai
   await openPreservingFixture(page, 'usb', 'usb-timeout');
   const panel = page.getByTestId('preserving-update-panel');
   await panel.getByRole('button', { name: 'Update once over USB' }).click();
-  await panel.getByRole('checkbox', { name: /physically confirmed/i }).check();
+  await panel.getByRole('checkbox', { name: /selected USB card.*lw-b0fe81f61b44/i }).check();
   await panel.getByRole('button', { name: 'Start preserving update' }).click();
   await expect(panel.getByRole('alert')).toContainText(/could not verify the restarted card/i);
   await expect(panel).not.toContainText('Restarting card');
@@ -521,6 +645,39 @@ test('[factory-ota-door] an exact factory AP card ready for firmware update open
     .toBeGreaterThan(statusReadsBeforeStart);
   await expect(panel).toContainText('simulated-stop-before-write');
   await expect(panel.getByTestId('preserving-update-usb-after-error')).toBeVisible();
+});
+
+test('[factory-card-home-update] Update card opens the preserving step while ordinary install keeps unfinished Wi-Fi', async ({ page }) => {
+  await stubWebSerialSupport(page);
+  const card = createCardSimulator({
+    ...cardState('factory-blank'), runtimePhase: 'factory', commandReady: false, firmwareUpdateReady: true,
+  }, { cardId: CARD_ID });
+  await card.install(page);
+  await page.addInitScript(({ id }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion: '1.1.1', buildId: '1'.repeat(40) }));
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+  }, { id: CARD_ID });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async ({ id }) => {
+    const api = await import('/src/lib/cardCommissioningFlow.js');
+    const projectRecord = { id: 'factory-home-project', project: { id: 'factory-home-project', name: 'Factory home project' } };
+    const flow = api.completeCardInstall(api.beginCardCommissioning({
+      source: 'web-serial', operation: 'install-current-release', strategy: 'clean-recovery',
+      projectRecord, projectRevision: 1, flowId: 'flow-factory-home-123456789', now: Date.now() - 1000,
+    }), { operation: 'install-current-release', cardId: id, firmwareVersion: '1.1.1', buildId: '1'.repeat(40) });
+    await api.writeCardCommissioning(flow, { locks: null });
+  }, { id: CARD_ID });
+  const release = page.getByTestId('fact-release');
+  await expect(release.getByRole('button', { name: 'Update card' })).toBeVisible({ timeout: 15000 });
+  await release.getByRole('button', { name: 'Update card' }).click();
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Update Lightweaver' })).toBeVisible();
+  expect(await page.evaluate(async () => (await import('/src/lib/cardCommissioningFlow.js')).readCardCommissioning()?.stage)).toBe('set-up-card');
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=overview'; });
+  await expect(page.getByTestId('fact-release')).toBeVisible();
+  await expect(page).not.toHaveURL(/intent=update-card/);
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
 });
 
 test('[factory-ota-direct-unavailable] a bridge-proven factory card keeps the preserving USB exit when direct update transport fails', async ({ page }) => {

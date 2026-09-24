@@ -140,7 +140,7 @@ test('USB setup distinguishes gallery Wi-Fi from the card hotspot and explains c
   const form = page.getByTestId('usb-wifi-setup');
   await expect(form).toContainText('gallery or home 2.4 GHz Wi-Fi');
   await expect(form).toContainText('not the Lightweaver setup hotspot');
-  await expect(form).toContainText('leave the fields blank and scan nearby networks from this card after installation');
+  await expect(form).toContainText('leave the fields blank and scan nearby networks from this card');
   await expect(page.getByRole('button', { name: 'Scan nearby networks', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-guidance-desktop.png', fullPage: true });
 
@@ -317,8 +317,19 @@ test('reload after a lost USB provision reply resumes the same card attempt with
   const before = await serialCommands(page);
   expect(before.filter((value: any) => value.command === 'provision')).toHaveLength(1);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('button', { name: 'Select installed USB card' })).toBeVisible();
-  await page.getByRole('button', { name: 'Select installed USB card' }).click();
+  const recovery = page.getByTestId('interrupted-usb-recovery');
+  await expect(recovery).toBeVisible({ timeout: 5000 });
+  await expect(recovery.getByRole('button', { name: 'Resume with USB' })).toBeVisible();
+  await expect(recovery.getByRole('button', { name: 'Reconnect over Wi-Fi' })).toBeVisible();
+  await expect(recovery.locator('button.btn.primary')).toHaveCount(1);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await recovery.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/lightweaver-interrupted-usb-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await recovery.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/tmp/lightweaver-interrupted-usb-narrow.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await recovery.getByRole('button', { name: 'Resume with USB' }).click();
   await expect(page.locator('[data-post-flash="station"]')).toContainText('192.168.18.70');
   expect((await serialCommands(page)).filter((value: any) => value.command === 'provision')).toHaveLength(0);
   const persisted = await page.evaluate(() => JSON.stringify({ ...localStorage }));

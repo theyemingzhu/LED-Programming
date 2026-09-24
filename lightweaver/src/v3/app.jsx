@@ -1028,6 +1028,7 @@ function Shell({ offlineUpdateController = null }) {
     params.set('section', isCardSection(section) ? section : DEFAULT_CARD_SECTION);
     params.delete('mode');
     params.delete('task');
+    params.delete('intent');
     // Replace, not push, so Back behaves the same for screen and section
     // changes as it does for rail navigation.
     routeStore.replace(`#${params.toString()}`);

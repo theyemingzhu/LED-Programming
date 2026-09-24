@@ -111,7 +111,9 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
   };
   try {
     const { reply } = await request('hello');
-    identity = Object.freeze({ cardId: reply.cardId, bootId: reply.bootId, firmwareVersion: reply.firmwareVersion, buildId: reply.buildId, buildNumber: reply.buildNumber });
+    identity = Object.freeze({ cardId: reply.cardId, bootId: reply.bootId, firmwareVersion: reply.firmwareVersion,
+      buildId: reply.buildId, buildNumber: reply.buildNumber,
+      freshInstallEligible: reply.freshInstallEligible === true });
   } catch (error) { await close(); throw error; }
   const correlate = reply => {
     if (!attempt || reply.attemptId !== attempt.id || reply.wifi?.handoffGeneration !== attempt.generation) throw failure('attempt_mismatch');

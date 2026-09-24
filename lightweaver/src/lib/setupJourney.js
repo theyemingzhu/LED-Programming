@@ -300,7 +300,7 @@ function nextVerificationAction(verification) {
   return { id: 'test-and-save', phaseId: 'verify' };
 }
 
-function phasesFor(currentPhaseId, lightsProgress, currentLayoutProgress, complete = false) {
+function phasesFor(currentPhaseId, lightsProgress, currentLayoutProgress, complete = false, connectedWifiSetup = false) {
   const currentIndex = complete ? SETUP_CHAIN_IDS.length : SETUP_CHAIN_IDS.indexOf(currentPhaseId);
   return SETUP_PHASE_IDS.map(id => {
     // Artwork placement stands outside the chain: done when drawn, otherwise
@@ -317,6 +317,10 @@ function phasesFor(currentPhaseId, lightsProgress, currentLayoutProgress, comple
     return {
       id,
       ...PHASE_COPY[id],
+      ...(id === 'connect' && connectedWifiSetup ? {
+        title: 'Set up card Wi-Fi',
+        detail: 'Choose the Wi-Fi network for this connected card.',
+      } : {}),
       status: complete || index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'upcoming',
       ...(id === 'lights' ? { progress: lightsProgress } : {}),
     };
@@ -466,7 +470,8 @@ export function deriveSetupJourney({
     diagnosis: {
       state: blockers[0]?.id === 'connect-card' ? 'needs-card' : currentPhaseId === 'connect' ? 'connect-blocked' : 'setup-required',
     },
-    phases: phasesFor(currentPhaseId, progress, currentLayoutProgress),
+    phases: phasesFor(currentPhaseId, progress, currentLayoutProgress, false,
+      nextAction.taskId === 'configure-wifi' && connectedExactCard(cardLink)),
     blockers,
     currentPhaseId,
     nextAction,

@@ -1259,7 +1259,7 @@ void handleAdvancedRoot() {
   page += F(" &middot; firmware build ");
   page += String(LW_BUILD_NUMBER);
   page += F("</div></div>"
-            "<p class='bridge-utility' id='bridge-utility' hidden role='status' aria-live='polite'>Connection active — keep this window open while Studio uses the card.</p>");
+            "<p class='bridge-utility' id='bridge-utility' hidden role='status' aria-live='polite'>Keep this card window open while using Studio.</p>");
 
   // Script
   page += F("<script>"
