@@ -296,8 +296,7 @@ fieldset {
 fieldset legend { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 0 3px; }
 fieldset label { display: flex; align-items: center; gap: 6px; font-size: 11px; }
 
-.export-buttons { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; flex-shrink: 0; }
-.export-buttons button { max-width: 100%; min-height: 36px; white-space: normal; text-align: left; }
+.export-buttons { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
 
 #export-preview {
   font-size: 10px; line-height: 1.45;
@@ -1960,10 +1959,8 @@ body.drag-active #drag-overlay {
 .flash-status--error     { color: var(--warn); }
 
 .flash-btn-write {
-  width: auto;
-  align-self: flex-start;
-  min-height: 40px;
-  padding: 8px 16px;
+  width: 100%;
+  padding: 8px;
   flex-shrink: 0;
 }
 
@@ -2580,14 +2577,11 @@ body[data-mode="export"] fieldset {
 body[data-mode="export"] fieldset label { font-size: 12px; }
 body[data-mode="export"] .export-buttons {
   flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
   gap: 10px;
 }
 body[data-mode="export"] .export-buttons button {
-  flex: 0 1 auto;
-  min-height: 44px;
-  padding: 10px 14px;
+  flex: 1;
+  padding: 12px 0;
   font-size: 12px;
   letter-spacing: 0.04em;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -2610,22 +2604,15 @@ body[data-mode="flash"] .canvas-panel { display: none; }
 body[data-mode="flash"] .side-panel {
   flex: 1;
   width: 100%;
-  min-width: 0;
   max-width: 740px;
   margin: 0 auto;
 }
 body[data-mode="flash"] #tab-flash {
-  min-width: 0;
   padding: 24px 32px;
   gap: 16px;
 }
-body[data-mode="flash"] .flash-addr-row,
-body[data-mode="flash"] .flash-erase-row {
-  flex-wrap: wrap;
-}
 body[data-mode="flash"] #btn-flash-write {
-  min-height: 44px;
-  padding: 12px 18px;
+  padding: 14px 0;
   font-size: 13px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
