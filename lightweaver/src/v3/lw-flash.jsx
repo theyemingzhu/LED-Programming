@@ -1852,25 +1852,52 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     };
 
     const scanWifiUsb = async () => {
-      if (!wifiSessionRef.current || wifiBusyRef.current) return;
+      const session = wifiSessionRef.current;
+      if (!session || wifiBusyRef.current) return;
       wifiBusyRef.current = true;
       setWifiStatus({ state: 'scanning', message: 'Scanning for nearby 2.4 GHz networks…' });
       try {
-        let result = await wifiSessionRef.current.scan({ refresh: true });
-        const deadline = Date.now() + 15_000;
-        while (result.scanning && Date.now() < deadline && mountedRef.current) {
-          await new Promise(resolve => setTimeout(resolve, 600));
-          result = await wifiSessionRef.current.scan();
+        const testDeadlineMs = import.meta.env.DEV && window.__LW_USB_WIFI_SCAN_DEADLINE_MS_FOR_TEST__;
+        const deadline = Date.now() + (Number.isFinite(testDeadlineMs) ? Math.max(100, testDeadlineMs) : 20_000);
+        const currentSession = () => mountedRef.current && wifiSessionRef.current === session;
+        let result = null;
+        let refresh = true;
+        let waitingForBusy = false;
+        let attempts = 0;
+        while (currentSession()) {
+          if (attempts > 0 && Date.now() >= deadline) break;
+          attempts += 1;
+          try {
+            result = await session.scan({ refresh });
+            if (!currentSession()) return;
+            refresh = false;
+            if (waitingForBusy && result.scanning) setWifiStatus({ state: 'scanning', message: 'Scanning for nearby 2.4 GHz networks…' });
+            waitingForBusy = false;
+            if (!result.scanning) break;
+          } catch (error) {
+            if (!currentSession()) return;
+            if (error?.code !== 'busy') throw error;
+            waitingForBusy = true;
+            setWifiStatus({ state: 'scanning', message: 'Card is busy. Waiting to scan nearby networks…' });
+          }
+          if (Date.now() >= deadline) break;
+          await new Promise(resolve => setTimeout(resolve, refresh ? 1_000 : 600));
         }
-        if (!mountedRef.current) return;
+        if (!currentSession()) return;
+        if (waitingForBusy) {
+          setWifiStatus({ state: 'error', message: 'Card is busy. Try scanning again when Wi-Fi setup settles, or enter the network name.' });
+          return;
+        }
         setWifiNetworks(result.networks);
         setWifiStatus({ state: 'ready', message: result.scanning ? 'Scan is still running. Enter the network name or scan again.' : result.networks.length ? 'Choose a network below, or enter a hidden network name.' : 'No networks found. Enter the network name or try scanning again.' });
       } catch (error) {
         if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
-          await wifiSessionRef.current?.close();
-          wifiSessionRef.current = null;
+          await session.close();
+          if (wifiSessionRef.current === session) wifiSessionRef.current = null;
         }
-        if (mountedRef.current) setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) });
+        if (mountedRef.current && (wifiSessionRef.current === session || !wifiSessionRef.current)) {
+          setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) });
+        }
       } finally { wifiBusyRef.current = false; }
     };
 
@@ -1882,13 +1909,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const wifiForm = (
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
         <div className="install-action-copy">
-          <h2>{preservingUsbWifi ? preservingUsbRuntimeVerified ? 'Connect updated card to Wi-Fi' : 'Checking card firmware over USB' : 'Set up Wi-Fi over USB'}</h2>
-          <p>Keep this computer on its normal network. Enter or select your home or gallery 2.4 GHz Wi-Fi, or scan after installation. Keep USB connected.</p>
+          {installState !== 'wifi-setup' && <h2>Wi-Fi after installation</h2>}
+          <p>Choose your home or gallery 2.4 GHz Wi-Fi. Keep USB connected.</p>
           <details className="usb-wifi-help">
             <summary>Wi-Fi setup details</summary>
             <div>
+              <p>Keep this computer on its normal network.</p>
               <p>Choose your home or gallery network, not the Lightweaver setup hotspot.</p>
               <p>If you do not know the network name, leave the fields blank and scan nearby networks from this card after installation.</p>
+              <p>Wi-Fi names can use up to 32 bytes. Some non-English characters use more than one byte.</p>
               <p>Wi-Fi details go only to this verified card over USB. Studio never saves them.</p>
               <p>You can set up Wi-Fi later on the card setup page.</p>
             </div>
@@ -1897,7 +1926,6 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         <fieldset disabled={wifiBusy || installState === 'installing' || (preservingUsbWifi && !preservingUsbRuntimeVerified)}>
           <label htmlFor="usb-wifi-ssid">Wi-Fi network name</label>
           <input id="usb-wifi-ssid" data-testid="usb-wifi-ssid" value={wifiSsid} onChange={event => setWifiSsid(event.target.value)} autoComplete="off" spellCheck={false} maxLength={32} placeholder="2.4 GHz network name" />
-          <small>Wi-Fi names can use up to 32 bytes. Some non-English characters use more than one byte.</small>
           {wifiNetworks.length > 0 && <select aria-label="Nearby Wi-Fi networks" value="" onChange={event => {
             const network = wifiNetworks[Number(event.target.value)];
             if (network) { setWifiSsid(network.ssid); setWifiOpenNetwork(!network.secure); setWifiPassword(''); setWifiPasswordVisible(false); }
@@ -1934,7 +1962,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             </> : <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Retry USB setup</button>}
             <button type="button" className="btn" disabled={wifiBusy} onClick={() => { void completeWifiSetup({ state: 'inconclusive', stationIp: '' }); }}>Use card setup page instead</button>
           </div>
-          <p>USB verifies the card’s identity and Wi-Fi result. Studio checks its local card page before enabling card controls.</p>
+          <p>USB verifies this exact card and its Wi-Fi result. Studio checks its local page before enabling controls.</p>
         </>}
       </section>
     );
@@ -2174,7 +2202,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     if (installState === 'wifi-setup') return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`}><div className="install-task">
-        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>Connect this card to Wi-Fi</InstallHeading></header>
+        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>Connect to Wi-Fi</InstallHeading></header>
         {wifiForm}
       </div></div>
     );
