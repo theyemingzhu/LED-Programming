@@ -16,6 +16,7 @@
 import {
   CARD_BRIDGE_CHANGED_EVENT,
   bootstrapCardBridgeFromOpener,
+  existingCardBridgeWindow,
   getCardBridgeState,
   isCardBridgeLaunch,
   openCardBridge,
@@ -1857,7 +1858,8 @@ export async function bootstrapCardLink() {
 // One-click "Connect to card": opens the card page popup (needs the user's
 // click — that is fine) and waits for its ready handshake, which arrives via
 // the CARD_BRIDGE_CHANGED_EVENT wiring above.
-export function connectCardLink(rawHost = '') {
+export function connectCardLink(rawHost = '', { background = false } = {}) {
+  if (background) return existingCardBridgeWindow(rawHost);
   const link = getSharedCardLink();
   const opened = openCardBridge(rawHost);
   if (!opened) {
