@@ -36,7 +36,6 @@ import { useProject } from '../../state/ProjectContext.jsx';
 import { CARD_HARDWARE_CONTRACT } from '../../lib/cardHardwareContract.js';
 import { FRAME_CHUNK_MAX_PIXELS, createCardFrameStream } from '../../lib/cardFrameStream.js';
 import { normalizeCardReadiness } from '../../lib/cardReadiness.js';
-import { DEFAULT_PRODUCTION_MAX_MILLIAMPS } from '../../lib/cardRuntimeContract.js';
 import {
   PORT_ROLE_CONTROL,
   PORT_ROLE_STRIP,
@@ -273,6 +272,9 @@ export function StripDiscoveryPanel({
   const maxMilliampsSource = cardLink?.readiness?.maxMilliampsSource
     || cardLink?.card?.maxMilliampsSource
     || '';
+  const reportedMaxMilliamps = Number(cardLink?.readiness?.maxMilliamps ?? cardLink?.card?.maxMilliamps);
+  const currentPowerLimit = Number.isSafeInteger(reportedMaxMilliamps) && reportedMaxMilliamps > 0
+    ? reportedMaxMilliamps : null;
 
   // Ports the picker is allowed to offer. A pin the shipped controls claim can
   // never become an LED output — buildBenchConfig skips it and the firmware's
@@ -1049,11 +1051,13 @@ export function StripDiscoveryPanel({
       key: 'discovery-power-warning',
       testId: 'discovery-power-warning',
       tone: 'info',
-      body: `The card uses its default ${DEFAULT_PRODUCTION_MAX_MILLIAMPS} mA power limit. Counting runs `
-        + `dim at ${BENCH_MAX_MILLIAMPS} mA; set your supply during installation.`,
+      body: `The card ${currentPowerLimit == null
+        ? 'has not reported its current power limit'
+        : `currently limits LED output to ${currentPowerLimit} mA`}. Starting counting installs a temporary `
+        + `dim setup capped at ${BENCH_MAX_MILLIAMPS} mA. Set your supply rating before installing your project.`,
       source: 'strip-discovery',
     });
-  }, [maxMilliampsSource]);
+  }, [maxMilliampsSource, currentPowerLimit]);
 
   // The final install onto the card, including its recovery actions.
   useEffect(() => {

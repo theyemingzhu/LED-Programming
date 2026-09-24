@@ -56,6 +56,8 @@ function blankStatus(overrides: Record<string, unknown> = {}) {
     commandReady: false,
     playbackReady: false,
     outputReady: false,
+    maxMilliamps: 100,
+    maxMilliampsSource: 'default',
     ...overrides,
   };
 }
@@ -118,7 +120,7 @@ const BEACON_PORTS = [15, 16, 17, 18, 21, 38, 40, 41, 42, 47, 48];
  *    runtimeConfigJsonChangesWiring sees outputCount 0 -> N and files the write
  *    as a candidate. Nothing is applied and the card stays blank forever.
  */
-async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirmware } = {}) {
+async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirmware, reportedMaxMilliamps = 100 as number | null } = {}) {
   const card: FakeCard = {
     configs: [], applied: null, reboots: 0, booted: false, restartPending: false, statusReads: 0,
     beaconPinned: null, beaconPins: [], beaconRefused: [], frames: [],
@@ -155,7 +157,7 @@ async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirm
     }
     if (pathname === '/api/status' || pathname === '/api/firmware-info') {
       card.statusReads += 1;
-      await route.fulfill({ json: card.booted ? readyStatus(card.applied, card.reboots) : blankStatus() });
+      await route.fulfill({ json: card.booted ? readyStatus(card.applied, card.reboots) : blankStatus({ maxMilliamps: reportedMaxMilliamps }) });
       return;
     }
     // The blank-card port probe. GET lists the ports this card can light; POST
@@ -206,7 +208,7 @@ async function seedBlankCardLink(page: any) {
   }, CARD_ID);
 }
 
-async function dispatchBlankCard(page: any, { routeToDiscovery = true } = {}) {
+async function dispatchBlankCard(page: any, { routeToDiscovery = true, reportedMaxMilliamps = 100 as number | null } = {}) {
   await page.evaluate(async ({ status, routeToDiscovery }) => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     const link = getSharedCardLink();
@@ -225,7 +227,7 @@ async function dispatchBlankCard(page: any, { routeToDiscovery = true } = {}) {
     if (routeToDiscovery && !window.location.hash.includes('screen=discovery')) {
       window.location.hash = 'screen=discovery';
     }
-  }, { status: blankStatus(), routeToDiscovery });
+  }, { status: blankStatus({ maxMilliamps: reportedMaxMilliamps }), routeToDiscovery });
 }
 
 // Walk the port picker to the point where the one card write has happened and
@@ -248,12 +250,32 @@ async function showCountingRuler(page: any) {
   await expect(page.getByTestId('discovery-decade')).toBeVisible();
 }
 
+test('a card without a numeric power limit gets an honest discovery notice', async ({ page }) => {
+  await mockBlankCard(page, { reportedMaxMilliamps: null });
+  await seedBlankCardLink(page);
+  await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+  await dispatchBlankCard(page, { reportedMaxMilliamps: null });
+  const notice = page.getByTestId('discovery-power-warning');
+  await expect(notice).toContainText('has not reported its current power limit');
+  await expect(notice).toContainText('2000 mA');
+  await expect(notice).not.toContainText('1500 mA');
+});
+
 test.describe('a blank card whose firmware applies its first config', () => {
   let card: FakeCard;
 
   test.beforeEach(async ({ page }) => {
     card = await mockBlankCard(page, { firmware: 'blank-applies' });
     await seedBlankCardLink(page);
+  });
+
+  test('factory power notice reports the actual cap before the temporary counting cap', async ({ page }) => {
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    const notice = page.getByTestId('discovery-power-warning');
+    await expect(notice).toContainText('100 mA');
+    await expect(notice).toContainText('2000 mA');
+    await expect(notice).not.toContainText('default 1500 mA');
   });
 
   // The owner usually already knows roughly where they plugged the strip in.
