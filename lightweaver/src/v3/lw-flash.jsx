@@ -1692,7 +1692,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
               return null;
             }
-            setWifiStatus({ state: result.state, message: result.message });
+            setWifiStatus({ state: result.state, message: result.message, diagnostics: result.diagnostics });
             return session;
           } catch (error) {
             if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
@@ -1812,7 +1812,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         if (result.state === 'station') {
           setWifiStatus({ state: 'joined', message: `This exact card joined at ${result.stationIp}. Verifying its local connection next.` });
           await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
-        } else setWifiStatus({ state: result.state, message: result.message });
+        } else setWifiStatus({ state: result.state, message: result.message, diagnostics: result.diagnostics });
       } catch (error) {
         if (['timeout', 'disconnected', 'identity_mismatch', 'stale_boot'].includes(error?.code)) {
           await wifiSessionRef.current?.close();
@@ -1879,6 +1879,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         </fieldset>
         {installState === 'wifi-setup' && <>
           <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p>
+          {wifiStatus.state === 'failed' && wifiStatus.diagnostics && <details className="usb-wifi-help" data-testid="usb-wifi-failure-details">
+            <summary>Connection details</summary>
+            <p>Stage: {wifiStatus.diagnostics.stage || 'not reported'}</p>
+            <p>Driver reason: {wifiStatus.diagnostics.driverReason ?? 'not reported'}</p>
+            {wifiStatus.diagnostics.cardNote && <p>Card note: {wifiStatus.diagnostics.cardNote}</p>}
+          </details>}
           {wifiStatus.state === 'failed' && !wifiOpenNetwork && !wifiPassword && <p role="status" data-testid="usb-wifi-retry-guidance">Keep USB connected. Check or choose the gallery network, re-enter its password, then select “Join Wi-Fi over USB” again. You do not need to reinstall firmware.</p>}
           <div className="install-confirm-action">
             {wifiSessionRef.current ? <>
@@ -1889,7 +1895,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                 try {
                   const result = await wifiSessionRef.current.awaitAttempt();
                   if (result.state === 'station') await completeWifiSetup({ state: 'station', stationIp: result.stationIp });
-                  else setWifiStatus({ state: result.state, message: result.message });
+                  else setWifiStatus({ state: result.state, message: result.message, diagnostics: result.diagnostics });
                 } catch (error) { setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) }); }
               })(); }}>Check current attempt</button>}
               <button type="button" className="btn primary" disabled={wifiBusy || !wifiSsid || (!wifiOpenNetwork && !wifiPassword)} onClick={() => { void joinWifiUsb(); }}>Join Wi-Fi over USB</button>

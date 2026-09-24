@@ -129,6 +129,35 @@ test('join failure reason is conservative and session remains available for retr
   assert.equal(port.writes.filter(r => r.command === 'provision').length, 2);
   await session.close();
 });
+test('failed exact attempt retains only safe card-reported stage and driver diagnostics', async () => {
+  let attemptId;
+  const port = fakePort(request => {
+    if (request.command === 'provision') attemptId = request.id;
+    return response(request, { attemptId, wifi: { handoffGeneration: 2, joinFailed: true,
+      failureReason: 'connection_failed', failureStage: 'ip', driverReason: 0,
+      lastError: 'router did not assign an IP address' } });
+  });
+  const session = await openUsbWifiSession({ port, expected });
+  const result = await session.join({ ssid: 'Gallery', password: 'testpass123' });
+  assert.equal(result.message, usbWifiErrorMessage('connection_failed'));
+  assert.deepEqual(result.diagnostics, {
+    stage: 'ip', driverReason: 0, cardNote: 'router did not assign an IP address',
+  });
+  await session.close();
+});
+test('join details discard arbitrary serial text and malformed driver fields', async () => {
+  let attemptId;
+  const port = fakePort(request => {
+    if (request.command === 'provision') attemptId = request.id;
+    return response(request, { attemptId, wifi: { handoffGeneration: 2, joinFailed: true,
+      failureReason: 'connection_failed', failureStage: 'unexpected-stage', driverReason: '202',
+      lastError: 'untrusted network text' } });
+  });
+  const session = await openUsbWifiSession({ port, expected });
+  const result = await session.join({ ssid: 'Gallery', password: 'testpass123' });
+  assert.deepEqual(result.diagnostics, { stage: '', driverReason: null, cardNote: '' });
+  await session.close();
+});
 test('stalled USB writer is bounded and never sends credentials', async () => {
   let canceled = false;
   const port = { async open() {

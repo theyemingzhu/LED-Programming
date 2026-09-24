@@ -17,6 +17,21 @@ const MESSAGES = Object.freeze({
   timeout: 'The card did not answer over USB in time. Keep the cable connected and retry, or use the card setup page.',
   disconnected: 'USB disconnected. Reconnect the same card and retry, or use the card setup page.',
 });
+const JOIN_STAGES = new Set(['association', 'ip', 'station', 'link']);
+const CARD_NOTES = new Set([
+  'router did not assign an IP address',
+  'station association timed out',
+  'station restart could not be confirmed',
+  'station connection lost',
+]);
+function safeJoinDiagnostics(wifi) {
+  return {
+    stage: JOIN_STAGES.has(wifi?.failureStage) ? wifi.failureStage : '',
+    driverReason: Number.isSafeInteger(wifi?.driverReason) && wifi.driverReason >= 0 && wifi.driverReason <= 65535
+      ? wifi.driverReason : null,
+    cardNote: CARD_NOTES.has(wifi?.lastError) ? wifi.lastError : '',
+  };
+}
 export function usbWifiErrorMessage(code) { return MESSAGES[code] || 'USB setup could not complete. Keep the cable connected and retry, or use the card setup page.'; }
 function failure(code) { return Object.assign(new Error(usbWifiErrorMessage(code)), { code }); }
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -177,7 +192,10 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
     while (!closed) {
       const ip = normalizeWifiHandoffHost(reply.wifi?.stationIp);
       if (ip && ['handoff-ready', 'station'].includes(reply.wifi?.transition) && !reply.wifi?.joinFailed) return { state: 'station', stationIp: ip, identity };
-      if (reply.wifi?.joinFailed === true) return { state: 'failed', message: usbWifiErrorMessage(reply.wifi.failureReason || 'connection_failed') };
+      if (reply.wifi?.joinFailed === true) return {
+        state: 'failed', message: usbWifiErrorMessage(reply.wifi.failureReason || 'connection_failed'),
+        diagnostics: safeJoinDiagnostics(reply.wifi),
+      };
       if (Date.now() >= end) return { state: 'pending', message: 'The card has not finished joining. USB remains available; check the current attempt again, or use the card setup page.' };
       onProgress?.();
       await delay(pollMs);
