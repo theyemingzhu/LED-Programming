@@ -132,10 +132,13 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
 
 async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongCard = false, wrongBuild = false,
   staleBoot = false, noHello = false, wrongRomCard = false, savedAttempt = false, savedUpdate = true,
-  savedPhase = 'restarting', bootstrapFailure = false, emptyPriorBoot = false, missedHelloReplies = 0, failedJoinStage = '', rebootOnReopen = false }: { eligible?: boolean, wrongCard?: boolean, wrongBuild?: boolean,
+  savedPhase = 'restarting', bootstrapFailure = false, emptyPriorBoot = false, missedHelloReplies = 0, failedJoinStage = '', rebootOnReopen = false,
+  scanBusyReplies = 0, scanAlwaysBusy = false, scanDeadlineMs = 0 }: { eligible?: boolean, wrongCard?: boolean, wrongBuild?: boolean,
   staleBoot?: boolean, noHello?: boolean, wrongRomCard?: boolean, savedAttempt?: boolean,
-  savedUpdate?: boolean, savedPhase?: string, bootstrapFailure?: boolean, emptyPriorBoot?: boolean, missedHelloReplies?: number, failedJoinStage?: string, rebootOnReopen?: boolean } = {}) {
-  await page.addInitScript(({ cardId, oldBuild, targetBuild, eligible, wrongCard, wrongBuild, staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage, rebootOnReopen }) => {
+  savedUpdate?: boolean, savedPhase?: string, bootstrapFailure?: boolean, emptyPriorBoot?: boolean, missedHelloReplies?: number, failedJoinStage?: string, rebootOnReopen?: boolean,
+  scanBusyReplies?: number, scanAlwaysBusy?: boolean, scanDeadlineMs?: number } = {}) {
+  await page.addInitScript(({ cardId, oldBuild, targetBuild, eligible, wrongCard, wrongBuild, staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage, rebootOnReopen, scanBusyReplies, scanAlwaysBusy, scanDeadlineMs }) => {
+    if (scanDeadlineMs) (window as any).__LW_USB_WIFI_SCAN_DEADLINE_MS_FOR_TEST__ = scanDeadlineMs;
     if (!sessionStorage.getItem('__LW_PRESERVING_USB_WIFI_FIXTURE__')) {
       localStorage.clear();
       sessionStorage.clear();
@@ -170,7 +173,7 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
       }
       return { ok: true };
     };
-    const state = { opens: 0, closes: 0, requests: [] as any[], provisions: 0, romConnects: 0, resets: 0, hellos: 0 };
+    const state = { opens: 0, closes: 0, requests: [] as any[], provisions: 0, romConnects: 0, resets: 0, hellos: 0, scanBusyReplies };
     (window as any).__preservingUsbWifi = state;
     let appReady = !['sending', 'verification-unknown'].includes(savedPhase);
     let controller: ReadableStreamDefaultController<Uint8Array>;
@@ -200,9 +203,11 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
           if (request.command === 'hello' && state.hellos <= missedHelloReplies) return;
           if (noHello && request.command === 'hello') return;
           if (request.command === 'provision') { state.provisions += 1; attemptId = request.id; generation += 1; }
+          const scanBusy = request.command === 'scan' && (scanAlwaysBusy || state.scanBusyReplies > 0);
+          if (scanBusy && !scanAlwaysBusy) state.scanBusyReplies -= 1;
           const reply = {
             protocol: 'lightweaver-usb-wifi', version: 1, id: request.id, command: request.command,
-            ok: true, cardId: wrongCard ? 'lw-112233445566' : cardId,
+            ok: !scanBusy, ...(scanBusy ? { error: 'busy' } : {}), cardId: wrongCard ? 'lw-112233445566' : cardId,
             bootId: staleBoot ? 'boot-old' : bootId, firmwareVersion: '1.2.0',
             buildId: wrongBuild ? oldBuild : targetBuild, buildNumber: 1300,
             usbWifiProvisioning: true, freshInstallEligible: eligible, attemptId,
@@ -237,7 +242,8 @@ async function openPreservingUsbWifiFixture(page: any, { eligible = true, wrongC
         source: 'usb-flash', firmwareVersion: '1.1.1', buildId: oldBuild, buildNumber: 1198 },
     });
   }, { cardId: CARD_ID, oldBuild: OLD_BUILD, targetBuild: TARGET_BUILD, eligible, wrongCard, wrongBuild,
-    staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage, rebootOnReopen });
+    staleBoot, noHello, wrongRomCard, savedAttempt, savedUpdate, savedPhase, bootstrapFailure, emptyPriorBoot, missedHelloReplies, failedJoinStage, rebootOnReopen,
+    scanBusyReplies, scanAlwaysBusy, scanDeadlineMs });
   await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15_000 });
 }
@@ -261,6 +267,57 @@ test('[preserving-usb-wifi] a verified preserving USB write continues through fr
   await expect.poll(() => page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(1);
   expect(await page.evaluate(async () => (await import('/src/lib/cardCommissioningFlow.js')).readCardCommissioning())).toBeNull();
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('gallerypass123');
+});
+
+test('[preserving-usb-wifi-copy] one Wi-Fi heading keeps help available without repeating the firmware step', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page);
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await expect(form).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Connect to Wi-Fi', exact: true })).toHaveCount(1);
+  await expect(form.locator('h2')).toHaveCount(0);
+  await expect(page.getByText('Firmware updated', { exact: true })).toBeVisible();
+  const details = form.locator('.usb-wifi-help').first();
+  await expect(details).not.toHaveAttribute('open');
+  await expect(details.getByText(/32 bytes/)).toBeHidden();
+  await details.locator('summary').click();
+  await expect(details.getByText(/32 bytes/)).toBeVisible();
+  await expect(form.getByLabel('Wi-Fi network name')).toBeVisible();
+  await expect(form.getByLabel('Wi-Fi password', { exact: true })).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Show Wi-Fi password' })).toBeVisible();
+  await expect(form.getByRole('checkbox', { name: /open network/ })).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Scan nearby networks' })).toBeVisible();
+  await expect(form.getByRole('button', { name: 'Use card setup page instead' })).toBeVisible();
+  await page.screenshot({ path: '/tmp/lightweaver-preserving-wifi-copy-2107.png', fullPage: true });
+});
+
+test('[preserving-usb-wifi-scan] busy scan retries the same session and returns nearby networks', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page, { scanBusyReplies: 2 });
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await form.getByRole('button', { name: 'Scan nearby networks' }).click();
+  await expect(form.getByRole('combobox', { name: 'Nearby Wi-Fi networks' })).toContainText('Gallery network');
+  await expect(form.getByTestId('usb-wifi-status')).toContainText('Choose a network below');
+  const state = await page.evaluate(() => (window as any).__preservingUsbWifi);
+  const scans = state.requests.filter((request: any) => request.command === 'scan');
+  expect(scans).toHaveLength(3);
+  expect(scans.every((request: any) => request.refresh === true)).toBe(true);
+  expect(state.opens).toBe(1);
+  expect(state.provisions).toBe(0);
+});
+
+test('[preserving-usb-wifi-scan] persistent busy ends with a retry action and sends no credentials', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page, { scanAlwaysBusy: true, scanDeadlineMs: 1400 });
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  const form = page.getByTestId('usb-wifi-setup');
+  await form.getByRole('button', { name: 'Scan nearby networks' }).click();
+  await expect(form.getByTestId('usb-wifi-status')).toContainText('Card is busy. Try scanning again');
+  await expect(form.getByRole('button', { name: 'Scan nearby networks' })).toBeEnabled();
+  const state = await page.evaluate(() => (window as any).__preservingUsbWifi);
+  const scans = state.requests.filter((request: any) => request.command === 'scan');
+  expect(scans.length).toBeGreaterThan(1);
+  expect(scans.every((request: any) => request.refresh === true)).toBe(true);
+  expect(state.provisions).toBe(0);
 });
 
 test('[preserving-usb-wifi] a configured card is not offered USB Wi-Fi mutation after update', async ({ page }) => {
