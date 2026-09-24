@@ -540,18 +540,24 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const [phase, setPhase] = useState('idle');
     const [acknowledgedBytes, setAcknowledgedBytes] = useState(0);
     const [error, setError] = useState('');
+    const [usbCheckNote, setUsbCheckNote] = useState('');
+    const [usbCheckBusy, setUsbCheckBusy] = useState(false);
+    const usbCheckBusyRef = useRef(false);
     const [recoveryBlocker, setRecoveryBlocker] = useState('');
     const [rollback, setRollback] = useState(null);
     const [observedUpdateStatus, setObservedUpdateStatus] = useState(null);
     const rolledBackRef = useRef(false);
     const target = release?.manifest;
     const savedUsbSession = mode === 'usb' ? readFirmwareUpdateSession() : null;
-    const canResumeUsbWifi = canWebSerialInstall && savedUsbSession?.mode === 'usb'
+    const matchingUsbSession = savedUsbSession?.mode === 'usb'
       && savedUsbSession.cardId === card.id && target
       && savedUsbSession.targetBuildId === target.buildId
       && savedUsbSession.targetFirmwareVersion === target.firmwareVersion
-      && savedUsbSession.targetBuildNumber === target.buildNumber
-      && ['restarting', 'pending-reboot', 'probation', 'valid'].includes(savedUsbSession.phase);
+      && savedUsbSession.targetBuildNumber === target.buildNumber;
+    const canResumeUsbWifi = canWebSerialInstall && matchingUsbSession
+      && ['sending', 'verification-unknown', 'restarting', 'pending-reboot', 'probation', 'valid'].includes(savedUsbSession.phase);
+    const usbResultUnknown = matchingUsbSession
+      && ['sending', 'verification-unknown'].includes(savedUsbSession.phase);
     const softwareGrantAvailable = mode === 'wifi'
       && cardSupportsSoftwareFirmwareUpdateGrant(readiness);
     // Whether this browser could actually obtain the software grant. The card
@@ -600,7 +606,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const phaseLabel = mode === 'usb' && phase === 'verifying'
       ? 'Upload complete · checking the saved update'
       : UPDATE_PHASE_LABELS[phase] || '';
-    const installedLabel = card.recovering
+    const installedLabel = usbResultUnknown ? 'Not verified after USB transfer' : card.recovering
       ? 'Checking restarted card…'
       : `${card.firmwareVersion || 'unknown'} · ${formatFirmwareBuildLabel(card)}`;
     const targetLabel = target ? `${target.firmwareVersion} · ${formatFirmwareBuildLabel(target)}` : 'Verifying signed release…';
@@ -759,6 +765,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     const start = async () => {
       if ((!useSoftwareAuthorization && !physicalConfirmed) || !release) return;
+      if (mode === 'usb' && ['sending', 'verification-unknown'].includes(readFirmwareUpdateSession()?.phase)) {
+        setConfirming(false);
+        setError('The previous USB update result is unknown. Check the exact running firmware before another update.');
+        return;
+      }
       setError('');
       setRecoveryBlocker('');
       setPhase('preflight');
@@ -886,6 +897,21 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           try { await onReconnectCard?.(reconnectHost); } catch { /* bounded status wait reports the actionable failure */ }
         }
       } catch (cause) {
+        if (mode === 'usb' && cause?.code === 'usb-update-verification-unknown') {
+          const saved = readFirmwareUpdateSession();
+          if (saved?.mode === 'usb' && saved.cardId === card.id && saved.targetBuildId === target?.buildId) {
+            onFirmwareSession?.(saveFirmwareUpdateSession({ ...saved, phase: 'verification-unknown' }));
+          }
+          loaderRef.current = null;
+          transportRef.current = null;
+          if (usbInspectionInvalidRef) usbInspectionInvalidRef.current = true;
+          onUsbReleased?.();
+          setConfirming(false);
+          setPhysicalConfirmed(false);
+          setError('USB transfer ended without a verified result. Do not repeat the update yet. Reconnect this exact card over USB to check the firmware now running.');
+          setPhase('idle');
+          return;
+        }
         setError(cause?.message || String(cause));
         setPhase('idle');
       }
@@ -906,7 +932,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             <p>Project head: {readiness.projectHead}</p>
           </details>}
         </div>
-        {!confirming && phase === 'idle' && (
+        {usbResultUnknown && <p className="preserving-update-notice" role="status">The last USB transfer may have changed the card. Check the exact running firmware before another update.</p>}
+        {!usbResultUnknown && !confirming && phase === 'idle' && (
           <div className="preserving-update-choice">
             {cardCannotTakeWifiUpdate ? (
               <p className="preserving-update-notice" role="status" data-testid="preserving-update-usb-required-notice">
@@ -941,7 +968,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             </details>}
           </div>
         )}
-        {confirming && phase === 'idle' && (
+        {!usbResultUnknown && confirming && phase === 'idle' && (
           <div className="install-confirm-action">
             {useSoftwareAuthorization ? (
               <>
@@ -1004,12 +1031,24 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           </div>
         ) : null}
         {canResumeUsbWifi && phase !== 'reconnected' && (
-          <button className="btn" type="button" data-testid="preserving-usb-wifi-resume" onClick={() => {
-            void Promise.resolve().then(() => onResumeUsbWifi?.()).catch(cause => setError(cause?.message || 'Could not reopen USB Wi-Fi setup for this card.'));
+          <button className="btn" type="button" data-testid="preserving-usb-wifi-resume" disabled={usbCheckBusy} onClick={() => {
+            if (usbCheckBusyRef.current) return;
+            usbCheckBusyRef.current = true;
+            setUsbCheckBusy(true);
+            setError('');
+            setUsbCheckNote('');
+            void Promise.resolve().then(() => onResumeUsbWifi?.()).then(result => {
+              if (result?.verified) {
+                setPhase('restarting');
+                if (!result.wifiReady) setUsbCheckNote('USB confirmed this exact card is running the new firmware. It already has Wi-Fi or a project; reconnect its card page to finish checking setup.');
+              }
+            }).catch(cause => setError(cause?.message || 'Could not verify the updated card over USB. The update result remains unknown.'))
+              .finally(() => { usbCheckBusyRef.current = false; setUsbCheckBusy(false); });
           }}>
-            Resume Wi-Fi setup with USB
+            {usbResultUnknown ? 'Check running firmware over USB' : 'Resume Wi-Fi setup with USB'}
           </button>
         )}
+        {usbCheckNote && <p role="status">{usbCheckNote}</p>}
         {continueDestination && (
           <button
             className="btn-lg"
@@ -1062,6 +1101,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const wifiSessionRef = useRef(null);
     const wifiInstallRef = useRef(null);
     const wifiBusyRef = useRef(false);
+    const preservingUsbRuntimeVerifiedRef = useRef(false);
+    const [preservingUsbRuntimeVerified, setPreservingUsbRuntimeVerified] = useState(false);
     // F40: an explicit "Update once over USB instead" choice from the
     // preserving panel wins over the wifi/usb resolution below, for as long
     // as this screen stays mounted. See `preservingMode` further down.
@@ -1112,6 +1153,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // install moves it. A live link is the best account; a remembered identity
     // is used only when it belongs to the card actually plugged in.
     const installedFirmware = useMemo(() => {
+      const saved = readFirmwareUpdateSession();
+      if (saved?.mode === 'usb' && ['sending', 'verification-unknown'].includes(saved.phase)) return null;
       // A signed image found in app0 is not proof the card booted from app0.
       // Do not turn that observation, or an old remembered label, into a
       // current-firmware claim unless a fresh exact network link says so.
@@ -1218,12 +1261,15 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           recovering: true,
         })
       : null;
+    const uncertainUsbRecovery = recoveryCard && recoverySession.mode === 'usb'
+      && ['sending', 'verification-unknown'].includes(recoverySession.phase);
     const preservingMode = preservingFixture?.mode
-      || (preferUsbUpdate && (connectedUpdateCard || usbUpdateCard) ? 'usb'
+      || (uncertainUsbRecovery ? 'usb'
+        : preferUsbUpdate && (connectedUpdateCard || usbUpdateCard) ? 'usb'
         : connectedUpdateCard ? 'wifi'
           : usbUpdateCard && updateReleaseState.state === 'ready' ? 'usb'
             : recoveryCard ? (recoverySession.mode === 'usb' ? 'usb' : 'wifi') : '');
-    const preservingCard = connectedUpdateCard || usbUpdateCard
+    const preservingCard = (recoverySession?.mode === 'usb' ? recoveryCard : null) || connectedUpdateCard || usbUpdateCard
       || (preservingFixture?.mode === 'usb' ? preservingFixture.card : null)
       || recoveryCard;
     // A browser that remembers a configured card it has actually reached
@@ -1596,6 +1642,16 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       try {
         const session = await openUsbWifiSession({ port: context.port, expected: context.expected });
         if (!mountedRef.current) { await session.close(); return null; }
+        if (context.kind === 'preserving-update') {
+          preservingUsbRuntimeVerifiedRef.current = true;
+          setPreservingUsbRuntimeVerified(true);
+          const saved = readFirmwareUpdateSession();
+          if (saved?.mode === 'usb' && saved.cardId === session.identity.cardId
+            && saved.targetBuildId === session.identity.buildId
+            && ['sending', 'verification-unknown'].includes(saved.phase)) {
+            setRecoverySession(saveFirmwareUpdateSession({ ...saved, phase: 'restarting' }));
+          }
+        }
         const savedAttempt = context.kind === 'preserving-update'
           ? readFirmwareUpdateSession()?.usbWifiAttempt || context.attempt
           : context.flow.usbWifiAttempt;
@@ -1649,6 +1705,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           wifiSessionRef.current = null;
         }
         if (mountedRef.current) setWifiStatus({ state: 'error', message: usbWifiErrorMessage(error?.code) });
+        if (context.kind === 'preserving-update' && !preservingUsbRuntimeVerifiedRef.current) {
+          throw new Error(`${usbWifiErrorMessage(error?.code)} The update result remains unknown.`);
+        }
         return null;
       }
     };
@@ -1659,11 +1718,37 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       if (!saved || saved.mode !== 'usb' || !target || saved.cardId !== preservingCard?.id
         || saved.targetBuildId !== target.buildId || saved.targetFirmwareVersion !== target.firmwareVersion
         || saved.targetBuildNumber !== target.buildNumber
-        || !['restarting', 'pending-reboot', 'probation', 'valid'].includes(saved.phase)) {
+        || !['sending', 'verification-unknown', 'restarting', 'pending-reboot', 'probation', 'valid'].includes(saved.phase)) {
         throw new Error('The saved preserving update no longer matches this card and signed release. Reinspect the exact card before continuing.');
       }
+      const resultUnknown = ['sending', 'verification-unknown'].includes(saved.phase);
+      // A USB-only inspection may not have seen the old runtime boot ID. In
+      // that case the already-proven old image and an exact new-build hello
+      // with a nonempty boot ID establish the new running target. When the
+      // old boot ID exists, openUsbWifiSession additionally rejects its reuse.
+      preservingUsbRuntimeVerifiedRef.current = false;
+      setPreservingUsbRuntimeVerified(false);
       let selectedPort = port;
-      if (!selectedPort) {
+      if (resultUnknown) {
+        // A failed transfer may have left the card in the ESP ROM loader. A
+        // fresh browser chooser and MAC check precede the existing software
+        // reset; this path never writes firmware or Wi-Fi credentials.
+        const testConnect = import.meta.env.DEV && window.__LW_CONNECT_ESP_FOR_TEST__;
+        const connection = await (typeof testConnect === 'function' ? testConnect() : connectESP());
+        selectedPort = connection.transport?.device;
+        let exactHardware = false;
+        try {
+          const inspected = await inspectConnectedESP(connection.loader, connection.chip);
+          const hardware = { ...inspected, ...validateInstallHardware(inspected) };
+          if (hardware.cardId !== saved.cardId || !selectedPort) {
+            throw new Error('USB selected a different card. The update result remains unknown.');
+          }
+          exactHardware = true;
+        } finally {
+          if (exactHardware) await releaseInspectedConnection(connection.loader, connection.transport);
+          else await disconnectESP(connection.loader, connection.transport);
+        }
+      } else if (!selectedPort) {
         try { selectedPort = await navigator.serial.requestPort(); }
         catch (error) {
           if (error?.name === 'NotFoundError') return false;
@@ -1677,9 +1762,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           previousBootId: saved.previousBootId || '' },
       };
       setWifiStatus({ state: 'connecting', message: 'Checking the updated card over USB…' });
-      setInstallState('wifi-setup');
       await connectWifiUsb();
-      return true;
+      if (!preservingUsbRuntimeVerifiedRef.current) {
+        throw new Error('Studio could not verify the exact updated firmware and new boot over USB. The update result remains unknown; no data was sent.');
+      }
+      if (wifiInstallRef.current && wifiSessionRef.current) setInstallState('wifi-setup');
+      return { verified: true, wifiReady: Boolean(wifiSessionRef.current) };
     };
 
     const joinWifiUsb = async (session = wifiSessionRef.current) => {
@@ -1752,10 +1840,10 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const wifiForm = (
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
         <div className="install-action-copy">
-          <h2>{preservingUsbWifi ? 'Connect updated card to Wi-Fi' : 'Set up Wi-Fi over USB'}</h2>
+          <h2>{preservingUsbWifi ? preservingUsbRuntimeVerified ? 'Connect updated card to Wi-Fi' : 'Checking card firmware over USB' : 'Set up Wi-Fi over USB'}</h2>
           <p>Keep this computer on its normal network. Enter the gallery or home 2.4 GHz Wi-Fi, not the Lightweaver setup hotspot. If you do not know its name, leave the fields blank and scan nearby networks from this card. Keep USB connected. Details go only to this verified card over USB and are never saved in Studio.</p>
         </div>
-        <fieldset disabled={wifiBusy || installState === 'installing'}>
+        <fieldset disabled={wifiBusy || installState === 'installing' || (preservingUsbWifi && !preservingUsbRuntimeVerified)}>
           <label htmlFor="usb-wifi-ssid">Wi-Fi network name</label>
           <input id="usb-wifi-ssid" data-testid="usb-wifi-ssid" value={wifiSsid} onChange={event => setWifiSsid(event.target.value)} autoComplete="off" spellCheck={false} maxLength={32} placeholder="2.4 GHz network name" />
           <small>Wi-Fi names can use up to 32 bytes. Some non-English characters use more than one byte.</small>
@@ -2027,7 +2115,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     if (installState === 'wifi-setup') return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`}><div className="install-task">
-        <header className="install-intro"><div className="eyebrow">Firmware {preservingUsbWifi ? 'updated' : 'installed'}</div><InstallHeading>Connect this card to Wi-Fi</InstallHeading></header>
+        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>Connect this card to Wi-Fi</InstallHeading></header>
         {wifiForm}
       </div></div>
     );
@@ -2085,9 +2173,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               usbInspectionInvalidRef={inspectionInvalidRef}
               canWebSerialInstall={capabilities.canWebSerialInstall}
               onSwitchToUsb={() => setPreferUsbUpdate(true)}
-              onUsbReleased={() => setCardState(previous => ({
-                state: 'reconnecting', hardware: previous.hardware, error: '',
-              }))}
+              onUsbReleased={() => {
+                if (inspectionRef.current) clearActiveUsbInspection(inspectionRef.current);
+                inspectionRef.current = null;
+                setCardState({ state: 'reconnecting', hardware: null, error: '' });
+              }}
               onUsbBootstrapComplete={({ port }) => resumePreservingUsbWifi({ port })}
               onResumeUsbWifi={() => resumePreservingUsbWifi()}
               onReconnectCard={onConnectCard}

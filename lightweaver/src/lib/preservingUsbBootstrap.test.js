@@ -162,7 +162,7 @@ test('bootstrap announces readback verification as soon as the full USB write is
   }
 });
 
-test('interrupted bootstrap always releases USB and says preserved data remains repeatable', async () => {
+test('post-write interruption attempts app reset, releases USB, and leaves completion unknown', async () => {
   const events = [];
   const loader = {
     FLASH_READ_TIMEOUT: 100_000,
@@ -171,15 +171,58 @@ test('interrupted bootstrap always releases USB and says preserved data remains 
   await assert.rejects(() => runPreservingUsbBootstrap({
     loader,
     transport: {}, evidence: evidence(), release: release(),
-    writeApplication: async () => { throw new Error('cable removed'); },
+    writeApplication: async (_loader, _bytes, _address, _eraseAll, onProgress) => {
+      onProgress?.(1);
+      throw new Error('flash finish/MD5 packet failed');
+    },
+    resetIntoApp: async () => events.push('reset'),
     disconnect: async () => events.push('disconnect'),
   }), error => {
-    assert.match(error.message, /data remains|repeat/i);
-    assert.equal(error.recovery, 'repeat-preserving-usb-bootstrap');
+    assert.match(error.message, /completion is unverified/i);
+    assert.doesNotMatch(error.message, /repeat the preserving/i);
+    assert.equal(error.code, 'usb-update-verification-unknown');
+    assert.equal(error.recovery, 'verify-exact-target-runtime');
+    return true;
+  });
+  assert.deepEqual(events, ['reset', 'disconnect']);
+  assert.equal(loader.FLASH_READ_TIMEOUT, 100_000);
+});
+
+test('readback failure retains the original error even if recovery reset also fails', async () => {
+  const events = [];
+  await assert.rejects(() => runPreservingUsbBootstrap({
+    loader: { async readFlash(address) {
+      if (address === 0x8000) return TABLE;
+      if (address === 0xe000) return OTA;
+      throw new Error('Invalid head of packet (0x45)');
+    } },
+    transport: {}, evidence: evidence(), release: release(),
+    writeApplication: async () => events.push('write'),
+    resetIntoApp: async () => { events.push('reset'); throw new Error('reset port closed'); },
+    disconnect: async () => events.push('disconnect'),
+  }), error => {
+    assert.match(error.message, /Invalid head of packet \(0x45\)/);
+    assert.equal(error.code, 'usb-update-verification-unknown');
+    assert.equal(error.recovery, 'verify-exact-target-runtime');
+    return true;
+  });
+  assert.deepEqual(events, ['write', 'reset', 'disconnect']);
+});
+
+test('pre-write refusal keeps its no-write error and does not attempt a reset', async () => {
+  const events = [];
+  await assert.rejects(() => runPreservingUsbBootstrap({
+    loader: { readFlash: async address => address === 0x8000 ? TABLE : OTA },
+    transport: {}, evidence: { ...evidence(), source: 'remembered' }, release: release(),
+    writeApplication: async () => events.push('write'),
+    resetIntoApp: async () => events.push('reset'),
+    disconnect: async () => events.push('disconnect'),
+  }), error => {
+    assert.match(error.message, /Nothing was written/);
+    assert.equal(error.code, undefined);
     return true;
   });
   assert.deepEqual(events, ['disconnect']);
-  assert.equal(loader.FLASH_READ_TIMEOUT, 100_000);
 });
 
 test('the actual signed build 2070 factory selector proves app0 without reading NVS', async () => {
