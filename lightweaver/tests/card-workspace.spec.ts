@@ -1958,7 +1958,7 @@ test('reachable recovering factory card uses URL IP and offers blank setup witho
   await expect.poll(() => statusRequests.length).toBeGreaterThan(0);
   expect(statusRequests[0]).toBe(cardHost);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe(cardHost);
-  await expect(page.getByTestId('card-detected-state')).toContainText('Blank — load a project');
+  await expect(page.getByTestId('card-detected-state')).toContainText('This factory card is connected and ready for setup. Continue with the next setup step.');
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
   // The blank setup path is the lights phase, active inline on Card Home.
   await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('aria-current', 'step');

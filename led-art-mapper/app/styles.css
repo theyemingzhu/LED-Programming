@@ -2610,12 +2610,18 @@ body[data-mode="flash"] .canvas-panel { display: none; }
 body[data-mode="flash"] .side-panel {
   flex: 1;
   width: 100%;
+  min-width: 0;
   max-width: 740px;
   margin: 0 auto;
 }
 body[data-mode="flash"] #tab-flash {
+  min-width: 0;
   padding: 24px 32px;
   gap: 16px;
+}
+body[data-mode="flash"] .flash-addr-row,
+body[data-mode="flash"] .flash-erase-row {
+  flex-wrap: wrap;
 }
 body[data-mode="flash"] #btn-flash-write {
   min-height: 44px;
