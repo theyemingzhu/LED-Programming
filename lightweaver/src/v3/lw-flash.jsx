@@ -710,7 +710,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         hosts,
         timeoutMs,
         connect: async (host, { expectedCardId }) => {
-          await onReconnectCard?.(host);
+          await onReconnectCard?.(host, { background: true });
           const authority = await connectCardTransport({ host, expectedCardId });
           if (!authority?.connected) throw new Error(authority?.reason || 'card-unreachable');
           authorities.set(host, authority);

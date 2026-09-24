@@ -447,6 +447,19 @@ function ownedCardBridgeWindow() {
   return bridgeWindow;
 }
 
+// Firmware recovery can inspect a card over direct HTTP while a card page is
+// already open. It must not create, navigate, or focus a card popup from its
+// background retry loop; closing that popup ends its passive reuse.
+export function existingCardBridgeWindow(rawHost = '') {
+  const host = normalizeCardHost(rawHost);
+  if (!host || !isLocalCardHost(host) || bridgeOwnerWindow !== browserWindow()) return null;
+  if (bridgeTargetClosed()) {
+    clearBridgeTarget();
+    return null;
+  }
+  return normalizeCardHost(bridgeHost) === host ? ownedCardBridgeWindow() : null;
+}
+
 function trackNavigatedBridgeWindow(source, { host, origin, persistHost = true } = {}) {
   if (source) rememberBridgeWindow(source);
   if (origin) bridgeOrigin = origin;

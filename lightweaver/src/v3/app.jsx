@@ -1569,9 +1569,9 @@ function Shell({ offlineUpdateController = null }) {
     bridgeResultAcceptedRef.current = false;
     setBridgeResult(outcome === 'complete' ? { kind: 'complete' } : null);
   }, []);
-  const onConnectCard = useCallback((host = '') => {
+  const onConnectCard = useCallback((host = '', { background = false } = {}) => {
     if (directCardControl) return cardStatus.connect?.(host);
-    return connectCardLink(host);
+    return connectCardLink(host, { background });
   }, [directCardControl, cardStatus.connect]);
 
   const isProjectSwitchSnapshotCurrent = useCallback(captured => {
