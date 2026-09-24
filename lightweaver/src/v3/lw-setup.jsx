@@ -13,7 +13,8 @@ import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnI
 import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import { ladderOwnsPrimary as deriveLadderOwnsPrimary } from '../lib/setupJourneyInputs.js';
 import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../lib/cardCommissioningFlow.js';
-import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js';
+import { hasResumableCommissioning, hasResumablePreservingUsbUpdate, openCardFlow } from '../lib/cardFlowEntry.js';
+import { readFirmwareUpdateSession } from '../lib/cardFirmwareUpdater.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
@@ -123,6 +124,7 @@ export function SetupScreen({
   browserProjects = [],
   replaceProject,
   firmwareStatus = null,
+  firmwareReleaseManifest = null,
   onRenameProject = null,
   installDoor = null,
   // Card Home's Lights row edits the count in place through the same write
@@ -1040,6 +1042,11 @@ export function SetupScreen({
                 lifecycle: cardLifecycle,
                 journey,
                 resumableCommissioning: hasResumableCommissioning(commissioningFlow),
+                resumablePreservingUsbUpdate: hasResumablePreservingUsbUpdate({
+                  session: readFirmwareUpdateSession(),
+                  cardId: cardLink?.card?.id || cardLink?.expectedCard?.id || readPersistedCardIdentity()?.id || '',
+                  releaseManifest: firmwareReleaseManifest,
+                }),
               })}
             >Continue Wi-Fi setup</button>
           ) : (

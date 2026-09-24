@@ -97,14 +97,13 @@ export function resolveCardIntent(intent, context = {}) {
         ? route('#screen=card&section=install')
         : route(setupTaskRoute('install-project'));
     case 'configure-wifi':
-      // Wi-Fi is a JOIN problem unless an in-flight commissioning stage owns
-      // the owner's next step. With a resumable stage, the Install screen's
-      // commissioning panel is mid-conversation with this exact card, so it
-      // keeps the owner. Without one, routing to Install landed on the USB
+      // Wi-Fi is a JOIN problem unless an in-flight commissioning stage or
+      // exact-card preserving USB update owns the next step. Those resume in
+      // Install. Without either, routing to Install landed on the USB
       // "Find your connected card" installer — a misdirect for an owner whose
       // card is sitting on its own setup network. The Connect panel's
       // setup-network join steps are the surface that actually finishes it.
-      return context.resumableCommissioning === true
+      return context.resumableCommissioning === true || context.resumablePreservingUsbUpdate === true
         ? route('#screen=card&section=install')
         : connectPanel('setup-network');
     case 'discover-strips':
@@ -131,6 +130,22 @@ const RESUMABLE_COMMISSIONING_STAGES = new Set(['set-up-card', 'check-lights']);
 
 export function hasResumableCommissioning(flow = readCardCommissioning()) {
   return RESUMABLE_COMMISSIONING_STAGES.has(flow?.stage ?? flow?.flow?.stage ?? '');
+}
+
+const RESUMABLE_USB_UPDATE_PHASES = new Set([
+  'sending', 'verification-unknown', 'restarting', 'pending-reboot', 'probation', 'valid',
+]);
+
+// Navigation eligibility only. Install rechecks the signed release, exact USB
+// card, running firmware and boot before it resumes any setup operation.
+export function hasResumablePreservingUsbUpdate({ session, cardId, releaseManifest } = {}) {
+  return Boolean(session?.mode === 'usb'
+    && RESUMABLE_USB_UPDATE_PHASES.has(session.phase)
+    && cardId && session.cardId === cardId
+    && releaseManifest
+    && session.targetBuildId === releaseManifest.buildId
+    && session.targetFirmwareVersion === releaseManifest.firmwareVersion
+    && session.targetBuildNumber === releaseManifest.buildNumber);
 }
 
 // Intents that TAKE the owner away from what they were doing to deal with the

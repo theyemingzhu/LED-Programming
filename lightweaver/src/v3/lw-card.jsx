@@ -917,7 +917,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -1100,6 +1100,7 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         replaceProject={replaceProject}
         onSaveProject={onSaveProject}
         firmwareStatus={firmwareStatus}
+        firmwareReleaseManifest={firmwareReleaseManifest}
         onLoadOfferChange={setSetupLoadOffer}
         onCountEditor={setCountEditor}
         installAction={installAction}
