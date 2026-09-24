@@ -127,12 +127,34 @@ test('fresh installer accepts Wi-Fi locally before any erase and keeps the setup
   await openFreshInstaller(page, request);
   await expect(page.getByTestId('usb-wifi-setup')).toBeVisible();
   await expect(page.getByLabel('Wi-Fi network name')).toBeVisible();
-  await expect(page.getByLabel('Wi-Fi password')).toHaveAttribute('type', 'password');
+  await expect(page.getByLabel('Wi-Fi password', { exact: true })).toHaveAttribute('type', 'password');
   await fillWifi(page);
   expect(await serialCommands(page)).toEqual([]);
   expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([]);
   await expect(page.getByTestId('usb-wifi-setup')).toContainText('setup page remains available as a fallback');
   await page.screenshot({ path: '/tmp/lightweaver-usb-wifi-before-install.png', fullPage: true });
+});
+
+test('USB Wi-Fi password visibility is keyboard controlled and resets after sending', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'unknown');
+  await fillWifi(page);
+  const password = page.getByTestId('usb-wifi-password');
+  const toggle = page.getByRole('button', { name: 'Show Wi-Fi password' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(password).toHaveAttribute('type', 'text');
+  const hide = page.getByRole('button', { name: 'Hide Wi-Fi password' });
+  await expect(hide).toHaveAttribute('aria-pressed', 'true');
+  expect((await hide.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await page.keyboard.press('Space');
+  await expect(password).toHaveAttribute('type', 'password');
+  await page.getByRole('button', { name: 'Show Wi-Fi password' }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await install(page);
+  await expect(password).toHaveValue('');
+  await expect(password).toHaveAttribute('type', 'password');
+  await expect(page.getByRole('button', { name: 'Show Wi-Fi password' })).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('USB setup distinguishes gallery Wi-Fi from the card hotspot and explains cleared-password retry', async ({ page, request }) => {
