@@ -1775,7 +1775,7 @@ test('Card overview distinguishes checking, blank, and ready evidence', async ({
     runtimePhase: 'factory', knownGoodProject: false, commandReady: false,
     mode: 'factory-flash', source: 'defaults',
   });
-  await expect(page.getByTestId('card-detected-state')).toContainText('Blank — load a project');
+  await expect(page.getByTestId('card-detected-state')).toContainText('This factory card is connected and ready for setup. Continue with the next setup step.');
   // The blank card's next work is the lights phase, active on the one ladder.
   await expect(page.getByTestId('setup-phase-lights')).toHaveAttribute('aria-current', 'step');
   await expect(page.getByTestId('setup-lights-action')).toBeVisible();
