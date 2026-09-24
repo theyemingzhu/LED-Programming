@@ -163,9 +163,10 @@ export function planPreservingBootstrap(evidence = {}, release = {}) {
 }
 
 function interrupted(cause) {
-  const error = new Error(`Preserving update stopped: ${cause?.message || String(cause)}. Wi-Fi, projects, patterns, wiring, and settings data remains in its separate partitions. Reconnect this same card and repeat the preserving USB update.`);
+  const error = new Error(`Preserving update stopped: ${cause?.message || String(cause)}. Update completion is unverified. Wi-Fi, projects, patterns, wiring, and settings were not targeted by this write. Reconnect this exact card and verify its running firmware before deciding whether another update is needed.`);
   error.cause = cause;
-  error.recovery = 'repeat-preserving-usb-bootstrap';
+  error.code = 'usb-update-verification-unknown';
+  error.recovery = 'verify-exact-target-runtime';
   return error;
 }
 
@@ -180,6 +181,7 @@ export async function runPreservingUsbBootstrap({
   onProgress,
 } = {}) {
   let writeStarted = false;
+  let resetAttempted = false;
   // esptool-js otherwise waits up to 100 seconds of silence for each read
   // packet. This transaction owns the loader until it disconnects; shorten
   // that inactivity wait for the selector, table, and final app readback.
@@ -206,10 +208,19 @@ export async function runPreservingUsbBootstrap({
       || await sha256Hex(readback) !== plan.expectedSha256) {
       throw new Error('Application readback SHA-256 did not match.');
     }
+    resetAttempted = true;
     await resetIntoApp?.(transport, loader);
     return Object.freeze({ ok: true, cardId: plan.cardId, target: plan.target, range: plan.range });
   } catch (error) {
-    if (writeStarted) throw interrupted(error);
+    if (writeStarted) {
+      // A failed finish/MD5/readback can leave the chip in the ROM loader even
+      // when all write blocks were acknowledged. Best-effort boot the app
+      // before releasing USB, but never turn that reset into update proof.
+      if (!resetAttempted) {
+        try { await resetIntoApp?.(transport, loader); } catch { /* preserve the original write/verification error */ }
+      }
+      throw interrupted(error);
+    }
     throw error;
   } finally {
     if (scopedPacketTimeout && loader.FLASH_READ_TIMEOUT === USB_READ_PACKET_TIMEOUT_MS) {
