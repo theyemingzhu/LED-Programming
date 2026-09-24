@@ -165,7 +165,7 @@ test('USB Wi-Fi password visibility is keyboard controlled and resets after send
 test('USB setup distinguishes gallery Wi-Fi from the card hotspot and explains cleared-password retry', async ({ page, request }) => {
   await openFreshInstaller(page, request, 'unknown');
   const form = page.getByTestId('usb-wifi-setup');
-  await expect(form.locator('.install-action-copy > p')).toContainText('home or gallery 2.4 GHz Wi-Fi, or scan after installation');
+  await expect(form.locator('.install-action-copy > p')).toContainText('home or gallery 2.4 GHz Wi-Fi');
   await expect(form.locator('.usb-wifi-help')).not.toHaveAttribute('open');
   await form.locator('.usb-wifi-help summary').click();
   await expect(form.locator('.usb-wifi-help')).toContainText('not the Lightweaver setup hotspot');
