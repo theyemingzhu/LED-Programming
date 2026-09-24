@@ -500,7 +500,7 @@
 .lw-bench-action-row { justify-content: center; }
 .lw-bench-nav,.lw-assembly-actions { display: flex; gap: 6px; margin-top: 12px; }
 .lw-bench-nav .btn { flex: 1; min-width: 0; justify-content: center; }
-.lw-open-assembly { width: 100%; margin-top: 10px; }
+.lw-open-assembly { width: fit-content; max-width: 100%; min-height: 44px; height: auto; margin-top: 10px; white-space: normal; text-align: left; }
 .lw-assembly-map > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .lw-assembly-map small { color: var(--text-faint); font: 9px var(--font-mono); letter-spacing: .06em; }
 .lw-assembly-output { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft); }

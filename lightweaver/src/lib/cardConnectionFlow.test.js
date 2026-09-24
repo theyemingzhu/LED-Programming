@@ -242,9 +242,21 @@ test('keeps setup-network compatibility as an explicit recoverable route', () =>
     const result = nextCardConnectionAction(input);
     assert.equal(result.id, 'recoverable-failure');
     assert.equal(result.route, 'setup-network');
-    assert.equal(result.primaryLabel, 'Continue');
-    assert.match(result.explanation, /setup network/i);
+    assert.equal(result.primaryLabel, 'Continue after setup');
+    assert.match(result.explanation, /Wi-Fi network/i);
   }
+});
+
+test('working-card setup gives one short path back to Studio', () => {
+  const result = nextCardConnectionAction({
+    intent: 'working-card',
+    setupNetwork: { available: true },
+    expectedCard: { id: CARD_ID },
+  });
+  assert.equal(result.title, 'Finish card setup');
+  assert.equal(result.primaryLabel, 'Continue after setup');
+  assert.equal(result.explanation,
+    'Power the card, join Lightweaver-EEFF, finish Wi-Fi setup on the card page, then return to Studio.');
 });
 
 test('routes the factory eight-pixel double-flash observation straight to setup', () => {

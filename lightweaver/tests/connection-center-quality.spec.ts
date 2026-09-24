@@ -1110,7 +1110,7 @@ test('old firmware without browser USB offers the real Bridge update path', asyn
   await expect(page.getByRole('button', { name: 'Open Lightweaver Bridge' })).toBeVisible();
 });
 
-test('working setup card restores AP steps and continues through 192.168.4.1', async ({ page }) => {
+test('working setup card gives concise AP guidance and continues through 192.168.4.1', async ({ page }) => {
   await installOpenSpy(page);
   await page.evaluate(() => localStorage.setItem('lw_chip_card_host', '192.168.4.1'));
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -1119,8 +1119,11 @@ test('working setup card restores AP steps and continues through 192.168.4.1', a
   await expect(actionRegion(page)).toHaveAttribute('data-action-id', 'recoverable-failure');
   await expect(actionRegion(page)).not.toContainText('Lightweaver-XXXX');
   await expect(actionRegion(page)).toContainText('name starts with');
+  await expect(actionRegion(page)).toContainText(/Power the card, join .*finish Wi-Fi setup on the card page, then return to Studio\./i);
+  await expect(actionRegion(page).locator('.card-connection-setup-steps')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'The card is already on my Wi-Fi' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__openedUrls.length)).toBe(0);
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Continue after setup' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__openedUrls[0] || '')).toContain('192.168.4.1');
   await expect.poll(() => page.evaluate(() => (window as any).__openedWindows[0])).toMatchObject({
     target: 'lightweaver-card-bridge',
