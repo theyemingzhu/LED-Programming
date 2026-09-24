@@ -607,8 +607,9 @@ test('preserving update: completed USB send visibly acknowledges readback verifi
   await expect(panel).not.toContainText('Briefly press BOOT');
   await panel.getByRole('checkbox', { name: /selected USB card.*lw-b0fe81f61b44/i }).check();
   await panel.getByRole('button', { name: 'Start preserving update' }).click();
-  await expect(panel.getByRole('status')).toHaveText('Upload complete · checking the saved update');
-  await expect(panel.getByRole('status')).not.toContainText('Sending signed update');
+  const phaseStatus = panel.locator('.install-release.ready[role="status"]');
+  await expect(phaseStatus).toHaveText('Upload complete · checking the saved update');
+  await expect(phaseStatus).not.toContainText('Sending signed update');
 });
 
 test('preserving update: USB reset ends with an actionable bounded reconnect failure', async ({ page }) => {
