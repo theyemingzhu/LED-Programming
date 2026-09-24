@@ -291,6 +291,33 @@ test('[preserving-usb-wifi-copy] one Wi-Fi heading keeps help available without 
   await page.screenshot({ path: '/tmp/lightweaver-preserving-wifi-copy-2107.png', fullPage: true });
 });
 
+test('[preserving-usb-wifi-fallback] card-page choice opens Wi-Fi setup and keeps USB resume available', async ({ page }) => {
+  await openPreservingUsbWifiFixture(page);
+  await page.getByTestId('preserving-usb-wifi-resume').click();
+  await expect(page.getByTestId('usb-wifi-setup')).toBeVisible();
+  await page.getByLabel('Wi-Fi network name').fill('Gallery network');
+  await page.evaluate(() => {
+    (window as any).__wifiPageOpens = [];
+    window.open = ((url?: string | URL) => {
+      (window as any).__wifiPageOpens.push(String(url || ''));
+      return { closed: false, focus() {}, postMessage() {}, location: { href: String(url || '') } } as unknown as Window;
+    }) as typeof window.open;
+  });
+
+  await page.getByRole('button', { name: 'Use card setup page instead', exact: true }).click();
+
+  const opened = await page.evaluate(() => (window as any).__wifiPageOpens as string[]);
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toContain('http://192.168.4.1/?wifiSetup=1');
+  expect(opened[0]).not.toContain('bridgeUtility=1');
+  await expect(page.getByTestId('usb-wifi-setup')).toBeVisible();
+  await expect(page.getByLabel('Wi-Fi network name')).toHaveValue('Gallery network');
+  await expect(page.getByRole('button', { name: 'Reconnect USB setup', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Update Lightweaver' })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__preservingUsbWifi.closes)).toBe(0);
+  expect(await page.evaluate(() => (window as any).__preservingUsbWifi.provisions)).toBe(0);
+});
+
 test('[preserving-usb-wifi-scan] busy scan retries the same session and returns nearby networks', async ({ page }) => {
   await openPreservingUsbWifiFixture(page, { scanBusyReplies: 2 });
   await page.getByTestId('preserving-usb-wifi-resume').click();
