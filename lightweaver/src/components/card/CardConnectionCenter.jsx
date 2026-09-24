@@ -462,6 +462,7 @@ export function CardConnectionCenter({
     && !directAttempt
     && !directBusy;
   const setupSteps = action.id === 'recoverable-failure' && action.route === 'setup-network';
+  const conciseWorkingCardSetup = setupSteps && intent === 'working-card';
   const stableRecoveryHost = ordinaryCardRecoveryHost(link.host || host, rememberedCard);
   const ordinaryRetry = action.id === 'recoverable-failure' && action.route === 'local-card-recovery';
   const hasRememberedAddress = Boolean(
@@ -558,7 +559,7 @@ export function CardConnectionCenter({
               )}
               disabled={action.primaryDisabled}
             >
-              {setupRecovery || (setupSteps && intent === 'factory-beacon') ? 'Continue after joining' : setupSteps ? 'Continue' : ordinaryRetry ? 'Look for the card again' : action.primaryLabel}
+              {setupRecovery || (setupSteps && intent === 'factory-beacon') ? 'Continue after joining' : conciseWorkingCardSetup ? action.primaryLabel : setupSteps ? 'Continue' : ordinaryRetry ? 'Look for the card again' : action.primaryLabel}
             </button>
             {showSetupSteps && (
               <button
@@ -734,7 +735,7 @@ export function CardConnectionCenter({
       ) : incompatibleFirmware ? null : showActionBody ? (
         <div className="card-connection-action" data-action-id={effectiveActionId} aria-live="polite" aria-busy={(action.busy || bridgeBusy) || undefined}>
           <h3>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Waiting for Lightweaver Bridge' : bridgeLifecycleState === 'return-pending' ? 'Return pending' : bridgeLifecycleState === 'installer-unavailable' ? 'Signed Bridge installer unavailable' : setupRecovery ? 'Join the Lightweaver setup network' : action.title}</h3>
-          <p>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Studio sent the launch request but cannot confirm whether Bridge opened. Keep this tab available for the result, or paste the return code below.' : bridgeLifecycleState === 'return-pending' ? 'Studio is validating the one-time return. Bridge will clear its saved result only after this tab accepts it.' : setupRecovery ? `If the card is pulsing amber, join ${setupNetworkLabel}, then continue.` : (routeOut?.line || action.explanation)}</p>
+          <p>{bridgeLifecycleState === 'opening' || bridgeLifecycleState === 'waiting-for-bridge' ? 'Studio sent the launch request but cannot confirm whether Bridge opened. Keep this tab available for the result, or paste the return code below.' : bridgeLifecycleState === 'return-pending' ? 'Studio is validating the one-time return. Bridge will clear its saved result only after this tab accepts it.' : setupRecovery ? `If the card is pulsing amber, join ${setupNetworkLabel}, then continue.` : conciseWorkingCardSetup ? `Power the card, join ${setupNetworkLabel}, finish Wi-Fi setup on the card page, then return to Studio.` : (routeOut?.line || action.explanation)}</p>
           {action.id === 'escape-insecure-card-frame' && (
             <p>Your browser only allows USB install from a separate secure top-level tab, so the installer opens in the Lightweaver Studio tab.</p>
           )}
@@ -753,7 +754,7 @@ export function CardConnectionCenter({
             </form>
           )}
 
-          {showSetupSteps && (
+          {showSetupSteps && !conciseWorkingCardSetup && (
             <ol className="card-connection-setup-steps">
               <li>Power the Lightweaver card.</li>
               <li>Join <strong>{setupNetworkLabel}</strong>.</li>

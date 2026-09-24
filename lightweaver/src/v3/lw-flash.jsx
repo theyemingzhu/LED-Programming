@@ -1095,6 +1095,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // These fields belong only to this mounted form, never the project/session.
     const [wifiSsid, setWifiSsid] = useState('');
     const [wifiPassword, setWifiPassword] = useState('');
+    const [wifiPasswordVisible, setWifiPasswordVisible] = useState(false);
     const [wifiOpenNetwork, setWifiOpenNetwork] = useState(false);
     const [wifiStatus, setWifiStatus] = useState({ state: 'idle', message: '' });
     const [wifiNetworks, setWifiNetworks] = useState([]);
@@ -1608,6 +1609,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       await wifiSessionRef.current?.close();
       wifiSessionRef.current = null;
       setWifiPassword('');
+      setWifiPasswordVisible(false);
       setWifiSsid('');
       setWifiNetworks([]);
       if (context.kind === 'preserving-update') {
@@ -1777,6 +1779,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       wifiBusyRef.current = true;
       const credentials = { ssid: wifiSsid, password: wifiPassword, openNetwork: wifiOpenNetwork };
       setWifiPassword('');
+      setWifiPasswordVisible(false);
       setWifiStatus({ state: 'joining', message: 'Sending Wi-Fi details to this card over USB and waiting for it to join…' });
       try {
         const result = await session.join(credentials, { onAttempt: async ({ id, bootId }) => {
@@ -1843,7 +1846,16 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
         <div className="install-action-copy">
           <h2>{preservingUsbWifi ? preservingUsbRuntimeVerified ? 'Connect updated card to Wi-Fi' : 'Checking card firmware over USB' : 'Set up Wi-Fi over USB'}</h2>
-          <p>Keep this computer on its normal network. Enter the gallery or home 2.4 GHz Wi-Fi, not the Lightweaver setup hotspot. If you do not know its name, leave the fields blank and scan nearby networks from this card. Keep USB connected. Details go only to this verified card over USB and are never saved in Studio.</p>
+          <p>Keep this computer on its normal network. Enter or select your home or gallery 2.4 GHz Wi-Fi, or scan after installation. Keep USB connected.</p>
+          <details className="usb-wifi-help">
+            <summary>Wi-Fi setup details</summary>
+            <div>
+              <p>Choose your home or gallery network, not the Lightweaver setup hotspot.</p>
+              <p>If you do not know the network name, leave the fields blank and scan nearby networks from this card after installation.</p>
+              <p>Wi-Fi details go only to this verified card over USB. Studio never saves them.</p>
+              <p>You can set up Wi-Fi later on the card setup page.</p>
+            </div>
+          </details>
         </div>
         <fieldset disabled={wifiBusy || installState === 'installing' || (preservingUsbWifi && !preservingUsbRuntimeVerified)}>
           <label htmlFor="usb-wifi-ssid">Wi-Fi network name</label>
@@ -1851,12 +1863,14 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           <small>Wi-Fi names can use up to 32 bytes. Some non-English characters use more than one byte.</small>
           {wifiNetworks.length > 0 && <select aria-label="Nearby Wi-Fi networks" value="" onChange={event => {
             const network = wifiNetworks[Number(event.target.value)];
-            if (network) { setWifiSsid(network.ssid); setWifiOpenNetwork(!network.secure); setWifiPassword(''); }
+            if (network) { setWifiSsid(network.ssid); setWifiOpenNetwork(!network.secure); setWifiPassword(''); setWifiPasswordVisible(false); }
           }}><option value="">Choose a nearby network</option>{wifiNetworks.map((network, index) => <option key={`${network.ssid}-${index}`} value={index}>{network.ssid}{network.secure ? '' : ' (open)'}</option>)}</select>}
           <label htmlFor="usb-wifi-password">Wi-Fi password</label>
-          <input id="usb-wifi-password" data-testid="usb-wifi-password" type="password" value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} autoComplete="new-password" maxLength={63} disabled={wifiOpenNetwork} />
-          <label className="usb-wifi-open-network"><input type="checkbox" checked={wifiOpenNetwork} onChange={event => { setWifiOpenNetwork(event.target.checked); setWifiPassword(''); }} /> This is an open network (no password)</label>
-          {installState !== 'wifi-setup' && <p>You can enter Wi-Fi now or choose a network after installation. The card’s setup page remains available as a fallback.</p>}
+          <div className="usb-wifi-password-row">
+            <input id="usb-wifi-password" data-testid="usb-wifi-password" type={wifiPasswordVisible ? 'text' : 'password'} value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={63} disabled={wifiOpenNetwork} />
+            <button type="button" className="btn usb-wifi-password-toggle" aria-controls="usb-wifi-password" aria-label={`${wifiPasswordVisible ? 'Hide' : 'Show'} Wi-Fi password`} aria-pressed={wifiPasswordVisible} disabled={wifiOpenNetwork} onClick={() => setWifiPasswordVisible(visible => !visible)}>{wifiPasswordVisible ? 'Hide' : 'Show'}</button>
+          </div>
+          <label className="usb-wifi-open-network"><input type="checkbox" checked={wifiOpenNetwork} onChange={event => { setWifiOpenNetwork(event.target.checked); setWifiPassword(''); setWifiPasswordVisible(false); }} /> This is an open network (no password)</label>
         </fieldset>
         {installState === 'wifi-setup' && <>
           <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p>
