@@ -4,6 +4,7 @@ export const FIRMWARE_UPDATE_SESSION_KEY = 'lw_firmware_update_session_v1';
 const CARD_ID = /^lw-[A-Za-z0-9][A-Za-z0-9._:-]{0,60}$/;
 const BUILD_ID = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
+const USB_WIFI_ATTEMPT_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 function text(value, max = 128) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -97,6 +98,16 @@ function base64url(bytes) {
   return base64(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
+function safeUsbWifiAttempt(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !USB_WIFI_ATTEMPT_ID.test(value.id || '')
+    || typeof value.bootId !== 'string' || !value.bootId.trim()
+    || value.bootId !== value.bootId.trim() || value.bootId.length > 96
+    || (value.generation !== null
+      && (!Number.isSafeInteger(value.generation) || value.generation < 1))) return null;
+  return Object.freeze({ id: value.id, bootId: value.bootId, generation: value.generation });
+}
+
 function safeSession(value) {
   const usb = value?.mode === 'usb';
   const expectedProjectHead = exactProjectHead(value?.expectedProjectHead);
@@ -119,7 +130,9 @@ function safeSession(value) {
     || !Number.isSafeInteger(session.targetBuildNumber) || session.targetBuildNumber < 1
     || !SHA256.test(session.ticketSha256)
     || !Number.isSafeInteger(session.acknowledgedBytes) || session.acknowledgedBytes < 0) return null;
-  return Object.freeze({ ...(usb ? { mode: 'usb' } : {}), ...session });
+  const usbWifiAttempt = usb ? safeUsbWifiAttempt(value?.usbWifiAttempt) : null;
+  return Object.freeze({ ...(usb ? { mode: 'usb' } : {}), ...session,
+    ...(usbWifiAttempt ? { usbWifiAttempt } : {}) });
 }
 
 export function readFirmwareUpdateSession({ storage = browserSessionStorage() } = {}) {
@@ -158,6 +171,15 @@ function persistSession(session, storage) {
 }
 
 export function saveFirmwareUpdateSession(value, { storage = browserSessionStorage() } = {}) {
+  if (value?.usbWifiAttempt != null) {
+    const next = safeSession(value);
+    const current = readFirmwareUpdateSession({ storage });
+    if (!next?.usbWifiAttempt || !current || next.mode !== 'usb' || current.mode !== 'usb'
+      || RECOVERY_IDENTITY_FIELDS.some(field => current[field] !== next[field])
+      || current.ticketSha256 !== next.ticketSha256) {
+      throw new Error('USB Wi-Fi attempt must belong to the same firmware update session.');
+    }
+  }
   return persistSession({ version: 1, ...value }, storage);
 }
 

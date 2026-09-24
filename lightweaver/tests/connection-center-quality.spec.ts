@@ -765,17 +765,19 @@ test('Bridge return does not call a successful POST independent restoration proo
   });
   await expect(page.getByRole('dialog')).toContainText(/build does not match/i);
 
-  await dispatchCardLinkEvent(page, {
-    type: 'card-verified', via: 'direct', host: 'lightweaver.local',
-    card: { id: 'lw-441bf681feb0', firmwareVersion: '1.2.3', buildId: 'a'.repeat(40) },
-    readiness: finalStationStatus('lw-441bf681feb0', { firmwareVersion: '1.2.3' }),
-  });
-  await expect(page.getByRole('button', { name: 'Restore saved project' })).toBeVisible();
+  // A direct verification may begin its fresh status read as soon as the link
+  // event arrives. Install that response before dispatching the valid card.
   await page.route('**/api/status', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify(finalStationStatus('lw-441bf681feb0', { firmwareVersion: '1.2.3' })),
   }));
+  await dispatchCardLinkEvent(page, {
+    type: 'card-verified', via: 'direct', host: 'lightweaver.local',
+    card: { id: 'lw-441bf681feb0', firmwareVersion: '1.2.3', buildId: 'a'.repeat(40) },
+    readiness: finalStationStatus('lw-441bf681feb0', { firmwareVersion: '1.2.3' }),
+  });
+  await expect(page.getByRole('button', { name: 'Restore saved project' })).toBeEnabled();
   await page.getByRole('button', { name: 'Restore saved project' }).click();
   await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
   await expect.poll(

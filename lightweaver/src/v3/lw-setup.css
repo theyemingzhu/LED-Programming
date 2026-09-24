@@ -348,7 +348,15 @@
   .lw-setup-phase-head { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; }
   .lw-setup-phase-marker { width: 26px; height: 26px; }
   .lw-setup-phase:not(:last-child)::after { left: 24px; }
-  .lw-setup-task > .btn { width: 100%; }
+  .lw-setup-task > .btn {
+    width: auto;
+    max-width: 100%;
+    min-height: 44px;
+    height: auto;
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

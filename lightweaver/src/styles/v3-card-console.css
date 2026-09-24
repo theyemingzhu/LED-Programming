@@ -698,6 +698,29 @@
 .card-workspace-screen .lw-fact { min-height: 58px; padding: 10px 18px; }
 .card-workspace-screen .lw-fact-k .hh.is-warn { color: var(--warn); }
 .card-workspace-screen .lw-fact-health .lw-fact-k p { margin: 4px 0 0; }
+.card-workspace-screen .lw-fact-checks {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 5px;
+}
+.card-workspace-screen .lw-fact-checks > summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  cursor: pointer;
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 600;
+}
+.card-workspace-screen .lw-fact-checks > p {
+  margin: 4px 0 10px;
+  max-width: 62ch;
+  color: var(--text-lo);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.card-workspace-screen .lw-fact-checks > .lw-fact-v { justify-content: flex-start; flex-wrap: wrap; }
 
 /* two folds on one row; an open one takes the row */
 .card-workspace-screen .card-folds {

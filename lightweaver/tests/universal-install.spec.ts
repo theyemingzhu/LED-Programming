@@ -186,6 +186,45 @@ test('an interrupted browser install inspects the exact result and never flashes
   await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
 });
 
+test('an interrupted install does not offer USB Wi-Fi resume for a freshly verified older build', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: { requestPort: async () => ({}) } });
+  });
+  await page.goto('/#screen=flash&mode=install');
+  await page.evaluate(async () => {
+    const { beginCardCommissioning, writeCardCommissioning } = await import('/src/lib/cardCommissioningFlow.js');
+    const { saveCurrentProjectToLibrary } = await import('/src/lib/projectStorage.js');
+    const { createDefaultProject } = await import('/src/lib/projectModel.js');
+    const record = saveCurrentProjectToLibrary(createDefaultProject());
+    await writeCardCommissioning(beginCardCommissioning({
+      source: 'web-serial', operation: 'install-current-release', strategy: 'clean-recovery',
+      projectRecord: record, projectRevision: 3,
+      installTarget: { id: 'lw-aabbccddeeff', firmwareVersion: '1.1.43', buildId: 'a'.repeat(40), buildNumber: 2074 },
+    }));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const recovery = page.getByTestId('interrupted-usb-recovery');
+  await expect(recovery.getByRole('button', { name: 'Resume with USB' })).toBeVisible();
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const event = {
+      type: 'card-verified', via: 'bridge', host: 'lightweaver.local',
+      card: { id: 'lw-aabbccddeeff', firmwareVersion: '1.1.42', buildId: 'b'.repeat(40), buildNumber: 2070 },
+      readiness: {
+        app: 'Lightweaver', provisioningContractVersion: 1,
+        cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.42', buildId: 'b'.repeat(40), buildNumber: 2070,
+        bootId: 'boot-older-card', runtimePhase: 'factory', knownGoodProject: false,
+        commandReady: false, outputReady: false,
+      },
+    };
+    getSharedCardLink().dispatch(event);
+    getSharedCardLink().dispatch(event);
+  });
+  await expect(recovery.getByRole('button', { name: 'Resume with USB' })).toHaveCount(0);
+  await expect(recovery).toContainText('differs from the saved install');
+  await expect(recovery.getByRole('button', { name: 'Reconnect over Wi-Fi' })).toBeVisible();
+});
+
 test('an interrupted browser install accepts the exact recovering blank card without flashing again', async ({ page }) => {
   const cardWrites: string[] = [];
   await page.route('http://192.168.18.70/**', route => {

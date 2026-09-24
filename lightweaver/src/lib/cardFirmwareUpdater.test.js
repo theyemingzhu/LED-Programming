@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   FIRMWARE_UPDATE_CHUNK_BYTES,
+  FIRMWARE_UPDATE_SESSION_KEY,
   clearFirmwareUpdateSessionIfMatches,
   correlateFirmwareUpdateRecovery,
   correlateFirmwareUpdateReconnect,
@@ -371,6 +372,60 @@ test('USB bootstrap can save the same redacted correlation envelope without upda
   assert.equal(saved.cardId, CARD_ID);
   assert.deepEqual(readFirmwareUpdateSession({ storage: storageAdapter }), saved);
   assert.doesNotMatch(storage.get('lw_firmware_update_session_v1'), /capability|ownerSession/i);
+});
+
+test('USB update session saves only a same-session Wi-Fi attempt identity and no credentials', () => {
+  const values = new Map();
+  const storage = {
+    getItem: key => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const base = saveFirmwareUpdateSession({
+    mode: 'usb', cardId: CARD_ID, previousBootId: OLD_BOOT,
+    expectedProjectHead: '', expectedProjectFingerprint: '',
+    targetFirmwareVersion: '1.2.0', targetBuildId: TARGET_BUILD,
+    targetBuildNumber: 1300, ticketSha256: TICKET_DIGEST,
+    phase: 'restarting', acknowledgedBytes: 8,
+  }, { storage });
+  assert.equal(base.usbWifiAttempt, undefined);
+  const attempt = { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', bootId: 'boot-after-update', generation: null,
+    ssid: 'Gallery', password: 'secret123' };
+  const saved = saveFirmwareUpdateSession({ ...base, usbWifiAttempt: attempt, password: 'secret123' }, { storage });
+  assert.deepEqual(saved.usbWifiAttempt, {
+    id: attempt.id, bootId: attempt.bootId, generation: null,
+  });
+  assert.deepEqual(readFirmwareUpdateSession({ storage }), saved);
+  assert.doesNotMatch(values.get(FIRMWARE_UPDATE_SESSION_KEY), /Gallery|secret123|ssid|password/);
+
+  assert.throws(() => saveFirmwareUpdateSession({ ...base, cardId: 'lw-wrong', usbWifiAttempt: attempt }, { storage }),
+    /same firmware update session/i);
+  assert.throws(() => saveFirmwareUpdateSession({ ...base, targetBuildId: 'f'.repeat(40), usbWifiAttempt: attempt }, { storage }),
+    /same firmware update session/i);
+  assert.throws(() => saveFirmwareUpdateSession({ ...base, targetBuildNumber: 1301, usbWifiAttempt: attempt }, { storage }),
+    /same firmware update session/i);
+  assert.deepEqual(readFirmwareUpdateSession({ storage }), saved);
+});
+
+test('malformed USB Wi-Fi attempts are dropped without invalidating an older update session', () => {
+  const values = new Map();
+  const storage = {
+    getItem: key => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const base = saveFirmwareUpdateSession({
+    mode: 'usb', cardId: CARD_ID, previousBootId: '', expectedProjectHead: '',
+    expectedProjectFingerprint: '', targetFirmwareVersion: '1.2.0',
+    targetBuildId: TARGET_BUILD, targetBuildNumber: 1300,
+    ticketSha256: TICKET_DIGEST, phase: 'restarting', acknowledgedBytes: 8,
+  }, { storage });
+  for (const attempt of [
+    { id: 'wrong', bootId: 'boot', generation: null },
+    { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', bootId: '', generation: null },
+    { id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', bootId: 'boot', generation: 0 },
+  ]) {
+    values.set(FIRMWARE_UPDATE_SESSION_KEY, JSON.stringify({ ...base, usbWifiAttempt: attempt }));
+    assert.equal(readFirmwareUpdateSession({ storage }).usbWifiAttempt, undefined);
+  }
 });
 
 test('correlated recovery cannot clear a newer firmware session', () => {

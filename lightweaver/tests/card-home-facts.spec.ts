@@ -172,6 +172,64 @@ test('Health remembers its last result', async ({ page }) => {
   expect(Object.values(stored)[0]).toEqual(expect.objectContaining({ status: 'ok' }));
 });
 
+for (const width of [1440, 390]) {
+test(`a verified blank factory card leads with setup and retains checks at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+  const spec = cardState('factory-blank');
+  const card = createCardSimulator({ ...spec, runtimePhase: 'factory', commandReady: false });
+  await card.install(page);
+  await page.addInitScript(({ id, firmwareVersion, buildId }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+    localStorage.setItem('lw_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    localStorage.setItem('lw_card_health_v1', JSON.stringify({
+      [id]: { status: 'ok', message: 'prior readback verified', at: Date.now() - 60_000 },
+    }));
+  }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  const health = page.getByTestId('card-checks-recovery');
+  await expect(health).toBeVisible({ timeout: 15000 });
+  await expect(health).toContainText('Continue setup');
+  await expect(health.getByTestId('card-checks-last')).toContainText('Last check: Verified');
+  await expect(health.getByTestId('card-checks-last')).toContainText('prior readback verified');
+  const checks = health.getByTestId('blank-card-checks');
+  await expect(checks.locator('summary')).toHaveText('Checks & recovery');
+  await checks.locator('summary').click();
+  await expect(checks).toContainText('Finish setup before checking the lights');
+  await expect(checks.getByRole('button', { name: 'Recover lights' })).toBeVisible();
+  await expect(checks.getByRole('button', { name: 'Verify hardware' })).toBeVisible();
+  await expect(page.getByTestId('card-detected-state')).not.toContainText('Recover lights');
+  await health.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath(`blank-card-checks-${width}.png`), fullPage: true });
+  await checks.locator('summary').click();
+  await page.screenshot({ path: testInfo.outputPath(`blank-card-home-${width}.png`), fullPage: true });
+  await health.getByRole('button', { name: 'Continue setup' }).click();
+  await expect(page.getByTestId('setup-active-task')).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+}
+
+for (const stateId of ['not-ready', 'provisional'] as const) {
+  test(`${stateId} card keeps its Health recovery actions`, async ({ page }) => {
+    const card = createCardSimulator(cardState(stateId));
+    await card.install(page);
+    await page.addInitScript(({ id, firmwareVersion, buildId }) => {
+      localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
+      localStorage.setItem('lw_card_host', 'lightweaver.local');
+      localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
+    await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+    const health = page.getByTestId('card-checks-recovery');
+    await expect(health).toBeVisible({ timeout: 15000 });
+    await expect(health.getByRole('button', { name: 'Verify hardware' })).toBeVisible();
+    await expect(health.getByRole('button', { name: 'Recover lights' })).toBeVisible();
+    await expect(health.getByRole('button', { name: 'Continue setup' })).toHaveCount(0);
+    if (stateId === 'provisional') {
+      await expect(health.getByRole('button', { name: 'Clear temporary setup' })).toBeVisible();
+    }
+  });
+}
+
 test('the project is renamed right in the status row', async ({ page }) => {
   const spec = cardState('installed-match');
   await seedInstalledMatch(page, spec, {});

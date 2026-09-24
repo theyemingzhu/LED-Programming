@@ -640,6 +640,11 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .usb-wifi-form input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .usb-wifi-form .install-confirm-action { grid-column: 1; grid-row: auto; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 10px; }
 .usb-wifi-form .install-confirm-action .btn { min-height: 44px; max-width: 100%; height: auto; white-space: normal; }
+.card-commissioning-recovery { display: grid; gap: 12px; min-width: 0; }
+.card-commissioning-recovery > .btn,
+.card-commissioning-recovery-alternative > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; height: auto; white-space: normal; text-align: left; }
+.card-commissioning-recovery-alternative { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.card-commissioning-recovery-alternative h4 { margin: 0; font-size: 13px; }
 
 
 .install-task > .card-commissioning-steps {

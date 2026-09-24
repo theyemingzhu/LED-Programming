@@ -158,6 +158,10 @@ export function canonicalStudioHash(hash, view) {
   // Old `mode=wire` is handled above as a Card install entrance.
   if (view !== 'layout' || params.get('mode') === 'install') params.delete('mode');
   if (view !== 'layout' || params.get('mode') !== 'draw' || params.get('panel') !== 'specs') params.delete('panel');
+  // The Card Home update door is a view selection for one visit to Install.
+  // Once the owner leaves that section, an ordinary install must resume its
+  // saved commissioning stage rather than inherit the earlier update click.
+  if (view !== 'card' || params.get('section') !== 'install') params.delete('intent');
   return `#${params.toString()}`;
 }
 

@@ -243,6 +243,7 @@ export function CardCommissioningPanel({
   onComplete,
   onSelectStage,
   viewStage = '',
+  interruptedUsbRecovery = null,
   usbInspectionReleasedForSetup = false,
   openSetupCard = connectCardLink,
   pushProject = pushConfigToCard,
@@ -1270,14 +1271,33 @@ export function CardCommissioningPanel({
     <div className="card-commissioning" data-stage={displayStage} aria-live="polite">
       <CardCommissioningSteps stage={displayStage} onSelect={onSelectStage} />
       {displayStage === 'install-safely' && (
-        <>
-          <h3>Install safely</h3>
-          <p>{flow.source === 'web-serial'
-            ? 'The browser was interrupted before it recorded the result. Reconnect the card; Studio will inspect the exact card and firmware build before deciding what to do. It will not flash again automatically.'
-            : 'Lightweaver is verifying the official firmware and keeping your saved Studio project available for restoration.'}</p>
-          {flow.source === 'web-serial' && <button type="button" className="btn primary" onClick={reconnectInstalledCard}>Reconnect and inspect card</button>}
-          {interruptedInstallEvidence && !interruptedInstallEvidence.ok && link?.card?.id && <p className="card-connection-failure" role="alert">{identityMessage(interruptedInstallEvidence.reason, flow.installTarget, link.card)} Nothing was changed.</p>}
-        </>
+        interruptedUsbRecovery ? (
+          <section className="card install-action-card card-commissioning-recovery" data-testid="interrupted-usb-recovery">
+            <h3>Resume Wi-Fi setup</h3>
+            <p>Reconnect the same card to check where setup stopped. Studio will not install anything automatically.</p>
+            {interruptedUsbRecovery.mismatch ? (
+              <p role="status">This connected card differs from the saved install. Choose Connect card above to inspect a USB card, or reconnect its page over Wi-Fi. No setup was changed.</p>
+            ) : (
+              <button type="button" className="btn primary" disabled={interruptedUsbRecovery.disabled} onClick={interruptedUsbRecovery.onResume}>Resume with USB</button>
+            )}
+            {interruptedUsbRecovery.error && <p role="alert">{interruptedUsbRecovery.error}</p>}
+            <div className="card-commissioning-recovery-alternative">
+              <h4>Already on Wi-Fi?</h4>
+              <p>Reopen the card page for a fresh check. Opening it alone does not confirm the connection.</p>
+              <button type="button" className="btn" onClick={reconnectInstalledCard}>Reconnect over Wi-Fi</button>
+            </div>
+            {interruptedInstallEvidence && !interruptedInstallEvidence.ok && link?.card?.id && <p className="card-connection-failure" role="alert">{identityMessage(interruptedInstallEvidence.reason, flow.installTarget, link.card)} Nothing was changed.</p>}
+          </section>
+        ) : (
+          <>
+            <h3>Install safely</h3>
+            <p>{flow.source === 'web-serial'
+              ? 'The browser was interrupted before it recorded the result. Reconnect the card; Studio will inspect the exact card and firmware build before deciding what to do. It will not flash again automatically.'
+              : 'Lightweaver is verifying the official firmware and keeping your saved Studio project available for restoration.'}</p>
+            {flow.source === 'web-serial' && <button type="button" className="btn primary" onClick={reconnectInstalledCard}>Reconnect and inspect card</button>}
+            {interruptedInstallEvidence && !interruptedInstallEvidence.ok && link?.card?.id && <p className="card-connection-failure" role="alert">{identityMessage(interruptedInstallEvidence.reason, flow.installTarget, link.card)} Nothing was changed.</p>}
+          </>
+        )
       )}
       {displayStage === 'set-up-card' && (
         <>

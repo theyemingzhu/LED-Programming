@@ -252,10 +252,11 @@
 }
 .la .la-install-actions {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
-.la .la-install-actions > .btn { flex: 1 1 auto; }
+.la .la-install-actions > .btn { flex: 0 1 auto; }
 .la .la-install-actions > .la-specs-trigger {
   position: relative;
   flex: 0 0 auto;

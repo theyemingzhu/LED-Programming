@@ -1,5 +1,7 @@
 export const PRESERVING_BOOTSTRAP_RANGE = Object.freeze({ start: 0x10000, end: 0x650000 });
 export const LIGHTWEAVER_PARTITION_TABLE_RANGE = Object.freeze({ start: 0x8000, end: 0x9000 });
+export const LIGHTWEAVER_OTA_SELECTION_RANGE = Object.freeze({ start: 0xe000, end: 0x10000 });
+const USB_READ_PACKET_TIMEOUT_MS = 5_000;
 
 const BUILD_ID = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -26,6 +28,66 @@ function fail(message) {
   throw new Error(`${message} Nothing was written; preserving update stopped before writing.`);
 }
 
+function otaSequenceCrc(bytes) {
+  // ESP-IDF v4.4.7 uses crc32_le(0xffffffff, &ota_seq, 4). Each OTA record
+  // stores that CRC at byte 28; the other bytes do not enter the checksum.
+  let crc = 0;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+export function parseUsbOtaSelection(value) {
+  const data = bytes(value);
+  if (!data || data.byteLength !== LIGHTWEAVER_OTA_SELECTION_RANGE.end - LIGHTWEAVER_OTA_SELECTION_RANGE.start) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const entries = [0, 0x1000].map(offset => {
+    const sequence = view.getUint32(offset, true);
+    const state = view.getUint32(offset + 24, true);
+    const crc = view.getUint32(offset + 28, true);
+    // Mirror the bootloader's candidate set first. NEW/PENDING and unknown
+    // states can outrank an older valid app0 record; filtering them here would
+    // falsely claim that app0 is currently selected.
+    if (sequence === 0 || sequence === 0xffffffff || state === 3 || state === 4
+      || crc !== otaSequenceCrc(data.subarray(offset, offset + 4))) return null;
+    return { sequence, state };
+  }).filter(Boolean);
+  // An erased, invalid, or tied selector is not proof of the active slot,
+  // even if a bootloader could choose a fallback image.
+  if (!entries.length || (entries.length === 2 && entries[0].sequence === entries[1].sequence)) return null;
+  const selected = entries.reduce((best, entry) => !best || entry.sequence > best.sequence ? entry : best, null);
+  if (![2, 0xffffffff].includes(selected.state)) return null;
+  return Object.freeze({
+    activeAppOffset: selected.sequence % 2 === 1 ? PRESERVING_BOOTSTRAP_RANGE.start : PRESERVING_BOOTSTRAP_RANGE.end,
+    otaSequence: selected.sequence,
+    otaState: selected.state,
+  });
+}
+
+export async function inspectUsbOtaSelection(loader) {
+  if (typeof loader?.readFlash !== 'function') fail('The connected card cannot provide OTA boot-selection evidence.');
+  let data;
+  try { data = bytes(await loader.readFlash(LIGHTWEAVER_OTA_SELECTION_RANGE.start,
+    LIGHTWEAVER_OTA_SELECTION_RANGE.end - LIGHTWEAVER_OTA_SELECTION_RANGE.start)); }
+  catch {
+    const error = new Error('Studio could not read the card OTA selector. Nothing was written.');
+    error.code = 'usb-read-failed';
+    throw error;
+  }
+  if (!data || data.byteLength !== 0x2000) {
+    const error = new Error('The card returned an incomplete OTA selector. Nothing was written.');
+    error.code = 'usb-read-failed';
+    throw error;
+  }
+  const selection = parseUsbOtaSelection(data);
+  if (!selection) fail('The active application slot cannot be proven from this card’s OTA selector.');
+  return Object.freeze({ ...selection, otaDataSha256: await sha256Hex(data) });
+}
+
 export async function inspectPreservingBootstrapEvidence(loader, installedEvidence = {}) {
   if (typeof loader?.readFlash !== 'function') fail('The connected card cannot provide partition-layout evidence.');
   const size = LIGHTWEAVER_PARTITION_TABLE_RANGE.end - LIGHTWEAVER_PARTITION_TABLE_RANGE.start;
@@ -36,7 +98,8 @@ export async function inspectPreservingBootstrapEvidence(loader, installedEviden
   const disposableTable = table.slice();
   const partitionTableSha256 = await sha256Hex(disposableTable);
   disposableTable.fill(0);
-  return Object.freeze({ ...installedEvidence, partitionTableSha256 });
+  const selection = await inspectUsbOtaSelection(loader);
+  return Object.freeze({ ...installedEvidence, partitionTableSha256, ...selection });
 }
 
 export function planPreservingBootstrap(evidence = {}, release = {}) {
@@ -69,8 +132,11 @@ export function planPreservingBootstrap(evidence = {}, release = {}) {
     || text(evidence.partitionTableSha256, 64).toLowerCase() !== partition.tableSha256) {
     fail('The installed partition layout is not the signed preserving layout.');
   }
-  if (evidence.installedAppOffset !== PRESERVING_BOOTSTRAP_RANGE.start) {
-    fail('The installed application is not the supported app0 bootstrap source.');
+  if (evidence.installedAppOffset !== PRESERVING_BOOTSTRAP_RANGE.start
+    || evidence.activeAppOffset !== PRESERVING_BOOTSTRAP_RANGE.start
+    || !Number.isSafeInteger(evidence.otaSequence)
+    || !SHA256.test(text(evidence.otaDataSha256, 64).toLowerCase())) {
+    fail('The active application is not proven to be the supported app0 bootstrap source.');
   }
   if (!Number.isSafeInteger(compatibility?.minimumBootstrapBuild)
     || evidence.buildNumber < compatibility.minimumBootstrapBuild) {
@@ -114,12 +180,24 @@ export async function runPreservingUsbBootstrap({
   onProgress,
 } = {}) {
   let writeStarted = false;
+  // esptool-js otherwise waits up to 100 seconds of silence for each read
+  // packet. This transaction owns the loader until it disconnects; shorten
+  // that inactivity wait for the selector, table, and final app readback.
+  const originalPacketTimeout = loader?.FLASH_READ_TIMEOUT;
+  const scopedPacketTimeout = Number.isFinite(originalPacketTimeout)
+    && originalPacketTimeout > USB_READ_PACKET_TIMEOUT_MS;
+  if (scopedPacketTimeout) loader.FLASH_READ_TIMEOUT = USB_READ_PACKET_TIMEOUT_MS;
   try {
     const inspected = await inspectPreservingBootstrapEvidence(loader, evidence);
     const plan = planPreservingBootstrap(inspected, release);
     const actualImageSha = await sha256Hex(plan.bytes);
     if (actualImageSha !== plan.expectedSha256) fail('The application bytes do not match the signed SHA-256.');
     if (typeof writeApplication !== 'function') fail('The preserving writer is unavailable.');
+    const freshSelection = await inspectUsbOtaSelection(loader);
+    if (freshSelection.activeAppOffset !== PRESERVING_BOOTSTRAP_RANGE.start
+      || freshSelection.otaDataSha256 !== inspected.otaDataSha256) {
+      fail('The card boot selector changed during USB preflight.');
+    }
     writeStarted = true;
     await writeApplication(loader, plan.bytes, plan.address, false, value => onProgress?.({ phase: 'updating', progress: value }));
     onProgress?.({ phase: 'verifying', progress: 1 });
@@ -134,6 +212,9 @@ export async function runPreservingUsbBootstrap({
     if (writeStarted) throw interrupted(error);
     throw error;
   } finally {
+    if (scopedPacketTimeout && loader.FLASH_READ_TIMEOUT === USB_READ_PACKET_TIMEOUT_MS) {
+      loader.FLASH_READ_TIMEOUT = originalPacketTimeout;
+    }
     try { await disconnect?.(loader, transport); } catch { /* USB is already released */ }
   }
 }

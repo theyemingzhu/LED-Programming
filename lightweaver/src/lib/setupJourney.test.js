@@ -127,6 +127,21 @@ test('firmware and Wi-Fi are conditional blockers inside connect', () => {
   assert.equal(wifi.phases.some(phase => phase.id === 'firmware' || phase.id === 'wifi'), false);
 });
 
+test('a paired factory card labels its remaining Wi-Fi work as setup, not another connection', () => {
+  const pairedAp = deriveSetupJourney({
+    cardLink: connectedCard(FACTORY_STATUS, '192.168.4.1'),
+    cardLifecycle: { state: 'setup-required', setupTaskId: 'install-project' },
+  });
+  assert.equal(pairedAp.taskId, 'configure-wifi');
+  assert.equal(phaseMap(pairedAp).connect.title, 'Set up card Wi-Fi');
+
+  const disconnected = deriveSetupJourney({
+    cardLink: { state: 'disconnected' }, rememberedHost: '192.168.4.1',
+  });
+  assert.equal(disconnected.taskId, 'configure-wifi');
+  assert.equal(phaseMap(disconnected).connect.title, 'Connect to your card');
+});
+
 test('a factory blank exact card goes to light discovery before Layout', () => {
   const journey = deriveSetupJourney({
     cardLink: { ...connectedCard(), cardBlank: true },

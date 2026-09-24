@@ -1101,7 +1101,7 @@
 .plab-project-handoff h3,
 .plab-handoff-review strong { color: var(--text-hi); font-size: 11px; }
 .plab-project-handoff p { color: var(--text-mid); font-size: 11px; line-height: 1.5; }
-.plab-project-handoff > .btn { min-height: 42px; justify-content: center; }
+.plab-project-handoff > .btn { justify-self: start; width: fit-content; max-width: 100%; min-height: 44px; justify-content: center; }
 
 .plab-handoff-review {
   display: grid;
@@ -1443,8 +1443,9 @@
 }
 
 .plab-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
   padding: 18px;
   border-top: 1px solid var(--border-hair);
@@ -1456,7 +1457,8 @@
   justify-content: center;
 }
 
-.plab-actions > .btn:first-child { grid-column: auto; }
+.plab-actions > .btn { flex: 0 1 auto; max-width: 100%; }
+.plab-actions > .plab-recipe-files { margin-left: auto; }
 .plab-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .plab-screen button:disabled,
 .plab-screen select:disabled,
@@ -1686,8 +1688,8 @@
   .plab-screen[data-sheet-detent="half"] .plab-use-in-project-promoted { display: none; }
   .plab-screen[data-sheet-detent="peek"] .plab-actions .btn,
   .plab-screen[data-sheet-detent="half"] .plab-actions .btn {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 0 1 auto;
+    min-width: fit-content;
     padding-inline: 6px;
     font-size: 11px;
     text-align: center;
@@ -2340,9 +2342,10 @@
   .plab-variation-trigger,
   .plab-creative-undo,
   .plab-palette-choices button { min-height: 44px; }
-  .plab-keep-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .plab-keep-look { width: 100%; }
-  .plab-variation-trigger { flex: 1; }
+  .plab-keep-row,
+  .plab-variation-actions { flex-wrap: wrap; }
+  .plab-keep-look { width: fit-content; max-width: 100%; }
+  .plab-variation-trigger { flex: 0 1 auto; }
   .plab-live-preview.plab-live-preview-headline {
     left: 10px !important;
     right: auto !important;
@@ -2351,8 +2354,9 @@
     padding: 7px !important;
   }
   .plab-live-preview.plab-live-preview-headline .plab-live-preview-action {
-    align-self: stretch;
-    width: 100% !important;
+    align-self: flex-start;
+    width: fit-content !important;
+    max-width: 100%;
     min-height: 44px !important;
     font-size: 13px !important;
   }

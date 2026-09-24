@@ -23,8 +23,8 @@ import { readPowerSupplySettings, withPowerSupplySettings } from '../../lib/powe
 //   outputs / pins    Layout → Wire (structure stays Layout's)
 //   artwork placement Layout → Draw, optional
 //   card release      the update screen
-//   health            Verify hardware / Recover lights, with the last result
-//                     remembered per card so the row is never wallpaper
+//   health            Verified blank cards continue setup; configured cards
+//                     keep Verify hardware / Recover lights and last result
 // Nothing here writes a project to the card; the install control stays the
 // one writer. Live colour previews are ephemeral until Save to card.
 
@@ -149,6 +149,13 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
   };
 
   const lastHealth = health?.last;
+  const healthActions = health && (
+    <>
+      <button type="button" className="btn" disabled={health.busy} onClick={health.verify}>Verify hardware</button>
+      {health.recover && <button type="button" className="btn" disabled={health.busy} onClick={health.recover}>Recover lights</button>}
+      {health.clear && <button type="button" className="btn" disabled={health.busy} onClick={health.clear}>Clear temporary setup</button>}
+    </>
+  );
 
   return (
     <section className="lw-mod lw-facts" data-testid="card-facts" aria-label="This card">
@@ -228,7 +235,9 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
               type="button"
               className="btn"
               data-testid={updateRequired ? 'setup-update-card-required' : updateAvailable ? 'setup-update-card' : 'fact-release-open'}
-              onClick={() => go('#screen=card&section=install')}
+              onClick={() => go(updateAvailable
+                ? '#screen=card&section=install&intent=update-card'
+                : '#screen=card&section=install')}
             >
               {updateAvailable ? 'Update card' : 'Card software'}
             </button>
@@ -269,21 +278,28 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
                 {/* The remembered result stands in for the live message once
                     that has gone; right after a check the live message is
                     the fuller of the two and the memory line yields. */}
-                {!health.message && (
+                {!health.message && (!health.setup || lastHealth?.message) && (
                   <span className="hh" data-testid="card-checks-last">
                     {lastHealth?.message
-                      ? `${lastHealth.status === 'error' ? 'Failed' : 'Verified'} ${formatWhen(lastHealth.at)} · ${lastHealth.message}`
+                      ? `${health.setup ? 'Last check: ' : ''}${lastHealth.status === 'error' ? 'Failed' : 'Verified'} ${formatWhen(lastHealth.at)} · ${lastHealth.message}`
                       : 'Not checked yet. Reads the card and reports what it says.'}
                   </span>
                 )}
-                {health.note && <p role="status" className="hh is-warn">{health.note}</p>}
+                {health.note && <p role="status" className={`hh${health.setup ? '' : ' is-warn'}`}>{health.note}</p>}
                 {health.message && <p role={health.messageRole || 'status'} className="hh" data-testid="card-checks-message">{health.message}</p>}
               </div>
               <div className="lw-fact-v">
-                <button type="button" className="btn" disabled={health.busy} onClick={health.verify}>Verify hardware</button>
-                {health.recover && <button type="button" className="btn" disabled={health.busy} onClick={health.recover}>Recover lights</button>}
-                {health.clear && <button type="button" className="btn" disabled={health.busy} onClick={health.clear}>Clear temporary setup</button>}
+                {health.setup ? (
+                  <button type="button" className="btn" onClick={health.setup}>Continue setup</button>
+                ) : healthActions}
               </div>
+              {health.setup && (
+                <details className="lw-fact-checks" data-testid="blank-card-checks">
+                  <summary>Checks &amp; recovery</summary>
+                  <p>Finish setup before checking the lights. You can still try recovery here.</p>
+                  <div className="lw-fact-v">{healthActions}</div>
+                </details>
+              )}
             </div>
           ) : (
             <Row label="Health" hint="Connect the card to read it" testId="fact-health-offline" last>
