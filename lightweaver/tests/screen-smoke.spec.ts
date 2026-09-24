@@ -1079,7 +1079,7 @@ test('installer screen gives a worker the full chip setup checklist', async ({ p
   await expect(page).toHaveURL(/#screen=card&section=install$/);
 });
 
-test('connection center opens the stored setup host without silently pairing its popup card', async ({ page }) => {
+test('connection center opens the stored setup host and offers explicit pairing without silently adopting its popup card', async ({ page }) => {
   await installCardPopupMock(page, 'lw-ap-card', '192.168.4.1');
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
@@ -1093,7 +1093,10 @@ test('connection center opens the stored setup host without silently pairing its
 
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls[0]?.url || '')).toContain('192.168.4.1');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe('192.168.4.1');
-  await expect(page.getByRole('dialog', { name: 'Connect Lightweaver' })).toContainText('Finish card setup');
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog).toContainText('Pair this Lightweaver card');
+  await expect(dialog.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Update card' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_card_identity_v1'))).toBeNull();
   await expect(page.getByTestId('card-link-status')).not.toHaveAccessibleName(/Connected/);
 });
