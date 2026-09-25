@@ -37,7 +37,18 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
-### 2026-09-25 Layout, GPIO, and card pattern fixes (done locally)
+### 2026-09-25 Layout, GPIO, and card pattern fixes (shipped)
+
+**Shipped — Studio build 2118, firmware build 2088.** PR339 merged as
+`9f053a02bfa4998dfce866dc0496a71e683a5433`; terminal origin/main verified at
+that revision. Full launch gate 36093675288 and exact-main Tests 36096438777
+passed. Deploy 36097162751 completed its real Cloudflare credential check,
+publication, and live verification. Independent required production check passed
+(`/tmp/lw-release-live-proof.log`): strict no-store revision marker, all 63 staged
+Studio files, signed firmware artifacts, production job, and private library
+denial. Live: https://led.mandalacodes.com. Firmware signing correctly skipped
+this browser-only batch. This completion note is local documentation after live
+proof; the production source remains the merged revision above.
 
 Reproduced the screenshot's unverified-bridge install failure: HTTPS Studio's
 verified direct connection was lost during wiring checks. Installation now keeps
@@ -59,14 +70,14 @@ artboard interactions (4); existing first-LED, kaleidoscope drag, and zoom-selec
 checks pass. Real screens inspected: `/tmp/lw-sprint-gpio.png`,
 `/tmp/lw-sprint-layout-hover.png`, and `/tmp/lw-sprint-layout-drag.png`. Source reviewed and
 `git diff --check` clean. Release authorized by Adrian's “push main” request;
-integration, release gate, deployment, and independent live proof are in progress.
+integration, release gate, deployment, and independent live proof are complete.
 
 Release PR339: first full launch run 36090781248 passed earlier source, browser,
 cloud, production and unit stages, then release-UI ended with 392 passing and two
 failed stale assertions. Corrected the second zoom-limit label hit-target
 expectation and the current “Continue after setup” handoff copy/action. Complete
 zoom spec (3) and blocked-popup regression (1) pass; product source is unchanged.
-Full launch gate is being rerun before merge.
+The second full launch gate passed before merge.
 
 **Needs-eyes:** On the user's actual card, confirm patterns on each of the three
 wired GPIOs and offline playback after installation. Connection type and exact
