@@ -61,6 +61,13 @@ checks pass. Real screens inspected: `/tmp/lw-sprint-gpio.png`,
 `git diff --check` clean. Release authorized by Adrian's “push main” request;
 integration, release gate, deployment, and independent live proof are in progress.
 
+Release PR339: first full launch run 36090781248 passed earlier source, browser,
+cloud, production and unit stages, then release-UI ended with 392 passing and two
+failed stale assertions. Corrected the second zoom-limit label hit-target
+expectation and the current “Continue after setup” handoff copy/action. Complete
+zoom spec (3) and blocked-popup regression (1) pass; product source is unchanged.
+Full launch gate is being rerun before merge.
+
 **Needs-eyes:** On the user's actual card, confirm patterns on each of the three
 wired GPIOs and offline playback after installation. Connection type and exact
 pins were requested but not supplied. No firmware change, card write, or flash

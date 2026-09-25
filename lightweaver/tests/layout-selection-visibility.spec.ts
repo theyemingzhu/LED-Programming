@@ -130,6 +130,7 @@ test('selected annotation and selection strokes remain screen-sized at both nume
     const box = await label.locator('rect').boundingBox();
     expect(box!.width).toBeGreaterThan(100);
     expect(box!.width).toBeLessThanOrEqual(152);
-    for (const overlay of [halo, core, label]) await expect(overlay).toHaveCSS('pointer-events', 'none');
+    for (const overlay of [halo, core]) await expect(overlay).toHaveCSS('pointer-events', 'none');
+    await expect(label).toHaveCSS('pointer-events', 'all');
   }
 });
