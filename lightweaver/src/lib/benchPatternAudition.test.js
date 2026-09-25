@@ -47,6 +47,16 @@ test('same-total wrong zone range refuses audition before any write', async () =
   assert.equal(posted, false);
 });
 
+test('closing Bench during readback preflight prevents the pattern write', async () => {
+  let posted = false;
+  await assert.rejects(auditionBenchPattern({ layout, pin: 17, patternId: 'ocean',
+    readZones: async () => zones(),
+    onBeforeWrite: () => { throw new Error('Bench screen closed'); },
+    postControl: async () => { posted = true; },
+  }), /screen closed/i);
+  assert.equal(posted, false);
+});
+
 test('a card that changes an unselected zone fails readback', async () => {
   let state = zones();
   await assert.rejects(auditionBenchPattern({

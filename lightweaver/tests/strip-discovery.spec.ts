@@ -250,6 +250,63 @@ async function showCountingRuler(page: any) {
   await expect(page.getByTestId('discovery-decade')).toBeVisible();
 }
 
+async function modelBenchPatterns(page: any, card: FakeCard) {
+  const controls: any[] = [];
+  let modeledConfig: any = null;
+  let zones: any[] = [];
+  let syncZones = true;
+  let refuseReadback = false;
+  const refresh = () => {
+    if (modeledConfig === card.applied) return;
+    modeledConfig = card.applied;
+    zones = structuredClone(card.applied?.zones || []);
+    syncZones = card.applied?.syncZones ?? true;
+  };
+  await page.route(`http://${HOST}/api/status`, async (route: any) => {
+    refresh();
+    await route.fulfill({ json: card.booted ? {
+      ...readyStatus(card.applied, card.reboots), provisionalSetup: true,
+      projectId: card.applied?.piece?.id || card.applied?.projectId || '',
+      outputs: structuredClone(card.applied?.led?.outputs || []),
+    } : blankStatus() });
+  });
+  await page.route(`http://${HOST}/api/zones`, async (route: any) => {
+    refresh();
+    await route.fulfill({ json: { syncZones, zones: structuredClone(zones) } });
+  });
+  await page.route(`http://${HOST}/api/control`, async (route: any) => {
+    refresh();
+    const body = JSON.parse(route.request().postData() || '{}');
+    controls.push(body);
+    if (!refuseReadback && body.patternId) {
+      for (const zone of zones) if (!body.zone || zone.id === body.zone) zone.patternId = body.patternId;
+    }
+    if ('syncZones' in body) syncZones = body.syncZones;
+    await route.fulfill({ json: { ok: true, appliedPatternId: body.patternId || '' } });
+  });
+  return { controls, refuse: () => { refuseReadback = true; } };
+}
+
+async function recordTwoGpioWalk(page: any) {
+  await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+  await dispatchBlankCard(page);
+  await startDiscoveryOnGpio16(page);
+  await showCountingRuler(page);
+  await page.getByTestId('discovery-count-16').fill('30');
+  await page.getByTestId('discovery-counts-done').click();
+  await page.getByTestId('discovery-end-yes').click();
+  await page.getByTestId('discovery-add-strip').click();
+  await page.getByTestId('discovery-probe-17').click();
+  await page.getByTestId('discovery-start').click();
+  await expect(page.getByTestId('discovery-decade')).toBeVisible();
+  await page.getByTestId('discovery-count-17').fill('20');
+  await page.getByTestId('discovery-counts-done').click();
+  await page.getByTestId('discovery-end-yes').click();
+  await page.getByTestId('discovery-end-yes').click();
+  await page.getByTestId('discovery-record-save').click();
+  await expect(page.getByTestId('discovery-done')).toBeVisible();
+}
+
 test('a card without a numeric power limit gets an honest discovery notice', async ({ page }) => {
   await mockBlankCard(page, { reportedMaxMilliamps: null });
   await seedBlankCardLink(page);
@@ -267,6 +324,54 @@ test.describe('a blank card whose firmware applies its first config', () => {
   test.beforeEach(async ({ page }) => {
     card = await mockBlankCard(page, { firmware: 'blank-applies' });
     await seedBlankCardLink(page);
+  });
+
+  test('two GPIOs can try one scene, diverge, and keep exact patterns in the measured install package', async ({ page }) => {
+    const modeled = await modelBenchPatterns(page, card);
+    await recordTwoGpioWalk(page);
+    await page.getByTestId('discovery-pattern-whole').selectOption('aurora');
+    await expect.poll(() => modeled.controls.some(control => control.syncZones === true && control.patternId === 'aurora')).toBe(true);
+    await page.getByTestId('discovery-pattern-17').selectOption('ocean');
+    await expect.poll(() => modeled.controls.some(control => control.zone === 'bench-17' && control.syncZones === false && control.patternId === 'ocean')).toBe(true);
+    await expect(page.getByTestId('discovery-pattern-16')).toHaveValue('aurora');
+    await expect(page.getByTestId('discovery-pattern-17')).toHaveValue('ocean');
+    await page.getByTestId('discovery-keep-patterns').click();
+    await expect(page.getByText('Patterns saved for the final setup.')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => {
+      const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+      return project.layout?.patchBoard?.patches?.map((patch: any) => patch.playback?.patternId);
+    })).toEqual(['aurora', 'ocean']);
+    const saved = await page.evaluate(async () => {
+      const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+      const { buildPackageForPortRoles } = await import('/src/lib/cardSetupDeploy.js');
+      const { prepareCardDeployment } = await import('/src/lib/cardDeployment.js');
+      const portRoles = project.portRoles;
+      const prepared = buildPackageForPortRoles({ projectId: project.id, projectName: project.name,
+        projectRevision: 1, standaloneController: project.devices?.standaloneController || {}, portRoles,
+        measuredGeometry: { strips: project.layout.strips, patchBoard: project.layout.patchBoard, wiring: project.layout.wiring },
+      }, prepareCardDeployment);
+      return { roles: portRoles.filter((role: any) => role.role === 'strip').map((role: any) => [role.pin, role.pixelCount]),
+        outputs: prepared.config.led.outputs.map((output: any) => [output.pin, output.pixels]),
+        patches: project.layout.patchBoard.patches.map((patch: any) => patch.playback.patternId),
+        zones: prepared.config.zones.map((zone: any) => zone.patternId), startup: prepared.config.startupPatternId };
+    });
+    expect(saved.roles).toEqual([[16, 30], [17, 20]]);
+    expect(saved.outputs).toEqual([[16, 30], [17, 20]]);
+    expect(saved.patches).toEqual(['aurora', 'ocean']);
+    expect(saved.zones).toEqual(['aurora', 'ocean']);
+    expect(saved.startup).toMatch(/section-layout/);
+    await page.getByTestId('discovery-continue-layout').click();
+    await expect(page).toHaveURL(/screen=layout/);
+  });
+
+  test('a wrong GPIO pattern readback leaves Keep unavailable and reports the failure', async ({ page }) => {
+    const modeled = await modelBenchPatterns(page, card);
+    await recordTwoGpioWalk(page);
+    modeled.refuse();
+    await page.getByTestId('discovery-pattern-17').selectOption('ocean');
+    await expect(page.getByRole('alert')).toContainText(/did not confirm ocean/i);
+    await expect(page.getByTestId('discovery-keep-patterns')).toHaveCount(0);
+    await expect(page.getByText('Patterns saved for the final setup.')).toHaveCount(0);
   });
 
   test('factory power notice reports the actual cap before the temporary counting cap', async ({ page }) => {
@@ -451,7 +556,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
   });
 
-  test('ruler read-off and end marker produce recorded counts', async ({ page }) => {
+  test('ruler read-off and end marker produce recorded counts', async ({ page }, testInfo) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
 
@@ -482,9 +587,9 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('discovery-pattern-audition')).toBeVisible();
     await expect(page.getByTestId('discovery-pattern-whole')).toBeVisible();
     await expect(page.getByTestId('discovery-pattern-16')).toBeVisible();
-    await page.screenshot({ path: '/tmp/lightweaver-bench-patterns-desktop.png' });
+    await page.screenshot({ path: testInfo.outputPath('bench-patterns-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: '/tmp/lightweaver-bench-patterns-phone.png', fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath('bench-patterns-phone.png'), fullPage: true });
     await expect(page.getByTestId('discovery-pattern-16')).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);

@@ -27,7 +27,7 @@ import { dismissNoticeKey, publishNotice } from '../../lib/noticeLayer.js';
 import { isTransientCardFailure, retryWhileTransient } from '../../lib/cardTransientFailure.js';
 import { clearDanglingWiringTransaction } from '../../lib/cardSetupDeploy.js';
 import { getCardBridgeState, sendCardBridgeRequest } from '../../lib/cardBridge.js';
-import { connectCardTransport, getActiveCardTransportAuthority } from '../../lib/cardTransport.js';
+import { connectCardTransport } from '../../lib/cardTransport.js';
 import { cardConnectionOptionsFor, cardHostToUrl, normalizeCardHost, readStoredCardHost } from '../../lib/cardConnection.js';
 import { prepareCardDeployment } from '../../lib/cardDeployment.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../../lib/cardPushClient.js';
@@ -207,10 +207,7 @@ async function benchAuditionRequest(host, cardLink) {
   const expectedCardId = String(cardLink?.card?.id || readPersistedCardIdentity()?.id || '');
   if (!expectedCardId) throw new Error('Reconnect the exact card before trying its patterns.');
   let request;
-  const active = getActiveCardTransportAuthority(host);
-  if (active?.cardId === expectedCardId) {
-    request = (path, init) => active.request(path, init);
-  } else if (cardLink?.transport === 'bridge') {
+  if (cardLink?.transport === 'bridge') {
     const bridge = getCardBridgeState();
     if (!bridge.connected || !bridge.verified || bridge.card?.id !== expectedCardId
       || normalizeCardHost(bridge.host) !== normalizeCardHost(host)) {
@@ -222,7 +219,7 @@ async function benchAuditionRequest(host, cardLink) {
       return sendCardBridgeRequest(type, init.body || {}, { host, timeoutMs: 2500 });
     };
   } else {
-    const authority = await connectCardTransport({ host, expectedCardId });
+    const authority = await connectCardTransport({ ...cardConnectionOptionsFor(cardLink, host), host, expectedCardId });
     if (!authority?.connected || authority.cardId !== expectedCardId) {
       throw new Error('Could not verify the exact card for pattern audition. Reconnect and try again.');
     }
@@ -264,9 +261,16 @@ export function StripDiscoveryPanel({
     setPatchBoard,
     selectStrips,
     serializeProject,
+    projectId,
     projectRevision,
     projectLifecycle,
+    readProjectLifecycle,
   } = useProject();
+  const projectIdentityRef = useRef({ id: projectId, generation: projectLifecycle.generation });
+  projectIdentityRef.current = { id: projectId, generation: projectLifecycle.generation };
+  const currentProjectMatches = identity => auditionMountedRef.current
+    && projectIdentityRef.current.id === identity.id
+    && readProjectLifecycle().generation === identity.generation;
 
   // Which ports to go looking on. Seeded from whatever discovery last recorded
   // so a second pass starts from the owner's own answers, and left entirely
@@ -887,6 +891,7 @@ export function StripDiscoveryPanel({
   const auditionInFlightRef = useRef(false);
   const performTryBenchPattern = async (pin, patternId) => {
     if (!auditionMountedRef.current || auditionInFlightRef.current || !committedPartsRef.current || installed) return;
+    const identity = { ...projectIdentityRef.current };
     auditionInFlightRef.current = true;
     setAuditionBusy(true);
     setAuditionError('');
@@ -908,6 +913,7 @@ export function StripDiscoveryPanel({
           };
         },
       });
+      if (!currentProjectMatches(identity)) throw new Error('The open project changed during this pattern preview.');
       setAuditionPatterns(pin == null ? result.patternsByPin
         : { ...result.patternsByPin, ...savedPatternChoices, [pin]: patternId });
       setAuditionNeedsUpdate(false);
@@ -991,8 +997,13 @@ export function StripDiscoveryPanel({
 
   const keepBenchPatterns = async () => {
     if (!layoutPrepared || !basePartsRef.current || !Object.keys(auditionPatterns).length) return false;
+    const identity = { ...projectIdentityRef.current };
     const chosen = { ...auditionPatterns };
     if (!(await stopBenchAudition())) return false;
+    if (!currentProjectMatches(identity)) {
+      setAuditionError('The open project changed during the preview. Reopen its Bench results before keeping patterns.');
+      return false;
+    }
     const parts = withDiscoveryPatternChoices(basePartsRef.current, chosen);
     committedPartsRef.current = parts;
     setPatchBoard(parts.patchBoard);
@@ -1023,6 +1034,7 @@ export function StripDiscoveryPanel({
   // A card that holds a DIFFERENT project is never overwritten — the push stops
   // and offers the clear-and-retry path instead of writing over it.
   const installOnCard = async (takeOver = false) => {
+    const identity = { ...projectIdentityRef.current };
     if (!layoutPrepared) {
       setInstallError('Keep your existing artwork: open Layout, place the measured strips, and confirm their GPIO wiring before installing.');
       return;
@@ -1046,6 +1058,7 @@ export function StripDiscoveryPanel({
     setInstallErrorReason('');
     setInstallProgress('');
     try {
+      if (!currentProjectMatches(identity)) throw new Error('The open project changed before this install started.');
       const cardId = cardLink?.card?.id || readPersistedCardIdentity()?.id || '';
       // prepareCardDeployment takes the FLAT card-facing shape, not the nested
       // saved-project shape — handing it the nested one silently collapses to
@@ -1086,6 +1099,7 @@ export function StripDiscoveryPanel({
       const patterns = await readCardPatternsFromCard({ host, transport: cardLink?.transport });
       const wiringStatus = await getCardWiringStatus({ host, transport: cardLink?.transport });
       requireBenchInstallReadback(prepared.config, status, zones, cardId, patterns, wiringStatus);
+      if (!currentProjectMatches(identity)) throw new Error('The open project changed during card install. Reopen the correct project to verify it.');
       clearDiscoveryRun();
       setInstalled(true);
     } catch (error) {
