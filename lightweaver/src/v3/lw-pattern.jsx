@@ -413,6 +413,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       projectRevision,
       projectLifecycle,
       strips,
+      selectStrip,
       hidden,
       setStrips,
       viewBox,
@@ -2672,6 +2673,89 @@ import { PatternPreview } from './PatternPreview.jsx';
             <div className="pm-grid">
               {/* MAIN */}
               <section className="pm-main">
+                {/* design target */}
+                <div className="pm-target">
+                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit {CARD_HARDWARE_CONTRACT.maxZones}</span><span className="line" /></div>
+                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
+                  {sectionTargets.length > 1 &&
+                    <div className="chips pm-section-row" style={{ marginBottom: 8 }} aria-label="Target sections">
+                      {effectiveSectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
+                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>
+                          <span className="chip-name">{targetLabel(t)}</span>
+                          {/* Each section reads with its pattern beneath it, so four
+                              sections are one glance, not four taps. The All chip
+                              carries the piece's default look. */}
+                          <span className="chip-sub" data-testid={`section-pattern-${t.id}`}>{patternNameFor(t.look?.patternId)}</span>
+                          {sectionGpioLabels.get(t.id) && <span className="chip-route" data-testid={`section-gpio-${t.id}`}>{sectionGpioLabels.get(t.id)}</span>}
+                        </button>
+                      )}
+                    </div>
+                  }
+                  {sectionCount > 1 && <p className="pm-section-help" data-testid="section-pattern-instructions">Same pattern everywhere: select All sections. Different patterns: select each section in turn, choose from Pattern bank, then Install on card.</p>}
+                  {selectedTarget?.kind === 'section' && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
+                    <p className="pm-section-help" data-testid="section-spans-gpios">
+                      This section spans {sectionGpioLabels.get(selectedTarget.id)}; these GPIOs share this section&apos;s pattern.{' '}
+                      <button type="button" className="wordlink" data-testid="open-spanning-section-in-layout"
+                              onClick={() => { selectStrip(selectedTarget.stripId); window.location.hash = '#screen=layout&mode=draw'; }}>
+                        Open this strip in Layout
+                      </button>{' '}to make separate named sections. If Add split is unavailable, adjust its Advanced wiring runs first.
+                    </p>}
+                  {/* One status line about sections: what the card holds, read from
+                      the card itself. Empty until the card has been read. */}
+                  {cardHoldsLine &&
+                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
+                  }
+                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
+                    <p className="pm-cardholds">
+                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
+                        Use this look on every section
+                      </button>
+                    </p>
+                  }
+                  {sectionCount <= 1 &&
+                    <p className="pm-cardholds">
+                      One section drives the whole piece.{' '}
+                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
+                    </p>
+                  }
+                  {/* Three facts on one line, not two rows that said the same
+                      thing twice. The old card printed Target above Layer and
+                      Pattern above Pattern — the same section name and the same
+                      pattern name, one under the other, with a decorative "ALL"
+                      key and a layer number that did nothing. What is left is
+                      what the target actually IS: which section, how many
+                      pixels it drives, and what is on the card.
+
+                      The pixel tile keeps its `tc-layer` / `tc-total` element
+                      and its label-then-value DOM order, because that is the
+                      readout card-workspace.spec reads back after a project
+                      switch. Only the painting order is flipped, so a reader
+                      sees "27 LEDs" and a machine still reads "LEDs27". */}
+                  <div className="pm-targetcard">
+                    <div className="tc-stat">
+                      <span className="tc-stat-k">Section</span>
+                      <strong className="tc-stat-v">{selectedTargetName}</strong>
+                    </div>
+                    <div className="tc-stat tc-layer">
+                      <span className="tc-stat-k">Pixels driven</span>
+                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
+                    </div>
+                    {/* Amber is reserved for what the card is doing right now,
+                        so it lights only once the runtime has confirmed the
+                        send. Until then this names the pattern being driven,
+                        in the neutral ink, and the bank's status line above
+                        says whether it has landed. */}
+                    <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
+                      {/* One vocabulary for "has this reached the card" —
+                          the same three words the bank's own status line and
+                          Playlist use, so the phrase does not change meaning
+                          moving between panels and screens. */}
+                      <span className="tc-stat-k">{cardActionStatusLabel(previewAction)}</span>
+                      <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* browse */}
                 <div className="pm-browse" style={{ margin: "5px 0px 0px" }}>
                   {/* One header bar for the whole module: the light, the name,
@@ -2696,6 +2780,15 @@ import { PatternPreview } from './PatternPreview.jsx';
                               className={ledMode === 'gradient' ? 'on' : undefined}
                               onClick={() => chooseLedMode('gradient')}>Gradient</button>
                     </div><span className="line" /></div>
+                  {sectionCount > 1 && <p className="pm-bank-scope" data-testid="pattern-bank-scope">
+                    <strong>{selectedTarget?.kind === 'section'
+                      ? `${targetLabel(selectedTarget)}${sectionGpioLabels.get(selectedTarget.id) ? ` · ${sectionGpioLabels.get(selectedTarget.id)}` : ''}`
+                      : 'All sections'}</strong>
+                    {selectedTarget?.kind === 'section'
+                      ? ' · A pattern choice changes only this section; the others keep their patterns.'
+                      : ' · A pattern choice gives every section the same pattern.'}
+                    {' '}Keep this look saves the design; Install on card keeps it on the card.
+                  </p>}
 
                   {/* Was: a "Preview taps on the LED card" checkbox. There is no
                       moment in this screen's job where a tap should not reach the
@@ -2785,81 +2878,6 @@ import { PatternPreview } from './PatternPreview.jsx';
                     <button type="button" className="btn primary" onClick={runPatternGateAction}>{patternGateActionLabel}</button>
                   </div>
                 }
-
-                {/* design target */}
-                <div className="pm-target">
-                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit {CARD_HARDWARE_CONTRACT.maxZones}</span><span className="line" /></div>
-                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
-                  {sectionTargets.length > 1 &&
-                    <div className="chips pm-section-row" style={{ marginBottom: 8 }} aria-label="Target sections">
-                      {effectiveSectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
-                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>
-                          <span className="chip-name">{targetLabel(t)}</span>
-                          {/* Each section reads with its pattern beneath it, so four
-                              sections are one glance, not four taps. The All chip
-                              carries the piece's default look. */}
-                          <span className="chip-sub" data-testid={`section-pattern-${t.id}`}>{patternNameFor(t.look?.patternId)}</span>
-                          {sectionGpioLabels.get(t.id) && <span className="chip-route" data-testid={`section-gpio-${t.id}`}>{sectionGpioLabels.get(t.id)}</span>}
-                        </button>
-                      )}
-                    </div>
-                  }
-                  {sectionCount > 1 && <p className="pm-section-help" data-testid="section-pattern-instructions">To put different patterns on GPIO outputs, select each section, choose a pattern in Pattern bank, then Install on card.</p>}
-                  {/* One status line about sections: what the card holds, read from
-                      the card itself. Empty until the card has been read. */}
-                  {cardHoldsLine &&
-                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
-                  }
-                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
-                    <p className="pm-cardholds">
-                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
-                        Use this look on every section
-                      </button>
-                    </p>
-                  }
-                  {sectionCount <= 1 &&
-                    <p className="pm-cardholds">
-                      One section drives the whole piece.{' '}
-                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
-                    </p>
-                  }
-                  {/* Three facts on one line, not two rows that said the same
-                      thing twice. The old card printed Target above Layer and
-                      Pattern above Pattern — the same section name and the same
-                      pattern name, one under the other, with a decorative "ALL"
-                      key and a layer number that did nothing. What is left is
-                      what the target actually IS: which section, how many
-                      pixels it drives, and what is on the card.
-
-                      The pixel tile keeps its `tc-layer` / `tc-total` element
-                      and its label-then-value DOM order, because that is the
-                      readout card-workspace.spec reads back after a project
-                      switch. Only the painting order is flipped, so a reader
-                      sees "27 LEDs" and a machine still reads "LEDs27". */}
-                  <div className="pm-targetcard">
-                    <div className="tc-stat">
-                      <span className="tc-stat-k">Section</span>
-                      <strong className="tc-stat-v">{selectedTargetName}</strong>
-                    </div>
-                    <div className="tc-stat tc-layer">
-                      <span className="tc-stat-k">Pixels driven</span>
-                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
-                    </div>
-                    {/* Amber is reserved for what the card is doing right now,
-                        so it lights only once the runtime has confirmed the
-                        send. Until then this names the pattern being driven,
-                        in the neutral ink, and the bank's status line above
-                        says whether it has landed. */}
-                    <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
-                      {/* One vocabulary for "has this reached the card" —
-                          the same three words the bank's own status line and
-                          Playlist use, so the phrase does not change meaning
-                          moving between panels and screens. */}
-                      <span className="tc-stat-k">{cardActionStatusLabel(previewAction)}</span>
-                      <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
-                    </div>
-                  </div>
-                </div>
 
               </section>
 

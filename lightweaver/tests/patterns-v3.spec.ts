@@ -658,6 +658,93 @@ test('verified Install persists the auditioned section assignment in Studio', as
   expect(saved.devices.standaloneController.playlist[0].patternId).toBe('plasma');
 });
 
+test('GPIO pattern workflow keeps same and different section choices through Keep, reload, and Install payload', async ({ page }, testInfo) => {
+  const project = createPiecePreviewProject('two-gpio-pattern-workflow');
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
+    { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
+  ];
+  const configRequests: any[] = [];
+  await mockVerifiedInstallCard(page, project, 'lw-two-gpio-pattern-workflow', {
+    onConfigRequest: config => configRequests.push(config),
+  });
+  await gotoSavedProjectPatterns(page, project);
+
+  await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16');
+  await expect(page.getByTestId('section-gpio-patch-default-inner-circle')).toHaveText('GPIO 17');
+  await page.screenshot({ path: testInfo.outputPath('gpio-patterns-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+  await page.getByTestId('section-target-all').click();
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
+  await expect(page.getByTestId('section-target-patch-default-outer-circle')).not.toHaveClass(/\bon\b/);
+  await expect(page.locator('.pm-targetcard .tc-stat-v').first()).toHaveText('All sections');
+  await page.waitForTimeout(150); // Let the section chip's 120 ms border transition finish before capture.
+  await page.screenshot({ path: testInfo.outputPath('gpio-patterns-phone-target.png') });
+  await expect(page.getByTestId('pattern-bank-scope')).toContainText('All sections');
+  await expect(page.getByTestId('pattern-bank-scope')).toContainText('same pattern');
+  await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
+  await page.screenshot({ path: testInfo.outputPath('gpio-patterns-phone-bank.png') });
+  await expect(page.locator('.pm-cards .pmcard[data-pattern-id="fire"] .pmcard-nm')).toHaveText('Fire');
+  expect(await page.locator('.pm-cards .pmcard[data-pattern-id="fire"] .pmcard-nm').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Fire');
+
+  await page.getByTestId('section-target-patch-default-inner-circle').click();
+  await expect(page.locator('.pm-targetcard .tc-stat-v').first()).toHaveText('Inner circle');
+  await expect(page.getByTestId('pattern-bank-scope')).toContainText('Inner circle · GPIO 17');
+  await expect(page.getByTestId('pattern-bank-scope')).toContainText('only this section');
+  await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
+  await page.getByTestId('look-name').fill('Two GPIO look');
+  await page.getByTestId('look-save-preset').click();
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.devices?.standaloneController?.looks?.some(look => look.label === 'Two GPIO look');
+  })).toBe(true);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
+  await issueRegisteredPatternAuthorization(page);
+
+  await page.getByTestId('section-target-patch-default-inner-circle').click();
+  await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
+  await page.getByTitle('Install the current look on the card').click();
+  await expect.poll(() => configRequests.length).toBe(1);
+  const installed = configRequests[0];
+  expect(installed.led.outputs.map(output => [output.pin, output.pixels])).toEqual([[16, 27], [17, 17]]);
+  expect(installed.zones.map(zone => zone.patternId)).toEqual(['fire', 'plasma']);
+  const startup = installed.looks.find(look => look.id === installed.startupPatternId);
+  expect(startup.mode).toBe('combo');
+  expect(startup.zones.map(zone => zone.patternId)).toEqual(['fire', 'plasma']);
+});
+
+test('a section spanning two GPIOs exposes one pattern scope and opens its strip in Layout', async ({ page }) => {
+  const project = createPiecePreviewProject('spanning-gpio-section');
+  const outer = project.layout.wiring.runs.find(run => run.source?.stripId === 'default-outer-circle')!;
+  const inner = project.layout.wiring.runs.find(run => run.source?.stripId === 'default-inner-circle')!;
+  project.layout.wiring.runs = [
+    { ...outer, id: 'outer-first', source: { ...outer.source, from: 0, to: 12 } },
+    { ...outer, id: 'outer-second', source: { ...outer.source, from: 13, to: 26 } },
+    inner,
+  ];
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'First output', pin: 16, runIds: ['outer-first'] },
+    { id: 'out2', name: 'Second output', pin: 17, runIds: ['outer-second', inner.id] },
+  ];
+  await gotoSavedProjectPatterns(page, project);
+
+  await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16 · GPIO 17');
+  await expect(page.getByTestId('section-spans-gpios')).toContainText("these GPIOs share this section's pattern");
+  await page.getByTestId('open-spanning-section-in-layout').click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw/);
+  const selectedRuns = page.locator('.la-strip-row').filter({ hasText: 'Outer circle' });
+  await expect(selectedRuns).toHaveCount(2);
+  await expect(selectedRuns.first()).toHaveClass(/\bsel\b/);
+  await expect(selectedRuns.last()).toHaveClass(/\bsel\b/);
+});
+
 test('rapid duplicate Install clicks start only one card write', async ({ page }) => {
   const project = createPiecePreviewProject('piece-preview-single-install');
   const configRequests: any[] = [];
