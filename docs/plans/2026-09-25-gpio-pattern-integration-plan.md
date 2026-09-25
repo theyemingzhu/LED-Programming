@@ -216,6 +216,12 @@ physical-map changes must invalidate the appropriate verification.
 Produce an explicit old-to-new identity map for GP-05/06. All/same-pattern actions
 must not merge geometry simply to make effects equal.
 
+The Layout audit confirms that layer groups can compile several strips into one
+zone; the current look model takes that zone's first member patch. Conflicting
+member patterns therefore require an explicit grouping change or a precise
+refusal. Preserve group membership and existing scene-expression constraints;
+do not redefine GPIO as zone identity or silently discard other member choices.
+
 Done when supported cross-GPIO and same-GPIO multi-section examples can become
 independent using ordinary controls, Undo restores them, and physical-address
 mapping is unchanged wherever the operation promises it is unchanged.
@@ -250,6 +256,11 @@ Migrate or explicitly block affected patch playback, saved combined looks,
 section selections, scene-expression leaf/group targets, playlist references,
 section families, and wiring links after split/combine/delete/reorder/count edits.
 Do not silently retarget an old scene to all outputs or drop an orphan reference.
+
+Splitting retains the first strip ID and creates additional IDs. Expand inherited
+playback and every saved look's patch references through the identity map, and
+migrate strip-keyed scene assignments in the same transaction. Validate production
+job backups separately because their restore schema accepts exact keys.
 
 Prove Undo/Redo, autosave, explicit project save, reload/reopen, JSON export/import,
 project copy/templates, existing cloud/library routes and editable card backup.

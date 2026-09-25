@@ -41,9 +41,9 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 Adrian requested a comprehensive plan for all affected integrations and agent
 ownership. Plan: [Complete GPIO pattern integration](docs/plans/2026-09-25-gpio-pattern-integration-plan.md).
-Baseline `5deb1535`; manager source review, returned Bench Sol audit and Luna
-verification inventory. A separate read-only Layout Sol review was requested;
-the manager independently verified the Layout constraints used in this plan.
+Baseline `5deb1535`; manager source review, returned Bench and Layout Sol audits,
+and Luna verification inventory. The Layout audit also confirms grouped-zone
+conflicts and patch/scene identity migration requirements, included in GP-03/05.
 No implementation, suite execution, deployment or hardware action in this
 planning turn. At most three workers; manager remains sole integrator.
 
