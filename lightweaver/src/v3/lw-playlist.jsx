@@ -102,12 +102,13 @@ function downloadJson(filename, content) {
 // since the user is intentionally testing on a different physical strip.
 // Cheap no-op when the card already has that zone (ensureCardSectionsForPreview
 // only pushes when it's missing).
-async function ensureTestStripLayoutOnCard(host, runtimePackage, length) {
+async function ensureTestStripLayoutOnCard(host, runtimePackage, length, transport) {
   const testPackage = applyTestStripToRuntimePackage(runtimePackage, length);
-  const before = await getCardWiringStatus({ host }).catch(() => null);
+  const before = await getCardWiringStatus({ host, transport }).catch(() => null);
   try {
     await ensureCardSectionsForPreview({
       host,
+      transport,
       requiredZoneIds: [TEST_STRIP_ZONE_ID],
       runtimePackage: testPackage,
       allowLayoutChange: true,
@@ -117,6 +118,7 @@ async function ensureTestStripLayoutOnCard(host, runtimePackage, length) {
     if (before) {
       await captureTestStripCandidate({
         host,
+        transport,
         previousActivationId: before.activationId,
       }).catch(() => {});
     }
@@ -376,11 +378,11 @@ function realPatternShape(patternId) {
         requireLiveControlAuthority(patternId);
         const testStrip = readTestStrip();
         if (testStrip.enabled) {
-          await ensureTestStripLayoutOnCard(host, requireRuntimePackage(), testStrip.length);
+          await ensureTestStripLayoutOnCard(host, requireRuntimePackage(), testStrip.length, cardLink?.transport);
           if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current) return;
         }
         const confirmedLook = buildPatternPlaylistPreview(patternId);
-        await pushLivePreviewToCard(confirmedLook, { host, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, revision: sequence });
+        await pushLivePreviewToCard(confirmedLook, { host, transport: cardLink?.transport, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, revision: sequence });
         if (sequence === previewSequence.current && actionGeneration === cardActionGeneration.current) {
           dispatchPreviewAction({ type: 'confirm', revision: sequence });
           markCardLookConfirmed(confirmedLook);
@@ -411,12 +413,12 @@ function realPatternShape(patternId) {
           // A saved mix is normally several section targets across the real
           // design's zones; a bench strip is one zone, so just play the
           // mix's own default look across the whole (collapsed) strip.
-          await ensureTestStripLayoutOnCard(host, requireRuntimePackage(), testStrip.length);
+          await ensureTestStripLayoutOnCard(host, requireRuntimePackage(), testStrip.length, cardLink?.transport);
           if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current) return;
           const confirmedLook = { ...normalizeCardVisualLook(savedLook.defaultLook || {}), syncZones: true };
           await pushLivePreviewToCard(
             confirmedLook,
-            { host, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2600, revision: sequence },
+            { host, transport: cardLink?.transport, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2600, revision: sequence },
           );
           if (sequence === previewSequence.current && actionGeneration === cardActionGeneration.current) {
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
@@ -433,13 +435,14 @@ function realPatternShape(patternId) {
           .filter(Boolean);
         await ensureCardSectionsForPreview({
           host,
+          transport: cardLink?.transport,
           requiredZoneIds,
           runtimePackage: requireRuntimePackage(),
         });
         if (sequence !== previewSequence.current || actionGeneration !== cardActionGeneration.current) return;
         await pushSectionPreviewToCard(
           targets,
-          { host, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2600, revision: sequence },
+          { host, transport: cardLink?.transport, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2600, revision: sequence },
         );
         if (sequence === previewSequence.current && actionGeneration === cardActionGeneration.current) {
           dispatchPreviewAction({ type: 'confirm', revision: sequence });
@@ -514,7 +517,7 @@ function realPatternShape(patternId) {
       try {
         requireLiveControlAuthority();
         const testStrip = readTestStrip();
-        if (testStrip.enabled) await ensureTestStripLayoutOnCard(host, requireRuntimePackage(), testStrip.length);
+        if (testStrip.enabled) await ensureTestStripLayoutOnCard(host, requireRuntimePackage(), testStrip.length, cardLink?.transport);
         await resetLiveOutputOnCard(fallbackLiveLook(), {
           host,
           timeoutMs: 3000,
@@ -615,6 +618,7 @@ function realPatternShape(patternId) {
         const before = await readCardProjectEvidence({ host, transport: cardLink?.transport });
         const response = await syncRuntimePackageToCard({
           host,
+          transport: cardLink?.transport,
           runtimePackage: packageForCard,
           allowLayoutChange,
           allowProjectChange,

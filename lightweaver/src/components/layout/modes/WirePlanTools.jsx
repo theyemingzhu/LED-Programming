@@ -9,7 +9,7 @@ import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { WireHoverDescription } from '../shared/WireHoverDescription.jsx';
 import { WiringAssemblyMap } from '../wire/WiringAssemblyMap.jsx';
 import { WireDiscovery } from '../wire/WireDiscovery.jsx';
-import { activeBoardGpios, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
+import { activeBoardGpios, assignWiringRunToPin, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
 import { PORT_ROLE_STRIP } from '../../../lib/portRoles.js';
 import { describeCardCapacity } from '../../../lib/designCapacity.js';
 import { STRIP_DISCOVERY_ROUTE, needsStripDiscovery } from '../../../lib/cardAction.js';
@@ -156,6 +156,27 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
     const hasImmediateCable = runsById.get(output.runIds[index + 1])?.type === 'cable';
     return { output, canAddCable: Boolean(followingRun && !hasImmediateCable) };
   }, [selectedRun, wiring.outputs, runsById]);
+  const selectedRunOutput = selectedRunPlacement?.output;
+  const runPinChoices = useMemo(() => {
+    const controlPins = new Set(activeBoardGpios([], standaloneController?.controls).map(item => item.pin));
+    return CARD_HARDWARE_CAPABILITIES.supportedOutputPins.map(pin => ({
+      pin,
+      disabled: controlPins.has(pin) || (pin !== selectedRunOutput?.pin
+        && !wiring.outputs.some(output => output.pin === pin)
+        && selectedRunOutput?.runIds.length > 1
+        && wiring.outputs.length >= CARD_HARDWARE_CAPABILITIES.maxOutputs),
+    }));
+  }, [standaloneController?.controls, selectedRunOutput, wiring.outputs]);
+  const changeSelectedRunPin = pin => {
+    if (!selectedRun) return;
+    return mutate(draft => assignWiringRunToPin(draft, {
+      runId: selectedRun.id,
+      pin,
+      controls: standaloneController?.controls,
+      supportedOutputPins: CARD_HARDWARE_CAPABILITIES.supportedOutputPins,
+      maxOutputs: CARD_HARDWARE_CAPABILITIES.maxOutputs,
+    }), { changeKind: 'gpio' });
+  };
   const runName = run => run?.type === 'strip'
     ? (stripsById.get(run.source.stripId)?.name || run.source.stripId)
     : run?.type === 'inactive' ? 'Reserved LEDs' : run?.id || 'Unknown run';
@@ -388,6 +409,12 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
               <label>Physical run
                 <select aria-label="Physical run" value={selectedRun.id} onChange={event => setSelectedCustomRunId(event.target.value)}>
                   {selectedStripRuns.map(run => <option key={run.id} value={run.id}>LEDs {run.source.from}–{run.source.to}</option>)}
+                </select>
+              </label>
+              <label>GPIO output for this run
+                <select aria-label="GPIO for selected run" value={selectedRunOutput?.pin ?? ''} disabled={wiring.locked || !selectedRunOutput}
+                        onChange={event => changeSelectedRunPin(Number(event.target.value))}>
+                  {runPinChoices.map(choice => <option key={choice.pin} value={choice.pin} disabled={choice.disabled}>GPIO {choice.pin}</option>)}
                 </select>
               </label>
               <label>Start LED <input type="number" min="0" disabled={wiring.locked} value={selectedRun.source.from} onChange={event => updateSelectedRange('from', event.target.value)}/></label>

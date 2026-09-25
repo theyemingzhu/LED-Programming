@@ -757,7 +757,7 @@ async function readCardZones(host, input = {}) {
     else if (acquired?.reason === 'wrong-card') throw new CardPushError('wrong-card', 'A different Lightweaver card answered.');
   }
   if (authority) return requireBoundedControlObject(await authority.request('/api/zones'));
-  if (hasVerifiedBridgeForHost(host) || isMixedContentBlocked()) {
+  if (options.transport === 'bridge' || (options.transport !== 'direct' && (hasVerifiedBridgeForHost(host) || isMixedContentBlocked()))) {
     return requireBoundedControlObject(await sendCardBridgeRequest('zones', {}, { host, timeoutMs }));
   }
   if (options.verifyIdentity) {
@@ -1055,7 +1055,7 @@ async function pushLivePreviewToHost(host, look, options = {}) {
   }
   // Local-card mode deliberately exercises the same verified postMessage path
   // as public HTTPS, even when Studio itself is running from an HTTP dev host.
-  if (options.preferBridge || isMixedContentBlocked()) {
+  if (options.transport === 'bridge' || options.preferBridge || (options.transport !== 'direct' && isMixedContentBlocked())) {
     return pushLivePreviewToBridge(host, look, options);
   }
   const verifiedCard = await guardDirectCardMutation(host, {
@@ -1139,7 +1139,10 @@ function normalizedPreviewTargets(targets = []) {
 }
 
 async function pushSectionPreviewToHost(host, targets = [], options = {}) {
-  if (isMixedContentBlocked()) {
+  // Match single-pattern delivery: an established authority already verified
+  // the exact card and chose its transport, even from a hosted HTTPS Studio.
+  const authority = options.authority || getActiveCardTransportAuthority(host);
+  if (!authority && (options.transport === 'bridge' || options.preferBridge || (options.transport !== 'direct' && isMixedContentBlocked()))) {
     return pushSectionPreviewToBridge(host, targets, options);
   }
   const normalizedTargets = normalizedPreviewTargets(targets);
@@ -1155,7 +1158,7 @@ async function pushSectionPreviewToHost(host, targets = [], options = {}) {
 
   let zonesPayload = null;
   try {
-    zonesPayload = await readCardZones(host, Math.min(options.timeoutMs || 2500, 1200));
+    zonesPayload = await readCardZones(host, { ...options, authority, timeoutMs: Math.min(options.timeoutMs || 2500, 1200) });
   } catch {
     zonesPayload = null;
   }

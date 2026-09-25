@@ -457,6 +457,28 @@ test('a failed push retains the acknowledged installed revision and Retry instal
   expect(card.attemptedConfigs.at(-1)).toEqual(failedPayload);
 });
 
+test('HTTPS direct card installs and confirms wiring without an unverified bridge', async ({ page }, testInfo) => {
+  await proxyStudioOverHttps(page);
+  const card = await mockLocalCard(page, { currentOutputs: [{ id: 'out1', pin: 17, pixels: 44 }] });
+  await gotoWire(page, {
+    verified: true,
+    url: 'https://led.mandalacodes.com/#screen=card&section=setup&task=install-project',
+  });
+  await expect.poll(() => page.evaluate(async () =>
+    (await import('/src/lib/cardLink.js')).getCardLinkState().transport,
+  )).toBe('direct');
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(page.getByTestId('wiring-test-start')).toBeVisible();
+  await page.getByTestId('wiring-test-start').click();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
+  await page.getByTestId('wiring-test-confirm').click();
+  await expect(page.locator('.la-card-push-banner')).toContainText('Wiring confirmed.');
+  expect(card.operations.filter(operation => ['candidate', 'activate', 'confirm'].includes(operation)))
+    .toEqual(['candidate', 'activate', 'confirm']);
+  expect(await page.evaluate(() => (window as any).__openedInstaller)).toBeNull();
+  await page.screenshot({ path: testInfo.outputPath('https-direct-wiring-confirmed.png'), fullPage: true });
+});
+
 test('mixed-content recovery copies JSON, opens the installer, and retries the same bounded attempt', async ({ page }) => {
   await proxyStudioOverHttps(page);
   await gotoWire(page, {

@@ -1,7 +1,75 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { postPlaylistControlToCard, recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
+import { postPlaylistControlToCard, pushSectionPreviewToCard, readCardZonesFromCard, recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
+
+test('HTTPS section controls honor explicit direct transport and reject a different paired card', async () => {
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const values = new Map([['lw_card_identity_v1', JSON.stringify({ version: 1, id: 'lw-direct-sections' })]]);
+  globalThis.window = {
+    location: { protocol: 'https:', search: '' },
+    localStorage: { getItem: key => values.get(key) ?? null },
+    addEventListener() {},
+  };
+  const writes = [];
+  let actualCardId = 'lw-direct-sections';
+  globalThis.fetch = async (url, options = {}) => {
+    const path = new URL(url).pathname;
+    const body = options.body ? JSON.parse(options.body) : {};
+    if (options.method === 'POST') writes.push(body);
+    const response = path === '/api/zones' ? { zones: [{ id: 'left' }, { id: 'right' }] }
+      : path === '/api/control' ? { ok: true, cardId: actualCardId, appliedPatternId: body.patternId }
+      : { cardId: actualCardId, firmwareVersion: '1.0.0', buildId: 'build-test' };
+    return { ok: true, json: async () => response, text: async () => JSON.stringify(response) };
+  };
+  const options = { host: '192.168.50.78', transport: 'direct', latestOnly: false, autoDiscover: false };
+  const targets = [{ kind: 'section', zoneId: 'left', look: { patternId: 'aurora' } }];
+  try {
+    assert.equal((await readCardZonesFromCard(options)).zones.length, 2);
+    assert.equal((await pushSectionPreviewToCard(targets, options)).zonesPreviewed, 1);
+    assert.equal(writes.length, 1);
+    actualCardId = 'lw-different-card';
+    await assert.rejects(() => pushSectionPreviewToCard(targets, options), { reason: 'wrong-card' });
+    values.clear();
+    await assert.rejects(() => pushSectionPreviewToCard(targets, options), { reason: 'identity-missing' });
+    assert.equal(writes.length, 1, 'wrong-card and unpaired reads never send a command');
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('HTTPS section patterns use the established card authority without an auxiliary bridge', async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = {
+    location: { protocol: 'https:', search: '' },
+    localStorage: { getItem: () => null },
+    addEventListener() {},
+  };
+  const calls = [];
+  const authority = {
+    cardId: 'lw-section-direct',
+    async request(path, options) {
+      calls.push({ path, options });
+      if (path === '/api/zones') return { ok: true, zones: [{ id: 'left' }, { id: 'right' }] };
+      return { ok: true, cardId: this.cardId, appliedPatternId: options.body.patternId };
+    },
+  };
+  try {
+    const result = await pushSectionPreviewToCard([
+      { kind: 'section', zoneId: 'left', look: { patternId: 'aurora' } },
+      { kind: 'section', zoneId: 'right', look: { patternId: 'plasma' } },
+    ], { host: '192.168.50.77', authority, expectedCardId: authority.cardId, latestOnly: false });
+    assert.equal(result.zonesPreviewed, 2);
+    assert.deepEqual(calls.map(call => call.path), ['/api/zones', '/api/control', '/api/control']);
+    assert.deepEqual(calls.slice(1).map(call => [call.options.body.zone, call.options.body.patternId]), [
+      ['left', 'aurora'], ['right', 'plasma'],
+    ]);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
 
 // zoneConfirmsLivePreviewIntent is the pure comparison readBackLivePreview
 // leans on to decide whether a card's own `/api/zones` report already shows a

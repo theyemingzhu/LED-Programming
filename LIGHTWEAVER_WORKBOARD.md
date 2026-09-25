@@ -37,6 +37,43 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Layout, GPIO, and card pattern fixes (done locally)
+
+Reproduced the screenshot's unverified-bridge install failure: HTTPS Studio's
+verified direct connection was lost during wiring checks. Installation now keeps
+its transport through preflight, test, confirmation, and rollback. Section
+patterns, zone synchronization, and test-strip operations also retain transport;
+exact-card identity safeguards remain intact.
+
+Three divided sections expose independent GPIO selectors; physical cut runs
+have a GPIO selector in Specs. Moving a family frees its previous empty output.
+Verified three-output compilation, browser assignment/reload, and physical-cut
+routing. Artboard labels and selected closed-shape interiors now support drag;
+return-to-origin restores geometry and simple selection does not consume undo.
+Install hover help uses the existing portal tooltip above the artboard.
+
+Final integrated checkpoint: 2,700 unit tests and production build passed
+(`/tmp/lw-sprint-checkpoint.log`). Focused browser regressions passed for HTTPS
+install/rollback and direct/bridge patterns (4), GPIO routing (3), and new
+artboard interactions (4); existing first-LED, kaleidoscope drag, and zoom-selection
+checks pass. Real screens inspected: `/tmp/lw-sprint-gpio.png`,
+`/tmp/lw-sprint-layout-hover.png`, and `/tmp/lw-sprint-layout-drag.png`. Source reviewed and
+`git diff --check` clean. Release authorized by Adrian's “push main” request;
+integration, release gate, deployment, and independent live proof are in progress.
+
+Release PR339: first full launch run 36090781248 passed earlier source, browser,
+cloud, production and unit stages, then release-UI ended with 392 passing and two
+failed stale assertions. Corrected the second zoom-limit label hit-target
+expectation and the current “Continue after setup” handoff copy/action. Complete
+zoom spec (3) and blocked-popup regression (1) pass; product source is unchanged.
+Full launch gate is being rerun before merge.
+
+**Needs-eyes:** On the user's actual card, confirm patterns on each of the three
+wired GPIOs and offline playback after installation. Connection type and exact
+pins were requested but not supplied. No firmware change, card write, or flash
+was performed. Resume by checking the configured card and observing one output
+at a time; preserve its installed project and Wi-Fi configuration.
+
 ### 2026-09-23 Fresh-install USB Wi-Fi (pushed, draft PR315)
 
 Branch `codex/usb-wifi-setup` from main `f039ff8e`; installer summary `e711fd1d`

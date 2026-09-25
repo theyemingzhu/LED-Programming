@@ -4,6 +4,7 @@ import { GLOW_MODES, svgPt, sampleStripPixels } from '../lib/layoutGeometry.js';
 import { createPrimitiveStripDefinition } from '../lib/layoutPrimitives.js';
 import { scaleStripGeometry } from '../lib/stripScale.js';
 import { LayoutCanvas } from './layout/canvas/LayoutCanvas.jsx';
+import { WireHoverDescription } from './layout/shared/WireHoverDescription.jsx';
 import { DrawModePanel } from './layout/modes/DrawModePanel.jsx';
 import { WirePlanTools } from './layout/modes/WirePlanTools.jsx';
 import { WireBuildSheet } from './layout/wire/WireBuildSheet.jsx';
@@ -530,7 +531,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           <span aria-hidden="true"/>
           <strong>Inspector</strong>
         </button>
-        <div className="la-mode-nav">
+        <WireHoverDescription className="la-mode-nav">
           <div className="la-install-actions">
             <button
               type="button"
@@ -575,7 +576,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               </details>
             )}
           </div>
-        </div>
+        </WireHoverDescription>
         <div className="la-mode-content is-draw">
           <div className="la-inspector-main" hidden={specsOpen}>
             <DrawModePanel state={state}

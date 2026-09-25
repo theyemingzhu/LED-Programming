@@ -48,6 +48,7 @@ export function runtimeZoneIds(runtimePackage = {}) {
 
 export async function waitForCardZones({
   host,
+  transport,
   requiredZoneIds = [],
   readZones = readCardZonesFromCard,
   sleep = delay,
@@ -57,7 +58,7 @@ export async function waitForCardZones({
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) await sleep(intervalMs);
     try {
-      const payload = await readZones({ host, timeoutMs: 900 });
+      const payload = await readZones({ host, transport, timeoutMs: 900 });
       if (
         Array.isArray(payload?.zones) &&
         missingCardZoneIds(payload, requiredZoneIds).length === 0
@@ -76,6 +77,7 @@ export async function waitForCardZones({
 
 export async function syncRuntimePackageToCard({
   host,
+  transport,
   runtimePackage,
   requiredZoneIds = runtimeZoneIds(runtimePackage),
   pushConfig = pushConfigToCard,
@@ -88,6 +90,7 @@ export async function syncRuntimePackageToCard({
 } = {}) {
   const response = await pushConfig(runtimePackage, {
     host,
+    transport,
     timeoutMs: 6000,
     reboot: 'if-needed',
     allowLayoutChange,
@@ -121,7 +124,7 @@ export async function syncRuntimePackageToCard({
       });
       verifiedZones = verified.zones;
     } else {
-      verifiedZones = await waitForCardZones({ host, requiredZoneIds, readZones, sleep });
+      verifiedZones = await waitForCardZones({ host, transport, requiredZoneIds, readZones, sleep });
     }
   }
   return {
@@ -132,6 +135,7 @@ export async function syncRuntimePackageToCard({
 
 export async function ensureCardSectionsForPreview({
   host,
+  transport,
   requiredZoneIds = [],
   runtimePackage,
   pushConfig = pushConfigToCard,
@@ -145,7 +149,7 @@ export async function ensureCardSectionsForPreview({
   allowProjectChange = false,
 } = {}) {
   if (!requiredZoneIds.length) return { synced: false, zones: null };
-  const zones = await readZones({ host, timeoutMs: 900 });
+  const zones = await readZones({ host, transport, timeoutMs: 900 });
   const missing = missingCardZoneIds(zones, requiredZoneIds);
   if (!missing.length) return { synced: false, zones };
 
@@ -154,6 +158,7 @@ export async function ensureCardSectionsForPreview({
   if (!pendingSync) {
     pendingSync = syncRuntimePackageToCard({
       host,
+      transport,
       runtimePackage,
       requiredZoneIds: runtimeZoneIds(runtimePackage),
       pushConfig,

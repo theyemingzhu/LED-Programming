@@ -99,7 +99,7 @@ async function waitForCardAfterCandidateRollback(host, expected = {}) {
       const [project, status, wiringStatus] = await Promise.all([
         readCardProjectEvidence({ host, transport }),
         readCardStatusEnvelope({ host, transport }),
-        getCardWiringStatus({ host }), // transport: n/a (cardWiringSafety.js is out of F36 scope — not one of the three named lib files, and getCardWiringStatus does not consult a transport option)
+        getCardWiringStatus({ host, transport }),
       ]);
       const cardId = project.cardId || status.cardId;
       const buildId = project.buildId || status.buildId;
@@ -230,7 +230,7 @@ export function CardPushControl({
           [before, status, wiringStatus] = await Promise.all([
             readCardProjectEvidence({ host: cleanHost, transport: getCardLinkState().transport }),
             readCardStatusEnvelope({ host: cleanHost, transport: getCardLinkState().transport }),
-            getCardWiringStatus({ host: cleanHost }), // transport: n/a (cardWiringSafety.js is out of F36 scope — not one of the three named lib files, and getCardWiringStatus does not consult a transport option; also literal-matched by cardPushControlResume.test.js's ordering check, do not change the string shape)
+            getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport }),
           ]);
           assertCardDeploymentPreflightIdentity(before, status);
         } catch (preflightError) {
@@ -315,7 +315,7 @@ export function CardPushControl({
           {
             readFirmwareInfo: () => readCardProjectEvidence({ host: attempt.host, transport: getCardLinkState().transport }),
             readStatus: () => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport }),
-            readWiringStatus: () => getCardWiringStatus({ host: attempt.host }), // transport: n/a (cardWiringSafety.js is out of F36 scope)
+            readWiringStatus: () => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport }),
             config: async () => {
               assertCurrentAttempt(attempt);
               setPushStatus(`Sending revision ${attempt.revision} to ${cleanHost}...`);
@@ -480,6 +480,7 @@ export function CardPushControl({
       assertCurrentAttempt(wiringCandidate.attempt);
       const testingStatus = await activateAndWaitForCardWiring(wiringCandidate.activationId, {
         host: wiringCandidate.attempt.host,
+        transport: getCardLinkState().transport,
         timeoutMs: 18000,
       });
       setWiringCandidate(current => current ? {
@@ -513,7 +514,7 @@ export function CardPushControl({
     try {
       if (visible) {
         assertCurrentAttempt(wiringCandidate.attempt);
-        await confirmCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host });
+        await confirmCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host, transport: getCardLinkState().transport });
         setPushStatus('Verifying the confirmed wiring on the card…');
         const { verification } = await waitForReadyDeploymentVerification(
           wiringCandidate.attempt.prepared,
@@ -534,7 +535,7 @@ export function CardPushControl({
         confirmedAttempt = wiringCandidate.attempt;
       } else {
         assertCurrentAttempt(wiringCandidate.attempt);
-        await rollbackCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host });
+        await rollbackCardWiringCandidate(wiringCandidate.activationId, { host: wiringCandidate.attempt.host, transport: getCardLinkState().transport });
         failedAttemptRef.current = wiringCandidate.attempt;
         dispatchAction({ type: 'fail', error: 'Wiring test rolled back.' });
         setPushStatus('Restored the last working setup. Use Find my LED wire before trying again.');
@@ -563,7 +564,7 @@ export function CardPushControl({
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const status = await getCardWiringStatus({ host: wiringCandidate.attempt.host });
+        const status = await getCardWiringStatus({ host: wiringCandidate.attempt.host, transport: getCardLinkState().transport });
         if (cancelled) return;
         const expectedCardId = wiringCandidate.attempt.prepared?.cardId;
         const expectedBuildId = wiringCandidate.attempt.prepared?.buildId;
@@ -624,7 +625,7 @@ export function CardPushControl({
     await withStudioHardwareOperation('finish-wiring', async () => {
       setPushStatus('Discarding the unfinished light test…');
       try {
-        await rollbackCardWiringCandidate(candidateConflict.activationId, { host: candidateConflict.host });
+        await rollbackCardWiringCandidate(candidateConflict.activationId, { host: candidateConflict.host, transport: getCardLinkState().transport });
         setPushStatus('Reconnecting to this card…');
         await waitForCardAfterCandidateRollback(candidateConflict.host, candidateConflict);
         setCandidateConflict(null);

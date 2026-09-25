@@ -1491,6 +1491,7 @@ function Shell({ offlineUpdateController = null }) {
         const before = await readCardProjectEvidence({ host, transport: cardLink.transport });
         await syncRuntimePackageToCard({
           host,
+          transport: cardLink.transport,
           runtimePackage: packageForCard,
           allowProjectChange: true,
         });
@@ -1640,7 +1641,7 @@ function Shell({ offlineUpdateController = null }) {
       setTestStripState(startTestStripSession({ length: readTestStrip().length }));
       return;
     }
-    void stopTestStripSession({ host: readStoredCardHost() })
+    void stopTestStripSession({ host: readStoredCardHost(), transport: getCardLinkState().transport })
       .catch(() => {
         // The override is already disabled. A candidate that cannot be proven
         // as ours is deliberately left for the card's normal safety flow.

@@ -284,7 +284,8 @@ export function useLayoutCanvasInteraction(ctx, deps) {
   const startStripMove = useCallback((event, strip) => {
     if (event.button !== 0 || drawMode || !svgRef.current) return;
     if (event.shiftKey || event.metaKey || event.ctrlKey) {
-      toggleStripSel(strip.id);
+      // The following click owns additive selection. Toggling here as well
+      // makes a normal modified click toggle twice and appear to do nothing.
       return;
     }
     // Positional strip-drag is a Draw-mode gesture (canvas behavior matrix,
@@ -303,7 +304,6 @@ export function useLayoutCanvasInteraction(ctx, deps) {
     }));
     if (!startStrips.length) return;
 
-    pushLayoutHistory();
     // Dragging a strip that isn't part of the current selection selects it;
     // dragging inside an existing multi-selection keeps the selection intact.
     if (!selectedStripIds.includes(strip.id)) selectStrip(strip.id);
@@ -315,6 +315,7 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       startPoint,
       startStrips,
       startMap: new Map(startStrips.map(s => [s.id, s])),
+      historyPushed: false,
     };
 
     const applyStripDragPoint = (clientX, clientY, commitPixels = false) => {
@@ -323,7 +324,14 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       const pt = svgPt(svgRef.current, clientX, clientY);
       const dx = pt.x - drag.startPoint.x;
       const dy = pt.y - drag.startPoint.y;
-      if (Math.hypot(dx, dy) > 1.5) stripDragSuppressClickRef.current = true;
+      // Ignore a click-sized motion only until a drag begins. Afterward a
+      // return to the origin must restore the starting geometry.
+      if (!drag.historyPushed && Math.hypot(dx, dy) <= 1.5) return stripsRef.current;
+      stripDragSuppressClickRef.current = true;
+      if (!drag.historyPushed) {
+        pushLayoutHistory();
+        drag.historyPushed = true;
+      }
       const next = stripsRef.current.map(s => {
         const start = drag.startMap.get(s.id);
         if (!start) return s;
