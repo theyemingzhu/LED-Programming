@@ -37,6 +37,30 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Complete GPIO integration plan (queued implementation)
+
+Adrian requested a comprehensive plan for all affected integrations and agent
+ownership. Plan: [Complete GPIO pattern integration](docs/plans/2026-09-25-gpio-pattern-integration-plan.md).
+Baseline `5deb1535`; manager source review, returned Bench Sol audit and Luna
+verification inventory. A separate read-only Layout Sol review was requested;
+the manager independently verified the Layout constraints used in this plan.
+No implementation, suite execution, deployment or hardware action in this
+planning turn. At most three workers; manager remains sole integrator.
+
+**Release-blocking findings supersede any inference of complete readiness from
+the prior narrow tests:** Bench restore sends a redundant false-sync command
+that native firmware rejects with 422; provisional zero fade/blackout/stream
+ownership can leave matching pattern readback physically dark; measured chooser
+and Whole piece use provisioned rather than confirmed ports. Prior mock/browser
+passes did not model these native behaviors. Physical reproduction remains
+unperformed; this is source/runtime-contract evidence, not a visual hardware pass.
+
+Next build: GP-00 fixtures → GP-01 Bench corrections with Firmware C's early
+arming diagnosis; App A builds GP-03 guided independent sections in parallel.
+Then complete chooser/persistence/shared install, restart and other consumer
+contracts, portability and full acceptance matrix. GP-11 handles separately
+authorized hardware/release/Prove gates. Current local branch is not release-ready.
+
 ### 2026-09-25 Same/different GPIO patterns and Bench Discovery (implemented locally)
 
 Adrian requests deeper end-to-end product work: easily assign the same or
