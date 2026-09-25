@@ -17,6 +17,26 @@ Scene rehearsal is tied to this exact installed pixel map. If you later change
 strip routing, direction, LED count, or source mapping, install the revised
 Layout before using **Try on lights** again.
 
+## Different patterns on separate GPIO strips
+
+GPIOs describe physical wiring. Sections describe which LEDs receive a pattern.
+Give each strip a named section in **Layout**, assign its GPIO and LED count,
+and check the routing before installing.
+
+For a single combined look, open **Patterns**, choose a named section under
+**Design target**, and choose its pattern. Repeat for the other sections.
+**All sections** and **Use this look on every section** deliberately apply one
+look across the piece. Use the individual section targets to keep them different.
+
+Use **Keep this look** to retain the combination in the project, then
+**Install on card** to update standalone playback. Keeping a look in Studio
+does not by itself install it. When a timed playlist is enabled, that playlist
+controls playback: include the saved combined look in the playlist if you want
+its sections to play together during that step.
+
+For multiple ordered combinations, use the scene workflow below. One scene step
+can assign different patterns to several named areas at the same time.
+
 ## 2. Build the scene in Lab
 
 1. Open **Lab** and choose **Build scene**.

@@ -37,6 +37,64 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-24/25 General multi-output pattern workflow (implemented locally)
+
+Adrian requests a product-wide fix: separate GPIO strips need independent
+patterns and a clear way to load them; configuring one physical card is not the
+requested outcome. Sprint mode supersedes initial Bench intake. No card changes
+or flash performed. Base: main `9f053a02` (build 2118), includes PR339.
+Integrated worker `30766195` as `20a6298e` on
+`codex/multi-output-pattern-workflow`. Committed locally; not pushed or deployed.
+
+Manager delegates two isolated tasks using GPT-6 Sol: firmware routing/runtime
+diagnosis (high reasoning) and Studio assignment/loading workflow (medium).
+Firmware owns its source/contracts; Studio owns browser source/focused tests.
+Manager owns integration, documentation, workboard and one integrated checkpoint.
+Acceptance: distinct patterns on distinct mapped outputs, correct compiled pixel
+ranges, persistence/reload and standalone-install semantics, discoverable UI,
+and truthful unsupported-state handling. Physical LED proof remains separate.
+No release, version bump, signing, or hardware flash is part of this Sprint.
+
+Firmware task `01a0d750-c4fc-7ee2-82ce-fe716e1c17d6`; Studio task
+`01a0d750-d4a2-71c0-94ee-69bdd43ab44a` owned the single browser slot. Luna QA
+returned `docs/plans/2026-09-24-multi-output-acceptance.md`. Studio found the
+initial concrete defect: runtime zones retain independent looks but implicit
+startup selects a single pattern that firmware applies across all zones.
+Both defects are corrected. Explicit playlist intent is retained.
+Three unequal compiled GPIO regression exposed a second confirmed cause:
+compiled zone IDs do not match patch IDs used to recover section playback, so
+all compiled sections fell back to the global pattern. The correction uses
+the canonical zone/patch relation for current settings and saved combined looks.
+Firmware worker confirmed existing combo-zone playback and five focused
+contracts pass. No firmware change needed for the startup defect. Direct config
+save clears remembered live looks even for the same revision; a pre-existing
+same-revision wiring-candidate restoration trap is tracked separately and must
+not be confused with proof of this browser fix. User guide now explains the
+per-section Patterns workflow and explicit timed-playlist behavior.
+
+Evidence: 12 focused Node tests, existing card-runtime contract, five firmware
+contracts, and 3/3 section-row Chromium cases pass. Real Patterns screen inspected
+by the worker; GPIO labels and instructions render correctly. Three unequal GPIO
+outputs retain distinct patterns through compiled config, compact storage, and
+JSON project reload into a saved combo. All preview/test processes are stopped.
+
+Integrated checkpoint: production build passed. Node 22 unit suite: 2,699/2,705
+pass, six failures reproduced unchanged on base `9f053a02` (92 targeted baseline
+tests: 86 pass, same six fail). Failures are the aesthetic-law source scan,
+three firmware-release fixture/key checks, deployment header line endings, and
+the signing fixture's POSIX permission check on Windows. This is not a green
+full checkpoint. Logs: `%TEMP%/lw-multi-output-node22-unit.log`,
+`%TEMP%/lw-multi-output-baseline-windows.log`, `%TEMP%/lw-multi-output-build.log`.
+System Node 24 hung existing bridge tests; stopped those processes and used CI's
+Node 22. Windows newline conversion changed a tracked signed ticket signature;
+restored its exact 87 Git bytes to build. No release artifact was regenerated.
+The optional Rollup helper requests a nonexistent Windows package; the direct
+Vite build succeeds using the correctly installed native dependency.
+
+Follow-ups: fix baseline Windows verification portability before claiming a
+green checkpoint; assess same-revision wiring-candidate NVS restoration as a
+separate firmware issue. Physical/offline LED playback remains unobserved.
+
 ### 2026-09-25 Layout, GPIO, and card pattern fixes (done locally)
 
 Reproduced the screenshot's unverified-bridge install failure: HTTPS Studio's
