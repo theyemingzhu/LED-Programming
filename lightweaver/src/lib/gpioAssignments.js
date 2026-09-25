@@ -1,3 +1,5 @@
+import { updateWiring } from './wiringModel.js';
+
 export const BOARD_CONTROL_FIELDS = Object.freeze([
   { key: 'encoderA', label: 'Encoder A', path: ['encoder', 'a'], allowOff: false },
   { key: 'encoderB', label: 'Encoder B', path: ['encoder', 'b'], allowOff: false },
@@ -48,4 +50,41 @@ export function planBoardGpioAssignment({ outputs = [], controls = {}, target, p
   const conflict = activeBoardGpios(nextOutputs, nextControls).find(item => item.owner !== owner && item.pin === nextPin && nextPin >= 0);
   if (conflict) return { ok: false, error: `GPIO ${nextPin} is already assigned.` };
   return { ok: true, outputs: nextOutputs, controls: nextControls, error: '' };
+}
+
+// Route one physical run, including a cut section of a single drawn strip.
+// Empty source outputs are removed so a repin never consumes a card port.
+export function routeWiringRunToPin(wiring, {
+  runId, pin, controls = {}, strips = [], supportedOutputPins = [], maxOutputs = 4,
+} = {}) {
+  return updateWiring(wiring, draft => assignWiringRunToPin(draft, {
+    runId, pin, controls, supportedOutputPins, maxOutputs,
+  }), { changeKind: 'gpio', strips });
+}
+
+export function assignWiringRunToPin(draft, {
+  runId, pin, controls = {}, supportedOutputPins = [], maxOutputs = 4,
+} = {}) {
+  const nextPin = Number(pin);
+  if (!supportedOutputPins.includes(nextPin)) throw new Error(`GPIO ${nextPin} cannot drive an LED output.`);
+  const control = activeBoardGpios([], controls).find(item => item.pin === nextPin);
+  if (control) throw new Error(`GPIO ${nextPin} is already assigned to a board control.`);
+  const source = draft.outputs.find(output => output.runIds.includes(runId));
+  if (!source) throw new Error('That physical run is no longer assigned to an output.');
+  if (source.pin === nextPin) return;
+  let target = draft.outputs.find(output => output.pin === nextPin);
+  if (!target && source.runIds.length === 1) {
+    source.pin = nextPin;
+    return;
+  }
+  if (!target) {
+    if (draft.outputs.length >= maxOutputs) throw new Error(`This card supports up to ${maxOutputs} GPIO outputs.`);
+    let number = 1;
+    while (draft.outputs.some(output => output.id === `out${number}`)) number += 1;
+    target = { id: `out${number}`, name: `Output ${number}`, pin: nextPin, runIds: [] };
+    draft.outputs.push(target);
+  }
+  source.runIds = source.runIds.filter(id => id !== runId);
+  target.runIds.push(runId);
+  if (!source.runIds.length) draft.outputs = draft.outputs.filter(output => output.id !== source.id);
 }

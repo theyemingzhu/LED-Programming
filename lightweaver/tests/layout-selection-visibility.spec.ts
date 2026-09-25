@@ -17,7 +17,7 @@ async function screenSize(locator: any, property: string) {
   }, property);
 }
 
-test('selected identity stays compact and non-blocking at fit and zoomed out', async ({ page }) => {
+test('selected identity stays compact and its overlays leave the strip grabbable at fit and zoomed out', async ({ page }) => {
   await createTwoLineStrips(page);
   const hit = page.locator('[data-strip-path]').first();
   const id = await hit.getAttribute('data-strip-path');
@@ -28,7 +28,8 @@ test('selected identity stays compact and non-blocking at fit and zoomed out', a
   await expect(page.getByTestId('selected-strip-badge')).toHaveCount(0);
   await expect(halo).toHaveAttribute('d', (await hit.getAttribute('d'))!);
   await expect(halo).toHaveAttribute('stroke', 'oklch(64% 0.025 235)');
-  for (const overlay of [halo, core, label]) await expect(overlay).toHaveCSS('pointer-events', 'none');
+  for (const overlay of [halo, core]) await expect(overlay).toHaveCSS('pointer-events', 'none');
+  await expect(label).toHaveCSS('pointer-events', 'all');
   await expect(hit).toHaveCSS('cursor', 'grab');
   for (const zoomedOut of [false, true]) {
     if (zoomedOut) for (let i = 0; i < 8; i++) await page.getByTitle('Zoom out (-)').click();
@@ -41,7 +42,7 @@ test('selected identity stays compact and non-blocking at fit and zoomed out', a
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await page.mouse.down();
   await expect(hit).toHaveCSS('cursor', 'grabbing');
-  await expect(label).toHaveCount(0);
+  await expect(label).toBeVisible();
   await page.mouse.up();
   await expect(label).toBeVisible();
 });

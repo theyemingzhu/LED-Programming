@@ -84,16 +84,16 @@ export function recordTestStripCandidate(activationId) {
   return writeTestStrip({ activationId: exactActivationId });
 }
 
-export async function captureTestStripCandidate({ host, readStatus, previousActivationId } = {}) {
+export async function captureTestStripCandidate({ host, transport, readStatus, previousActivationId } = {}) {
   const wiring = readStatus ? null : await import('./cardWiringSafety.js');
-  const status = await (readStatus || (() => wiring.getCardWiringStatus({ host })))();
+  const status = await (readStatus || (() => wiring.getCardWiringStatus({ host, transport })))();
   if ((status?.state !== 'staged' && status?.state !== 'testing') || !status?.activationId) return '';
   if (previousActivationId !== undefined && String(status.activationId) === String(previousActivationId || '')) return '';
   recordTestStripCandidate(status.activationId);
   return String(status.activationId);
 }
 
-export async function stopTestStripSession({ host, readStatus, rollback } = {}) {
+export async function stopTestStripSession({ host, transport, readStatus, rollback } = {}) {
   const current = readTestStrip();
   // Disable first. A failed card read must never leave the silent override on.
   writeTestStrip({ enabled: false, sessionId: '', activationId: '' });
@@ -102,8 +102,8 @@ export async function stopTestStripSession({ host, readStatus, rollback } = {}) 
   const wiring = (!readStatus || !rollback)
     ? await import('./cardWiringSafety.js')
     : null;
-  const read = readStatus || (() => wiring.getCardWiringStatus({ host }));
-  const rollbackCandidate = rollback || (activationId => wiring.rollbackCardWiringCandidate(activationId, { host }));
+  const read = readStatus || (() => wiring.getCardWiringStatus({ host, transport }));
+  const rollbackCandidate = rollback || (activationId => wiring.rollbackCardWiringCandidate(activationId, { host, transport }));
   const status = await read();
   const ownsActiveCandidate = status?.activationId === current.activationId
     && (status?.state === 'staged' || status?.state === 'testing');

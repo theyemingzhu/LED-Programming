@@ -13,7 +13,7 @@ test('card install preflights wiring state and classifies it before any config m
   assert.match(text, /assertCardDeploymentPreflightIdentity/);
   assert.match(text, /orchestrateCardDeploymentStart/);
   assert.match(text, /getCardWiringStatus/);
-  const preflight = text.indexOf('getCardWiringStatus({ host: cleanHost })');
+  const preflight = text.indexOf('getCardWiringStatus({ host: cleanHost, transport: getCardLinkState().transport })');
   const identity = text.indexOf('assertCardDeploymentPreflightIdentity(');
   const classify = text.indexOf('orchestrateCardDeploymentStart(');
   const mutate = text.indexOf('pushConfigToCard(');

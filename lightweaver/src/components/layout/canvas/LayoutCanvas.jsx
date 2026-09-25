@@ -51,12 +51,14 @@ export function LayoutCanvas({
   } = wire;
   const selectedPhysicalRun = wiring?.runs?.find(run => run.id === selectedWiringRunId);
   const selectedPhysicalStrip = strips.find(strip => strip.id === selectedPhysicalRun?.source?.stripId);
+  const selectedClosedStrip = strips.find(strip => strip.id === selStripId && (strip.closed || strip.isClosed) && !hidden[strip.id]);
   const selectedSeamLed = selectedPhysicalRun?.seamLed
     ?? (selectedPhysicalRun?.physicalDirection === 'source-reverse'
       ? selectedPhysicalRun?.source?.to
       : selectedPhysicalRun?.source?.from);
   const selectedSeamPoint = selectedPhysicalStrip?.pixels?.[selectedSeamLed];
   const { mode, drawMode, waypoints, ghostPt, ghostD } = draw;
+  const canDragStrip = mode === 'draw' && !drawMode && !firstLedPicker && !kaleidoscopeEditor && wireOverlayMode !== 'chop';
   const baseBounds = parsedVb(viewBox);
   const renderedBounds = parsedVb(computedViewBox);
   // The base viewBox scale keeps overlay dimensions tied to artwork units;
@@ -328,6 +330,24 @@ export function LayoutCanvas({
             )}
 
             {/* ── Strip paths ── */}
+            {/* A selected closed shape can be grabbed from its empty center.
+                Keep this fill behind every strip stroke so an overlapping
+                strip remains the topmost hit target. */}
+            {selectedClosedStrip && canDragStrip && (
+              <path
+                d={selectedClosedStrip.pathData}
+                transform={`translate(${selectedClosedStrip.x || 0} ${selectedClosedStrip.y || 0})`}
+                fill="transparent"
+                stroke="none"
+                pointerEvents="fill"
+                aria-hidden="true"
+                data-strip-interior={selectedClosedStrip.id}
+                onPointerDown={event => startStripMove(event, selectedClosedStrip)}
+                onClick={event => {
+                  event.stopPropagation();
+                  if (!stripDragSuppressClickRef.current) selectStrip(selectedClosedStrip.id);
+                }}/>
+            )}
             {strips.map(s => {
               const isSel = s.id === selStripId;
               const isHid = !!hidden[s.id];
@@ -648,7 +668,7 @@ export function LayoutCanvas({
             )}
 
             {/* One compact, screen-sized annotation per strip; no leader lines. */}
-            {!isEditingGesture && showLeds && labels.map(({ strip: s, x, y, width, height }) => {
+            {(!isEditingGesture || movingStripIds.length > 0) && showLeds && labels.map(({ strip: s, x, y, width, height }) => {
               const physicalScale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 3.7795;
               const pitch = s.svgLength > 0 && s.pixelCount > 1
                 ? s.svgLength / physicalScale / (s.pixelCount - 1) : null;
@@ -661,7 +681,14 @@ export function LayoutCanvas({
                    data-selected={s.id === selStripId || undefined}
                    aria-label={label}
                    transform={`translate(${x} ${y}) scale(${annotationScale})`}
-                   style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                   style={{ pointerEvents: canDragStrip ? 'all' : 'none', cursor: movingStripIds.includes(s.id) ? 'grabbing' : 'grab', userSelect: 'none' }}
+                   onPointerDown={event => startStripMove(event, s)}
+                   onClick={event => {
+                     event.stopPropagation();
+                     if (stripDragSuppressClickRef.current) return;
+                     if (event.shiftKey || event.metaKey || event.ctrlKey) toggleStripSel(s.id);
+                     else selectStrip(s.id);
+                   }}>
                   <title>{label} · {detail}</title>
                   <rect width={width / annotationScale} height={height / annotationScale} rx="4"
                         fill="oklch(0.18 0.02 220 / 0.88)" stroke={s.color}

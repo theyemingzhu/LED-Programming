@@ -550,16 +550,18 @@ export function DrawModePanel({
       ensureRunsForAllStrips(draft);
       const memberRuns = draft.runs.filter(run => run.type === 'strip' && memberIds.has(run.source?.stripId));
       if (memberRuns.length !== memberIds.size) throw new Error('Each section needs one complete wiring run before assigning the parent GPIO.');
+      const runIds = new Set(memberRuns.map(run => run.id));
+      draft.outputs.forEach(output => { output.runIds = output.runIds.filter(runId => !runIds.has(runId)); });
+      // Remove vacated ports before counting capacity. A parent move from
+      // GPIO 16 to 17 must not leave an empty GPIO 16 consuming a card output.
+      draft.outputs = draft.outputs.filter(output => output.runIds.length || output.pin === selectedPin);
       let target = draft.outputs.find(output => output.pin === selectedPin);
       if (!target) {
         if (draft.outputs.length >= CARD_HARDWARE_CAPABILITIES.maxOutputs) throw new Error(`This card supports up to ${CARD_HARDWARE_CAPABILITIES.maxOutputs} GPIO outputs.`);
         target = { id: nextOutputId(draft.outputs), name: `Output ${draft.outputs.length + 1}`, pin: selectedPin, runIds: [] };
         draft.outputs.push(target);
       }
-      const runIds = new Set(memberRuns.map(run => run.id));
-      draft.outputs.forEach(output => { output.runIds = output.runIds.filter(runId => !runIds.has(runId)); });
       target.runIds.push(...memberRuns.map(run => run.id));
-      draft.outputs = draft.outputs.filter((output, index) => index === 0 || output.runIds.length);
     }, { changeKind: 'gpio' });
     setConnectedError(result.ok ? '' : (result.errors?.[0]?.message || 'The parent GPIO could not be changed.'));
   };
@@ -1588,6 +1590,13 @@ export function DrawModePanel({
                                     <span>Section {memberIndex + 1} · {member.name}</span>
                                     <span>{member.pixelCount} LEDs</span>
                                   </button>
+                                  <label><span>Section {memberIndex + 1} GPIO output</span>
+                                    <select aria-label={`Section ${memberIndex + 1} GPIO override`} value={memberPin}
+                                            disabled={wiring.locked}
+                                            onChange={event => assignStripGpio(member.id, Number(event.target.value))}>
+                                      <GpioOptions choices={gpioChoicesForStrip(member.id)} />
+                                    </select>
+                                  </label>
                                   {member.id === s.id && <>
                                   <input type="text" value={member.name} aria-label={`Section ${memberIndex + 1} name`}
                                          onChange={event => renameStrip(member.id, event.target.value)} />
@@ -1616,13 +1625,6 @@ export function DrawModePanel({
                                             }}>
                                       {!currentPatternKnown && <option value={currentPatternId}>{currentPatternId}</option>}
                                       {REAL_PATTERNS.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}
-                                    </select>
-                                  </label>
-                                  <label><span>GPIO override</span>
-                                    <select aria-label={`Section ${memberIndex + 1} GPIO override`} value={memberPin}
-                                            disabled={wiring.locked}
-                                            onChange={event => assignStripGpio(member.id, Number(event.target.value))}>
-                                      <GpioOptions choices={gpioChoicesForStrip(member.id)} />
                                     </select>
                                   </label>
                                   <button type="button" className="btn" data-testid="connected-add-split"
