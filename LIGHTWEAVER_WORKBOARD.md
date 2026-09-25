@@ -37,6 +37,72 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Same/different GPIO patterns and Bench Discovery (implemented locally)
+
+Adrian requests deeper end-to-end product work: easily assign the same or
+different patterns to GPIO strips and load patterns from Bench Discovery.
+Sprint continuation, not an exhaustive Prove run or a physical-card setup.
+Base is `2eb3af47`, including the compiled-zone/startup corrections above.
+
+Reused two Sol tasks at medium reasoning: Studio worker
+`01a0d750-d4a2-71c0-94ee-69bdd43ab44a` owns normal-project Patterns, shared look
+model/runtime helpers and targeted tests; Bench worker
+`01a0d750-c4fc-7ee2-82ce-fe716e1c17d6` now owns StripDiscoveryPanel, Bench
+config/install/commit helpers and targeted tests. No overlapping source edits.
+Studio has first browser slot; Bench must wait for handoff. Manager integrates
+and owns docs/workboard/checkpoint. Known unrelated Windows checkpoint failures
+remain documented; no release, hardware writes, or firmware flash authorized.
+
+Acceptance: actual same/all and different/per-section interaction; independent
+edit retention; save/reload/install payload/readback; Bench counted-port handoff
+to patterns; clear temporary versus installed status; exact-card authority and
+uncounted discovery limits retained. Physical appearance is a separate gate.
+
+Confirmed Bench gaps: multi-output discovery config has one zone; the final
+measured setup installer passes outputs without measured strips/patches/wiring,
+again producing one full-piece zone. Approved bounded correction: per-output
+provisional zones with dim combined startup; explicit temporary pattern audition
+after counting; carry chosen looks into measured source and final install.
+Legacy single-zone setups need an explicit update path, not target fallback.
+Existing artwork is preserved; persistence needs exact mapping or Layout handoff.
+Normal Patterns same/different/reload/install journey already passes; remaining
+usability work makes scope visible and links a section spanning multiple GPIOs
+directly to the existing Layout separation flow without changing zone semantics.
+
+Normal Patterns continuation integrated as `1b88c7f6` (worker `6e51f688`):
+Design target precedes Pattern bank in DOM order; adjacent scope text explains
+same/all versus selected-section changes. Multi-GPIO sections link to their
+selected strip in Layout. At 390px the preview no longer covers controls and
+two-column pattern cards retain readable names. Three focused browser tests
+passed, including same/different/Keep/reload/installed GPIO payload. Manager
+inspected desktop and phone screenshots. A wiring run split is not itself a
+new pattern section; advanced run restructuring can still be required in Layout.
+Physical appearance remains unobserved.
+
+Bench implementation integrated as `8cc77e8b` (worker `b06b03a6`): separate
+provisional GPIO zones, temporary pattern audition, explicit legacy setup update,
+snapshot/restore, Keep and combined Keep/install, measured geometry in final
+package, preserved authored-layout handoff, exact outputs/zones/startup and
+known-good wiring readback. Worker focused Node 52/52 passed. Initial browser
+proof checked rendering only; manager required a follow-up interaction test.
+Integrated `e1410fd6` (worker `a2563c5b`) adds two-GPIO whole-piece → individual
+pattern → Keep → actual saved counts/patches → measured runtime-package proof,
+plus failed readback refusing Keep. It fixes explicit transport forwarding and
+guards asynchronous results against a changed Studio project. The no-write-after-
+unmount preflight check passes.
+
+Final integrated Chromium journeys **5/5 pass**, including normal Patterns,
+multi-GPIO scope handoff, Bench same/different/Keep/package, failed readback, and
+counting controls at desktop/390px. Node22 checkpoint: **2709/2715 pass**, with
+only the same six unrelated Windows baseline failures already reproduced on
+unchanged main (CRLF fixtures and POSIX signing-key permissions). No new unit
+failures. Four relevant firmware contracts pass; no firmware source/release
+artifacts changed. Final production build passed (5.56s). Logs use
+`%TEMP%/lw-gpio-bench-checkpoint-*`. Both worker tasks are idle and browser test
+servers stopped. Physical multi-output/offline restart and novice-use observation
+remain needs-eyes; software verification does not pass those gates.
+Committed locally; not pushed, deployed, or physically verified.
+
 ### 2026-09-24/25 General multi-output pattern workflow (implemented locally)
 
 Adrian requests a product-wide fix: separate GPIO strips need independent

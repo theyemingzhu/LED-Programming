@@ -15,6 +15,24 @@ The user guide now includes the direct Patterns workflow, and the UI shows each
 section's GPIO assignment with instructions. Final integrated evidence is in
 `LIGHTWEAVER_WORKBOARD.md`; hardware playback is not an automated pass.
 
+The September 25 continuation adds a browser journey for two GPIOs: select the
+same pattern for all sections, change one section, Keep, reload, change it again,
+and inspect the installed output lengths, zone patterns, and combined startup.
+That journey passes at 390px. Design target now precedes the bank in DOM order;
+phone controls are reachable and pattern names remain readable. A separate
+browser case verifies that a section spanning GPIOs explains its shared scope
+and opens the corresponding strip in Layout. These checks supplement the
+historical gaps below; they do not prove physical output or offline restart.
+
+Bench Discovery now provisions a zone per GPIO, offers temporary same/per-GPIO
+patterns after counting, and retains kept choices in measured project patches.
+Its final package includes measured strips, patches, and wiring. Verification
+compares card identity, ordered outputs, zone ranges/patterns, startup look, and
+known-good wiring. The combined five-case browser run passes, including a real
+two-GPIO counting/selection/Keep path and a readback failure that refuses Keep.
+The production build passes. The complete unit run passes 2709/2715; its six
+remaining Windows baseline failures predate these changes.
+
 | Case | Acceptance behavior | Existing evidence | Gap / acceptance still needed |
 |---|---|---|---|
 | Two outputs | Create two GPIO outputs on one card, with separate visible names and a selected pattern for each. | `wiringCompiler.test.js`: “compiler supports four outputs and split ranges with unique global offsets”; `gpioAssignments.test.js`: “split physical runs can route to three separate GPIO outputs”. | No end-to-end user flow proves choosing two independent output patterns and seeing them on the intended output. |
@@ -30,4 +48,7 @@ section's GPIO assignment with instructions. Final integrated evidence is in
 
 Suggested focused regression fixture: outputs “Left” (GPIO 16, 24 LEDs), “Center” (GPIO 17, 60 LEDs), and “Right” (GPIO 18, 37 LEDs), with three distinct supported patterns. Change only Center’s pattern, save/reload, install, and verify all three identities, lengths, pattern IDs, parameters, and route targets. Then remove Studio/network and verify standalone playback per output on hardware. The hardware portion is an observation gate; automated serialization or browser tests cannot mark it passed.
 
-Existing tests provide useful foundations for wiring, scene target inheritance, persistence, install readback, and error handling. They do not yet establish the requested product outcome end to end: a straightforward per-output pattern-loading workflow with independently persisted and installed behavior across multiple physical GPIO outputs.
+The initial audit found useful foundations without an integrated GPIO workflow.
+The subsequent browser and package tests now cover that software path. Physical
+GPIO rendering, offline restart, and unassisted novice use remain observation
+gates; no real card was written or flashed during this Sprint.

@@ -23,10 +23,18 @@ GPIOs describe physical wiring. Sections describe which LEDs receive a pattern.
 Give each strip a named section in **Layout**, assign its GPIO and LED count,
 and check the routing before installing.
 
+The GPIO label beside each section shows where it is wired. A section can span
+more than one GPIO; those parts share that section's pattern. To control them
+independently, use separate named sections in Layout. Conversely, several
+sections on one GPIO can each have their own pattern.
+
 For a single combined look, open **Patterns**, choose a named section under
 **Design target**, and choose its pattern. Repeat for the other sections.
 **All sections** and **Use this look on every section** deliberately apply one
 look across the piece. Use the individual section targets to keep them different.
+The target selector appears before the pattern bank, and the bank names the
+scope of the next pattern choice. On phones, scroll past the preview to reach
+the target selector and the pattern cards.
 
 Use **Keep this look** to retain the combination in the project, then
 **Install on card** to update standalone playback. Keeping a look in Studio
@@ -36,6 +44,29 @@ its sections to play together during that step.
 
 For multiple ordered combinations, use the scene workflow below. One scene step
 can assign different patterns to several named areas at the same time.
+
+## Patterns from Bench Discovery
+
+Finish counting and confirming each connected strip, then choose **Save what
+we found**. The completed Discovery step offers **Try patterns on the measured
+lights**. Choose **Whole piece** for the same pattern across the outputs, or
+choose a pattern beside each GPIO to make them different.
+
+Trying a pattern changes temporary card playback. **Stop preview** restores
+the previous temporary patterns. **Keep these patterns** retains the choices
+in the measured project for the final setup. Installing the setup is what makes
+the measured output map and its patterns available for standalone playback.
+Where Discovery offers a direct install button, **Keep these patterns and
+install** includes the current choices. In the counting overlay, use **Keep
+these patterns**, then **Continue to Layout** to finish placement and installation.
+
+Older temporary setups may need **Update temporary setup for each GPIO** before
+independent patterns can be tried. This preserves the confirmed counts; the
+extra pixels provisioned for discovery remain probe headroom, not measured LEDs.
+
+If the project already has an authored layout, Discovery preserves it. Use the
+Layout handoff to place the measured strips and confirm their wiring before
+installing. The full Patterns bank remains available after that setup step.
 
 ## 2. Build the scene in Lab
 
