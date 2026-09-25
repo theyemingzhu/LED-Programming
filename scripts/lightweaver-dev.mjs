@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { nodeToolEnvironment, resolveNodeToolCommand } from './node-tool-command.mjs';
 
 const lightweaverRoot = fileURLToPath(new URL('../lightweaver/', import.meta.url));
 
@@ -38,10 +39,12 @@ export function resolveDevelopmentSteps(mode, extraArguments = []) {
 
 export function runDevelopmentMode(mode, extraArguments = []) {
   for (const step of resolveDevelopmentSteps(mode, extraArguments)) {
-    const result = spawnSync(step.command, step.args, {
+    const invocation = resolveNodeToolCommand(step.command, step.args);
+    const result = spawnSync(invocation.command, invocation.args, {
       cwd: lightweaverRoot,
       stdio: 'inherit',
-      env: process.env,
+      env: nodeToolEnvironment(),
+      windowsHide: true,
     });
     if (result.error) throw result.error;
     if (result.signal) return 1;

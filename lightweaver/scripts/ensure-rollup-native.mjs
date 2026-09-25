@@ -1,48 +1,45 @@
 #!/usr/bin/env node
-/**
- * ensure-rollup-native.mjs
- *
- * Workaround for npm/cli#4828: npm sometimes silently skips platform-specific
- * optional dependencies (e.g. @rollup/rollup-linux-x64-gnu) on fresh installs,
- * causing Vite/Rollup builds to crash with "Cannot find module …".
- *
- * Run this BEFORE any `vite build` call. It detects the missing native package
- * and installs it with --no-save so the package.json is not modified.
- *
- * Usage (called automatically by launch:check and go-live.sh):
- *   node lightweaver/scripts/ensure-rollup-native.mjs
- */
+// Repair the exact optional binding requested by the installed Rollup loader.
+import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { nodeToolEnvironment, resolveNodeToolCommand } from '../../scripts/node-tool-command.mjs';
 
-import { execSync } from 'child_process';
+const require = createRequire(import.meta.url);
 
-const platform = process.platform;   // 'linux', 'darwin', 'win32'
-const arch     = process.arch;       // 'x64', 'arm64', …
-
-// Build the platform-specific package name Rollup expects.
-// Linux always needs the '-gnu' suffix; other platforms do not.
-const suffix = platform === 'linux' ? '-gnu' : '';
-const nativePkg = `@rollup/rollup-${platform}-${arch}${suffix}`;
-
-let needed = false;
-try {
-  // Try to resolve the package from Node's module resolution.
-  // execSync lets us do a clean sub-process require check without
-  // permanently polluting this process's module cache.
-  execSync(`node -e "require('${nativePkg}')"`, { stdio: 'ignore' });
-} catch {
-  needed = true;
+export function missingRollupNativePackage(error, optionalDependencies) {
+  for (let cause = error; cause; cause = cause.cause) {
+    if (cause.code !== 'MODULE_NOT_FOUND') continue;
+    const name = /^Cannot find module '(@rollup\/rollup-[a-z0-9-]+)'/.exec(cause.message)?.[1];
+    const version = name && optionalDependencies[name];
+    if (typeof version === 'string' && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version)) return { name, version };
+  }
+  return null;
 }
 
-if (!needed) {
-  console.log(`[ensure-rollup-native] ${nativePkg} is present — nothing to do.`);
-  process.exit(0);
+export function ensureRollupNative() {
+  const rollup = require('rollup/package.json');
+  try {
+    require('rollup');
+    console.log('[ensure-rollup-native] Installed Rollup native binding is ready.');
+    return;
+  } catch (error) {
+    const missing = missingRollupNativePackage(error, rollup.optionalDependencies || {});
+    if (!missing) throw error;
+    const dependency = `${missing.name}@${missing.version}`;
+    console.log(`[ensure-rollup-native] Installing missing ${dependency} without changing the lockfile.`);
+    const invocation = resolveNodeToolCommand('npm', ['install', '--no-save', '--package-lock=false', dependency]);
+    const result = spawnSync(invocation.command, invocation.args, {
+      cwd: fileURLToPath(new URL('../', import.meta.url)), stdio: 'inherit',
+      env: nodeToolEnvironment(), windowsHide: true,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error(`Native Rollup dependency installation failed (${result.status ?? result.signal}).`);
+    require('rollup');
+  }
 }
 
-console.log(`[ensure-rollup-native] ${nativePkg} missing — installing (--no-save)…`);
-try {
-  execSync(`npm install --no-save ${nativePkg}`, { stdio: 'inherit' });
-  console.log(`[ensure-rollup-native] ${nativePkg} installed successfully.`);
-} catch (err) {
-  console.error(`[ensure-rollup-native] Failed to install ${nativePkg}: ${err.message}`);
-  process.exit(1);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try { ensureRollupNative(); }
+  catch (error) { console.error(`[ensure-rollup-native] ${error.message}`); process.exitCode = 1; }
 }

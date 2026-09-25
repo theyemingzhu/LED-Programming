@@ -49,7 +49,7 @@
     "firmware:bump": "node ../firmware/lightweaver-controller/scripts/firmware-version.mjs bump",
     "firmware:version:check": "node ../firmware/lightweaver-controller/scripts/firmware-version.mjs check",
     "check:prod": "node scripts/check-prod-freshness.mjs",
-    "test:unit": "node --test src/lib/*.test.js src/scene-expression/*.test.js tests/ci-changed-lanes.test.mjs tests/mandala-engine.mjs tests/mandala-engine-transients.mjs ../scripts/color-journey-shared.test.mjs",
+    "test:unit": "node --test src/lib/*.test.js src/scene-expression/*.test.js tests/ci-changed-lanes.test.mjs tests/mandala-engine.mjs tests/mandala-engine-transients.mjs ../scripts/color-journey-shared.test.mjs ../scripts/development-workflow.test.mjs ../scripts/node-tool-command.test.mjs scripts/ensure-rollup-native.test.mjs",
     "test:windowless:tooling": "node --test tests/windowless-*.test.mjs",
     "test:windowless:browser": "playwright test --config tests/windowless-playwright.config.ts",
     "test:projects": "node --test functions/api/library/_shared/accountAuth.test.js functions/api/library/library-api.test.js tests/cloud-bindings.mjs src/lib/cloudLibraryClient.test.js src/lib/libraryBackup.test.js src/lib/workspaceAssets.test.js",

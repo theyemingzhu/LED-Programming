@@ -683,7 +683,7 @@ const DT_RE = /\bctx\.dt\b|\breadDt\s*\(/;
 function scanForAudioScaledTime(source) {
   const hits = [];
   let scanned = 0;
-  source.split('\n').forEach((raw, i) => {
+  source.split(/\r?\n/).forEach((raw, i) => {
     const code = raw.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '');
     if (!DT_RE.test(code)) return;
     scanned++;
@@ -828,6 +828,7 @@ test('NEGATIVE CONTROL — the source scan rejects a band value on a dt line', (
   ].join('\n');
   const { hits } = scanForAudioScaledTime(violating);
   assert.deepEqual(hits.map((h) => h.line), [5, 6], `the source scan missed an audio-scaled dt term; it reported ${JSON.stringify(hits)}`);
+  assert.deepEqual(scanForAudioScaledTime(violating.replace(/\n/g, '\r\n')).hits, hits);
 });
 
 test('POSITIVE CONTROL — the source scan does not flag a legitimate envelope or a constant rate', () => {
@@ -841,4 +842,5 @@ test('POSITIVE CONTROL — the source scan does not flag a legitimate envelope o
   const { hits, scanned } = scanForAudioScaledTime(clean);
   assert.equal(scanned, 5, 'the scan did not see all five dt lines');
   assert.deepEqual(hits, [], `the source scan wrongly flagged legitimate code: ${JSON.stringify(hits)}`);
+  assert.deepEqual(scanForAudioScaledTime(clean.replace(/\n/g, '\r\n')), { hits, scanned });
 });

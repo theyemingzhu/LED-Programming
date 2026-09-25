@@ -12,6 +12,14 @@ The protected private key lives outside the repository at:
 
 Its parent directory must be mode `0700` and the key must be mode `0600`. The builder refuses a key readable by group or others. Never commit, print, log, or attach this file.
 
+Signing requires a POSIX filesystem with enforceable owner-only permission bits
+(the production workflow uses Linux). Native Windows signing remains unsupported:
+Node cannot establish this POSIX permission contract there, and the builder
+refuses the key. Windows tests verify that refusal; Linux CI verifies successful
+signing and exact-byte signature validation. Do not bypass the permission check
+to make a local test pass. Unsigned package building and signature verification
+remain available on Windows.
+
 Pass the key explicitly or through the environment:
 
 ```bash
