@@ -2,12 +2,13 @@ import { DEFAULT_CARD_CONTROLS, DEFAULT_CARD_LED, DEFAULT_CARD_PATTERN_BANK, mak
 import { DEFAULT_STANDALONE_OUTPUTS, deriveStandaloneOutputsFromStrips, normalizeStandaloneOutputs, totalStandalonePixels } from './standaloneController.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { getCardPatternById, getCardPatternRuntimeId, orderedCardPatterns } from './cardPatternBank.js';
-import { applySavedLookToPatchBoard, normalizeSavedLooks } from './sectionLookModel.js';
+import { applySavedLookToPatchBoard, deriveSectionTargets, normalizeSavedLooks } from './sectionLookModel.js';
 import { chainAddressCount } from './patchBoard.js';
 import { compileWiring } from './wiringCompiler.js';
 import { colorJourneyLayoutKey, compileColorJourneyNativeRecipe, normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 import {
   buildCardPlaylistConfig,
+  CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isDefaultPatternCycle,
   isImplicitDefaultPatternPlaylist,
@@ -76,21 +77,8 @@ export function buildCardRuntimePackageFromProject({
   const rawPlaylist = isImplicitDefaultPatternPlaylist(standaloneController?.playlist)
     ? []
     : standaloneController?.playlist;
-  const playlist = normalizeCardPlaylist(rawPlaylist, {
-    savedLooks,
-    fallbackPatternIds: [
-      visualLook.patternId,
-      ...legacyCycleIds,
-    ],
-  });
-  // The playlist-wide "played on the card" settings (fadeMs, whether the card
-  // auto-plays it) live at controls.playlist — see cardPlaylist.js's
-  // normalizePlaylistTiming doc comment for why they are stored there rather
-  // than as a bare standaloneController field.
-  const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
-  const playlistConfig = buildCardPlaylistConfig(playlist, savedLooks, playlistTiming);
   const zones = compiled?.zones || (patchBoard ? patchBoardToZones(patchBoard, strips) : []);
-  const runtimeZones = zones.length ? applyVisualLookDefaultsToZones(zones, patchBoard, visualLook) : [{
+  const runtimeZones = zones.length ? applyVisualLookDefaultsToZones(zones, patchBoard, visualLook, compiled, strips) : [{
     id: 'full-piece',
     label: 'Full Piece',
     patternId: getCardPatternRuntimeId(visualLook.patternId) || visualLook.patternId,
@@ -106,6 +94,16 @@ export function buildCardRuntimePackageFromProject({
     customDrift: visualLook.customDrift,
     ranges: [{ start: 0, count: resolvedPixels }],
   }];
+  const playlist = normalizeCardPlaylist(rawPlaylist, {
+    savedLooks,
+    fallbackPatternIds: [visualLook.patternId, ...legacyCycleIds],
+  });
+  // The playlist-wide "played on the card" settings (fadeMs, whether the card
+  // auto-plays it) live at controls.playlist — see cardPlaylist.js's
+  // normalizePlaylistTiming doc comment for why they are stored there rather
+  // than as a bare standaloneController field.
+  const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
+  const playlistConfig = buildCardPlaylistConfig(playlist, savedLooks, playlistTiming);
   const looks = buildRuntimeLooksFromPlaylist({
     playlist,
     savedLooks,
@@ -119,6 +117,39 @@ export function buildCardRuntimePackageFromProject({
     wiring,
     symSettings,
   });
+  // A plain startup look replaces every zone's pattern at boot. When sections
+  // have different appearances, give a non-autoplay project a startup combo
+  // that reproduces them. An enabled playlist deliberately chooses its own
+  // first look and timing, so its startup selection remains authoritative.
+  const sectionLooks = zoneLooksFromZones(runtimeZones);
+  const appearance = ({ id, label, ...look }) => JSON.stringify(look);
+  const hasIndependentLooks = new Set(sectionLooks.map(appearance)).size > 1;
+  const firstPlainPattern = looks[0]?.preset;
+  const plainStartupWouldChangeSections = runtimeZones.some(zone => (
+    zone.patternId !== firstPlainPattern || zone.blackout === true
+  ));
+  const hasAuthoredSectionLook = (patchBoard?.patches || []).some(patch => (
+    patch.playback && Object.values(patch.playback).some(value => value !== undefined && value !== null)
+  ));
+  let startupPatternId = looks[0]?.id || visualLook.patternId;
+  if ((hasIndependentLooks || (hasAuthoredSectionLook && plainStartupWouldChangeSections))
+    && !playlistTiming.enabled && looks[0]?.mode !== 'combo') {
+    if (looks.length >= CARD_PLAYLIST_LIMIT) {
+      throw new RangeError('The card has no room for a combined startup look. Remove one playlist look and try again.');
+    }
+    const usedIds = new Set(looks.map(look => look.id));
+    let id = 'lightweaver-section-layout';
+    for (let suffix = 2; usedIds.has(id); suffix += 1) id = `lightweaver-section-layout-${suffix}`;
+    looks.push({
+      id,
+      label: 'Current sections',
+      mode: 'combo',
+      preset: getCardPatternRuntimeId(visualLook.patternId) || visualLook.patternId,
+      brightness: 1,
+      zones: sectionLooks,
+    });
+    startupPatternId = id;
+  }
   const requestedPatternIds = [
     visualLook.patternId,
     ...runtimeZones.map(zone => zone.patternId),
@@ -157,7 +188,7 @@ export function buildCardRuntimePackageFromProject({
     controls: cardSafeControls(standaloneController?.controls, playlist),
     patterns,
     looks,
-    startupPatternId: looks[0]?.id || visualLook.patternId,
+    startupPatternId,
     zones: runtimeZones,
     kaleidoscopeMappings: compiled?.kaleidoscopeMappings,
     syncZones: runtimeZones.length <= 1,
@@ -258,6 +289,9 @@ function buildRuntimeLooksFromPlaylist({
   symSettings = null,
 } = {}) {
   const savedLookById = new Map(savedLooks.map(look => [look.id, look]));
+  const patchIdByZoneId = new Map(compiledWiring?.ok ? deriveSectionTargets({
+    strips, patchBoard, compiledWiring, defaultLook: visualLook,
+  }).filter(target => target.kind === 'section').map(target => [target.zoneId, target.patchId]) : []);
   return (playlist || [])
     .filter(item => item?.enabled !== false)
     .map(item => {
@@ -301,7 +335,7 @@ function buildRuntimeLooksFromPlaylist({
         const effectiveZones = compiled
           ? runtimeZones.map(zone => applyLookFieldsToZone(
               zone,
-              normalizeCardVisualLook(savedLook.sectionLooks?.[zone.id] || comboDefault),
+              normalizeCardVisualLook(savedLook.sectionLooks?.[patchIdByZoneId.get(zone.id)] || savedLook.sectionLooks?.[zone.id] || comboDefault),
             ))
           : (() => {
               const comboBoard = applySavedLookToPatchBoard({ patchBoard, strips, savedLook });
@@ -369,27 +403,32 @@ function zoneLooksFromZones(zones = []) {
   }));
 }
 
-function applyVisualLookDefaultsToZones(zones, patchBoard, visualLook) {
+function applyVisualLookDefaultsToZones(zones, patchBoard, visualLook, compiled = null, strips = []) {
+  const patchesById = new Map((patchBoard?.patches || []).map(patch => [patch.id, patch]));
+  const patchIdByZoneId = new Map(compiled?.ok ? deriveSectionTargets({
+    strips, patchBoard, compiledWiring: compiled, defaultLook: visualLook,
+  }).filter(target => target.kind === 'section').map(target => [target.zoneId, target.patchId]) : []);
   const playbackByPatchId = new Map((patchBoard?.patches || []).map(patch => [
     sanitizeId(patch.id || ''),
     patch.playback || {},
   ]));
   return zones.map(zone => {
-    const playback = playbackByPatchId.get(zone.id) || {};
-    const displayPatternId = hasExplicit(playback.patternId) ? zone.patternId : visualLook.patternId;
+    const patchId = patchIdByZoneId.get(zone.id);
+    const playback = (patchId ? patchesById.get(patchId)?.playback : playbackByPatchId.get(zone.id)) || {};
+    const displayPatternId = hasExplicit(playback.patternId) ? playback.patternId : visualLook.patternId;
     return {
       ...zone,
       patternId: getCardPatternRuntimeId(displayPatternId) || displayPatternId,
-      brightness: hasExplicit(playback.brightness) ? zone.brightness : visualLook.brightness,
-      speed: hasExplicit(playback.speed) ? zone.speed : visualLook.speed,
-      hueShift: hasExplicit(playback.hueShift) ? zone.hueShift : visualLook.hueShift,
-      customHue: hasExplicit(playback.customHue) ? zone.customHue : visualLook.customHue,
-      customSaturation: hasExplicit(playback.customSaturation) ? zone.customSaturation : visualLook.customSaturation,
-      customBreathe: hasExplicit(playback.customBreathe) ? zone.customBreathe : visualLook.customBreathe,
-      breatheLowerPct: hasExplicit(playback.breatheLowerPct) ? zone.breatheLowerPct : visualLook.breatheLowerPct,
-      breatheUpperPct: hasExplicit(playback.breatheUpperPct) ? zone.breatheUpperPct : visualLook.breatheUpperPct,
-      breatheCycleSeconds: hasExplicit(playback.breatheCycleSeconds) ? zone.breatheCycleSeconds : visualLook.breatheCycleSeconds,
-      customDrift: hasExplicit(playback.customDrift) ? zone.customDrift : visualLook.customDrift,
+      brightness: hasExplicit(playback.brightness) ? playback.brightness : visualLook.brightness,
+      speed: hasExplicit(playback.speed) ? playback.speed : visualLook.speed,
+      hueShift: hasExplicit(playback.hueShift) ? playback.hueShift : visualLook.hueShift,
+      customHue: hasExplicit(playback.customHue) ? playback.customHue : visualLook.customHue,
+      customSaturation: hasExplicit(playback.customSaturation) ? playback.customSaturation : visualLook.customSaturation,
+      customBreathe: hasExplicit(playback.customBreathe) ? playback.customBreathe : visualLook.customBreathe,
+      breatheLowerPct: hasExplicit(playback.breatheLowerPct) ? playback.breatheLowerPct : visualLook.breatheLowerPct,
+      breatheUpperPct: hasExplicit(playback.breatheUpperPct) ? playback.breatheUpperPct : visualLook.breatheUpperPct,
+      breatheCycleSeconds: hasExplicit(playback.breatheCycleSeconds) ? playback.breatheCycleSeconds : visualLook.breatheCycleSeconds,
+      customDrift: hasExplicit(playback.customDrift) ? playback.customDrift : visualLook.customDrift,
     };
   });
 }

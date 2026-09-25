@@ -86,11 +86,18 @@ async function mockReadyCard(page, project, cardZones, cardId = 'lw-section-row'
 
 test('section chips carry their pattern names and the card-holds line is read from the card', async ({ page }) => {
   const project = sectionProject('section-row-full');
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
+    { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
+  ];
   const zones = compiledZones(project).map(zone => ({ id: zone.id, label: zone.label }));
   await mockReadyCard(page, project, zones);
 
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
+  await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16');
+  await expect(page.getByTestId('section-gpio-patch-default-inner-circle')).toHaveText('GPIO 17');
+  await expect(page.getByTestId('section-pattern-instructions')).toContainText('select each section');
   // Picking a pattern for a section updates its chip at once.
   await page.getByTestId('section-target-patch-default-inner-circle').click();
   // Tapping the chip flashes that section on the piece: the OTHER zone dims

@@ -929,6 +929,20 @@ import { PatternPreview } from './PatternPreview.jsx';
       () => patternPreviewSegments.map(segment => segment.id),
       [patternPreviewSegments],
     );
+    const sectionGpioLabels = useMemo(() => {
+      if (!compiledWiring?.ok) return new Map();
+      const pinByOutput = new Map(compiledWiring.outputs.map(output => [output.id, output.pin]));
+      return new Map(sectionTargets.filter(target => target.kind === 'section').map(target => {
+        const pins = new Set();
+        for (const range of target.ranges || []) {
+          for (let index = range.start; index < range.start + range.count; index += 1) {
+            const pin = pinByOutput.get(compiledWiring.pixels[index]?.outputId);
+            if (pin != null) pins.add(pin);
+          }
+        }
+        return [target.id, [...pins].map(pin => `GPIO ${pin}`).join(' · ')];
+      }));
+    }, [compiledWiring, sectionTargets]);
     const previewTargetKey = previewTargetIds.join('|');
     const [previewUiState, setPreviewUiState] = useState(() => ({
       projectId,
@@ -2785,10 +2799,12 @@ import { PatternPreview } from './PatternPreview.jsx';
                               sections are one glance, not four taps. The All chip
                               carries the piece's default look. */}
                           <span className="chip-sub" data-testid={`section-pattern-${t.id}`}>{patternNameFor(t.look?.patternId)}</span>
+                          {sectionGpioLabels.get(t.id) && <span className="chip-route" data-testid={`section-gpio-${t.id}`}>{sectionGpioLabels.get(t.id)}</span>}
                         </button>
                       )}
                     </div>
                   }
+                  {sectionCount > 1 && <p className="pm-section-help" data-testid="section-pattern-instructions">To put different patterns on GPIO outputs, select each section, choose a pattern in Pattern bank, then Install on card.</p>}
                   {/* One status line about sections: what the card holds, read from
                       the card itself. Empty until the card has been read. */}
                   {cardHoldsLine &&
