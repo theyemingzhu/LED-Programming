@@ -21,7 +21,8 @@
 // or its 3968-byte budget (LW_WEB_CONFIG_MAX_BODY_BYTES). It is written
 // debounced (see runtimeServiceLiveLookPersist() in main.cpp), and restored
 // on boot only when it demonstrably belongs to the project that just loaded
-// (exact project id + revision match — see liveLookRecordMatchesProject()).
+// (exact project id, revision, selected config digest, and install generation
+// match — see liveLookRecordMatchesProject()).
 // A mismatch (different project installed, or no record at all) is silently
 // ignored: the installed project's own defaults stand.
 //
@@ -44,18 +45,20 @@ constexpr uint8_t LW_LIVE_LOOK_MAX_ZONES = 12;
 // real id in this codebase is well under that — the longest compiled pattern
 // id is "custom-color" (12) and zone ids are short installer-chosen slugs
 // ("outer-ring", "inner-disc"). An id longer than this is truncated on
-// capture (copyBounded) rather than corrupting storage or overflowing a
-// fixed buffer; a truncated id simply fails to match on restore (silently —
-// the installed look's own defaults stand, same as any other mismatch).
+// capture and decoding reject an unrepresentable id before copyBounded() can
+// truncate it. This also prevents a long zone id from colliding with another
+// valid short id that shares its first 15 bytes.
 // Sized this tight because 24 id fields (12 zones x 2 ids each) plus the
 // project/look ids all add up fast against NVS's own ~4000-byte single-string
 // ceiling — see the worst-case measurement on LW_LIVE_LOOK_RECORD_MAX_BYTES.
 constexpr size_t LW_LIVE_LOOK_ID_BYTES = 16;
+constexpr size_t LW_LIVE_LOOK_CONFIG_DIGEST_BYTES = 65;
+constexpr size_t LW_LIVE_LOOK_INSTALL_ID_BYTES = 17;
 
 // Hard ceiling for the encoded record, enforced by encodeLiveLookRecord()
 // returning 0 (a hard failure, never a silent truncation) past this size.
 // Measured worst case — LW_LIVE_LOOK_MAX_ZONES (12) zones, every id field
-// filled to LW_LIVE_LOOK_ID_BYTES-1 (15) characters — is 3697 bytes (see
+// filled to LW_LIVE_LOOK_ID_BYTES-1 (15) characters — is 3867 bytes (see
 // test_live_look's "worst-case record fits the documented byte budget",
 // which asserts the real measurement, not this literal). Set to the SAME
 // value as NVS_STRING_LIMIT in LightweaverStorage.cpp — not because this
@@ -87,6 +90,8 @@ struct LiveLookZoneRecord {
 struct LiveLookRecord {
   char projectId[LW_LIVE_LOOK_ID_BYTES] = {};
   uint32_t projectRevision = 0;
+  char configDigest[LW_LIVE_LOOK_CONFIG_DIGEST_BYTES] = {};
+  char confirmedInstallId[LW_LIVE_LOOK_INSTALL_ID_BYTES] = {};
   char currentLookId[LW_LIVE_LOOK_ID_BYTES] = {};
   bool syncZones = true;
   uint8_t zoneCount = 0;
@@ -102,6 +107,9 @@ struct LiveLookRecord {
 };
 
 namespace lightweaver_live_look_detail {
+inline bool idFits(const char* value) {
+  return value && strlen(value) < LW_LIVE_LOOK_ID_BYTES;
+}
 inline void copyBounded(char* dest, size_t destSize, const char* source) {
   if (!dest || destSize == 0) return;
   if (!source) {
@@ -127,6 +135,8 @@ inline size_t encodeLiveLookRecord(const LiveLookRecord& record, char* outBuffer
   JsonDocument doc;
   doc["projectId"] = record.projectId;
   doc["projectRevision"] = record.projectRevision;
+  doc["configDigest"] = record.configDigest;
+  doc["confirmedInstallId"] = record.confirmedInstallId;
   doc["currentLookId"] = record.currentLookId;
   doc["syncZones"] = record.syncZones;
   doc["playlistPlaying"] = record.playlistPlaying;
@@ -169,8 +179,18 @@ inline bool decodeLiveLookRecord(const char* json, size_t jsonLength, LiveLookRe
   JsonArrayConst zones = doc["zones"].as<JsonArrayConst>();
   if (zones.isNull()) return false;
   LiveLookRecord parsed;
+  if (!lightweaver_live_look_detail::idFits(doc["projectId"] | "") ||
+      !lightweaver_live_look_detail::idFits(doc["currentLookId"] | "")) return false;
   lightweaver_live_look_detail::copyBounded(parsed.projectId, LW_LIVE_LOOK_ID_BYTES, doc["projectId"] | "");
   parsed.projectRevision = doc["projectRevision"] | 0U;
+  const char* digest = doc["configDigest"] | "";
+  const char* installId = doc["confirmedInstallId"] | "";
+  if (strlen(digest) >= LW_LIVE_LOOK_CONFIG_DIGEST_BYTES ||
+      strlen(installId) >= LW_LIVE_LOOK_INSTALL_ID_BYTES) return false;
+  lightweaver_live_look_detail::copyBounded(parsed.configDigest,
+      LW_LIVE_LOOK_CONFIG_DIGEST_BYTES, digest);
+  lightweaver_live_look_detail::copyBounded(parsed.confirmedInstallId,
+      LW_LIVE_LOOK_INSTALL_ID_BYTES, installId);
   lightweaver_live_look_detail::copyBounded(parsed.currentLookId, LW_LIVE_LOOK_ID_BYTES, doc["currentLookId"] | "");
   parsed.syncZones = doc["syncZones"] | true;
   parsed.playlistPlaying = doc["playlistPlaying"] | false;
@@ -179,6 +199,8 @@ inline bool decodeLiveLookRecord(const char* json, size_t jsonLength, LiveLookRe
     if (parsed.zoneCount >= LW_LIVE_LOOK_MAX_ZONES) break;
     JsonObjectConst zo = zoneValue.as<JsonObjectConst>();
     LiveLookZoneRecord z;
+    if (!lightweaver_live_look_detail::idFits(zo["id"] | "") ||
+        !lightweaver_live_look_detail::idFits(zo["patternId"] | "")) return false;
     lightweaver_live_look_detail::copyBounded(z.zoneId, LW_LIVE_LOOK_ID_BYTES, zo["id"] | "");
     if (z.zoneId[0] == '\0') continue;
     lightweaver_live_look_detail::copyBounded(z.patternId, LW_LIVE_LOOK_ID_BYTES, zo["patternId"] | "");
@@ -210,12 +232,32 @@ inline bool liveLookRecordFitsBudget(size_t encodedBytes, size_t maxBytes = LW_L
 // just booted: exact project id AND exact project revision. Either mismatch
 // means a different (or re-saved) project is installed and the record must
 // be treated as stale, never partially applied.
-inline bool liveLookRecordMatchesProject(const LiveLookRecord& record, const char* projectId, uint32_t projectRevision) {
-  if (!projectId) return false;
+inline bool liveLookHexBytes(const char* value, size_t length) {
+  if (!value || strlen(value) != length) return false;
+  for (size_t i = 0; i < length; i++) {
+    const char ch = value[i];
+    if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+  }
+  return true;
+}
+
+inline bool liveLookRecordMatchesProject(const LiveLookRecord& record,
+    const char* projectId, uint32_t projectRevision,
+    const char* selectedConfigDigest, const char* confirmedInstallId) {
+  if (!projectId || !selectedConfigDigest || !confirmedInstallId) return false;
   if (record.projectRevision != projectRevision) return false;
+  if (!liveLookHexBytes(record.configDigest, 64) ||
+      !liveLookHexBytes(selectedConfigDigest, 64) ||
+      strcmp(record.configDigest, selectedConfigDigest) != 0) return false;
+  if (confirmedInstallId[0] != '\0' &&
+      (!liveLookHexBytes(confirmedInstallId, 16) ||
+       strcmp(record.confirmedInstallId, confirmedInstallId) != 0)) return false;
   return strncmp(record.projectId, projectId, LW_LIVE_LOOK_ID_BYTES) == 0 &&
          strlen(projectId) < LW_LIVE_LOOK_ID_BYTES;
 }
+
+inline bool liveLookMayRestore(bool candidateBoot) { return !candidateBoot; }
+inline bool liveLookMayPersist(bool candidateProbation) { return !candidateProbation; }
 
 // ---------------------------------------------------------------------------
 // Timed playlist block (project JSON's "playlist" object)
@@ -381,5 +423,6 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
 bool persistLiveLookRecord(const LiveLookRecord& record, String& message);
 bool loadPersistedLiveLookRecord(LiveLookRecord& outRecord);
 void clearPersistedLiveLookRecord();
+String currentConfirmedInstallationId();
 
 #endif  // LW_STORAGE_NATIVE_TEST

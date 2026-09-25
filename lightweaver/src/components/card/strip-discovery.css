@@ -90,8 +90,11 @@
   background: rgba(200, 129, 63, 0.07);
 }
 .strip-discovery-audition h3, .strip-discovery-audition p { margin: 0; }
+.strip-discovery-pattern-search { display: grid; gap: 5px; }
+.strip-discovery-pattern-search input { width: 100%; min-height: 40px; padding: 8px; border-radius: 8px; }
 .strip-discovery-pattern-choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .strip-discovery-pattern-choice select { min-width: 150px; max-width: 100%; padding: 9px; border-radius: 8px; }
+.strip-discovery-pattern-preview { width: 42px; height: 32px; flex: none; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); }
 @media (max-width: 480px) {
   .strip-discovery-pattern-choice { align-items: stretch; flex-direction: column; gap: 5px; }
   .strip-discovery-pattern-choice select { width: 100%; }

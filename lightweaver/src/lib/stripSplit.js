@@ -11,6 +11,28 @@ import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 // strip into more sections than the card can address as zones.
 export const MAX_SPLIT_SECTIONS = CARD_HARDWARE_CONTRACT.maxZones;
 
+// Plan a logical split on existing physical-run boundaries. Runs may be in a
+// different physical order, or on different outputs; source ranges still have
+// to partition the drawn strip exactly so that no LED changes address.
+export function planSectionsAtRunBoundaries(strip, wiring) {
+  if (wiring?.locked) return { ok: false, error: 'Wiring is locked. Unlock it in Test & Install before separating run sections.' };
+  const total = Math.trunc(Number(strip?.pixelCount) || 0);
+  const runs = (wiring?.runs || []).filter(run => run.type === 'strip' && run.source?.stripId === strip?.id);
+  if (runs.length < 2) return { ok: false, error: 'This strip needs at least two existing runs to separate.' };
+  if (runs.length > MAX_SPLIT_SECTIONS) return { ok: false, error: `This strip has ${runs.length} runs; the card supports at most ${MAX_SPLIT_SECTIONS} sections.` };
+  const ordered = [...runs].sort((a, b) => a.source.from - b.source.from);
+  let nextLed = 0;
+  for (const run of ordered) {
+    const { from, to } = run.source;
+    if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from !== nextLed || to < from) {
+      return { ok: false, error: `Run ${run.id} overlaps or leaves an unmapped LED. Repair its source range in Advanced wiring first.` };
+    }
+    nextLed = to + 1;
+  }
+  if (nextLed !== total) return { ok: false, error: `The runs cover ${nextLed} of ${total} LEDs. Repair the missing range in Advanced wiring first.` };
+  return { ok: true, runs: ordered, counts: ordered.map(run => run.source.to - run.source.from + 1) };
+}
+
 // A cut divides a physical reel, so the LED total never changes. The
 // remainder is spread evenly starting from the first section — 41 into 2
 // gives 21 + 20 (matching where an owner would actually cut a reel of 41),

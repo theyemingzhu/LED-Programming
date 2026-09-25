@@ -20,9 +20,11 @@ import {
   nextSplitNames,
   planStripSplitCounts,
   planStripSplitFromCounts,
+  planSectionsAtRunBoundaries,
   splitStripPaths,
   splitStripPathsN,
 } from '../../../lib/stripSplit.js';
+import { convertExistingRunsToSections } from '../../../lib/sectionRunConversion.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import {
   connectedFamilyForStrip,
@@ -66,7 +68,7 @@ export function useLayoutStrips(ctx) {
   } = ctx;
   // Splitting rewrites the physical chain as well as the strip list, so this
   // one action reaches wiring directly (same route useLayoutWire takes).
-  const { wiring, updateWiring, projectName } = useProject();
+  const { wiring, updateWiring, projectName, applyRunSectionConversion } = useProject();
 
   // Density is a physical fact of the purchased strip — count and length are
   // locked together through it: count = length(m) × density(LEDs/m).
@@ -502,6 +504,25 @@ export function useLayoutStrips(ctx) {
   }, [strips, wiring, updateWiring, projectName, nextColor, densityFor, stripCountOverrides,
       setStripCountOverrides, setStripDensities, setSectionFamilies, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
+  const separateExistingRuns = useCallback(id => {
+    const source = strips.find(strip => strip.id === id);
+    const plan = planSectionsAtRunBoundaries(source, wiring);
+    if (!plan.ok) return plan;
+    const splitPlan = planStripSplitFromCounts(source.pixelCount, plan.counts);
+    const paths = splitPlan ? splitStripPathsN(source.pathData, splitPlan, source.reversed) : null;
+    const conversion = convertExistingRunsToSections({
+      strips, wiring, patchBoard, stripId: id, paths,
+      pathLengths: paths?.map(path => svgPathLength(path)), layerGroups, sectionFamilies,
+    });
+    if (!conversion.ok) return conversion;
+    const applied = applyRunSectionConversion(conversion);
+    if (applied.ok) {
+      selectStrip(id);
+      scrollToStrip(id);
+    }
+    return applied;
+  }, [strips, wiring, patchBoard, layerGroups, sectionFamilies, applyRunSectionConversion, selectStrip, scrollToStrip]);
+
   const familyMutationContext = useCallback((familyId) => {
     if (wiring.locked) return { ok: false, error: 'Wiring is locked — unlock it in Test & Install.' };
     const family = sectionFamilies.find(candidate => candidate.id === familyId);
@@ -866,6 +887,7 @@ export function useLayoutStrips(ctx) {
     duplicateStrip,
     splitStripInTwo,
     divideStripIntoSections,
+    separateExistingRuns,
     moveConnectedBoundary,
     addConnectedSplit,
     mergeConnectedSection,

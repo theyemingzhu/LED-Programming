@@ -175,14 +175,25 @@ export function isUncountedDiscoveryHeadroom(status = {}) {
 export function buildBenchConfig(portRoles, {
   ledType = 'WS2812B',
   colorOrder = 'GRB',
+  controls = DEFAULT_CARD_CONTROLS,
+  maxMilliamps = BENCH_MAX_MILLIAMPS,
+  brightnessLimit,
   pixelsPerPort = {},
   maxPixels,
 } = {}) {
+  if (!Number.isInteger(Number(maxMilliamps)) || Number(maxMilliamps) < 100
+    || Number(maxMilliamps) > BENCH_MAX_MILLIAMPS) {
+    throw new Error('The temporary setup must retain an explicit current limit of 2000 mA or less.');
+  }
   const roles = normalizePortRoles(portRoles);
   const requestedByPin = readPixelsPerPort(pixelsPerPort);
   const budget = resolvePixelBudget(maxPixels);
   const skipped = [];
 
+  const reservedPins = [controls?.encoder?.a, controls?.encoder?.b, controls?.encoder?.press,
+    controls?.encoder?.alternatePress, controls?.previous, controls?.next,
+    controls?.blackout, controls?.brightness, controls?.statusLed]
+    .filter(pin => Number.isInteger(Number(pin)) && Number(pin) >= 0).map(Number);
   const wanted = roles.filter(entry => (
     entry.role === PORT_ROLE_STRIP || requestedByPin.get(entry.pin) > 0
   ));
@@ -194,7 +205,7 @@ export function buildBenchConfig(portRoles, {
       skipped.push({ pin: entry.pin, reason: BENCH_SKIP_ROLE_CONTROL });
       continue;
     }
-    if (BENCH_RESERVED_CONTROL_PINS.includes(entry.pin)) {
+    if (reservedPins.includes(entry.pin)) {
       skipped.push({ pin: entry.pin, reason: BENCH_SKIP_RESERVED_CONTROL_PIN });
       continue;
     }
@@ -243,7 +254,7 @@ export function buildBenchConfig(portRoles, {
     // so there is genuinely nothing installable here — never an empty config.
     return { config: null, layout: [], skipped, totalPixels: 0, budget };
   }
-  const snapshot = buildBenchProjectSnapshot({ ledType, colorOrder, outputs });
+  const snapshot = buildBenchProjectSnapshot({ ledType, colorOrder, outputs, controls, maxMilliamps });
   const zones = layout.map(({ pin, start: zoneStart, count }) => ({
     id: layout.length === 1 ? BENCH_ZONE_ID : `bench-${pin}`,
     label: layout.length === 1 ? BENCH_ZONE_LABEL : `GPIO ${pin}`,
@@ -282,9 +293,11 @@ export function buildBenchConfig(portRoles, {
       colorOrder,
       pixels: totalPixels,
       // Explicit, always. See BENCH_MAX_MILLIAMPS.
-      maxMilliamps: BENCH_MAX_MILLIAMPS,
+      maxMilliamps: Number(maxMilliamps),
+      ...(brightnessLimit == null ? {} : { brightnessLimit }),
       outputs,
     },
+    controls,
     // Deliberately NO controls.encoder.patternCycleIds. There is no such field
     // on the card: the firmware cycles config.looks[] directly, and
     // compactCardStorageConfig strips patternCycleIds out of every payload
@@ -314,7 +327,8 @@ export function buildBenchConfig(portRoles, {
 // the fingerprint is a genuine project fingerprint rather than a made-up hex
 // string — derived only from inputs that determine the bench config, so the
 // same ports and counts always produce the same identity.
-export function buildBenchProjectSnapshot({ ledType, colorOrder, outputs = [] } = {}) {
+export function buildBenchProjectSnapshot({ ledType, colorOrder, outputs = [], controls = DEFAULT_CARD_CONTROLS,
+  maxMilliamps = BENCH_MAX_MILLIAMPS } = {}) {
   return {
     version: BENCH_SNAPSHOT_VERSION,
     id: BENCH_PROJECT_ID,
@@ -322,7 +336,8 @@ export function buildBenchProjectSnapshot({ ledType, colorOrder, outputs = [] } 
     layout: { strips: [], patchBoard: null, wiring: null },
     devices: {
       standaloneController: {
-        led: { type: ledType, colorOrder, maxMilliamps: BENCH_MAX_MILLIAMPS },
+        led: { type: ledType, colorOrder, maxMilliamps },
+        controls,
         outputs: outputs.map(output => ({
           id: output.id,
           pin: output.pin,

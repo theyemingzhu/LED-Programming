@@ -151,6 +151,15 @@ bool runtimeRename(const String& pieceName, const String& hostname, String& mess
 bool runtimeIsStreaming();
 uint8_t runtimeFrameSource();
 void runtimeCancelStream();
+// Explicit provisional-only handoff from external frames to native playback.
+// A nonempty zone id is required. Arming is refused unless the installed
+// current limit and current look/zone brightness are within Bench limits.
+bool runtimeCanArmNativeZone(const String& zoneId, bool armed);
+void runtimeArmNativeZone(const String& zoneId, bool armed);
+bool runtimeNativeZoneArmed(const String& zoneId);
+bool runtimeNativeRenderArmed();
+float runtimeNativeFadeScale();
+uint16_t runtimeNativeArmedZoneMask();
 // Writes a bounded RGB chunk into the one canonical logical LED canvas. The
 // implementation claims FRAME_HTTP through the existing source arbiter; it
 // does not create a second renderer or bypass Stop/timeout recovery.

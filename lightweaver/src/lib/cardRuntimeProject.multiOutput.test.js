@@ -4,6 +4,34 @@ import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 import { compileWiring } from './wiringCompiler.js';
 import { makeDefaultWiring } from './wiringModel.js';
 import { prepareCardStoragePayload } from './cardStoragePayload.js';
+import { migrateRunSectionReferences } from './sectionRunConversion.js';
+
+test('legacy zone-keyed saved combo follows both sections after run separation', () => {
+  const strips = [
+    { id: 'piece', name: 'Piece 1', pixelCount: 4 },
+    { id: 'part', name: 'Piece 2', pixelCount: 5 },
+  ];
+  const wiring = makeDefaultWiring(strips);
+  wiring.outputs = [
+    { id: 'out1', pin: 16, runIds: ['run-piece'] },
+    { id: 'out2', pin: 17, runIds: ['run-part'] },
+  ];
+  const patchBoard = { patches: strips.map(strip => ({
+    id: `patch-${strip.id}`, source: { type: 'strip', stripId: strip.id, startLed: 0, endLed: strip.pixelCount - 1 },
+    output: { mode: 'normal' }, playback: {},
+  })) };
+  const before = { defaultLook: { patternId: 'aurora' }, looks: [{
+    id: 'native', label: 'Native', defaultLook: { patternId: 'aurora' },
+    sectionLooks: { piece: { patternId: 'fire' } },
+  }], playlist: [{ type: 'combo', lookId: 'native' }] };
+  const controller = migrateRunSectionReferences({ controller: before,
+    identityMap: { piece: ['piece', 'part'] }, patchIdentityMap: { 'patch-piece': ['patch-piece', 'patch-part'] },
+  }).controller;
+  const config = buildCardRuntimePackageFromProject({ strips, wiring, patchBoard, standaloneController: controller }).config;
+  const combo = config.looks.find(look => look.id === 'combo-native');
+  assert.equal(combo.mode, 'combo');
+  assert.deepEqual(combo.zones.map(zone => zone.patternId), ['fire', 'fire']);
+});
 
 function twoGpioConfig({ left = { patternId: 'fire' }, right = { patternId: 'ocean' }, autoplay = false } = {}) {
   const strips = [

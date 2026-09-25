@@ -12,7 +12,7 @@ import {
 } from '../shared/InspectorPrimitives.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
-import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
+import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planSectionsAtRunBoundaries, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
 import {
   STRIP_COLORS,
   DENSITY_OPTIONS,
@@ -142,7 +142,7 @@ export function DrawModePanel({
     setTotalLedCount, setStripCountAndCalibrate,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
-    divideStripIntoSections, moveConnectedBoundary, addConnectedSplit,
+    divideStripIntoSections, separateExistingRuns, moveConnectedBoundary, addConnectedSplit,
     mergeConnectedSection, correctConnectedSectionCount, detachSectionFamily,
     addPrimitiveStrip, scaleStrip,
     addStripsToGroup, groupSelectedStrips, mergeSelectedStrips,
@@ -174,7 +174,7 @@ export function DrawModePanel({
   } = state;
   const {
     wiring, updateWiring, standaloneController, setStandaloneController,
-    patchBoard, setPatchBoard, portRoles, sectionTargets,
+    patchBoard, setPatchBoard, portRoles, sectionTargets, expressionScenes, layoutHistoryError,
   } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
@@ -395,9 +395,11 @@ export function DrawModePanel({
   // Division is an occasional action; retain each strip's draft while the
   // disclosure is closed, but never carry an open editor into a new selection.
   const [divideOpen, setDivideOpen] = useState(false);
+  const [runSeparationError, setRunSeparationError] = useState('');
   const divideTriggerRef = useRef(null);
   const divideSelectionKey = JSON.stringify([selStripId, selLayerId, selectedStripIds]);
   useEffect(() => setDivideOpen(false), [divideSelectionKey, panelStripId]);
+  useEffect(() => setRunSeparationError(''), [divideSelectionKey, panelStripId]);
   const [divideSections, setDivideSections] = useState({}); // stripId → editable string
   // stripId → the owner's own counts, once a field has been edited. Absent
   // means the even plan; a stored set that no longer adds up to the strip
@@ -1401,6 +1403,13 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
+                const runSeparation = isSplit ? planSectionsAtRunBoundaries(s, wiring) : null;
+                const runSeparationGroup = layerGroups.find(group => (group.members || []).some(member =>
+                  (typeof member === 'string' ? member : member?.stripId) === s.id));
+                const affectedLooks = (standaloneController?.looks || []).filter(look => Object.hasOwn(look.sectionLooks || {}, `patch-${s.id}`)).length;
+                const affectedScenes = (expressionScenes?.scenes || []).filter(scene =>
+                  (scene.steps || []).some(step => (step.assignments || []).some(assignment =>
+                    assignment.selection?.areaIds?.includes(`strip:${s.id}`)))).length;
                 const connectedFamily = connectedFamilyForStrip(sectionFamilies, s.id);
                 const connectedMembers = connectedFamily
                   ? connectedFamily.memberIds.map(id => stripById.get(id)).filter(Boolean)
@@ -1798,6 +1807,27 @@ export function DrawModePanel({
                             {firstLedPicker?.stripId === s.id ? 'Cancel first light' : 'Set first light'}
                           </button>}
                         </div>
+                        {isSplit && <section className="la-divide-panel" aria-label={`Separate ${s.name} at existing runs`}>
+                          <strong>Separate at existing run boundaries</strong>
+                          <p>Each run keeps its GPIO, LED order, direction and address. The resulting sections can choose patterns independently.</p>
+                          {runSeparation?.ok ? <ul>
+                            {runSeparation.runs.map((physicalRun, index) => {
+                              const output = wiring.outputs.find(item => item.runIds.includes(physicalRun.id));
+                              return <li key={physicalRun.id}>{s.name} {index + 1}: GPIO {output?.pin ?? 'unassigned'} · {runSeparation.counts[index]} LEDs</li>;
+                            })}
+                          </ul> : <p role="alert">{runSeparation?.error}</p>}
+                          {runSeparationGroup && <p role="alert">{runSeparationGroup.name || 'This group'} renders as one card section. Ungroup it before choosing separate patterns.</p>}
+                          <p>{affectedLooks} saved {affectedLooks === 1 ? 'look' : 'looks'} and {affectedScenes} {affectedScenes === 1 ? 'scene' : 'scenes'} will follow these sections. Undo restores the original strip.</p>
+                          <button type="button" className="btn primary" data-testid={`separate-runs-${s.id}`}
+                                  disabled={!runSeparation?.ok || !!runSeparationGroup}
+                                  onClick={() => {
+                                    const result = separateExistingRuns(s.id);
+                                    setRunSeparationError(result?.ok ? '' : result?.error || 'The sections could not be separated.');
+                                  }}>Separate into {runSeparation?.counts?.length || 0} sections</button>
+                          {runSeparationError && <p role="alert">{runSeparationError}</p>}
+                          {layoutHistoryError && <p role="alert">{layoutHistoryError}</p>}
+                          <a href="#screen=pattern">Open Patterns</a>
+                        </section>}
                         <div className="la-divide-disclosure"
                              onKeyDown={event => {
                                if (event.key !== 'Escape' || !divideOpen) return;

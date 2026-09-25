@@ -255,12 +255,18 @@ async function modelBenchPatterns(page: any, card: FakeCard) {
   let modeledConfig: any = null;
   let zones: any[] = [];
   let syncZones = true;
+  let nativeArmedZones: string[] = [];
+  let currentPatternId = '';
+  let blackout = false;
   let refuseReadback = false;
   const refresh = () => {
     if (modeledConfig === card.applied) return;
     modeledConfig = card.applied;
-    zones = structuredClone(card.applied?.zones || []);
+    zones = (card.applied?.zones || []).map((zone: any) => ({ ...structuredClone(zone), blackout: zone.blackout ?? false }));
     syncZones = card.applied?.syncZones ?? true;
+    nativeArmedZones = [];
+    currentPatternId = card.applied?.startupPatternId || '';
+    blackout = false;
   };
   await page.route(`http://${HOST}/api/status`, async (route: any) => {
     refresh();
@@ -268,6 +274,11 @@ async function modelBenchPatterns(page: any, card: FakeCard) {
       ...readyStatus(card.applied, card.reboots), provisionalSetup: true,
       projectId: card.applied?.piece?.id || card.applied?.projectId || '',
       outputs: structuredClone(card.applied?.led?.outputs || []),
+      nativeRenderArmSupported: true, nativeArmedZones: [...nativeArmedZones],
+      nativeRenderArmed: nativeArmedZones.length > 0,
+      nativeRendering: nativeArmedZones.length > 0 && !blackout,
+      nativeFadeScale: nativeArmedZones.length > 0 ? 1 : 0,
+      currentPatternId, blackout, streaming: false, playlist: { playing: false },
     } : blankStatus() });
   });
   await page.route(`http://${HOST}/api/zones`, async (route: any) => {
@@ -278,8 +289,38 @@ async function modelBenchPatterns(page: any, card: FakeCard) {
     refresh();
     const body = JSON.parse(route.request().postData() || '{}');
     controls.push(body);
+    if ('armNative' in body) {
+      if (Object.keys(body).length !== 2 || !zones.some(zone => zone.id === body.zone)) {
+        await route.fulfill({ status: 422, json: { ok: false, error: 'native arm requires an exact zone' } });
+        return;
+      }
+      nativeArmedZones = body.armNative
+        ? [...new Set([...nativeArmedZones, body.zone])]
+        : nativeArmedZones.filter(id => id !== body.zone);
+      if (body.armNative) zones.find(zone => zone.id === body.zone).blackout = false;
+      await route.fulfill({ json: { ok: true, zone: body.zone, nativeZoneArmed: body.armNative,
+        nativeRenderArmed: nativeArmedZones.length > 0, streaming: false, blackout } });
+      return;
+    }
+    if (Object.keys(body).length === 1 && body.syncZones === syncZones) {
+      await route.fulfill({ status: 422, json: { ok: false, error: 'command affects zero outputs' } });
+      return;
+    }
     if (!refuseReadback && body.patternId) {
-      for (const zone of zones) if (!body.zone || zone.id === body.zone) zone.patternId = body.patternId;
+      if (body.zone) {
+        zones.find(zone => zone.id === body.zone).patternId = body.patternId;
+        currentPatternId = zones.length === 1 ? body.patternId : '';
+      } else if (body.patternId === card.applied?.startupPatternId) {
+        zones = (card.applied?.zones || []).map((zone: any) => ({ ...structuredClone(zone), blackout: zone.blackout ?? false }));
+        currentPatternId = body.patternId;
+      } else {
+        for (const zone of zones) zone.patternId = body.patternId;
+        currentPatternId = body.patternId;
+      }
+    }
+    if ('blackout' in body) {
+      if (body.zone) zones.find(zone => zone.id === body.zone).blackout = body.blackout;
+      else blackout = body.blackout;
     }
     if ('syncZones' in body) syncZones = body.syncZones;
     await route.fulfill({ json: { ok: true, appliedPatternId: body.patternId || '' } });
@@ -330,7 +371,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     const modeled = await modelBenchPatterns(page, card);
     await recordTwoGpioWalk(page);
     await page.getByTestId('discovery-pattern-whole').selectOption('aurora');
-    await expect.poll(() => modeled.controls.some(control => control.syncZones === true && control.patternId === 'aurora')).toBe(true);
+    await expect.poll(() => modeled.controls.filter(control => control.patternId === 'aurora'
+      && control.syncZones === false).map(control => control.zone)).toEqual(['bench-16', 'bench-17']);
     await page.getByTestId('discovery-pattern-17').selectOption('ocean');
     await expect.poll(() => modeled.controls.some(control => control.zone === 'bench-17' && control.syncZones === false && control.patternId === 'ocean')).toBe(true);
     await expect(page.getByTestId('discovery-pattern-16')).toHaveValue('aurora');
@@ -510,14 +552,14 @@ test.describe('a blank card whose firmware applies its first config', () => {
     expect(card.restartPending).toBe(false);
   });
 
-  test('counting uses the strip ruler directly without guessing buttons', async ({ page }) => {
+  test('counting uses the strip ruler directly without guessing buttons', async ({ page }, testInfo) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     const overlay = page.getByTestId('card-setup-overlay');
     await expect(overlay).toBeVisible();
-    await page.screenshot({ path: '/tmp/lightweaver-count-picker-desktop.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-picker-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: '/tmp/lightweaver-count-picker-phone.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-picker-phone.png') });
     await expect(page.getByTestId('card-setup-stop-lights')).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByTestId('discovery-probe-16').click();
@@ -542,9 +584,9 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(ruler).toContainText(/yellow/i);
     await expect(page.getByTestId('discovery-more')).toHaveCount(0);
     await expect(page.getByTestId('discovery-enough')).toHaveCount(0);
-    await page.screenshot({ path: '/tmp/lightweaver-count-ruler-desktop.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-ruler-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: '/tmp/lightweaver-count-ruler-phone.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-ruler-phone.png') });
     await expect(page.getByTestId('discovery-count-16')).toBeInViewport();
     await expect(page.getByTestId('discovery-counts-done')).toBeInViewport();
     await expect(page.getByTestId('card-setup-stop-lights')).toBeInViewport();
@@ -593,7 +635,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('discovery-pattern-16')).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);
-    await expect(page.getByTestId('discovery-open-patterns')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-open-patterns')).toBeVisible();
     await expect(page.getByTestId('discovery-continue-layout')).toBeVisible();
     await expect(page.getByTestId('discovery-done')).toContainText('Move this strip onto your artwork');
     await expect(page.getByTestId('card-setup-close')).toBeEnabled();
@@ -663,6 +705,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.getByTestId('discovery-end-yes').click();
     await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 256 LEDs');
     await page.getByTestId('discovery-record-save').click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_port_roles_v1') || 'null')))
+      .toContainEqual({ pin: 16, role: 'strip', pixelCount: 256, controlKind: '' });
     const recorded = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_port_roles_v1') || 'null'));
     expect(recorded).toContainEqual({ pin: 16, role: 'strip', pixelCount: 256, controlKind: '' });
   });

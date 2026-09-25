@@ -39,8 +39,10 @@ import { readCardPatternsFromCard, readCardZonesFromCard } from '../../lib/cardL
 import { getCardWiringStatus } from '../../lib/cardWiringSafety.js';
 import { useProject } from '../../state/ProjectContext.jsx';
 import { CARD_HARDWARE_CONTRACT } from '../../lib/cardHardwareContract.js';
+import { isCardLedType } from '../../lib/cardHardwareContract.js';
 import { FRAME_CHUNK_MAX_PIXELS, createCardFrameStream } from '../../lib/cardFrameStream.js';
 import { normalizeCardReadiness } from '../../lib/cardReadiness.js';
+import { CORE_CARD_PATTERN_BANK } from '../../lib/cardPatternBank.js';
 import {
   PORT_ROLE_CONTROL,
   PORT_ROLE_STRIP,
@@ -87,10 +89,10 @@ const DISCOVERY_BENCH_HEADROOM = BENCH_DEFAULT_PORT_PIXELS;
 // that an unknown strip on an unknown supply is never driven hard.
 const PROBE_PROVISION_PIXELS = 120;
 const PROBE_LIGHT_COLOR = '303030';
-const BENCH_AUDITION_PATTERNS = [
-  ['warm-white', 'Warm white'], ['aurora', 'Aurora'], ['fire', 'Fire'],
-  ['ocean', 'Ocean'], ['rainbow', 'Rainbow'],
-];
+// The card can select these exact compiled patterns by zone. The extended
+// Studio catalog contains visual aliases whose preset differs from their name,
+// so offering those here would falsely promise their displayed look on card.
+const BENCH_AUDITION_PATTERNS = CORE_CARD_PATTERN_BANK;
 
 // A flow id is only a binding token here: it ties the one-shot config authority
 // to this page lifecycle and this card. Deliberately NOT minted through
@@ -214,7 +216,8 @@ async function benchAuditionRequest(host, cardLink) {
       throw new Error('The local card page is no longer verified for this card. Reconnect it before trying patterns.');
     }
     request = (path, init = {}) => {
-      const type = { '/api/status': 'status', '/api/zones': 'zones', '/api/control': 'control' }[path];
+      const type = { '/api/status': 'status', '/api/zones': 'zones',
+        '/api/firmware-info': 'firmware-info', '/api/control': 'control' }[path];
       if (!type) throw new Error('Unsupported Bench card request.');
       return sendCardBridgeRequest(type, init.body || {}, { host, timeoutMs: 2500 });
     };
@@ -230,8 +233,28 @@ async function benchAuditionRequest(host, cardLink) {
     || String(status?.projectId || status?.piece?.id || '') !== BENCH_PROJECT_ID) {
     throw new Error('This card is no longer running the temporary Bench setup. Reconnect before trying patterns.');
   }
-  request.benchStatus = status;
-  return request;
+  const rawRequest = request;
+  const exactRequest = async (path, init) => {
+    if (path === '/api/control' && init?.method === 'POST') {
+      const fresh = await rawRequest('/api/status');
+      if (fresh?.cardId !== status.cardId || fresh?.bootId !== status.bootId
+        || fresh?.projectRevision !== status.projectRevision
+        || fresh?.projectFingerprint !== status.projectFingerprint
+        || !isBenchProjectEvidence(fresh)) {
+        throw new Error('The card rebooted or its temporary setup changed. Reconnect before changing patterns.');
+      }
+      if (cardLink?.transport === 'bridge') {
+        const bridge = getCardBridgeState();
+        if (!bridge.connected || !bridge.verified || bridge.card?.id !== expectedCardId
+          || normalizeCardHost(bridge.host) !== normalizeCardHost(host)) {
+          throw new Error('The local card page lost authority for this card. Reconnect before changing patterns.');
+        }
+      }
+    }
+    return rawRequest(path, init);
+  };
+  exactRequest.benchStatus = status;
+  return exactRequest;
 }
 
 export function StripDiscoveryPanel({
@@ -268,6 +291,10 @@ export function StripDiscoveryPanel({
   } = useProject();
   const projectIdentityRef = useRef({ id: projectId, generation: projectLifecycle.generation });
   projectIdentityRef.current = { id: projectId, generation: projectLifecycle.generation };
+  const serializeProjectRef = useRef(serializeProject);
+  serializeProjectRef.current = serializeProject;
+  const projectRevisionRef = useRef(projectRevision);
+  projectRevisionRef.current = projectRevision;
   const currentProjectMatches = identity => auditionMountedRef.current
     && projectIdentityRef.current.id === identity.id
     && readProjectLifecycle().generation === identity.generation;
@@ -290,6 +317,7 @@ export function StripDiscoveryPanel({
   // "Put this setup on the card".
   const [installed, setInstalled] = useState(false);
   const [auditionPatterns, setAuditionPatterns] = useState({});
+  const [patternSearch, setPatternSearch] = useState('');
   const [savedPatternChoices, setSavedPatternChoices] = useState({});
   const [auditionBusy, setAuditionBusy] = useState(false);
   const [auditionError, setAuditionError] = useState('');
@@ -832,7 +860,17 @@ export function StripDiscoveryPanel({
     }
   };
 
-  const record = () => {
+  const recordingRef = useRef(false);
+  const record = async () => {
+    if (recordingRef.current) return;
+    recordingRef.current = true;
+    setBusy(true);
+    try {
+    // stop() fences in-flight chunks before its cancel command. Finish that
+    // handoff before exposing native pattern controls on the done screen.
+    const stream = streamRef.current;
+    streamRef.current = null;
+    await stream?.stop();
     const merged = normalizePortRoles([
       ...discoveryPortRoleUpdates(session),
       ...portRoles,
@@ -883,9 +921,13 @@ export function StripDiscoveryPanel({
     }
     setRecorded(true);
     dispatch({ type: 'recorded' });
-    void streamRef.current?.stop();
-    streamRef.current = null;
     setStreamHealth(null);
+    } catch (error) {
+      setFailure(error?.message || 'Could not stop the discovery light stream.');
+    } finally {
+      recordingRef.current = false;
+      setBusy(false);
+    }
   };
 
   const auditionInFlightRef = useRef(false);
@@ -897,25 +939,38 @@ export function StripDiscoveryPanel({
     setAuditionError('');
     try {
       const request = await benchAuditionRequest(host, cardLink);
+      const confirmedPins = (committedPartsRef.current?.outputs || []).map(output => output.pin);
       const result = await auditionBenchPattern({
-        layout: session.benchLayout, pin, patternId,
+        layout: session.benchLayout, confirmedPins, pin, patternId,
         readZones: () => request('/api/zones'),
+        readStatus: () => request('/api/status'),
         postControl: body => request('/api/control', { method: 'POST', body }),
-        onBeforeWrite: snapshot => {
+        onBeforeWrite: (snapshot, status) => {
           if (!auditionMountedRef.current) throw new Error('The Bench screen closed before the pattern could be tried.');
+          if (!currentProjectMatches(identity)) throw new Error('The open project changed before this pattern preview.');
           if (!auditionBaselineRef.current) auditionBaselineRef.current = {
             zones: snapshot.zones,
             syncZones: snapshot.syncZones,
+            blackout: status?.blackout,
+            nativeArmedZones: status?.nativeArmedZones,
+            nativeFadeScale: status?.nativeFadeScale,
+            currentPatternId: status?.currentPatternId,
+            playlistPlaying: status?.playlist?.playing,
             cardId: request.benchStatus.cardId,
+            bootId: request.benchStatus.bootId,
             projectRevision: request.benchStatus.projectRevision,
             projectFingerprint: request.benchStatus.projectFingerprint,
+            studioProjectId: identity.id,
+            studioGeneration: identity.generation,
             layout: JSON.stringify(session.benchLayout),
           };
         },
       });
       if (!currentProjectMatches(identity)) throw new Error('The open project changed during this pattern preview.');
       setAuditionPatterns(pin == null ? result.patternsByPin
-        : { ...result.patternsByPin, ...savedPatternChoices, [pin]: patternId });
+        : { ...result.patternsByPin,
+          ...Object.fromEntries(Object.entries(savedPatternChoices).filter(([key]) => confirmedPins.some(value => Number(value) === Number(key)))),
+          [pin]: patternId });
       setAuditionNeedsUpdate(false);
     } catch (error) {
       const message = error?.message || 'The card did not confirm this pattern.';
@@ -940,14 +995,45 @@ export function StripDiscoveryPanel({
     try {
       const request = await benchAuditionRequest(host, cardLink);
       const status = await request('/api/status');
+      const firmwareInfo = await request('/api/firmware-info');
       const currentOutputs = Array.isArray(status?.outputs) ? status.outputs : [];
       if (currentOutputs.length !== session.benchLayout.length || session.benchLayout.some((entry, index) => (
         Number(currentOutputs[index]?.pin) !== entry.pin || Number(currentOutputs[index]?.pixels) !== entry.count
       ))) throw new Error('The card output lengths changed. Reconnect before updating its temporary setup.');
+      if (firmwareInfo?.cardId !== status.cardId || firmwareInfo?.bootId !== status.bootId) {
+        throw new Error('The card restarted during the temporary upgrade. Reconnect before updating.');
+      }
+      const observedLed = status?.led || {};
+      const reportedControls = firmwareInfo?.controls;
+      const reportedEncoder = reportedControls?.encoder;
+      if (!isCardLedType(observedLed.type) || !observedLed.colorOrder
+        || status.maxMilliampsSource !== 'config'
+        || !Number.isInteger(Number(observedLed.maxMilliamps))
+        || Number(observedLed.maxMilliamps) > BENCH_MAX_MILLIAMPS
+        || !Number.isFinite(Number(firmwareInfo?.led?.brightnessLimit))
+        || !reportedEncoder || !Number.isInteger(Number(reportedControls.statusLed))) {
+        throw new Error('This card did not report every chipset, power, and control setting needed for a safe temporary upgrade. Use the preserving firmware update first.');
+      }
+      const controls = {
+        encoder: { a: reportedEncoder.a, b: reportedEncoder.b,
+          press: reportedEncoder.press,
+          alternatePress: reportedEncoder.configuredAlternatePress,
+          rotateDirection: reportedEncoder.rotateDirection,
+          brightnessStep: reportedEncoder.brightnessStep },
+        previous: reportedControls.previous, next: reportedControls.next,
+        blackout: reportedControls.blackout, brightness: reportedControls.brightnessAnalog,
+        statusLed: reportedControls.statusLed,
+      };
       const pixelsPerPort = Object.fromEntries(session.benchLayout.map(entry => [entry.pin, entry.count]));
-      const updated = buildBenchConfig(session.ports, { pixelsPerPort, maxPixels: cardMaxPixels });
+      const updated = buildBenchConfig(session.ports, { pixelsPerPort, maxPixels: cardMaxPixels,
+        ledType: observedLed.type, colorOrder: observedLed.colorOrder,
+        maxMilliamps: Number(observedLed.maxMilliamps),
+        brightnessLimit: Number(firmwareInfo.led.brightnessLimit), controls });
       if (!updated.config || JSON.stringify(updated.layout) !== JSON.stringify(session.benchLayout)) {
         throw new Error('The temporary setup cannot be updated without changing its output lengths.');
+      }
+      if (updated.config.led.outputs.some((output, index) => output.id !== currentOutputs[index].id)) {
+        throw new Error('The temporary upgrade would change an output identity. Reconnect and use the full setup editor.');
       }
       await installBenchConfig({ host, config: updated.config, flowId: flowIdRef.current,
         initial: false, cardShowsProject: true, transport: cardLink?.transport });
@@ -974,13 +1060,17 @@ export function StripDiscoveryPanel({
     try {
       const request = await benchAuditionRequest(host, cardLink);
       if (request.benchStatus.cardId !== baseline.cardId
+        || request.benchStatus.bootId !== baseline.bootId
         || request.benchStatus.projectRevision !== baseline.projectRevision
         || request.benchStatus.projectFingerprint !== baseline.projectFingerprint
+        || projectIdentityRef.current.id !== baseline.studioProjectId
+        || projectIdentityRef.current.generation !== baseline.studioGeneration
         || JSON.stringify(session.benchLayout) !== baseline.layout) {
         throw new Error('The card or temporary setup changed during this preview. Reconnect before restoring.');
       }
       await restoreBenchPatternSnapshot({ layout: session.benchLayout, baseline,
         readZones: () => request('/api/zones'),
+        readStatus: () => request('/api/status'),
         postControl: body => request('/api/control', { method: 'POST', body }) });
       auditionBaselineRef.current = null;
       setAuditionPatterns({});
@@ -1043,6 +1133,9 @@ export function StripDiscoveryPanel({
       setInstallError('Stop the temporary pattern preview before installing this project.');
       return;
     }
+    // Keep schedules React source state. Let that render commit, then freeze one
+    // source snapshot for the whole install and detect later edits against it.
+    await new Promise(resolve => requestAnimationFrame(resolve));
     if (!host) {
       setInstallError('Studio does not know which card to install onto.');
       setInstallErrorReason('');
@@ -1066,17 +1159,24 @@ export function StripDiscoveryPanel({
       // Build from what this walk MEASURED, not from the drawing. The drawing is
       // still the starter placeholder at this point and describes a strip that does
       // not exist; using it is how a card ends up driving the wrong port and length.
-      const saved = serializeProject();
+      const saved = structuredClone(serializeProjectRef.current());
+      const sourceSignature = JSON.stringify(saved);
+      const sourceRevision = projectRevisionRef.current;
+      const measuredParts = structuredClone(committedPartsRef.current);
+      if (!measuredParts || JSON.stringify(saved.layout?.patchBoard?.patches || [])
+        !== JSON.stringify(measuredParts.patchBoard?.patches || [])) {
+        throw new Error('The kept pattern choices have not reached this project yet. Try installing again after the project saves.');
+      }
       const prepared = buildPackageForPortRoles({
         projectId: saved.id,
         projectName: saved.name,
-        projectRevision,
+        projectRevision: sourceRevision,
         standaloneController: saved.devices?.standaloneController || {},
-        portRoles: committedPartsRef.current?.portRoles || portRoles,
-        measuredGeometry: committedPartsRef.current && {
-          strips: committedPartsRef.current.strips,
-          patchBoard: committedPartsRef.current.patchBoard,
-          wiring: committedPartsRef.current.wiring,
+        portRoles: measuredParts.portRoles,
+        measuredGeometry: {
+          strips: measuredParts.strips,
+          patchBoard: measuredParts.patchBoard,
+          wiring: measuredParts.wiring,
         },
       }, prepareCardDeployment);
       // The card is holding the temporary setup THIS walk just put on it. That is
@@ -1093,12 +1193,17 @@ export function StripDiscoveryPanel({
         onProgress: setInstallProgress,
         allowProjectChange: ownScratchSetup || takeOver,
         transport: cardLink?.transport,
+        expectedCardId: cardId,
       });
       const status = await readCardStatusEnvelope(cardConnectionOptionsFor(cardLink, host));
       const zones = await readCardZonesFromCard({ host, transport: cardLink?.transport });
       const patterns = await readCardPatternsFromCard({ host, transport: cardLink?.transport });
       const wiringStatus = await getCardWiringStatus({ host, transport: cardLink?.transport });
       requireBenchInstallReadback(prepared.config, status, zones, cardId, patterns, wiringStatus);
+      if (JSON.stringify(serializeProjectRef.current()) !== sourceSignature
+        || projectRevisionRef.current !== sourceRevision) {
+        throw new Error('The project changed during installation. The card holds the earlier snapshot; review and install the latest edit.');
+      }
       if (!currentProjectMatches(identity)) throw new Error('The open project changed during card install. Reopen the correct project to verify it.');
       clearDiscoveryRun();
       setInstalled(true);
@@ -1125,6 +1230,10 @@ export function StripDiscoveryPanel({
   const warnings = discoveryWarnings(session);
   const activePort = session?.ports.find(port => port.pin === session.activePin) || null;
   const phase = session?.phase || 'idle';
+  const matchingBenchPatterns = BENCH_AUDITION_PATTERNS.filter(pattern => {
+    const query = patternSearch.trim().toLowerCase();
+    return !query || `${pattern.label} ${pattern.description}`.toLowerCase().includes(query);
+  });
 
   useEffect(() => {
     onLifecycleChange?.({ phase, busy, lighting });
@@ -1593,7 +1702,7 @@ export function StripDiscoveryPanel({
             ))}
           </ul>
           <button type="button" className="btn" data-testid="discovery-add-strip" onClick={() => { setPortRoles(current => normalizePortRoles(current.map(entry => { const found = session.ports.find(port => port.pin === entry.pin); return found?.confirmed ? { ...entry, role: PORT_ROLE_STRIP, pixelCount: found.count } : entry; }))); setSelectedPort(null); setSession(null); }}>Add another strip</button>
-          <button type="button" className="btn primary" data-testid="discovery-record-save" onClick={record}>
+          <button type="button" className="btn primary" data-testid="discovery-record-save" onClick={record} disabled={busy}>
             Save what we found
           </button>
         </section>
@@ -1601,21 +1710,33 @@ export function StripDiscoveryPanel({
 
       {phase === 'done' && (
         <section className="strip-discovery-step" data-testid="discovery-done">
-          {!installed && session?.benchLayout?.length > 0 && (
+          {!installed && (committedPartsRef.current?.outputs || []).length > 0 && (
             <div className="strip-discovery-audition" data-testid="discovery-pattern-audition">
               <h3>Try patterns on the measured lights</h3>
               <p>Try changes only this card’s temporary playback. Keep your choices to use them in the final setup.</p>
-              {[{ pin: null, label: 'Whole piece' }, ...session.benchLayout.map(entry => ({ pin: entry.pin, label: `GPIO ${entry.pin}` }))].map(target => (
+              <label className="strip-discovery-pattern-search">
+                <span>Find a card pattern</span>
+                <input type="search" value={patternSearch} onChange={event => setPatternSearch(event.target.value)}
+                  placeholder="Search by name or mood" data-testid="discovery-pattern-search" />
+              </label>
+              {[{ pin: null, label: 'All measured strips' }, ...(committedPartsRef.current?.outputs || []).map(entry => ({ pin: entry.pin, label: `GPIO ${entry.pin} · ${entry.pixels} LEDs` }))].map(target => {
+                const selectedId = target.pin == null ? '' : (auditionPatterns[target.pin] || savedPatternChoices[target.pin] || '');
+                const chosen = BENCH_AUDITION_PATTERNS.find(pattern => pattern.id === selectedId);
+                return (
                 <label key={target.pin ?? 'whole'} className="strip-discovery-pattern-choice">
                   <span>{target.label}</span>
-                  <select disabled={auditionBusy || busy} value={target.pin == null ? '' : (auditionPatterns[target.pin] || savedPatternChoices[target.pin] || '')}
-                    onChange={event => { if (event.target.value) tryBenchPattern(target.pin, event.target.value); }}
+                  <select disabled={auditionBusy || busy} value={selectedId}
+                    onChange={event => { if (event.target.value) { tryBenchPattern(target.pin, event.target.value); setPatternSearch(''); } }}
                     data-testid={`discovery-pattern-${target.pin ?? 'whole'}`}>
                     <option value="">Choose a pattern…</option>
-                    {BENCH_AUDITION_PATTERNS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                    {chosen && !matchingBenchPatterns.includes(chosen) && <option value={chosen.id}>{chosen.label} · selected</option>}
+                    {matchingBenchPatterns.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}
                   </select>
+                  {chosen && <span className="strip-discovery-pattern-preview" aria-label={`${chosen.label} preview`}
+                    style={{ background: chosen.preview }} />}
                 </label>
-              ))}
+              ); })}
+              {!matchingBenchPatterns.length && <p>No exact card patterns match that search.</p>}
               {auditionNeedsUpdate && <button type="button" className="btn" disabled={auditionBusy}
                 onClick={() => void updateLegacyBenchZones()} data-testid="discovery-update-temporary-setup">
                 Update temporary setup for each GPIO
@@ -1628,6 +1749,9 @@ export function StripDiscoveryPanel({
               </button>}
               {Object.keys(savedPatternChoices).length > 0 && <p role="status">Patterns saved for the final setup.</p>}
               {auditionError && <p className="strip-discovery-error" role="alert">{auditionError}</p>}
+              <button type="button" className="btn" disabled={auditionBusy || busy}
+                onClick={() => { void stopBenchAudition().then(restored => { if (restored) go?.('pattern'); }); }}
+                data-testid="discovery-open-patterns">Open full Patterns editor</button>
               {!layoutPrepared && <p className="strip-discovery-note">This artwork already has a layout. Open Layout to place these measured strips and confirm their GPIO wiring before installing.</p>}
             </div>
           )}

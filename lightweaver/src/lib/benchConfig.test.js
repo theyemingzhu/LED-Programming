@@ -220,6 +220,28 @@ test('no bench output ever lands on a pin the shipped controls claim', () => {
   }
 });
 
+test('legacy zone upgrade retains observed chipset, color order, controls and dim current limit', () => {
+  const controls = {
+    encoder: { a: 4, b: 5, press: 0, alternatePress: 6,
+      rotateDirection: 'clockwise-dimmer', brightnessStep: 12 },
+    previous: 7, next: 8, blackout: 9, brightness: -1, statusLed: 2,
+  };
+  const { config, layout } = buildBenchConfig(stripRoles({ [SAFE_PINS[0]]: 31, [SAFE_PINS[1]]: 19 }), {
+    ledType: 'WS2815', colorOrder: 'RGB', controls, maxMilliamps: 1200,
+    brightnessLimit: 0.35, maxPixels: 1024,
+  });
+  assert.deepEqual(layout.map(entry => [entry.pin, entry.count]), [[SAFE_PINS[0], 31], [SAFE_PINS[1], 19]]);
+  assert.equal(config.led.type, 'WS2815');
+  assert.equal(config.led.colorOrder, 'RGB');
+  assert.equal(config.led.maxMilliamps, 1200);
+  assert.equal(config.led.brightnessLimit, 0.35);
+  assert.equal(config.controls.encoder.rotateDirection, controls.encoder.rotateDirection);
+  assert.equal(config.controls.encoder.brightnessStep, 12);
+  assert.equal(config.controls.statusLed, 2);
+  assert.throws(() => buildBenchConfig(stripRoles({ [SAFE_PINS[0]]: 31 }),
+    { maxMilliamps: 2001 }), /current limit/i);
+});
+
 test('outputs stop at the four RMT channels the silicon has', () => {
   const counts = Object.fromEntries(SAFE_PINS.slice(0, 6).map(pin => [pin, 16]));
   const { config, layout, skipped } = buildBenchConfig(stripRoles(counts), { maxPixels: 1024 });

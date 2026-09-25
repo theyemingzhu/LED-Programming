@@ -30,7 +30,6 @@ import { reclaimCardFrameStreams } from './cardFrameStream.js';
 
 const SETTLE_MS = 900;
 const POLL_MS = 1500;
-const RETRY_MS = 4000;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -81,6 +80,47 @@ export async function waitForCardPixels(host, wanted, { attempts = 20, transport
   return false;
 }
 
+function exactOutputMap(expected = [], actual = []) {
+  return actual.length === expected.length && expected.every((output, index) => {
+    const observed = actual[index];
+    return observed && String(observed.id) === String(output.id)
+      && Number(observed.pin) === Number(output.pin)
+      && Number(observed.pixels) === Number(output.pixels)
+      && JSON.stringify(observed.segments || []) === JSON.stringify(output.segments || []);
+  });
+}
+
+export function exactDeployedStatus(config, status, expectedCardId = '') {
+  return Boolean(status && (!expectedCardId || status.cardId === expectedCardId)
+    && status.projectId === config?.piece?.id
+    && Number(status.projectRevision) === Number(config?.projectRevision)
+    && status.projectFingerprint === config?.projectFingerprint
+    && status.provisionalSetup === Boolean(config?.provisional)
+    && exactOutputMap(config?.led?.outputs || [], status.outputs || []));
+}
+
+function resumableWiringCandidate(wiring, config, expectedCardId) {
+  if (!wiring?.activationId || !['staged', 'testing'].includes(wiring.state)) return false;
+  return Boolean(expectedCardId && wiring.cardId === expectedCardId
+    && wiring.projectFingerprint === config?.projectFingerprint
+    && Number(wiring.projectRevision) === Number(config?.projectRevision)
+    && exactOutputMap(config?.led?.outputs || [], wiring.candidateOutputs || []));
+}
+
+export async function waitForCardOutputs(host, config, {
+  attempts = 20, transport, expectedCardId = '',
+  statusImpl = readCardStatusEnvelope, sleepImpl = sleep,
+} = {}) {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const status = await statusImpl({ host, transport });
+      if (exactDeployedStatus(config, status, expectedCardId)) return status;
+    } catch { /* a rebooting card is not ready yet */ }
+    await sleepImpl(POLL_MS);
+  }
+  return null;
+}
+
 export async function clearDanglingWiringTransaction(host, { transport } = {}) {
   try {
     const status = await getCardWiringStatus({ host, transport });
@@ -113,41 +153,67 @@ export async function deploySetupToCard(runtimePackage, host, {
   onProgress = null,
   allowProjectChange = false,
   transport,
+  expectedCardId = '',
+  pushImpl = pushConfigToCard,
+  statusImpl = readCardStatusEnvelope,
+  wiringStatusImpl = getCardWiringStatus,
+  reclaimImpl = reclaimCardFrameStreams,
+  waitForCardImpl = waitForCardToAnswer,
+  activateImpl = activateAndWaitForCardWiring,
+  confirmImpl = confirmCardWiringCandidate,
+  waitForOutputsImpl = waitForCardOutputs,
 } = {}) {
-  try { await reclaimCardFrameStreams(host); } catch { /* nothing was streaming */ }
-  await waitForCardToAnswer(host, { transport });
-  await clearDanglingWiringTransaction(host, { transport });
-
-  const push = () => pushConfigToCard(runtimePackage, { host, transport, allowLayoutChange: true, allowProjectChange });
-  let response;
-  try {
-    response = await push();
-  } catch (error) {
-    if (!isTransientCardError(error)) throw error;
-    onProgress?.('The card was still starting up. Trying again…');
-    await sleep(RETRY_MS);
-    await waitForCardToAnswer(host, { transport });
-    response = await push();
+  try { await reclaimImpl(host); } catch { /* nothing was streaming */ }
+  await waitForCardImpl(host, { transport });
+  const beforeWiring = await wiringStatusImpl({ host, transport });
+  const hasCandidate = beforeWiring?.hasCandidate || ['staged', 'testing'].includes(beforeWiring?.state);
+  if (hasCandidate && !resumableWiringCandidate(beforeWiring, runtimePackage?.config, expectedCardId)) {
+    throw new Error('This card holds a different or unverified wiring candidate. Resolve it on the card before installing again.');
   }
 
-  if (response?.state === 'staged' && response.activationId) {
+  const push = () => pushImpl(runtimePackage, { host, transport, allowLayoutChange: true, allowProjectChange });
+  let response = hasCandidate ? { state: beforeWiring.state, activationId: beforeWiring.activationId } : null;
+  try {
+    if (!response) response = await push();
+  } catch (error) {
+    if (!isTransientCardError(error)) throw error;
+    // A lost reply can follow an accepted write. Observe before considering
+    // another POST; a duplicate can create a second wiring candidate.
+    let status = null;
+    let wiring = null;
+    try { status = await statusImpl({ host, transport }); } catch { /* still rebooting */ }
+    try { wiring = await wiringStatusImpl({ host, transport }); } catch { /* unknown delivery */ }
+    if (exactDeployedStatus(runtimePackage?.config, status, expectedCardId)
+      && wiring?.state === 'known-good' && !wiring?.hasCandidate) {
+      response = { ok: true, state: 'verified-after-lost-reply' };
+    } else {
+      const ambiguous = new Error(wiring?.hasCandidate
+        ? 'The card may have staged this setup, but its reply was lost. Reconnect and inspect the wiring candidate before retrying.'
+        : 'The card write reply was lost. Reconnect and inspect its setup before retrying.');
+      ambiguous.reason = 'ambiguous-config-delivery';
+      throw ambiguous;
+    }
+  }
+
+  if (['staged', 'testing'].includes(response?.state) && response.activationId) {
     onProgress?.('Confirming the wiring with the card…');
+    if (response.state === 'staged') {
+      try {
+        await activateImpl(response.activationId, { host, transport });
+      } catch { /* the watcher's timeout is not the outcome; verified below */ }
+    }
     try {
-      await activateAndWaitForCardWiring(response.activationId, { host, transport });
-    } catch { /* the watcher's timeout is not the outcome; verified below */ }
-    try {
-      await confirmCardWiringCandidate(response.activationId, { host, transport });
+      await confirmImpl(response.activationId, { host, transport });
     } catch {
       // A confirm that never landed leaves the card holding the change open,
       // which blocks every later write. Try once more once it has settled.
       await waitForCardToAnswer(host, { transport });
-      try { await confirmCardWiringCandidate(response.activationId, { host, transport }); } catch { /* verified below */ }
+      try { await confirmImpl(response.activationId, { host, transport }); } catch { /* verified below */ }
     }
   }
 
-  const wanted = totalPixelsInPackage(runtimePackage);
-  if (wanted > 0 && !(await waitForCardPixels(host, wanted, { transport }))) {
-    throw new Error('the card did not come back with this setup');
+  if (!(await waitForOutputsImpl(host, runtimePackage?.config, { transport, expectedCardId }))) {
+    throw new Error('The card did not come back with this exact output and project setup.');
   }
   return response;
 }

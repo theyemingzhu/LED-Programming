@@ -3,3 +3,5 @@
 *.bin -text
 release/test-vectors/** -text
 lightweaver/public/firmware/** -text
+release/job-sources/** -text
+lightweaver/public/production/jobs/** -text

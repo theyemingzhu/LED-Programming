@@ -544,11 +544,13 @@ export function layoutReducer(state, action) {
 
 // ── Snapshots + history ─────────────────────────────────────────────────────
 
-// A snapshot is the persisted+undoable slice with strip `pixels` dropped (rebuilt
-// on apply) and the bulky path-selection `entries` dropped.
+// Most snapshots omit sampled pixels and rebuild them from the path. Connected
+// sections must keep their exact source LED coordinates: imported/generated
+// strips can have a first LED that differs from the SVG path's start point.
 export function makeLayoutSnapshot(state) {
+  const exactPixelIds = new Set((state.sectionFamilies || []).flatMap(family => family.memberIds || []));
   return {
-    strips: state.strips.map(({ pixels, ...rest }) => rest),
+    strips: state.strips.map(({ pixels, ...rest }) => exactPixelIds.has(rest.id) ? { ...rest, pixels } : rest),
     starterPending: state.starterPending === true,
     layers: state.layers,
     layerGroups: state.layerGroups,

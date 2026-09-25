@@ -19,6 +19,7 @@
 #include "LightweaverProjectRepository.h"
 #include "LightweaverCardStudio.h"
 #include "LightweaverOutputColorParser.h"
+#include "LightweaverNativeArmPolicy.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
@@ -1413,8 +1414,24 @@ void handleStatus() {
     // brightness to hold the ceiling either way, so an installer who wired
     // 100 A but never set a value deserves to be told the card is holding it
     // to 1500 mA. Reported, never enforced — nothing refuses a config for it.
+    JsonDocument nativeArmStatus;
+    JsonArray armedZoneIds = nativeArmStatus.to<JsonArray>();
+    for (uint8_t i = 0; i < runtimeConfigPtr->zoneCount; i++) {
+      if (!runtimeNativeZoneArmed(runtimeConfigPtr->zones[i].id)) continue;
+      armedZoneIds.add(runtimeConfigPtr->zones[i].id);
+    }
+    String armedZones;
+    serializeJson(nativeArmStatus, armedZones);
+    const bool nativeRendering = runtimeNativeRenderArmed() &&
+        runtimeNativeFadeScale() > 0.0f && !runtimeIsBlackedOut() &&
+        !runtimeIsStreaming();
     String tail = String(",\"streaming\":") + (runtimeIsStreaming() ? "true" : "false") +
                   ",\"frameSource\":\"" + srcLabel + "\"" +
+                  ",\"nativeRenderArmSupported\":true" +
+                  ",\"nativeRenderArmed\":" + (runtimeNativeRenderArmed() ? "true" : "false") +
+                  ",\"nativeRendering\":" + (nativeRendering ? "true" : "false") +
+                  ",\"nativeFadeScale\":" + String(runtimeNativeFadeScale(), 3) +
+                  ",\"nativeArmedZones\":" + armedZones +
                   ",\"projectHead\":\"" + lightweaverProjectRepository().currentHead() + "\"" +
                   ",\"maxMilliamps\":" + String(runtimeConfigPtr->maxMilliamps) +
                   ",\"maxMilliampsSource\":\"" +
@@ -2158,6 +2175,51 @@ void handleControlPost() {
   } else {
     controlRequestBodyReady = false;
   }
+  if (hasControlField(doc, "armNative")) {
+    if (!nativeArmEnvelopeValid(doc.as<JsonVariantConst>())) {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"armNative requires only a zone id and a boolean armNative\"}");
+      return;
+    }
+    const String zoneId = controlString(doc, "zone");
+    const bool armed = doc["armNative"].as<bool>();
+    if (!runtimeCanArmNativeZone(zoneId, armed)) {
+      server.send(422, "application/json", "{\"ok\":false,\"error\":\"native arm refused: provisional zone and dim explicit current limit required\"}");
+      return;
+    }
+    const uint8_t affectedCount = runtimeAffectedOutputCount(
+        zoneId, false, ProvisioningOutputScope::SelectedZones);
+    if (affectedCount == 0) {
+      server.send(422, "application/json", "{\"ok\":false,\"error\":\"command affects zero outputs\"}");
+      return;
+    }
+    stopLightweaverHttpFrameStream();
+    runtimeCancelStream();
+    runtimeArmNativeZone(zoneId, armed);
+    JsonDocument out;
+    out["ok"] = true;
+    out["cardId"] = runtimeCardId();
+    out["bootId"] = runtimeBootId();
+    out["stateRevision"] = runtimeAdvanceStateRevision();
+    out["zone"] = zoneId;
+    out["armNative"] = armed;
+    out["nativeZoneArmed"] = runtimeNativeZoneArmed(zoneId);
+    out["nativeRenderArmed"] = runtimeNativeRenderArmed();
+    out["nativeFadeScale"] = runtimeNativeFadeScale();
+    out["streaming"] = runtimeIsStreaming();
+    out["blackout"] = runtimeIsBlackedOut();
+    out["maxMilliamps"] = runtimeConfigPtr->maxMilliamps;
+    out["zoneBrightness"] = runtimeGetBrightnessZ(zoneId);
+    out["affectedOutputCount"] = affectedCount;
+    out["affectedOutputScope"] = "selected-zones";
+    JsonArray affected = out["affectedOutputs"].to<JsonArray>();
+    for (uint8_t i = 0; i < affectedCount; i++)
+      affected.add(runtimeAffectedOutputId(
+          zoneId, false, ProvisioningOutputScope::SelectedZones, i));
+    String body;
+    serializeJson(out, body);
+    server.send(200, "application/json", body);
+    return;
+  }
   if (hasControlField(doc, "playlist")) {
     handlePlaylistControl(doc);
     return;
@@ -2731,6 +2793,16 @@ void handlePatterns() {
   }
   doc["currentIndex"] = currentPatternIndex;
   doc["currentId"] = currentPatternId;
+  doc["startupPatternId"] = cfg.startupLookId;
+  JsonObject playlist = doc["playlist"].to<JsonObject>();
+  playlist["enabled"] = cfg.playlist.enabled;
+  playlist["fadeMs"] = cfg.playlist.fadeMs;
+  JsonArray playlistEntries = playlist["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < cfg.playlist.entryCount; i++) {
+    JsonObject entry = playlistEntries.add<JsonObject>();
+    entry["patternId"] = cfg.playlist.entries[i].patternId;
+    entry["dwellSeconds"] = cfg.playlist.entries[i].dwellSeconds;
+  }
   JsonArray arr = doc["patterns"].to<JsonArray>();
   for (uint8_t i = 0; i < cfg.lookCount; i++) {
     JsonObject p = arr.add<JsonObject>();
@@ -2738,6 +2810,15 @@ void handlePatterns() {
     p["label"] = cfg.looks[i].label;
     p["mode"] = cfg.looks[i].mode;
     p["runtimePatternId"] = cfg.looks[i].preset.length() ? cfg.looks[i].preset : cfg.looks[i].id;
+    p["preset"] = cfg.looks[i].preset;
+    p["brightness"] = cfg.looks[i].brightness;
+    p["fadeOutMs"] = cfg.looks[i].fadeOutMs;
+    p["fadeInMs"] = cfg.looks[i].fadeInMs;
+    p["file"] = cfg.looks[i].file;
+    p["fps"] = cfg.looks[i].fps;
+    p["loop"] = cfg.looks[i].loop;
+    p["sequenceBytes"] = cfg.looks[i].sequenceBytes;
+    p["sequenceSha256"] = cfg.looks[i].sequenceSha256;
     if (cfg.looks[i].hasNativeRecipe) {
       lightweaver::NativeRecipe readback = cfg.looks[i].nativeRecipe;
       // v1 phases were mapped into logical framebuffer order at config load.
@@ -2769,6 +2850,17 @@ void handlePatterns() {
       z["id"] = cfg.looks[i].zones[zoneIndex].id;
       z["label"] = cfg.looks[i].zones[zoneIndex].label;
       z["patternId"] = cfg.looks[i].zones[zoneIndex].patternId;
+      z["brightness"] = cfg.looks[i].zones[zoneIndex].brightness;
+      z["speed"] = cfg.looks[i].zones[zoneIndex].speed;
+      z["hueShift"] = cfg.looks[i].zones[zoneIndex].hueShift;
+      z["customHue"] = cfg.looks[i].zones[zoneIndex].customHue;
+      z["customSaturation"] = cfg.looks[i].zones[zoneIndex].customSaturation;
+      z["customBreathe"] = cfg.looks[i].zones[zoneIndex].customBreathe;
+      z["breatheLowerPct"] = cfg.looks[i].zones[zoneIndex].breatheLowerPct;
+      z["breatheUpperPct"] = cfg.looks[i].zones[zoneIndex].breatheUpperPct;
+      z["breatheCycleSeconds"] = cfg.looks[i].zones[zoneIndex].breatheCycleSeconds;
+      z["customDrift"] = cfg.looks[i].zones[zoneIndex].customDrift;
+      z["blackout"] = cfg.looks[i].zones[zoneIndex].blackout;
     }
   }
   String out;

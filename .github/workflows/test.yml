@@ -249,6 +249,9 @@ jobs:
           npm run build:card --prefix lightweaver
           pio run -d firmware/lightweaver-controller -e esp32-s3-n16r8
           pio test -d firmware/lightweaver-controller -e native
+          pio test -d firmware/lightweaver-controller -c firmware/lightweaver-controller/test/platformio-native-arm-test.ini -e native_arm
+          pio test -d firmware/lightweaver-controller -c firmware/lightweaver-controller/test/platformio-live-look-test.ini -e native_live_look
+          pio test -d firmware/lightweaver-controller -c firmware/lightweaver-controller/test/platformio-playlist-test.ini -e native_playlist
           node firmware/lightweaver-controller/tests/color-journey-samples.mjs
           node firmware/lightweaver-controller/tests/saved-network-storage-native.mjs
           node firmware/lightweaver-controller/tests/usb-wifi-provisioning.mjs

@@ -42,8 +42,9 @@ test('measured GPIO geometry and distinct looks reach the final card package', (
     projectRevision: config.projectRevision, projectFingerprint: config.projectFingerprint,
     provisionalSetup: false, outputs: structuredClone(config.led.outputs) };
   const zones = { zones: structuredClone(config.zones) };
-  const startup = config.looks.find(look => look.id === config.startupPatternId);
-  const patterns = { currentId: config.startupPatternId, patterns: [structuredClone(startup)] };
+  const patterns = { currentId: config.startupPatternId, startupPatternId: config.startupPatternId,
+    playlist: structuredClone(config.playlist || { enabled: false, fadeMs: 0, entries: [] }),
+    patterns: structuredClone(config.looks) };
   assert.equal(requireBenchInstallReadback(config, status, zones, 'card', patterns,
     { state: 'known-good', hasCandidate: false, activationId: '', cardId: 'card' }), true);
 });
