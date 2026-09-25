@@ -37,7 +37,22 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
-### 2026-09-25 Complete GPIO integration plan (queued implementation)
+### 2026-09-25 GPIO integration implementation (done locally; acceptance needs-eyes)
+
+Committed `b53df14d` integrates guided Layout sections, exact geometry and saved
+reference migration, measured-only Bench patterns/restore/install, native arming
+and installation-bound remembered playback. Tooling foundation: `7084e8b2`.
+Three Sol workers owned App, Bench and firmware; Luna inventoried acceptance;
+manager integrated and verified. Checkpoint: 2746/2746 units, production build,
+18/18 integrated Chromium cases and 24/24 Bench cases (38 distinct). Firmware
+compiled; native arm 3/3, live persistence 7/7 and eight consumer contracts passed.
+[Evidence and remaining matrix](docs/plans/2026-09-25-gpio-integration-evidence.md).
+No push, signing, flash, deployment or Prove run. Physical outputs, live bridge,
+offline restart and novice use remain unobserved. Next: preserving firmware
+release/Bench acceptance under their authorizations; do not factory-flash a
+configured card. Existing workspace preview on 4173 retained; test server closed.
+
+### 2026-09-25 Complete GPIO integration plan (implementation recorded above)
 
 Adrian requested a comprehensive plan for all affected integrations and agent
 ownership. Plan: [Complete GPIO pattern integration](docs/plans/2026-09-25-gpio-pattern-integration-plan.md).

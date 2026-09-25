@@ -2,7 +2,11 @@
 
 Date: 2026-09-25. Audited local source: `5deb1535`, branch
 `codex/multi-output-pattern-workflow`. Owner: primary manager/integrator.
-Status: **plan ready for implementation; current local feature is not release-ready**.
+Status: **local implementation checkpoint passed; hardware/release acceptance remains**.
+Adrian authorized proceeding with implementation. See the
+[implementation evidence](2026-09-25-gpio-integration-evidence.md) for verified
+results and the workboard for current ownership. Release and physical gates remain
+separate.
 
 This plan covers the complete software path for giving connected GPIO strips
 the same or different patterns, starting in Bench Discovery or an existing
@@ -497,7 +501,8 @@ new Art-Net/recording infrastructure, or arbitrary continuous phase-synchronized
 effects across outputs. Existing supported versions of these consumers must not
 regress, but expanding their product scope needs a demonstrated requirement.
 
-The immediate next build is **GP-01**, paired with Firmware C's arming diagnosis,
-and GP-03 in parallel after GP-00 fixtures. GP-09 takes the third slot when the
-native diagnosis hands back. Do not ship the current local Bench path before
-its restoration, rendering-handoff and confirmed-port scope blockers are fixed.
+The implementation batch is committed as `b53df14d`; its integrated checkpoint
+and focused browser journeys pass. See the linked evidence matrix for exact
+coverage and limitations. The next delivery boundary is observed Bench acceptance
+and the preserving firmware/public Studio release workflow under their respective
+authorizations. Do not equate local mocked-card proof with physical or live proof.
