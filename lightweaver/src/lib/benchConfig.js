@@ -244,6 +244,27 @@ export function buildBenchConfig(portRoles, {
     return { config: null, layout: [], skipped, totalPixels: 0, budget };
   }
   const snapshot = buildBenchProjectSnapshot({ ledType, colorOrder, outputs });
+  const zones = layout.map(({ pin, start: zoneStart, count }) => ({
+    id: layout.length === 1 ? BENCH_ZONE_ID : `bench-${pin}`,
+    label: layout.length === 1 ? BENCH_ZONE_LABEL : `GPIO ${pin}`,
+    patternId: BENCH_PATTERN_ID,
+    brightness: BENCH_LOOK_BRIGHTNESS,
+    ranges: [{ start: zoneStart, count }],
+  }));
+  const startupLook = layout.length === 1 ? {
+    id: BENCH_LOOK_ID,
+    label: BENCH_LOOK_LABEL,
+    mode: 'preset',
+    preset: BENCH_PATTERN_ID,
+    brightness: BENCH_LOOK_BRIGHTNESS,
+  } : {
+    id: BENCH_LOOK_ID,
+    label: BENCH_LOOK_LABEL,
+    mode: 'combo',
+    preset: BENCH_PATTERN_ID,
+    brightness: BENCH_LOOK_BRIGHTNESS,
+    zones,
+  };
   const runtimePackage = makeCardRuntimePackage({
     projectId: BENCH_PROJECT_ID,
     projectName: BENCH_PROJECT_NAME,
@@ -271,28 +292,16 @@ export function buildBenchConfig(portRoles, {
     // and startupPatternId names it explicitly, so nothing here depends on a
     // Studio-side cycle list that never crosses the wire.
     patterns: [{ id: BENCH_PATTERN_ID, label: BENCH_PATTERN_LABEL, mode: 'preset' }],
-    looks: [{
-      id: BENCH_LOOK_ID,
-      label: BENCH_LOOK_LABEL,
-      mode: 'preset',
-      preset: BENCH_PATTERN_ID,
-      brightness: BENCH_LOOK_BRIGHTNESS,
-    }],
+    looks: [startupLook],
     startupPatternId: BENCH_LOOK_ID,
-    // One zone covering everything. The validity bar (LightweaverStorage.cpp:473)
+    // Every provisioned GPIO has an addressable zone. The validity bar (LightweaverStorage.cpp:473)
     // does not require zones, but renderProceduralFrame() bails on
     // `runtimeConfig.zoneCount == 0` (main.cpp:1424) — so a zone-less bench
     // config would come up Ready with a completely dark strip, which reads as
     // broken hardware at exactly the moment discovery is trying to prove the
     // opposite.
-    zones: [{
-      id: BENCH_ZONE_ID,
-      label: BENCH_ZONE_LABEL,
-      patternId: BENCH_PATTERN_ID,
-      brightness: BENCH_LOOK_BRIGHTNESS,
-      ranges: [{ start: 0, count: totalPixels }],
-    }],
-    syncZones: true,
+    zones,
+    syncZones: layout.length === 1,
   });
 
   // Same preparation as every real install (cardPushClient.js), so the bench

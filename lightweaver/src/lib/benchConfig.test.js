@@ -312,11 +312,16 @@ test('exactly one zone covers every provisioned pixel', () => {
     { maxPixels: 1024 },
   );
   const total = layout.reduce((sum, entry) => sum + entry.count, 0);
-  assert.equal(config.zones.length, 1);
-  assert.equal(config.zones[0].id, BENCH_ZONE_ID);
-  assert.equal(config.zones[0].patternId, 'warm-white');
-  assert.deepEqual(config.zones[0].ranges, [{ start: 0, count: total }]);
-  assert.equal(config.zones[0].brightness, BENCH_LOOK_BRIGHTNESS);
+  assert.equal(config.zones.length, 2);
+  assert.deepEqual(config.zones.map(zone => [zone.id, zone.patternId, zone.ranges]), [
+    [`bench-${SAFE_PINS[0]}`, 'warm-white', [{ start: 0, count: 120 }]],
+    [`bench-${SAFE_PINS[1]}`, 'warm-white', [{ start: 120, count: 60 }]],
+  ]);
+  assert.equal(config.zones.every(zone => zone.brightness === BENCH_LOOK_BRIGHTNESS), true);
+  assert.equal(config.zones.reduce((sum, zone) => sum + zone.ranges[0].count, 0), total);
+  const startup = config.looks.find(look => look.id === config.startupPatternId);
+  assert.equal(startup.mode, 'combo');
+  assert.deepEqual(startup.zones.map(zone => zone.id), config.zones.map(zone => zone.id));
 });
 
 test('the bench config fits the card storage budget at every port count', () => {

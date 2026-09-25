@@ -53,14 +53,14 @@ export function isTransientCardError(error) {
   return /abort|network|fetch|reach|timed out|timeout/i.test(String(error?.message || ''));
 }
 
-export async function waitForCardToAnswer(host, { attempts = 20 } = {}) {
+export async function waitForCardToAnswer(host, { attempts = 20, transport } = {}) {
   for (let index = 0; index < attempts; index += 1) {
     try {
-      if (looksLikeCard(await readCardStatusEnvelope({ host }))) {
+      if (looksLikeCard(await readCardStatusEnvelope({ host, transport }))) {
         // Two clean reads in a row: one can land in the gap between the radio
         // coming up and the card being ready to be written to.
         await sleep(SETTLE_MS);
-        if (looksLikeCard(await readCardStatusEnvelope({ host }))) return true;
+        if (looksLikeCard(await readCardStatusEnvelope({ host, transport }))) return true;
       }
     } catch { /* still starting */ }
     await sleep(POLL_MS);
@@ -70,10 +70,10 @@ export async function waitForCardToAnswer(host, { attempts = 20 } = {}) {
 
 // Poll until the card reports the length just sent. This is the proof: the card
 // saying, itself, what it is now driving.
-export async function waitForCardPixels(host, wanted, { attempts = 20 } = {}) {
+export async function waitForCardPixels(host, wanted, { attempts = 20, transport } = {}) {
   for (let index = 0; index < attempts; index += 1) {
     try {
-      const status = await readCardStatusEnvelope({ host });
+      const status = await readCardStatusEnvelope({ host, transport });
       if (Number(status?.led?.pixels ?? status?.pixels ?? 0) === wanted) return true;
     } catch { /* a rebooting card does not answer; keep waiting */ }
     await sleep(POLL_MS);
@@ -81,14 +81,14 @@ export async function waitForCardPixels(host, wanted, { attempts = 20 } = {}) {
   return false;
 }
 
-export async function clearDanglingWiringTransaction(host) {
+export async function clearDanglingWiringTransaction(host, { transport } = {}) {
   try {
-    const status = await getCardWiringStatus({ host });
+    const status = await getCardWiringStatus({ host, transport });
     const activationId = status?.activationId;
     if (!activationId) return false;
     if (status.state !== 'staged' && status.state !== 'testing') return false;
-    await rollbackCardWiringCandidate(activationId, { host });
-    await waitForCardToAnswer(host);
+    await rollbackCardWiringCandidate(activationId, { host, transport });
+    await waitForCardToAnswer(host, { transport });
     return true;
   } catch {
     // Nothing dangling, or the card cannot say. The write itself will tell us.
@@ -112,12 +112,13 @@ export function totalPixelsInPackage(runtimePackage) {
 export async function deploySetupToCard(runtimePackage, host, {
   onProgress = null,
   allowProjectChange = false,
+  transport,
 } = {}) {
   try { await reclaimCardFrameStreams(host); } catch { /* nothing was streaming */ }
-  await waitForCardToAnswer(host);
-  await clearDanglingWiringTransaction(host);
+  await waitForCardToAnswer(host, { transport });
+  await clearDanglingWiringTransaction(host, { transport });
 
-  const push = () => pushConfigToCard(runtimePackage, { host, allowLayoutChange: true, allowProjectChange });
+  const push = () => pushConfigToCard(runtimePackage, { host, transport, allowLayoutChange: true, allowProjectChange });
   let response;
   try {
     response = await push();
@@ -125,27 +126,27 @@ export async function deploySetupToCard(runtimePackage, host, {
     if (!isTransientCardError(error)) throw error;
     onProgress?.('The card was still starting up. Trying again…');
     await sleep(RETRY_MS);
-    await waitForCardToAnswer(host);
+    await waitForCardToAnswer(host, { transport });
     response = await push();
   }
 
   if (response?.state === 'staged' && response.activationId) {
     onProgress?.('Confirming the wiring with the card…');
     try {
-      await activateAndWaitForCardWiring(response.activationId, { host });
+      await activateAndWaitForCardWiring(response.activationId, { host, transport });
     } catch { /* the watcher's timeout is not the outcome; verified below */ }
     try {
-      await confirmCardWiringCandidate(response.activationId, { host });
+      await confirmCardWiringCandidate(response.activationId, { host, transport });
     } catch {
       // A confirm that never landed leaves the card holding the change open,
       // which blocks every later write. Try once more once it has settled.
-      await waitForCardToAnswer(host);
-      try { await confirmCardWiringCandidate(response.activationId, { host }); } catch { /* verified below */ }
+      await waitForCardToAnswer(host, { transport });
+      try { await confirmCardWiringCandidate(response.activationId, { host, transport }); } catch { /* verified below */ }
     }
   }
 
   const wanted = totalPixelsInPackage(runtimePackage);
-  if (wanted > 0 && !(await waitForCardPixels(host, wanted))) {
+  if (wanted > 0 && !(await waitForCardPixels(host, wanted, { transport }))) {
     throw new Error('the card did not come back with this setup');
   }
   return response;
@@ -182,12 +183,25 @@ export function buildPackageForPortRoles({
   standaloneController = {},
   portRoles = [],
   maxOutputs = 4,
+  measuredGeometry = null,
 } = {}, prepareImpl) {
   const outputs = outputsFromPortRoles(portRoles, maxOutputs);
+  if (measuredGeometry) {
+    const measuredOutputs = Array.isArray(measuredGeometry?.wiring?.outputs) ? measuredGeometry.wiring.outputs : [];
+    if (measuredOutputs.length !== outputs.length || outputs.some((output, index) => (
+      Number(measuredOutputs[index]?.pin) !== output.pin
+      || (measuredGeometry?.strips || []).find(strip => strip.id === measuredGeometry?.wiring?.runs?.find(run => run.id === measuredOutputs[index]?.runIds?.[0])?.source?.stripId)?.pixelCount !== output.pixels
+    ))) throw new Error('Measured GPIO geometry does not match the confirmed output counts.');
+  }
   return prepareImpl({
     projectId,
     projectName,
     projectRevision: Number.isSafeInteger(projectRevision) && projectRevision >= 0 ? projectRevision : 0,
     standaloneController: { ...standaloneController, outputs },
+    ...(measuredGeometry ? {
+      strips: measuredGeometry.strips,
+      patchBoard: measuredGeometry.patchBoard,
+      wiring: measuredGeometry.wiring,
+    } : {}),
   }, {});
 }

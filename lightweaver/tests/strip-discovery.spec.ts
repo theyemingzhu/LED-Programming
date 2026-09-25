@@ -479,6 +479,14 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 47 LEDs');
     await page.getByTestId('discovery-record-save').click();
     await expect(page.getByTestId('discovery-done')).toBeVisible();
+    await expect(page.getByTestId('discovery-pattern-audition')).toBeVisible();
+    await expect(page.getByTestId('discovery-pattern-whole')).toBeVisible();
+    await expect(page.getByTestId('discovery-pattern-16')).toBeVisible();
+    await page.screenshot({ path: '/tmp/lightweaver-bench-patterns-desktop.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: '/tmp/lightweaver-bench-patterns-phone.png', fullPage: true });
+    await expect(page.getByTestId('discovery-pattern-16')).toBeInViewport();
+    await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);
     await expect(page.getByTestId('discovery-open-patterns')).toHaveCount(0);
     await expect(page.getByTestId('discovery-continue-layout')).toBeVisible();
