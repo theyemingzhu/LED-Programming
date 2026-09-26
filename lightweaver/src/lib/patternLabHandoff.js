@@ -3,17 +3,21 @@ import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 import {
   MAX_PATTERN_LAB_LWSEQ_BYTES,
   canonicalPatternLabBakeJson,
+  hashPatternLabBakePhysicalOrder,
 } from './lwseqBake.js';
+import { patternLabLayerBaseSupport, validatePatternLabLayerTargets } from './patternLabLayers.js';
 import {
   PATTERN_LAB_COMPATIBILITY_CLASSIFICATIONS,
   PATTERN_LAB_COMPATIBILITY_VERSION,
 } from './patternLabCompatibility.js';
-import { normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { assertPatternLabJsonSafe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { compileColorJourneyNativeRecipe } from './colorJourneyNative.js';
 import { isBuiltInPattern } from './patternRegistry.js';
+import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
 import {
   LWSEQ_HEADER_BYTES,
+  assertLwseqOutputTopology,
   buildStandaloneProfile,
   normalizeStandaloneOutputs,
 } from './standaloneController.js';
@@ -106,6 +110,17 @@ function validBudget(value, storage = false) {
 
 export function lookFromRecipe(recipe) {
   const source = recipe.sourceLook;
+  if (recipe.base?.sectionMix) {
+    const mixed = recipe.base.sectionMix;
+    return normalizeSavedLooks([{
+      id: source?.id || slug(recipe.name),
+      label: boundedString(recipe.name, MAX_LABEL_LENGTH),
+      defaultLook: clone(mixed.defaultLook),
+      sectionLooks: Object.fromEntries(mixed.sections.map(section => [section.id, clone(section.look)])),
+      patternLabRecipe: recipe,
+      updatedAt: 0,
+    }])[0];
+  }
   const selectedSource = source?.sectionLooks?.[source?.selectedTargetId] || source?.defaultLook;
   const exactSource = selectedSource?.patternId === recipe.base.patternId ? selectedSource : null;
   const defaultLook = resolvePatternLabVisualLook(recipe);
@@ -150,6 +165,16 @@ function validPositiveInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
 }
 
 function normalizeManifest(value) {
+  if (record(value) && value.format === 'lightweaver-flow-lwseq-sidecar') {
+    if (value.version !== 1 || !record(value.scene)
+      || !SHA256_PATTERN.test(value.sceneSha256)
+      || !SHA256_PATTERN.test(value.layoutPhysicalOrderSha256)
+      || !SHA256_PATTERN.test(value.lwseqSha256)
+      || !validPositiveInteger(value.fps, 24)
+      || !validPositiveInteger(value.frameCount, 24 * 60 * 15)
+      || !validPositiveInteger(value.pixelCount, 4096)) return null;
+    return clone(value);
+  }
   if (!record(value)
     || value.format !== 'lightweaver-lwseq-sidecar'
     || value.version !== 2
@@ -170,9 +195,9 @@ function normalizeManifest(value) {
     || !SHA256_PATTERN.test(value.lwseqSha256)) {
     return null;
   }
-  let recipe;
   try {
-    recipe = normalizePatternLabRecipe(value.recipe);
+    assertPatternLabJsonSafe(value.recipe);
+    normalizePatternLabRecipe(value.recipe);
   } catch {
     return null;
   }
@@ -180,7 +205,9 @@ function normalizeManifest(value) {
     format: 'lightweaver-lwseq-sidecar',
     version: 2,
     hashAlgorithm: 'SHA-256',
-    recipe,
+    // Preserve the exact recorded bytes. Legacy editable migrations may add
+    // deterministic layer IDs, but the sidecar hash describes the old source.
+    recipe: clone(value.recipe),
     renderSettings: {
       timeSource: 'resolved-render-time',
       masterSpeed: 1,
@@ -249,6 +276,7 @@ function normalizeSequenceAsset(value) {
   const sidecarFile = boundedString(value.sidecarFile, 170);
   const byteLength = Number(value.byteLength);
   const expectedBytes = LWSEQ_HEADER_BYTES + manifest.pixelCount * manifest.frameCount * 3;
+  const isFlow = manifest.format === 'lightweaver-flow-lwseq-sidecar';
   const recipeId = boundedString(value.recipe?.id, MAX_ID_LENGTH);
   const recipeName = boundedString(value.recipe?.name, MAX_LABEL_LENGTH);
   const outputs = normalizeAssetOutputs(value.outputs, manifest.pixelCount);
@@ -258,10 +286,20 @@ function normalizeSequenceAsset(value) {
     || value.assetRef !== `sha256:${manifest.lwseqSha256}`
     || byteLength !== expectedBytes
     || byteLength > MAX_PATTERN_LAB_LWSEQ_BYTES
-    || !recipeId
-    || !recipeName
-    || value.recipe?.sha256 !== manifest.recipeSha256
+    || (!isFlow && (!recipeId || !recipeName || value.recipe?.sha256 !== manifest.recipeSha256))
     || !outputs) return null;
+  const source = isFlow
+    ? { kind: 'expression-scene', payload: clone(manifest.scene), sha256: manifest.sceneSha256 }
+    : { kind: 'pattern-lab', payload: clone(manifest.recipe), sha256: manifest.recipeSha256 };
+  // The immutable sidecar is the source of truth. A legacy/migrated object's
+  // optional source copy may be stale; rebuilding it avoids losing the source.
+  const media = value.media;
+  const mediaRef = value.mediaRef;
+  if (media !== undefined && (!record(media) || media.encoding !== 'base64'
+    || media.bytes !== byteLength || media.sha256 !== manifest.lwseqSha256
+    || !base64ToBytes(media.data) || base64ToBytes(media.data).byteLength !== byteLength)) return null;
+  const validMediaRef = record(mediaRef) && mediaRef.kind === 'indexeddb-sha256'
+    && mediaRef.sha256 === manifest.lwseqSha256 && mediaRef.byteLength === byteLength;
   const asset = {
     version: 1,
     id,
@@ -271,7 +309,10 @@ function normalizeSequenceAsset(value) {
     file,
     sidecarFile,
     byteLength,
-    recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 },
+    ...(!isFlow ? { recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 } } : {}),
+    source,
+    ...(media ? { media: clone(media) } : {}),
+    ...(validMediaRef ? { mediaRef: clone(mediaRef) } : {}),
     outputs,
     manifest,
   };
@@ -305,20 +346,21 @@ async function sha256Hex(bytes) {
   return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function assertHeader(bytes, manifest, outputCount) {
+function assertHeader(bytes, manifest, outputs) {
   if (bytes.byteLength !== LWSEQ_HEADER_BYTES + manifest.pixelCount * manifest.frameCount * 3) {
     throw new RangeError('LWSEQ byte length does not match its sidecar');
   }
   if (String.fromCharCode(...bytes.subarray(0, 6)) !== 'LWSEQ1') throw new TypeError('LWSEQ header is missing');
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (header.getUint16(8, true) !== 1
-    || header.getUint16(10, true) !== outputCount
+    || header.getUint16(10, true) !== outputs.length
     || header.getUint32(12, true) !== manifest.pixelCount
     || header.getUint32(16, true) !== manifest.frameCount
     || header.getUint16(20, true) !== manifest.fps
     || header.getUint16(22, true) !== 3) {
     throw new TypeError('LWSEQ header does not match its canonical bake metadata');
   }
+  assertLwseqOutputTopology(bytes, outputs);
 }
 
 function staleRecipeError() {
@@ -327,7 +369,7 @@ function staleRecipeError() {
   return error;
 }
 
-async function validateBakeResult(bakeResult, normalizedRecipe) {
+async function validateBakeResult(bakeResult, normalizedRecipe, bakeContext) {
   if (!record(bakeResult)) throw new TypeError('A complete Pattern Lab bake result is required');
   if (!(bakeResult.bytes instanceof Uint8Array)
     || !record(bakeResult.sidecar)
@@ -346,7 +388,7 @@ async function validateBakeResult(bakeResult, normalizedRecipe) {
   if (canonicalPatternLabBakeJson(manifest.recipe) !== expectedRecipeJson) throw staleRecipeError();
   const outputs = normalizeAssetOutputs(bakeResult.outputs, manifest.pixelCount);
   if (!outputs) throw new TypeError('The Pattern Lab bake outputs are incomplete');
-  assertHeader(bakeResult.bytes, manifest, outputs.length);
+  assertHeader(bakeResult.bytes, manifest, outputs);
   const expectedBytes = bakeResult.bytes.byteLength;
   if (bakeResult.estimate.totalBytes !== expectedBytes
     || bakeResult.estimate.headerBytes !== LWSEQ_HEADER_BYTES
@@ -374,6 +416,13 @@ async function validateBakeResult(bakeResult, normalizedRecipe) {
   ]);
   if (recipeSha256 !== manifest.recipeSha256) throw staleRecipeError();
   if (lwseqSha256 !== manifest.lwseqSha256) throw new TypeError('The Pattern Lab LWSEQ hash does not match its sidecar');
+  const physicalHash = await hashPatternLabBakePhysicalOrder({ ...bakeContext, recipe: normalizedRecipe,
+    fps: manifest.fps });
+  if (physicalHash !== manifest.layoutPhysicalOrderSha256) {
+    const error = new Error('The artwork, wiring, or render settings changed after this sequence was baked.');
+    error.code = 'bake-stale-layout';
+    throw error;
+  }
   return { bytes: bakeResult.bytes, manifest, outputs };
 }
 
@@ -388,7 +437,7 @@ function bytesToBase64(bytes) {
 
 function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
   const label = boundedString(normalizedRecipe.name, MAX_LABEL_LENGTH) || 'Pattern Lab sequence';
-  const file = `/sequences/${id}.lwseq`;
+  const file = `/sequences/${verified.manifest.lwseqSha256}.lwseq`;
   const sidecarFile = `${file}.json`;
   const asset = normalizeSequenceAsset({
     version: 1,
@@ -406,6 +455,8 @@ function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
     },
     outputs: verified.outputs,
     manifest: verified.manifest,
+    mediaRef: { kind: 'indexeddb-sha256', byteLength: verified.bytes.byteLength,
+      sha256: verified.manifest.lwseqSha256 },
   });
   if (!asset) throw new TypeError('The Pattern Lab sequence metadata is invalid');
   const profile = buildStandaloneProfile({
@@ -414,7 +465,8 @@ function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
     outputs: verified.outputs,
     controls: controller?.controls,
     led: controller?.led,
-    looks: [asset.look],
+    looks: [{ ...asset.look, bytes: verified.bytes.byteLength,
+      sha256: verified.manifest.lwseqSha256, brightness: 1 }],
     cardId: controller?.cardId,
   });
   profile.runtimeMode = 'sd-sequence';
@@ -460,6 +512,8 @@ export async function createPatternLabHandoff({
   compiledWiring = null,
   hidden = {},
   symSettings = null,
+  sectionTargets = null,
+  render = null,
 } = {}) {
   if (cancelled) return blocked('cancelled', 'Use in Project was canceled.');
   if (exportError) return blocked('export-failed', 'The Pattern Lab export did not finish.', exportError.message || exportError);
@@ -475,6 +529,18 @@ export async function createPatternLabHandoff({
   } catch (error) {
     return blocked('recipe-invalid', 'The Pattern Lab recipe is invalid.', error.message || error);
   }
+  if (normalized.layers.length) {
+    const support = patternLabLayerBaseSupport(normalized);
+    if (!support.supported) return blocked('layer-base-mix-unsupported', support.message);
+  }
+  if (normalized.layers.some(layer => layer.target?.kind === 'section' && Array.isArray(layer.target.stripIds))
+    && !Array.isArray(sectionTargets)) {
+    return blocked('section-target-unverified', 'Current section targets are required before saving or baking this layered design.');
+  }
+  const targetCheck = validatePatternLabLayerTargets(normalized, {
+    sectionTargets: sectionTargets || [], strips, compiledWiring,
+  });
+  if (!targetCheck.valid) return blocked('section-target-stale', targetCheck.message);
 
   // Patterns is the project's creative library; card compatibility is a
   // separate installation decision. A valid recipe that cannot run on the
@@ -558,17 +624,33 @@ export async function createPatternLabHandoff({
 
   if (compatibility.classification === 'bake-to-card') {
     const existing = normalizePatternLabSequenceAssets(controller?.sequenceAssets);
-    if (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) {
+    const sourceSequenceAssetId = String(normalized.sourceSequenceAssetId || '');
+    const replacing = !saveAsNew && sourceSequenceAssetId
+      ? existing.find(asset => asset.id === sourceSequenceAssetId) : null;
+    if (sourceSequenceAssetId && !saveAsNew && !replacing) {
+      return blocked('sequence-source-missing', 'The sequence being updated is no longer in this project. Reopen it or save as new.');
+    }
+    if (replacing && replacing.manifest.lwseqSha256 !== normalized.sourceSequenceAssetSha256) {
+      return blocked('sequence-source-changed', 'This recording changed after it was opened. Reopen it or save as new.');
+    }
+    if (!replacing && existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) {
       return blocked('sequence-capacity', `The project already has the maximum of ${MAX_PATTERN_LAB_SEQUENCE_ASSETS} sequence assets.`);
     }
     if (!bakeResult) return blocked('bake-required', 'Bake the complete sequence before adding it to the project.');
     try {
-      const verified = await validateBakeResult(bakeResult, normalized);
-      const id = uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));
-      return makeSequenceResult({ normalizedRecipe: normalized, verified, controller, id });
+      const verified = await validateBakeResult(bakeResult, normalized, {
+        strips, groups, wiring, compiledWiring, hidden, sectionTargets,
+        render: render || { symSettings }, audioLanes: normalized.offlineAudio,
+      });
+      const id = replacing?.id || uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));
+      const result = makeSequenceResult({ normalizedRecipe: normalized, verified, controller, id });
+      return replacing ? { ...result, replaceSequenceAssetId: id } : result;
     } catch (error) {
       if (error?.code === 'bake-stale-recipe') {
         return blocked('bake-stale-recipe', 'Bake this exact recipe again before adding it to the project.');
+      }
+      if (error?.code === 'bake-stale-layout') {
+        return blocked('bake-stale-layout', 'The artwork, wiring, or render settings changed. Bake this sequence again.');
       }
       return blocked('bake-invalid', 'The baked sequence result is incomplete or invalid.', error.message || error);
     }
@@ -632,6 +714,7 @@ async function validSequenceResult(result) {
     if (!bytes
       || bytes.byteLength !== asset.byteLength
       || await sha256Hex(bytes) !== asset.manifest.lwseqSha256) return null;
+    assertHeader(bytes, asset.manifest, asset.outputs);
     return asset;
   } catch {
     return null;
@@ -657,13 +740,19 @@ export async function applyPatternLabHandoff(controller = {}, result = {}) {
   }
   if (result.kind === 'sequence') {
     const existing = normalizePatternLabSequenceAssets(source.sequenceAssets);
-    if (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) return controller;
     const asset = await validSequenceResult(result);
-    if (!asset || existing.some(item => item.id === asset.id)) return controller;
+    if (!asset) return controller;
+    const replacing = typeof result.replaceSequenceAssetId === 'string'
+      && result.replaceSequenceAssetId === asset.id
+      && existing.some(item => item.id === asset.id);
+    if (!replacing && (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS
+      || existing.some(item => item.id === asset.id))) return controller;
+    const bytes = base64ToBytes(result.package.files[asset.file].data);
+    const mediaRef = await storeRecordedMedia(bytes, asset.manifest.lwseqSha256);
     return {
       ...source,
       activeSequenceAssetId: asset.id,
-      sequenceAssets: [asset, ...existing],
+      sequenceAssets: [{ ...asset, mediaRef }, ...existing.filter(item => item.id !== asset.id)],
     };
   }
   return controller;

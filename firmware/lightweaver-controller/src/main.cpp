@@ -15,6 +15,7 @@
 #include "LightweaverFirmwareBootHealth.h"
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverOutputPolicy.h"
+#include "LightweaverNativeArmPolicy.h"
 #include "LightweaverRestartPolicy.h"
 #include "LightweaverSequenceActivationPolicy.h"
 #include "LightweaverSequencePlayback.h"
@@ -148,6 +149,7 @@ uint32_t ledMaxMilliamps = LW_DEFAULT_MAX_MILLIAMPS;
 // 1=GRB, 2=BRG, 3=BGR, 4=RBG, 5=GBR).
 uint8_t ledColorOrderCode = 1;
 float fadeScale = 1.0f;
+uint16_t provisionalNativeArmedZones = 0;
 uint8_t lastRequestedOutputBrightnessByte = 0;
 uint8_t lastOutputBrightnessByte = 0;
 bool outputPowerLimited = false;
@@ -358,7 +360,7 @@ void transmitPhysicalLeds(uint8_t brightnessByte, OutputSourceClass sourceClass)
 void clearPhysicalLeds();
 void recordPhysicalShow();
 void updateOutputTelemetry(uint32_t now);
-void copyLogicalToPhysicalLeds();
+void copyLogicalToPhysicalLeds(OutputSourceClass sourceClass);
 bool isValidLedColorOrder(const String& order);
 uint8_t computeColorOrderCode(const String& order);
 void fadeTo(float target, uint16_t durationMs);
@@ -493,7 +495,8 @@ void setup() {
     }
     // Overlay any persisted live tweaks on top of the startup look's own
     // defaults, before the first visible fade-in — see restoreLiveLookIfMatching().
-    resumedLiveLookFlag = restoreLiveLookIfMatching();
+    resumedLiveLookFlag = liveLookMayRestore(loadResult.bootedCandidate) &&
+        restoreLiveLookIfMatching();
     if (runtimeConfig.provisionalProject && !loadResult.bootedCandidate) {
       // A provisional (Find-my-strips bench) setup must not silently relight
       // the whole strip on an unattended boot. fadeScale stays 0: the internal
@@ -750,6 +753,7 @@ void clampRuntimeOutputsToAllocation() {
 }
 
 void applyRuntimeConfig(const RuntimeConfig& config) {
+  provisionalNativeArmedZones = 0;
   pieceName = config.pieceName;
   runtimeMode = config.mode;
   startupLookId = config.startupLookId;
@@ -1336,6 +1340,8 @@ void handleControlEvent(ControlEventType event) {
   } else if (event == CONTROL_BLACKOUT) {
     if (blackedOut) {
       blackedOut = false;
+      if (runtimeConfig.provisionalProject)
+        provisionalNativeArmedZones = nativeArmAllZones(runtimeConfig.zoneCount);
       fadeTo(1.0f, looks[currentLookIndex].fadeInMs);
     } else {
       fadeTo(0.0f, looks[currentLookIndex].fadeOutMs);
@@ -1350,7 +1356,8 @@ void handleControlEvent(ControlEventType event) {
 void selectLook(int index) {
   if (lookCount == 0) return;
   uint8_t nextIndex = ((index % lookCount) + lookCount) % lookCount;
-  if (nextIndex == currentLookIndex && !blackedOut) return;
+  if (nextIndex == currentLookIndex && !blackedOut &&
+      (!runtimeConfig.provisionalProject || provisionalNativeArmedZones != 0)) return;
   PreparedSequence prepared;
   if (!prepareLookForSelection(looks[nextIndex], false, prepared)) return;
 
@@ -1365,6 +1372,8 @@ void selectLook(int index) {
   currentLookIndex = nextIndex;
   blackedOut = false;
   if (!startLook(currentLookIndex, &prepared)) return;
+  if (runtimeConfig.provisionalProject)
+    provisionalNativeArmedZones = nativeArmAllZones(runtimeConfig.zoneCount);
   fadeTo(1.0f, looks[currentLookIndex].fadeInMs);
   runtimeMarkLiveLookDirty();
 }
@@ -1439,6 +1448,11 @@ bool readSequenceMetadata(File& file, uint32_t& frameCount, uint16_t& fps, uint3
   frameCount = readLe32(header + 16);
   fps = readLe16(header + 20);
   frameBytes = pixelCount * channels;
+
+  if (!sequenceOutputTopologyMatches(header, sizeof(header), outputs, outputCount)) {
+    if (Serial) Serial.println("Sequence GPIO/count map is missing or changed; record again.");
+    return false;
+  }
 
   if (version != 1 || channels != 3 || pixelCount != totalPixels ||
       frameBytes > allocatedFrameBufferBytes || frameCount == 0 || fps == 0) return false;
@@ -1717,6 +1731,17 @@ static uint32_t advanceZoneAnimationClock(uint8_t zoneIndex, uint32_t now, float
 
 bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
   if (zone.rangeCount == 0) return false;
+  if (!nativeArmZoneVisible(runtimeConfig.provisionalProject,
+                            provisionalNativeArmedZones, zoneIndex)) {
+    bool cleared = false;
+    for (uint8_t r = 0; r < zone.rangeCount; r++) {
+      const PixelRange& range = zone.ranges[r];
+      if (range.count == 0 || range.start + range.count > totalPixels) continue;
+      fill_solid(leds + range.start, range.count, CRGB::Black);
+      cleared = true;
+    }
+    return cleared;
+  }
   const LookConfig* look = isSupportedCompiledPattern(zone.patternId) ? nullptr : findLookById(zone.patternId);
 
   PatternModifiers mods;
@@ -1842,6 +1867,22 @@ bool renderSequenceFrame(bool force) {
 
 void applySequenceFrameBufferToLeds() {
   applySequenceRgbFrame(leds, totalPixels, frameBuffer, sequenceFrameBytes);
+  if (!runtimeConfig.provisionalProject) return;
+  // A sequence bypasses renderZone(). Start dark, then copy only armed zone
+  // ranges; even pixels omitted from every zone stay dark on provisional setup.
+  fill_solid(leds, totalPixels, CRGB::Black);
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    if (!nativeArmZoneVisible(true, provisionalNativeArmedZones, i)) continue;
+    const ZoneConfig& zone = runtimeConfig.zones[i];
+    for (uint8_t r = 0; r < zone.rangeCount; r++) {
+      const PixelRange& range = zone.ranges[r];
+      if (range.count == 0 || range.start + range.count > totalPixels) continue;
+      for (uint16_t pixel = range.start; pixel < range.start + range.count; pixel++) {
+        leds[pixel] = CRGB(frameBuffer[pixel * 3], frameBuffer[pixel * 3 + 1],
+                           frameBuffer[pixel * 3 + 2]);
+      }
+    }
+  }
 }
 
 bool renderProceduralFrame(const String& preset) {
@@ -1939,7 +1980,7 @@ void showLeds(uint8_t brightnessByte) {
 }
 
 void pushPhysicalLeds(uint8_t brightnessByte, OutputSourceClass sourceClass) {
-  copyLogicalToPhysicalLeds();
+  copyLogicalToPhysicalLeds(sourceClass);
   transmitPhysicalLeds(brightnessByte, sourceClass);
 }
 
@@ -1985,26 +2026,20 @@ void updateOutputTelemetry(uint32_t now) {
   outputFpsWindowStartedAt = now;
 }
 
-void copyLogicalToPhysicalLeds() {
+void copyLogicalToPhysicalLeds(OutputSourceClass sourceClass) {
   // Resolve the color order once per frame, not once per pixel.
   ledColorOrderCode = computeColorOrderCode(ledColorOrder);
   if (!pixelBuffersReady()) return;
   uint16_t limit = totalPixels > allocatedPixels ? allocatedPixels : totalPixels;
-  for (uint8_t outputIndex = 0; outputIndex < outputCount; outputIndex++) {
-    const OutputConfig& output = outputs[outputIndex];
-    uint16_t segmentStart = output.start;
-    for (uint8_t segmentIndex = 0; segmentIndex < output.segmentCount; segmentIndex++) {
-      const OutputSegmentConfig& segment = output.segments[segmentIndex];
-      for (uint16_t offset = 0; offset < segment.count && segmentStart + offset < limit; offset++) {
-        const uint16_t logicalIndex = segmentStart + offset;
-        const uint16_t physicalIndex = segment.reversed
-          ? segmentStart + segment.count - 1 - offset
-          : logicalIndex;
-        physicalLeds[physicalIndex] = outputColorPipeline.transform(leds[logicalIndex], ledColorOrderCode);
-      }
-      segmentStart += segment.count;
-    }
-  }
+  const bool sequencePhysicalFrame = sourceClass == OUTPUT_LOCAL && sequenceOpen &&
+      lookCount && looks[currentLookIndex].mode == "sequence";
+  const bool studioPhysicalFrame = sourceClass == OUTPUT_EXTERNAL &&
+      (frameSourceActive() == FRAME_STUDIO_PHYSICAL ||
+       frameSourceActive() == FRAME_HTTP_PHYSICAL);
+  copyCanvasToPhysicalOutputs(physicalLeds, leds, limit, outputs, outputCount,
+      sequencePhysicalFrame || studioPhysicalFrame, [&](const CRGB& color) {
+        return outputColorPipeline.transform(color, ledColorOrderCode);
+      });
 }
 
 uint8_t computeColorOrderCode(const String& order) {
@@ -2519,15 +2554,16 @@ int16_t runtimeGetHueShift() { return manualHueShift; }
 bool runtimeIsBlackedOut() { return blackedOut; }
 
 bool runtimeWriteHttpFrame(uint16_t startPixel, const uint8_t* rgb,
-                           size_t pixelCount) {
+                           size_t pixelCount, bool physicalOrder) {
   if (!rgb || !pixelCount || !leds || startPixel >= allocatedPixels ||
       pixelCount > static_cast<size_t>(allocatedPixels - startPixel)) return false;
-  if (!frameSourceClaim(FRAME_HTTP)) return false;
+  const FrameSource source = physicalOrder ? FRAME_HTTP_PHYSICAL : FRAME_HTTP;
+  if (!frameSourceClaim(source)) return false;
   for (size_t index = 0; index < pixelCount; index++) {
     const size_t source = index * 3;
     leds[startPixel + index] = CRGB(rgb[source], rgb[source + 1], rgb[source + 2]);
   }
-  frameSourceMarkExternal(FRAME_HTTP);
+  frameSourceMarkExternal(source);
   return true;
 }
 
@@ -2661,6 +2697,10 @@ bool runtimeBeaconPortsAvailable(uint8_t* gpios, uint8_t capacity, uint8_t& coun
 }
 
 void runtimeApplySavedConfig() {
+  // A direct install cleared the old NVS resume record. Do not let a pending
+  // pre-install slider debounce write it back under the new config identity.
+  liveLookDirty = false;
+  resumedLiveLookFlag = false;
   // handleConfigPost and loop run on the same Arduino task, so the complete
   // mirror + lookup replacement finishes before another frame can render.
   applyRuntimeConfig(runtimeConfig);
@@ -2788,6 +2828,7 @@ String runtimeFirmwareInfo() {
   doc["safeMode"] = runtimeSafeModeActive();
   doc["configSchemaVersion"] = LW_CONFIG_SCHEMA_VERSION;
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
+  doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
@@ -2808,6 +2849,7 @@ String runtimeFirmwareInfo() {
   doc["wiringRevision"] = runtimeConfig.wiringRevision;
   doc["wiringDigest"] = runtimeConfig.wiringDigest;
   doc["ledType"] = runtimeConfig.ledType;
+  doc["led"]["brightnessLimit"] = runtimeConfig.brightnessLimit;
   doc["maxMilliamps"] = runtimeConfig.maxMilliamps;
   doc["estimatedFullWhiteMilliamps"] = lightweaverFullWhiteMilliamps(totalPixels);
   doc["limitedFullWhiteMilliamps"] =
@@ -2867,6 +2909,7 @@ String runtimeFirmwareInfo() {
   doc["controls"]["previous"] = controls.previous;
   doc["controls"]["next"] = controls.next;
   doc["controls"]["blackout"] = controls.blackout;
+  doc["controls"]["statusLed"] = controls.statusLed;
   doc["controls"]["previousPressed"] = pinIsPressed(controls.previous);
   doc["controls"]["nextPressed"] = pinIsPressed(controls.next);
   doc["controls"]["blackoutPressed"] = pinIsPressed(controls.blackout);
@@ -2881,6 +2924,7 @@ String runtimeFirmwareInfo() {
   counts["brighter"] = controlEventCounts[CONTROL_BRIGHTER];
   counts["dimmer"] = controlEventCounts[CONTROL_DIMMER];
   doc["capabilities"]["outputColor"] = 1;
+  doc["capabilities"]["physicalFrameOrder"]["version"] = 1;
   doc["outputColor"]["contract"] = 1;
   doc["outputColor"]["colorOrder"] = ledColorOrder;
   doc["outputColor"]["gammaEnabled"] = outputColorPipeline.gammaEnabled();
@@ -3181,11 +3225,31 @@ uint8_t runtimeGetDriftHueMax() { return driftHueMax; }
 // Builds a snapshot of the CURRENT live zone state — called only from
 // runtimeServiceLiveLookPersist() at flush time, never on the request that
 // marked the record dirty, so a burst of slider drags encodes once.
-void captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
+bool runtimeLiveLookIdsRepresentable() {
+  if (!lightweaver_live_look_detail::idFits(runtimeConfig.pieceId.c_str()) ||
+      (lookCount && !lightweaver_live_look_detail::idFits(
+          looks[currentLookIndex].id.c_str()))) return false;
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    const ZoneConfig& zone = runtimeConfig.zones[i];
+    if (!lightweaver_live_look_detail::idFits(zone.id.c_str()) ||
+        !lightweaver_live_look_detail::idFits(zone.patternId.c_str())) return false;
+  }
+  return true;
+}
+
+bool captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
+  if (!runtimeLiveLookIdsRepresentable()) return false;
   outRecord = LiveLookRecord();
   lightweaver_live_look_detail::copyBounded(
       outRecord.projectId, LW_LIVE_LOOK_ID_BYTES, runtimeConfig.pieceId.c_str());
   outRecord.projectRevision = runtimeConfig.projectRevision;
+  lightweaver_live_look_detail::copyBounded(
+      outRecord.configDigest, LW_LIVE_LOOK_CONFIG_DIGEST_BYTES,
+      runtimeConfig.configDigest.c_str());
+  const String confirmedInstallId = currentConfirmedInstallationId();
+  lightweaver_live_look_detail::copyBounded(
+      outRecord.confirmedInstallId, LW_LIVE_LOOK_INSTALL_ID_BYTES,
+      confirmedInstallId.c_str());
   lightweaver_live_look_detail::copyBounded(
       outRecord.currentLookId, LW_LIVE_LOOK_ID_BYTES,
       lookCount ? looks[currentLookIndex].id.c_str() : "");
@@ -3213,6 +3277,7 @@ void captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
     zr.blackout = z.blackout;
     outRecord.zoneCount++;
   }
+  return true;
 }
 
 void runtimeMarkLiveLookDirty() {
@@ -3226,10 +3291,19 @@ void runtimeMarkLiveLookDirty() {
 // owner stops touching it.
 void runtimeServiceLiveLookPersist() {
   if (!liveLookDirty) return;
+  if (!liveLookMayPersist(wiringProbationActive)) {
+    // Candidate controls are temporary. Keeping the prior record intact lets
+    // rollback resume the known-good project, even after a long probation.
+    liveLookDirty = false;
+    return;
+  }
   if (millis() - liveLookDirtyAtMs < LW_LIVE_LOOK_PERSIST_DEBOUNCE_MS) return;
   liveLookDirty = false;
   LiveLookRecord record;
-  captureLiveLookRecordFromRuntime(record);
+  if (!captureLiveLookRecordFromRuntime(record)) {
+    clearPersistedLiveLookRecord();
+    return;
+  }
   String message;
   persistLiveLookRecord(record, message);
 }
@@ -3250,10 +3324,13 @@ bool runtimeResumedLiveLook() { return resumedLiveLookFlag; }
 // field is still persisted (see captureLiveLookRecordFromRuntime) for a
 // future Studio-facing use, and for the project-match check below.
 bool restoreLiveLookIfMatching() {
+  if (!runtimeLiveLookIdsRepresentable()) return false;
   LiveLookRecord record;
   if (!loadPersistedLiveLookRecord(record)) return false;
   if (!liveLookRecordMatchesProject(
-          record, runtimeConfig.pieceId.c_str(), runtimeConfig.projectRevision)) {
+          record, runtimeConfig.pieceId.c_str(), runtimeConfig.projectRevision,
+          runtimeConfig.configDigest.c_str(),
+          currentConfirmedInstallationId().c_str())) {
     return false;
   }
   bool appliedAny = false;
@@ -3486,6 +3563,45 @@ void runtimeServicePlaylist() {
 bool runtimeIsStreaming() { return frameSourceIsStreaming(); }
 uint8_t runtimeFrameSource() { return uint8_t(frameSourceActive()); }
 void runtimeCancelStream() { frameSourceCancelStream(); }
+bool runtimeCanArmNativeZone(const String& zoneId, bool armed) {
+  if (!runtimeConfig.provisionalProject || zoneId.length() == 0) return false;
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    if (runtimeConfig.zones[i].id != zoneId) continue;
+    if (!armed) return true;
+    return lookCount > 0 && nativeArmSafeToEnable(
+        true, runtimeOutputReady(), runtimeConfig.maxMilliampsExplicit,
+        ledMaxMilliamps, looks[currentLookIndex].brightness,
+        runtimeConfig.zones[i].brightness);
+  }
+  return false;
+}
+void runtimeArmNativeZone(const String& zoneId, bool armed) {
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    if (runtimeConfig.zones[i].id != zoneId) continue;
+    provisionalNativeArmedZones = nativeArmSetZone(
+        provisionalNativeArmedZones, i, armed);
+    if (armed) {
+      blackedOut = false;
+      runtimeConfig.zones[i].blackout = false;
+    }
+    if (provisionalNativeArmedZones == 0) fadeScale = 0.0f;
+    else fadeScale = 1.0f;
+    return;
+  }
+}
+bool runtimeNativeZoneArmed(const String& zoneId) {
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    if (runtimeConfig.zones[i].id == zoneId)
+      return nativeArmZoneVisible(runtimeConfig.provisionalProject,
+                                  provisionalNativeArmedZones, i);
+  }
+  return false;
+}
+bool runtimeNativeRenderArmed() {
+  return !runtimeConfig.provisionalProject || provisionalNativeArmedZones != 0;
+}
+float runtimeNativeFadeScale() { return fadeScale; }
+uint16_t runtimeNativeArmedZoneMask() { return provisionalNativeArmedZones; }
 uint8_t runtimeOutputRequestedBrightnessByte() { return lastRequestedOutputBrightnessByte; }
 uint8_t runtimeOutputBrightnessByte() { return lastOutputBrightnessByte; }
 float runtimeOutputBrightnessScale() { return float(lastOutputBrightnessByte) / 255.0f; }
@@ -3673,6 +3789,8 @@ String runtimeRecoverLights(const String& patternId, float brightness, bool sync
   recoveryBrightnessBypassUntilMs = millis() + 5000;
   frameSourceCancelStream();
   blackedOut = false;
+  if (runtimeConfig.provisionalProject)
+    provisionalNativeArmedZones = nativeArmAllZones(runtimeConfig.zoneCount);
   fadeScale = 1.0f;
   manualBrightness = visibleBrightness;
   manualSpeed = 1.0f;

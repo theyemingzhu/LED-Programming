@@ -72,7 +72,7 @@ function makeTransport(clock) {
   const record = { sends, cancels: 0, closed: 0 };
   record.transport = {
     kind: 'fake',
-    async sendFrame(pixels, seg) { sends.push({ pixels, seg, at: clock.now() }); },
+    async sendFrame(pixels, seg, options) { sends.push({ pixels, seg, physicalOrder: options?.physicalOrder, at: clock.now() }); },
     async sendCancel() { record.cancels += 1; },
     close() { record.closed += 1; },
   };
@@ -212,6 +212,7 @@ assert.equal(clampFrameFps('nope'), 18, 'garbage fps falls back to the default')
   stream.push(FRAME(1));
   await clock.advance(60);
   assert.equal(record.sends[0].seg, 2, 'segment id rides along with each frame');
+  assert.equal(record.sends[0].physicalOrder, true, 'Studio frame pumps declare compiled physical order');
   await stream.stop();
   assert.equal(record.cancels, 1, 'stop sends exactly one cancelStream');
   assert.equal(record.closed, 1, 'stop closes the transport');
@@ -709,6 +710,56 @@ await withCardIdentityWindow(async () => {
   transport.close();
 });
 
+// Studio's compiled physical order is opt-in at the low-level transport and
+// every chunk is marked only after the card advertises support.
+await withCardIdentityWindow(async () => {
+  const { sockets, ChunkingWS } = makeChunkingWs();
+  const transport = createDirectFrameTransport('192.168.18.70', {
+    WebSocketImpl: ChunkingWS,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ cardId: 'lw-expected',
+      capabilities: { physicalFrameOrder: { version: 1 } } }) }),
+  });
+  await transport.sendFrame(LONG_FRAME, 2, { physicalOrder: true });
+  assert.deepEqual(reassembleChunks(sockets[0].sent, 2), LONG_FRAME);
+  assert.ok(sockets[0].sent.every(payload => JSON.parse(payload).lwPhysical === 1),
+    'every direct WS chunk declares compiled physical order');
+  transport.close();
+});
+await withCardIdentityWindow(async () => {
+  const { sockets, ChunkingWS } = makeChunkingWs();
+  const transport = createDirectFrameTransport('192.168.18.70', {
+    WebSocketImpl: ChunkingWS,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ cardId: 'lw-expected' }) }),
+  });
+  await assert.rejects(transport.sendFrame(['FF0000'], 0, { physicalOrder: true }),
+    error => error.reason === 'physical-frame-unsupported');
+  assert.equal(sockets.length, 0, 'unsupported card receives no physical frame socket');
+  transport.close();
+});
+await withCardIdentityWindow(async () => {
+  const sockets = [];
+  class PendingWS {
+    constructor() { this.readyState = 0; this.bufferedAmount = 0; this.sent = []; sockets.push(this); }
+    send(payload) { this.sent.push(payload); }
+    close() { this.readyState = 3; }
+  }
+  const transport = createDirectFrameTransport('192.168.18.70', {
+    WebSocketImpl: PendingWS,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ cardId: 'lw-expected' }) }),
+  });
+  const unmarked = transport.sendFrame(['112233']);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sockets.length, 1);
+  const marked = transport.sendFrame(['AABBCC'], undefined, { physicalOrder: true });
+  sockets[0].readyState = 1;
+  sockets[0].onopen();
+  await unmarked;
+  await assert.rejects(marked, error => error.reason === 'physical-frame-unsupported');
+  assert.deepEqual(sockets[0].sent.map(JSON.parse), [{ seg: [{ i: ['112233'] }] }],
+    'a marked frame joining an unmarked socket open still cannot bypass capability negotiation');
+  transport.close();
+});
+
 // A frame that already fits is still ONE message with no start key — the
 // pre-chunking bytes, unchanged, for every small strip in the field.
 await withCardIdentityWindow(async () => {
@@ -756,7 +807,8 @@ await withCardIdentityWindow(async () => {
   const { sockets, ChunkingWS } = makeChunkingWs();
   const transport = createDirectFrameTransport('192.168.18.70', {
     WebSocketImpl: ChunkingWS,
-    fetchImpl: async () => ({ ok: true, json: async () => ({ cardId: 'lw-expected' }) }),
+    fetchImpl: async () => ({ ok: true, json: async () => ({ cardId: 'lw-expected',
+      capabilities: { physicalFrameOrder: { version: 1 } } }) }),
   });
   const stream = createCardFrameStream({
     transport,
@@ -1060,6 +1112,25 @@ await assert.rejects(
     'revocation while chunk 0 is awaiting acknowledgement fences every remaining chunk');
   assert.equal(result.fenced, true);
   relayFrame = () => ({ ok: true, relayed: true });
+}
+
+// Physical frames need the v8 relay, which forwards their marker unchanged.
+{
+  relayVersion = 7;
+  await sendCardBridgeRequest('status', {}, { host: '192.168.18.70' });
+  const transport = createBridgeFrameTransport('192.168.18.70');
+  const before = posted.length;
+  await assert.rejects(transport.sendFrame(['FF0000'], 0, { physicalOrder: true }),
+    error => error.reason === 'physical-frame-unsupported');
+  assert.equal(posted.length, before, 'old relay receives no falsely physical frame');
+  relayVersion = 8;
+  await sendCardBridgeRequest('status', {}, { host: '192.168.18.70' });
+  const start = posted.length;
+  await transport.sendFrame(LONG_FRAME, 1, { physicalOrder: true });
+  const payloads = posted.slice(start).map(entry => entry.message.payload);
+  assert.equal(payloads.length, Math.ceil(LONG_FRAME.length / FRAME_CHUNK_MAX_PIXELS));
+  assert.ok(payloads.every(payload => payload.lwPhysical === 1),
+    'each awaited bridge chunk forwards the explicit physical-order marker');
 }
 
 // A failed chunk makes the whole frame undelivered.

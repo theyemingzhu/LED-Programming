@@ -55,7 +55,7 @@ function sliceFunction(source, signature) {
 const extracted = [
   sliceFunction(main, 'void clampRuntimeOutputsToAllocation()'),
   sliceFunction(main, 'uint8_t computeColorOrderCode(const String& order)'),
-  sliceFunction(main, 'void copyLogicalToPhysicalLeds()'),
+  sliceFunction(main, 'void copyLogicalToPhysicalLeds(OutputSourceClass sourceClass)'),
 ].join('\n\n');
 
 const temp = mkdtempSync(resolve(os.tmpdir(), 'lw-output-clamp-'));

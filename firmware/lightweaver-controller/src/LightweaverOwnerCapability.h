@@ -37,8 +37,9 @@ class LightweaverOwnerCapability {
                                   const LightweaverOwnerBinding& binding,
                                   const String& nextHead,
                                   uint32_t nowMs);
-  void revoke();
+  void revoke(bool invalidateLeases = true);
   bool active(uint32_t nowMs);
+  uint32_t leaseEpoch() const { return leaseEpoch_; }
   uint32_t expiresAtMs() const { return expiresAtMs_; }
 
  private:
@@ -46,6 +47,7 @@ class LightweaverOwnerCapability {
   String token_;
   uint32_t expiresAtMs_ = 0;
   bool issued_ = false;
+  uint32_t leaseEpoch_ = 0;
 };
 
 bool constantTimeTokenEqual(const String& left, const String& right);

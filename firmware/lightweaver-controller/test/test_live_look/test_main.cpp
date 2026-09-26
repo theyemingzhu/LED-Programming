@@ -21,7 +21,13 @@
 
 #include "LightweaverStorage.h"
 
+void setUp() {}
+void tearDown() {}
+
 namespace {
+
+constexpr const char* DIGEST_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+constexpr const char* DIGEST_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 LiveLookZoneRecord makeZone(const char* id, const char* patternId, float brightness = 0.7f) {
   LiveLookZoneRecord z;
@@ -128,6 +134,8 @@ void test_encode_decode_round_trip() {
   LiveLookRecord record;
   strncpy(record.projectId, "prj-gallery-04", sizeof(record.projectId) - 1);
   record.projectRevision = 7;
+  strncpy(record.configDigest, DIGEST_A, sizeof(record.configDigest) - 1);
+  strncpy(record.confirmedInstallId, "1111111122222222", sizeof(record.confirmedInstallId) - 1);
   strncpy(record.currentLookId, "ocean-breathe", sizeof(record.currentLookId) - 1);
   record.syncZones = false;
   record.playlistPlaying = true;
@@ -145,6 +153,8 @@ void test_encode_decode_round_trip() {
   TEST_ASSERT_TRUE(decodeLiveLookRecord(buffer, written, decoded));
   TEST_ASSERT_EQUAL_STRING("prj-gallery-04", decoded.projectId);
   TEST_ASSERT_EQUAL_UINT32(7, decoded.projectRevision);
+  TEST_ASSERT_EQUAL_STRING(DIGEST_A, decoded.configDigest);
+  TEST_ASSERT_EQUAL_STRING("1111111122222222", decoded.confirmedInstallId);
   TEST_ASSERT_EQUAL_STRING("ocean-breathe", decoded.currentLookId);
   TEST_ASSERT_FALSE(decoded.syncZones);
   TEST_ASSERT_TRUE(decoded.playlistPlaying);
@@ -190,6 +200,8 @@ void test_worst_case_record_fits_documented_budget() {
   longId[sizeof(longId) - 1] = '\0';
   strncpy(record.projectId, longId, sizeof(record.projectId) - 1);
   record.projectRevision = 4294967295U;  // UINT32_MAX — worst-case digit count
+  strncpy(record.configDigest, DIGEST_A, sizeof(record.configDigest) - 1);
+  strncpy(record.confirmedInstallId, "1111111122222222", sizeof(record.confirmedInstallId) - 1);
   strncpy(record.currentLookId, longId, sizeof(record.currentLookId) - 1);
   record.syncZones = true;
   record.playlistPlaying = true;
@@ -251,17 +263,73 @@ void test_project_match_and_mismatch() {
   LiveLookRecord record;
   strncpy(record.projectId, "prj-gallery-04", sizeof(record.projectId) - 1);
   record.projectRevision = 7;
+  strncpy(record.configDigest, DIGEST_A, sizeof(record.configDigest) - 1);
+  strncpy(record.confirmedInstallId, "1111111122222222", sizeof(record.confirmedInstallId) - 1);
 
-  TEST_ASSERT_TRUE(liveLookRecordMatchesProject(record, "prj-gallery-04", 7));
+  TEST_ASSERT_TRUE(liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, "1111111122222222"));
   TEST_ASSERT_FALSE_MESSAGE(
-      liveLookRecordMatchesProject(record, "prj-gallery-04", 8),
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 8, DIGEST_A, "1111111122222222"),
       "a bumped revision (a re-save of the same project) must discard the record");
   TEST_ASSERT_FALSE_MESSAGE(
-      liveLookRecordMatchesProject(record, "prj-different-project", 7),
+      liveLookRecordMatchesProject(record, "prj-different-project", 7, DIGEST_A, "1111111122222222"),
       "a different installed project must discard the record");
   TEST_ASSERT_FALSE_MESSAGE(
-      liveLookRecordMatchesProject(record, nullptr, 7),
+      liveLookRecordMatchesProject(record, nullptr, 7, DIGEST_A, "1111111122222222"),
       "a null project id must never match");
+  TEST_ASSERT_FALSE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_B, "1111111122222222"),
+      "a staged candidate with changed JSON/fingerprint cannot inherit old live patterns");
+  TEST_ASSERT_FALSE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, "3333333344444444"),
+      "an explicit candidate reinstall cannot inherit an old override");
+  TEST_ASSERT_TRUE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, ""),
+      "rollback to exact old known-good config keeps its remembered state after stage cleared confirmation ID");
+  record.configDigest[0] = '\0';
+  TEST_ASSERT_FALSE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, ""),
+      "legacy live records without exact config binding fail closed");
+}
+
+void test_candidate_probation_and_sd_precedence() {
+  LiveLookRecord record;
+  strncpy(record.projectId, "prj-gallery-04", sizeof(record.projectId) - 1);
+  record.projectRevision = 7;
+  strncpy(record.configDigest, DIGEST_A, sizeof(record.configDigest) - 1);
+  TEST_ASSERT_FALSE(liveLookMayRestore(true));
+  TEST_ASSERT_FALSE(liveLookMayPersist(true));
+  TEST_ASSERT_TRUE(liveLookMayRestore(false));
+  TEST_ASSERT_TRUE(liveLookMayPersist(false));
+  TEST_ASSERT_TRUE(liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, ""));
+  TEST_ASSERT_FALSE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, "3333333344444444"),
+      "first-ever identical candidate must not resume old record after confirmation");
+  TEST_ASSERT_FALSE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_B, ""),
+      "SD project selected at boot cannot inherit NVS override with same ID/revision");
+  TEST_ASSERT_TRUE_MESSAGE(
+      liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, ""),
+      "candidate rollback leaves the old known-good record available");
+}
+
+void test_malformed_or_truncated_binding_fails_closed() {
+  LiveLookRecord record;
+  strncpy(record.projectId, "prj-gallery-04", sizeof(record.projectId) - 1);
+  record.projectRevision = 7;
+  strncpy(record.configDigest, DIGEST_A, sizeof(record.configDigest) - 1);
+  TEST_ASSERT_FALSE(liveLookRecordMatchesProject(record, "prj-gallery-04", 7, "abc", ""));
+  record.configDigest[63] = '\0';
+  TEST_ASSERT_FALSE(liveLookRecordMatchesProject(record, "prj-gallery-04", 7, DIGEST_A, ""));
+  const char* oversized =
+      R"({"projectId":"prj-gallery-04","projectRevision":7,"configDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaX","zones":[]})";
+  LiveLookRecord decoded;
+  TEST_ASSERT_FALSE(decodeLiveLookRecord(oversized, strlen(oversized), decoded));
+  const char* collision =
+      R"({"projectId":"prj-gallery-04","projectRevision":7,"configDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","zones":[{"id":"abcdefghijklmnoX","patternId":"aurora"},{"id":"abcdefghijklmno","patternId":"warm-white"}]})";
+  TEST_ASSERT_TRUE(lightweaver_live_look_detail::idFits("abcdefghijklmno"));
+  TEST_ASSERT_FALSE(lightweaver_live_look_detail::idFits("abcdefghijklmnoX"));
+  TEST_ASSERT_FALSE_MESSAGE(decodeLiveLookRecord(collision, strlen(collision), decoded),
+      "truncating a long zone ID would apply its pattern to the distinct short zone");
 }
 
 int main(int argc, char** argv) {
@@ -273,5 +341,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_worst_case_record_fits_documented_budget);
   RUN_TEST(test_decode_rejects_malformed_and_id_less_zones);
   RUN_TEST(test_project_match_and_mismatch);
+  RUN_TEST(test_candidate_probation_and_sd_precedence);
+  RUN_TEST(test_malformed_or_truncated_binding_fails_closed);
   return UNITY_END();
 }

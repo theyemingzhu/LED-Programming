@@ -8,11 +8,25 @@ import {
   nextSplitNames,
   planStripSplitCounts,
   planStripSplitFromCounts,
+  planSectionsAtRunBoundaries,
   splitBoundaryFractions,
   splitFractionForCounts,
   splitStripPaths,
   splitStripPathsN,
 } from './stripSplit.js';
+
+test('existing GPIO runs form a lossless source partition before conversion', () => {
+  const strip = { id: 'art', pixelCount: 9 };
+  const wiring = { runs: [
+    { id: 'last', type: 'strip', source: { stripId: 'art', from: 4, to: 8 } },
+    { id: 'first', type: 'strip', source: { stripId: 'art', from: 0, to: 3 } },
+  ] };
+  assert.deepEqual(planSectionsAtRunBoundaries(strip, wiring), {
+    ok: true, runs: [wiring.runs[1], wiring.runs[0]], counts: [4, 5],
+  });
+  assert.match(planSectionsAtRunBoundaries(strip, { runs: [wiring.runs[1], { ...wiring.runs[0], source: { stripId: 'art', from: 3, to: 8 } }] }).error, /overlaps/);
+  assert.match(planSectionsAtRunBoundaries(strip, { ...wiring, locked: true }).error, /Unlock it in Test & Install/);
+});
 
 // pathSegment (used by both splitStripPaths and splitStripPathsN) needs a
 // real SVGPathElement.getTotalLength(), which only a browser provides —

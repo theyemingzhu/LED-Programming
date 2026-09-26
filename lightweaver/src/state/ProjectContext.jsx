@@ -55,6 +55,7 @@ import {
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { createProjectEnvelope } from '../lib/projectRepository.js';
 import { applyExpressionScenesUpdate } from '../lib/sceneExpressionProject.js';
+import { migrateRunSectionReferences } from '../lib/sectionRunConversion.js';
 
 const LS_AUTOSAVE_KEY = 'lw_autosave_v3';
 const LS_AUTOSAVE_BACKUP_KEY = 'lw_autosave_v3_backup';
@@ -177,6 +178,20 @@ function layoutRootReducer(state, action) {
     }
     case 'layout/setWiring':
       return { ...state, wiring: action.wiring };
+    case 'layout/convertRunSections': {
+      const result = action.result;
+      const snapshot = { ...makeLayoutSnapshot(state), strips: state.strips, wiring: state.wiring, runConversion: {
+        identityMap: result.identityMap, patchIdentityMap: result.patchIdentityMap,
+      } };
+      return {
+        ...state,
+        strips: result.strips, wiring: result.wiring, patchBoard: result.patchBoard,
+        layerGroups: result.layerGroups, sectionFamilies: result.sectionFamilies,
+        stripDensities: result.stripDensities, stripCountOverrides: result.stripCountOverrides,
+        hidden: result.hidden, layerOrder: result.layerOrder,
+        _history: { past: pushSnapshotStack(state._history.past, snapshot), future: [] },
+      };
+    }
     case 'layout/replaceGeometry': {
       const snapshot = { ...makeLayoutSnapshot(state), wiring: state.wiring };
       return {
@@ -204,7 +219,9 @@ function layoutRootReducer(state, action) {
       if (!state._history.past.length) return state;
       const past = state._history.past.slice();
       const snap = past.pop();
-      const future = pushSnapshotStack(state._history.future, { ...makeLayoutSnapshot(state), wiring: state.wiring });
+      const future = pushSnapshotStack(state._history.future, { ...makeLayoutSnapshot(state), wiring: state.wiring,
+        ...(snap.runConversion ? { runConversion: snap.runConversion } : {}),
+      });
       const applied = applyLayoutSnapshot(state, snap, rebuildSnapshotStrip);
       return { ...applied, wiring: snap.wiring || state.wiring, _history: { past, future } };
     }
@@ -212,7 +229,9 @@ function layoutRootReducer(state, action) {
       if (!state._history.future.length) return state;
       const future = state._history.future.slice();
       const snap = future.pop();
-      const past = pushSnapshotStack(state._history.past, { ...makeLayoutSnapshot(state), wiring: state.wiring });
+      const past = pushSnapshotStack(state._history.past, { ...makeLayoutSnapshot(state), wiring: state.wiring,
+        ...(snap.runConversion ? { runConversion: snap.runConversion } : {}),
+      });
       const applied = applyLayoutSnapshot(state, snap, rebuildSnapshotStrip);
       return { ...applied, wiring: snap.wiring || state.wiring, _history: { past, future } };
     }
@@ -439,8 +458,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
   // Undo history controls (single stack, shared by strip + patch-board edits).
   const pushLayoutHistory = useCallback(() => dispatchLayout({ type: 'layout/pushHistory' }), []);
-  const undoLayout        = useCallback(() => dispatchLayout({ type: 'layout/undo' }), []);
-  const redoLayout        = useCallback(() => dispatchLayout({ type: 'layout/redo' }), []);
+  const [layoutHistoryError, setLayoutHistoryError] = useState('');
   const layoutHistLen     = layout._history.past.length;
   const layoutFutLen      = layout._history.future.length;
 
@@ -533,6 +551,62 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   const [controllerProfiles, setControllerProfiles] = useState(defaults.devices.controllerProfiles || []);
   const [activeControllerId, setActiveControllerId] = useState(defaults.devices.activeControllerId || '');
   const [standaloneController, setStandaloneControllerRaw] = useState(defaults.devices.standaloneController || defaultStandaloneController());
+  const applyRunSectionConversion = useCallback(result => {
+    if (!result?.ok) return { ok: false, error: result?.error || 'The sections could not be separated.' };
+    setLayoutHistoryError('');
+    const migrated = migrateRunSectionReferences({
+      controller: standaloneController, expressionScenes,
+      patchIdentityMap: result.patchIdentityMap, identityMap: result.identityMap,
+    });
+    const sourceId = Object.keys(result.identityMap)[0];
+    const newIds = result.identityMap[sourceId];
+    const sourceDensity = layout.stripDensities?.[sourceId];
+    const nextDensities = { ...layout.stripDensities };
+    if (sourceDensity != null) newIds.forEach(id => { nextDensities[id] = sourceDensity; });
+    const nextOverrides = { ...layout.stripCountOverrides };
+    if (nextOverrides[sourceId]) newIds.forEach(id => { nextOverrides[id] = true; });
+    const nextHidden = { ...layout.hidden };
+    if (nextHidden[sourceId]) newIds.forEach(id => { nextHidden[id] = true; });
+    const nextOrder = layout.layerOrder.flatMap(item => item.type === 'strip' && item.id === sourceId
+      ? newIds.map(id => ({ ...item, id })) : [item]);
+    dispatchLayout({ type: 'layout/convertRunSections', result: {
+      ...result, stripDensities: nextDensities, stripCountOverrides: nextOverrides,
+      hidden: nextHidden, layerOrder: nextOrder,
+    } });
+    setStandaloneControllerRaw(migrated.controller);
+    setExpressionScenesRaw(migrated.expressionScenes);
+    return { ok: true, identityMap: result.identityMap, patchIdentityMap: result.patchIdentityMap };
+  }, [layout, standaloneController, expressionScenes]);
+  const undoLayout = useCallback(() => {
+    const migration = layout._history.past.at(-1)?.runConversion;
+    if (migration) {
+      try {
+        const refs = migrateRunSectionReferences({
+          controller: standaloneController, expressionScenes,
+          ...migration, reverse: true,
+        });
+        setStandaloneControllerRaw(refs.controller);
+        setExpressionScenesRaw(refs.expressionScenes);
+      } catch (error) {
+        setLayoutHistoryError(error.message);
+        return { ok: false, error: error.message };
+      }
+    }
+    setLayoutHistoryError('');
+    dispatchLayout({ type: 'layout/undo' });
+    return { ok: true };
+  }, [layout, standaloneController, expressionScenes]);
+  const redoLayout = useCallback(() => {
+    const migration = layout._history.future.at(-1)?.runConversion;
+    if (migration) {
+      const refs = migrateRunSectionReferences({ controller: standaloneController, expressionScenes, ...migration });
+      setStandaloneControllerRaw(refs.controller);
+      setExpressionScenesRaw(refs.expressionScenes);
+    }
+    setLayoutHistoryError('');
+    dispatchLayout({ type: 'layout/redo' });
+    return { ok: true };
+  }, [layout, standaloneController, expressionScenes]);
   const setStandaloneController = useCallback(value => {
     const next = typeof value === 'function' ? value(standaloneController) : value;
     const kind = standaloneControllerPhysicalChangeKind(standaloneController, next);
@@ -1066,12 +1140,12 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       layoutLayerOrder,  setLayoutLayerOrder,
       patchBoard,        setPatchBoard,
       updatePatchBoard,
-      wiring, updateWiring, compiledWiring,
+      wiring, updateWiring, compiledWiring, applyRunSectionConversion,
       sectionTargets, deriveProjectSectionTargets,
       updateStripKaleidoscope,
       replaceLayoutGeometry,
       // Layout undo/redo (single shared snapshot stack)
-      pushLayoutHistory, undoLayout, redoLayout,
+      pushLayoutHistory, undoLayout, redoLayout, layoutHistoryError,
       layoutHistLen,     layoutFutLen,
       // Layout selection (reducer-owned; consumed from step 9 on)
       selection,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { generateKeyPairSync, webcrypto } from 'node:crypto';
+import { createPublicKey, generateKeyPairSync, webcrypto } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
@@ -362,7 +362,9 @@ test('fails closed when manifest, signature, or WebCrypto support is unavailable
 
 test('pins the same production public key in source and the release key file', async () => {
   const pem = await readFile(resolve(repoRoot, 'release/keys/lightweaver-release-public.pem'), 'utf8');
-  assert.equal(`${LIGHTWEAVER_RELEASE_PUBLIC_KEY_PEM.trim()}\n`, pem);
+  // PEM transport line endings do not change the key. Compare its exact DER.
+  const der = value => createPublicKey(value).export({ type: 'spki', format: 'der' });
+  assert.deepEqual(der(LIGHTWEAVER_RELEASE_PUBLIC_KEY_PEM), der(pem));
 });
 
 test('manifest builder creates a versioned immutable image and canonical manifest', async () => {

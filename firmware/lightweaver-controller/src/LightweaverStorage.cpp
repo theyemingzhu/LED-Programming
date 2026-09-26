@@ -288,6 +288,7 @@ void resetConfig(RuntimeConfig& config) {
   config.wiringRevision = 0;
   config.wiringDigest = "";
   config.startupLookId = "";
+  config.configDigest = "";
   config.ledType = "WS2812B";
   config.ledColorOrder = "";
   config.brightnessLimit = 0.0f;
@@ -1208,8 +1209,10 @@ bool validateRuntimeConfigJsonStrict(const String& json,
   }
 
   if (!loadJsonString(json, parsed, source, message)) return false;
-  return validateKaleidoscopeMappingsStrict(
-      doc, static_cast<uint16_t>(totalPixels), parsed, message);
+  if (!validateKaleidoscopeMappingsStrict(
+          doc, static_cast<uint16_t>(totalPixels), parsed, message)) return false;
+  parsed.configDigest = sha256Hex(json);
+  return true;
 }
 
 bool mountRuntimeSd(String& message) {
@@ -1629,6 +1632,7 @@ void applyDefaultRuntimeConfig(RuntimeConfig& config) {
   config.wiringRevision = 0;
   config.wiringDigest = "";
   config.startupLookId = "";
+  config.configDigest = "";
   config.ledType = "WS2812B";
   config.ledColorOrder = "";
   config.brightnessLimit = 0.0f;
@@ -2145,6 +2149,14 @@ void clearPersistedLiveLookRecord() {
   if (!prefs.begin(NVS_NAMESPACE, false)) return;
   if (prefs.isKey(NVS_LIVE_LOOK_KEY)) prefs.remove(NVS_LIVE_LOOK_KEY);
   prefs.end();
+}
+
+String currentConfirmedInstallationId() {
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) return String("");
+  String id = prefs.getString(NVS_CONFIRMED_ID_KEY, "");
+  prefs.end();
+  return id;
 }
 
 bool stageRuntimeConfigJson(const String& json, String& activationId, String& message) {

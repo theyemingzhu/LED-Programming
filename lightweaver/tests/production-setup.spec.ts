@@ -712,7 +712,7 @@ test('HTTPS ProductionScreen commissions a blank card through bridge, human ligh
     let acked = false;
     const stats = {
       apStatus: 0, stationStatusBeforeAck: 0, ack: 0, config: 0,
-      firmwareInfo: 0, wiringStatus: 0, frame: 0,
+      firmwareInfo: 0, wiringStatus: 0, frame: 0, physicalFrame: 0,
     };
     window.__LW_REAL_PRODUCTION_BRIDGE_STATS__ = stats;
 
@@ -720,6 +720,7 @@ test('HTTPS ProductionScreen commissions a blank card through bridge, human ligh
       app: 'Lightweaver', provisioningContractVersion: 1,
       cardId: expectedCardId, firmwareVersion: firmware.version, buildId: firmware.buildId,
       bootId,
+      capabilities: { physicalFrameOrder: { version: 1 } },
       runtimePhase: configured ? 'ready' : acked ? 'factory' : 'ready',
       knownGoodProject: Boolean(configured),
       commandReady: Boolean(configured), outputReady: Boolean(configured),
@@ -758,7 +759,7 @@ test('HTTPS ProductionScreen commissions a blank card through bridge, human ligh
       });
       window.dispatchEvent(event);
     };
-    const emitReady = () => emit({ app: 'LightweaverCardBridge', type: 'ready', version: 2, host: activeHost });
+    const emitReady = () => emit({ app: 'LightweaverCardBridge', type: 'ready', version: 8, host: activeHost });
     const fakeCardTab = {
       closed: false,
       focus() {},
@@ -786,12 +787,13 @@ test('HTTPS ProductionScreen commissions a blank card through bridge, human ligh
           response = wiringStatus();
         } else if (type === 'frame') {
           stats.frame += 1;
+          if (message.payload?.lwPhysical === 1) stats.physicalFrame += 1;
           response = { ok: true, wsOpen: true };
         } else if (type === 'control') {
           response = { ok: true, wsOpen: true };
         }
         queueMicrotask(() => {
-          emit({ app: 'LightweaverCardBridge', version: 2, id: message.id, ok: true, response });
+          emit({ app: 'LightweaverCardBridge', version: 8, id: message.id, ok: true, response });
         });
       },
       location: { set href(value) {
@@ -835,6 +837,7 @@ test('HTTPS ProductionScreen commissions a blank card through bridge, human ligh
   expect(result.stats.ack).toBe(1);
   expect(result.stats.config).toBe(1);
   expect(result.stats.frame).toBeGreaterThanOrEqual(1);
+  expect(result.stats.physicalFrame).toBe(result.stats.frame);
   expect(result.stats.firmwareInfo).toBeGreaterThanOrEqual(4);
   expect(result.stats.wiringStatus).toBeGreaterThanOrEqual(2);
   expect(result.pairedIdentity).toBe('lw-aabbccddeeff');

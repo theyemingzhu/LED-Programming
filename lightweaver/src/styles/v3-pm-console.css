@@ -210,6 +210,21 @@
   font-family: var(--font-mono);
 }
 .pm .chip.on .chip-sub { color: inherit; opacity: 0.75; }
+.pm .pm-bank-scope {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-mid);
+  border-bottom: 1px solid var(--border-hair);
+}
+.pm .pm-bank-scope strong { color: var(--text-hi); font-weight: 600; }
+.pm .chip-route {
+  font-size: 10px;
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+}
+.pm .pm-section-help { margin: 0 0 8px; font-size: 11.5px; color: var(--text-mid); }
 .pm .pm-cardholds { margin: 0 0 8px; font-size: 11.5px; color: var(--text-mid); }
 .pm .wordlink {
   background: none;

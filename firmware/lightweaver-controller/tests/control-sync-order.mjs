@@ -167,7 +167,11 @@ for (const setter of [
   'runtimeSetDriftRangeZ(',
   'runtimeCancelStream(',
 ]) {
-  const setterIndex = body.indexOf(setter);
+  // The dedicated armNative envelope is handled before the ordinary control
+  // transaction and intentionally cancels its stream after its own preflight.
+  // Check the ordinary branch here, where prepared-selection ordering applies.
+  const ordinaryControlStart = body.indexOf('if (hasControlField(doc, "playlist"))');
+  const setterIndex = body.indexOf(setter, ordinaryControlStart);
   assert.notEqual(setterIndex, -1, `control handler should contain ${setter}`);
   assert.ok(preflightIndex < setterIndex, `target preflight must happen before ${setter}`);
 }

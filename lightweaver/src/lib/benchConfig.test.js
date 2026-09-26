@@ -220,6 +220,28 @@ test('no bench output ever lands on a pin the shipped controls claim', () => {
   }
 });
 
+test('legacy zone upgrade retains observed chipset, color order, controls and dim current limit', () => {
+  const controls = {
+    encoder: { a: 4, b: 5, press: 0, alternatePress: 6,
+      rotateDirection: 'clockwise-dimmer', brightnessStep: 12 },
+    previous: 7, next: 8, blackout: 9, brightness: -1, statusLed: 2,
+  };
+  const { config, layout } = buildBenchConfig(stripRoles({ [SAFE_PINS[0]]: 31, [SAFE_PINS[1]]: 19 }), {
+    ledType: 'WS2815', colorOrder: 'RGB', controls, maxMilliamps: 1200,
+    brightnessLimit: 0.35, maxPixels: 1024,
+  });
+  assert.deepEqual(layout.map(entry => [entry.pin, entry.count]), [[SAFE_PINS[0], 31], [SAFE_PINS[1], 19]]);
+  assert.equal(config.led.type, 'WS2815');
+  assert.equal(config.led.colorOrder, 'RGB');
+  assert.equal(config.led.maxMilliamps, 1200);
+  assert.equal(config.led.brightnessLimit, 0.35);
+  assert.equal(config.controls.encoder.rotateDirection, controls.encoder.rotateDirection);
+  assert.equal(config.controls.encoder.brightnessStep, 12);
+  assert.equal(config.controls.statusLed, 2);
+  assert.throws(() => buildBenchConfig(stripRoles({ [SAFE_PINS[0]]: 31 }),
+    { maxMilliamps: 2001 }), /current limit/i);
+});
+
 test('outputs stop at the four RMT channels the silicon has', () => {
   const counts = Object.fromEntries(SAFE_PINS.slice(0, 6).map(pin => [pin, 16]));
   const { config, layout, skipped } = buildBenchConfig(stripRoles(counts), { maxPixels: 1024 });
@@ -312,11 +334,16 @@ test('exactly one zone covers every provisioned pixel', () => {
     { maxPixels: 1024 },
   );
   const total = layout.reduce((sum, entry) => sum + entry.count, 0);
-  assert.equal(config.zones.length, 1);
-  assert.equal(config.zones[0].id, BENCH_ZONE_ID);
-  assert.equal(config.zones[0].patternId, 'warm-white');
-  assert.deepEqual(config.zones[0].ranges, [{ start: 0, count: total }]);
-  assert.equal(config.zones[0].brightness, BENCH_LOOK_BRIGHTNESS);
+  assert.equal(config.zones.length, 2);
+  assert.deepEqual(config.zones.map(zone => [zone.id, zone.patternId, zone.ranges]), [
+    [`bench-${SAFE_PINS[0]}`, 'warm-white', [{ start: 0, count: 120 }]],
+    [`bench-${SAFE_PINS[1]}`, 'warm-white', [{ start: 120, count: 60 }]],
+  ]);
+  assert.equal(config.zones.every(zone => zone.brightness === BENCH_LOOK_BRIGHTNESS), true);
+  assert.equal(config.zones.reduce((sum, zone) => sum + zone.ranges[0].count, 0), total);
+  const startup = config.looks.find(look => look.id === config.startupPatternId);
+  assert.equal(startup.mode, 'combo');
+  assert.deepEqual(startup.zones.map(zone => zone.id), config.zones.map(zone => zone.id));
 });
 
 test('the bench config fits the card storage budget at every port count', () => {

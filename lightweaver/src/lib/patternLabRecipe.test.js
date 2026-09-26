@@ -69,6 +69,14 @@ test('rejects a fourth layer instead of silently changing the recipe', () => {
   );
 });
 
+test('repairs missing and duplicate legacy layer IDs deterministically', () => {
+  const old = { version: 2, id: 'old-stack', layers: [{ name: 'A' }, { id: 'same' }, { id: 'same' }] };
+  const once = normalizePatternLabRecipe(old);
+  assert.deepEqual(once.layers.map(layer => layer.id), ['layer-legacy-old-stack-0', 'same', 'layer-legacy-old-stack-2']);
+  assert.deepEqual(normalizePatternLabRecipe(once), once);
+  assert.equal(old.layers[0].id, undefined);
+});
+
 test('applies lower bounds, truncates palettes, and fills nested defaults', () => {
   const palette = Array.from({ length: 10 }, (_, i) => `#00000${i}`);
   const recipe = normalizePatternLabRecipe({ version: 1, id: 'minimums', name: 'Minimums', base: { patternId: 'ocean' }, palette, evolution: { durationSeconds: 2 } });
@@ -186,4 +194,19 @@ test('preserves a normalized color journey and linked source metadata', () => {
   assert.deepEqual(recipe.sourceLookBaseline, sourceLookBaseline);
   assert.notEqual(recipe.sourceLook, sourceLook);
   assert.deepEqual(normalizePatternLabRecipe(recipe), recipe);
+});
+
+test('imported mixed base requires finite speed and brightness without changing source looks', () => {
+  const recipe = createPatternLabRecipe({ id: 'mixed-import', base: {
+    kind: 'lightweaver-pattern', patternId: 'fire', params: {},
+    sectionMix: { version: 1, defaultLook: { patternId: 'fire', speed: 0.7, brightness: 0.35 },
+      sections: [{ id: 'petals', stripIds: ['strip-one'], look: { patternId: 'ocean', speed: 1.8, brightness: 0.9 } }] },
+  } });
+  assert.equal(recipe.base.sectionMix.defaultLook.brightness, 0.35);
+  assert.equal(recipe.base.sectionMix.sections[0].look.speed, 1.8);
+  assert.deepEqual(recipe.base.sectionMix.sections[0].params, {});
+  assert.deepEqual(normalizePatternLabRecipe(recipe), recipe);
+  assert.throws(() => normalizePatternLabRecipe({ ...recipe, base: { ...recipe.base,
+    sectionMix: { ...recipe.base.sectionMix, sections: [{ ...recipe.base.sectionMix.sections[0],
+      look: { patternId: 'ocean' } }] } } }), /finite speed and brightness/);
 });

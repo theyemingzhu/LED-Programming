@@ -160,6 +160,29 @@ export function discoveryProjectParts(session, channelProof, geometry = {}) {
   };
 }
 
+// Audition choices become project playback only after physical counts have
+// been confirmed. Keep the measured geometry and output pins untouched.
+export function withDiscoveryPatternChoices(parts, patternsByPin = {}) {
+  const knownPins = new Set((parts?.outputs || []).map(output => Number(output.pin)));
+  const chosenByStrip = new Map((parts?.outputs || []).map(output => [
+    output.id,
+    String(patternsByPin[output.pin] || ''),
+  ]));
+  return {
+    ...parts,
+    patchBoard: {
+      ...parts.patchBoard,
+      patches: (parts.patchBoard?.patches || []).map(patch => {
+        const stripId = patch.source?.stripId;
+        const patternId = chosenByStrip.get(stripId);
+        return patternId ? { ...patch, playback: { ...patch.playback, patternId } } : patch;
+      }),
+    },
+    patternsByPin: Object.fromEntries(Object.entries(patternsByPin)
+      .filter(([pin, patternId]) => knownPins.has(Number(pin)) && typeof patternId === 'string' && patternId)),
+  };
+}
+
 /**
  * A project skeleton reconstructed from a live card's /api/status response,
  * used when a provisioned card is found but no matching project file exists

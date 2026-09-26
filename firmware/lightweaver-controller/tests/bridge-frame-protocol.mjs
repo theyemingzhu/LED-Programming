@@ -1,5 +1,5 @@
-// Locks the versioned card page bridge (currently v7; the open-studio relay
-// shipped after the v6 explicit passive-utility release):
+// Locks the versioned card page bridge (currently v8; physical Studio frames
+// are marked so GPIO direction mapping is applied exactly once):
 //
 // 1. VERSIONING — the card→Studio 'ready' postMessages and every relay reply
 //    carry `version:N` spliced from the single C++ constant LW_BRIDGE_VERSION
@@ -67,7 +67,9 @@ const web = readFileSync(resolve(here, '../src/LightweaverWeb.cpp'), 'utf8');
 const bridgeVersionMatch = web.match(/constexpr int LW_BRIDGE_VERSION = (\d+);/);
 assert.ok(bridgeVersionMatch, 'LightweaverWeb.cpp must pin the bridge protocol version constant');
 const bridgeVersion = Number(bridgeVersionMatch[1]);
-assert.equal(bridgeVersion, 7, 'the bridge protocol version should be 7 (adds the open-studio relay, F23b)');
+assert.equal(bridgeVersion, 8, 'the bridge protocol version should be 8 (physical Studio frame relay)');
+assert.match(web, /if\(p\.lwPhysical===1\)frame\.lwPhysical=1/,
+  'the card-page bridge must preserve the Studio physical-frame marker');
 
 // Every relay type Studio can send must actually exist in the card's router,
 // or the request round-trips into an 'invalid-payload' throw the owner reads as
@@ -268,8 +270,8 @@ assert.match(
 );
 assert.match(
   script,
-  /JSON\.stringify\(\{seg:\[s\]\}\)/,
-  'frames are forwarded as the WLED JSON {seg:[{i:pixels}]} shape (text, never binary)',
+  /const frame=\{seg:\[s\]\};[\s\S]*JSON\.stringify\(frame\)/,
+  'frames are forwarded as WLED JSON text with an optional physical-order marker',
 );
 assert.match(
   script,
@@ -340,7 +342,7 @@ assert.match(
 );
 assert.match(
   script,
-  /try\{lwFrameWs\.send\(JSON\.stringify\(\{seg:\[s\]\}\)\);return lwFrameLastResult=\{relayed:true,reason:''\}\}catch\(_\)\{lwFrameNext=p;lwFrameLastResult=\{relayed:false,reason:'relay-send-failed'\}/,
+  /try\{lwFrameWs\.send\(JSON\.stringify\(frame\)\);return lwFrameLastResult=\{relayed:true,reason:''\}\}catch\(_\)\{lwFrameNext=p;lwFrameLastResult=\{relayed:false,reason:'relay-send-failed'\}/,
   'lwFrameFlush must convert a WebSocket.send throw into an explicit relay-send-failed result',
 );
 assert.match(

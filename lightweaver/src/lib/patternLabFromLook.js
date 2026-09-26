@@ -2,9 +2,29 @@ import { CORE_CARD_PATTERN_BANK } from './cardPatternBank.js';
 import { recipeFromPattern } from './patternLabPatternAdapter.js';
 import { isBuiltInPattern } from './patternRegistry.js';
 import { normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { canonicalPatternLabBakeJson } from './lwseqBake.js';
+import { normalizePatternLabSequenceAssets } from './patternLabHandoff.js';
 import { cardColorToHex, normalizeCardVisualLook } from './cardVisualLook.js';
 
 const CORE_CARD_PATTERN_IDS = new Set(CORE_CARD_PATTERN_BANK.map(pattern => pattern.id));
+
+/** Reopen a recorded sequence for editing without treating it as a native look. */
+export async function recipeFromSequenceAsset(value) {
+  const [asset] = normalizePatternLabSequenceAssets([value]);
+  if (!asset) return null;
+  const recordedRecipe = asset.manifest.recipe;
+  const cryptoImpl = globalThis.crypto;
+  if (!cryptoImpl?.subtle?.digest) return null;
+  const bytes = new TextEncoder().encode(canonicalPatternLabBakeJson(recordedRecipe));
+  const digest = new Uint8Array(await cryptoImpl.subtle.digest('SHA-256', bytes));
+  const hash = [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  if (hash !== asset.manifest.recipeSha256) return null;
+  const recipe = normalizePatternLabRecipe(recordedRecipe);
+  return normalizePatternLabRecipe({ ...recipe,
+    sourceSequenceAssetId: asset.id,
+    sourceSequenceAssetSha256: asset.manifest.lwseqSha256,
+  });
+}
 
 /**
  * Inverse of lookFromRecipe for opening Pattern Lab on a saved look.
@@ -18,6 +38,13 @@ export function recipeFromLook(look = {}, context = {}) {
       const selectedTargetId = saved.selectedTargetId || linked.sourceLook?.selectedTargetId;
       const visual = saved.sectionLooks?.[selectedTargetId] || saved.defaultLook;
       const previous = linked.sourceLook?.sectionLooks?.[selectedTargetId] || linked.sourceLook?.defaultLook;
+      if (linked.base.sectionMix) {
+        return normalizePatternLabRecipe({ ...linked, name: saved.label || linked.name,
+          sourceLook: { ...linked.sourceLook, id: saved.id || '', label: saved.label || '',
+            defaultLook: saved.defaultLook, sectionLooks: saved.sectionLooks || {},
+            ...(selectedTargetId ? { selectedTargetId } : {}) },
+        });
+      }
       if (saved.projectOnly === true || linked.base.kind === 'color-journey' || !visual || visual.patternId === linked.base.patternId) {
         const colorChanged = previous && visual && (previous.customHue !== visual.customHue || previous.customSaturation !== visual.customSaturation);
         const palette = colorChanged ? linked.palette.map(() => cardColorToHex(visual.customHue, visual.customSaturation)) : linked.palette;
@@ -30,7 +57,12 @@ export function recipeFromLook(look = {}, context = {}) {
           ...(colorChanged ? { sourceLookBaseline: { ...linked.sourceLookBaseline, palette: structuredClone(palette) } } : {}),
         });
       }
-    } catch { /* old or invalid metadata: open the playable look */ }
+    } catch {
+      // A declared mixed source cannot be reconstructed as one native look:
+      // that would silently discard independently authored section colors.
+      if (saved.patternLabRecipe?.base?.sectionMix) return null;
+      /* old nonmixed metadata: open the playable look */
+    }
   }
   look = saved.sectionLooks?.[saved.selectedTargetId] || saved.defaultLook || saved;
   const patternId = String(look.patternId || '').trim();

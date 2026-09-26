@@ -12,7 +12,7 @@ import {
 } from '../shared/InspectorPrimitives.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
-import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
+import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planSectionsAtRunBoundaries, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
 import {
   STRIP_COLORS,
   DENSITY_OPTIONS,
@@ -59,6 +59,48 @@ function formatMetersValue(meters) {
 function stripMeters(svgLength, pxPerMm) {
   const scale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 3.7795;
   return svgLength / scale / 1000;
+}
+
+// Bound the miniature with sampled LEDs, then draw the actual path. Keeping
+// the path's separate moves intact avoids joining disjoint artwork by mistake.
+function StripMiniature({ strip }) {
+  const geometry = useMemo(() => {
+    const points = [];
+    if (strip.pathData) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', strip.pathData);
+      try {
+        const length = path.getTotalLength();
+        if (length > 0) for (let index = 0; index <= 64; index += 1) points.push(path.getPointAtLength(length * index / 64));
+      } catch { /* A malformed path can still show its sampled LED points. */ }
+    }
+    if (!points.length) {
+      for (const point of strip.pixels || []) {
+        if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) {
+          points.push({ x: point.x - (strip.x || 0), y: point.y - (strip.y || 0) });
+        }
+      }
+    }
+    if (!points.length) return null;
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    for (const point of points) {
+      minX = Math.min(minX, point.x); minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y);
+    }
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    const pad = Math.max(width, height) * 0.08;
+    return { viewBox: `${minX - pad} ${minY - pad} ${width + 2 * pad} ${height + 2 * pad}`, points };
+  }, [strip.pathData, strip.pixels]);
+  if (!geometry) return null;
+  return <svg className="la-section-miniature" viewBox={geometry.viewBox}
+              preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    {strip.pathData ? <path d={strip.pathData} fill="none"
+          stroke={strip.color || 'currentColor'} strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+      : <polyline points={geometry.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none"
+                  stroke={strip.color || 'currentColor'} strokeWidth="2" vectorEffect="non-scaling-stroke"/>}
+  </svg>;
 }
 
 // Compact glyphs for the "+ Add strip" shape tiles (icon leads, small label
@@ -124,6 +166,7 @@ export function DrawModePanel({
   onConnectCard,
   onOpenConnectionCenter,
   onStarterPreviewChange,
+  onChangePattern,
 }) {
   const {
     strips, layers, hidden, setHidden,
@@ -142,7 +185,7 @@ export function DrawModePanel({
     setTotalLedCount, setStripCountAndCalibrate,
     // strips
     updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
-    divideStripIntoSections, moveConnectedBoundary, addConnectedSplit,
+    divideStripIntoSections, separateExistingRuns, moveConnectedBoundary, addConnectedSplit,
     mergeConnectedSection, correctConnectedSectionCount, detachSectionFamily,
     addPrimitiveStrip, scaleStrip,
     addStripsToGroup, groupSelectedStrips, mergeSelectedStrips,
@@ -173,8 +216,8 @@ export function DrawModePanel({
     projectWarnings, sectionFamilies, pushLayoutHistory,
   } = state;
   const {
-    wiring, updateWiring, standaloneController, setStandaloneController,
-    patchBoard, setPatchBoard, portRoles, sectionTargets,
+    wiring, updateWiring, compiledWiring, standaloneController, setStandaloneController,
+    patchBoard, setPatchBoard, portRoles, sectionTargets, expressionScenes, layoutHistoryError,
   } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
@@ -360,13 +403,48 @@ export function DrawModePanel({
         .filter(run => run?.type === 'strip')
         .map(run => stripById.get(run.source.stripId))
         .filter(strip => strip && !seen.has(strip.id) && seen.add(strip.id));
+      const linkedStrips = groupStrips.filter(strip => assigned.has(strip.id));
+      const firstStrips = groupStrips.filter(strip => !assigned.has(strip.id));
       groupStrips.forEach(strip => assigned.add(strip.id));
-      return { output, strips: groupStrips };
+      return { output, strips: firstStrips, linkedStrips, sectionCount: groupStrips.length };
     });
     const unassigned = orderedStrips.filter(strip => !assigned.has(strip.id));
-    if (unassigned.length && groups[0]) groups[0] = { ...groups[0], strips: [...groups[0].strips, ...unassigned] };
-    return groups.filter(group => group.strips.length);
+    if (unassigned.length && groups[0]) groups[0] = { ...groups[0], strips: [...groups[0].strips, ...unassigned], sectionCount: groups[0].sectionCount + unassigned.length };
+    return groups.filter(group => group.sectionCount);
   }, [orderedStrips, stripById, wiring]);
+  const sectionTargetsByStrip = useMemo(() => {
+    const byStrip = new Map();
+    for (const target of sectionTargets || []) {
+      if (target.kind !== 'section') continue;
+      const members = new Set(target.stripId ? [target.stripId] : []);
+      // A grouped zone has one patch identity but may cover several geometry
+      // strips. Resolve its actual compiled ranges, then let every member open
+      // that same section in Patterns without inventing a second target.
+      for (const range of target.ranges || []) {
+        for (let index = range.start; index < range.start + range.count; index += 1) {
+          const stripId = compiledWiring?.pixels?.[index]?.stripId;
+          if (stripId) members.add(stripId);
+        }
+      }
+      for (const stripId of members) {
+        const current = byStrip.get(stripId) || [];
+        current.push({ ...target, sharedGeometryCount: members.size });
+        byStrip.set(stripId, current);
+      }
+    }
+    return byStrip;
+  }, [sectionTargets, compiledWiring]);
+  const outputInventory = (output, fallbackCount) => {
+    if (!compiledWiring?.ok) return `${fallbackCount} ${fallbackCount === 1 ? 'section' : 'sections'} · Wiring needs review`;
+    const compiledOutput = compiledWiring.outputs.find(item => item.id === output.id);
+    if (!compiledOutput) return 'Wiring needs review';
+    const end = compiledOutput.start + compiledOutput.count;
+    const sectionCount = compiledWiring.zones.filter(zone => (zone.ranges || []).some(range =>
+      range.start < end && range.start + range.count > compiledOutput.start)).length;
+    const ledCount = compiledWiring.runs.filter(run => run.outputId === output.id && run.type === 'strip')
+      .reduce((sum, run) => sum + run.count, 0);
+    return `${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'} · ${ledCount} LEDs`;
+  };
 
   const makeRunForStrip = strip => ({
     id: `run-${strip.id}`,
@@ -395,9 +473,11 @@ export function DrawModePanel({
   // Division is an occasional action; retain each strip's draft while the
   // disclosure is closed, but never carry an open editor into a new selection.
   const [divideOpen, setDivideOpen] = useState(false);
+  const [runSeparationError, setRunSeparationError] = useState('');
   const divideTriggerRef = useRef(null);
   const divideSelectionKey = JSON.stringify([selStripId, selLayerId, selectedStripIds]);
   useEffect(() => setDivideOpen(false), [divideSelectionKey, panelStripId]);
+  useEffect(() => setRunSeparationError(''), [divideSelectionKey, panelStripId]);
   const [divideSections, setDivideSections] = useState({}); // stripId → editable string
   // stripId → the owner's own counts, once a field has been edited. Absent
   // means the even plan; a stored set that no longer adds up to the strip
@@ -1373,11 +1453,13 @@ export function DrawModePanel({
             )}
             <div ref={stripListRef} className="layers" style={{ flex: '0 0 auto', minHeight: 0, paddingBottom: 4 }}>
               {/* GPIO groups are physical data chains, ordered from the card outward. */}
-              {gpioGroups.map(({ output, strips: groupedStrips }) => (
+              {gpioGroups.map(({ output, strips: groupedStrips, linkedStrips, sectionCount }) => (
                 <section key={output.id} className="la-gpio-group" data-testid={`gpio-group-${output.pin}`}>
                   <div className="la-gpio-group-head">
                     <span>GPIO {output.pin}</span>
+                    <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>
+                  {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => strip.name).join(', ')}</div>}
                   {groupedStrips.map((s, i) => {
                 const isSel = s.id === selStripId;
                 const isBatchSel = selectedStripIds.includes(s.id);
@@ -1401,6 +1483,13 @@ export function DrawModePanel({
                   : [...DENSITY_OPTIONS, selectedDensity].sort((a, b) => a - b);
                 const run = stripRuns.get(s.id);
                 const isSplit = splitStripIds.has(s.id);
+                const runSeparation = isSplit ? planSectionsAtRunBoundaries(s, wiring) : null;
+                const runSeparationGroup = layerGroups.find(group => (group.members || []).some(member =>
+                  (typeof member === 'string' ? member : member?.stripId) === s.id));
+                const affectedLooks = (standaloneController?.looks || []).filter(look => Object.hasOwn(look.sectionLooks || {}, `patch-${s.id}`)).length;
+                const affectedScenes = (expressionScenes?.scenes || []).filter(scene =>
+                  (scene.steps || []).some(step => (step.assignments || []).some(assignment =>
+                    assignment.selection?.areaIds?.includes(`strip:${s.id}`)))).length;
                 const connectedFamily = connectedFamilyForStrip(sectionFamilies, s.id);
                 const connectedMembers = connectedFamily
                   ? connectedFamily.memberIds.map(id => stripById.get(id)).filter(Boolean)
@@ -1409,6 +1498,10 @@ export function DrawModePanel({
                   ? familyGeometryStatus(connectedFamily, strips)
                   : { ok: true };
                 const connectedEligible = Boolean(s.calibratedFromArtwork || s.sourceLayerId || s.sourcePathId);
+                const stripTargets = sectionTargetsByStrip.get(s.id) || [];
+                const routePins = wiring.outputs.filter(candidate => candidate.runIds.some(runId =>
+                  wiring.runs.some(candidateRun => candidateRun.id === runId && candidateRun.type === 'strip' && candidateRun.source?.stripId === s.id)))
+                  .map(candidate => candidate.pin);
                 // Keep the typed draft verbatim so clearing, decimals and
                 // out-of-range values remain visible until the owner fixes them.
                 // The default is 4 — the task brief's example (41 → 11,10,10,10).
@@ -1472,11 +1565,10 @@ export function DrawModePanel({
                          // were working on closed its own readout.
                          selectStrip(s.id);
                        }}>
-                      <span className="la-wire-n" title="Click and drag to change wiring order" style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
+                      <span className="la-wire-n" title="Drag to change physical wire order" style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
                         {String(i + 1).padStart(2, '0')}<DragHandleIcon/>
                       </span>
-                      <span className="layer-swatch" style={{ borderRadius: '50%', background: s.color,
-                                     boxShadow: isSel ? `0 0 8px ${s.color}` : undefined }}/>
+                      <StripMiniature strip={s}/>
                       <InlineRename value={s.name} onCommit={n => renameStrip(s.id, n)}
                                     className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}
@@ -1492,6 +1584,22 @@ export function DrawModePanel({
                         {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
                       </button>
                       <span className="layer-len">{s.pixelCount} LEDs</span>
+                      {routePins.length > 1 && <span className="la-strip-routes">GPIO {routePins.join(' + ')}</span>}
+                      {stripTargets.length === 0 && <span className="la-section-pattern-unavailable">Pattern target unavailable</span>}
+                      {stripTargets.map(target => {
+                        const patternId = target.look?.patternId || 'aurora';
+                        const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
+                        return <button key={target.id} type="button" className="la-section-pattern-action"
+                                       data-testid="layout-section-pattern-action" data-target-id={target.id}
+                                       aria-label={`Change pattern for ${target.label || s.name}`}
+                                       disabled={!onChangePattern}
+                                       onClick={event => {
+                                         event.stopPropagation();
+                                         onChangePattern?.({ targetId: target.id, stripId: s.id });
+                                       }}>
+                          {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span>Change →</span>
+                        </button>;
+                      })}
                       {isOpen && <details className="la-strip-menu" onClick={event => event.stopPropagation()}
                                onKeyDown={event => {
                                  if (event.key !== 'Escape') return;
@@ -1798,6 +1906,27 @@ export function DrawModePanel({
                             {firstLedPicker?.stripId === s.id ? 'Cancel first light' : 'Set first light'}
                           </button>}
                         </div>
+                        {isSplit && <section className="la-divide-panel" aria-label={`Separate ${s.name} at existing runs`}>
+                          <strong>Separate at existing run boundaries</strong>
+                          <p>Each run keeps its GPIO, LED order, direction and address. The resulting sections can choose patterns independently.</p>
+                          {runSeparation?.ok ? <ul>
+                            {runSeparation.runs.map((physicalRun, index) => {
+                              const output = wiring.outputs.find(item => item.runIds.includes(physicalRun.id));
+                              return <li key={physicalRun.id}>{s.name} {index + 1}: GPIO {output?.pin ?? 'unassigned'} · {runSeparation.counts[index]} LEDs</li>;
+                            })}
+                          </ul> : <p role="alert">{runSeparation?.error}</p>}
+                          {runSeparationGroup && <p role="alert">{runSeparationGroup.name || 'This group'} renders as one card section. Ungroup it before choosing separate patterns.</p>}
+                          <p>{affectedLooks} saved {affectedLooks === 1 ? 'look' : 'looks'} and {affectedScenes} {affectedScenes === 1 ? 'scene' : 'scenes'} will follow these sections. Undo restores the original strip.</p>
+                          <button type="button" className="btn primary" data-testid={`separate-runs-${s.id}`}
+                                  disabled={!runSeparation?.ok || !!runSeparationGroup}
+                                  onClick={() => {
+                                    const result = separateExistingRuns(s.id);
+                                    setRunSeparationError(result?.ok ? '' : result?.error || 'The sections could not be separated.');
+                                  }}>Separate into {runSeparation?.counts?.length || 0} sections</button>
+                          {runSeparationError && <p role="alert">{runSeparationError}</p>}
+                          {layoutHistoryError && <p role="alert">{layoutHistoryError}</p>}
+                          <a href="#screen=pattern">Open Patterns</a>
+                        </section>}
                         <div className="la-divide-disclosure"
                              onKeyDown={event => {
                                if (event.key !== 'Escape' || !divideOpen) return;
@@ -2033,6 +2162,20 @@ export function DrawModePanel({
                   })}
                 </section>
               ))}
+              {gpioGroups.length > 0 && <details className="la-mapping-details" data-testid="layout-mapping-details">
+                <summary>Wiring details</summary>
+                <div className="la-mapping-list">
+                  {compiledWiring?.ok ? gpioGroups.flatMap(({ output }) => {
+                    const compiledOutput = compiledWiring.outputs.find(item => item.id === output.id);
+                    return compiledWiring.runs.filter(run => run.outputId === output.id && run.type === 'strip').map(run => {
+                      const strip = stripById.get(run.source?.stripId);
+                      if (!strip || !compiledOutput) return null;
+                      const start = run.start - compiledOutput.start + 1;
+                      return <div key={run.id}>{strip.name} · GPIO {output.pin} · LEDs {start}–{start + run.count - 1} · {run.reversed ? 'reverse' : 'forward'}</div>;
+                    });
+                  }) : <div>Wiring needs review before address ranges are available.</div>}
+                </div>
+              </details>}
             </div>
           </>
         )}

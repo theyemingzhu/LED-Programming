@@ -281,7 +281,7 @@ test('live graph and asset redirects are refused even if the destination could m
 });
 
 test('mutable firmware metadata cannot be cached while immutable releases can be cached forever', async () => {
-  const headers = await readFile(resolve(import.meta.dirname, '../../public/_headers'), 'utf8');
+  const headers = (await readFile(resolve(import.meta.dirname, '../../public/_headers'), 'utf8')).replace(/\r\n/g, '\n');
   for (const path of [
     '/studio-build-graph.json',
     '/studio-release.json',

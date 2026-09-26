@@ -108,8 +108,8 @@ evidence. It is deliberately outside the editing loop.
 ## Firmware and configured cards
 
 Each protected firmware release publishes two formats from the same compiled
-source identity. The existing combined factory image remains the recovery/new-
-card format and erases Wi-Fi, installed projects, patterns, and settings. The
+source identity. The factory image erases Wi-Fi, installed projects, patterns,
+and settings; it remains the recovery/new-card format. The
 immutable application-only image is the preserving update format; its exact
 ticket bytes and detached P-256 signature bind its size/hash, compatibility,
 and the SHA-256 of raw factory bytes `[0x8000,0x9000)`, including padding.

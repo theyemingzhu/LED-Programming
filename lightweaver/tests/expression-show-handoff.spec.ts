@@ -116,6 +116,7 @@ async function mockShowRehearsalCard(page: Page) {
     projectId: config.piece.id, projectRevision: config.projectRevision,
     projectFingerprint: config.projectFingerprint, projectHead: envelope.contentHash,
     led: config.led, outputs: config.led.outputs, limits: { maxLooks: 64 }, maxPixels: 4096,
+    capabilities: { physicalFrameOrder: { version: 1 } },
     streaming: state.streaming, playlist: { ...state.playlist },
   });
 
@@ -298,9 +299,16 @@ test('Show closes only after active rehearsal restoration and retains the editor
     await library.getByRole('button', { name: 'Edit scene' }).click();
     await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
     await page.evaluate(async () => {
-      const { getActiveCardTransportAuthority } = await import('/src/lib/cardTransport.js');
-      const authority = getActiveCardTransportAuthority('lightweaver.local');
+      const transportUrl = performance.getEntriesByType('resource')
+        .map(entry => entry.name)
+        .find(url => new URL(url).pathname === '/src/lib/cardTransport.js');
+      if (!transportUrl) throw new Error('The app card transport module was not loaded.');
+      const { connectCardTransport, getActiveCardTransportAuthority } = await import(transportUrl);
+      const authority = getActiveCardTransportAuthority('lightweaver.local')
+        || await connectCardTransport({ host: 'lightweaver.local' });
+      if (typeof authority?.issueOwnerCapability !== 'function') throw new Error(`Fixture connection failed: ${authority?.reason}`);
       await authority.issueOwnerCapability({ commissioningProof: 'show-browser-test-owner-confirmed' });
+      if (!authority.ownerCapability) throw new Error('The exact app card transport authority did not retain owner capability.');
     });
   };
 

@@ -74,6 +74,7 @@ function readyStatus(applied: any, boots: number) {
     firmwareVersion: '1.4.0',
     buildId: BUILD_ID,
     bootId: `boot-discovery-${boots + 1}`,
+    capabilities: { physicalFrameOrder: { version: 1 } },
     runtimePhase: 'ready',
     mode: 'website-flash',
     source: 'nvs',
@@ -250,6 +251,104 @@ async function showCountingRuler(page: any) {
   await expect(page.getByTestId('discovery-decade')).toBeVisible();
 }
 
+async function modelBenchPatterns(page: any, card: FakeCard) {
+  const controls: any[] = [];
+  let modeledConfig: any = null;
+  let zones: any[] = [];
+  let syncZones = true;
+  let nativeArmedZones: string[] = [];
+  let currentPatternId = '';
+  let blackout = false;
+  let refuseReadback = false;
+  const refresh = () => {
+    if (modeledConfig === card.applied) return;
+    modeledConfig = card.applied;
+    zones = (card.applied?.zones || []).map((zone: any) => ({ ...structuredClone(zone), blackout: zone.blackout ?? false }));
+    syncZones = card.applied?.syncZones ?? true;
+    nativeArmedZones = [];
+    currentPatternId = card.applied?.startupPatternId || '';
+    blackout = false;
+  };
+  await page.route(`http://${HOST}/api/status`, async (route: any) => {
+    refresh();
+    await route.fulfill({ json: card.booted ? {
+      ...readyStatus(card.applied, card.reboots), provisionalSetup: true,
+      projectId: card.applied?.piece?.id || card.applied?.projectId || '',
+      outputs: structuredClone(card.applied?.led?.outputs || []),
+      nativeRenderArmSupported: true, nativeArmedZones: [...nativeArmedZones],
+      nativeRenderArmed: nativeArmedZones.length > 0,
+      nativeRendering: nativeArmedZones.length > 0 && !blackout,
+      nativeFadeScale: nativeArmedZones.length > 0 ? 1 : 0,
+      currentPatternId, blackout, streaming: false, playlist: { playing: false },
+    } : blankStatus() });
+  });
+  await page.route(`http://${HOST}/api/zones`, async (route: any) => {
+    refresh();
+    await route.fulfill({ json: { syncZones, zones: structuredClone(zones) } });
+  });
+  await page.route(`http://${HOST}/api/control`, async (route: any) => {
+    refresh();
+    const body = JSON.parse(route.request().postData() || '{}');
+    controls.push(body);
+    if ('armNative' in body) {
+      if (Object.keys(body).length !== 2 || !zones.some(zone => zone.id === body.zone)) {
+        await route.fulfill({ status: 422, json: { ok: false, error: 'native arm requires an exact zone' } });
+        return;
+      }
+      nativeArmedZones = body.armNative
+        ? [...new Set([...nativeArmedZones, body.zone])]
+        : nativeArmedZones.filter(id => id !== body.zone);
+      if (body.armNative) zones.find(zone => zone.id === body.zone).blackout = false;
+      await route.fulfill({ json: { ok: true, zone: body.zone, nativeZoneArmed: body.armNative,
+        nativeRenderArmed: nativeArmedZones.length > 0, streaming: false, blackout } });
+      return;
+    }
+    if (Object.keys(body).length === 1 && body.syncZones === syncZones) {
+      await route.fulfill({ status: 422, json: { ok: false, error: 'command affects zero outputs' } });
+      return;
+    }
+    if (!refuseReadback && body.patternId) {
+      if (body.zone) {
+        zones.find(zone => zone.id === body.zone).patternId = body.patternId;
+        currentPatternId = zones.length === 1 ? body.patternId : '';
+      } else if (body.patternId === card.applied?.startupPatternId) {
+        zones = (card.applied?.zones || []).map((zone: any) => ({ ...structuredClone(zone), blackout: zone.blackout ?? false }));
+        currentPatternId = body.patternId;
+      } else {
+        for (const zone of zones) zone.patternId = body.patternId;
+        currentPatternId = body.patternId;
+      }
+    }
+    if ('blackout' in body) {
+      if (body.zone) zones.find(zone => zone.id === body.zone).blackout = body.blackout;
+      else blackout = body.blackout;
+    }
+    if ('syncZones' in body) syncZones = body.syncZones;
+    await route.fulfill({ json: { ok: true, appliedPatternId: body.patternId || '' } });
+  });
+  return { controls, refuse: () => { refuseReadback = true; } };
+}
+
+async function recordTwoGpioWalk(page: any) {
+  await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+  await dispatchBlankCard(page);
+  await startDiscoveryOnGpio16(page);
+  await showCountingRuler(page);
+  await page.getByTestId('discovery-count-16').fill('30');
+  await page.getByTestId('discovery-counts-done').click();
+  await page.getByTestId('discovery-end-yes').click();
+  await page.getByTestId('discovery-add-strip').click();
+  await page.getByTestId('discovery-probe-17').click();
+  await page.getByTestId('discovery-start').click();
+  await expect(page.getByTestId('discovery-decade')).toBeVisible();
+  await page.getByTestId('discovery-count-17').fill('20');
+  await page.getByTestId('discovery-counts-done').click();
+  await page.getByTestId('discovery-end-yes').click();
+  await page.getByTestId('discovery-end-yes').click();
+  await page.getByTestId('discovery-record-save').click();
+  await expect(page.getByTestId('discovery-done')).toBeVisible();
+}
+
 test('a card without a numeric power limit gets an honest discovery notice', async ({ page }) => {
   await mockBlankCard(page, { reportedMaxMilliamps: null });
   await seedBlankCardLink(page);
@@ -267,6 +366,68 @@ test.describe('a blank card whose firmware applies its first config', () => {
   test.beforeEach(async ({ page }) => {
     card = await mockBlankCard(page, { firmware: 'blank-applies' });
     await seedBlankCardLink(page);
+  });
+
+  test('two GPIOs can try one scene, diverge, and keep exact patterns in the measured install package', async ({ page }, testInfo) => {
+    const modeled = await modelBenchPatterns(page, card);
+    await recordTwoGpioWalk(page);
+    await expect(page.getByTestId('discovery-output-row')).toHaveCount(2);
+    await expect(page.getByTestId('discovery-output-row').nth(0)).toContainText('GPIO 16 · 30 LEDs');
+    await expect(page.getByTestId('discovery-output-row').nth(1)).toContainText('GPIO 17 · 20 LEDs');
+    await expect(page.getByTestId('discovery-output-row').first()).toContainText('Choose a pattern');
+    await page.getByTestId('discovery-pattern-whole').selectOption('aurora');
+    await expect.poll(() => modeled.controls.filter(control => control.patternId === 'aurora'
+      && control.syncZones === false).map(control => control.zone)).toEqual(['bench-16', 'bench-17']);
+    await page.getByTestId('discovery-pattern-17').selectOption('ocean');
+    await expect.poll(() => modeled.controls.some(control => control.zone === 'bench-17' && control.syncZones === false && control.patternId === 'ocean')).toBe(true);
+    await expect(page.getByTestId('discovery-pattern-16')).toHaveValue('aurora');
+    await expect(page.getByTestId('discovery-pattern-17')).toHaveValue('ocean');
+    await expect(page.getByTestId('discovery-pattern-whole')).toHaveValue('');
+    await expect(page.getByTestId('discovery-pattern-whole')).toContainText('Mixed patterns');
+    await expect(page.getByTestId('discovery-output-row').first()).toContainText('Aurora');
+    await expect(page.getByTestId('discovery-output-row').last()).toContainText('Ocean');
+    await expect(page.getByTestId('discovery-stop-preview')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('bench-different-patterns-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: testInfo.outputPath('bench-different-patterns-phone.png'), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByTestId('discovery-keep-patterns').click();
+    await expect(page.getByText('Patterns saved for the final setup.')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => {
+      const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+      return project.layout?.patchBoard?.patches?.map((patch: any) => patch.playback?.patternId);
+    })).toEqual(['aurora', 'ocean']);
+    const saved = await page.evaluate(async () => {
+      const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+      const { buildPackageForPortRoles } = await import('/src/lib/cardSetupDeploy.js');
+      const { prepareCardDeployment } = await import('/src/lib/cardDeployment.js');
+      const portRoles = project.portRoles;
+      const prepared = buildPackageForPortRoles({ projectId: project.id, projectName: project.name,
+        projectRevision: 1, standaloneController: project.devices?.standaloneController || {}, portRoles,
+        measuredGeometry: { strips: project.layout.strips, patchBoard: project.layout.patchBoard, wiring: project.layout.wiring },
+      }, prepareCardDeployment);
+      return { roles: portRoles.filter((role: any) => role.role === 'strip').map((role: any) => [role.pin, role.pixelCount]),
+        outputs: prepared.config.led.outputs.map((output: any) => [output.pin, output.pixels]),
+        patches: project.layout.patchBoard.patches.map((patch: any) => patch.playback.patternId),
+        zones: prepared.config.zones.map((zone: any) => zone.patternId), startup: prepared.config.startupPatternId };
+    });
+    expect(saved.roles).toEqual([[16, 30], [17, 20]]);
+    expect(saved.outputs).toEqual([[16, 30], [17, 20]]);
+    expect(saved.patches).toEqual(['aurora', 'ocean']);
+    expect(saved.zones).toEqual(['aurora', 'ocean']);
+    expect(saved.startup).toMatch(/section-layout/);
+    await page.getByTestId('discovery-continue-layout').click();
+    await expect(page).toHaveURL(/screen=layout/);
+  });
+
+  test('a wrong GPIO pattern readback leaves Keep unavailable and reports the failure', async ({ page }) => {
+    const modeled = await modelBenchPatterns(page, card);
+    await recordTwoGpioWalk(page);
+    modeled.refuse();
+    await page.getByTestId('discovery-pattern-17').selectOption('ocean');
+    await expect(page.getByRole('alert')).toContainText(/did not confirm ocean/i);
+    await expect(page.getByTestId('discovery-keep-patterns')).toHaveCount(0);
+    await expect(page.getByText('Patterns saved for the final setup.')).toHaveCount(0);
   });
 
   test('factory power notice reports the actual cap before the temporary counting cap', async ({ page }) => {
@@ -405,14 +566,14 @@ test.describe('a blank card whose firmware applies its first config', () => {
     expect(card.restartPending).toBe(false);
   });
 
-  test('counting uses the strip ruler directly without guessing buttons', async ({ page }) => {
+  test('counting uses the strip ruler directly without guessing buttons', async ({ page }, testInfo) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
     const overlay = page.getByTestId('card-setup-overlay');
     await expect(overlay).toBeVisible();
-    await page.screenshot({ path: '/tmp/lightweaver-count-picker-desktop.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-picker-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: '/tmp/lightweaver-count-picker-phone.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-picker-phone.png') });
     await expect(page.getByTestId('card-setup-stop-lights')).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByTestId('discovery-probe-16').click();
@@ -437,9 +598,9 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(ruler).toContainText(/yellow/i);
     await expect(page.getByTestId('discovery-more')).toHaveCount(0);
     await expect(page.getByTestId('discovery-enough')).toHaveCount(0);
-    await page.screenshot({ path: '/tmp/lightweaver-count-ruler-desktop.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-ruler-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: '/tmp/lightweaver-count-ruler-phone.png' });
+    await page.screenshot({ path: testInfo.outputPath('lightweaver-count-ruler-phone.png') });
     await expect(page.getByTestId('discovery-count-16')).toBeInViewport();
     await expect(page.getByTestId('discovery-counts-done')).toBeInViewport();
     await expect(page.getByTestId('card-setup-stop-lights')).toBeInViewport();
@@ -451,7 +612,7 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
   });
 
-  test('ruler read-off and end marker produce recorded counts', async ({ page }) => {
+  test('ruler read-off and end marker produce recorded counts', async ({ page }, testInfo) => {
     await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
     await dispatchBlankCard(page);
 
@@ -479,8 +640,18 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 47 LEDs');
     await page.getByTestId('discovery-record-save').click();
     await expect(page.getByTestId('discovery-done')).toBeVisible();
+    await expect(page.getByTestId('discovery-pattern-audition')).toBeVisible();
+    await expect(page.getByTestId('discovery-pattern-whole')).toBeVisible();
+    await expect(page.getByTestId('discovery-pattern-16')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('bench-patterns-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: testInfo.outputPath('bench-patterns-phone.png'), fullPage: true });
+    await expect(page.getByTestId('discovery-pattern-16')).toBeInViewport();
+    await page.setViewportSize({ width: 320, height: 720 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);
-    await expect(page.getByTestId('discovery-open-patterns')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-open-patterns')).toBeVisible();
     await expect(page.getByTestId('discovery-continue-layout')).toBeVisible();
     await expect(page.getByTestId('discovery-done')).toContainText('Move this strip onto your artwork');
     await expect(page.getByTestId('card-setup-close')).toBeEnabled();
@@ -550,6 +721,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.getByTestId('discovery-end-yes').click();
     await expect(page.getByTestId('discovery-result-16')).toHaveText('GPIO 16 · 256 LEDs');
     await page.getByTestId('discovery-record-save').click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_port_roles_v1') || 'null')))
+      .toContainEqual({ pin: 16, role: 'strip', pixelCount: 256, controlKind: '' });
     const recorded = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_port_roles_v1') || 'null'));
     expect(recorded).toContainEqual({ pin: 16, role: 'strip', pixelCount: 256, controlKind: '' });
   });

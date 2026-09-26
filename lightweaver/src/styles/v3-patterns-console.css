@@ -507,6 +507,16 @@
   gap: 4px;
 }
 
+@media (max-width: 480px) {
+  /* The preview and tune stack is taller than a phone viewport. Keeping it
+     sticky covers the Pattern bank and section targets while scrolling. */
+  .pm .pm-instrument { position: static; }
+  .pm .pm-preview-controls { grid-template-columns: 24px minmax(0, 1fr) 24px; }
+  .pm .pm-preview-meta { grid-column: 1 / -1; }
+  .pm .pm-piece-toggle { grid-column: 1 / -1; width: 100%; }
+  .pm .pm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* Beads / Gradient — a rendering switch on the same interpolated palette. */
 .pm .pm-ledmode {
   display: flex;

@@ -67,3 +67,54 @@ test('explains that an evolving recipe must be baked before project handoff', as
   await expect(handoff.getByRole('button', { name: 'Add to project' })).toBeDisabled();
   expect(cardMutationRequests).toEqual([]);
 });
+
+test('a saved layered recording reopens its complete recipe in Lab', async ({ page }, testInfo) => {
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), AUTOSAVE_KEY)).not.toBeNull();
+  const assetId = await page.evaluate(async key => {
+    const { createPatternLabRecipe } = await import('/src/lib/patternLabRecipe.js');
+    const { bakePatternLabRecipe } = await import('/src/lib/lwseqBake.js');
+    const { classifyPatternLabCompatibility } = await import('/src/lib/patternLabCompatibility.js');
+    const { createPatternLabHandoff, applyPatternLabHandoff } = await import('/src/lib/patternLabHandoff.js');
+    const recipe = createPatternLabRecipe({
+      id: 'saved-layered-test', name: 'Saved layered test',
+      evolution: { enabled: true, durationSeconds: 300 },
+      layers: [{ id: 'overlay-fire', name: 'Fire overlay', enabled: true,
+        opacity: 0.4, blendMode: 'screen',
+        generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+        target: { kind: 'whole-piece', id: 'all' } }],
+    });
+    const strips = [{ id: 'one', name: 'One', pixels: [{ x: 0, y: 0 }] }];
+    const wiring = { version: 1, locked: true, verified: true,
+      outputs: [{ id: 'out', name: 'Out', pin: 16, runIds: ['run'] }],
+      runs: [{ id: 'run', type: 'strip', verified: true,
+        source: { stripId: 'one', from: 0, to: 0 }, directionPolicy: 'fixed',
+        physicalDirection: 'source-forward', seamLed: null }] };
+    const baked = await bakePatternLabRecipe({ recipe, strips, wiring, fps: 1 });
+    const compatibility = classifyPatternLabCompatibility(recipe, { metrics: {
+      pixelCount: 1, fps: 1, operationsPerFrame: 100, stateBytes: 256,
+      framebufferBytes: 3, nativeConfigBytes: 256, microSdBytes: 1_000_000,
+    } });
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    const controller = saved.devices.standaloneController;
+    const result = await createPatternLabHandoff({ recipe, compatibility, bakeResult: baked,
+      strips, wiring, controller });
+    if (result.kind !== 'sequence') throw new Error(JSON.stringify(result));
+    saved.devices.standaloneController = await applyPatternLabHandoff(controller, result);
+    localStorage.setItem(key, JSON.stringify(saved));
+    return result.asset.id;
+  }, AUTOSAVE_KEY);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await choosePattern(page, 'aurora');
+  const tools = page.getByTestId('pattern-lab-runtime-tools');
+  await tools.locator(':scope > summary').click();
+  const recordings = page.getByTestId('pattern-lab-saved-recordings');
+  await expect(recordings).toBeVisible();
+  await recordings.locator('summary').click();
+  await expect(recordings).toContainText('Saved layered test');
+  await page.screenshot({ path: testInfo.outputPath('saved-layered-recording.png'), fullPage: true });
+  await recordings.getByRole('button', { name: 'Edit in Lab' }).click();
+  await expect(tools).toHaveAttribute('data-draft-recipe-id', 'saved-layered-test');
+  await expect(page.getByText('Opened the complete recipe for Saved layered test.')).toBeVisible();
+  expect(assetId).toBeTruthy();
+  expect(cardMutationRequests).toEqual([]);
+});

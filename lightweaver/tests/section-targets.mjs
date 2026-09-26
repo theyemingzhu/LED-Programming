@@ -1,7 +1,7 @@
 // One section list. The project derives its sections once (ProjectContext)
 // and every screen shows that list. This spec pins the pure layer that makes
 // the list identical whatever fallback look a screen passes, and pins the
-// section cap the Patterns header prints to the hardware contract.
+// section cap to the hardware contract.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createDefaultCircleLayout } from '../src/lib/defaultCircleLayout.js';
@@ -36,12 +36,13 @@ assert.deepEqual(
   fromSettings,
 );
 
-// The cap the owner sees is the cap the card enforces.
+// The section cap stays tied to the card contract even when the quiet Patterns
+// overview leaves the limit out of its default header.
 assert.equal(MAX_SPLIT_SECTIONS, CARD_HARDWARE_CONTRACT.maxZones);
 assert.equal(CARD_HARDWARE_CONTRACT.maxZones, 12);
 const patternsScreen = fs.readFileSync(new URL('../src/v3/lw-pattern.jsx', import.meta.url), 'utf8');
 assert.equal(patternsScreen.includes('card limit 10'), false, 'Patterns must not print a literal section cap');
-assert.equal(patternsScreen.includes('card limit {CARD_HARDWARE_CONTRACT.maxZones}'), true);
+assert.equal(patternsScreen.includes('card limit 12'), false, 'Patterns must not hard-code the cap in copy');
 
 // Screens read the list from the project, not from their own derivation.
 for (const screen of ['../src/v3/lw-settings.jsx']) {

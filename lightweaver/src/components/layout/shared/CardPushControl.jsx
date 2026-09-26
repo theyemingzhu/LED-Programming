@@ -33,6 +33,7 @@ import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
 import { withStudioHardwareOperation } from '../../../lib/studioHardwareOperation.js';
 import { acquireCardWriteLease } from '../../../lib/cardWriteLease.js';
 import { getCardLinkState, reportCardStatusEnvelope } from '../../../lib/cardLink.js';
+import { installRecordedMediaForRuntimePackage } from '../../../lib/cardRecordedMedia.js';
 
 const LOCAL_BRIDGE_RECOVERY_REASONS = new Set([
   'mixed-content',
@@ -150,7 +151,9 @@ export function CardPushControl({
   actionLabel = 'Install on card',
   children,
 }) {
-  const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed } = useProject();
+  const { projectLifecycle, readProjectLifecycle, markProjectInstalled, markCardLookConfirmed,
+    wiring, layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
+    gammaEnabled, gammaValue, symSettings, sectionTargets } = useProject();
   const [pushHost, setPushHost] = useState(() => getCardHostname());
   const [pushStatus, setPushStatus] = useState('');
   const [action, dispatchAction] = useReducer(cardActionReducer, { confirmedRevision: projectLifecycle.installedRevision }, createCardActionState);
@@ -221,6 +224,9 @@ export function CardPushControl({
           compiledWiring,
           standaloneController,
         };
+        const mediaProject = { strips, patchBoard: board, wiring, compiledWiring,
+          layoutLayerGroups, sectionFamilies, palette, hidden, bpm,
+          gammaEnabled, gammaValue, symSettings, sectionTargets };
         prepareCardStoragePayload(prepareCardDeployment(project).runtimePackage);
         let before;
         let status;
@@ -275,13 +281,15 @@ export function CardPushControl({
         const alreadyCurrent = !handoffOnly
           && !currentInstallation(readProjectLifecycle())
           && isCardAlreadyCurrent(prepared, status)
-          && !wiringStatus?.hasCandidate;
+          && !wiringStatus?.hasCandidate
+          && !prepared.runtimePackage?.mediaAssets?.length;
         attempt = {
           host: cleanHost,
           revision: projectLifecycle.editedRevision,
           generation: projectLifecycle.generation,
           zoneCount: prepared.config.zones.length,
           pkg: prepared.runtimePackage,
+          mediaProject,
           prepared,
           handoffOnly,
           alreadyCurrent,
@@ -319,8 +327,24 @@ export function CardPushControl({
             config: async () => {
               assertCurrentAttempt(attempt);
               setPushStatus(`Sending revision ${attempt.revision} to ${cleanHost}...`);
+              if (attempt.pkg?.mediaAssets?.length) {
+                const transport = getCardLinkState().transport;
+                const mediaReceipt = await installRecordedMediaForRuntimePackage(attempt.pkg, {
+                  host: attempt.host,
+                  transport,
+                  project: attempt.mediaProject,
+                  confirmPairing: () => window.confirm('Touch a physical control on the Lightweaver card, then choose Continue to save recorded media to this exact card.'),
+                });
+                assertCurrentAttempt(attempt);
+                const freshCard = await readCardStatusEnvelope({ host: attempt.host, transport });
+                if (freshCard.cardId !== mediaReceipt.cardId || freshCard.bootId !== mediaReceipt.bootId
+                  || String(freshCard.projectHead || '') !== mediaReceipt.projectHead) {
+                  throw new CardPushError('target-changed', 'The card changed after recording upload. The project configuration was not sent.');
+                }
+              }
               configPushAttempted = true;
-              return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport, allowLayoutChange: true });
+              return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
+                allowLayoutChange: true, mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
             },
           },
         );

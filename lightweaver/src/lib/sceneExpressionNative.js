@@ -335,7 +335,7 @@ export function compileSceneExpressionNative(value, {
       if (assignment.selection.domain !== 'repeat') {
         reasons.push(reason(
           'continuous-native-unsupported',
-          'Continuous physical-order expressions are preserved but cannot be lowered to independent card zones.',
+          'Flow can play in Studio or on connected lights. Standalone card playback for Flow is not available yet.',
           { stepId: step.id, assignmentIndex },
         ));
       }

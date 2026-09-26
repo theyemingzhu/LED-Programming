@@ -218,3 +218,57 @@ test('renames retain stable IDs; missing and unsupported split/merge identities 
   assert.equal(lostFamily.ok, false);
   assert.deepEqual(lostFamily.unresolved, ['family:section-family-merged-away']);
 });
+
+test('versioned flow orders unequal and disjoint areas independently of installed addresses', () => {
+  const catalog = buildSceneExpressionAreaCatalog({ ...layout, compiledWiring });
+  const flow = resolveSceneExpressionSelection(catalog, {
+    areaIds: ['strip:center', 'group:petals', 'family:section-family-ribbon-1'],
+    domain: 'continuous',
+    flow: { version: 1, directions: { 'group:petals': 'reverse', 'family:section-family-ribbon-1': 'reverse' } },
+  });
+  assert.equal(flow.ok, true);
+  assert.deepEqual(flow.physicalRefs.map(ref => ref.outputIndex), [8, 7, 0, 6, 5, 4, 3, 2, 1]);
+  assert.deepEqual(flow.physicalRefs.map(ref => ref.logicalIndex), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(flow.physicalRefs.map(ref => ref.progress), [0, .125, .25, .375, .5, .625, .75, .875, 1]);
+  assert.deepEqual(flow.physicalRefs.map(ref => ref.areaId), [
+    'strip:center', 'group:petals', 'group:petals',
+    ...Array(6).fill('family:section-family-ribbon-1'),
+  ]);
+  assert.deepEqual(catalog.physicalOrder.map(ref => ref.outputIndex), [0, 1, 2, 3, 4, 5, 6, 7, 8], 'wiring is never reordered');
+});
+
+test('legacy continuous source retains global physical order; one pixel uses finite midpoint', () => {
+  const catalog = buildSceneExpressionAreaCatalog({ ...layout, compiledWiring });
+  const legacy = resolveSceneExpressionSelection(catalog, {
+    areaIds: ['strip:center', 'strip:petal-b'], domain: 'continuous',
+  });
+  assert.deepEqual(legacy.physicalRefs.map(ref => ref.outputIndex), [0, 8]);
+  const singleton = resolveSceneExpressionSelection(catalog, {
+    areaIds: ['strip:center'], domain: 'continuous', flow: { version: 1, directions: {} },
+  });
+  assert.equal(singleton.ok, true);
+  assert.equal(singleton.physicalRefs[0].progress, 0.5);
+});
+
+test('flow fails closed on future versions, stale directions, gaps in source coverage and inactive slots', () => {
+  const catalog = buildSceneExpressionAreaCatalog({ ...layout, compiledWiring });
+  const future = resolveSceneExpressionSelection(catalog, {
+    areaIds: ['strip:center'], domain: 'continuous', flow: { version: 2, directions: {} },
+  });
+  assert.equal(future.ok, false);
+  assert.ok(future.errors.some(error => error.code === 'flow-version-unsupported'));
+  const stale = resolveSceneExpressionSelection(catalog, {
+    areaIds: ['strip:center'], domain: 'continuous', flow: { version: 1, directions: { 'strip:removed': 'reverse' } },
+  });
+  assert.equal(stale.ok, false);
+  assert.ok(stale.errors.some(error => error.code === 'flow-direction-stale'));
+  const withGap = buildSceneExpressionAreaCatalog({
+    strips: [{ id: 'a', pixelCount: 2, pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }],
+    compiledWiring: { ok: true, pixels: [
+      { stripId: 'a', sourceLed: 0 }, { inactive: true }, { stripId: 'a', sourceLed: 1 },
+    ] },
+  });
+  assert.deepEqual(resolveSceneExpressionSelection(withGap, {
+    areaIds: ['strip:a'], domain: 'continuous', flow: { version: 1, directions: {} },
+  }).physicalRefs.map(ref => ref.outputIndex), [0, 2]);
+});

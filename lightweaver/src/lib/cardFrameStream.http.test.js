@@ -18,23 +18,42 @@ test('HTTP frames acquire a lease, carry bounded monotonic chunks, and Stop revo
   const transport = createHttpFrameTransport('192.168.18.70', {
     authority,
     fetchImpl: async (url, init) => {
-      const body = JSON.parse(init.body);
+      const body = init.body ? JSON.parse(init.body) : null;
       calls.push({ path: new URL(url).pathname, body });
-      return jsonResponse(calls.length === 1 ? { ok: true, leaseId: 'lease-1', expiresInMs: 4000, nextSequence: 7 } : { ok: true, nextSequence: 8 });
+      return jsonResponse(calls.length === 1
+        ? { cardId: 'lw-card-a', bootId: 'boot-2', capabilities: { physicalFrameOrder: { version: 1 } } }
+        : calls.length === 2 ? { ok: true, leaseId: 'lease-1', expiresInMs: 4000, nextSequence: 7 }
+          : { ok: true, nextSequence: 8 });
     },
     nowImpl: () => 1000,
     maxChunkPixels: 2,
   });
-  await transport.sendFrame(['FF0000', '00FF00', '0000FF'], 0, { sequence: 7 });
+  await transport.sendFrame(['FF0000', '00FF00', '0000FF'], 0, { sequence: 7, physicalOrder: true });
   await transport.sendCancel();
   assert.deepEqual(calls.map(call => call.path), [
-    '/api/stream/lease', '/api/stream/frame', '/api/stream/frame', '/api/stream/stop',
+    '/api/status', '/api/stream/lease', '/api/stream/frame', '/api/stream/frame', '/api/stream/stop',
   ]);
-  assert.deepEqual(calls.slice(1, 3).map(call => call.body.sequence), [7, 8]);
-  assert.deepEqual(calls.slice(1, 3).map(call => call.body.start), [0, 2]);
-  assert.equal(calls[0].body.capability, 'cap-1');
-  assert.equal(calls[0].body.expectedHead, 'head-1');
+  assert.deepEqual(calls.slice(2, 4).map(call => call.body.sequence), [7, 8]);
+  assert.deepEqual(calls.slice(2, 4).map(call => call.body.start), [0, 2]);
+  assert.deepEqual(calls.slice(2, 4).map(call => call.body.lwPhysical), [1, 1]);
+  assert.equal(calls[1].body.capability, 'cap-1');
+  assert.equal(calls[1].body.expectedHead, 'head-1');
   await assert.rejects(() => transport.sendFrame(['FFFFFF'], 0, { sequence: 8 }), /revoked/i);
+});
+
+test('HTTP physical frames refuse unsupported firmware before acquiring a lease', async () => {
+  const paths = [];
+  const authority = {
+    transport: 'direct-lna', host: '192.168.18.70', cardId: 'lw-card-a', bootId: 'boot-2',
+    ownerSessionId: 'owner-1', operationGeneration: 4, ownerCapability: 'cap-1',
+    snapshot() { return { host: this.host, cardId: this.cardId, bootId: this.bootId, ownerSessionId: this.ownerSessionId, operationGeneration: this.operationGeneration }; },
+  };
+  const transport = createHttpFrameTransport(authority.host, {
+    authority,
+    fetchImpl: async url => { paths.push(new URL(url).pathname); return jsonResponse({ cardId: authority.cardId, bootId: authority.bootId }); },
+  });
+  await assert.rejects(transport.sendFrame(['FF0000'], 0, { physicalOrder: true }), error => error.reason === 'physical-frame-unsupported');
+  assert.deepEqual(paths, ['/api/status']);
 });
 
 test('HTTP transport rejects non-monotonic frames and authority drift before sending', async () => {

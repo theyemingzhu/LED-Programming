@@ -6,6 +6,7 @@
 // authority for physical output order.
 
 export const SCENE_EXPRESSION_TARGET_VERSION = 1;
+export const SCENE_EXPRESSION_FLOW_VERSION = 1;
 export const ALL_SCENE_EXPRESSION_AREA_ID = 'all';
 
 const asArray = value => Array.isArray(value) ? value : [];
@@ -49,6 +50,20 @@ function validCompiledPhysicalOrder(compiledWiring, stripsById) {
 
 function refsForPhysicalOrder(physicalOrder, sourceKeys) {
   return physicalOrder.filter(ref => sourceKeys.has(`${ref.stripId}:${ref.sourceLed}`));
+}
+
+function sourceKeysForArea(area) {
+  return new Set(area.sourceRefs.flatMap(ref => ref.sourceLeds.map(sourceLed => `${ref.stripId}:${sourceLed}`)));
+}
+
+function logicalPhysicalRefs(physicalRefs) {
+  const domainLength = physicalRefs.length;
+  return physicalRefs.map((ref, logicalIndex) => ({
+    ...ref,
+    logicalIndex,
+    domainLength,
+    progress: domainLength === 1 ? 0.5 : logicalIndex / (domainLength - 1),
+  }));
 }
 
 function atomicStripIdsForArea(area) {
@@ -175,7 +190,7 @@ export function buildSceneExpressionAreaCatalog({
  * per chosen area. A parent and one of its children is an error, never a
  * duplicate pixel selection.
  */
-export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain = 'continuous' } = {}) {
+export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain = 'continuous', flow } = {}) {
   const areasById = new Map(asArray(catalog?.areas).map(area => [area?.id, area]));
   const requestedIds = uniqueStrings(areaIds);
   const unresolved = [];
@@ -189,6 +204,19 @@ export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain 
   if (!requestedIds.length) errors.push({ code: 'empty-selection', message: 'Choose at least one area.' });
   if (domain !== 'continuous' && domain !== 'repeat') errors.push({ code: 'invalid-domain', message: 'Choose a continuous or independently repeated domain.' });
   if (unresolved.length) errors.push({ code: 'unresolved-areas', message: 'Some saved areas are no longer present in Layout.', areaIds: unresolved });
+
+  if (flow !== undefined) {
+    if (domain !== 'continuous' || !flow || typeof flow !== 'object' || Array.isArray(flow)
+      || flow.version !== SCENE_EXPRESSION_FLOW_VERSION
+      || !flow.directions || typeof flow.directions !== 'object' || Array.isArray(flow.directions)) {
+      errors.push({ code: 'flow-version-unsupported', message: 'This saved Flow route needs a supported continuous Flow version.' });
+    } else {
+      for (const [areaId, value] of Object.entries(flow.directions)) {
+        if (!requestedIds.includes(areaId)) errors.push({ code: 'flow-direction-stale', message: 'A saved Flow direction points to an area outside this route.', areaIds: [areaId] });
+        if (value !== 'forward' && value !== 'reverse') errors.push({ code: 'flow-direction-invalid', message: 'A saved Flow direction is unsupported.', areaIds: [areaId] });
+      }
+    }
+  }
 
   for (let left = 0; left < selected.length; left += 1) {
     const leftStrips = atomicStripIdsForArea(selected[left]);
@@ -267,6 +295,15 @@ export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain 
     })),
   };
 
+  const orderedRefs = flow?.version === SCENE_EXPRESSION_FLOW_VERSION
+    ? selected.flatMap(area => {
+      const keys = sourceKeysForArea(area);
+      const refs = physicalRefs.filter(ref => keys.has(`${ref.stripId}:${ref.sourceLed}`));
+      if (flow.directions[area.id] === 'reverse') refs.reverse();
+      return refs.map(ref => ({ ...ref, areaId: area.id }));
+    })
+    : physicalRefs;
+
   return {
     ok: true,
     domain,
@@ -274,7 +311,7 @@ export function resolveSceneExpressionSelection(catalog, { areaIds = [], domain 
     unresolved: [],
     errors: [],
     sourceRefs,
-    physicalRefs,
+    physicalRefs: logicalPhysicalRefs(orderedRefs),
     instances: [],
   };
 }

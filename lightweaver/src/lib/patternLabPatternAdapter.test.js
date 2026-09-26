@@ -11,10 +11,25 @@ import {
   renderPixelFrame,
 } from './frameEngine.js';
 import { recipeFromPattern, renderPatternLabRecipeFrame } from './patternLabPatternAdapter.js';
+import { addPatternLabLayer } from './patternLabLayers.js';
+import { applyLookColorModifiers } from './previewColorModifiers.js';
+import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { parseParamsFromCode } from './patternParams.js';
 import { getPatternById } from './patternRegistry.js';
 
 const FIXED_TIME = 137.25;
+
+test('layered preview refuses to flatten distinct saved section bases', () => {
+  const recipe = recipeFromPattern('aurora');
+  recipe.sourceLook = {
+    defaultLook: { patternId: 'aurora', customHue: 10 },
+    sectionLooks: { main: { patternId: 'fire', customHue: 240 } },
+  };
+  recipe.layers = [{ id: 'over-fire', name: 'Fire', enabled: true, opacity: 0.5,
+    blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+    target: { kind: 'whole-piece', id: 'all' } }];
+  assert.throws(() => renderPatternLabRecipeFrame(recipe), /needs its current section mapping/i);
+});
 const FIXED_PALETTE = ['#16002f', '#2962ff', '#00d7b7', '#ffe266'];
 const FIXED_LAYOUT = [
   {
@@ -215,6 +230,35 @@ test('renders configured built-in layers through the bounded compositor', () => 
   assert.deepEqual(rendered.pixels, expected);
 });
 
+test('disabled and zero-opacity overlays leave the base unchanged', () => {
+  const base = recipeFromPattern('gradient', { palette: FIXED_PALETTE });
+  const overlay = {
+    id: 'muted', name: 'Muted', enabled: false,
+    generator: { kind: 'lightweaver-pattern', patternId: 'candle', params: defaultParams('candle') },
+    blendMode: 'add', opacity: 1,
+  };
+  const context = { t: FIXED_TIME, strips: FIXED_LAYOUT };
+  const expected = renderPatternLabRecipeFrame(base, context);
+  assert.deepEqual(renderPatternLabRecipeFrame({ ...base, layers: [overlay] }, context), expected);
+  assert.deepEqual(renderPatternLabRecipeFrame({ ...base, layers: [{ ...overlay, enabled: true, opacity: 0 }] }, context), expected);
+});
+
+test('canonical section target masks the mapped strips and never becomes All', () => {
+  const base = recipeFromPattern('gradient', { palette: FIXED_PALETTE });
+  const overlay = {
+    id: 'petals', name: 'Petals', enabled: true,
+    generator: { kind: 'lightweaver-pattern', patternId: 'candle', params: defaultParams('candle') },
+    target: { kind: 'section', id: 'section-petals', stripIds: ['outer'] },
+    blendMode: 'normal', opacity: 1,
+  };
+  const context = { t: FIXED_TIME, strips: FIXED_LAYOUT };
+  const plain = renderPatternLabRecipeFrame(base, context);
+  const mixed = renderPatternLabRecipeFrame({ ...base, layers: [overlay] }, context);
+  const innerCount = plain.stripFrames[0].leds.length;
+  assert.deepEqual(mixed.pixels.slice(0, innerCount), plain.pixels.slice(0, innerCount));
+  assert.notDeepEqual(mixed.pixels.slice(innerCount), plain.pixels.slice(innerCount));
+});
+
 test('screen and multiply layers receive Pattern Lab brightness and gamma once after compositing', () => {
   const gammaLUT = buildGammaLut(true, 2.2);
   for (const blendMode of ['screen', 'multiply']) {
@@ -364,6 +408,130 @@ test('actual worker agrees with direct Lab frames for centered line patterns and
       const response = replies.find(reply => reply.type === 'frame');
       assert.ok(response, 'worker returned frame');
       const direct = renderPatternLabRecipeFrame(recipe, { strips: geometry.strips, t: 75, ...renderOptions }).pixels;
+      assert.deepEqual([...new Uint8Array(response.payload.colors)], direct.flatMap(({ r, g, b }) => [r, g, b]));
+    }
+  } finally {
+    globalThis.postMessage = oldPost;
+    globalThis.onmessage = oldMessage;
+  }
+});
+
+test('actual worker agrees with direct frames for section masks, mute and layer order', async () => {
+  const { compactPatternLabWorkerGeometry } = await import('./patternLabWorkerProtocol.js');
+  const geometry = { strips: [
+    { id: 'left', pixels: Array.from({ length: 12 }, (_, i) => ({ x: i, y: 0, p: i / 11 })) },
+    { id: 'right', pixels: Array.from({ length: 12 }, (_, i) => ({ x: i, y: 1, p: i / 11 })) },
+  ], gammaEnabled: false };
+  const renderOptions = { masterSpeed: 1, masterBrightness: 1, masterSaturation: 1, masterHueShift: 0, motionWeights: { drift: 1, flow: 0, pulse: 0, surge: 0 } };
+  const originalPost = globalThis.postMessage;
+  const originalMessage = globalThis.onmessage;
+  let replies = [];
+  globalThis.postMessage = reply => { replies.push(reply); };
+  try {
+    await import('../pattern-lab/patternLab.worker.js?layer-parity');
+    globalThis.onmessage({ data: { type: 'initialize', requestId: 300, payload: { generation: 300, geometry: compactPatternLabWorkerGeometry(geometry) } } });
+    const base = recipeFromPattern('gradient', { palette: FIXED_PALETTE });
+    const left = { id: 'left-layer', enabled: true, generator: { kind: 'lightweaver-pattern', patternId: 'candle', params: defaultParams('candle') }, target: { kind: 'section', id: 'canonical-left', stripIds: ['left'] }, blendMode: 'normal', opacity: 1 };
+    const both = { id: 'whole-layer', enabled: true, generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: defaultParams('fire') }, target: { kind: 'whole-piece', id: 'all' }, blendMode: 'multiply', opacity: 0.7 };
+    const recipes = [
+      { ...base, layers: [left] },
+      { ...base, layers: [{ ...left, enabled: false }] },
+      { ...base, layers: [left, both] },
+      { ...base, layers: [both, left] },
+    ];
+    let requestId = 300;
+    for (const recipe of recipes) {
+      replies = [];
+      globalThis.onmessage({ data: { type: 'render', requestId: ++requestId, payload: { generation: 300, mode: 'final', layerCount: recipe.layers.length, time: 75, recipe, renderOptions } } });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.ok(!replies.some(reply => reply.type === 'error'), JSON.stringify(replies));
+      const response = replies.find(reply => reply.type === 'frame');
+      assert.ok(response, 'worker returned frame');
+      const direct = renderPatternLabRecipeFrame(recipe, { strips: geometry.strips, t: 75, ...renderOptions }).pixels;
+      assert.deepEqual([...new Uint8Array(response.payload.colors)], direct.flatMap(({ r, g, b }) => [r, g, b]));
+    }
+    assert.notDeepEqual(renderPatternLabRecipeFrame(recipes[2], { strips: geometry.strips, t: 75, ...renderOptions }).pixels,
+      renderPatternLabRecipeFrame(recipes[3], { strips: geometry.strips, t: 75, ...renderOptions }).pixels);
+    const mixedBase = {
+      ...recipes[0],
+      sourceLook: {
+        defaultLook: { patternId: 'gradient', customHue: 20 },
+        sectionLooks: { 'canonical-left': { patternId: 'fire', customHue: 210 } },
+      },
+    };
+    assert.throws(() => renderPatternLabRecipeFrame(mixedBase, { strips: geometry.strips, t: 75, ...renderOptions }), /needs its current section mapping/);
+    replies = [];
+    globalThis.onmessage({ data: { type: 'render', requestId: ++requestId, payload: { generation: 300, mode: 'final', layerCount: 1, time: 75, recipe: mixedBase, renderOptions } } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(replies.some(reply => reply.type === 'frame'), false);
+    assert.match(replies.find(reply => reply.type === 'error')?.payload?.message || '', /needs its current section mapping/);
+  } finally {
+    globalThis.postMessage = originalPost;
+    globalThis.onmessage = originalMessage;
+  }
+});
+
+test('mixed section base matches independent pattern/color oracle and actual worker through ordered overlays', async () => {
+  const { compactPatternLabWorkerGeometry } = await import('./patternLabWorkerProtocol.js');
+  const base = recipeFromPattern('fire', { palette: FIXED_PALETTE });
+  const defaultLook = normalizeCardVisualLook({ patternId: 'fire', speed: 0.65, brightness: 0.3 });
+  const outerLook = normalizeCardVisualLook({ patternId: 'ocean', speed: 1.8, brightness: 0.92,
+    customHue: 176, customSaturation: 165, customDrift: true });
+  base.sourceLook = { defaultLook, sectionLooks: { 'outer-section': outerLook } };
+  base.sourceLookBaseline = { renderPalette: FIXED_PALETTE, palette: FIXED_PALETTE, macros: base.macros };
+  base.playback = { speed: defaultLook.speed, brightness: defaultLook.brightness };
+  const areas = [{ kind: 'all', id: 'all', stripIds: ['inner', 'outer'] },
+    { kind: 'section', id: 'outer-section', stripIds: ['outer'] }];
+  const layered = addPatternLabLayer(base, { patternId: 'aurora', areas });
+  layered.layers[0].enabled = false;
+  assert.deepEqual(layered.playback, { speed: 1, brightness: 1 });
+  const context = { strips: FIXED_LAYOUT, t: 7.25, bpm: 93 };
+  const expectedStrips = FIXED_LAYOUT.map(strip => {
+    const look = strip.id === 'outer' ? outerLook : defaultLook;
+    return { ...strip, patternId: look.patternId, speed: strip.speed * look.speed,
+      brightness: strip.brightness * look.brightness };
+  });
+  const expected = renderPixelFrame({ ...context, strips: expectedStrips, patternId: 'fire',
+    params: base.base.params, paletteNorm: normalizePalette(FIXED_PALETTE),
+    perStripFns: new Map([['fire', compilePattern('fire')], ['ocean', compilePattern('ocean')]]) });
+  const split = FIXED_LAYOUT[0].pts.length;
+  applyLookColorModifiers(expected.pixels.slice(0, split), context.t * 1000, defaultLook);
+  applyLookColorModifiers(expected.pixels.slice(split), context.t * 1000, outerLook);
+  const unmixed = renderPatternLabRecipeFrame(layered, context).pixels;
+  assert.deepEqual(unmixed, expected.pixels);
+  assert.notDeepEqual(unmixed.slice(0, split), unmixed.slice(split));
+  const first = { ...layered.layers[0], enabled: true, blendMode: 'screen', opacity: 0.7 };
+  const second = { ...addPatternLabLayer(layered, { patternId: 'rainbow' }).layers.at(-1),
+    blendMode: 'multiply', opacity: 0.62 };
+  const recipes = [
+    { ...layered, layers: [first, second] },
+    { ...layered, layers: [second, first] },
+  ];
+  assert.notDeepEqual(renderPatternLabRecipeFrame(recipes[0], context).pixels,
+    renderPatternLabRecipeFrame(recipes[1], context).pixels);
+  const geometry = { strips: FIXED_LAYOUT.map(strip => ({ ...strip, pixels: strip.pts })), gammaEnabled: true, gammaValue: 2.2 };
+  const renderOptions = { masterSpeed: 1, masterBrightness: 0.72, masterSaturation: 1, masterHueShift: 0,
+    motionWeights: { drift: 1, flow: 0, pulse: 0, surge: 0 } };
+  const oldPost = globalThis.postMessage;
+  const oldMessage = globalThis.onmessage;
+  let replies = [];
+  globalThis.postMessage = reply => { replies.push(reply); };
+  try {
+    await import('../pattern-lab/patternLab.worker.js?mixed-base-parity');
+    globalThis.onmessage({ data: { type: 'initialize', requestId: 800, payload: { generation: 800,
+      geometry: compactPatternLabWorkerGeometry(geometry) } } });
+    for (let index = 0; index < recipes.length; index += 1) {
+      const recipe = recipes[index];
+      replies = [];
+      globalThis.onmessage({ data: { type: 'render', requestId: 801 + index, payload: { generation: 800,
+        mode: 'final', layerCount: recipe.layers.length, time: context.t, recipe, renderOptions } } });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.ok(!replies.some(reply => reply.type === 'error'), JSON.stringify(replies));
+      const response = replies.find(reply => reply.type === 'frame');
+      assert.ok(response);
+      const direct = renderPatternLabRecipeFrame(recipe, { ...context,
+        motionWeights: renderOptions.motionWeights,
+        masterBrightness: renderOptions.masterBrightness, gammaLUT: buildGammaLut(true, 2.2) }).pixels;
       assert.deepEqual([...new Uint8Array(response.payload.colors)], direct.flatMap(({ r, g, b }) => [r, g, b]));
     }
   } finally {

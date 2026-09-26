@@ -176,7 +176,7 @@ test('generator advances the required release without raising the trusted firmwa
 });
 
 test('fast Tests workflow relies on selected lane conclusions without a runner-only aggregate', async () => {
-  const workflow = await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8');
+  const workflow = (await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8')).replace(/\r\n/g, '\n');
   assert.doesNotMatch(workflow, /^\s{2}pull_request:/m, 'Tests must not spend minutes on every PR update');
   assert.doesNotMatch(workflow, /github\.event\.pull_request/, 'removed PR events must not remain in source selection');
   assert.match(workflow, /merge_group:/);
@@ -322,7 +322,7 @@ test('focused browser script covers core workflow without embedding the full rel
 });
 
 test('Tests workflow runs only the bounded browser smoke and targeted card checks', async () => {
-  const workflow = await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8');
+  const workflow = (await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8')).replace(/\r\n/g, '\n');
   const browserJob = workflow.slice(workflow.indexOf('\n  browser:\n'), workflow.indexOf('\n  cloud:\n'));
   assert.match(browserJob, /npm run ci:browser-smoke/);
   assert.match(browserJob, /npm run test:windowless:browser/);

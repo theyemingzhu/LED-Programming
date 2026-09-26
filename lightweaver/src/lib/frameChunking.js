@@ -48,10 +48,10 @@ export function chunkFramePixels(pixels) {
 // 'start' is omitted when 0 and 'id' when seg is not an integer, and the key
 // order matches the original single-message payload, so a single-chunk frame
 // is byte-for-byte what the card received before chunking existed.
-export function frameChunkPayload(chunk, seg) {
+export function frameChunkPayload(chunk, seg, { physicalOrder = false } = {}) {
   const segment = { i: Array.isArray(chunk?.pixels) ? chunk.pixels : [] };
   if (Number.isInteger(seg)) segment.id = seg;
   const start = Number(chunk?.start) || 0;
   if (start > 0) segment.start = start;
-  return { seg: [segment] };
+  return { seg: [segment], ...(physicalOrder ? { lwPhysical: 1 } : {}) };
 }

@@ -11,6 +11,8 @@ enum FrameSource : uint8_t {
   FRAME_WLED_REALTIME = 1,
   FRAME_ARTNET = 2,
   FRAME_HTTP = 3,
+  FRAME_STUDIO_PHYSICAL = 4,
+  FRAME_HTTP_PHYSICAL = 5,
 };
 
 // Streaming is considered "active" when an external source has delivered a

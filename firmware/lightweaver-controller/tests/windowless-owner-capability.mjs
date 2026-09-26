@@ -64,6 +64,16 @@ static LightweaverOwnerBinding binding() {
 int main() {
   LightweaverOwnerCapability capability;
   auto expected = binding();
+  LightweaverOwnerCapability retry;
+  assert(retry.issue(expected, "token-a", 1000));
+  const auto firstLeaseEpoch = retry.leaseEpoch();
+  assert(retry.issue(expected, "token-a2", 1001));
+  assert(retry.leaseEpoch() != firstLeaseEpoch);
+  assert(retry.validate("token-a", expected, 1001) == LightweaverOwnerValidation::TokenMismatch);
+  assert(retry.validate("token-a2", expected, 1001) == LightweaverOwnerValidation::Accepted);
+  const auto renewedLeaseEpoch = retry.leaseEpoch();
+  assert(retry.validate("token-a2", expected, 1001 + LW_OWNER_CAPABILITY_TTL_MS + 1) == LightweaverOwnerValidation::Expired);
+  assert(retry.leaseEpoch() == renewedLeaseEpoch);
   assert(capability.issue(expected, "token-a", 1000));
   assert(capability.validate("token-a", expected, 1001) == LightweaverOwnerValidation::Accepted);
   assert(capability.advanceExpectedProjectHead("token-a", expected, "head-b", 1002));

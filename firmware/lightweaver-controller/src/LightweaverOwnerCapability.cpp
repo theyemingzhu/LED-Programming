@@ -41,6 +41,10 @@ bool LightweaverOwnerCapability::issue(const LightweaverOwnerBinding& binding,
     revoke();
     return false;
   }
+  // Every deliberate, physically authorized issuance supersedes earlier media
+  // leases, including a retry with the same owner binding after a lost abort.
+  leaseEpoch_++;
+  if (leaseEpoch_ == 0) leaseEpoch_ = 1;
   binding_ = binding;
   token_ = token;
   expiresAtMs_ = nowMs + LW_OWNER_CAPABILITY_TTL_MS;
@@ -53,7 +57,7 @@ LightweaverOwnerValidation LightweaverOwnerCapability::validate(
     uint32_t nowMs) {
   if (!issued_) return LightweaverOwnerValidation::Missing;
   if (static_cast<int32_t>(nowMs - expiresAtMs_) > 0) {
-    revoke();
+    revoke(false);
     return LightweaverOwnerValidation::Expired;
   }
   if (!constantTimeTokenEqual(token_, token)) {
@@ -77,7 +81,11 @@ bool LightweaverOwnerCapability::advanceExpectedProjectHead(
   return true;
 }
 
-void LightweaverOwnerCapability::revoke() {
+void LightweaverOwnerCapability::revoke(bool invalidateLeases) {
+  if (invalidateLeases) {
+    leaseEpoch_++;
+    if (leaseEpoch_ == 0) leaseEpoch_ = 1;
+  }
   binding_ = LightweaverOwnerBinding{};
   token_ = String();
   expiresAtMs_ = 0;
@@ -87,7 +95,7 @@ void LightweaverOwnerCapability::revoke() {
 bool LightweaverOwnerCapability::active(uint32_t nowMs) {
   if (!issued_) return false;
   if (static_cast<int32_t>(nowMs - expiresAtMs_) > 0) {
-    revoke();
+    revoke(false);
     return false;
   }
   return true;

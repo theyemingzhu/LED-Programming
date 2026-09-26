@@ -328,6 +328,9 @@ struct RuntimeConfig {
   uint32_t wiringRevision = 0;
   String wiringDigest;
   String startupLookId = "aurora";
+  // SHA-256 of the exact validated JSON selected for this boot (SD,
+  // candidate, or known-good NVS). Runtime-only; never serialized to config.
+  String configDigest;
   String ledType = "WS2812B";
   String ledColorOrder = "RGB";
   float brightnessLimit = 0.65f;

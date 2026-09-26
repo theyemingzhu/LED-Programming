@@ -370,6 +370,10 @@ function normalizeConfigPushError(host, err, transport = '') {
 // POST the runtime config to the card. Returns the parsed JSON echo on
 // success; throws CardPushError on failure with a typed reason.
 export async function pushConfigToCard(runtimePackage, options = {}) {
+  if (runtimePackage?.mediaAssets?.length && options.mediaVerified !== true) {
+    throw new CardPushError('recording-media-required',
+      'Recordings must be verified on the card before the Playlist configuration is installed. Use Install playlist on card.');
+  }
   // Prepare before discovery, bridge messaging, or direct HTTP so an
   // over-capacity configuration never causes an external side effect.
   const preparedPayload = prepareCardStoragePayload(runtimePackage);

@@ -32,7 +32,6 @@ import {
 import { readPatternEditSession, writePatternEditSession, writePatternLabEditHandoff } from '../lib/patternEditSession.js';
 import { recipeFromLook } from '../lib/patternLabFromLook.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
-import { CARD_HARDWARE_CONTRACT } from '../lib/cardHardwareContract.js';
 import {
   ALL_SECTIONS_TARGET_ID,
   applyLookToPatchBoard,
@@ -115,6 +114,7 @@ import {
 import { computeSymmetryFit } from '../lib/symmetry.js';
 import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderCheck.jsx';
 import { PatternPreview } from './PatternPreview.jsx';
+import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
 
   // Mockup geometry id -> live symSettings.
   const GEOMETRY_SETTINGS = {
@@ -413,6 +413,7 @@ import { PatternPreview } from './PatternPreview.jsx';
       projectRevision,
       projectLifecycle,
       strips,
+      selectStrip,
       hidden,
       setStrips,
       viewBox,
@@ -518,6 +519,10 @@ import { PatternPreview } from './PatternPreview.jsx';
     const [patternCardGate, setPatternCardGate] = useState('');
     const [handoffUrl, setHandoffUrl] = useState("");
     const [selectedTargetId, setSelectedTargetId] = useState(ALL_SECTIONS_TARGET_ID);
+    const [layoutReturnStrip, setLayoutReturnStrip] = useState('');
+    const [layoutReturnTargetId, setLayoutReturnTargetId] = useState('');
+    const [handoffInvalid, setHandoffInvalid] = useState(false);
+    const [bankOriginId, setBankOriginId] = useState('');
     const [draftLooks, setDraftLooks] = useState({});
     const [scratchScope, setScratchScope] = useState('');
     const [scratchError, setScratchError] = useState('');
@@ -870,6 +875,7 @@ import { PatternPreview } from './PatternPreview.jsx';
     const editingSavedLook = savedLooks.find(item => item.id === activeLookId) || null;
     const editingColorJourney = editingSavedLook?.patternLabRecipe?.base?.kind === 'color-journey';
     const editingProjectOnly = editingSavedLook?.projectOnly === true;
+    const editingLayered = (editingSavedLook?.patternLabRecipe?.layers?.length || 0) > 0;
     const editingLabAuthored = editingColorJourney || editingProjectOnly;
     const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label);
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
@@ -898,8 +904,18 @@ import { PatternPreview } from './PatternPreview.jsx';
       if (target.kind === 'section' && draftLooks[ALL_SECTIONS_TARGET_ID]) return draftDefaultLook;
       return normalizeSectionVisualLook(target.look || draftDefaultLook);
     }, [draftDefaultLook, draftLooks]);
+    const effectiveSectionTargets = useMemo(
+      () => sectionTargets.map(target => ({ ...target, look: resolveDraftTargetLook(target) })),
+      [resolveDraftTargetLook, sectionTargets],
+    );
+    const uniformSectionLook = (() => {
+      const sectionLooks = effectiveSectionTargets.filter(target => target.kind === 'section').map(target => target.look);
+      return sectionLooks.length && sectionLooks.every(value => JSON.stringify(value) === JSON.stringify(sectionLooks[0]))
+        ? sectionLooks[0] : null;
+    })();
     const look = normalizeSectionVisualLook(
       draftLooks[selectedTarget?.id] ||
+      (selectedTarget?.kind === 'all' && uniformSectionLook) ||
       (selectedTarget?.kind === 'section' && draftLooks[ALL_SECTIONS_TARGET_ID] ? draftDefaultLook : savedTargetLook),
     );
     const breatheSummary = !look.customBreathe
@@ -907,10 +923,6 @@ import { PatternPreview } from './PatternPreview.jsx';
       : look.breatheLowerPct === look.breatheUpperPct
         ? `Breathe · ${look.breatheLowerPct}% steady`
         : `Breathe · ${look.breatheLowerPct}–${look.breatheUpperPct}% · ${look.breatheCycleSeconds}s`;
-    const effectiveSectionTargets = useMemo(
-      () => sectionTargets.map(target => ({ ...target, look: resolveDraftTargetLook(target) })),
-      [resolveDraftTargetLook, sectionTargets],
-    );
     const patternPreviewSegments = useMemo(
       () => buildPatternPreviewSegments({
         strips,
@@ -929,6 +941,20 @@ import { PatternPreview } from './PatternPreview.jsx';
       () => patternPreviewSegments.map(segment => segment.id),
       [patternPreviewSegments],
     );
+    const sectionGpioLabels = useMemo(() => {
+      if (!compiledWiring?.ok) return new Map();
+      const pinByOutput = new Map(compiledWiring.outputs.map(output => [output.id, output.pin]));
+      return new Map(sectionTargets.filter(target => target.kind === 'section').map(target => {
+        const pins = new Set();
+        for (const range of target.ranges || []) {
+          for (let index = range.start; index < range.start + range.count; index += 1) {
+            const pin = pinByOutput.get(compiledWiring.pixels[index]?.outputId);
+            if (pin != null) pins.add(pin);
+          }
+        }
+        return [target.id, [...pins].map(pin => `GPIO ${pin}`).join(' · ')];
+      }));
+    }, [compiledWiring, sectionTargets]);
     const previewTargetKey = previewTargetIds.join('|');
     const [previewUiState, setPreviewUiState] = useState(() => ({
       projectId,
@@ -1005,12 +1031,19 @@ import { PatternPreview } from './PatternPreview.jsx';
       ? activeLookId
       : (customPatternById.has(activePatternId) ? activePatternId : look.patternId);
     const sel = REAL_PATTERN_BY_ID.get(selId) || customPatternById.get(selId) || adaptPattern(selId) || ALL[0];
-    const tint = sel.pal[2] || sel.pal[sel.pal.length - 1];
     const patternNameFor = useCallback((patternId) => {
       if (!patternId) return '';
       const entry = REAL_PATTERN_BY_ID.get(patternId) || customPatternById.get(patternId) || adaptPattern(patternId) || getCardPatternById(patternId);
       return entry?.label || entry?.name || String(patternId);
     }, [customPatternById]);
+    const presentationRows = useMemo(() => deriveSectionPresentationRows({
+      targets: effectiveSectionTargets,
+      compiledWiring,
+      patternNameFor,
+    }), [effectiveSectionTargets, compiledWiring, patternNameFor]);
+    const sectionRowRefs = useRef(new Map());
+    const bankRef = useRef(null);
+    const bankOriginRef = useRef(null);
     const cardHoldsLine = useMemo(() => cardSectionSummary(sectionTargets, cardZonesPayload), [sectionTargets, cardZonesPayload]);
     const sectionCount = sectionTargets.filter(target => target.kind === 'section').length;
     const currentComboLabel = (() => {
@@ -1640,9 +1673,57 @@ import { PatternPreview } from './PatternPreview.jsx';
         setStatus(`Not connected to the card, so the lights can't follow this selection. Use Connect to card in the bottom bar.`);
         return;
       }
-      scheduleLivePreview(resolveDraftTargetLook(target), target, 150);
+      const scopeLook = target.kind === 'all' && uniformSectionLook && !draftLooks[ALL_SECTIONS_TARGET_ID]
+        ? uniformSectionLook
+        : resolveDraftTargetLook(target);
+      scheduleLivePreview(scopeLook, target, 150);
       flashSection(target);
     };
+    const chooseSectionLook = (target) => {
+      setHandoffInvalid(false);
+      bankOriginRef.current = target.id;
+      setBankOriginId(target.id);
+      selectTarget(target);
+      requestAnimationFrame(() => {
+        bankRef.current?.focus({ preventScroll: true });
+        bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'start' });
+      });
+    };
+    useEffect(() => {
+      setLayoutReturnStrip('');
+      setLayoutReturnTargetId('');
+      setHandoffInvalid(false);
+    }, [projectId, projectLifecycle?.generation]);
+    useEffect(() => {
+      const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      if (params.get('screen') !== 'pattern' || !params.has('target')) return;
+      const requestedId = params.get('target');
+      const sameProject = params.get('project') === projectId
+        && params.get('generation') === String(projectLifecycle?.generation ?? 0);
+      const target = sameProject ? sectionTargets.find(item => item.id === requestedId && item.kind === 'section') : null;
+      setLayoutReturnStrip(sameProject ? (params.get('returnStrip') || '') : '');
+      setLayoutReturnTargetId(sameProject ? requestedId : '');
+      if (target) {
+        setHandoffInvalid(false);
+        setSelectedTargetId(target.id);
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'strip', lastTargetId: target.id }));
+        bankOriginRef.current = target.id;
+        setBankOriginId(target.id);
+        requestAnimationFrame(() => {
+          bankRef.current?.focus({ preventScroll: true });
+          bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'start' });
+        });
+      } else {
+        setHandoffInvalid(true);
+        setStatusKind('err');
+        setStatus('That section changed in Layout. Choose a current section before selecting a pattern.');
+      }
+      params.delete('target');
+      params.delete('project');
+      params.delete('generation');
+      params.delete('returnStrip');
+      window.history.replaceState(null, '', `#${params.toString()}`);
+    }, [projectId, projectLifecycle?.generation, sectionTargets]);
 
     const choosePatternPreviewTarget = (value) => {
       if (value === 'piece') {
@@ -2056,6 +2137,7 @@ import { PatternPreview } from './PatternPreview.jsx';
 
     // Select a browse card: pattern -> preview; saved mix -> apply look.
     const selectCard = (p) => {
+      if (handoffInvalid) return;
       if (p.mix) {
         const realLook = findSavedLook(p.id);
         if (realLook) {
@@ -2310,8 +2392,6 @@ import { PatternPreview } from './PatternPreview.jsx';
       else patchGeo({ center: fit.center });
     };
 
-    const targetTotal = previewTargetIds.length || 1;
-    const selectedTargetName = selectedTarget ? targetLabel(selectedTarget) : 'All sections';
     const showFlashAction = statusKind === 'err' && status === cardBridgeFeatureGap('frame')?.message;
     // The gate's escape hatch, rendered in the notice beside the pattern grid.
     const patternGateActionLabel = patternCardGate === 'blank'
@@ -2557,12 +2637,12 @@ import { PatternPreview } from './PatternPreview.jsx';
               </div>
               <div className="pm-actions">
                 <button
-                  className="btn primary"
+                  className={`btn${cardBlackedOut ? '' : ' primary'}`}
                   title={editingProjectOnly
                     ? 'This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.'
                     : 'Install the current look on the card'}
                   onClick={savePreviewToCard}
-                  disabled={editingProjectOnly || !installGate.allowed}
+                  disabled={handoffInvalid || editingProjectOnly || !installGate.allowed}
                 >{I.bolt}{editingProjectOnly ? 'Studio only' : cardSave.status === 'pending' ? 'Sending…' : cardSave.status === 'failed' ? 'Retry install' : 'Install on card'}</button>
                 {/* Renders whenever a card is paired, not only while
                     `connected` — the uncertain states (reassociating,
@@ -2658,8 +2738,151 @@ import { PatternPreview } from './PatternPreview.jsx';
             <div className="pm-grid">
               {/* MAIN */}
               <section className="pm-main">
+                {/* design target */}
+                <div className="pm-target">
+                   <div className="sec-h"><span className="t">Sections</span><span className="m">{sectionCount} on this piece</span><span className="line" /></div>
+                <div className="card pm-pane pm-preview-pane">
+                  <div className="pm-preview-controls" aria-label="Pattern preview controls">
+                    <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${sel.label}`}>
+                      <span className="t">Preview</span>
+                      <span className="m">{sel.label}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={`pm-piece-toggle${previewMode === 'piece' ? ' on' : ''}`}
+                      aria-pressed={previewMode === 'piece'}
+                      onClick={togglePatternPiecePreview}
+                    >On my piece</button>
+                    <button
+                      type="button"
+                      className="pm-preview-step"
+                      aria-label="Previous LED target"
+                      disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) <= 0}
+                      onClick={() => stepPatternPreviewTarget(-1)}
+                    >‹</button>
+                    <label className="pm-preview-select">
+                      <span className="sr-only">Preview target</span>
+                      <select
+                        aria-label="Preview target"
+                        value={previewMode === 'piece' ? 'piece' : lastPreviewTargetId}
+                        onChange={event => choosePatternPreviewTarget(event.target.value)}
+                      >
+                        <option value="piece">Whole piece</option>
+                        {patternPreviewSegments.map(segment => (
+                          <option key={segment.id} value={segment.id}>{segment.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="pm-preview-step"
+                      aria-label="Next LED target"
+                      disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) >= previewTargetIds.length - 1}
+                      onClick={() => stepPatternPreviewTarget(1)}
+                    >›</button>
+                  </div>
+                  <div
+                    data-testid="pattern-project-preview"
+                    data-preview-led-count={projectPreviewStrip?.pts?.length || 0}
+                    data-preview-order={(projectPreviewStrip?.order || []).join(',')}
+                    data-preview-symmetry={symSettings?.enabled ? symSettings.type : 'none'}
+                  >
+                    <div
+                      className="pm-piece-stage"
+                      data-testid="pattern-piece-preview"
+                      data-preview-mode={previewMode}
+                      data-preview-target={previewMode === 'piece' ? 'piece' : lastPreviewTargetId}
+                      data-preview-led-count={visiblePatternPreviewSegments.reduce((sum, segment) => sum + segment.pixels.length, 0)}
+                      data-preview-view-box={patternPreviewViewBox}
+                      data-preview-targets={visiblePatternPreviewSegments.map(segment => segment.id).join(',')}
+                      data-preview-patterns={visiblePatternPreviewSegments.map(segment => segment.sourcePatternId).join(',')}
+                    >
+                      {editingColorJourney || editingProjectOnly || editingLayered ? (
+                        <p className="pm-preview-empty">{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'} · open in Lab for its exact animated preview.</p>
+                      ) : visiblePatternPreviewSegments.length ? (
+                        <PatternPreview
+                          strips={visiblePatternPreviewSegments}
+                          hidden={{}}
+                          viewBox={patternPreviewViewBox}
+                          patternId={visiblePatternPreviewSegments[0].patternId}
+                          playing={true}
+                          palette={visiblePatternPreviewSegments[0].palette}
+                          params={patternParams?.[visiblePatternPreviewSegments[0].patternId] || {}}
+                          patternParamsById={patternParams}
+                          bpm={bpm}
+                          masterSpeed={1}
+                          masterBrightness={1}
+                          masterSaturation={1}
+                          masterHueShift={0}
+                          gammaEnabled={gammaEnabled}
+                          gammaValue={gammaValue}
+                          symSettings={symSettings?.enabled ? symSettings : null}
+                          glow={1.1}
+                          dotSize={3}
+                          motionSmoothing="soft"
+                          targetFps={30}
+                          ariaLabel={`${previewTargetName} animated LED preview`}
+                        />
+                      ) : (
+                        <p className="pm-preview-empty">Add LEDs in Layout to preview this piece.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                   <div className="pm-section-list" aria-label="Target sections">
+                     {presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID || previewTargetIds.includes(row.id)).map(row => {
+                       const target = sectionTargets.find(item => item.id === row.id);
+                       const selected = !handoffInvalid && row.id === selectedTarget?.id;
+                       return <button
+                         type="button"
+                         key={row.id}
+                         ref={node => { if (node) sectionRowRefs.current.set(row.id, node); else sectionRowRefs.current.delete(row.id); }}
+                         data-testid={`section-target-${row.id}`}
+                         className={`pm-section-item${selected ? ' on' : ''}`}
+                         aria-pressed={selected}
+                         onClick={() => chooseSectionLook(target)}
+                       >
+                         <span className="pm-section-identity"><strong>{row.label}</strong><small>{row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`}</small></span>
+                         <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
+                         {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
+                       </button>;
+                     })}
+                   </div>
+                  {selectedTarget?.kind === 'section' && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
+                    <p className="pm-section-help" data-testid="section-spans-gpios">
+                      This section spans {sectionGpioLabels.get(selectedTarget.id)}; these GPIOs share this section&apos;s pattern.{' '}
+                      <button type="button" className="wordlink" data-testid="open-spanning-section-in-layout"
+                              onClick={() => { selectStrip(selectedTarget.stripId); window.location.hash = '#screen=layout&mode=draw'; }}>
+                        Open this strip in Layout
+                      </button>{' '}to make separate named sections. If Add split is unavailable, adjust its Advanced wiring runs first.
+                    </p>}
+                  {/* One status line about sections: what the card holds, read from
+                      the card itself. Empty until the card has been read. */}
+                  {cardHoldsLine &&
+                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
+                  }
+                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
+                    <p className="pm-cardholds">
+                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
+                        Use this look on every section
+                      </button>
+                    </p>
+                  }
+                  {sectionCount <= 1 &&
+                    <p className="pm-cardholds">
+                      One section drives the whole piece.{' '}
+                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
+                    </p>
+                  }
+                   {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
+                     selectStrip(layoutReturnStrip);
+                     window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
+                   }}>Back to Layout</button>}
+                </div>
+
                 {/* browse */}
-                <div className="pm-browse" style={{ margin: "5px 0px 0px" }}>
+                 <div className="pm-browse" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }} style={{ margin: "5px 0px 0px" }}>
                   {/* One header bar for the whole module: the light, the name,
                       and the counts pushed right. The counts are read with a
                       single separator so the bar scans as one sentence rather
@@ -2682,6 +2905,16 @@ import { PatternPreview } from './PatternPreview.jsx';
                               className={ledMode === 'gradient' ? 'on' : undefined}
                               onClick={() => chooseLedMode('gradient')}>Gradient</button>
                     </div><span className="line" /></div>
+                  {sectionCount > 1 && <p className="pm-bank-scope" data-testid="pattern-bank-scope">
+                    <strong>{handoffInvalid ? 'Choose a current section' : selectedTarget?.kind === 'section'
+                      ? `${targetLabel(selectedTarget)}${sectionGpioLabels.get(selectedTarget.id) ? ` · ${sectionGpioLabels.get(selectedTarget.id)}` : ''}`
+                      : 'All sections'}</strong>
+                    {handoffInvalid ? ' · Layout changed; select a section above to continue.' : selectedTarget?.kind === 'section'
+                      ? ' · A pattern choice changes only this section; the others keep their patterns.'
+                      : ' · A pattern choice gives every section the same pattern.'}
+                    {!handoffInvalid && ' Keep this look saves the design; Install on card keeps it on the card.'}
+                    {bankOriginId && !handoffInvalid && <button type="button" className="wordlink pm-back-sections" data-testid="back-to-sections" onClick={() => { const row = sectionRowRefs.current.get(bankOriginId); row?.scrollIntoView({ block: 'nearest' }); row?.focus(); bankOriginRef.current = null; setBankOriginId(''); }}>Done choosing</button>}
+                  </p>}
 
                   {/* Was: a "Preview taps on the LED card" checkbox. There is no
                       moment in this screen's job where a tap should not reach the
@@ -2703,9 +2936,23 @@ import { PatternPreview } from './PatternPreview.jsx';
                       so it no longer needs scrolling into view when the hero
                       status is off-screen — it is always visible. */}
                   <div className="pm-cards">
-                    {filtered.slice(0, visibleCount).map((p) => {
-                      const cardInPlaylist = inPlaylist(p.id);
-                      return (
+                     {filtered.slice(0, visibleCount).map((p) => {
+                       const cardInPlaylist = inPlaylist(p.id);
+                       const savedMix = p.mix ? findSavedLook(p.id) : null;
+                       const mixPairs = Object.entries(savedMix?.sectionLooks || {}).map(([id, sectionLook]) => {
+                         const section = sectionTargets.find(target => target.id === id);
+                         const tuning = [];
+                         if (sectionLook?.brightness !== savedMix?.defaultLook?.brightness && Number.isFinite(Number(sectionLook?.brightness))) tuning.push(`${Math.round(sectionLook.brightness * 100)}%`);
+                         if (sectionLook?.speed !== savedMix?.defaultLook?.speed && Number.isFinite(Number(sectionLook?.speed))) tuning.push(`${Number(sectionLook.speed).toFixed(1)}×`);
+                         if (sectionLook?.customHue !== savedMix?.defaultLook?.customHue) tuning.push('tuned color');
+                         return `${section?.label || id}: ${patternNameFor(sectionLook?.patternId)}${tuning.length ? ` (${tuning.join(', ')})` : ''}`;
+                       });
+                       const mixSummary = (savedMix?.patternLabRecipe?.layers?.length || 0) > 0
+                         ? 'Layered look · open in Lab for the full design'
+                         : savedMix?.projectOnly
+                           ? 'Lab design · open in Lab for the full design'
+                           : (mixPairs.length ? mixPairs.slice(0, 2).join(' · ') : `${patternNameFor(savedMix?.defaultLook?.patternId)} on all sections`);
+                       return (
                     <div key={p.id} className="pmcard-wrap">
                       <button type="button" className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")} data-pattern-id={p.id} aria-pressed={p.id === selId} onClick={() => selectCard(p)}>
                         {/* Speed rides the LED window's top-right corner; the
@@ -2723,8 +2970,10 @@ import { PatternPreview } from './PatternPreview.jsx';
                           {p.mix && <span className="mixtag">{p.projectOnly ? 'Lab only' : 'mix'}</span>}
                         </div>
                         <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
-                      </button>
-                        {/* Rides the top-right corner of the card's LED window
+                       </button>
+                         {savedMix && <div className="pm-mix-summary" title={mixPairs.join(' · ') || mixSummary} data-testid={`saved-mix-summary-${savedMix.id}`}>{mixSummary}</div>}
+                         {mixPairs.length > 2 && <details className="pm-mix-details"><summary>All {mixPairs.length} section looks</summary><p>{mixPairs.join(' · ')}</p></details>}
+                         {/* Rides the top-right corner of the card's LED window
                             instead of a full-width row underneath it. Same tap
                             target, ~33px less height per card. Icon-only at
                             rest; the label slides out on hover/focus, where
@@ -2772,173 +3021,11 @@ import { PatternPreview } from './PatternPreview.jsx';
                   </div>
                 }
 
-                {/* design target */}
-                <div className="pm-target">
-                  <div className="sec-h"><span className="t">Design target</span><span className="m">{Math.max(1, previewTargetIds.length)} section · card limit {CARD_HARDWARE_CONTRACT.maxZones}</span><span className="line" /></div>
-                  {/* multi-section target tabs (live): All sections / Section 1 / ... */}
-                  {sectionTargets.length > 1 &&
-                    <div className="chips pm-section-row" style={{ marginBottom: 8 }} aria-label="Target sections">
-                      {effectiveSectionTargets.filter(t => t.kind === 'all' || previewTargetIds.includes(t.id)).map((t) =>
-                        <button key={t.id} data-testid={`section-target-${t.id}`} className={"chip" + (t.id === selectedTarget?.id ? " on" : "")} onClick={() => selectTarget(t)}>
-                          <span className="chip-name">{targetLabel(t)}</span>
-                          {/* Each section reads with its pattern beneath it, so four
-                              sections are one glance, not four taps. The All chip
-                              carries the piece's default look. */}
-                          <span className="chip-sub" data-testid={`section-pattern-${t.id}`}>{patternNameFor(t.look?.patternId)}</span>
-                        </button>
-                      )}
-                    </div>
-                  }
-                  {/* One status line about sections: what the card holds, read from
-                      the card itself. Empty until the card has been read. */}
-                  {cardHoldsLine &&
-                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
-                  }
-                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
-                    <p className="pm-cardholds">
-                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
-                        Use this look on every section
-                      </button>
-                    </p>
-                  }
-                  {sectionCount <= 1 &&
-                    <p className="pm-cardholds">
-                      One section drives the whole piece.{' '}
-                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
-                    </p>
-                  }
-                  {/* Three facts on one line, not two rows that said the same
-                      thing twice. The old card printed Target above Layer and
-                      Pattern above Pattern — the same section name and the same
-                      pattern name, one under the other, with a decorative "ALL"
-                      key and a layer number that did nothing. What is left is
-                      what the target actually IS: which section, how many
-                      pixels it drives, and what is on the card.
-
-                      The pixel tile keeps its `tc-layer` / `tc-total` element
-                      and its label-then-value DOM order, because that is the
-                      readout card-workspace.spec reads back after a project
-                      switch. Only the painting order is flipped, so a reader
-                      sees "27 LEDs" and a machine still reads "LEDs27". */}
-                  <div className="pm-targetcard">
-                    <div className="tc-stat">
-                      <span className="tc-stat-k">Section</span>
-                      <strong className="tc-stat-v">{selectedTargetName}</strong>
-                    </div>
-                    <div className="tc-stat tc-layer">
-                      <span className="tc-stat-k">Pixels driven</span>
-                      <div className="tc-total"><span className="lab">LEDs</span><strong>{selectedTarget?.pixelCount || targetTotal}</strong></div>
-                    </div>
-                    {/* Amber is reserved for what the card is doing right now,
-                        so it lights only once the runtime has confirmed the
-                        send. Until then this names the pattern being driven,
-                        in the neutral ink, and the bank's status line above
-                        says whether it has landed. */}
-                    <div className={"tc-stat tc-live" + (previewAction.status === 'confirmed' ? " is-live" : "")}>
-                      {/* One vocabulary for "has this reached the card" —
-                          the same three words the bank's own status line and
-                          Playlist use, so the phrase does not change meaning
-                          moving between panels and screens. */}
-                      <span className="tc-stat-k">{cardActionStatusLabel(previewAction)}</span>
-                      <span className="tc-stat-v tc-patval"><span className="sw" style={{ background: tint, boxShadow: `0 0 6px ${tint}` }} />{sel.label}</span>
-                    </div>
-                  </div>
-                </div>
-
               </section>
 
               {/* ASIDE */}
               <aside className="pm-aside">
-                <div className="pm-instrument" data-testid="pattern-instrument">
-                <div className="card pm-pane pm-preview-pane">
-                  <div className="pm-preview-controls" aria-label="Pattern preview controls">
-                    <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${sel.label}`}>
-                      <span className="t">Preview</span>
-                      <span className="m">{sel.label}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="pm-preview-step"
-                      aria-label="Previous LED target"
-                      disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) <= 0}
-                      onClick={() => stepPatternPreviewTarget(-1)}
-                    >‹</button>
-                    <label className="pm-preview-select">
-                      <span className="sr-only">Preview target</span>
-                      <select
-                        aria-label="Preview target"
-                        value={previewMode === 'piece' ? 'piece' : lastPreviewTargetId}
-                        onChange={event => choosePatternPreviewTarget(event.target.value)}
-                      >
-                        <option value="piece">Whole piece</option>
-                        {patternPreviewSegments.map(segment => (
-                          <option key={segment.id} value={segment.id}>{segment.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      className="pm-preview-step"
-                      aria-label="Next LED target"
-                      disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) >= previewTargetIds.length - 1}
-                      onClick={() => stepPatternPreviewTarget(1)}
-                    >›</button>
-                    <button
-                      type="button"
-                      className={`pm-piece-toggle${previewMode === 'piece' ? ' on' : ''}`}
-                      aria-pressed={previewMode === 'piece'}
-                      onClick={togglePatternPiecePreview}
-                    >On my piece</button>
-                  </div>
-                  <div
-                    data-testid="pattern-project-preview"
-                    data-preview-led-count={projectPreviewStrip?.pts?.length || 0}
-                    data-preview-order={(projectPreviewStrip?.order || []).join(',')}
-                    data-preview-symmetry={symSettings?.enabled ? symSettings.type : 'none'}
-                  >
-                    <div
-                      className="pm-piece-stage"
-                      data-testid="pattern-piece-preview"
-                      data-preview-mode={previewMode}
-                      data-preview-target={previewMode === 'piece' ? 'piece' : lastPreviewTargetId}
-                      data-preview-led-count={visiblePatternPreviewSegments.reduce((sum, segment) => sum + segment.pixels.length, 0)}
-                      data-preview-view-box={patternPreviewViewBox}
-                      data-preview-targets={visiblePatternPreviewSegments.map(segment => segment.id).join(',')}
-                      data-preview-patterns={visiblePatternPreviewSegments.map(segment => segment.sourcePatternId).join(',')}
-                    >
-                      {editingColorJourney ? (
-                        <p className="pm-preview-empty">Color Journey · open in Lab for its exact animated preview.</p>
-                      ) : visiblePatternPreviewSegments.length ? (
-                        <PatternPreview
-                          strips={visiblePatternPreviewSegments}
-                          hidden={{}}
-                          viewBox={patternPreviewViewBox}
-                          patternId={visiblePatternPreviewSegments[0].patternId}
-                          playing={true}
-                          palette={visiblePatternPreviewSegments[0].palette}
-                          params={patternParams?.[visiblePatternPreviewSegments[0].patternId] || {}}
-                          patternParamsById={patternParams}
-                          bpm={bpm}
-                          masterSpeed={1}
-                          masterBrightness={1}
-                          masterSaturation={1}
-                          masterHueShift={0}
-                          gammaEnabled={gammaEnabled}
-                          gammaValue={gammaValue}
-                          symSettings={symSettings?.enabled ? symSettings : null}
-                          glow={1.1}
-                          dotSize={3}
-                          motionSmoothing="soft"
-                          targetFps={30}
-                          ariaLabel={`${previewTargetName} animated LED preview`}
-                        />
-                      ) : (
-                        <p className="pm-preview-empty">Add LEDs in Layout to preview this piece.</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
+                 <div className="pm-instrument" data-testid="pattern-instrument" inert={handoffInvalid ? '' : undefined}>
                 <div className="card pm-pane pm-tune-pane">
                   {/* Every panel in this vocabulary opens with a header bar and
                       a status light — that is what makes it read as a module
@@ -2948,7 +3035,7 @@ import { PatternPreview } from './PatternPreview.jsx';
                   <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
                   <div aria-label="Keep your look" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px 16px', marginBottom: 8 }}>
                     <input className="pm-input" data-testid="look-name" style={{ flex: '1 1 180px', minWidth: 0 }} aria-label="Look name" placeholder="Name this look (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open Studio-only design in Lab' : editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
+                     <button type="button" className="btn" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open Studio-only design in Lab' : editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
                     {editingSavedLook && <>
                       <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new'}</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={renameLook}>Rename</button>

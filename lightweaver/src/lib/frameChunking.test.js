@@ -99,6 +99,15 @@ test('the single-chunk payload is byte-identical to the pre-chunking message', (
   );
 });
 
+test('physical-order frames carry the explicit marker on every bounded chunk', () => {
+  for (const chunk of chunkFramePixels(pixels(1000))) {
+    const payload = frameChunkPayload(chunk, 2, { physicalOrder: true });
+    assert.equal(payload.lwPhysical, 1);
+    assert.equal(payload.seg[0].start ?? 0, chunk.start);
+    assert.ok(JSON.stringify(payload).length <= CARD_WS_MAX_PAYLOAD_BYTES);
+  }
+});
+
 test('start is omitted at 0 and id is omitted when seg is not an integer', () => {
   assert.deepEqual(frameChunkPayload({ pixels: ['FF0000'], start: 0 }), { seg: [{ i: ['FF0000'] }] });
   for (const seg of [undefined, null, '2', 2.5, NaN, {}]) {

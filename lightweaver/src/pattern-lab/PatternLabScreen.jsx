@@ -8,6 +8,9 @@ import {
 } from '../lib/patternLabCompatibility.js';
 import { PATTERN_LAB_EVOLUTION_CHARACTERS } from '../lib/patternLabEvolution.js';
 import { bakePatternLabRecipe } from '../lib/lwseqBake.js';
+import { verifySceneExpressionFlowBake } from '../lib/sceneExpressionRecording.js';
+import { resolveFlowRecordingScene } from '../lib/flowRecordingReopen.js';
+import { createRecordedSequenceAsset, applyRecordedSequenceAsset } from '../lib/recordedSequenceAsset.js';
 import { OFFLINE_AUDIO_CAPABILITY } from '../lib/offlineAudioLanes.js';
 import { compileColorJourneyNativeRecipe } from '../lib/colorJourneyNative.js';
 import { buildCardRuntimePackageFromProject } from '../lib/cardRuntimeProject.js';
@@ -29,8 +32,12 @@ import {
   readPatternEditSession,
   writePatternEditSession,
 } from '../lib/patternEditSession.js';
-import { recipeFromLook } from '../lib/patternLabFromLook.js';
+import { recipeFromLook, recipeFromSequenceAsset } from '../lib/patternLabFromLook.js';
 import { recipeFromPattern } from '../lib/patternLabPatternAdapter.js';
+import {
+  addPatternLabLayer, movePatternLabLayer, removePatternLabLayer,
+  patternLabLayerBaseSupport, updatePatternLabLayer, validatePatternLabLayerTargets,
+} from '../lib/patternLabLayers.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe, PATTERN_LAB_RECIPE_VERSION } from '../lib/patternLabRecipe.js';
 import {
   deletePatternLabDraft,
@@ -61,6 +68,7 @@ import {
 import { useCloudLibrary } from '../state/CloudLibraryContext.jsx';
 import { useProject } from '../state/ProjectContext.jsx';
 import PatternLabControls from './PatternLabControls.jsx';
+import PatternLabLayers from './PatternLabLayers.jsx';
 import PatternLabDiagnostics from './PatternLabDiagnostics.jsx';
 import PatternLabEvolution from './PatternLabEvolution.jsx';
 import PatternLabExport from './PatternLabExport.jsx';
@@ -517,6 +525,8 @@ export default function PatternLabScreen({
   expressionPreviewContextKey,
 }) {
   const project = useProject();
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const { workspaceAssets, resolveWorkspaceAssetConflict } = useCloudLibrary();
   const [patterns, setPatterns] = useState([]);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
@@ -536,6 +546,11 @@ export default function PatternLabScreen({
   const didAutoloadRef = useRef(false);
   const [sourceRecipe, setSourceRecipe] = useState(null);
   const [draft, setDraft] = useState(null);
+  const latestDraftRef = useRef(draft);
+  const latestProjectIdRef = useRef(project.projectId);
+  const openSequenceRequestRef = useRef(0);
+  latestDraftRef.current = draft;
+  latestProjectIdRef.current = project.projectId;
   const [previewTime, setPreviewTime] = useState(0);
   // Open already playing (patternlab-rebuild.md Phase 1: "the preview never
   // pauses itself"). Default true unconditionally, not conditionally on
@@ -638,7 +653,11 @@ export default function PatternLabScreen({
   // apart into a sheet that traps focus without a backdrop, or dims the
   // screen without disabling it.
   const sheetModal = mobileDrawer && sheetDetent === 'full';
-  const previewRecipe = draft;
+  const previewBaseSupport = draft?.layers?.length ? patternLabLayerBaseSupport(draft) : { supported: true, message: '' };
+  const previewTargetValidation = draft?.base?.sectionMix ? validatePatternLabLayerTargets(draft, {
+    sectionTargets: project.sectionTargets, strips: project.strips, compiledWiring: project.compiledWiring,
+  }) : { valid: true };
+  const previewRecipe = previewBaseSupport.supported && previewTargetValidation.valid ? draft : null;
   const previewDuration = draft?.journey?.stops?.reduce(
     (total, stop) => total + Number(stop.holdMs || 0) + Number(stop.fadeMs || 0),
     0,
@@ -856,6 +875,11 @@ export default function PatternLabScreen({
     () => draft ? resolvePatternLabSectionState(draft, editAreas) : null,
     [draft, editAreas],
   );
+  const layerTargetValidation = useMemo(() => draft ? validatePatternLabLayerTargets(draft, {
+    sectionTargets: project.sectionTargets,
+    strips: project.strips,
+    compiledWiring: project.compiledWiring,
+  }) : { valid: true, issues: [], message: '' }, [draft, project.sectionTargets, project.strips, project.compiledWiring]);
   const selectedStripIds = useMemo(
     () => sectionState?.scoped && sectionState.resolved ? new Set(sectionState.area.stripIds) : null,
     [sectionState],
@@ -1320,6 +1344,51 @@ export default function PatternLabScreen({
     signalInstrumentResponse(1);
   }
 
+  function changeLayers(label, update) {
+    if (!draft) return null;
+    const previous = captureWorkingState();
+    const next = update(draft);
+    if (next === draft) return null;
+    offerWorkingStateUndo(label, previous);
+    setDraft(next);
+    setMessage('');
+    signalInstrumentResponse(1);
+    return next;
+  }
+
+  function addLayer() {
+    if (!draft) return null;
+    const baseSupport = patternLabLayerBaseSupport(draft, editAreas);
+    if (!baseSupport.supported) {
+      setMessage(baseSupport.message);
+      return null;
+    }
+    const scoped = sectionState?.scoped;
+    const whole = scoped ? retargetPatternLabRecipe(draft, PATTERN_LAB_WHOLE_PIECE_ID, editAreas) : { ok: true, recipe: draft };
+    if (!whole.ok) {
+      setMessage(whole.message);
+      return null;
+    }
+    const next = changeLayers(scoped ? 'Opened the whole look and added a layer.' : 'Added a layer.', () => addPatternLabLayer(whole.recipe, {
+      patternId: whole.recipe.base?.kind === 'lightweaver-pattern' ? whole.recipe.base.patternId : 'aurora',
+      areas: editAreas,
+    }));
+    if (scoped && next) setMessage('Editing the whole look. The section design was kept.');
+    return next?.layers.at(-1)?.id || null;
+  }
+
+  function updateLayer(id, patch) {
+    changeLayers('Changed a layer.', current => updatePatternLabLayer(current, id, patch));
+  }
+
+  function removeLayer(id) {
+    changeLayers('Deleted a layer.', current => removePatternLabLayer(current, id));
+  }
+
+  function moveLayer(id, direction) {
+    changeLayers('Changed layer order.', current => movePatternLabLayer(current, id, direction));
+  }
+
   function changeEvolution(name, value) {
     setDraft(current => current ? { ...current, evolution: { ...current.evolution, [name]: value } } : current);
     if (name === 'durationSeconds') setPreviewTime(current => Math.min(current, value));
@@ -1555,10 +1624,54 @@ export default function PatternLabScreen({
     settleSheetOnSculpt();
   }
 
+  async function openSequenceAsset(asset) {
+    const request = ++openSequenceRequestRef.current;
+    const projectId = project.projectId;
+    const priorDraft = draft;
+    try {
+      if (asset?.source?.kind === 'expression-scene') {
+        const reopened = await resolveFlowRecordingScene(asset, projectRef.current.expressionScenes);
+        if (request !== openSequenceRequestRef.current || latestProjectIdRef.current !== projectId) return;
+        projectRef.current.setExpressionScenes(current => {
+          const existing = current.scenes.find(scene => scene.id === reopened.scene.id);
+          return {
+            ...current,
+            activeSceneId: reopened.scene.id,
+            scenes: existing ? current.scenes : [...current.scenes, reopened.scene],
+          };
+        });
+        setSceneEditorOpen(true);
+        return;
+      }
+      const recovered = await recipeFromSequenceAsset(asset);
+      if (request !== openSequenceRequestRef.current
+        || latestProjectIdRef.current !== projectId
+        || latestDraftRef.current !== priorDraft) return;
+      if (!recovered) {
+        setMessage('This recording cannot be reopened because its saved recipe does not match its verified manifest.');
+        return;
+      }
+      openDraft(recovered);
+      setMessage(`Opened the complete recipe for ${recovered.name}.`);
+    } catch (error) {
+      if (request === openSequenceRequestRef.current
+        && latestProjectIdRef.current === projectId
+        && latestDraftRef.current === priorDraft) {
+        setMessage(error instanceof Error ? error.message : 'Could not reopen this recording.');
+      }
+    }
+  }
+
   // One place where a draft actually reaches storage, so the name is
   // sanitized exactly once and every caller reports the same way.
   function persistDraft(recipe, describe) {
     try {
+      const validTargets = validatePatternLabLayerTargets(recipe, {
+        sectionTargets: project.sectionTargets,
+        strips: project.strips,
+        compiledWiring: project.compiledWiring,
+      });
+      if (!validTargets.valid) throw new TypeError(validTargets.message);
       const saved = savePatternLabDraft(normalizePatternLabRecipe({
         ...recipe,
         name: sanitizeDraftName(recipe.name, sourceRecipe?.name || 'Untitled design'),
@@ -1580,7 +1693,8 @@ export default function PatternLabScreen({
   // already kept. Overwriting is still available, but only from the button
   // that says out loud which design it overwrites.
   function saveDraft() {
-    if (!draft || sectionState?.supported === false) {
+    if (!draft || sectionState?.supported === false || !layerTargetValidation.valid) {
+      if (!layerTargetValidation.valid) setMessage(layerTargetValidation.message);
       if (sectionState?.message) setMessage(sectionState.message);
       return;
     }
@@ -1596,7 +1710,8 @@ export default function PatternLabScreen({
   }
 
   function replaceSavedDraft() {
-    if (!draft || !saveOptions?.canReplace || sectionState?.supported === false) {
+    if (!draft || !saveOptions?.canReplace || sectionState?.supported === false || !layerTargetValidation.valid) {
+      if (!layerTargetValidation.valid) setMessage(layerTargetValidation.message);
       if (sectionState?.message) setMessage(sectionState.message);
       return;
     }
@@ -1680,6 +1795,7 @@ export default function PatternLabScreen({
   async function bakeForCard(_compatibility, { signal } = {}) {
     if (!draft) throw new TypeError('Choose a Pattern Lab recipe before baking.');
     if (sectionState?.supported === false) throw new TypeError(sectionState.message);
+    if (!layerTargetValidation.valid) throw new TypeError(layerTargetValidation.message);
     if (sectionState?.scoped) throw new TypeError('Section designs use the existing Patterns preview route and cannot be baked from Lab yet.');
     return bakePatternLabRecipe({
       recipe: draft,
@@ -1687,6 +1803,7 @@ export default function PatternLabScreen({
       groups: project.layoutLayerGroups,
       wiring: project.wiring,
       compiledWiring: project.compiledWiring,
+      sectionTargets: project.sectionTargets,
       hidden: project.hidden,
       audioLanes: draft.offlineAudio,
       render: {
@@ -1699,11 +1816,12 @@ export default function PatternLabScreen({
     });
   }
 
-  async function useInProject({ bakeResult = null, navigateAfter = false, projectLibraryOnly = false } = {}) {
+  async function useInProject({ bakeResult = null, navigateAfter = false, projectLibraryOnly = false, saveAsNew = false } = {}) {
     if (!draft || !compatibility) {
       return { ok: false, message: 'Choose and validate a Pattern Lab recipe first.' };
     }
     if (sectionState?.supported === false) return { ok: false, message: sectionState.message };
+    if (!layerTargetValidation.valid) return { ok: false, message: layerTargetValidation.message };
     if (sectionState?.scoped && compatibility.classification !== 'live-on-card' && !projectLibraryOnly) {
       return { ok: false, message: 'This section design cannot be flattened or baked safely. Return to a simple pattern or edit the whole piece.' };
     }
@@ -1711,14 +1829,22 @@ export default function PatternLabScreen({
       recipe: draft,
       compatibility,
       bakeResult,
+      saveAsNew,
       projectLibraryOnly,
       controller: project.standaloneController,
       strips: project.strips,
       groups: project.layoutLayerGroups,
       wiring: project.wiring,
       compiledWiring: project.compiledWiring,
+      sectionTargets: project.sectionTargets,
       hidden: project.hidden,
       symSettings: project.symSettings,
+      render: {
+        bpm: project.bpm,
+        gammaEnabled: project.gammaEnabled,
+        gammaValue: project.gammaValue,
+        symSettings: project.symSettings,
+      },
     });
     if (result.kind === 'blocked') {
       return {
@@ -1755,8 +1881,8 @@ export default function PatternLabScreen({
       return {
         ok: true,
         message: downloaded
-          ? `Added ${result.asset.label} as a sequence asset and downloaded its verified controller package.`
-          : `Added ${result.asset.label} as a sequence asset. Download its controller package again before loading the card.`,
+          ? `${result.replaceSequenceAssetId ? 'Updated' : 'Added'} ${result.asset.label} as a recording and downloaded its verified controller package.`
+          : `${result.replaceSequenceAssetId ? 'Updated' : 'Added'} ${result.asset.label} as a recording. Its verified media is saved with this project for card installation.`,
       };
     }
     const successMessage = result.kind === 'project-look'
@@ -1764,6 +1890,47 @@ export default function PatternLabScreen({
       : `Added and selected ${result.look.label} in the project.`;
     return new Promise(resolve => {
       setPendingProjectSave({ message: successMessage, navigateAfter, resolve });
+    });
+  }
+
+  async function recordFlowInProject({ scene, bakeResult, sourceSnapshot }) {
+    const current = projectRef.current;
+    const projectId = current.projectId;
+    const fresh = {
+      ...sourceSnapshot,
+      scene,
+      strips: current.strips,
+      patchBoard: current.patchBoard,
+      wiring: current.wiring,
+      compiledWiring: current.compiledWiring,
+      sectionFamilies: current.sectionFamilies,
+      layoutLayerGroups: current.layoutLayerGroups,
+      palette: current.palette,
+      hidden: current.hidden,
+    };
+    const verified = await verifySceneExpressionFlowBake(bakeResult, fresh);
+    if (!verified.ok) throw new Error(`The Flow recording no longer matches this project (${verified.reason}). Record it again.`);
+    const result = await createRecordedSequenceAsset({
+      kind: 'expression-scene', bakeResult, controller: current.standaloneController,
+      label: scene.name, sourceSnapshot,
+    });
+    if (projectRef.current.projectId !== projectId || projectRef.current.standaloneController !== current.standaloneController) {
+      throw new Error('The project changed while this Flow recording was being saved. Record it again.');
+    }
+    const nextController = await applyRecordedSequenceAsset(current.standaloneController, result);
+    if (projectRef.current.projectId !== projectId || projectRef.current.standaloneController !== current.standaloneController) {
+      throw new Error('The project changed while this Flow recording was being saved. Record it again.');
+    }
+    const applied = current.setStandaloneController(nextController);
+    if (applied?.ok !== true) {
+      const first = applied?.errors?.[0];
+      throw new Error((typeof first === 'string' ? first : first?.message) || 'The project could not save this Flow recording.');
+    }
+    return new Promise(resolve => {
+      setPendingProjectSave({
+        message: `Recorded ${result.asset.label} in the project with its editable Flow source.`,
+        navigateAfter: false, resolve,
+      });
     });
   }
 
@@ -1825,6 +1992,7 @@ export default function PatternLabScreen({
       project={project}
       onSaveProject={onSaveProject}
       onInstallScene={onInstallExpressionScene}
+      onRecordFlow={recordFlowInProject}
       installationReceipt={expressionInstallationReceipt}
       onStartPhysicalPreview={onStartExpressionScenePreview}
       physicalPreviewContextKey={expressionPreviewContextKey}
@@ -2024,8 +2192,10 @@ export default function PatternLabScreen({
                   <SculpturePlaceholder />
                   <div className="plab-empty">
                     <span className="plab-empty-rule" aria-hidden="true" />
-                    <h2>Begin with a pattern</h2>
-                    <p>Choose a built-in look in the inspector. Pattern Lab makes a private copy you can stretch into a longer, less repetitive experience.</p>
+                    <h2>{previewBaseSupport.supported ? 'Begin with a pattern' : 'Layer preview unavailable'}</h2>
+                    <p>{previewBaseSupport.supported
+                      ? 'Choose a built-in look in the inspector. Pattern Lab makes a private copy you can stretch into a longer, less repetitive experience.'
+                      : previewBaseSupport.message}</p>
                     <button type="button" className="btn primary" onClick={() => {
                       setActiveWorkflowStep(0);
                       if (mobileDrawer) setSheetDetent('full');
@@ -2174,6 +2344,18 @@ export default function PatternLabScreen({
                 instrumentResponse={instrumentResponse}
                 onOpenStep={openWorkflowStep}
               />
+              {draft && <PatternLabLayers
+                recipe={draft}
+                patterns={patterns}
+                areas={editAreas}
+                scoped={sectionState?.scoped}
+                baseScope={sectionState?.scoped ? sectionState?.area?.label || `${sectionState?.selectedTargetId} (missing)` : 'Whole piece'}
+                targetValidation={layerTargetValidation}
+                onAdd={addLayer}
+                onChange={updateLayer}
+                onRemove={removeLayer}
+                onMove={moveLayer}
+              />}
             </div>
             {(draft?.base?.kind === 'color-journey' || openInspectorStep === 0) && <ColorJourneyComposer
               recipe={draft}
@@ -2230,10 +2412,11 @@ export default function PatternLabScreen({
                     recipe={draft}
                     onBake={bakeForCard}
                     onUseInProject={useInProject}
+                    onOpenSequenceAsset={openSequenceAsset}
                     onSimplify={simplifyForCard}
                     onRemoveFeature={removeUnsupportedFeatures}
-                    authoringDisabled={sectionState?.supported === false}
-                    authoringDisabledMessage={sectionState?.message || ''}
+                    authoringDisabled={sectionState?.supported === false || !layerTargetValidation.valid || !previewBaseSupport.supported}
+                    authoringDisabledMessage={sectionState?.message || layerTargetValidation.message || previewBaseSupport.message}
                   />
                   {compatibility?.simplification?.variant
                     && compatibility.simplification.resolvesCompatibility !== true && (
@@ -2336,7 +2519,7 @@ export default function PatternLabScreen({
                     id="plab-add-to-patterns"
                     type="button"
                     className="btn primary"
-                    disabled={projectActionBusy || sectionState?.supported === false}
+                    disabled={projectActionBusy || sectionState?.supported === false || !layerTargetValidation.valid}
                     aria-busy={projectActionBusy ? 'true' : undefined}
                     onClick={() => void useInProjectPrimary()}
                   >{projectActionBusy ? 'Adding…' : promotedActionLabel(compatibility, handoffIdentity?.updating)}</button>
@@ -2356,7 +2539,7 @@ export default function PatternLabScreen({
                   id="plab-save-private"
                   type="button"
                   className="btn"
-                  disabled={!draft || sectionState?.supported === false}
+                  disabled={!draft || sectionState?.supported === false || !layerTargetValidation.valid}
                   onClick={draft.base?.kind === 'color-journey' ? keepCreativeLook : saveDraft}
                 >{draft.base?.kind === 'color-journey' && creativeSavedVersion
                     ? 'Update private draft'
@@ -2366,7 +2549,7 @@ export default function PatternLabScreen({
                     type="button"
                     className="btn"
                     data-testid="pattern-lab-replace-draft"
-                    disabled={sectionState?.supported === false}
+                    disabled={sectionState?.supported === false || !layerTargetValidation.valid}
                     onClick={draft.base?.kind === 'color-journey' ? saveCreativeCopy : replaceSavedDraft}
                   >{draft.base?.kind === 'color-journey' ? 'Save new private draft' : saveOptions.replaceLabel}</button>
                 )}

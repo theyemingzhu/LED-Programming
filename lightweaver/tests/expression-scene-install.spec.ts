@@ -92,6 +92,11 @@ async function mockCard(page: any, options: any = {}) {
     project.expressionScenes.scenes[0].steps[0].transitionFromPrevious = { mode: 'dip-swap-rise', durationMs: 1000 };
   }
   if (options.threeSections) addThirdReversedSection(project);
+  if (options.multiOutputs) project.layout.wiring.outputs = [
+    { id: 'out1', name: 'Branch output', pin: 16, runIds: ['run-third-section'] },
+    { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
+    { id: 'out3', name: 'Outer output', pin: 18, runIds: ['run-default-outer-circle'] },
+  ];
   const installedProject = structuredClone(project);
   if (options.installedSourceRepointed) {
     const run = installedProject.layout.wiring.runs.find((item: any) => item.id === 'run-third-section');
@@ -140,6 +145,7 @@ async function mockCard(page: any, options: any = {}) {
       led: config.led,
       outputs: config.led.outputs,
       limits: { maxLooks: 64 }, maxPixels: 4096,
+      capabilities: { physicalFrameOrder: { version: 1 } },
       streaming: state.streaming,
       ...(!options.missingPlaylistSnapshot ? { playlist: { ...state.playlist } } : {}),
     };
@@ -273,9 +279,20 @@ async function openSceneEditor(page: any, expectedTitle = 'Gallery tide') {
 async function openSceneEditorForPreview(page: any) {
   await openSceneEditor(page);
   await page.evaluate(async () => {
-    const { getActiveCardTransportAuthority } = await import('/src/lib/cardTransport.js');
-    const authority = getActiveCardTransportAuthority('lightweaver.local');
+    // Vite gives the app's static import a ?t= URL after HMR. Importing the
+    // unversioned path here would create a second authority singleton.
+    const transportUrl = performance.getEntriesByType('resource')
+      .map(entry => entry.name)
+      .find(url => new URL(url).pathname === '/src/lib/cardTransport.js');
+    if (!transportUrl) throw new Error('The app card transport module was not loaded.');
+    const { connectCardTransport, getActiveCardTransportAuthority } = await import(transportUrl);
+    // Background status polling proves reachability but does not grant owner
+    // authority. Establish the same explicit connection as the Connect action.
+    const authority = getActiveCardTransportAuthority('lightweaver.local')
+      || await connectCardTransport({ host: 'lightweaver.local' });
+    if (typeof authority?.issueOwnerCapability !== 'function') throw new Error(`Fixture connection failed: ${authority?.reason}`);
     await authority.issueOwnerCapability({ commissioningProof: 'browser-test-owner-confirmed' });
+    if (!authority.ownerCapability) throw new Error('The exact app card transport authority did not retain owner capability.');
   });
 }
 
@@ -471,8 +488,8 @@ test('a later project edit and disconnected target both invalidate current On ca
   await expect(page.getByRole('button', { name: 'Put scene on card', exact: true })).toBeEnabled();
 });
 
-test('scene rehearsal sends an exact three-section physical frame only after explicit start and restores paused playback', async ({ page }) => {
-  const card = await mockCard(page, { threeSections: true, trackPreviewOnly: true, advancePlaylistOnStop: true });
+test('scene rehearsal sends an exact three-GPIO physical frame only after explicit start and restores paused playback', async ({ page }) => {
+  const card = await mockCard(page, { threeSections: true, multiOutputs: true, trackPreviewOnly: true, advancePlaylistOnStop: true });
   await openSceneEditorForPreview(page);
   const preview = page.getByTestId('scene-physical-preview');
   await expect(preview).toBeEnabled();
@@ -485,6 +502,9 @@ test('scene rehearsal sends an exact three-section physical frame only after exp
   await expect(preview).toHaveText('Stop preview');
   await expect.poll(async () => (await physicalFramePixels(page, card)).length).toBeGreaterThan(0);
   const firstFrame = (await physicalFramePixels(page, card))[0];
+  const framePackets = [...card.frames, ...(await browserFrames(page))];
+  expect(framePackets.length).toBeGreaterThan(0);
+  expect(framePackets.every((packet: any) => packet.lwPhysical === 1)).toBe(true);
   expect(firstFrame).toHaveLength(49);
   expect(firstFrame.every((pixel: unknown) => typeof pixel === 'string' && /^[0-9A-F]{6}$/.test(pixel as string))).toBe(true);
 

@@ -881,7 +881,9 @@ test('CLI builder writes a deterministic content-addressed artifact and strict s
   await rm(lockPath, { recursive: true, force: true });
 });
 
-test('CLI builder emits a detached exact-byte signature without exposing its private key', async () => {
+test(process.platform === 'win32'
+  ? 'CLI signing fails closed on Windows where owner-only POSIX key permissions cannot be established'
+  : 'CLI builder emits a detached exact-byte signature without exposing its private key', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'lw-production-job-signing-'));
   const input = join(directory, 'source.json');
   const publicRoot = join(directory, 'public');
@@ -890,10 +892,21 @@ test('CLI builder emits a detached exact-byte signature without exposing its pri
   await writeFile(input, JSON.stringify(source()));
   await writeFile(privateKeyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
   const script = resolve(process.cwd(), '../scripts/build-production-job.mjs');
-  const result = JSON.parse((await promisify(execFile)(process.execPath, [
+  const runSigner = () => promisify(execFile)(process.execPath, [
     script, '--input', input, '--public-root', publicRoot,
     '--signing-key', privateKeyPath, '--signing-key-id', 'isolated-builder-key',
-  ])).stdout);
+  ]);
+  if (process.platform === 'win32') {
+    // Do not bypass the production signer's permission gate for test convenience.
+    // The positive signature path runs on POSIX CI; Windows proves refusal.
+    await assert.rejects(runSigner(), error => {
+      assert.match(error.stderr, /signing key permissions must not allow group or other access/);
+      assert.doesNotMatch(error.stdout, /BEGIN (?:EC |)PRIVATE KEY/);
+      return true;
+    });
+    return;
+  }
+  const result = JSON.parse((await runSigner()).stdout);
   const artifact = await readFile(result.artifactPath);
   const envelope = JSON.parse(await readFile(result.signaturePath, 'utf8'));
   assert.deepEqual(Object.keys(envelope).sort(), ['algorithm', 'keyId', 'value']);

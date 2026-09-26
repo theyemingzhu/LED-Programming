@@ -30,7 +30,6 @@ import { reclaimCardFrameStreams } from './cardFrameStream.js';
 
 const SETTLE_MS = 900;
 const POLL_MS = 1500;
-const RETRY_MS = 4000;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -53,14 +52,14 @@ export function isTransientCardError(error) {
   return /abort|network|fetch|reach|timed out|timeout/i.test(String(error?.message || ''));
 }
 
-export async function waitForCardToAnswer(host, { attempts = 20 } = {}) {
+export async function waitForCardToAnswer(host, { attempts = 20, transport } = {}) {
   for (let index = 0; index < attempts; index += 1) {
     try {
-      if (looksLikeCard(await readCardStatusEnvelope({ host }))) {
+      if (looksLikeCard(await readCardStatusEnvelope({ host, transport }))) {
         // Two clean reads in a row: one can land in the gap between the radio
         // coming up and the card being ready to be written to.
         await sleep(SETTLE_MS);
-        if (looksLikeCard(await readCardStatusEnvelope({ host }))) return true;
+        if (looksLikeCard(await readCardStatusEnvelope({ host, transport }))) return true;
       }
     } catch { /* still starting */ }
     await sleep(POLL_MS);
@@ -70,10 +69,10 @@ export async function waitForCardToAnswer(host, { attempts = 20 } = {}) {
 
 // Poll until the card reports the length just sent. This is the proof: the card
 // saying, itself, what it is now driving.
-export async function waitForCardPixels(host, wanted, { attempts = 20 } = {}) {
+export async function waitForCardPixels(host, wanted, { attempts = 20, transport } = {}) {
   for (let index = 0; index < attempts; index += 1) {
     try {
-      const status = await readCardStatusEnvelope({ host });
+      const status = await readCardStatusEnvelope({ host, transport });
       if (Number(status?.led?.pixels ?? status?.pixels ?? 0) === wanted) return true;
     } catch { /* a rebooting card does not answer; keep waiting */ }
     await sleep(POLL_MS);
@@ -81,14 +80,55 @@ export async function waitForCardPixels(host, wanted, { attempts = 20 } = {}) {
   return false;
 }
 
-export async function clearDanglingWiringTransaction(host) {
+function exactOutputMap(expected = [], actual = []) {
+  return actual.length === expected.length && expected.every((output, index) => {
+    const observed = actual[index];
+    return observed && String(observed.id) === String(output.id)
+      && Number(observed.pin) === Number(output.pin)
+      && Number(observed.pixels) === Number(output.pixels)
+      && JSON.stringify(observed.segments || []) === JSON.stringify(output.segments || []);
+  });
+}
+
+export function exactDeployedStatus(config, status, expectedCardId = '') {
+  return Boolean(status && (!expectedCardId || status.cardId === expectedCardId)
+    && status.projectId === config?.piece?.id
+    && Number(status.projectRevision) === Number(config?.projectRevision)
+    && status.projectFingerprint === config?.projectFingerprint
+    && status.provisionalSetup === Boolean(config?.provisional)
+    && exactOutputMap(config?.led?.outputs || [], status.outputs || []));
+}
+
+function resumableWiringCandidate(wiring, config, expectedCardId) {
+  if (!wiring?.activationId || !['staged', 'testing'].includes(wiring.state)) return false;
+  return Boolean(expectedCardId && wiring.cardId === expectedCardId
+    && wiring.projectFingerprint === config?.projectFingerprint
+    && Number(wiring.projectRevision) === Number(config?.projectRevision)
+    && exactOutputMap(config?.led?.outputs || [], wiring.candidateOutputs || []));
+}
+
+export async function waitForCardOutputs(host, config, {
+  attempts = 20, transport, expectedCardId = '',
+  statusImpl = readCardStatusEnvelope, sleepImpl = sleep,
+} = {}) {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      const status = await statusImpl({ host, transport });
+      if (exactDeployedStatus(config, status, expectedCardId)) return status;
+    } catch { /* a rebooting card is not ready yet */ }
+    await sleepImpl(POLL_MS);
+  }
+  return null;
+}
+
+export async function clearDanglingWiringTransaction(host, { transport } = {}) {
   try {
-    const status = await getCardWiringStatus({ host });
+    const status = await getCardWiringStatus({ host, transport });
     const activationId = status?.activationId;
     if (!activationId) return false;
     if (status.state !== 'staged' && status.state !== 'testing') return false;
-    await rollbackCardWiringCandidate(activationId, { host });
-    await waitForCardToAnswer(host);
+    await rollbackCardWiringCandidate(activationId, { host, transport });
+    await waitForCardToAnswer(host, { transport });
     return true;
   } catch {
     // Nothing dangling, or the card cannot say. The write itself will tell us.
@@ -112,41 +152,68 @@ export function totalPixelsInPackage(runtimePackage) {
 export async function deploySetupToCard(runtimePackage, host, {
   onProgress = null,
   allowProjectChange = false,
+  transport,
+  expectedCardId = '',
+  pushImpl = pushConfigToCard,
+  statusImpl = readCardStatusEnvelope,
+  wiringStatusImpl = getCardWiringStatus,
+  reclaimImpl = reclaimCardFrameStreams,
+  waitForCardImpl = waitForCardToAnswer,
+  activateImpl = activateAndWaitForCardWiring,
+  confirmImpl = confirmCardWiringCandidate,
+  waitForOutputsImpl = waitForCardOutputs,
 } = {}) {
-  try { await reclaimCardFrameStreams(host); } catch { /* nothing was streaming */ }
-  await waitForCardToAnswer(host);
-  await clearDanglingWiringTransaction(host);
-
-  const push = () => pushConfigToCard(runtimePackage, { host, allowLayoutChange: true, allowProjectChange });
-  let response;
-  try {
-    response = await push();
-  } catch (error) {
-    if (!isTransientCardError(error)) throw error;
-    onProgress?.('The card was still starting up. Trying again…');
-    await sleep(RETRY_MS);
-    await waitForCardToAnswer(host);
-    response = await push();
+  try { await reclaimImpl(host); } catch { /* nothing was streaming */ }
+  await waitForCardImpl(host, { transport });
+  const beforeWiring = await wiringStatusImpl({ host, transport });
+  const hasCandidate = beforeWiring?.hasCandidate || ['staged', 'testing'].includes(beforeWiring?.state);
+  if (hasCandidate && !resumableWiringCandidate(beforeWiring, runtimePackage?.config, expectedCardId)) {
+    throw new Error('This card holds a different or unverified wiring candidate. Resolve it on the card before installing again.');
   }
 
-  if (response?.state === 'staged' && response.activationId) {
-    onProgress?.('Confirming the wiring with the card…');
-    try {
-      await activateAndWaitForCardWiring(response.activationId, { host });
-    } catch { /* the watcher's timeout is not the outcome; verified below */ }
-    try {
-      await confirmCardWiringCandidate(response.activationId, { host });
-    } catch {
-      // A confirm that never landed leaves the card holding the change open,
-      // which blocks every later write. Try once more once it has settled.
-      await waitForCardToAnswer(host);
-      try { await confirmCardWiringCandidate(response.activationId, { host }); } catch { /* verified below */ }
+  const push = () => pushImpl(runtimePackage, { host, transport, allowLayoutChange: true, allowProjectChange });
+  let response = hasCandidate ? { state: beforeWiring.state, activationId: beforeWiring.activationId } : null;
+  try {
+    if (!response) response = await push();
+  } catch (error) {
+    if (!isTransientCardError(error)) throw error;
+    // A lost reply can follow an accepted write. Observe before considering
+    // another POST; a duplicate can create a second wiring candidate.
+    let status = null;
+    let wiring = null;
+    try { status = await statusImpl({ host, transport }); } catch { /* still rebooting */ }
+    try { wiring = await wiringStatusImpl({ host, transport }); } catch { /* unknown delivery */ }
+    if (exactDeployedStatus(runtimePackage?.config, status, expectedCardId)
+      && wiring?.state === 'known-good' && !wiring?.hasCandidate) {
+      response = { ok: true, state: 'verified-after-lost-reply' };
+    } else {
+      const ambiguous = new Error(wiring?.hasCandidate
+        ? 'The card may have staged this setup, but its reply was lost. Reconnect and inspect the wiring candidate before retrying.'
+        : 'The card write reply was lost. Reconnect and inspect its setup before retrying.');
+      ambiguous.reason = 'ambiguous-config-delivery';
+      throw ambiguous;
     }
   }
 
-  const wanted = totalPixelsInPackage(runtimePackage);
-  if (wanted > 0 && !(await waitForCardPixels(host, wanted))) {
-    throw new Error('the card did not come back with this setup');
+  if (['staged', 'testing'].includes(response?.state) && response.activationId) {
+    onProgress?.('Confirming the wiring with the card…');
+    if (response.state === 'staged') {
+      try {
+        await activateImpl(response.activationId, { host, transport });
+      } catch { /* the watcher's timeout is not the outcome; verified below */ }
+    }
+    try {
+      await confirmImpl(response.activationId, { host, transport });
+    } catch {
+      // A confirm that never landed leaves the card holding the change open,
+      // which blocks every later write. Try once more once it has settled.
+      await waitForCardToAnswer(host, { transport });
+      try { await confirmImpl(response.activationId, { host, transport }); } catch { /* verified below */ }
+    }
+  }
+
+  if (!(await waitForOutputsImpl(host, runtimePackage?.config, { transport, expectedCardId }))) {
+    throw new Error('The card did not come back with this exact output and project setup.');
   }
   return response;
 }
@@ -182,12 +249,25 @@ export function buildPackageForPortRoles({
   standaloneController = {},
   portRoles = [],
   maxOutputs = 4,
+  measuredGeometry = null,
 } = {}, prepareImpl) {
   const outputs = outputsFromPortRoles(portRoles, maxOutputs);
+  if (measuredGeometry) {
+    const measuredOutputs = Array.isArray(measuredGeometry?.wiring?.outputs) ? measuredGeometry.wiring.outputs : [];
+    if (measuredOutputs.length !== outputs.length || outputs.some((output, index) => (
+      Number(measuredOutputs[index]?.pin) !== output.pin
+      || (measuredGeometry?.strips || []).find(strip => strip.id === measuredGeometry?.wiring?.runs?.find(run => run.id === measuredOutputs[index]?.runIds?.[0])?.source?.stripId)?.pixelCount !== output.pixels
+    ))) throw new Error('Measured GPIO geometry does not match the confirmed output counts.');
+  }
   return prepareImpl({
     projectId,
     projectName,
     projectRevision: Number.isSafeInteger(projectRevision) && projectRevision >= 0 ? projectRevision : 0,
     standaloneController: { ...standaloneController, outputs },
+    ...(measuredGeometry ? {
+      strips: measuredGeometry.strips,
+      patchBoard: measuredGeometry.patchBoard,
+      wiring: measuredGeometry.wiring,
+    } : {}),
   }, {});
 }

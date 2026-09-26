@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import {
   MAX_PATTERN_LAB_SEQUENCE_ASSETS,
@@ -9,7 +10,8 @@ import {
 } from './patternLabHandoff.js';
 import { classifyPatternLabCompatibility } from './patternLabCompatibility.js';
 import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
-import { bakePatternLabRecipe } from './lwseqBake.js';
+import { bakePatternLabRecipe, canonicalPatternLabBakeJson } from './lwseqBake.js';
+import { recipeFromSequenceAsset } from './patternLabFromLook.js';
 import { createDefaultProject, migrateProject } from './projectModel.js';
 import { MAX_SAVED_LOOKS } from './sectionLookModel.js';
 import { LWSEQ_HEADER_BYTES } from './standaloneController.js';
@@ -79,6 +81,7 @@ const bakedRecipe = recipe({
   evolution: { enabled: true, character: 'slow-bloom', durationSeconds: 300, change: 0.35 },
 });
 const baked = await bakePatternLabRecipe({ recipe: bakedRecipe, strips, wiring, fps: 1 });
+const bakedContext = { strips, wiring };
 
 test('creates a new normalized look handoff without changing the recipe', async () => {
   const source = recipe();
@@ -231,6 +234,7 @@ test('creates a complete sequence package from the canonical bake result', async
     recipe: bakedRecipe,
     compatibility: compatibilityFor(bakedRecipe),
     bakeResult: baked,
+    ...bakedContext,
   });
   assert.equal(result.kind, 'sequence');
   assert.equal(result.manifest.lwseqSha256, baked.sidecar.lwseqSha256);
@@ -257,6 +261,7 @@ test('a sequence output may be as long as the card, while the file budget stays 
     recipe: bakedRecipe,
     compatibility: compatibilityFor(bakedRecipe),
     bakeResult: baked,
+    ...bakedContext,
   });
   // 2000 sits past the old 1024 wiring literal and inside the .lwseq storage
   // budget, so it separates the two ceilings cleanly: the card's pixel count is
@@ -313,9 +318,55 @@ test('rejects incomplete, tampered, or stale-recipe bake results', async () => {
     recipe: stale,
     compatibility: compatibilityFor(stale),
     bakeResult: baked,
+    ...bakedContext,
   });
   assert.equal(staleResult.kind, 'blocked');
   assert.equal(staleResult.reasons[0].code, 'bake-stale-recipe');
+});
+
+test('a finished bake cannot be handed off after physical artwork changes', async () => {
+  const changedStrips = structuredClone(strips);
+  changedStrips[0].pixels[0].x = 42;
+  const result = await createPatternLabHandoff({
+    recipe: bakedRecipe,
+    compatibility: compatibilityFor(bakedRecipe),
+    bakeResult: baked,
+    strips: changedStrips,
+    wiring,
+  });
+  assert.equal(result.kind, 'blocked');
+  assert.equal(result.reasons[0].code, 'bake-stale-layout');
+});
+
+test('a stale canonical section mask cannot enter the project library through handoff', async () => {
+  const layered = recipe({ layers: [{
+    id: 'section-fire', name: 'Section fire', enabled: true, opacity: 0.5,
+    blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+    target: { kind: 'section', id: 'area-main', stripIds: ['main'] },
+  }] });
+  const result = await createPatternLabHandoff({
+    recipe: layered, compatibility: compatibilityFor(layered), projectLibraryOnly: true,
+    strips, sectionTargets: [{ kind: 'section', id: 'area-main', stripIds: ['different'] }],
+  });
+  assert.equal(result.kind, 'blocked');
+  assert.equal(result.reasons[0].code, 'section-target-stale');
+});
+
+test('handoff refuses a layered recipe that would flatten different saved section bases', async () => {
+  const layered = recipe({
+    sourceLook: {
+      defaultLook: { patternId: 'aurora', customHue: 10 },
+      sectionLooks: { main: { patternId: 'fire', customHue: 240 } },
+    },
+    layers: [{ id: 'fire-over', name: 'Fire over', enabled: true, opacity: 0.4,
+      blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+      target: { kind: 'whole-piece', id: 'all' } }],
+  });
+  const result = await createPatternLabHandoff({
+    recipe: layered, compatibility: compatibilityFor(layered), projectLibraryOnly: true,
+  });
+  assert.equal(result.kind, 'blocked');
+  assert.equal(result.reasons[0].code, 'layer-base-mix-unsupported');
 });
 
 test('invalid, canceled, unsupported, and failed handoffs mutate nothing', async () => {
@@ -383,6 +434,7 @@ test('sequence apply stores only bounded metadata and a sequence look reference'
     recipe: bakedRecipe,
     compatibility: compatibilityFor(bakedRecipe),
     bakeResult: baked,
+    ...bakedContext,
     controller,
   });
   const next = await applyPatternLabHandoff(controller, result);
@@ -412,12 +464,88 @@ test('sequence apply stores only bounded metadata and a sequence look reference'
   assert.strictEqual(await applyPatternLabHandoff(controller, cyclicResult), controller);
 });
 
+test('recorded sequence reopens for exact Update or Save as New without becoming a native look', async () => {
+  const layered = recipe({
+    evolution: { enabled: true, character: 'slow-bloom', durationSeconds: 300, change: 0.35 },
+    layers: [{ id: 'layer-fire', name: 'Fire', enabled: true, opacity: 0.3,
+      blendMode: 'screen', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+      target: { kind: 'whole-piece', id: 'all' } }],
+  });
+  const layeredBake = await bakePatternLabRecipe({ recipe: layered, ...bakedContext, fps: 1 });
+  const recorded = await createPatternLabHandoff({
+    recipe: layered, compatibility: compatibilityFor(layered), bakeResult: layeredBake, ...bakedContext,
+  });
+  const first = await applyPatternLabHandoff({}, recorded);
+  const reopened = await recipeFromSequenceAsset(first.sequenceAssets[0]);
+  assert.equal(reopened.sourceSequenceAssetId, recorded.asset.id);
+  assert.equal(reopened.sourceSequenceAssetSha256, recorded.asset.manifest.lwseqSha256);
+  assert.deepEqual(reopened.layers, layeredBake.recipe.layers);
+  assert.equal(reopened.layers[0].blendMode, 'screen');
+  assert.equal(reopened.layers[0].opacity, 0.3);
+
+  const changed = { ...reopened, name: 'Aurora revised', seed: reopened.seed + 1 };
+  const revisedBake = await bakePatternLabRecipe({ recipe: changed, ...bakedContext, fps: 1 });
+  const update = await createPatternLabHandoff({
+    recipe: changed, compatibility: compatibilityFor(changed), bakeResult: revisedBake,
+    ...bakedContext, controller: first,
+  });
+  assert.equal(update.kind, 'sequence');
+  assert.equal(update.replaceSequenceAssetId, recorded.asset.id);
+  const updated = await applyPatternLabHandoff(first, update);
+  assert.equal(updated.sequenceAssets.length, 1);
+  assert.equal(updated.sequenceAssets[0].id, recorded.asset.id);
+  assert.equal(updated.sequenceAssets[0].manifest.recipe.seed, changed.seed);
+  assert.equal(updated.looks, undefined);
+  const conflictingUpdate = await createPatternLabHandoff({
+    recipe: changed, compatibility: compatibilityFor(changed), bakeResult: revisedBake,
+    ...bakedContext, controller: updated,
+  });
+  assert.equal(conflictingUpdate.kind, 'blocked');
+  assert.equal(conflictingUpdate.reasons[0].code, 'sequence-source-changed');
+  const project = createDefaultProject();
+  project.devices.standaloneController = updated;
+  const restoredProject = migrateProject(JSON.parse(JSON.stringify(project)));
+  assert.deepEqual(restoredProject.devices.standaloneController.sequenceAssets[0].manifest.recipe.layers,
+    updated.sequenceAssets[0].manifest.recipe.layers);
+
+  const savedNew = await createPatternLabHandoff({
+    recipe: changed, compatibility: compatibilityFor(changed), bakeResult: revisedBake,
+    ...bakedContext, controller: updated, saveAsNew: true,
+  });
+  const withCopy = await applyPatternLabHandoff(updated, savedNew);
+  assert.equal(withCopy.sequenceAssets.length, 2);
+  assert.notEqual(withCopy.sequenceAssets[0].id, recorded.asset.id);
+  assert.equal(withCopy.sequenceAssets[1].id, recorded.asset.id);
+});
+
+test('an older recording verifies its original idless layer hash before migration for editing', async () => {
+  const source = recipe({
+    evolution: { enabled: true, character: 'slow-bloom', durationSeconds: 300, change: 0.35 },
+    layers: [{ id: 'old-layer', name: 'Old layer', enabled: true, opacity: 0.6,
+      blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+      target: { kind: 'whole-piece', id: 'all' } }],
+  });
+  const bakedSource = await bakePatternLabRecipe({ recipe: source, ...bakedContext, fps: 1 });
+  const recorded = await createPatternLabHandoff({
+    recipe: source, compatibility: compatibilityFor(source), bakeResult: bakedSource, ...bakedContext,
+  });
+  const old = structuredClone(recorded.asset);
+  delete old.manifest.recipe.layers[0].id;
+  const oldHash = createHash('sha256').update(canonicalPatternLabBakeJson(old.manifest.recipe)).digest('hex');
+  old.manifest.recipeSha256 = oldHash;
+  old.recipe.sha256 = oldHash;
+  const reopened = await recipeFromSequenceAsset(old);
+  assert.equal(reopened.layers[0].id, `layer-legacy-${source.id}-0`);
+  assert.equal(reopened.sourceSequenceAssetId, old.id);
+});
+
 test('sequence metadata survives project JSON migration round trip and rejects unbounded data', async () => {
   const project = createDefaultProject();
   const result = await createPatternLabHandoff({
     recipe: bakedRecipe,
     compatibility: compatibilityFor(bakedRecipe),
     bakeResult: baked,
+    ...bakedContext,
     controller: project.devices.standaloneController,
   });
   project.devices.standaloneController = await applyPatternLabHandoff(project.devices.standaloneController, result);
@@ -449,6 +577,7 @@ test('sequence asset capacity blocks instead of evicting metadata', async () => 
     recipe: bakedRecipe,
     compatibility: compatibilityFor(bakedRecipe),
     bakeResult: baked,
+    ...bakedContext,
   });
   const asset = (await applyPatternLabHandoff({}, seedResult)).sequenceAssets[0];
   const controller = {

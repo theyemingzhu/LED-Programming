@@ -49,12 +49,16 @@ export function normalizePlaylistTiming(raw = {}) {
 
 export function normalizeCardPlaylist(playlist = [], {
   savedLooks = [],
+  sequenceAssets = [],
   fallbackPatternIds = [],
   allowEmpty = false,
 } = {}) {
   const savedLookById = new Map((Array.isArray(savedLooks) ? savedLooks : [])
     .filter(Boolean)
     .map(look => [sanitizeId(look.id), look]));
+  const sequenceAssetById = new Map((Array.isArray(sequenceAssets) ? sequenceAssets : [])
+    .filter(asset => asset?.mediaRef?.sha256 === asset?.manifest?.lwseqSha256)
+    .map(asset => [sanitizeId(asset.id), asset]));
   const input = Array.isArray(playlist) ? playlist : [];
   const normalized = [];
   const usedIds = new Set();
@@ -92,8 +96,23 @@ export function normalizeCardPlaylist(playlist = [], {
     });
   };
 
+  const pushSequence = (item = {}, index = normalized.length) => {
+    const sequenceAssetId = sanitizeId(item.sequenceAssetId || item.id);
+    const asset = sequenceAssetById.get(sequenceAssetId);
+    if (!asset) return;
+    normalized.push({
+      id: uniqueId(sanitizeId(item.id || sequenceAssetId), usedIds),
+      type: 'sequence', sequenceAssetId,
+      label: String(item.label || asset.label || titleFromId(sequenceAssetId)),
+      enabled: item.enabled !== false,
+      dwellSeconds: clampDwellSeconds(item.dwellSeconds),
+      createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : index,
+    });
+  };
+
   input.forEach((item, index) => {
     if (!item || typeof item !== 'object') return;
+    if (item.type === 'sequence' || item.sequenceAssetId) { pushSequence(item, index); return; }
     if (item.type === 'combo' || item.lookId || item.comboId) {
       pushCombo(item, index);
       return;
@@ -163,9 +182,9 @@ export function derivePlaylistLookIds(playlist = []) {
 // pattern entry names. Only enabled entries reach the card, in playlist
 // order, capped at CARD_PLAYLIST_ENTRY_LIMIT (the dial's own 32-entry
 // CARD_PLAYLIST_LIMIT is unrelated and untouched by this cap).
-export function buildCardPlaylistConfig(playlist = [], savedLooks = [], timing = {}) {
+export function buildCardPlaylistConfig(playlist = [], savedLooks = [], timing = {}, sequenceAssets = []) {
   const { enabled, fadeMs } = normalizePlaylistTiming(timing);
-  const normalized = normalizeCardPlaylist(playlist, { savedLooks, allowEmpty: true });
+  const normalized = normalizeCardPlaylist(playlist, { savedLooks, sequenceAssets, allowEmpty: true });
   const entries = normalized
     .filter(item => item.enabled !== false)
     .slice(0, CARD_PLAYLIST_ENTRY_LIMIT)
@@ -186,6 +205,12 @@ export function playlistContainsCombo(playlist = [], lookId = '') {
   const id = sanitizeId(lookId);
   return (Array.isArray(playlist) ? playlist : [])
     .some(item => item?.type === 'combo' && item.lookId === id);
+}
+
+export function playlistContainsSequence(playlist = [], assetId = '') {
+  const id = sanitizeId(assetId);
+  return (Array.isArray(playlist) ? playlist : [])
+    .some(item => item?.type === 'sequence' && item.sequenceAssetId === id);
 }
 
 export function playlistLabels(playlist = [], limit = 3) {
@@ -221,6 +246,16 @@ export function makeComboPlaylistItem(savedLook = {}) {
     enabled: true,
     dwellSeconds: DEFAULT_PLAYLIST_DWELL_SECONDS,
     createdAt: Date.now(),
+  };
+}
+
+export function makeSequencePlaylistItem(asset = {}) {
+  const sequenceAssetId = sanitizeId(asset.id);
+  if (!sequenceAssetId || asset?.mediaRef?.sha256 !== asset?.manifest?.lwseqSha256) return null;
+  return {
+    id: sequenceAssetId, type: 'sequence', sequenceAssetId,
+    label: asset.label || titleFromId(sequenceAssetId), enabled: true,
+    dwellSeconds: DEFAULT_PLAYLIST_DWELL_SECONDS, createdAt: Date.now(),
   };
 }
 

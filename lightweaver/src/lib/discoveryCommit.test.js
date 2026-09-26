@@ -10,6 +10,7 @@ import {
   discoveryProjectParts,
   projectSkeletonFromCardStatus,
   starterLedCountFromProject,
+  withDiscoveryPatternChoices,
 } from './discoveryCommit.js';
 
 const benchLayout = [
@@ -88,6 +89,15 @@ test('discoveryProjectParts creates proportional provisional layout strips and w
   assert.equal(parts.wiring.locked, false);
   assert.equal(parts.wiring.verified, false);
   assert.equal(parts.patchBoard.physicalLocked, false);
+});
+
+test('confirmed GPIO pattern choices attach to measured patch playback without changing counts', () => {
+  const parts = discoveryProjectParts(discoveredSession(), null);
+  const chosen = withDiscoveryPatternChoices(parts, { 16: 'fire', 17: 'ocean' });
+  assert.deepEqual(chosen.outputs, parts.outputs);
+  assert.deepEqual(chosen.strips.map(strip => strip.pixelCount), [354, 120]);
+  assert.deepEqual(chosen.patchBoard.patches.map(patch => patch.playback.patternId), ['fire', 'ocean']);
+  assert.equal(parts.patchBoard.patches[0].playback.patternId, null, 'source discovery evidence stays unchanged');
 });
 
 test('a port that ended with no count is omitted from outputs', () => {

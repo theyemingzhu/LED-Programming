@@ -37,6 +37,322 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Multi-GPIO release (active)
+
+Adrian explicitly requested shipment. Clean release branch
+`codex/ship-multi-gpio` starts at `1c4ee1f7`; unrelated thumbnail edits stay in
+the original checkout. Prepare one firmware version bump, verify source gates,
+merge through the integration PR, then wait for the protected signer and real
+production deployment. Final evidence must cover terminal main, strict no-store
+Studio marker and exact staged Studio/firmware graphs. Full launch checks run
+against the signed release; feature-source factory freshness remains deferred
+until protected signing. Physical Bench observations remain unperformed and
+must be reported separately; no destructive factory flash is planned.
+
+Release candidate build 2136 is pushed in PR340. The first exact-candidate
+Actions run found stale source-order/color-copy assertions and older mock-card
+capabilities in commissioning and strip counting. The corrected firmware
+contract suite passes in a clean Linux checkout; browser fixture repairs retain
+the new physical-frame and bridge compatibility guards. Candidate remains
+unmerged until the corrected release checks pass.
+
+### 2026-09-25 Multi-GPIO completion and push (pushed; Bench pending)
+
+Adrian requested completing the remaining multi-GPIO work and pushing it. Three
+Sol workers own firmware playback/media, runtime package/persistence, and
+UI/Bench integration respectively. Manager owns final integration, one browser
+slot, checkpoint and branch push. Fix concrete remaining contacts in the existing
+same/different/recorded workflow; physical output evidence remains a separate
+Bench gate. Preserve unrelated thumbnail edits and release fixtures.
+Fixed firmware double reversal for recordings and marked Studio preview frames.
+LWOP recording headers bind ordered GPIO/counts; firmware validates them before
+playback. Legacy multi-output media retains portable recovery but requires
+re-recording for playback. New capabilities: sequenceMedia2, physicalFrameOrder1,
+bridge8; old firmware fails clearly before marked output/media mutation.
+Checkpoint2798/2798 + production build; nine distinct browser cases; executable
+WSL mapping/owner/color/output tests and ESP32-S3 compilation pass. Scene/Show
+rehearsal fixtures were corrected for HMR module identity, with guards preserved.
+Implementation commit `55c607de` pushed to
+`origin/codex/multi-output-pattern-workflow`; no merge,
+deployment, signing or flash. Physical output and offline SD restart remain
+unobserved. See [completion evidence](docs/plans/2026-09-25-multi-gpio-completion-evidence.md)
+and [recorded output contract](docs/recorded-output-contract.md).
+
+### 2026-09-25 Remaining composition delivery (done locally; Bench pending)
+
+Adrian requested immediate parallel implementation after `7fea7a1b`. Three Sol
+high workers completed separate boundaries: Scene Expression recording/delivery;
+mixed section base composition in Lab/direct/worker rendering; and recorded
+media installation plus Playlist/runtime integration. Shared media/recipe
+contracts are coordinated before dependent edits. Manager owns integration,
+browser slot 4173, evidence and one checkpoint. Existing firmware thumbnail
+changes and release fixtures remain separate. No deployment/signing/flash or
+exhaustive Prove run; physical acceptance stays unobserved until Bench proof.
+Flow now records the actual ordered renderer with editable scene persistence;
+Lab overlays retain distinct section patterns and settings. Verified recording
+bytes survive reload and portable export, enter Playlist explicitly, and upload
+with independent readback before Card/Bench configuration activation. Native
+package compatibility is preserved. Checkpoint: 2791/2791 units + production
+build; 29 distinct browser cases pass; eight firmware/bridge contracts and final
+ESP32-S3 compilation pass. Phone and section-mix screens inspected. Host C++
+behavior harness unavailable. Physical multi-GPIO playback, offline restart,
+missing-SD and interrupted-transfer recovery remain unobserved. See
+[delivery evidence](docs/plans/2026-09-25-recorded-composition-delivery-evidence.md).
+
+### 2026-09-25 Flow and layer composition build (done locally; remaining delivery scope)
+
+Continuing U5–U8 after local commit `cdb69fbf`. Sol high owns the ordered
+Scene Expression flow domain, preview and existing editor controls. Sol high
+owns Lab layer authoring, renderer semantics and persistent references. The
+existing Sol delivery worker owns complete recipe preservation and validated
+sequence handoff; no firmware changes. File boundaries exclude each other;
+manager integrates contracts, serializes browser checks on port 4173 and runs
+one checkpoint. Luna performed a bounded acceptance audit and styling correction.
+Physical wiring remains authoritative and separate from effect ordering.
+Ordered Flow preview, inherited routes and safe reset/conflict rules now work.
+Lab supports three targeted overlays with blend/opacity/mute/order/Undo and full
+source persistence; direct and worker frames agree. Recordings reopen/update/save
+as new, and stale geometry/target/source fingerprints block replacement.
+Checkpoint 2774/2774 units + production build; 20 distinct browser cases pass,
+including actual UI recording of 7200 frames across two GPIOs and inspecting the
+downloaded package. Desktop/phone screens inspected. See
+[evidence and remaining scope](docs/plans/2026-09-25-composition-integration-evidence.md).
+At this earlier checkpoint, standalone Flow delivery, recorded Playlist assets,
+and overlays over a distinct section mix remained unsupported; the delivery
+batch above now implements those boundaries. Hardware/novice
+acceptance unobserved. No deployment, signing, flash or Prove run. Concurrent
+firmware thumbnail edits and release fixtures are untouched.
+
+### 2026-09-25 Native section workflow integration (done locally; needs-eyes)
+
+Adrian authorized implementation of the refined plan, including a tiny actual
+Layout preview and current Studio styling. Three Sol workers own non-overlapping
+boundaries: Patterns/projection/shared navigation (high), Layout/local controls
+(medium), Bench discovery/local controls (medium). Manager owns integration,
+browser coordination and one checkpoint; Luna inventoried integration contacts.
+U0–U4 now integrates compact actual-geometry previews, section rows and saved-mix
+summaries, exact Layout/Patterns round trips and focus, compiled output inventory
+and spans, shared grouped targets, and measured Bench rows in existing styles.
+Checkpoint: 2748/2748 units and production build. Integrated browser evidence:
+39 distinct cases passed after correcting two stale duplicate-row assertions and
+the real phone-toolbar regression; final build and screen inspection passed.
+[Evidence](docs/plans/2026-09-25-section-workflow-integration-evidence.md).
+Flow renderer/layer-authoring/delivery U5–U8 remain planned, not implemented by
+this UI batch. Physical appearance, restore/offline restart and novice acceptance
+remain unobserved. Concurrent firmware edits untouched; no release, signing,
+hardware flash or Prove run.
+
+### 2026-09-25 Historical UX integration design (done; proposed build)
+
+Two Sol audits compared historical Patterns/mix affordances and current
+Layout/Bench/Card ownership. Manager produced the
+[refined integration plan](docs/plans/2026-09-25-refined-section-workflow-plan.md):
+compact section overview, exact-target pattern action, one wiring disclosure,
+recognizable saved mixes and shared Bench presentation. Existing controls are
+reused; one primary action, one expanded editor and optional Keep before direct
+Install. Interactive conversation sketch passes local checks at 736/390/320px,
+including scoped edits, copy-all, Undo and simulated install; phone screen viewed.
+Adrian's accepted refinements are incorporated: arbitrary artwork and section
+names, existing Layout/Patterns/Lab placement and style tokens, and separate
+artwork, physical wiring, flow, effect-layer and temporal ordering. Two additional
+Sol audits verified current screen/style ownership and renderer contracts.
+Continuous flow is currently rejected by both Studio preview and native compilation;
+Lab has compositor support but no visible layer editor or general native compiler.
+The plan explicitly assigns U5–U8 for those gaps, full recipe persistence and
+cross-screen delivery, following the U0–U4 compact UI foundation in four batches.
+The generic-path sketch was rechecked at 736/390/320px and its phone screen inspected.
+Design only, no product changes, firmware action or release. Concurrent
+Bench Warm/firmware work untouched. Physical and novice acceptance remain pending.
+
+### 2026-09-25 Bench Warm card thumbnail (done locally; card needs update)
+
+Adrian reports no thumbnail for Bench Warm. The card API provides look ID
+`bench-warm` and runtime pattern `warm-white`; both card-served pages previously
+chose the swatch using the look ID. Customer and advanced pages now choose the
+swatch from the runtime pattern while retaining the look ID for commands.
+Focused embedded-JS regression witnessed red then green; `web-pattern-thumbnails`
+passes. The running card still needs a future firmware build/update and visual
+Bench check. No card flash, release, or deployment was performed.
+
+### 2026-09-25 Historical split/GPIO forensics (done)
+
+Two Sol investigators traced Layout/mapper and runtime history; Luna inventoried
+recorded evidence. Manager verified chronology, source ancestry and reproduction.
+Independent zone patterns existed in May; explicit multi-GPIO controls in July.
+The same historical fixture proves `8b1fe864` (Jul13) replaced patch identity with
+zone identity and lost pattern writes; `5568e76b` (Aug31) repaired that path.
+Separate package/startup flattening was fixed Sep25. The June18 split-render TODO
+was stale: its tree already contains the June11 multi-range rendering fix.
+[Report, candidate revisions and UX lessons](docs/plans/2026-09-25-gpio-history-forensics.md).
+Repeatable `node scripts/forensics-section-identity.mjs` passes all three expected
+historical outcomes. No production source edits, checkout changes, flash or
+deployment; unrelated concurrent firmware edits untouched. Useful next pass:
+visible output inventory/address summary and direct per-section pattern action.
+Physical multi-output proof remains unobserved.
+
+### 2026-09-25 GPIO integration implementation (done locally; acceptance needs-eyes)
+
+Committed `b53df14d` integrates guided Layout sections, exact geometry and saved
+reference migration, measured-only Bench patterns/restore/install, native arming
+and installation-bound remembered playback. Tooling foundation: `7084e8b2`.
+Three Sol workers owned App, Bench and firmware; Luna inventoried acceptance;
+manager integrated and verified. Checkpoint: 2746/2746 units, production build,
+18/18 integrated Chromium cases and 24/24 Bench cases (38 distinct). Firmware
+compiled; native arm 3/3, live persistence 7/7 and eight consumer contracts passed.
+[Evidence and remaining matrix](docs/plans/2026-09-25-gpio-integration-evidence.md).
+No push, signing, flash, deployment or Prove run. Physical outputs, live bridge,
+offline restart and novice use remain unobserved. Next: preserving firmware
+release/Bench acceptance under their authorizations; do not factory-flash a
+configured card. Existing workspace preview on 4173 retained; test server closed.
+
+### 2026-09-25 Complete GPIO integration plan (implementation recorded above)
+
+Adrian requested a comprehensive plan for all affected integrations and agent
+ownership. Plan: [Complete GPIO pattern integration](docs/plans/2026-09-25-gpio-pattern-integration-plan.md).
+Baseline `5deb1535`; manager source review, returned Bench and Layout Sol audits,
+and Luna verification inventory. The Layout audit also confirms grouped-zone
+conflicts and patch/scene identity migration requirements, included in GP-03/05.
+No implementation, suite execution, deployment or hardware action in this
+planning turn. At most three workers; manager remains sole integrator.
+
+**Release-blocking findings supersede any inference of complete readiness from
+the prior narrow tests:** Bench restore sends a redundant false-sync command
+that native firmware rejects with 422; provisional zero fade/blackout/stream
+ownership can leave matching pattern readback physically dark; measured chooser
+and Whole piece use provisioned rather than confirmed ports. Prior mock/browser
+passes did not model these native behaviors. Physical reproduction remains
+unperformed; this is source/runtime-contract evidence, not a visual hardware pass.
+
+Next build: GP-00 fixtures → GP-01 Bench corrections with Firmware C's early
+arming diagnosis; App A builds GP-03 guided independent sections in parallel.
+Then complete chooser/persistence/shared install, restart and other consumer
+contracts, portability and full acceptance matrix. GP-11 handles separately
+authorized hardware/release/Prove gates. Current local branch is not release-ready.
+
+### 2026-09-25 Same/different GPIO patterns and Bench Discovery (implemented locally)
+
+Adrian requests deeper end-to-end product work: easily assign the same or
+different patterns to GPIO strips and load patterns from Bench Discovery.
+Sprint continuation, not an exhaustive Prove run or a physical-card setup.
+Base is `2eb3af47`, including the compiled-zone/startup corrections above.
+
+Reused two Sol tasks at medium reasoning: Studio worker
+`01a0d750-d4a2-71c0-94ee-69bdd43ab44a` owns normal-project Patterns, shared look
+model/runtime helpers and targeted tests; Bench worker
+`01a0d750-c4fc-7ee2-82ce-fe716e1c17d6` now owns StripDiscoveryPanel, Bench
+config/install/commit helpers and targeted tests. No overlapping source edits.
+Studio has first browser slot; Bench must wait for handoff. Manager integrates
+and owns docs/workboard/checkpoint. Known unrelated Windows checkpoint failures
+remain documented; no release, hardware writes, or firmware flash authorized.
+
+Acceptance: actual same/all and different/per-section interaction; independent
+edit retention; save/reload/install payload/readback; Bench counted-port handoff
+to patterns; clear temporary versus installed status; exact-card authority and
+uncounted discovery limits retained. Physical appearance is a separate gate.
+
+Confirmed Bench gaps: multi-output discovery config has one zone; the final
+measured setup installer passes outputs without measured strips/patches/wiring,
+again producing one full-piece zone. Approved bounded correction: per-output
+provisional zones with dim combined startup; explicit temporary pattern audition
+after counting; carry chosen looks into measured source and final install.
+Legacy single-zone setups need an explicit update path, not target fallback.
+Existing artwork is preserved; persistence needs exact mapping or Layout handoff.
+Normal Patterns same/different/reload/install journey already passes; remaining
+usability work makes scope visible and links a section spanning multiple GPIOs
+directly to the existing Layout separation flow without changing zone semantics.
+
+Normal Patterns continuation integrated as `1b88c7f6` (worker `6e51f688`):
+Design target precedes Pattern bank in DOM order; adjacent scope text explains
+same/all versus selected-section changes. Multi-GPIO sections link to their
+selected strip in Layout. At 390px the preview no longer covers controls and
+two-column pattern cards retain readable names. Three focused browser tests
+passed, including same/different/Keep/reload/installed GPIO payload. Manager
+inspected desktop and phone screenshots. A wiring run split is not itself a
+new pattern section; advanced run restructuring can still be required in Layout.
+Physical appearance remains unobserved.
+
+Bench implementation integrated as `8cc77e8b` (worker `b06b03a6`): separate
+provisional GPIO zones, temporary pattern audition, explicit legacy setup update,
+snapshot/restore, Keep and combined Keep/install, measured geometry in final
+package, preserved authored-layout handoff, exact outputs/zones/startup and
+known-good wiring readback. Worker focused Node 52/52 passed. Initial browser
+proof checked rendering only; manager required a follow-up interaction test.
+Integrated `e1410fd6` (worker `a2563c5b`) adds two-GPIO whole-piece → individual
+pattern → Keep → actual saved counts/patches → measured runtime-package proof,
+plus failed readback refusing Keep. It fixes explicit transport forwarding and
+guards asynchronous results against a changed Studio project. The no-write-after-
+unmount preflight check passes.
+
+Final integrated Chromium journeys **5/5 pass**, including normal Patterns,
+multi-GPIO scope handoff, Bench same/different/Keep/package, failed readback, and
+counting controls at desktop/390px. Node22 checkpoint: **2709/2715 pass**, with
+only the same six unrelated Windows baseline failures already reproduced on
+unchanged main (CRLF fixtures and POSIX signing-key permissions). No new unit
+failures. Four relevant firmware contracts pass; no firmware source/release
+artifacts changed. Final production build passed (5.56s). Logs use
+`%TEMP%/lw-gpio-bench-checkpoint-*`. Both worker tasks are idle and browser test
+servers stopped. Physical multi-output/offline restart and novice-use observation
+remain needs-eyes; software verification does not pass those gates.
+Committed locally; not pushed, deployed, or physically verified.
+
+### 2026-09-24/25 General multi-output pattern workflow (implemented locally)
+
+Adrian requests a product-wide fix: separate GPIO strips need independent
+patterns and a clear way to load them; configuring one physical card is not the
+requested outcome. Sprint mode supersedes initial Bench intake. No card changes
+or flash performed. Base: main `9f053a02` (build 2118), includes PR339.
+Integrated worker `30766195` as `20a6298e` on
+`codex/multi-output-pattern-workflow`. Committed locally; not pushed or deployed.
+
+Manager delegates two isolated tasks using GPT-6 Sol: firmware routing/runtime
+diagnosis (high reasoning) and Studio assignment/loading workflow (medium).
+Firmware owns its source/contracts; Studio owns browser source/focused tests.
+Manager owns integration, documentation, workboard and one integrated checkpoint.
+Acceptance: distinct patterns on distinct mapped outputs, correct compiled pixel
+ranges, persistence/reload and standalone-install semantics, discoverable UI,
+and truthful unsupported-state handling. Physical LED proof remains separate.
+No release, version bump, signing, or hardware flash is part of this Sprint.
+
+Firmware task `01a0d750-c4fc-7ee2-82ce-fe716e1c17d6`; Studio task
+`01a0d750-d4a2-71c0-94ee-69bdd43ab44a` owned the single browser slot. Luna QA
+returned `docs/plans/2026-09-24-multi-output-acceptance.md`. Studio found the
+initial concrete defect: runtime zones retain independent looks but implicit
+startup selects a single pattern that firmware applies across all zones.
+Both defects are corrected. Explicit playlist intent is retained.
+Three unequal compiled GPIO regression exposed a second confirmed cause:
+compiled zone IDs do not match patch IDs used to recover section playback, so
+all compiled sections fell back to the global pattern. The correction uses
+the canonical zone/patch relation for current settings and saved combined looks.
+Firmware worker confirmed existing combo-zone playback and five focused
+contracts pass. No firmware change needed for the startup defect. Direct config
+save clears remembered live looks even for the same revision; a pre-existing
+same-revision wiring-candidate restoration trap is tracked separately and must
+not be confused with proof of this browser fix. User guide now explains the
+per-section Patterns workflow and explicit timed-playlist behavior.
+
+Evidence: 12 focused Node tests, existing card-runtime contract, five firmware
+contracts, and 3/3 section-row Chromium cases pass. Real Patterns screen inspected
+by the worker; GPIO labels and instructions render correctly. Three unequal GPIO
+outputs retain distinct patterns through compiled config, compact storage, and
+JSON project reload into a saved combo. All preview/test processes are stopped.
+
+Integrated checkpoint: production build passed. Node 22 unit suite: 2,699/2,705
+pass, six failures reproduced unchanged on base `9f053a02` (92 targeted baseline
+tests: 86 pass, same six fail). Failures are the aesthetic-law source scan,
+three firmware-release fixture/key checks, deployment header line endings, and
+the signing fixture's POSIX permission check on Windows. This is not a green
+full checkpoint. Logs: `%TEMP%/lw-multi-output-node22-unit.log`,
+`%TEMP%/lw-multi-output-baseline-windows.log`, `%TEMP%/lw-multi-output-build.log`.
+System Node 24 hung existing bridge tests; stopped those processes and used CI's
+Node 22. Windows newline conversion changed a tracked signed ticket signature;
+restored its exact 87 Git bytes to build. No release artifact was regenerated.
+The optional Rollup helper requests a nonexistent Windows package; the direct
+Vite build succeeds using the correctly installed native dependency.
+
+Follow-ups: fix baseline Windows verification portability before claiming a
+green checkpoint; assess same-revision wiring-candidate NVS restoration as a
+separate firmware issue. Physical/offline LED playback remains unobserved.
+
 ### 2026-09-25 Layout, GPIO, and card pattern fixes (done locally)
 
 Reproduced the screenshot's unverified-bridge install failure: HTTPS Studio's

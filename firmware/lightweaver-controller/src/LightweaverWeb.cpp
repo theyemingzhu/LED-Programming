@@ -17,8 +17,10 @@
 #include "LightweaverHttpFrameStream.h"
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverMedia.h"
 #include "LightweaverCardStudio.h"
 #include "LightweaverOutputColorParser.h"
+#include "LightweaverNativeArmPolicy.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
@@ -146,7 +148,7 @@ void scheduleApTeardown(uint32_t generation);
 // opener (targetOrigin = the already-validated studioOrigin) and focuses it,
 // instead of reloading the opener tab and discarding its in-memory state.
 // Studio feature-detects, so a pre-v7 card simply keeps reloading the tab.
-constexpr int LW_BRIDGE_VERSION = 7;
+constexpr int LW_BRIDGE_VERSION = 8;
 
 String apSsid() {
   uint64_t mac = ESP.getEfuseMac();
@@ -439,7 +441,8 @@ String studioBridgeScript() {
                 // a single-chunk frame is byte-identical to the v2 payload.
                 "const s={i:p.pixels};if(Number.isInteger(p.seg))s.id=p.seg;"
                 "if(Number.isInteger(p.start)&&p.start>0)s.start=p.start;"
-                "try{lwFrameWs.send(JSON.stringify({seg:[s]}));return lwFrameLastResult={relayed:true,reason:''}}catch(_){lwFrameNext=p;lwFrameLastResult={relayed:false,reason:'relay-send-failed'};try{lwFrameWs.close()}catch(_){};lwFrameRetryLater();return lwFrameLastResult}"
+                "const frame={seg:[s]};if(p.lwPhysical===1)frame.lwPhysical=1;"
+                "try{lwFrameWs.send(JSON.stringify(frame));return lwFrameLastResult={relayed:true,reason:''}}catch(_){lwFrameNext=p;lwFrameLastResult={relayed:false,reason:'relay-send-failed'};try{lwFrameWs.close()}catch(_){};lwFrameRetryLater();return lwFrameLastResult}"
               "};"
               "let lwFrameLastResult={relayed:false,reason:'relay-not-open'};"
               // A reply says relayed only after WebSocket.send returns. Queued frames
@@ -468,6 +471,9 @@ String studioBridgeScript() {
                   "else if(m.type==='beacon-ports'){response=await get('/api/beacon/port')}"
                   "else if(m.type==='beacon-port'){response=await post('/api/beacon/port',m.payload||{})}"
                   "else if(m.type==='firmware-info'){response=await get('/api/firmware-info')}"
+                  "else if(m.type==='owner-capability'){response=await post('/api/owner/capability',m.payload||{})}"
+                  "else if(m.type==='media-begin'||m.type==='media-chunk'||m.type==='media-commit'||m.type==='media-abort'){response=await post('/api/media/'+m.type.slice(6),m.payload||{},30000)}"
+                  "else if(m.type==='media-read'){response=await post('/api/media/read',m.payload||{},30000)}"
                   "else if(m.type==='wifi-handoff-ack'){response=await lwRelayWifiHandoffAck(ev)}"
                   "else if(m.type==='frame'){const sent=lwFrameSend(m.payload||{});response={ok:true,relayed:sent.relayed,wsOpen:!!(lwFrameWs&&lwFrameWs.readyState===1),reason:sent.reason}}"
                   "else if(m.type==='control'){const c=m.payload||{};if(c.cancelStream)lwFrameCancel();response=await post('/api/control',c)}"
@@ -1413,8 +1419,24 @@ void handleStatus() {
     // brightness to hold the ceiling either way, so an installer who wired
     // 100 A but never set a value deserves to be told the card is holding it
     // to 1500 mA. Reported, never enforced — nothing refuses a config for it.
+    JsonDocument nativeArmStatus;
+    JsonArray armedZoneIds = nativeArmStatus.to<JsonArray>();
+    for (uint8_t i = 0; i < runtimeConfigPtr->zoneCount; i++) {
+      if (!runtimeNativeZoneArmed(runtimeConfigPtr->zones[i].id)) continue;
+      armedZoneIds.add(runtimeConfigPtr->zones[i].id);
+    }
+    String armedZones;
+    serializeJson(nativeArmStatus, armedZones);
+    const bool nativeRendering = runtimeNativeRenderArmed() &&
+        runtimeNativeFadeScale() > 0.0f && !runtimeIsBlackedOut() &&
+        !runtimeIsStreaming();
     String tail = String(",\"streaming\":") + (runtimeIsStreaming() ? "true" : "false") +
                   ",\"frameSource\":\"" + srcLabel + "\"" +
+                  ",\"nativeRenderArmSupported\":true" +
+                  ",\"nativeRenderArmed\":" + (runtimeNativeRenderArmed() ? "true" : "false") +
+                  ",\"nativeRendering\":" + (nativeRendering ? "true" : "false") +
+                  ",\"nativeFadeScale\":" + String(runtimeNativeFadeScale(), 3) +
+                  ",\"nativeArmedZones\":" + armedZones +
                   ",\"projectHead\":\"" + lightweaverProjectRepository().currentHead() + "\"" +
                   ",\"maxMilliamps\":" + String(runtimeConfigPtr->maxMilliamps) +
                   ",\"maxMilliampsSource\":\"" +
@@ -2158,6 +2180,51 @@ void handleControlPost() {
   } else {
     controlRequestBodyReady = false;
   }
+  if (hasControlField(doc, "armNative")) {
+    if (!nativeArmEnvelopeValid(doc.as<JsonVariantConst>())) {
+      server.send(400, "application/json", "{\"ok\":false,\"error\":\"armNative requires only a zone id and a boolean armNative\"}");
+      return;
+    }
+    const String zoneId = controlString(doc, "zone");
+    const bool armed = doc["armNative"].as<bool>();
+    if (!runtimeCanArmNativeZone(zoneId, armed)) {
+      server.send(422, "application/json", "{\"ok\":false,\"error\":\"native arm refused: provisional zone and dim explicit current limit required\"}");
+      return;
+    }
+    const uint8_t affectedCount = runtimeAffectedOutputCount(
+        zoneId, false, ProvisioningOutputScope::SelectedZones);
+    if (affectedCount == 0) {
+      server.send(422, "application/json", "{\"ok\":false,\"error\":\"command affects zero outputs\"}");
+      return;
+    }
+    stopLightweaverHttpFrameStream();
+    runtimeCancelStream();
+    runtimeArmNativeZone(zoneId, armed);
+    JsonDocument out;
+    out["ok"] = true;
+    out["cardId"] = runtimeCardId();
+    out["bootId"] = runtimeBootId();
+    out["stateRevision"] = runtimeAdvanceStateRevision();
+    out["zone"] = zoneId;
+    out["armNative"] = armed;
+    out["nativeZoneArmed"] = runtimeNativeZoneArmed(zoneId);
+    out["nativeRenderArmed"] = runtimeNativeRenderArmed();
+    out["nativeFadeScale"] = runtimeNativeFadeScale();
+    out["streaming"] = runtimeIsStreaming();
+    out["blackout"] = runtimeIsBlackedOut();
+    out["maxMilliamps"] = runtimeConfigPtr->maxMilliamps;
+    out["zoneBrightness"] = runtimeGetBrightnessZ(zoneId);
+    out["affectedOutputCount"] = affectedCount;
+    out["affectedOutputScope"] = "selected-zones";
+    JsonArray affected = out["affectedOutputs"].to<JsonArray>();
+    for (uint8_t i = 0; i < affectedCount; i++)
+      affected.add(runtimeAffectedOutputId(
+          zoneId, false, ProvisioningOutputScope::SelectedZones, i));
+    String body;
+    serializeJson(out, body);
+    server.send(200, "application/json", body);
+    return;
+  }
   if (hasControlField(doc, "playlist")) {
     handlePlaylistControl(doc);
     return;
@@ -2714,6 +2781,15 @@ void handleFirmwareInfo() {
       info = info.substring(0, brace + 1) + injected + info.substring(brace + 1);
     }
   }
+  JsonDocument capabilitiesInfo;
+  if (!deserializeJson(capabilitiesInfo, info) && capabilitiesInfo.is<JsonObject>()) {
+    capabilitiesInfo["capabilities"]["sequenceMedia"]["version"] = LW_SEQUENCE_MEDIA_VERSION;
+    capabilitiesInfo["capabilities"]["sequenceMedia"]["maxBytes"] = LW_SEQUENCE_MEDIA_MAX_BYTES;
+    capabilitiesInfo["capabilities"]["sequenceMedia"]["chunkBytes"] = LW_SEQUENCE_MEDIA_CHUNK_BYTES;
+    capabilitiesInfo["capabilities"]["physicalFrameOrder"]["version"] = 1;
+    info = String();
+    serializeJson(capabilitiesInfo, info);
+  }
   server.send(200, "application/json", info);
 }
 
@@ -2731,6 +2807,16 @@ void handlePatterns() {
   }
   doc["currentIndex"] = currentPatternIndex;
   doc["currentId"] = currentPatternId;
+  doc["startupPatternId"] = cfg.startupLookId;
+  JsonObject playlist = doc["playlist"].to<JsonObject>();
+  playlist["enabled"] = cfg.playlist.enabled;
+  playlist["fadeMs"] = cfg.playlist.fadeMs;
+  JsonArray playlistEntries = playlist["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < cfg.playlist.entryCount; i++) {
+    JsonObject entry = playlistEntries.add<JsonObject>();
+    entry["patternId"] = cfg.playlist.entries[i].patternId;
+    entry["dwellSeconds"] = cfg.playlist.entries[i].dwellSeconds;
+  }
   JsonArray arr = doc["patterns"].to<JsonArray>();
   for (uint8_t i = 0; i < cfg.lookCount; i++) {
     JsonObject p = arr.add<JsonObject>();
@@ -2738,6 +2824,15 @@ void handlePatterns() {
     p["label"] = cfg.looks[i].label;
     p["mode"] = cfg.looks[i].mode;
     p["runtimePatternId"] = cfg.looks[i].preset.length() ? cfg.looks[i].preset : cfg.looks[i].id;
+    p["preset"] = cfg.looks[i].preset;
+    p["brightness"] = cfg.looks[i].brightness;
+    p["fadeOutMs"] = cfg.looks[i].fadeOutMs;
+    p["fadeInMs"] = cfg.looks[i].fadeInMs;
+    p["file"] = cfg.looks[i].file;
+    p["fps"] = cfg.looks[i].fps;
+    p["loop"] = cfg.looks[i].loop;
+    p["sequenceBytes"] = cfg.looks[i].sequenceBytes;
+    p["sequenceSha256"] = cfg.looks[i].sequenceSha256;
     if (cfg.looks[i].hasNativeRecipe) {
       lightweaver::NativeRecipe readback = cfg.looks[i].nativeRecipe;
       // v1 phases were mapped into logical framebuffer order at config load.
@@ -2769,6 +2864,17 @@ void handlePatterns() {
       z["id"] = cfg.looks[i].zones[zoneIndex].id;
       z["label"] = cfg.looks[i].zones[zoneIndex].label;
       z["patternId"] = cfg.looks[i].zones[zoneIndex].patternId;
+      z["brightness"] = cfg.looks[i].zones[zoneIndex].brightness;
+      z["speed"] = cfg.looks[i].zones[zoneIndex].speed;
+      z["hueShift"] = cfg.looks[i].zones[zoneIndex].hueShift;
+      z["customHue"] = cfg.looks[i].zones[zoneIndex].customHue;
+      z["customSaturation"] = cfg.looks[i].zones[zoneIndex].customSaturation;
+      z["customBreathe"] = cfg.looks[i].zones[zoneIndex].customBreathe;
+      z["breatheLowerPct"] = cfg.looks[i].zones[zoneIndex].breatheLowerPct;
+      z["breatheUpperPct"] = cfg.looks[i].zones[zoneIndex].breatheUpperPct;
+      z["breatheCycleSeconds"] = cfg.looks[i].zones[zoneIndex].breatheCycleSeconds;
+      z["customDrift"] = cfg.looks[i].zones[zoneIndex].customDrift;
+      z["blackout"] = cfg.looks[i].zones[zoneIndex].blackout;
     }
   }
   String out;
@@ -3581,6 +3687,7 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   registerLightweaverHttpFrameStream(server);
   registerLightweaverFirmwareUpdate(server);
   registerLightweaverProjectRepository(server);
+  registerLightweaverMedia(server);
   registerLightweaverCardStudio(server);
 
   // Pretend-WLED JSON API — lets the existing designer's WLED bar +

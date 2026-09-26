@@ -7,9 +7,8 @@ on the lights, or install it for card playback.
 ## 1. Prepare the Layout
 
 1. Open **Layout** and map every physical strip to the correct output.
-2. Give strips and sections names that describe the artwork. For a mandala,
-   names such as **Inner circle**, **Outer circle**, and named split sections
-   make scene targeting clear.
+2. Give strips and sections names that describe the artwork, such as **Left
+   branch**, **Outline**, or **Upper curve**. Sections can have any shape.
 3. Check output order, direction, color order, and LED counts.
 4. Install the Layout on the intended card.
 
@@ -17,25 +16,111 @@ Scene rehearsal is tied to this exact installed pixel map. If you later change
 strip routing, direction, LED count, or source mapping, install the revised
 Layout before using **Try on lights** again.
 
+## Different patterns on separate GPIO strips
+
+GPIOs describe physical wiring. Sections describe which LEDs receive a pattern.
+Give each strip a named section in **Layout**, assign its GPIO and LED count,
+and check the routing before installing.
+
+The GPIO label beside each section shows where it is wired. A section can span
+more than one GPIO; those parts share that section's pattern. To control them
+independently, use separate named sections in Layout. Conversely, several
+sections on one GPIO can each have their own pattern.
+
+For a single combined look, open **Patterns**, choose a named section under
+**Design target**, and choose its pattern. Repeat for the other sections.
+**All sections** and **Use this look on every section** deliberately apply one
+look across the piece. Use the individual section targets to keep them different.
+The target selector appears before the pattern bank, and the bank names the
+scope of the next pattern choice. On phones, scroll past the preview to reach
+the target selector and the pattern cards.
+
+Use **Keep this look** to retain the combination in the project, then
+**Install on card** to update standalone playback. Keeping a look in Studio
+does not by itself install it. When a timed playlist is enabled, that playlist
+controls playback: include the saved combined look in the playlist if you want
+its sections to play together during that step.
+
+For multiple ordered combinations, use the scene workflow below. One scene step
+can assign different patterns to several named areas at the same time.
+
+## Patterns from Bench Discovery
+
+Finish counting and confirming each connected strip, then choose **Save what
+we found**. The completed Discovery step offers **Try patterns on the measured
+lights**. Choose **Same pattern on all measured strips** for matching outputs, or
+choose a pattern beside each GPIO to make them different.
+
+Trying a pattern changes temporary card playback. **Stop preview** restores
+the previous temporary patterns. **Keep these patterns** retains the choices
+in the measured project for the final setup. Installing the setup is what makes
+the measured output map and its patterns available for standalone playback.
+Where Discovery offers a direct install button, **Keep these patterns and
+install** includes the current choices. In the counting overlay, use **Keep
+these patterns**, then **Continue to Layout** to finish placement and installation.
+
+Older temporary setups may need **Update temporary setup for each GPIO** before
+independent patterns can be tried. This preserves the confirmed counts; the
+extra pixels provisioned for discovery remain probe headroom, not measured LEDs.
+
+If the project already has an authored layout, Discovery preserves it. Use the
+Layout handoff to place the measured strips and confirm their wiring before
+installing. The full Patterns bank remains available after that setup step.
+
 ## 2. Build the scene in Lab
 
 1. Open **Lab** and choose **Build scene**.
 2. Name the scene, or choose **New scene** to add another one.
 3. In **What plays together**, add an area and select its **Where** target.
-   Named Layout areas let the inner circle, outer circle, or individual split
-   sections use independent behavior.
+   Named Layout areas let separate paths or split sections use independent
+   behavior.
 4. Choose the pattern, card color controls, speed, and brightness for each
    assignment.
 5. Add ordered steps, set each hold time, and arrange their order.
 
 The exact native card slice currently supports built-in card patterns, card
 color controls, speed, brightness, ordered holds, and **Cut** changes between
-steps. The editor marks a scene as preview-only when the current card runtime
-cannot preserve it exactly. For example, one shared moving pattern across a
-multi-strip group must be authored on stable leaf areas or simplified before
-installation.
+steps. For a pattern that travels through several sections, choose **Flow**,
+arrange the participating sections, and reverse their effect direction where
+needed. This changes the effect route; it does not change the physical wire
+order in Layout. Use **Record Flow** for standalone delivery of the complete
+scene, as described below. The editor keeps unsupported combinations unavailable
+rather than silently changing the effect.
+
+### Stack patterns over a section mix
+
+Open the current look in **Lab**, expand **Layers**, and add an overlay. Its
+target controls which sections receive the additional pattern; the existing
+section mix stays underneath. Adjust opacity and blend, move layers above or
+below one another, mute a layer, or use Undo. Record the complete result and
+retain it in the project to make it available under **Recordings** in Playlist.
+The saved recording retains its editable Lab recipe.
 
 ## 3. Choose the right action
+
+### Record Flow and install a recording
+
+1. Choose **Record Flow** in the scene editor. Check the duration and size shown
+   before recording. Studio saves both the rendered frames and editable source.
+2. Open **Playlist**, add the item from **Recordings**, and arrange it alongside
+   saved native looks. A recording is one complete output frame across the
+   configured GPIOs, so its sections play together.
+3. Use the existing install action. Studio checks compatible card firmware,
+   uploads the files to microSD, verifies their hashes by reading them back, and
+   only then installs the playback configuration.
+4. To change a recording, open **Saved recordings** in Lab. Flow recordings use
+   **Edit scene**; Lab recordings reopen their recipe. Record the edited source
+   again and reinstall to update card playback.
+
+Recorded playback requires writable microSD storage and firmware with recorded
+media support. The same or different built-in patterns on individual sections
+use native playback and do not require microSD. A source-only legacy recording
+must be recorded again before installation. If wiring, LED counts, or physical
+direction change, record again against the new Layout.
+
+Recordings survive browser reload in local storage separate from the project
+JSON. Use a portable project export to move both source and recording bytes to
+another browser or computer; editable source alone does not contain the frames.
 
 ### Save scene
 

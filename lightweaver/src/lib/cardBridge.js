@@ -44,6 +44,12 @@ const PRIVILEGED_BRIDGE_TYPES = new Set([
   'wifi-handoff-ack',
   'beacon-ports',
   'beacon-port',
+  'owner-capability',
+  'media-begin',
+  'media-chunk',
+  'media-commit',
+  'media-read',
+  'media-abort',
 ]);
 
 // The blank-card port probe. Privileged for ORIGIN purposes -- it lights real
@@ -98,11 +104,12 @@ const RETRYABLE_BRIDGE_TYPES = new Set([
 // feature first shipped in. Cards report their version in the 'ready'
 // handshake (and on every relay reply); firmware older than the versioned
 // bridge reports nothing, which we treat as 0 (legacy).
-export const CARD_BRIDGE_PROTOCOL_VERSION = 6;
+export const CARD_BRIDGE_PROTOCOL_VERSION = 8;
 export const CARD_BRIDGE_FEATURE_VERSIONS = {
   frame: 1,
   'wifi-handoff-ack': 2,
   'release-bridge': 6,
+  'sequence-media': 7,
 };
 
 export const CARD_BRIDGE_CHANGED_EVENT = 'lightweaver-card-bridge-changed';

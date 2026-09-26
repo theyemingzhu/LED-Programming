@@ -1,6 +1,53 @@
 import { normalizeCardLedType } from './cardHardwareContract.js';
 
 export const LWSEQ_HEADER_BYTES = 64;
+const LWSEQ_TOPOLOGY_OFFSET = 24;
+const LWSEQ_TOPOLOGY_MAGIC = [76, 87, 79, 80]; // LWOP
+const LWSEQ_TOPOLOGY_SLOTS = 4;
+
+// The LWSEQ1 payload is already in physical output order. Bind the reserved
+// header bytes to the ordered GPIO topology so equal-total rewiring cannot
+// silently play a recording on different lights.
+export function assertLwseqOutputTopology(bytes, outputs, {
+  allowLegacySingleOutput = true,
+  allowLegacyMultiOutput = false,
+} = {}) {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < LWSEQ_HEADER_BYTES) {
+    throw new TypeError('LWSEQ header is incomplete.');
+  }
+  const expected = normalizeStandaloneOutputs(outputs);
+  if (!expected.length || expected.length > LWSEQ_TOPOLOGY_SLOTS) {
+    throw new TypeError('LWSEQ output topology is invalid.');
+  }
+  if (expected.some(output => !Number.isSafeInteger(output.pin) || output.pin < 1 || output.pin > 65535
+    || !Number.isSafeInteger(output.pixels) || output.pixels < 1 || output.pixels > 65535)
+    || new Set(expected.map(output => output.pin)).size !== expected.length) {
+    throw new TypeError('LWSEQ output topology has an invalid or duplicate GPIO pin.');
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, LWSEQ_HEADER_BYTES);
+  const marker = bytes.subarray(LWSEQ_TOPOLOGY_OFFSET, LWSEQ_TOPOLOGY_OFFSET + 4);
+  const bound = LWSEQ_TOPOLOGY_MAGIC.every((byte, index) => marker[index] === byte);
+  if (!bound) {
+    if (bytes.subarray(LWSEQ_TOPOLOGY_OFFSET, 48).every(byte => byte === 0)
+      && ((allowLegacySingleOutput && expected.length === 1)
+        || (allowLegacyMultiOutput && expected.length > 1))) return false;
+    throw new TypeError(expected.length > 1
+      ? 'This older multi-output recording has no GPIO topology binding. Re-record or re-export it before installing.'
+      : 'LWSEQ GPIO topology header is invalid.');
+  }
+  if (bytes[28] !== 1 || bytes[29] !== expected.length || view.getUint16(30, true) !== 0) {
+    throw new TypeError('LWSEQ GPIO topology version or output count does not match the recording.');
+  }
+  for (let index = 0; index < LWSEQ_TOPOLOGY_SLOTS; index += 1) {
+    const pin = view.getUint16(32 + index * 4, true);
+    const pixels = view.getUint16(34 + index * 4, true);
+    if (index < expected.length ? (pin !== expected[index].pin || pixels !== expected[index].pixels)
+      : (pin !== 0 || pixels !== 0)) {
+      throw new TypeError('LWSEQ GPIO pin or output boundary does not match the recording.');
+    }
+  }
+  return true;
+}
 
 export const DEFAULT_STANDALONE_OUTPUTS = [
   { id: 'out1', name: 'Output 1', pin: 16, pixels: 0 },
@@ -112,8 +159,34 @@ export function estimateLwseqBytes({ pixels = 0, fps = 24, duration = 0, frames 
 }
 
 export function toLwseqBytes(frames = [], { fps = 24, outputs = DEFAULT_STANDALONE_OUTPUTS } = {}) {
+  if (!Array.isArray(frames) || frames.length < 1 || !Number.isSafeInteger(frames.length)) {
+    throw new RangeError('LWSEQ requires at least one complete frame.');
+  }
+  if (!Array.isArray(outputs)) throw new TypeError('LWSEQ outputs are required.');
+  const activeOutputs = outputs.filter(output => Number(output?.pixels ?? output?.pixelCount ?? 0) > 0);
   const normalizedOutputs = normalizeStandaloneOutputs(outputs);
+  if (activeOutputs.length > LWSEQ_TOPOLOGY_SLOTS || activeOutputs.length !== normalizedOutputs.length
+    || activeOutputs.some(output => {
+      const pin = Number(output?.pin);
+      const pixels = Number(output?.pixels ?? output?.pixelCount);
+      return !Number.isSafeInteger(pin) || pin < 1 || pin > 65535
+        || !Number.isSafeInteger(pixels) || pixels < 1 || pixels > 65535;
+    }) || new Set(normalizedOutputs.map(output => output.pin)).size !== normalizedOutputs.length) {
+    throw new RangeError('LWSEQ GPIO pins must be positive and distinct, and output pixel counts must fit the physical header.');
+  }
   const expectedPixels = normalizedOutputs.reduce((sum, output) => sum + output.pixels, 0) || (frames[0]?.length || 0);
+  const frameRate = Number(fps);
+  if (!Number.isSafeInteger(frameRate) || frameRate < 1 || frameRate > 60
+    || !Number.isSafeInteger(expectedPixels) || expectedPixels < 1 || expectedPixels > 4096) {
+    throw new RangeError('LWSEQ frame rate or pixel total exceeds the card media parser limits.');
+  }
+  const headerOutputs = normalizedOutputs.length ? normalizedOutputs
+    : [{ pin: DEFAULT_STANDALONE_OUTPUTS[0].pin, pixels: expectedPixels }];
+  if (headerOutputs.length < 1 || headerOutputs.length > LWSEQ_TOPOLOGY_SLOTS
+    || headerOutputs.some(output => !Number.isSafeInteger(output.pin) || output.pin < 1 || output.pin > 65535
+      || !Number.isSafeInteger(output.pixels) || output.pixels < 1 || output.pixels > 65535)) {
+    throw new RangeError('LWSEQ GPIO pins must be positive and distinct, and output pixel counts must fit the physical header.');
+  }
   const frameCount = frames.length;
   const payloadBytes = expectedPixels * 3 * frameCount;
   const bytes = new Uint8Array(LWSEQ_HEADER_BYTES + payloadBytes);
@@ -121,11 +194,18 @@ export function toLwseqBytes(frames = [], { fps = 24, outputs = DEFAULT_STANDALO
   bytes.set([76, 87, 83, 69, 81, 49], 0); // LWSEQ1
   const view = new DataView(bytes.buffer);
   view.setUint16(8, 1, true);
-  view.setUint16(10, normalizedOutputs.length || 1, true);
+  view.setUint16(10, headerOutputs.length, true);
   view.setUint32(12, expectedPixels, true);
   view.setUint32(16, frameCount, true);
-  view.setUint16(20, Math.round(Number(fps) || 24), true);
+  view.setUint16(20, frameRate, true);
   view.setUint16(22, 3, true);
+  bytes.set(LWSEQ_TOPOLOGY_MAGIC, LWSEQ_TOPOLOGY_OFFSET);
+  bytes[28] = 1;
+  bytes[29] = headerOutputs.length;
+  headerOutputs.forEach((output, index) => {
+    view.setUint16(32 + index * 4, output.pin, true);
+    view.setUint16(34 + index * 4, output.pixels, true);
+  });
 
   let cursor = LWSEQ_HEADER_BYTES;
   for (const frame of frames) {
