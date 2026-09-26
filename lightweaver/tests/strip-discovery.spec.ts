@@ -329,11 +329,12 @@ async function modelBenchPatterns(page: any, card: FakeCard) {
   return { controls, refuse: () => { refuseReadback = true; } };
 }
 
-async function recordTwoGpioWalk(page: any) {
+async function recordTwoGpioWalk(page: any, onFirstCount?: () => Promise<void>) {
   await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
   await dispatchBlankCard(page);
   await startDiscoveryOnGpio16(page);
   await showCountingRuler(page);
+  await onFirstCount?.();
   await page.getByTestId('discovery-count-16').fill('30');
   await page.getByTestId('discovery-counts-done').click();
   await page.getByTestId('discovery-end-yes').click();
@@ -347,6 +348,16 @@ async function recordTwoGpioWalk(page: any) {
   await page.getByTestId('discovery-end-yes').click();
   await page.getByTestId('discovery-record-save').click();
   await expect(page.getByTestId('discovery-done')).toBeVisible();
+  // The Bench config reboot changes bootId. Pattern audition pins an exact
+  // transport authority, so wait for the shared link's natural status poll to
+  // validate that same boot before making any pattern request.
+  await expect.poll(() => page.evaluate(async () => {
+    const status = await fetch('http://lightweaver.local/api/status', { cache: 'no-store' }).then(response => response.json());
+    const { getCardLinkState } = await import('/src/lib/cardLink.js');
+    const link = getCardLinkState();
+    return Boolean(status.bootId && link.validatedBootId === status.bootId
+      && link.card?.id === status.cardId);
+  }), { timeout: 15000, message: 'shared card link must validate the post-Bench boot before pattern audition' }).toBe(true);
 }
 
 test('a card without a numeric power limit gets an honest discovery notice', async ({ page }) => {
@@ -366,6 +377,134 @@ test.describe('a blank card whose firmware applies its first config', () => {
   test.beforeEach(async ({ page }) => {
     card = await mockBlankCard(page, { firmware: 'blank-applies' });
     await seedBlankCardLink(page);
+  });
+
+  test('light discovery stays content-sized with a compact idle dock on a phone', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    const setup = page.getByTestId('card-setup-overlay');
+    await expect(page.getByTestId('card-setup-minimize')).toBeVisible();
+    const expanded = await setup.boundingBox();
+    expect(expanded).toBeTruthy();
+    expect(expanded!.width).toBeLessThanOrEqual(390);
+    expect(expanded!.height).toBeLessThan(800);
+    await page.getByTestId('card-setup-minimize').click();
+    await expect(setup).toHaveAttribute('role', 'region');
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
+    const dock = await setup.boundingBox();
+    expect(dock).toBeTruthy();
+    expect(dock!.width).toBeLessThanOrEqual(390);
+    expect(dock!.height).toBeLessThan(180);
+    await page.getByTestId('card-setup-restore').click();
+    await expect(setup).toHaveAttribute('role', 'dialog');
+    await expect(page.getByTestId('strip-discovery')).toBeVisible();
+    await testInfo.attach('phone-light-discovery-geometry', {
+      body: Buffer.from(JSON.stringify({ expanded, dock }, null, 2)), contentType: 'application/json',
+    });
+  });
+
+  test('light discovery minimizes to a usable dock and restores the same counting and pattern session', async ({ page }, testInfo) => {
+    const geometry: Record<string, unknown> = {};
+    await modelBenchPatterns(page, card);
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    const setup = page.getByTestId('card-setup-overlay');
+    await expect(page.getByTestId('card-setup-minimize')).toBeVisible();
+    const expanded = await setup.boundingBox();
+    expect(expanded).toBeTruthy();
+    geometry.expandedDesktop = expanded;
+    expect(expanded!.height).toBeLessThan(500);
+    await page.getByTestId('card-setup-minimize').click();
+    await expect(setup).toHaveAttribute('role', 'region');
+    await expect(setup).not.toHaveAttribute('aria-modal', 'true');
+    await expect(page.getByTestId('strip-discovery')).toHaveCount(1);
+    await expect(page.getByTestId('strip-discovery')).not.toBeVisible();
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
+    const idleDock = await setup.boundingBox();
+    expect(idleDock).toBeTruthy();
+    geometry.idleDockDesktop = idleDock;
+    expect(idleDock!.height).toBeLessThan(150);
+    expect(idleDock!.width).toBeLessThan(420);
+    await page.getByRole('button', { name: 'Layout', exact: true }).click();
+    await expect(page).toHaveURL(/screen=layout/);
+    await expect(setup).toBeVisible();
+    await page.getByRole('button', { name: 'Patterns', exact: true }).focus();
+    await expect(page.getByRole('button', { name: 'Patterns', exact: true })).toBeFocused();
+    await page.getByTestId('card-setup-restore').click();
+    await expect(setup).toHaveAttribute('role', 'dialog');
+    await expect(setup).toHaveAttribute('aria-modal', 'true');
+
+    await recordTwoGpioWalk(page, async () => {
+      await page.getByTestId('discovery-count-16').fill('30');
+      const configsBefore = card.configs.length;
+      const rebootsBefore = card.reboots;
+      await page.getByTestId('card-setup-minimize').click();
+      await expect(setup).toHaveAttribute('role', 'dialog');
+      await expect(setup).toHaveAttribute('aria-modal', 'true');
+      await expect(setup).toContainText('Light check active — restore to continue');
+      await expect(page.getByTestId('strip-discovery')).toHaveCount(1);
+      await expect(page.getByTestId('strip-discovery')).not.toBeVisible();
+      await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
+      const dock = await setup.boundingBox();
+      expect(dock).toBeTruthy();
+      geometry.dockDesktop = dock;
+      expect(dock!.height).toBeLessThan(150);
+      expect(dock!.width).toBeLessThan(420);
+      await expect(page.getByRole('button', { name: 'Layout', exact: true })
+        .click({ trial: true, timeout: 1000 })).rejects.toThrow();
+      await page.getByTestId('card-setup-restore').click();
+      await expect(setup).toHaveAttribute('role', 'dialog');
+      await expect(setup).toHaveAttribute('aria-modal', 'true');
+      await expect(page.getByTestId('discovery-count-16')).toHaveValue('30');
+      expect(card.configs.length).toBe(configsBefore);
+      expect(card.reboots).toBe(rebootsBefore);
+    });
+
+    await expect(page.getByTestId('discovery-output-row')).toHaveCount(2);
+    await expect(page.getByTestId('card-setup-close')).toBeEnabled();
+    await page.getByTestId('discovery-pattern-whole').selectOption('aurora');
+    await expect(page.getByTestId('discovery-pattern-16')).toHaveValue('aurora');
+    const configsBefore = card.configs.length;
+    const rebootsBefore = card.reboots;
+    await page.getByTestId('card-setup-minimize').click();
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
+    await page.getByTestId('card-setup-restore').click();
+    await expect(page.getByTestId('discovery-pattern-16')).toHaveValue('aurora');
+    await expect(page.getByTestId('discovery-output-row').first()).toContainText('GPIO 16 · 30 LEDs');
+    expect(card.configs.length).toBe(configsBefore);
+    expect(card.reboots).toBe(rebootsBefore);
+    await testInfo.attach('light-discovery-geometry', {
+      body: Buffer.from(JSON.stringify(geometry, null, 2)), contentType: 'application/json',
+    });
+    await page.getByTestId('discovery-keep-patterns').click();
+    await expect(page.getByText('Patterns saved for the final setup.')).toBeVisible();
+    await page.getByTestId('discovery-continue-layout').click();
+    await expect(page).toHaveURL(/screen=layout/);
+    await expect(setup).toHaveCount(0);
+  });
+
+  test('minimizing during an idle-phase port probe keeps the light check modal and the probe pinned', async ({ page }) => {
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    await page.getByTestId('discovery-probe-16').click();
+    await expect.poll(() => card.beaconPinned).toBe(16);
+    const configsBefore = card.configs.length;
+    const rebootsBefore = card.reboots;
+    await expect(page.getByTestId('card-setup-minimize')).toBeVisible();
+    await page.getByTestId('card-setup-minimize').click();
+    const setup = page.getByTestId('card-setup-overlay');
+    await expect(setup).toHaveAttribute('role', 'dialog');
+    await expect(setup).toHaveAttribute('aria-modal', 'true');
+    await expect(setup).toContainText('Light check active — restore to continue');
+    await expect(page.getByTestId('card-setup-stop-lights')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Layout', exact: true })
+      .click({ trial: true, timeout: 1000 })).rejects.toThrow();
+    await page.getByTestId('card-setup-restore').click();
+    await expect(page.getByTestId('discovery-probe-16')).toHaveAttribute('aria-pressed', 'true');
+    expect(card.beaconPinned).toBe(16);
+    expect(card.configs.length).toBe(configsBefore);
+    expect(card.reboots).toBe(rebootsBefore);
   });
 
   test('two GPIOs can try one scene, diverge, and keep exact patterns in the measured install package', async ({ page }, testInfo) => {
