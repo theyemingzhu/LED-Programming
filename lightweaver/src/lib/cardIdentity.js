@@ -2,6 +2,8 @@ import { normalizeCardKaleidoscopeMappings } from './cardRuntimeContract.js';
 import { classifyCardReadiness, isStaleFirmwareMismatch } from './cardReadiness.js';
 
 export const CARD_IDENTITY_STORAGE_KEY = 'lw_card_identity_v1';
+export const CARD_IDENTITY_FORGOT_AT_KEY = 'lw_card_identity_forgot_at_v1';
+let volatileForgotAt = 0;
 
 function cleanText(value, maxLength = 128) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -389,8 +391,39 @@ export function classifyPairedCardReadiness(raw = {}, options = {}) {
   return classifyCardReadiness(raw, { ...classifyOptions, expectedCard });
 }
 
-export function forgetExpectedCardIdentity({ storage = defaultStorage() } = {}) {
+export function cardIdentityForgotAfter(timestamp, { storage = defaultStorage() } = {}) {
+  const acknowledgedAt = Number(timestamp);
+  if (!Number.isFinite(acknowledgedAt) || acknowledgedAt <= 0) return true;
+  if (volatileForgotAt >= acknowledgedAt) return true;
+  // An unreadable revocation record must never grant temporary setup authority.
+  if (!storage?.getItem) return true;
+  try {
+    const record = storage.getItem(CARD_IDENTITY_FORGOT_AT_KEY);
+    if (record === null) return false;
+    const forgottenAt = Number(record);
+    return !Number.isFinite(forgottenAt) || forgottenAt <= 0 || forgottenAt >= acknowledgedAt;
+  } catch { return true; }
+}
+
+function defaultSessionStorage() {
+  try { return globalThis?.window?.sessionStorage || globalThis?.sessionStorage || null; }
+  catch { return null; }
+}
+
+export function forgetExpectedCardIdentity({ storage = defaultStorage(), sessionStorage = defaultSessionStorage(), now = Date.now } = {}) {
   if (!storage?.removeItem) return false;
+  const forgottenAt = Number(now());
+  try {
+    // An explicit Forget also revokes an in-flight commissioning flow's
+    // temporary exact-card identity. A later, newly acknowledged flow may
+    // still finish setup without inheriting the forgotten pairing.
+    if (!storage.setItem) throw new Error('revocation storage unavailable');
+    storage.setItem(CARD_IDENTITY_FORGOT_AT_KEY, String(forgottenAt));
+  } catch {
+    // Quota failure must not prevent the owner from forgetting a paired card.
+    volatileForgotAt = Math.max(volatileForgotAt, forgottenAt);
+  }
+  try { sessionStorage?.removeItem?.('lw_card_commissioning_active_v2'); } catch {}
   try {
     storage.removeItem(CARD_IDENTITY_STORAGE_KEY);
     return true;

@@ -14,7 +14,12 @@ import {
   CARD_LINK_PING_MISS_LIMIT,
   initialCardLinkState,
   reduceCardLink,
+  getSharedCardLink,
+  reportDirectCardStatus,
 } from './cardLink.js';
+import { beginCardCommissioning, completeCardInstall, acknowledgeCommissionedCard,
+  writeCardCommissioning } from './cardCommissioningFlow.js';
+import { CARD_IDENTITY_FORGOT_AT_KEY, forgetExpectedCardIdentity } from './cardIdentity.js';
 
 const HOST = 'lightweaver.local';
 const CARD_ID = 'lw-aabbccddeeff';
@@ -44,6 +49,86 @@ function connectedBridgeState() {
     readiness: readyEnvelope(),
   });
 }
+
+test('acknowledged active setup keeps exact direct status transiently connected without pairing', async () => {
+  const priorLocal = globalThis.localStorage;
+  const priorSession = globalThis.sessionStorage;
+  const memory = () => {
+    const values = new Map();
+    return { getItem: key => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, String(value)),
+      removeItem: key => values.delete(key) };
+  };
+  const storage = memory();
+  const sessionStorage = memory();
+  globalThis.localStorage = storage;
+  globalThis.sessionStorage = sessionStorage;
+  try {
+    const now = Date.now();
+    const projectRecord = { id: 'project-direct-setup', updatedAt: now,
+      project: { version: 3, id: 'test-piece', name: 'Test piece',
+        layout: { strips: [{ id: 'strip', pixelCount: 2 }],
+          wiring: { outputs: [{ id: 'out-a', gpio: 16 }] }, patchBoard: { chains: [{ id: 'strip' }] } },
+        devices: { standaloneController: { outputs: [{ id: 'out-a', pin: 16, pixels: 2 }],
+          playlist: [{ id: 'aurora', type: 'pattern', patternId: 'aurora' }] } } } };
+    const installed = { operation: 'install-current-release', cardId: CARD_ID,
+      firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) };
+    const started = beginCardCommissioning({ source: 'web-serial', operation: installed.operation,
+      strategy: 'clean-recovery', projectRecord, projectRevision: 1,
+      flowId: 'flow-direct-status-commissioning', now });
+    const awaiting = completeCardInstall(started, installed, { now: now + 1 });
+    await writeCardCommissioning(awaiting, { storage, sessionStorage, locks: null, indexedDB: null });
+    const exactStatus = readyEnvelope();
+    const observe = status => reportDirectCardStatus({ connected: true, host: HOST, status });
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().reason, 'found-unpaired', 'no acknowledgement grants no identity');
+    const acknowledged = acknowledgeCommissionedCard(awaiting, {
+      id: CARD_ID, firmwareVersion: installed.firmwareVersion, buildId: installed.buildId,
+    }, { now: now + 2 }).flow;
+    await writeCardCommissioning(acknowledged, { storage, sessionStorage, locks: null, indexedDB: null });
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().state, 'connected-direct');
+    assert.equal(storage.getItem('lw_card_identity_v1'), null, 'temporary setup authority never persists pairing');
+    const originalGet = storage.getItem;
+    storage.getItem = key => {
+      if (key === CARD_IDENTITY_FORGOT_AT_KEY) throw new Error('revocation storage unreadable');
+      return originalGet(key);
+    };
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().reason, 'found-unpaired', 'unreadable revocation fails closed');
+    storage.getItem = originalGet;
+    for (const mismatch of [
+      { cardId: 'lw-other' }, { firmwareVersion: '9.0.0' }, { buildId: 'b'.repeat(40) },
+    ]) {
+      observe(readyEnvelope(mismatch));
+      assert.equal(getSharedCardLink().getState().reason, 'found-unpaired');
+    }
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().state, 'connected-direct');
+    const realNow = Date.now;
+    try {
+      Date.now = () => now + 8 * 24 * 60 * 60 * 1000;
+      observe(exactStatus);
+      assert.equal(getSharedCardLink().getState().reason, 'found-unpaired', 'expired setup has no authority');
+    } finally { Date.now = realNow; }
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().state, 'connected-direct');
+    sessionStorage.removeItem('lw_card_commissioning_active_v2');
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().reason, 'found-unpaired', 'cleared setup has no authority');
+    sessionStorage.setItem('lw_card_commissioning_active_v2', acknowledged.flowId);
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().state, 'connected-direct');
+    assert.equal(forgetExpectedCardIdentity({ storage, now: () => now + 3 }), true);
+    observe(exactStatus);
+    assert.equal(getSharedCardLink().getState().reason, 'found-unpaired', 'explicit Forget revokes transient setup identity');
+  } finally {
+    if (priorLocal === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = priorLocal;
+    if (priorSession === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = priorSession;
+  }
+});
 
 test('a single missed bridge ping keeps connected-bridge and records missed:1', () => {
   const connected = connectedBridgeState();

@@ -547,8 +547,11 @@ test('Draw strip rows drag into first-to-last wiring order', async ({ page }) =>
   const rows = page.locator('.la-strip-row');
   await expect(rows).toHaveCount(2);
   const secondName = await rows.nth(1).locator('.layer-name').innerText();
-  // The upper half means "before"; a center drop can round into "after".
-  await rows.nth(1).dragTo(rows.nth(0), { targetPosition: { x: 12, y: 4 } });
+  // Start on the drag handle, clear of the row's pattern-action button.
+  // Dropping in the upper half places the strip before the first row.
+  await rows.nth(1).locator('.la-wire-n').dragTo(rows.nth(0), {
+    targetPosition: { x: 12, y: 8 },
+  });
 
   await expect(rows.first().locator('.layer-name')).toHaveText(secondName);
   await expect.poll(async () => page.evaluate(() => {
