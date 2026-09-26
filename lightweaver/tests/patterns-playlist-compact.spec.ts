@@ -151,11 +151,11 @@ const RETIRED_SEND_STATUS_LITERALS = [
 
 // ── Item 1: one vocabulary for "has this reached the card" ─────────────────
 
-test('Patterns Design target card status uses the shared send-status vocabulary', async ({ page }) => {
+test('Patterns preview status uses the shared send-status vocabulary', async ({ page }) => {
   const project = createDefaultProject();
   await mockReadyPatternsCard(page, project, 'lw-u2-patterns-vocab');
 
-  const targetLabel = page.locator('.pm-targetcard .tc-live .tc-stat-k');
+  const targetLabel = page.getByTestId('physical-preview-status');
   await expect(targetLabel).toHaveText('Previewing in Studio');
 
   await page.locator('.pm-cards .pmcard').first().click();
@@ -164,7 +164,7 @@ test('Patterns Design target card status uses the shared send-status vocabulary'
     .toEqual(expect.stringMatching(new RegExp(SHARED_SEND_STATUS_LABELS.join('|'))));
 
   for (const retired of RETIRED_SEND_STATUS_LITERALS) {
-    await expect(page.locator('.pm-targetcard')).not.toContainText(retired);
+    await expect(page.locator('.pm-target')).not.toContainText(retired);
   }
 });
 
@@ -259,17 +259,17 @@ test('the pattern-gate refusal reserves its own space and does not cover the Des
   const notice = page.getByTestId('pattern-gate-notice');
   await expect(notice).toContainText('That tap was not sent to the card.');
 
-  const pixelsLabel = page.locator('.pm-targetcard .tc-layer .tc-stat-k');
-  await expect(pixelsLabel).toHaveText('Pixels driven');
+  const pixelsLabel = page.getByTestId('section-target-all');
+  await expect(pixelsLabel).toContainText('LEDs');
   await pixelsLabel.scrollIntoViewIfNeeded();
   // Measure and hit-test in the SAME evaluate call, so nothing can relayout
   // between reading the label's position and asking what is on top of it.
   const uncovered = await page.evaluate(() => {
-    const label = document.querySelector('.pm-targetcard .tc-layer .tc-stat-k');
+    const label = document.querySelector('[data-testid="section-target-all"]');
     if (!label) return false;
     const box = label.getBoundingClientRect();
     const el = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return Boolean(el && el.closest('.pm-targetcard'));
+    return Boolean(el && el.closest('.pm-target'));
   });
   expect(uncovered).toBe(true);
 });
@@ -298,10 +298,10 @@ test('Patterns no longer reuses "On the card now" as a per-tap confirmed label',
 
   await page.locator('.pm-cards .pmcard').first().click();
   await expect
-    .poll(async () => page.locator('.pm-targetcard .tc-live .tc-stat-k').textContent())
+    .poll(async () => page.getByTestId('physical-preview-status').textContent())
     .toEqual('Applied by Lightweaver runtime');
-  await expect(page.locator('.pm-targetcard')).not.toContainText('On the card now');
-  await expect(page.locator('.pm-targetcard')).not.toContainText('Confirmed on card');
+  await expect(page.locator('.pm-target')).not.toContainText('On the card now');
+  await expect(page.locator('.pm-target')).not.toContainText('Confirmed on card');
 });
 
 // ── Item 8: no dead menu wrapper around a single button ─────────────────────

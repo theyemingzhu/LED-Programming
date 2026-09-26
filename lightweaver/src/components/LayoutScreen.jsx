@@ -103,7 +103,32 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   // Live values from the starter panel ({ shape, ledCount, density, lengthM }
   // or null) — drives the ghost preview of the primitive on the canvas.
   const [starterPreview, setStarterPreview] = useState(null);
-  const { wiring, compiledWiring, updateWiring, standaloneController } = useProject();
+  const { wiring, compiledWiring, updateWiring, standaloneController, projectId, projectLifecycle } = useProject();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const targetId = params.get('focusTarget');
+    if (!targetId || params.get('screen') !== 'layout') return;
+    if (params.get('project') === projectId && params.get('generation') === String(projectLifecycle?.generation ?? 0)) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        [...document.querySelectorAll('[data-testid="layout-section-pattern-action"]')]
+          .find(button => button.dataset.targetId === targetId)?.focus();
+      }));
+    }
+    params.delete('focusTarget');
+    params.delete('project');
+    params.delete('generation');
+    window.history.replaceState(null, '', `#${params.toString()}`);
+  }, [projectId, projectLifecycle?.generation]);
+  const changeSectionPattern = ({ targetId, stripId }) => {
+    const params = new URLSearchParams({
+      screen: 'pattern',
+      target: targetId,
+      project: projectId,
+      generation: String(projectLifecycle?.generation ?? 0),
+      returnStrip: stripId || '',
+    });
+    window.location.hash = `#${params.toString()}`;
+  };
   // Reuses classifyCardChanges (src/lib/cardDeployment.js) — the same
   // function that decides `prepared.changes` for an actual push — purely to
   // choose which sentence to show, never to gate the button. hardwareFacts()
@@ -580,6 +605,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
         <div className="la-mode-content is-draw">
           <div className="la-inspector-main" hidden={specsOpen}>
             <DrawModePanel state={state}
+                         onChangePattern={changeSectionPattern}
                          firstLedPicker={firstLedPicker}
                          firstLedError={firstLedError}
                          onBeginFirstLedPicker={beginFirstLedPicker}

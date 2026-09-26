@@ -37,6 +37,47 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Native section workflow integration (done locally; needs-eyes)
+
+Adrian authorized implementation of the refined plan, including a tiny actual
+Layout preview and current Studio styling. Three Sol workers own non-overlapping
+boundaries: Patterns/projection/shared navigation (high), Layout/local controls
+(medium), Bench discovery/local controls (medium). Manager owns integration,
+browser coordination and one checkpoint; Luna inventoried integration contacts.
+U0–U4 now integrates compact actual-geometry previews, section rows and saved-mix
+summaries, exact Layout/Patterns round trips and focus, compiled output inventory
+and spans, shared grouped targets, and measured Bench rows in existing styles.
+Checkpoint: 2748/2748 units and production build. Integrated browser evidence:
+39 distinct cases passed after correcting two stale duplicate-row assertions and
+the real phone-toolbar regression; final build and screen inspection passed.
+[Evidence](docs/plans/2026-09-25-section-workflow-integration-evidence.md).
+Flow renderer/layer-authoring/delivery U5–U8 remain planned, not implemented by
+this UI batch. Physical appearance, restore/offline restart and novice acceptance
+remain unobserved. Concurrent firmware edits untouched; no release, signing,
+hardware flash or Prove run.
+
+### 2026-09-25 Historical UX integration design (done; proposed build)
+
+Two Sol audits compared historical Patterns/mix affordances and current
+Layout/Bench/Card ownership. Manager produced the
+[refined integration plan](docs/plans/2026-09-25-refined-section-workflow-plan.md):
+compact section overview, exact-target pattern action, one wiring disclosure,
+recognizable saved mixes and shared Bench presentation. Existing controls are
+reused; one primary action, one expanded editor and optional Keep before direct
+Install. Interactive conversation sketch passes local checks at 736/390/320px,
+including scoped edits, copy-all, Undo and simulated install; phone screen viewed.
+Adrian's accepted refinements are incorporated: arbitrary artwork and section
+names, existing Layout/Patterns/Lab placement and style tokens, and separate
+artwork, physical wiring, flow, effect-layer and temporal ordering. Two additional
+Sol audits verified current screen/style ownership and renderer contracts.
+Continuous flow is currently rejected by both Studio preview and native compilation;
+Lab has compositor support but no visible layer editor or general native compiler.
+The plan explicitly assigns U5–U8 for those gaps, full recipe persistence and
+cross-screen delivery, following the U0–U4 compact UI foundation in four batches.
+The generic-path sketch was rechecked at 736/390/320px and its phone screen inspected.
+Design only, no product changes, firmware action or release. Concurrent
+Bench Warm/firmware work untouched. Physical and novice acceptance remain pending.
+
 ### 2026-09-25 Bench Warm card thumbnail (done locally; card needs update)
 
 Adrian reports no thumbnail for Bench Warm. The card API provides look ID

@@ -1349,7 +1349,7 @@ test('Hardware loads the verified production project that matches the paired car
       })]),
     }),
   })]));
-  await expect(page.locator('.pm-targetcard .tc-layer .tc-total')).toHaveText('LEDs44');
+  await expect(page.getByTestId('section-target-all')).toContainText('44 LEDs');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id)).toBe('bench-fixture');
 });
 

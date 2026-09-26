@@ -367,9 +367,13 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await seedBlankCardLink(page);
   });
 
-  test('two GPIOs can try one scene, diverge, and keep exact patterns in the measured install package', async ({ page }) => {
+  test('two GPIOs can try one scene, diverge, and keep exact patterns in the measured install package', async ({ page }, testInfo) => {
     const modeled = await modelBenchPatterns(page, card);
     await recordTwoGpioWalk(page);
+    await expect(page.getByTestId('discovery-output-row')).toHaveCount(2);
+    await expect(page.getByTestId('discovery-output-row').nth(0)).toContainText('GPIO 16 · 30 LEDs');
+    await expect(page.getByTestId('discovery-output-row').nth(1)).toContainText('GPIO 17 · 20 LEDs');
+    await expect(page.getByTestId('discovery-output-row').first()).toContainText('Choose a pattern');
     await page.getByTestId('discovery-pattern-whole').selectOption('aurora');
     await expect.poll(() => modeled.controls.filter(control => control.patternId === 'aurora'
       && control.syncZones === false).map(control => control.zone)).toEqual(['bench-16', 'bench-17']);
@@ -377,6 +381,15 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await expect.poll(() => modeled.controls.some(control => control.zone === 'bench-17' && control.syncZones === false && control.patternId === 'ocean')).toBe(true);
     await expect(page.getByTestId('discovery-pattern-16')).toHaveValue('aurora');
     await expect(page.getByTestId('discovery-pattern-17')).toHaveValue('ocean');
+    await expect(page.getByTestId('discovery-pattern-whole')).toHaveValue('');
+    await expect(page.getByTestId('discovery-pattern-whole')).toContainText('Mixed patterns');
+    await expect(page.getByTestId('discovery-output-row').first()).toContainText('Aurora');
+    await expect(page.getByTestId('discovery-output-row').last()).toContainText('Ocean');
+    await expect(page.getByTestId('discovery-stop-preview')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('bench-different-patterns-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: testInfo.outputPath('bench-different-patterns-phone.png'), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.getByTestId('discovery-keep-patterns').click();
     await expect(page.getByText('Patterns saved for the final setup.')).toBeVisible();
     await expect.poll(() => page.evaluate(() => {
@@ -633,6 +646,8 @@ test.describe('a blank card whose firmware applies its first config', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: testInfo.outputPath('bench-patterns-phone.png'), fullPage: true });
     await expect(page.getByTestId('discovery-pattern-16')).toBeInViewport();
+    await page.setViewportSize({ width: 320, height: 720 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(page.getByTestId('discovery-install')).toHaveCount(0);
     await expect(page.getByTestId('discovery-open-patterns')).toBeVisible();

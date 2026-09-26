@@ -24,7 +24,9 @@ test('Layout separates a spanning GPIO strip and Undo restores its route', async
   }, project);
   await page.goto('/#screen=layout&mode=draw', { waitUntil: 'domcontentloaded' });
   const outerRows = page.locator('.la-strip-row').filter({ hasText: 'Outer circle' });
-  await expect(outerRows).toHaveCount(2);
+  // A spanning strip has one editable row; the second output links to it.
+  await expect(outerRows).toHaveCount(1);
+  await expect(page.getByTestId('gpio-group-17')).toContainText('Continues Outer circle');
   await outerRows.first().click();
   await expect(page.getByText('Separate at existing run boundaries').first()).toBeVisible();
   await expect(page.getByText('GPIO 16 · 13 LEDs').first()).toBeVisible();
@@ -46,7 +48,7 @@ test('Layout separates a spanning GPIO strip and Undo restores its route', async
   await page.screenshot({ path: 'test-results/layout-run-separation-after.png' });
   await page.getByTitle(/Undo/).first().click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.strips?.length)).toBe(2);
-  await expect(page.locator('.la-strip-row').filter({ hasText: 'Outer circle' })).toHaveCount(2);
+  await expect(page.locator('.la-strip-row').filter({ hasText: 'Outer circle' })).toHaveCount(1);
   await page.getByTitle(/Redo/).first().click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.strips?.length)).toBe(3);
   const restoredPage = await page.context().newPage();

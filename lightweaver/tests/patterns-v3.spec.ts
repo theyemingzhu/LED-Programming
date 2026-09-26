@@ -239,6 +239,34 @@ function createPiecePreviewProject(id = 'piece-preview-fixture') {
   return project;
 }
 
+test('compact preview follows open artwork paths and named sections', async ({ page }, testInfo) => {
+  const project = createPiecePreviewProject('open-path-overview');
+  const [crest, branch] = project.layout.strips;
+  crest.name = 'Crest';
+  crest.closed = false;
+  crest.pathData = 'M 45 105 C 110 15, 190 15, 260 110';
+  crest.pixels = crest.pixels.map((pixel, index, pixels) => {
+    const progress = index / Math.max(1, pixels.length - 1);
+    return { ...pixel, x: 45 + progress * 215, y: 105 - Math.sin(progress * Math.PI) * 82 };
+  });
+  branch.name = 'Branch';
+  branch.closed = false;
+  branch.pathData = 'M 250 130 L 365 240';
+  branch.pixels = branch.pixels.map((pixel, index, pixels) => {
+    const progress = index / Math.max(1, pixels.length - 1);
+    return { ...pixel, x: 250 + progress * 115, y: 130 + progress * 110 };
+  });
+  project.layout.patchBoard.patches[0].name = 'Crest';
+  project.layout.patchBoard.patches[1].name = 'Branch';
+  await gotoSavedProjectPatterns(page, project);
+  await expect(page.getByTestId('section-target-patch-default-outer-circle')).toContainText('Crest');
+  await expect(page.getByTestId('section-target-patch-default-inner-circle')).toContainText('Branch');
+  await page.getByRole('button', { name: 'On my piece' }).click();
+  await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-mode', 'piece');
+  await page.locator('.pm-target').evaluate(element => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: testInfo.outputPath('open-path-compact-preview.png') });
+});
+
 function compileProjectWiring(project) {
   return compileWiring({
     wiring: project.layout.wiring,
@@ -675,10 +703,11 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   await page.screenshot({ path: testInfo.outputPath('gpio-patterns-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+  await page.locator('.pm-target').evaluate(element => element.scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: testInfo.outputPath('gpio-patterns-phone-overview.png') });
   await page.getByTestId('section-target-all').click();
   await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await expect(page.getByTestId('section-target-patch-default-outer-circle')).not.toHaveClass(/\bon\b/);
-  await expect(page.locator('.pm-targetcard .tc-stat-v').first()).toHaveText('All sections');
   await page.waitForTimeout(150); // Let the section chip's 120 ms border transition finish before capture.
   await page.screenshot({ path: testInfo.outputPath('gpio-patterns-phone-target.png') });
   await expect(page.getByTestId('pattern-bank-scope')).toContainText('All sections');
@@ -691,7 +720,7 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Fire');
 
   await page.getByTestId('section-target-patch-default-inner-circle').click();
-  await expect(page.locator('.pm-targetcard .tc-stat-v').first()).toHaveText('Inner circle');
+  await expect(page.getByTestId('section-target-patch-default-inner-circle')).toHaveClass(/\bon\b/);
   await expect(page.getByTestId('pattern-bank-scope')).toContainText('Inner circle · GPIO 17');
   await expect(page.getByTestId('pattern-bank-scope')).toContainText('only this section');
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
@@ -703,6 +732,8 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.looks?.some(look => look.label === 'Two GPIO look');
   })).toBe(true);
+  await expect(page.locator('.pm-mix-summary').first()).toContainText('Outer circle: Fire');
+  await expect(page.locator('.pm-mix-summary').first()).toContainText('Inner circle: Ocean');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
@@ -718,6 +749,10 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   const startup = installed.looks.find(look => look.id === installed.startupPatternId);
   expect(startup.mode).toBe('combo');
   expect(startup.zones.map(zone => zone.patternId)).toEqual(['fire', 'plasma']);
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'daylight'; });
+  await expect.poll(() => page.locator('.pm-section-item').first().evaluate(element => getComputedStyle(element).color)).not.toBe('rgb(255, 255, 255)');
 });
 
 test('a section spanning two GPIOs exposes one pattern scope and opens its strip in Layout', async ({ page }) => {
@@ -740,9 +775,9 @@ test('a section spanning two GPIOs exposes one pattern scope and opens its strip
   await page.getByTestId('open-spanning-section-in-layout').click();
   await expect(page).toHaveURL(/#screen=layout&mode=draw/);
   const selectedRuns = page.locator('.la-strip-row').filter({ hasText: 'Outer circle' });
-  await expect(selectedRuns).toHaveCount(2);
+  await expect(selectedRuns).toHaveCount(1);
   await expect(selectedRuns.first()).toHaveClass(/\bsel\b/);
-  await expect(selectedRuns.last()).toHaveClass(/\bsel\b/);
+  await expect(page.getByTestId('gpio-group-17').locator('.la-gpio-linked')).toContainText('Continues Outer circle');
 });
 
 test('rapid duplicate Install clicks start only one card write', async ({ page }) => {
@@ -845,7 +880,7 @@ test('v3 patterns mounts the mockup shell with a chip-ready catalog', async ({ p
   await expect(page.locator('.pm-stripfinder')).toHaveCount(0);
   await expect(page.getByText('Strip finder', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Try next order' })).toHaveCount(0);
-  await expect(page.locator('.pm-targetcard')).toBeVisible();
+  await expect(page.locator('.pm-section-list')).toBeVisible();
 
   // The catalog starts with one exact 24-card batch.
   await expect(page.locator('.pm-cards .pmcard')).toHaveCount(24);
@@ -1230,7 +1265,7 @@ test('Studio preview changes immediately while runtime application waits for the
     });
   });
   await gotoFreshPatterns(page);
-  const cardReadout = page.locator('.tc-stat.tc-live');
+  const cardReadout = page.getByTestId('physical-preview-status');
   // U2-build item 1: the Design target card now reads the same shared
   // send-status vocabulary as the bank's own status line and Playlist
   // (cardActionStatusLabel), instead of its own "Selected in Studio /
@@ -1289,7 +1324,7 @@ test('an invalid preview response stays bounded and does not render the card res
   await expect(alert).not.toContainText('PRIVATE-CARD-RESPONSE');
   await expect(alert).toContainText(/could not be verified|did not answer in time/i);
   // U2-build item 1: shared send-status vocabulary (see the test above).
-  await expect(page.locator('.tc-stat.tc-live')).toContainText('Previewing in Studio');
+  await expect(page.getByTestId('physical-preview-status')).toContainText('Previewing in Studio');
 });
 
 test('missing runtime state proof recovers the card before asking for visible confirmation', async ({ page }) => {

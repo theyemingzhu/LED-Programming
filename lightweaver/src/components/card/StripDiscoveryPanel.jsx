@@ -1234,6 +1234,13 @@ export function StripDiscoveryPanel({
     const query = patternSearch.trim().toLowerCase();
     return !query || `${pattern.label} ${pattern.description}`.toLowerCase().includes(query);
   });
+  const measuredOutputs = committedPartsRef.current?.outputs || [];
+  const selectedPatternForPin = pin => auditionPatterns[pin] || savedPatternChoices[pin] || '';
+  const measuredPatternIds = measuredOutputs.map(output => selectedPatternForPin(output.pin));
+  const allMeasuredPatternId = measuredPatternIds.length > 0
+    && measuredPatternIds.every(id => id && id === measuredPatternIds[0])
+    ? measuredPatternIds[0] : '';
+  const mixedMeasuredPatterns = new Set(measuredPatternIds.filter(Boolean)).size > 1;
 
   useEffect(() => {
     onLifecycleChange?.({ phase, busy, lighting });
@@ -1710,32 +1717,58 @@ export function StripDiscoveryPanel({
 
       {phase === 'done' && (
         <section className="strip-discovery-step" data-testid="discovery-done">
-          {!installed && (committedPartsRef.current?.outputs || []).length > 0 && (
+          {!installed && measuredOutputs.length > 0 && (
             <div className="strip-discovery-audition" data-testid="discovery-pattern-audition">
-              <h3>Try patterns on the measured lights</h3>
-              <p>Try changes only this card’s temporary playback. Keep your choices to use them in the final setup.</p>
-              <label className="strip-discovery-pattern-search">
-                <span>Find a card pattern</span>
-                <input type="search" value={patternSearch} onChange={event => setPatternSearch(event.target.value)}
-                  placeholder="Search by name or mood" data-testid="discovery-pattern-search" />
-              </label>
-              {[{ pin: null, label: 'All measured strips' }, ...(committedPartsRef.current?.outputs || []).map(entry => ({ pin: entry.pin, label: `GPIO ${entry.pin} · ${entry.pixels} LEDs` }))].map(target => {
-                const selectedId = target.pin == null ? '' : (auditionPatterns[target.pin] || savedPatternChoices[target.pin] || '');
-                const chosen = BENCH_AUDITION_PATTERNS.find(pattern => pattern.id === selectedId);
-                return (
-                <label key={target.pin ?? 'whole'} className="strip-discovery-pattern-choice">
-                  <span>{target.label}</span>
-                  <select disabled={auditionBusy || busy} value={selectedId}
-                    onChange={event => { if (event.target.value) { tryBenchPattern(target.pin, event.target.value); setPatternSearch(''); } }}
-                    data-testid={`discovery-pattern-${target.pin ?? 'whole'}`}>
-                    <option value="">Choose a pattern…</option>
-                    {chosen && !matchingBenchPatterns.includes(chosen) && <option value={chosen.id}>{chosen.label} · selected</option>}
+              <div className="strip-discovery-audition-heading">
+                <h3>Measured strips</h3>
+                <p>Try a native card pattern on each strip, or choose one for all. A preview changes temporary playback only.</p>
+              </div>
+              <div className="strip-discovery-pattern-tools">
+                <label className="strip-discovery-pattern-search">
+                  <span>Find a card pattern</span>
+                  <input type="search" value={patternSearch} onChange={event => setPatternSearch(event.target.value)}
+                    placeholder="Search by name or mood" data-testid="discovery-pattern-search" />
+                </label>
+                <label className="strip-discovery-pattern-all">
+                  <span>Same pattern on all measured strips</span>
+                  <select disabled={auditionBusy || busy} value={allMeasuredPatternId}
+                    onChange={event => { if (event.target.value) { tryBenchPattern(null, event.target.value); setPatternSearch(''); } }}
+                    data-testid="discovery-pattern-whole">
+                    <option value="">{mixedMeasuredPatterns ? 'Mixed patterns' : 'Choose for all…'}</option>
+                    {allMeasuredPatternId && !matchingBenchPatterns.some(pattern => pattern.id === allMeasuredPatternId)
+                      && <option value={allMeasuredPatternId}>{BENCH_AUDITION_PATTERNS.find(pattern => pattern.id === allMeasuredPatternId)?.label} · selected</option>}
                     {matchingBenchPatterns.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}
                   </select>
-                  {chosen && <span className="strip-discovery-pattern-preview" aria-label={`${chosen.label} preview`}
-                    style={{ background: chosen.preview }} />}
                 </label>
-              ); })}
+              </div>
+              <ul className="strip-discovery-output-list" aria-label="Confirmed outputs">
+                {measuredOutputs.map((output, index) => {
+                  const selectedId = selectedPatternForPin(output.pin);
+                  const chosen = BENCH_AUDITION_PATTERNS.find(pattern => pattern.id === selectedId);
+                  return (
+                    <li key={output.pin} className="strip-discovery-output-row" data-testid="discovery-output-row">
+                      <div className="strip-discovery-output-facts">
+                        <strong>{`Strip ${index + 1}`}</strong>
+                        <span>{`GPIO ${output.pin} · ${output.pixels} LEDs`}</span>
+                        <span className="strip-discovery-output-look">
+                          {chosen && <i className="strip-discovery-pattern-preview" aria-hidden="true" style={{ background: chosen.preview }} />}
+                          {chosen ? `${auditionPatterns[output.pin] ? 'Previewing' : 'Kept'} ${chosen.label}` : 'Choose a pattern'}
+                        </span>
+                      </div>
+                      <label className="strip-discovery-pattern-choice">
+                        <span className="strip-discovery-visually-hidden">{`Pattern for GPIO ${output.pin}`}</span>
+                        <select disabled={auditionBusy || busy} value={selectedId}
+                          onChange={event => { if (event.target.value) { tryBenchPattern(output.pin, event.target.value); setPatternSearch(''); } }}
+                          data-testid={`discovery-pattern-${output.pin}`}>
+                          <option value="">Choose a pattern…</option>
+                          {chosen && !matchingBenchPatterns.includes(chosen) && <option value={chosen.id}>{chosen.label} · selected</option>}
+                          {matchingBenchPatterns.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}
+                        </select>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
               {!matchingBenchPatterns.length && <p>No exact card patterns match that search.</p>}
               {auditionNeedsUpdate && <button type="button" className="btn" disabled={auditionBusy}
                 onClick={() => void updateLegacyBenchZones()} data-testid="discovery-update-temporary-setup">
@@ -1757,7 +1790,7 @@ export function StripDiscoveryPanel({
           )}
           {embedded ? (
             <>
-              <h3>The lights are measured</h3>
+              <h3>Ready for Layout</h3>
               <p>
                 Studio saved the output, color order, light count, and final-light boundary in this project.
                 The card is still running a temporary low-power setup; place the lights in the artwork before the final test and card install.

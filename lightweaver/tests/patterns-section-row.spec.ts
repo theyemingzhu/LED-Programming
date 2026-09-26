@@ -97,7 +97,8 @@ test('section chips carry their pattern names and the card-holds line is read fr
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
   await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16');
   await expect(page.getByTestId('section-gpio-patch-default-inner-circle')).toHaveText('GPIO 17');
-  await expect(page.getByTestId('section-pattern-instructions')).toContainText('select each section');
+  await expect(page.getByTestId('pattern-bank-scope')).toBeVisible();
+  await expect(page.getByTestId('section-target-all')).toContainText('Mixed');
   // Picking a pattern for a section updates its chip at once.
   await page.getByTestId('section-target-patch-default-inner-circle').click();
   // Tapping the chip flashes that section on the piece: the OTHER zone dims
@@ -117,11 +118,12 @@ test('section chips carry their pattern names and the card-holds line is read fr
   const holds = page.getByTestId('card-holds');
   await expect(holds).toHaveText(`Card holds ${zones.map(zone => zone.label).join(', ')}`);
   await expect(page.getByTestId('divide-in-layout')).toHaveCount(0);
-  // Phone width: the row must not push the page sideways. (Taps are exercised
-  // at desktop width above: at 390px the sticky instrument pane covers the
-  // section row, a pre-existing layout defect logged in TODO.md, not this row's.)
+  // The compact artwork preview and section rows remain tappable at phone width.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Plasma');
+  await expect(page.getByTestId('pattern-piece-preview')).toBeVisible();
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
+  await expect(page.getByTestId('section-target-patch-default-outer-circle')).toHaveClass(/\bon\b/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
   expect(overflow).toBe(false);
 });
@@ -130,6 +132,19 @@ test('a card still holding one section says so and points at Install', async ({ 
   const project = sectionProject('section-row-single');
   await mockReadyCard(page, project, [{ id: 'all', label: 'All' }]);
   await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Install to send yours');
+});
+
+test('All uses the common section look when the saved default differs', async ({ page }) => {
+  const project = sectionProject('uniform-section-look');
+  project.layout.patchBoard.patches[0].playback.patternId = 'ocean';
+  project.devices.standaloneController.defaultLook.patternId = 'fire';
+  await mockReadyCard(page, project, compiledZones(project).map(zone => ({ id: zone.id, label: zone.label })));
+  await expect(page.getByTestId('section-pattern-all')).toHaveText('Ocean');
+  await page.getByTestId('section-target-all').click();
+  await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
+  await expect.poll(() => controlPosts.some(post => post.patternId === 'ocean')).toBe(true);
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Ocean');
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
 });
 
 test('a one-section piece offers Divide in Layout instead of an empty row', async ({ page }) => {
