@@ -2,9 +2,29 @@ import { CORE_CARD_PATTERN_BANK } from './cardPatternBank.js';
 import { recipeFromPattern } from './patternLabPatternAdapter.js';
 import { isBuiltInPattern } from './patternRegistry.js';
 import { normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { canonicalPatternLabBakeJson } from './lwseqBake.js';
+import { normalizePatternLabSequenceAssets } from './patternLabHandoff.js';
 import { cardColorToHex, normalizeCardVisualLook } from './cardVisualLook.js';
 
 const CORE_CARD_PATTERN_IDS = new Set(CORE_CARD_PATTERN_BANK.map(pattern => pattern.id));
+
+/** Reopen a recorded sequence for editing without treating it as a native look. */
+export async function recipeFromSequenceAsset(value) {
+  const [asset] = normalizePatternLabSequenceAssets([value]);
+  if (!asset) return null;
+  const recordedRecipe = asset.manifest.recipe;
+  const cryptoImpl = globalThis.crypto;
+  if (!cryptoImpl?.subtle?.digest) return null;
+  const bytes = new TextEncoder().encode(canonicalPatternLabBakeJson(recordedRecipe));
+  const digest = new Uint8Array(await cryptoImpl.subtle.digest('SHA-256', bytes));
+  const hash = [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  if (hash !== asset.manifest.recipeSha256) return null;
+  const recipe = normalizePatternLabRecipe(recordedRecipe);
+  return normalizePatternLabRecipe({ ...recipe,
+    sourceSequenceAssetId: asset.id,
+    sourceSequenceAssetSha256: asset.manifest.lwseqSha256,
+  });
+}
 
 /**
  * Inverse of lookFromRecipe for opening Pattern Lab on a saved look.

@@ -160,6 +160,25 @@ export function normalizePatternLabRecipe(input = {}) {
   evolution.dynamics = dynamics;
   const layers = arrayOr(source.layers);
   assertPatternLabLayerCount(layers);
+  // Valid legacy numeric IDs stay numeric so existing persisted recipe hashes
+  // and references remain stable. New editor-created IDs are always strings.
+  const reservedLayerIds = new Set(layers.map(layer => (
+    typeof layer?.id === 'string' || typeof layer?.id === 'number' ? String(layer.id).trim() : ''
+  )).filter(Boolean));
+  const layerIds = new Set();
+  layers.forEach((layer, index) => {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return;
+    const current = typeof layer.id === 'string' || typeof layer.id === 'number' ? String(layer.id).trim() : '';
+    if (current && !layerIds.has(current)) {
+      layerIds.add(current);
+      return;
+    }
+    let migrated = `layer-legacy-${id}-${index}`;
+    let suffix = 1;
+    while (reservedLayerIds.has(migrated) || layerIds.has(migrated)) migrated = `layer-legacy-${id}-${index}-${suffix++}`;
+    layer.id = migrated;
+    layerIds.add(migrated);
+  });
 
   const journey = source.journey === undefined ? undefined : normalizeColorJourney(source.journey);
 

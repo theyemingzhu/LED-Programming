@@ -3,6 +3,7 @@ import { download } from '../lib/export.js';
 import { createArtNetSetupNotes, toMadrixFixtureCsv } from '../lib/madrixPatchExport.js';
 import { toXlightsXmodel } from '../lib/xlightsExport.js';
 import { useProject } from '../state/ProjectContext.jsx';
+import './PatternLabExport.css';
 
 const CLASSIFICATION_COPY = {
   'live-on-card': {
@@ -81,6 +82,7 @@ export default function PatternLabExport({
   recipe,
   onBake,
   onUseInProject,
+  onOpenSequenceAsset,
   onSimplify,
   onRemoveFeature,
   authoringDisabled = false,
@@ -180,11 +182,11 @@ export default function PatternLabExport({
     }
   }
 
-  async function useInProject() {
+  async function useInProject(saveAsNew = false) {
     if (typeof onUseInProject !== 'function') return;
     setHandoffStatus({ state: 'adding', message: 'Adding the reviewed item…' });
     try {
-      const result = await onUseInProject({ bakeResult: completedBakeResult });
+      const result = await onUseInProject({ bakeResult: completedBakeResult, saveAsNew });
       if (!result?.ok) {
         setHandoffStatus({
           state: 'error',
@@ -203,11 +205,17 @@ export default function PatternLabExport({
 
   const handoffReady = compatibility.classification === 'live-on-card'
     || (compatibility.classification === 'bake-to-card' && completedBakeResult);
+  const sequenceAssets = project.standaloneController?.sequenceAssets || [];
+  const updatingSequence = compatibility.classification === 'bake-to-card'
+    && sequenceAssets.some(asset => asset.id === recipe?.sourceSequenceAssetId
+      && asset.manifest?.lwseqSha256 === recipe?.sourceSequenceAssetSha256);
   const handoffReviewCopy = compatibility.classification === 'live-on-card'
     ? `A new saved look named “${recipe?.name || 'Untitled pattern'}” will be added and selected. Existing looks stay unchanged.`
     : compatibility.classification === 'bake-to-card'
       ? (completedBakeResult
-          ? `A new sequence asset named “${recipe?.name || 'Untitled pattern'}” and a verified controller package will be added. Existing project items stay unchanged.`
+          ? (updatingSequence
+              ? `Update the saved recording “${recipe?.name || 'Untitled pattern'}” and download its new verified controller package, or save this bake as a separate recording. Card playback changes only after the package is loaded.`
+              : `A new sequence asset named “${recipe?.name || 'Untitled pattern'}” and a verified controller package will be added. Card playback changes only after the package is loaded.`)
           : 'Bake this exact recipe first. The completed sequence will be verified again before anything is added.')
       : 'This recipe is not ready to add. Use the compatibility guidance above to create a card-safe version.';
 
@@ -321,8 +329,11 @@ export default function PatternLabExport({
                 type="button"
                 className="btn primary"
                 disabled={authoringDisabled || !handoffReady || handoffStatus.state === 'adding'}
-                onClick={() => void useInProject()}
-              >{handoffStatus.state === 'adding' ? 'Adding…' : 'Add to project'}</button>
+                onClick={() => void useInProject(Boolean(recipe?.sourceSequenceAssetId && !updatingSequence))}
+              >{handoffStatus.state === 'adding' ? 'Saving…' : updatingSequence ? 'Update recording' : 'Add to project'}</button>
+              {updatingSequence && <button type="button" className="btn"
+                disabled={authoringDisabled || !handoffReady || handoffStatus.state === 'adding'}
+                onClick={() => void useInProject(true)}>Save as new</button>}
               <button
                 type="button"
                 className="btn"
@@ -338,6 +349,14 @@ export default function PatternLabExport({
             role={handoffStatus.state === 'error' ? 'alert' : 'status'}
           >{handoffStatus.message}</p>
         )}
+        {sequenceAssets.length > 0 && <details className="plab-advanced" data-testid="pattern-lab-saved-recordings">
+          <summary>Saved recordings ({sequenceAssets.length})</summary>
+          <p>The project keeps each full recipe and verified hashes. To load it on a card again, reopen and bake it for the current artwork.</p>
+          <ul className="plab-recordings-list">{sequenceAssets.map(asset => <li key={asset.id}>
+            <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames</span>{' '}
+            <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>Edit in Lab</button>
+          </li>)}</ul>
+        </details>}
       </div>
 
       <div className="plab-runtime-cleanup">

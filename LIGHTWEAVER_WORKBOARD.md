@@ -37,6 +37,29 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Flow and layer composition build (done locally; remaining delivery scope)
+
+Continuing U5–U8 after local commit `cdb69fbf`. Sol high owns the ordered
+Scene Expression flow domain, preview and existing editor controls. Sol high
+owns Lab layer authoring, renderer semantics and persistent references. The
+existing Sol delivery worker owns complete recipe preservation and validated
+sequence handoff; no firmware changes. File boundaries exclude each other;
+manager integrates contracts, serializes browser checks on port 4173 and runs
+one checkpoint. Luna performed a bounded acceptance audit and styling correction.
+Physical wiring remains authoritative and separate from effect ordering.
+Ordered Flow preview, inherited routes and safe reset/conflict rules now work.
+Lab supports three targeted overlays with blend/opacity/mute/order/Undo and full
+source persistence; direct and worker frames agree. Recordings reopen/update/save
+as new, and stale geometry/target/source fingerprints block replacement.
+Checkpoint 2774/2774 units + production build; 20 distinct browser cases pass,
+including actual UI recording of 7200 frames across two GPIOs and inspecting the
+downloaded package. Desktop/phone screens inspected. See
+[evidence and remaining scope](docs/plans/2026-09-25-composition-integration-evidence.md).
+Standalone Flow delivery, recorded assets in procedural Playlist, and overlays
+over a pre-existing distinct section mix remain unsupported. Hardware/novice
+acceptance unobserved. No deployment, signing, flash or Prove run. Concurrent
+firmware thumbnail edits and release fixtures are untouched.
+
 ### 2026-09-25 Native section workflow integration (done locally; needs-eyes)
 
 Adrian authorized implementation of the refined plan, including a tiny actual

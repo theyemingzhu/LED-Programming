@@ -163,7 +163,7 @@ test('creates and switches between multiple stable scene sources', async ({ page
   await expect(page.getByLabel('Scene', { exact: true }).locator('option')).toHaveCount(2);
 });
 
-test('renders real divided-strip and grouped-mandala Layout targets', async ({ page }) => {
+test('renders real divided-strip and grouped-mandala Layout targets', async ({ page }, testInfo) => {
   await page.getByLabel('Scene title').fill('Fixture seed');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3'))).not.toBeNull();
   await page.addInitScript(() => {
@@ -215,7 +215,7 @@ test('renders real divided-strip and grouped-mandala Layout targets', async ({ p
   })).toEqual({
     areaIds: ['strip:ribbon-left', 'strip:ribbon-center', 'strip:ribbon-right'], rendererId: 'fire', hue: 144,
   });
-  await page.screenshot({ path: '/tmp/lightweaver-scene-expression-three-section.png', fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('scene-expression-three-section.png'), fullPage: true });
 
   await page.evaluate(() => {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3')!);
@@ -246,5 +246,5 @@ test('renders real divided-strip and grouped-mandala Layout targets', async ({ p
   await expect(page.getByRole('checkbox', { name: 'Petal ring' })).toBeVisible();
   await expect(page.locator('.sexp-canvas')).toHaveAttribute('data-preview-segments', '6');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: '/tmp/lightweaver-scene-expression-mandala-phone.png', fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('scene-expression-mandala-phone.png'), fullPage: true });
 });

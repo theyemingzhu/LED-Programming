@@ -114,6 +114,53 @@ test('same canonical inputs produce byte-identical physical LWSEQ and hashes', a
   assert.deepEqual(JSON.parse(first.sidecarJson), first.sidecar);
 });
 
+test('a layered recipe bakes into both measured GPIO outputs with its full layer stack in the sidecar', async () => {
+  const input = fixture();
+  input.recipe.layers = [{
+    id: 'fire-overlay', name: 'Fire overlay', enabled: true, opacity: 0.4,
+    blendMode: 'screen', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+    target: { kind: 'whole-piece', id: 'all' },
+  }];
+  const baked = await bakePatternLabRecipe({ ...input, fps: 1 });
+  assert.deepEqual(baked.outputs.map(output => [output.pin, output.pixels]), [[16, 4], [17, 2]]);
+  assert.equal(baked.sidecar.recipe.layers[0].id, 'fire-overlay');
+  assert.equal(baked.sidecar.recipe.layers[0].opacity, 0.4);
+  assert.equal(baked.sidecar.recipe.layers[0].blendMode, 'screen');
+  assert.equal(baked.sidecar.pixelCount, 6);
+  assert.equal(baked.sidecar.lwseqSha256, sha256(baked.bytes));
+});
+
+test('a section layer cannot bake after its canonical section membership changes', async () => {
+  const input = fixture();
+  input.recipe.layers = [{
+    id: 'outer-fire', name: 'Outer fire', enabled: true, opacity: 0.4,
+    blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+    target: { kind: 'section', id: 'outer-area', stripIds: ['outer'] },
+  }];
+  assert.throws(() => estimatePatternLabBake({ ...input, fps: 1 }), /section targets are required/i);
+  assert.throws(() => estimatePatternLabBake({ ...input, fps: 1,
+    sectionTargets: [{ kind: 'section', id: 'outer-area', stripIds: ['inner'] }],
+  }), /section mapping is missing or changed/i);
+  const baked = await bakePatternLabRecipe({ ...input, fps: 1,
+    sectionTargets: [{ kind: 'section', id: 'outer-area', stripIds: ['outer'] }],
+  });
+  assert.deepEqual(baked.sidecar.recipe.layers[0].target.stripIds, ['outer']);
+});
+
+test('an imported layered recipe with a different saved section base cannot bake a flattened look', () => {
+  const input = fixture();
+  input.recipe.sourceLook = {
+    defaultLook: { patternId: 'aurora', customHue: 10 },
+    sectionLooks: { outer: { patternId: 'fire', customHue: 240 } },
+  };
+  input.recipe.layers = [{
+    id: 'fire-over', name: 'Fire over', enabled: true, opacity: 0.4,
+    blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
+    target: { kind: 'whole-piece', id: 'all' },
+  }];
+  assert.throws(() => estimatePatternLabBake(input), /cannot preserve that base mix/i);
+});
+
 test('Kaleidoscope mapping participates deterministically in direct bake output and hashes', async () => {
   const input = fixture();
   input.recipe.base = { kind: 'lightweaver-pattern', patternId: 'meteor', params: { speed: 1, tailLen: 0.6 } };

@@ -7,9 +7,12 @@ import { compileSceneExpressionNative } from '../lib/sceneExpressionNative.js';
 import { buildSceneExpressionAreaCatalog } from '../lib/sceneExpressionTargets.js';
 import { inspectExpressionScenes } from '../lib/sceneExpressionProject.js';
 import { mapSceneExpressionPreviewFrame } from '../lib/sceneExpressionFrame.js';
+import { createSceneExpressionPreviewRenderer } from '../lib/sceneExpressionFlow.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import {
   addSceneAssignment, addSceneStep, createSceneExpression, DEFAULT_CARD_COLOR, moveSceneStep,
+  moveSceneFlowArea, reverseSceneFlowArea, setSceneAssignmentDomain,
+  effectiveSceneFlowAt,
   patchOrCreateSceneAssignment, patchSceneStep, removeSceneAssignment, removeSceneStep,
   repeatPatternPerSectionAreaIds, repeatSceneAssignmentPerSection, scenePlaybackAt,
   scenePreviewAvailability, selectionDisplayState,
@@ -53,6 +56,7 @@ export default function SceneExpressionEditor({
   const [physicalPreviewState, setPhysicalPreviewState] = useState({ status: 'idle', message: '' });
   const [physicalFrameReady, setPhysicalFrameReady] = useState(false);
   const playbackFrameRef = useRef(0);
+  const flowClockRef = useRef(0);
   const physicalPreviewRef = useRef(null);
   const mappedFrameRef = useRef(null);
   const sceneRef = useRef(scene);
@@ -137,11 +141,12 @@ export default function SceneExpressionEditor({
     () => repeatPatternPerSectionAreaIds(assignment, catalog),
     [assignment, catalog],
   );
-  const previewAvailability = useMemo(() => scenePreviewAvailability(scene, resolved, catalog), [scene, resolved, catalog]);
+  const previewAvailabilityBase = useMemo(() => scenePreviewAvailability(scene, resolved, catalog), [scene, resolved, catalog]);
   const playback = useMemo(() => scenePlaybackAt(scene, elapsedMs), [elapsedMs, scene]);
-  const effectivePlaying = playing && previewAvailability.ok && !playback.ended;
+  flowClockRef.current = elapsedMs / 1000;
   const playbackStep = scene.steps[playback.stepIndex];
   const playbackResolvedStep = resolved.steps?.find(step => step.id === playback.stepId);
+  const playbackFlow = useMemo(() => effectiveSceneFlowAt(scene, playback.stepId, catalog), [scene, playback.stepId, catalog]);
   const previewTargets = useMemo(() => project.strips.map(strip => {
     const state = playbackResolvedStep?.states?.[strip.id] || scene.defaults;
     return {
@@ -165,6 +170,16 @@ export default function SceneExpressionEditor({
     ...segment,
     palette: previewTargets.find(target => target.id === segment.id)?.palette || segment.palette,
   })), [previewTargets, project.palette, project.patchBoard, project.strips]);
+  const previewRenderer = useMemo(() => playbackFlow.assignments.length
+    ? createSceneExpressionPreviewRenderer({
+      assignments: playbackFlow.assignments, catalog, segments: previewStrips,
+      stateByStrip: playbackResolvedStep?.states, getFlowTime: () => flowClockRef.current,
+    })
+    : null, [playbackFlow.assignments, playbackResolvedStep, catalog, previewStrips]);
+  const previewAvailability = previewAvailabilityBase.ok && previewRenderer?.ok === false
+    ? { ok: false, message: previewRenderer.errors[0]?.message || 'This Flow route cannot be previewed.' }
+    : previewAvailabilityBase;
+  const effectivePlaying = playing && previewAvailability.ok && !playback.ended;
   const previewViewBox = useMemo(
     () => fitPreviewViewBox(previewStrips, project.viewBox),
     [previewStrips, project.viewBox],
@@ -209,7 +224,7 @@ export default function SceneExpressionEditor({
       await stopPhysicalPreview('user');
       return;
     }
-    if (!onStartPhysicalPreview || !mappedFrameRef.current?.length) return;
+    if (!onStartPhysicalPreview || !previewAvailability.ok || !mappedFrameRef.current?.length) return;
     setPhysicalPreviewState({ status: 'starting', message: 'Capturing the current card playback…' });
     try {
       const result = await onStartPhysicalPreview({
@@ -412,10 +427,12 @@ export default function SceneExpressionEditor({
     </div>
     <div className="sexp-grid">
       <section className="sexp-preview" aria-label="Scene preview">
-        <div className="sexp-preview-bar"><span>{!previewAvailability.ok ? `Preview unavailable · ${previewAvailability.message}` : `${playback.ended ? 'Finished' : effectivePlaying ? 'Playing' : 'Paused'} ${playback.stepIndex + 1}/${scene.steps.length} · ${playbackStep.label} · ${(playback.localMs / 1000).toFixed(1)}s`}{physicalPreviewState.message ? ` · ${physicalPreviewState.message}` : ''}</span><div className="sexp-preview-actions"><button type="button" disabled={!previewAvailability.ok} onClick={() => { if (playback.ended) { setElapsedMs(0); setPlaying(true); } else setPlaying(value => !value); }}>{playback.ended ? 'Replay scene' : effectivePlaying ? 'Pause' : 'Play scene'}</button><button type="button" data-testid="scene-physical-preview" data-state={physicalPreviewState.status} disabled={!onStartPhysicalPreview || !physicalFrameReady || ['starting', 'stopping'].includes(physicalPreviewState.status)} onClick={togglePhysicalPreview}>{physicalPreviewState.status === 'live' ? 'Stop preview' : physicalPreviewState.status === 'starting' ? 'Starting…' : physicalPreviewState.status === 'stopping' ? 'Stopping…' : 'Try on lights'}</button></div></div>
+        <div className="sexp-preview-bar"><span>{!previewAvailability.ok ? `Preview unavailable · ${previewAvailability.message}` : `${playback.ended ? 'Finished' : effectivePlaying ? 'Playing' : 'Paused'} ${playback.stepIndex + 1}/${scene.steps.length} · ${playbackStep.label} · ${(playback.localMs / 1000).toFixed(1)}s`}{physicalPreviewState.message ? ` · ${physicalPreviewState.message}` : ''}</span><div className="sexp-preview-actions"><button type="button" disabled={!previewAvailability.ok} onClick={() => { if (playback.ended) { setElapsedMs(0); setPlaying(true); } else setPlaying(value => !value); }}>{playback.ended ? 'Replay scene' : effectivePlaying ? 'Pause' : 'Play scene'}</button><button type="button" data-testid="scene-physical-preview" data-state={physicalPreviewState.status} disabled={!previewAvailability.ok || !onStartPhysicalPreview || !physicalFrameReady || ['starting', 'stopping'].includes(physicalPreviewState.status)} onClick={togglePhysicalPreview}>{physicalPreviewState.status === 'live' ? 'Stop preview' : physicalPreviewState.status === 'starting' ? 'Starting…' : physicalPreviewState.status === 'stopping' ? 'Stopping…' : 'Try on lights'}</button></div></div>
         <div className="sexp-canvas" data-preview-segments={previewStrips.length}>
           {previewStrips.length ? <PatternPreview
-            patternId="aurora" playing={effectivePlaying} strips={previewStrips}
+            patternId="aurora" playing={effectivePlaying}
+            strips={previewRenderer?.ok ? previewStrips.map(segment => ({ ...segment, patternId: undefined })) : previewStrips}
+            compiledFn={previewRenderer?.ok ? previewRenderer.compiledFn : null}
             viewBox={previewViewBox} hidden={project.hidden} controlledTime={elapsedMs / 1000}
             onFrame={handlePreviewFrame}
             ariaLabel={`${scene.name} preview`} testId="scene-expression-preview"
@@ -439,15 +456,32 @@ export default function SceneExpressionEditor({
         <div className="sexp-assignment-tabs">{selectedStep.assignments.length ? selectedStep.assignments.map((item, index) => <button key={`${item.selection.areaIds.join('-')}-${index}`} className={index === selectedAssignment ? 'active' : ''} onClick={() => setSelectedAssignment(index)}>{catalog.areas.find(area => area.id === item.selection.areaIds[0])?.name || 'Missing area'}</button>) : <button className="active">Inherited</button>}</div>
         {hasMixedSelection && <p className="sexp-mixed">Mixed values across these areas. Changing a control applies that value to the selection.</p>}
         {repeatPerSectionAreaIds.length > 0 && <div className="sexp-repeat-choice"><p>This pattern treats the selected parent as one shared domain, which this preview cannot render.</p><button type="button" onClick={() => update(repeatSceneAssignmentPerSection(scene, selectedStep.id, selectedAssignment, catalog))}>Repeat per section</button></div>}
+        {assignment && <label><span>Pattern domain</span><select aria-label="Pattern domain" value={assignment.selection.domain} onChange={event => update(setSceneAssignmentDomain(scene, selectedStep.id, selectedAssignment, event.target.value))}><option value="repeat">Repeat in each area</option><option value="continuous">Flow across areas</option></select><small>Flow changes logical motion. Layout keeps the installed wire order.</small></label>}
         <fieldset><legend>Where</legend><div className="sexp-targets">{catalog.areas.map(area => <label key={area.id} className={area.kind !== 'strip' ? 'parent' : ''}><input type="checkbox" checked={(assignment?.selection.areaIds || ['all']).includes(area.id)} onChange={() => {
           const current = assignment?.selection.areaIds || ['all'];
-          const areaIds = area.kind === 'strip'
+          const areaIds = assignment?.selection.domain === 'continuous'
+            ? (current.includes(area.id) ? current.filter(id => id !== area.id) : [...current, area.id])
+            : area.kind === 'strip'
             ? (current.includes(area.id)
                 ? current.filter(id => id !== area.id)
                 : [...current.filter(id => catalog.areas.find(candidate => candidate.id === id)?.kind === 'strip'), area.id])
             : [area.id];
-          if (areaIds.length) patchAssignment({ selection: { areaIds, domain: 'repeat' } });
-        }} /><span>{area.name}</span></label>)}</div></fieldset>
+          if (assignment?.selection.domain === 'continuous') {
+            const directions = Object.fromEntries(Object.entries(assignment.selection.flow?.directions || {}).filter(([id]) => areaIds.includes(id)));
+            patchAssignment({ selection: { areaIds, flow: { version: 1, directions } } });
+          } else if (areaIds.length) patchAssignment({ selection: { areaIds, domain: 'repeat' } });
+        }} /><span>{area.name}</span></label>)}</div>
+          {(assignment?.selection.areaIds || []).filter(id => !catalog.areas.some(area => area.id === id)).map(id => <div className="sexp-missing-target" key={id}><span>Missing area · {id}</span><button type="button" onClick={() => {
+            const areaIds = assignment.selection.areaIds.filter(item => item !== id);
+            const selection = { areaIds };
+            if (assignment.selection.flow?.version === 1) selection.flow = {
+              version: 1,
+              directions: Object.fromEntries(Object.entries(assignment.selection.flow.directions).filter(([areaId]) => areaIds.includes(areaId))),
+            };
+            patchAssignment({ selection });
+          }}>Remove reference</button></div>)}
+        </fieldset>
+        {assignment?.selection.domain === 'continuous' && assignment.selection.flow?.version === 1 && <div className="sexp-flow-route"><span className="sexp-flow-heading">FLOW ROUTE · LOGICAL ORDER</span>{assignment.selection.areaIds.map((id, index) => <div className="sexp-flow-row" key={id}><strong>{index + 1}. {catalog.areas.find(area => area.id === id)?.name || `Missing area · ${id}`}</strong><div><button type="button" aria-label={`Move ${id} earlier in Flow`} disabled={index === 0} onClick={() => update(moveSceneFlowArea(scene, selectedStep.id, selectedAssignment, id, -1))}>↑</button><button type="button" aria-label={`Move ${id} later in Flow`} disabled={index === assignment.selection.areaIds.length - 1} onClick={() => update(moveSceneFlowArea(scene, selectedStep.id, selectedAssignment, id, 1))}>↓</button><button type="button" aria-label={`Reverse Flow direction for ${id}`} aria-pressed={assignment.selection.flow.directions[id] === 'reverse'} onClick={() => update(reverseSceneFlowArea(scene, selectedStep.id, selectedAssignment, id))}>{assignment.selection.flow.directions[id] === 'reverse' ? 'Reverse' : 'Forward'}</button></div></div>)}<small>Arrows reorder the pattern route only. Reverse flips motion through that area; wire addresses stay fixed.</small></div>}
         <label><span>Pattern</span><select aria-label="Scene pattern" value={assignment?.pattern?.rendererId || inheritedState.pattern.rendererId} onChange={event => patchAssignment({ pattern: { rendererId: event.target.value } })}>{CORE_CARD_PATTERN_BANK.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}</select></label>
         <label><span>Color model</span><select aria-label="Color model" value={assignment?.color?.kind || inheritedState.color.kind} onChange={event => patchAssignment({ color: event.target.value === 'palette' ? { kind: 'palette', colors: getPatternById(previewPatternId(assignment?.pattern?.rendererId || inheritedState.pattern.rendererId))?.pal || project.palette } : { ...DEFAULT_CARD_COLOR, kind: 'card-controls' } })}><option value="card-controls">Card color · exact</option><option value="palette">Palette · Studio preview</option></select></label>
         {(assignment?.color?.kind || inheritedState.color.kind) === 'palette' ? <label><span>Palette</span><div className="sexp-palette">{(assignment?.color?.colors || inheritedState.color.colors || []).map((color, index, colors) => <input key={index} type="text" aria-label={`Palette color ${index + 1}`} value={color} onChange={event => patchAssignment({ color: { kind: 'palette', colors: colors.map((item, itemIndex) => itemIndex === index ? event.target.value : item) } })} />)}</div><small>Rendered here and saved exactly; current card playback does not support full palettes.</small></label> : <label><span>Color</span><input type="range" aria-label="Color" min="0" max="255" value={assignment?.color?.customHue ?? inheritedState.color.customHue} onChange={event => patchAssignment({ color: { customHue: Number(event.target.value) } })} /><small>Firmware hue, saturation, breathe, drift, and shift are rendered through the card preview pipeline.</small></label>}

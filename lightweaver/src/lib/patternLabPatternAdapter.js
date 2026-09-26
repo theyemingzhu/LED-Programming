@@ -8,6 +8,7 @@ import {
 import { normalizePalette, renderPixelFrame } from './frameEngine.js';
 import { applyPatternLabMotionToStrips } from './patternLabMotion.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { patternLabLayerBaseSupport } from './patternLabLayers.js';
 import { applyPatternLabTransform, samplePatternLabMask } from './patternLabTransforms.js';
 import { parseParamsFromCode } from './patternParams.js';
 import { getPatternById, isBuiltInPattern } from './patternRegistry.js';
@@ -47,7 +48,13 @@ function layerTransforms(layer) {
 function layerTargetMatches(layer, strip) {
   const target = layer?.target;
   if (!target || target.kind === 'whole-piece' || target.kind === 'all') return true;
-  if (target.kind === 'section') return String(target.id || '') === String(strip?.id || '');
+  if (target.kind === 'section') {
+    // Canonical section IDs are independent of physical strip IDs. A stored
+    // membership snapshot lets the frame honor the authored mask; project
+    // validation rejects stale snapshots before save or card delivery.
+    if (Array.isArray(target.stripIds)) return target.stripIds.some(id => String(id) === String(strip?.id || ''));
+    return String(target.id || '') === String(strip?.id || ''); // legacy recipes
+  }
   throw new RangeError(`Unsupported Pattern Lab layer target: ${String(target.kind)}`);
 }
 
@@ -184,6 +191,10 @@ export function recipeFromPattern(patternId, context = {}) {
 
 export function renderPatternLabRecipeFrame(recipe, context = {}) {
   const normalized = normalizePatternLabRecipe(recipe);
+  if (normalized.layers.length) {
+    const support = patternLabLayerBaseSupport(normalized);
+    if (!support.supported) throw new TypeError(support.message);
+  }
   const isColorJourney = normalized.base.kind === 'color-journey';
   if (!isColorJourney) requireBuiltInPattern(normalized.base.patternId);
 
@@ -225,6 +236,7 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     paletteNorm: normalizePalette(patternLabBasePalette(normalized)),
   });
   for (const layer of normalized.layers) {
+    if (layer.enabled === false || Number(layer.opacity) === 0) continue;
     const rendered = renderRecipeLayer(layer, renderContext, normalized.palette);
     if (rendered.frame.pixels.length !== frame.pixels.length
       || rendered.coordinates.length !== frame.pixels.length) {

@@ -1,4 +1,5 @@
 import { applyPatternLabLookColor, patternLabBasePalette, patternLabHasSourceLook } from '../lib/patternLabLookColor.js';
+import { patternLabLayerBaseSupport } from '../lib/patternLabLayers.js';
 import { createColorJourneyPattern, patternLabSamplingBounds } from '../lib/patternLabPatternAdapter.js';
 import {
   buildGammaLut,
@@ -106,7 +107,10 @@ function layerTransforms(layer) {
 function layerTargetMatches(layer, stripId) {
   const target = layer?.target;
   if (!target || target.kind === 'whole-piece' || target.kind === 'all') return true;
-  if (target.kind === 'section') return String(target.id || '') === String(stripId || '');
+  if (target.kind === 'section') {
+    if (Array.isArray(target.stripIds)) return target.stripIds.some(id => String(id) === String(stripId || ''));
+    return String(target.id || '') === String(stripId || ''); // legacy recipes
+  }
   throw new RangeError(`Unsupported Pattern Lab layer target: ${String(target.kind)}`);
 }
 
@@ -204,6 +208,10 @@ async function renderRequest(requestId, payload) {
 
   const indices = sampledIndices(geometry.visiblePixelCount, validated.sampleCount);
   const recipe = payload.recipe || {};
+  if (recipe.layers?.length) {
+    const support = patternLabLayerBaseSupport(recipe);
+    if (!support.supported) throw new TypeError(support.message);
+  }
   const options = payload.renderOptions || {};
   const stateful = statefulPattern({ ...recipe, time: payload.time }, indices, options);
   const hasSourceLook = patternLabHasSourceLook(recipe);
@@ -249,6 +257,7 @@ async function renderRequest(requestId, payload) {
   });
   let renderedPixels = frame.pixels;
   for (const layer of recipe.layers || []) {
+    if (layer.enabled === false || Number(layer.opacity) === 0) continue;
     if (layer?.generator?.kind !== 'lightweaver-pattern') {
       throw new RangeError(`Unsupported Pattern Lab layer generator: ${String(layer?.generator?.kind)}`);
     }

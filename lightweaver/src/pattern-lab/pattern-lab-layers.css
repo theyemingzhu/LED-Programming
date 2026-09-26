@@ -1,0 +1,23 @@
+.plab-layers { border-top: 1px solid var(--border-soft); padding: 12px 18px 16px; color: var(--text-hi); }
+.plab-layers-heading, .plab-layer-row, .plab-layer-actions { display: flex; align-items: center; gap: 10px; }
+.plab-layers-heading { justify-content: space-between; }
+.plab-layers-toggle { display: flex; align-items: center; gap: 8px; min-height: 40px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 650; cursor: pointer; }
+.plab-layers-toggle small, .plab-layers-hint, .plab-layer-row span { color: var(--text-mid); font-size: 11px; font-weight: 400; }
+.plab-layers-body { display: grid; gap: 8px; padding-top: 8px; }
+.plab-layers-hint { margin: 0 0 3px; }
+.plab-layer-entry, .plab-layer-base { border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg-panel); }
+.plab-layer-entry[data-invalid="true"] { border-color: var(--warn); }
+.plab-layer-row { justify-content: space-between; min-height: 46px; padding: 7px 10px; }
+.plab-layer-select { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; padding: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.plab-layer-select strong, .plab-layer-select span { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+.plab-layer-enabled { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+.plab-layer-enabled input { accent-color: var(--accent); }
+.plab-layer-error { margin: 0; padding: 0 10px 8px; color: var(--warn); font-size: 11px; }
+.plab-layer-inspector { display: grid; gap: 12px; border-top: 1px solid var(--border-soft); padding: 12px; }
+.plab-layer-inspector > label { display: grid; gap: 5px; font-size: 12px; }
+.plab-layer-inspector select { width: 100%; min-height: 38px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--bg-panel); color: var(--text-hi); font: inherit; }
+.plab-layer-opacity { grid-template-columns: 1fr auto; }
+.plab-layer-opacity input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.plab-layer-actions { flex-wrap: wrap; }
+.plab-layer-actions .btn { min-height: 36px; }
+@media (max-width: 640px) { .plab-layers { padding: 10px 14px 14px; } .plab-layers-heading { gap: 6px; } .plab-layer-actions .btn { flex: 1 1 auto; } }

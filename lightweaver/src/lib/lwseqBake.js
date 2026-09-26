@@ -3,6 +3,7 @@ import { pixelsFromWiring, remapFrameToWiring } from './export.js';
 import { resolvePatternLabControls } from './patternLabControls.js';
 import { renderPatternLabRecipeFrame } from './patternLabPatternAdapter.js';
 import { assertPatternLabJsonSafe, normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { patternLabLayerBaseSupport, validatePatternLabLayerTargets } from './patternLabLayers.js';
 import {
   PATTERN_LAB_WORKER_BUDGETS,
   clonePatternLabWorkerGeometryForTransfer,
@@ -311,11 +312,24 @@ function prepareBake(input = {}) {
   if (input.hidden !== undefined) assertPlainDataTree(input.hidden, 'Pattern Lab bake hidden map');
   if (input.render !== undefined) assertPlainDataTree(input.render, 'Pattern Lab bake render settings');
   if (input.audioLanes !== undefined) assertPlainDataTree(input.audioLanes, 'Pattern Lab bake audio lanes');
+  if (input.sectionTargets !== undefined) assertPlainDataTree(input.sectionTargets, 'Pattern Lab bake section targets');
   if (!Array.isArray(input.wiring.outputs) || !Array.isArray(input.wiring.runs)) {
     throw new TypeError('Known physical wiring is required for Pattern Lab bake');
   }
   assertPatternLabJsonSafe(input.recipe);
   const recipe = normalizePatternLabRecipe(input.recipe);
+  if (recipe.layers.length) {
+    const support = patternLabLayerBaseSupport(recipe);
+    if (!support.supported) throw new TypeError(support.message);
+  }
+  if (recipe.layers.some(layer => layer.target?.kind === 'section' && Array.isArray(layer.target.stripIds))
+    && !Array.isArray(input.sectionTargets)) {
+    throw new TypeError('Current section targets are required to bake a section layer');
+  }
+  const targetCheck = validatePatternLabLayerTargets(recipe, {
+    sectionTargets: input.sectionTargets || [], strips: input.strips, compiledWiring: input.compiledWiring,
+  });
+  if (!targetCheck.valid) throw new TypeError(targetCheck.message);
   if (recipe.base.kind === 'color-journey') {
     throw new RangeError('Color journeys currently require Studio streaming; standalone recording is not available yet.');
   }
@@ -410,6 +424,11 @@ function estimatePreparedBake(prepared) {
 
 export function estimatePatternLabBake(input = {}) {
   return estimatePreparedBake(prepareBake(input));
+}
+
+export async function hashPatternLabBakePhysicalOrder(input = {}) {
+  const prepared = prepareBake(input);
+  return sha256(canonicalBytes(prepared.layoutProjection), input.signal);
 }
 
 function renderOptionsAt(recipe, time) {

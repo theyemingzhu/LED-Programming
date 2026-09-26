@@ -3,12 +3,14 @@ import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 import {
   MAX_PATTERN_LAB_LWSEQ_BYTES,
   canonicalPatternLabBakeJson,
+  hashPatternLabBakePhysicalOrder,
 } from './lwseqBake.js';
+import { patternLabLayerBaseSupport, validatePatternLabLayerTargets } from './patternLabLayers.js';
 import {
   PATTERN_LAB_COMPATIBILITY_CLASSIFICATIONS,
   PATTERN_LAB_COMPATIBILITY_VERSION,
 } from './patternLabCompatibility.js';
-import { normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { assertPatternLabJsonSafe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { compileColorJourneyNativeRecipe } from './colorJourneyNative.js';
 import { isBuiltInPattern } from './patternRegistry.js';
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
@@ -170,9 +172,9 @@ function normalizeManifest(value) {
     || !SHA256_PATTERN.test(value.lwseqSha256)) {
     return null;
   }
-  let recipe;
   try {
-    recipe = normalizePatternLabRecipe(value.recipe);
+    assertPatternLabJsonSafe(value.recipe);
+    normalizePatternLabRecipe(value.recipe);
   } catch {
     return null;
   }
@@ -180,7 +182,9 @@ function normalizeManifest(value) {
     format: 'lightweaver-lwseq-sidecar',
     version: 2,
     hashAlgorithm: 'SHA-256',
-    recipe,
+    // Preserve the exact recorded bytes. Legacy editable migrations may add
+    // deterministic layer IDs, but the sidecar hash describes the old source.
+    recipe: clone(value.recipe),
     renderSettings: {
       timeSource: 'resolved-render-time',
       masterSpeed: 1,
@@ -327,7 +331,7 @@ function staleRecipeError() {
   return error;
 }
 
-async function validateBakeResult(bakeResult, normalizedRecipe) {
+async function validateBakeResult(bakeResult, normalizedRecipe, bakeContext) {
   if (!record(bakeResult)) throw new TypeError('A complete Pattern Lab bake result is required');
   if (!(bakeResult.bytes instanceof Uint8Array)
     || !record(bakeResult.sidecar)
@@ -374,6 +378,13 @@ async function validateBakeResult(bakeResult, normalizedRecipe) {
   ]);
   if (recipeSha256 !== manifest.recipeSha256) throw staleRecipeError();
   if (lwseqSha256 !== manifest.lwseqSha256) throw new TypeError('The Pattern Lab LWSEQ hash does not match its sidecar');
+  const physicalHash = await hashPatternLabBakePhysicalOrder({ ...bakeContext, recipe: normalizedRecipe,
+    fps: manifest.fps });
+  if (physicalHash !== manifest.layoutPhysicalOrderSha256) {
+    const error = new Error('The artwork, wiring, or render settings changed after this sequence was baked.');
+    error.code = 'bake-stale-layout';
+    throw error;
+  }
   return { bytes: bakeResult.bytes, manifest, outputs };
 }
 
@@ -460,6 +471,8 @@ export async function createPatternLabHandoff({
   compiledWiring = null,
   hidden = {},
   symSettings = null,
+  sectionTargets = null,
+  render = null,
 } = {}) {
   if (cancelled) return blocked('cancelled', 'Use in Project was canceled.');
   if (exportError) return blocked('export-failed', 'The Pattern Lab export did not finish.', exportError.message || exportError);
@@ -475,6 +488,18 @@ export async function createPatternLabHandoff({
   } catch (error) {
     return blocked('recipe-invalid', 'The Pattern Lab recipe is invalid.', error.message || error);
   }
+  if (normalized.layers.length) {
+    const support = patternLabLayerBaseSupport(normalized);
+    if (!support.supported) return blocked('layer-base-mix-unsupported', support.message);
+  }
+  if (normalized.layers.some(layer => layer.target?.kind === 'section' && Array.isArray(layer.target.stripIds))
+    && !Array.isArray(sectionTargets)) {
+    return blocked('section-target-unverified', 'Current section targets are required before saving or baking this layered design.');
+  }
+  const targetCheck = validatePatternLabLayerTargets(normalized, {
+    sectionTargets: sectionTargets || [], strips, compiledWiring,
+  });
+  if (!targetCheck.valid) return blocked('section-target-stale', targetCheck.message);
 
   // Patterns is the project's creative library; card compatibility is a
   // separate installation decision. A valid recipe that cannot run on the
@@ -558,17 +583,33 @@ export async function createPatternLabHandoff({
 
   if (compatibility.classification === 'bake-to-card') {
     const existing = normalizePatternLabSequenceAssets(controller?.sequenceAssets);
-    if (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) {
+    const sourceSequenceAssetId = String(normalized.sourceSequenceAssetId || '');
+    const replacing = !saveAsNew && sourceSequenceAssetId
+      ? existing.find(asset => asset.id === sourceSequenceAssetId) : null;
+    if (sourceSequenceAssetId && !saveAsNew && !replacing) {
+      return blocked('sequence-source-missing', 'The sequence being updated is no longer in this project. Reopen it or save as new.');
+    }
+    if (replacing && replacing.manifest.lwseqSha256 !== normalized.sourceSequenceAssetSha256) {
+      return blocked('sequence-source-changed', 'This recording changed after it was opened. Reopen it or save as new.');
+    }
+    if (!replacing && existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) {
       return blocked('sequence-capacity', `The project already has the maximum of ${MAX_PATTERN_LAB_SEQUENCE_ASSETS} sequence assets.`);
     }
     if (!bakeResult) return blocked('bake-required', 'Bake the complete sequence before adding it to the project.');
     try {
-      const verified = await validateBakeResult(bakeResult, normalized);
-      const id = uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));
-      return makeSequenceResult({ normalizedRecipe: normalized, verified, controller, id });
+      const verified = await validateBakeResult(bakeResult, normalized, {
+        strips, groups, wiring, compiledWiring, hidden, sectionTargets,
+        render: render || { symSettings }, audioLanes: normalized.offlineAudio,
+      });
+      const id = replacing?.id || uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));
+      const result = makeSequenceResult({ normalizedRecipe: normalized, verified, controller, id });
+      return replacing ? { ...result, replaceSequenceAssetId: id } : result;
     } catch (error) {
       if (error?.code === 'bake-stale-recipe') {
         return blocked('bake-stale-recipe', 'Bake this exact recipe again before adding it to the project.');
+      }
+      if (error?.code === 'bake-stale-layout') {
+        return blocked('bake-stale-layout', 'The artwork, wiring, or render settings changed. Bake this sequence again.');
       }
       return blocked('bake-invalid', 'The baked sequence result is incomplete or invalid.', error.message || error);
     }
@@ -657,13 +698,17 @@ export async function applyPatternLabHandoff(controller = {}, result = {}) {
   }
   if (result.kind === 'sequence') {
     const existing = normalizePatternLabSequenceAssets(source.sequenceAssets);
-    if (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS) return controller;
     const asset = await validSequenceResult(result);
-    if (!asset || existing.some(item => item.id === asset.id)) return controller;
+    if (!asset) return controller;
+    const replacing = typeof result.replaceSequenceAssetId === 'string'
+      && result.replaceSequenceAssetId === asset.id
+      && existing.some(item => item.id === asset.id);
+    if (!replacing && (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS
+      || existing.some(item => item.id === asset.id))) return controller;
     return {
       ...source,
       activeSequenceAssetId: asset.id,
-      sequenceAssets: [asset, ...existing],
+      sequenceAssets: [asset, ...existing.filter(item => item.id !== asset.id)],
     };
   }
   return controller;

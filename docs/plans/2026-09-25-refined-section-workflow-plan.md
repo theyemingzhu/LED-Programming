@@ -1,7 +1,10 @@
 # Refined section, pattern and output workflow
 
-Date: 2026-09-25. Status: U0–U4 integrated and verified locally; U5–U8 remain
-planned. See [implementation evidence](2026-09-25-section-workflow-integration-evidence.md).
+Date: 2026-09-25. Status: U0–U4 integrated and verified locally; U5 Flow preview,
+U6 bounded layer authoring, and U7/U8 recording/persistence contacts now built.
+Standalone Flow, native recorded Playlist integration and mixed section bases
+under overlays remain planned. See [section evidence](2026-09-25-section-workflow-integration-evidence.md)
+and [composition evidence](2026-09-25-composition-integration-evidence.md).
 Design covers arbitrary artwork, ordering, continuous flow and layered patterns.
 Based on [Git forensics](2026-09-25-gpio-history-forensics.md), the current live
 Studio, and two Sol audits of historical interactions and present integration.
@@ -14,7 +17,8 @@ arbitrary artwork, respect Layout and Patterns as distinct workspaces, preserve
 reordering, and support both motion flowing between sections and patterns built
 from multiple patterns. The sections on ordering, flow and composition below
 extend the original UI-only scope. Both section mixes and overlapping effect
-layers are planned; their runtime capabilities are explicitly distinguished.
+layers are supported to the extent recorded in the composition evidence; their
+runtime capabilities are explicitly distinguished.
 
 Recover the older workflow's visibility and direct manipulation within the
 current application. The owner should see **what part, which output, how many

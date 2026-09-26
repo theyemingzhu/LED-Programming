@@ -1,4 +1,5 @@
 import { getCardPatternById } from '../lib/cardPatternBank.js';
+import { resolveSceneExpressionSelection } from '../lib/sceneExpressionTargets.js';
 
 const clone = value => structuredClone(value);
 
@@ -51,6 +52,35 @@ export function patchOrCreateSceneAssignment(scene, stepId, assignmentIndex, pat
     selection: { areaIds: ['all'], domain: 'repeat' },
     ...clone(patch),
   });
+  return next;
+}
+
+export function setSceneAssignmentDomain(scene, stepId, assignmentIndex, domain) {
+  const next = clone(scene);
+  const selection = next.steps.find(step => step.id === stepId)?.assignments?.[assignmentIndex]?.selection;
+  if (!selection || (domain !== 'repeat' && domain !== 'continuous')) return next;
+  selection.domain = domain;
+  if (domain === 'continuous') selection.flow = { version: 1, directions: {} };
+  else delete selection.flow;
+  return next;
+}
+
+export function moveSceneFlowArea(scene, stepId, assignmentIndex, areaId, delta) {
+  const next = clone(scene);
+  const selection = next.steps.find(step => step.id === stepId)?.assignments?.[assignmentIndex]?.selection;
+  if (selection?.domain !== 'continuous' || selection.flow?.version !== 1) return next;
+  const from = selection.areaIds.indexOf(areaId);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= selection.areaIds.length) return next;
+  [selection.areaIds[from], selection.areaIds[to]] = [selection.areaIds[to], selection.areaIds[from]];
+  return next;
+}
+
+export function reverseSceneFlowArea(scene, stepId, assignmentIndex, areaId) {
+  const next = clone(scene);
+  const selection = next.steps.find(step => step.id === stepId)?.assignments?.[assignmentIndex]?.selection;
+  if (selection?.domain !== 'continuous' || selection.flow?.version !== 1 || !selection.areaIds.includes(areaId)) return next;
+  selection.flow.directions[areaId] = selection.flow.directions[areaId] === 'reverse' ? 'forward' : 'reverse';
   return next;
 }
 
@@ -109,6 +139,50 @@ export function repeatSceneAssignmentPerSection(scene, stepId, assignmentIndex, 
   });
 }
 
+/** Flow is spatial state: sparse later steps inherit it until a new route replaces it. */
+export function effectiveSceneFlowAt(scene, stepId, catalog) {
+  let routes = [];
+  const errors = [];
+  for (const step of scene.steps) {
+    const continuous = step.assignments.filter(item => item.selection?.domain === 'continuous');
+    const newRouteKeys = new Set();
+    for (const assignment of continuous) {
+      const resolved = resolveSceneExpressionSelection(catalog, assignment.selection);
+      if (!resolved.ok) {
+        errors.push(...resolved.errors);
+        continue;
+      }
+      const keys = new Set(resolved.physicalRefs.map(ref => `${ref.stripId}:${ref.sourceLed}`));
+      if ([...keys].some(key => newRouteKeys.has(key))) {
+        errors.push({ code: 'flow-route-overlap', message: 'Two Flow routes in one step select the same LED.' });
+        continue;
+      }
+      if (routes.some(route => [...route.keys].some(key => keys.has(key))
+        && [...route.keys].some(key => !keys.has(key)))) {
+        errors.push({ code: 'flow-route-partial-replacement', message: 'A new Flow route replaces only part of an earlier route. Select the full earlier route or a separate area.' });
+        continue;
+      }
+      keys.forEach(key => newRouteKeys.add(key));
+      routes = routes.filter(route => ![...keys].some(key => route.keys.has(key)));
+      routes.push({ assignment, keys });
+    }
+    for (const assignment of step.assignments) {
+      if (assignment.selection?.domain !== 'repeat' || !assignment.pattern) continue;
+      if (continuous.length || !routes.length) continue;
+      const selected = resolveSceneExpressionSelection(catalog, assignment.selection);
+      if (!selected.ok) continue;
+      const keys = new Set(selected.instances.flatMap(instance => instance.sourceRefs.flatMap(ref =>
+        ref.sourceLeds.map(sourceLed => `${ref.stripId}:${sourceLed}`))));
+      if (routes.some(route => [...keys].some(key => route.keys.has(key))
+        && [...route.keys].some(key => !keys.has(key))))
+        errors.push({ code: 'flow-pattern-reset', message: 'A repeat pattern covers only part of an active Flow route. Choose the whole route or another Flow route.' });
+      else routes = routes.filter(route => ![...route.keys].every(key => keys.has(key)));
+    }
+    if (step.id === stepId) return { assignments: routes.map(route => route.assignment), errors };
+  }
+  return { assignments: [], errors: [{ code: 'flow-step-missing', message: 'This scene step is missing.' }] };
+}
+
 export function scenePreviewAvailability(scene, resolved, catalog = {}) {
   if (!resolved?.ok) return { ok: false, message: resolved?.reasons?.[0]?.message || 'Resolve scene source issues before previewing.' };
   const sourcePatterns = [scene.defaults?.pattern];
@@ -116,8 +190,20 @@ export function scenePreviewAvailability(scene, resolved, catalog = {}) {
     if (step.transitionFromPrevious?.mode !== 'cut' || step.transitionFromPrevious?.durationMs !== 0) {
       return { ok: false, message: 'This saved transition is preserved, but this Studio cannot preview it truthfully.' };
     }
-    if (step.assignments.some(assignment => assignment.selection?.domain === 'continuous')) {
-      return { ok: false, message: 'Continuous-domain motion is preserved, but this Studio cannot preview it truthfully.' };
+    const effectiveFlow = effectiveSceneFlowAt(scene, step.id, catalog);
+    if (effectiveFlow.errors.length) return { ok: false, message: effectiveFlow.errors[0].message };
+    const flowKeys = new Set();
+    for (const assignment of effectiveFlow.assignments) {
+      const domain = resolveSceneExpressionSelection(catalog, assignment.selection);
+      if (!domain.ok) return { ok: false, message: domain.errors[0]?.message || 'This Flow route cannot be resolved.' };
+      const stateByStrip = resolved.steps?.find(item => item.id === step.id)?.states || {};
+      const patterns = new Set(domain.physicalRefs.map(ref => JSON.stringify(stateByStrip[ref.stripId]?.pattern)));
+      if (patterns.size > 1) return { ok: false, message: 'A Flow route needs one shared pattern and speed across its selected areas.' };
+      for (const ref of domain.physicalRefs) {
+        const key = `${ref.stripId}:${ref.sourceLed}`;
+        if (flowKeys.has(key)) return { ok: false, message: 'Two Flow routes select the same LED.' };
+        flowKeys.add(key);
+      }
     }
     if (step.assignments.some(assignment => repeatPatternPerSectionAreaIds(assignment, catalog).length)) {
       return { ok: false, message: 'This grouped pattern is one shared domain. Choose Repeat per section to preview independent sections.' };
@@ -142,7 +228,7 @@ export function scenePreviewAvailability(scene, resolved, catalog = {}) {
 }
 
 export function selectionDisplayState(resolvedStep, catalog, assignment, defaults) {
-  const areaIds = assignment?.selection?.areaIds?.length ? assignment.selection.areaIds : ['all'];
+  const areaIds = assignment?.selection ? assignment.selection.areaIds : ['all'];
   const areaById = new Map((catalog?.areas || []).map(area => [area.id, area]));
   const stripIds = [...new Set(areaIds.flatMap(areaId => areaById.get(areaId)?.stripIds || []))];
   const states = stripIds.map(stripId => resolvedStep?.states?.[stripId]).filter(Boolean);
