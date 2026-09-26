@@ -32,8 +32,10 @@ assert.match(pipeline, /scale8_video\([\s\S]*applyGamma_video|gammaLut_/,
 assert.match(pipeline, /switch\s*\(colorOrderCode\)/,
   'configured channel order must remain the final color transform');
 assert.match(main, /outputColorPipeline\.configure\(config\.outputColor\)/);
-assert.match(main, /physicalLeds\[physicalIndex\]\s*=\s*outputColorPipeline\.transform\(leds\[logicalIndex\],\s*ledColorOrderCode\)/,
-  'all normal logical frames must pass through one final output-color funnel');
+assert.match(main, /copyCanvasToPhysicalOutputs\(physicalLeds, leds, limit, outputs, outputCount,/,
+  'all frames must pass through the shared physical output mapping');
+assert.match(main, /outputColorPipeline\.transform\(color, ledColorOrderCode\)/,
+  'the mapped pixels must pass through one final output-color funnel');
 assert.match(main, /doc\["capabilities"\]\["outputColor"\]\s*=\s*1/);
 assert.match(main, /doc\["outputColor"\]\["gammaEnabled"\]/);
 assert.match(main, /doc\["outputColor"\]\["calibration"\]\["red"\]/);

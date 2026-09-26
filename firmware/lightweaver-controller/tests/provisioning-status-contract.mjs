@@ -311,15 +311,16 @@ assert.match(control, /provisioningControlAdvancesRevision\(\s*true,\s*operation
   'zero-effect rejection and revision admission must use the native-tested effect policy');
 assert.match(control, /if\s*\(cancelStreamEffective\)\s*runtimeCancelStream\(\)/,
   'standalone no-op cancel must not mutate the frame source');
-const unavailableSelectionReject = control.indexOf('pattern unavailable');
+const selectionControl = control.slice(control.indexOf('bool selectionRequested ='));
+const unavailableSelectionReject = selectionControl.indexOf('pattern unavailable');
 assert.ok(unavailableSelectionReject !== -1 &&
-    unavailableSelectionReject < control.indexOf('runtimeCommitPreparedPatternSelection()') &&
-    unavailableSelectionReject < control.indexOf('runtimeAdvanceStateRevision()'),
+    unavailableSelectionReject < selectionControl.indexOf('runtimeCommitPreparedPatternSelection()') &&
+    unavailableSelectionReject < selectionControl.indexOf('runtimeAdvanceStateRevision()'),
   'zero-look and one-look step requests must reject before selection commit or card revision advance');
 assert.match(control, /runtimeAdvanceStateRevision\s*\([\s\S]*affectedOutputCount[\s\S]*affectedOutputs/,
   'successful control acknowledgement must report card-owned affected outputs and state revision');
 assert.ok(
-  control.indexOf('runtimeAdvanceStateRevision()') < control.indexOf('out["confirmedRevision"]'),
+  selectionControl.indexOf('runtimeAdvanceStateRevision()') < selectionControl.indexOf('out["confirmedRevision"]'),
   'caller revision compatibility may be emitted only alongside the prior card-owned applied-state revision',
 );
 

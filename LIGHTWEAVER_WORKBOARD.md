@@ -49,6 +49,13 @@ against the signed release; feature-source factory freshness remains deferred
 until protected signing. Physical Bench observations remain unperformed and
 must be reported separately; no destructive factory flash is planned.
 
+Release candidate build 2136 is pushed in PR340. The first exact-candidate
+Actions run found stale source-order/color-copy assertions and older mock-card
+capabilities in commissioning and strip counting. The corrected firmware
+contract suite passes in a clean Linux checkout; browser fixture repairs retain
+the new physical-frame and bridge compatibility guards. Candidate remains
+unmerged until the corrected release checks pass.
+
 ### 2026-09-25 Multi-GPIO completion and push (pushed; Bench pending)
 
 Adrian requested completing the remaining multi-GPIO work and pushing it. Three

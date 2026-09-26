@@ -74,6 +74,7 @@ function readyStatus(applied: any, boots: number) {
     firmwareVersion: '1.4.0',
     buildId: BUILD_ID,
     bootId: `boot-discovery-${boots + 1}`,
+    capabilities: { physicalFrameOrder: { version: 1 } },
     runtimePhase: 'ready',
     mode: 'website-flash',
     source: 'nvs',
