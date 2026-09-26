@@ -882,7 +882,7 @@ void handleRoot() {
             "$('h-slider').oninput=e=>{const v=parseInt(e.target.value,10);$('h-val').textContent=v;sendHueShift(v)};"
             // Hue helpers — FastLED hue 0..255 to CSS HSL deg 0..360
             "const hueToHsl=(h,s)=>{return 'hsl('+(h/255*360)+','+(s/255*100)+'%,50%)'};"
-            "const patternIdsFor=p=>{const z=Array.isArray(p&&p.zones)?p.zones.filter(x=>x&&x.patternId):[];return z.length?z.map(x=>x.patternId):[(p&&p.id)||'aurora']};"
+            "const patternIdsFor=p=>{const z=Array.isArray(p&&p.zones)?p.zones.filter(x=>x&&x.patternId):[];return z.length?z.map(x=>x.patternId):[(p&&p.runtimePatternId)||(p&&p.preset)||(p&&p.id)||'aurora']};"
             "const swatchHtml=p=>{const ids=patternIdsFor(p).slice(0,4);if(ids.length>1)return '<div class=\"combo-sw\">'+ids.map(id=>'<span class=\"sw '+swClass(id)+'\"></span>').join('')+'</div>';const id=ids[0]||'aurora';let h='<div class=\"sw '+swClass(id)+'\"';if(id==='custom-color')h+=' style=\"background:'+hueToHsl(customHue,customSat)+'\"';return h+'></div>'};"
             "const renderColorPanel=()=>{"
               "$('color-swatch').style.background=hueToHsl(customHue,customSat);"
@@ -1334,6 +1334,7 @@ void handleAdvancedRoot() {
   } else if (!needsCommissioning) {
     page += F("let patterns=[],currentId='',blackoutOn=false;"
               "const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');"
+              "const thumbnailClassFor=p=>swClass((p&&p.runtimePatternId)||(p&&p.preset)||(p&&p.id)||'aurora');"
               "const selectedPattern=()=>patterns.find(x=>x.id===currentId)||null;"
               "const setNow=p=>{$('now-name').textContent=p?p.label:'—';$('now-mode').textContent=p?p.mode:'—'};"
               "const studioUrlForPattern=id=>{const link=$('studio-link');let url=(link&&link.href)||'';try{const u=new URL(url,location.href);const pat=patterns.find(x=>x.id===id);if(id){if(pat&&pat.mode==='combo')u.searchParams.set('editLook',id);else u.searchParams.set('editPattern',id)}u.hash='#screen=card&section=overview';return u.href}catch(_){return url}};"
@@ -1341,7 +1342,7 @@ void handleAdvancedRoot() {
               "$('edit-studio').onclick=e=>openPatternStudio(e,currentId);"
               "let patPending=false,patStreaming=false;"
               "const patError=t=>{$('pat-msg-text').textContent=t||'';$('pat-msg').style.display=t?'block':'none'};"
-              "const renderGrid=()=>{const g=$('pat-grid');g.innerHTML='';g.setAttribute('aria-busy',String(patPending));patterns.forEach(p=>{const b=document.createElement('button');b.className='pat-btn'+(p.id===currentId?' active':'');b.innerHTML='<span class=\"name\"></span><span class=\"swatch '+swClass(p.id)+'\"></span>';b.querySelector('.name').textContent=p.label;b.disabled=patPending||patStreaming;b.onclick=()=>{if(patPending||patStreaming||p.id===currentId)return;patternControl.request(p.id)};g.appendChild(b)})};"
+              "const renderGrid=()=>{const g=$('pat-grid');g.innerHTML='';g.setAttribute('aria-busy',String(patPending));patterns.forEach(p=>{const b=document.createElement('button');b.className='pat-btn'+(p.id===currentId?' active':'');b.innerHTML='<span class=\"name\"></span><span class=\"swatch '+thumbnailClassFor(p)+'\"></span>';b.querySelector('.name').textContent=p.label;b.disabled=patPending||patStreaming;b.onclick=()=>{if(patPending||patStreaming||p.id===currentId)return;patternControl.request(p.id)};g.appendChild(b)})};"
               // Minimal confirmed-control (same contract as the customer page's
               // makeConfirmedControl): optimistic render, rollback to the last
               // confirmed pattern on failed/non-ok POST, Retry re-sends.

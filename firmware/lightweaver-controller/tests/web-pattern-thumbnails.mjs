@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 
 // Guards the pattern-thumbnail contract on both card-served pages:
 // every factory look id must have a `.sw-<id>{` preview rule on the customer
@@ -45,6 +46,43 @@ assert.ok(advancedStart > rootStart, 'handleAdvancedRoot() should follow handleR
 assert.ok(advancedEnd > advancedStart, 'handleStatus() should follow handleAdvancedRoot()');
 const rootRegion = webSource.slice(rootStart, advancedStart);
 const advancedRegion = webSource.slice(advancedStart, advancedEnd);
+
+// Execute the JavaScript shipped inside each C++ page string. A configured
+// look's selection id may differ from the pattern used to draw its thumbnail.
+const embeddedJs = (region, name) => {
+  const start = region.indexOf(`"${name}=`);
+  assert.ok(start >= 0, `${name} should be embedded in the card page`);
+  let end = start + name.length + 2;
+  while (end < region.length) {
+    if (region[end] === '"' && region[end - 1] !== '\\') break;
+    end++;
+  }
+  return JSON.parse(region.slice(start, end + 1));
+};
+const configuredWarm = {id: 'bench-warm', label: 'Bench Warm', preset: 'warm-white', runtimePatternId: 'warm-white'};
+const compound = {id: 'bench-combo', zones: [{patternId: 'warm-white'}, {patternId: 'aurora'}]};
+const customerThumbnail = vm.runInNewContext(`(()=>{const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');const hueToHsl=()=>'';${embeddedJs(rootRegion, 'const patternIdsFor')} ; ${embeddedJs(rootRegion, 'const swatchHtml')};return {patternIdsFor,swatchHtml}})()`);
+assert.deepEqual(Array.from(customerThumbnail.patternIdsFor(configuredWarm)), ['warm-white'],
+  'customer thumbnail should use the configured runtime pattern');
+assert.match(customerThumbnail.swatchHtml(configuredWarm), /class="sw sw-warm-white"/,
+  'customer Bench Warm thumbnail should render the warm-white swatch');
+assert.deepEqual(Array.from(customerThumbnail.patternIdsFor(compound)), ['warm-white', 'aurora'],
+  'compound look thumbnails should keep their zone pattern classes');
+
+const advancedSwatch = vm.runInNewContext(`(()=>{const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');${embeddedJs(advancedRegion, 'const thumbnailClassFor')};return thumbnailClassFor})()`);
+assert.equal(advancedSwatch(configuredWarm), 'sw-warm-white',
+  'advanced Bench Warm grid should render the warm-white swatch');
+const grid = {children: [], set innerHTML(_value) {this.children = []}, setAttribute() {}, appendChild(button) {this.children.push(button)}};
+const requested = [];
+const advancedContext = {patterns: [configuredWarm], currentId: '', patPending: false, patStreaming: false,
+  $: () => grid, patternControl: {request: id => requested.push(id)},
+  document: {createElement: () => ({querySelector: () => ({})})}};
+vm.runInNewContext(`const swClass=id=>'sw-'+id.replace(/[^a-z0-9-]/g,'-');${embeddedJs(advancedRegion, 'const thumbnailClassFor')};${embeddedJs(advancedRegion, 'const renderGrid')};renderGrid()`, advancedContext);
+assert.match(grid.children[0].innerHTML, /class="swatch sw-warm-white"/,
+  'advanced grid should render a warm-white thumbnail for Bench Warm');
+grid.children[0].onclick();
+assert.deepEqual(requested, ['bench-warm'],
+  'advanced grid should still select by configured look id');
 
 // --- Every factory id must have a swatch rule on BOTH pages.
 const missingSwatchIds = (region) =>
