@@ -37,6 +37,32 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Bench Warm card thumbnail (done locally; card needs update)
+
+Adrian reports no thumbnail for Bench Warm. The card API provides look ID
+`bench-warm` and runtime pattern `warm-white`; both card-served pages previously
+chose the swatch using the look ID. Customer and advanced pages now choose the
+swatch from the runtime pattern while retaining the look ID for commands.
+Focused embedded-JS regression witnessed red then green; `web-pattern-thumbnails`
+passes. The running card still needs a future firmware build/update and visual
+Bench check. No card flash, release, or deployment was performed.
+
+### 2026-09-25 Historical split/GPIO forensics (done)
+
+Two Sol investigators traced Layout/mapper and runtime history; Luna inventoried
+recorded evidence. Manager verified chronology, source ancestry and reproduction.
+Independent zone patterns existed in May; explicit multi-GPIO controls in July.
+The same historical fixture proves `8b1fe864` (Jul13) replaced patch identity with
+zone identity and lost pattern writes; `5568e76b` (Aug31) repaired that path.
+Separate package/startup flattening was fixed Sep25. The June18 split-render TODO
+was stale: its tree already contains the June11 multi-range rendering fix.
+[Report, candidate revisions and UX lessons](docs/plans/2026-09-25-gpio-history-forensics.md).
+Repeatable `node scripts/forensics-section-identity.mjs` passes all three expected
+historical outcomes. No production source edits, checkout changes, flash or
+deployment; unrelated concurrent firmware edits untouched. Useful next pass:
+visible output inventory/address summary and direct per-section pattern action.
+Physical multi-output proof remains unobserved.
+
 ### 2026-09-25 GPIO integration implementation (done locally; acceptance needs-eyes)
 
 Committed `b53df14d` integrates guided Layout sections, exact geometry and saved
