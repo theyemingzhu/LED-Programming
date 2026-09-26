@@ -29,6 +29,15 @@ const CURRENT_TEST_OUTPUTS = [{
 const HARDENING_FIRMWARE_VERSION = '1.0.0';
 const HARDENING_BUILD_ID = 'studio-hardening-build';
 
+function expectOceanInStartup(config: any) {
+  const startup = config?.looks?.find((look: any) => look.id === config.startupPatternId);
+  expect(startup, 'the installed startup look must exist').toBeDefined();
+  const patterns = startup.mode === 'combo'
+    ? startup.zones.map((zone: any) => zone.patternId)
+    : [startup.preset || startup.id];
+  expect(patterns).toContain('ocean');
+}
+
 async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', options: any = {}) {
   const firmwareVersion = options.firmwareVersion || HARDENING_FIRMWARE_VERSION;
   const buildId = options.buildId || HARDENING_BUILD_ID;
@@ -78,6 +87,7 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
       commandReady: true,
       outputReady: true,
       playbackReady: true,
+      capabilities: { physicalFrameOrder: { version: 1 } },
       projectId: cardProject.id,
       piece: { id: cardProject.id },
       projectRevision: installedConfig.projectRevision ?? 0,
@@ -544,11 +554,12 @@ test('staged light test restores the last Studio-confirmed look after a lost act
   const card = await mockConnectedCard(page, cardId, options);
 
   await page.getByPlaceholder('Search chip patterns').fill('ocean');
-  await page.locator('[data-pattern-id="ocean"]').click();
-  await page.getByTitle('Install the current look on the card').click();
+  await page.locator('[data-pattern-id="ocean"]').press('Enter');
+  await page.getByTitle('Install the current look on the card').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
-  expect(card.installedConfig().startupPatternId).toBe('ocean');
+  const confirmedConfig = card.installedConfig();
+  expectOceanInStartup(confirmedConfig);
 
   // A later wiring edit enters the current staged safety transaction. Simulate
   // the card accepting activation while its HTTP response is lost: Studio must
@@ -569,7 +580,7 @@ test('staged light test restores the last Studio-confirmed look after a lost act
 
   await expect(page.locator('.la-card-push-banner')).toContainText('Restored the last working setup');
   expect(card.wiringOperations).toEqual(expect.arrayContaining(['activate', 'status', 'rollback']));
-  expect(card.installedConfig().startupPatternId).toBe('ocean');
+  expect(card.installedConfig()).toEqual(confirmedConfig);
 });
 
 test('bounded marker failure releases the stream back to the last Studio-confirmed look', async ({ page }) => {
@@ -595,7 +606,7 @@ test('bounded marker failure releases the stream back to the last Studio-confirm
   await expect.poll(() => page.evaluate(() => Boolean(JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation))).toBe(true);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await expect.poll(() => controls.length).toBeGreaterThan(0);
-  expect(installedConfig?.startupPatternId).toBe('ocean');
+  expectOceanInStartup(installedConfig);
   controls.length = 0;
 
   // The old Layout Wire surface owned this check. Card's consolidated setup
@@ -692,6 +703,7 @@ test('Show reports live only after the first frame acknowledgement', async ({ pa
   await play.click();
   await expect(page.getByText(/LEDs ready/)).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__showFrames.length)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).__showFrames.every((frame: any) => frame.lwPhysical === 1))).toBe(true);
   await expect(page.getByText(/playing on .* LEDs/)).toBeVisible();
 });
 
