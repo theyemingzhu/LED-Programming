@@ -64,6 +64,16 @@ comparable one: it is what the Studio footer shows (`Studio current · Build
 412`) and what a handoff report must quote. This independent proof—not the deploy job's own green badge—is
 the final shipment gate.
 
+Firmware updates also require a public, account-free service check. The checker
+must GET `/api/firmware/update-grant` without cookies and obtain HTTP200/no-store
+with signing readiness, then POST a synthetic challenge and verify its signature
+against the public key pinned by existing cards. It never contacts or updates a
+real card. A login redirect, missing signer, or mismatched key blocks shipment.
+The Pages secret `LIGHTWEAVER_UPDATE_GRANT_PRIVATE_KEY` must hold the existing
+matching update-grant key; it is separate from firmware-release signing. Keep
+this endpoint outside the private account/library Access rules. This follows
+Adrian's 2026-09-26 decision that flashing has no owner-login or button gate.
+
 ## How a release reaches production
 
 The release is deliberately split so feature branches never receive signing

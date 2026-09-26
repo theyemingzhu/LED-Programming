@@ -23,7 +23,7 @@ export async function requestSoftwareFirmwareUpdateGrant({
   if (!authority?.request || authority.revoked || !BUILD_ID.test(releaseBuildId) || !SHA256.test(ticketSha256)) {
     throw new Error('A current exact-card connection and verified firmware release are required.');
   }
-  if (typeof fetchImpl !== 'function') throw new Error('Studio authorization is unavailable.');
+  if (typeof fetchImpl !== 'function') throw new Error('Studio cannot reach its firmware update service. Retry when online, or use the preserving USB update.');
 
   let challenge;
   try {
@@ -44,38 +44,41 @@ export async function requestSoftwareFirmwareUpdateGrant({
 
   let response;
   try {
-    response = await fetchImpl('/api/library/firmware-update-grant', {
+    response = await fetchImpl('/api/firmware/update-grant', {
       method: 'POST',
-      credentials: 'same-origin',
+      credentials: 'omit',
       cache: 'no-store',
       redirect: 'manual',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ grantPayload }),
     });
   } catch (cause) {
-    const error = new Error(OWNER_SIGN_IN_GUIDANCE);
+    const error = new Error('Studio could not reach its firmware update service. Check the connection and retry, or use the preserving USB update.');
     error.reason = 'grant-service-unreachable';
     error.cause = cause;
     throw error;
   }
-  if (isOwnerAccessRedirect(response)) {
-    const error = new Error(OWNER_SIGN_IN_GUIDANCE);
-    error.reason = 'owner-sign-in-required';
+  if (isUnexpectedRedirect(response)) {
+    const error = new Error('The firmware update service redirected this request. Retry from the official Studio site, or use the preserving USB update.');
+    error.reason = 'grant-service-redirect';
     throw error;
   }
   let signed;
   try { signed = await response.json(); } catch { signed = null; }
   if (response.status === 401 || response.status === 403) {
-    const error = new Error(signed?.error?.message || OWNER_SIGN_IN_GUIDANCE);
-    error.reason = 'owner-sign-in-required';
+    const error = new Error('The firmware update service rejected this Studio origin. Open led.mandalacodes.com and retry, or use the preserving USB update.');
+    error.reason = 'grant-service-forbidden';
     throw error;
   }
-  // A 404 `not_found` here is not "the update is broken" — it is a Studio
-  // origin (local dev, or the card's own served page) that never had this
-  // route at all. Name the owner Studio and preserving USB recovery path.
+  // Local development and card-hosted Studio pages may not have this route.
   if (response.status === 404 && signed?.error?.code === 'not_found') {
     const error = new Error(GRANT_SERVICE_MISSING_GUIDANCE);
     error.reason = 'grant-service-missing';
+    throw error;
+  }
+  if (response.status === 503) {
+    const error = new Error('The firmware update service is unavailable right now. Check again later, or use the preserving USB update.');
+    error.reason = 'grant-service-unavailable';
     throw error;
   }
   if (!response.ok) {
@@ -93,15 +96,11 @@ export async function requestSoftwareFirmwareUpdateGrant({
   });
 }
 
-export const OWNER_SIGN_IN_GUIDANCE = 'Secure software authorization needs the owner sign-in for this Studio site. Open the owner sign-in and retry, or use the preserving USB update.';
+export const GRANT_SERVICE_MISSING_GUIDANCE = 'This Studio has no firmware update service. Open led.mandalacodes.com and reconnect this exact card, or use the preserving USB update.';
 
-export const GRANT_SERVICE_MISSING_GUIDANCE = 'This Studio has no software update authorization service. Open the owner Studio at led.mandalacodes.com and reconnect this exact card, or use the preserving USB update.';
-
-// A Cloudflare Access wall answers /api/library/* with an off-site login
-// redirect before the Studio's own code ever runs. Under `redirect: 'manual'`
-// that is an opaqueredirect (or a 3xx from a test double); either way it means
-// "sign in first", never "the update is broken".
-function isOwnerAccessRedirect(response) {
+// This public route must answer directly. A redirect is a service problem,
+// never a reason to send the owner through account sign-in.
+function isUnexpectedRedirect(response) {
   const status = Number(response?.status || 0);
   return response?.type === 'opaqueredirect' || (status >= 300 && status < 400);
 }
@@ -122,55 +121,30 @@ function requestChallenge(authority, { origin, releaseBuildId, ticketSha256 }) {
   });
 }
 
-// Where the owner signs in to the Studio site's protected library: a
-// top-level navigation, so the Access login can complete and set its cookie.
-// Lives here (not in the flash screen) because card command and flashing
-// paths must never reference the cloud library API themselves.
-export function openOwnerLibrarySignIn(openImpl = globalThis.open) {
-  return openImpl?.('/api/library/session', '_blank', 'noopener');
-}
-
-// A real deployed `/api/library/session` always answers either the owner
-// protection (redirect, 401/403) or a signed-in session as JSON shaped like
-// `{ session: { role, ... } }` (see functions/api/library/_shared/router.js
-// `publicSession`). Anything else — a 204, an SPA-fallback 200 text/html, a
-// 200 whose body does not carry that shape — is not a real answer from that
-// route at all. It means this Studio origin (local dev's Vite stub, or the
-// card's own served page, which has no library API and falls back to its
-// index page for any unknown GET) has no grant service to reach, which is a
-// different, calmer fact than "sign in and it will work."
-function isRealSignedInSession(body) {
-  return Boolean(body && typeof body === 'object'
-    && body.session && typeof body.session === 'object'
-    && typeof body.session.role === 'string');
-}
-
-// Answers whether this browser could obtain a software update grant right
-// now, without spending the card's challenge. `/api/library/session` sits
-// behind the same owner protection as the grant route, so its answer is the
-// grant route's answer.
+// Check public signer readiness without spending the card's exact challenge.
+// A generic successful response or an account session does not prove that the
+// signing key is usable; only this route's explicit readiness shape does.
 export async function probeFirmwareUpdateGrantService({ fetchImpl = globalThis.fetch } = {}) {
   if (typeof fetchImpl !== 'function') return { state: 'unavailable', reason: 'no-fetch' };
   try {
-    const response = await fetchImpl('/api/library/session', {
+    const response = await fetchImpl('/api/firmware/update-grant', {
       method: 'GET',
-      credentials: 'same-origin',
+      credentials: 'omit',
       cache: 'no-store',
       redirect: 'manual',
       headers: { Accept: 'application/json' },
     });
-    if (isOwnerAccessRedirect(response)) return { state: 'sign-in-required', reason: 'owner-access' };
-    if (response.status === 401 || response.status === 403) return { state: 'sign-in-required', reason: 'native-session' };
-    if (response.status === 204) return { state: 'unavailable', reason: 'no-session-service' };
+    if (isUnexpectedRedirect(response)) return { state: 'unavailable', reason: 'redirect' };
+    if (response.status === 204) return { state: 'unavailable', reason: 'no-grant-service' };
     if (response.ok) {
       const contentType = typeof response.headers?.get === 'function' ? (response.headers.get('content-type') || '') : '';
       if (!contentType.toLowerCase().includes('application/json')) {
-        return { state: 'unavailable', reason: 'no-session-service' };
+        return { state: 'unavailable', reason: 'no-grant-service' };
       }
       let body;
       try { body = await response.json(); } catch { body = null; }
-      if (isRealSignedInSession(body)) return { state: 'ready', reason: '' };
-      return { state: 'unavailable', reason: 'no-session-service' };
+      if (body?.service === 'firmware-update-grant' && body.ready === true) return { state: 'ready', reason: '' };
+      return { state: 'unavailable', reason: 'no-grant-service' };
     }
     return { state: 'unavailable', reason: `http-${response.status || 0}` };
   } catch {

@@ -33,6 +33,7 @@ import {
   verifyStudioRelease,
 } from '../src/lib/productionDeploymentCheck.js';
 import { parseStudioRelease } from '../src/lib/studioRelease.js';
+import { verifyPublicFirmwareUpdateService } from './check-firmware-update-service.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const localBinPath = resolve(here, '../public/firmware/lightweaver-controller-esp32s3-factory.bin');
@@ -209,6 +210,16 @@ try {
 }
 
 const remote = release.bytes;
+let publicUpdateService;
+try {
+  publicUpdateService = await verifyPublicFirmwareUpdateService(productionFetch, {
+    origin: productionOrigin,
+    releaseBuildId: release.manifest.buildId,
+    ticketSha256: release.manifest.update.ticket.sha256,
+  });
+} catch (err) {
+  fail(`Account-free firmware updates are unavailable.\n  ${err?.message ?? err}`);
+}
 validateFirmwareImage({ bytes: remote });
 const remoteHash = sha256(remote);
 if (remoteHash !== localHash) {
@@ -256,6 +267,7 @@ console.log(
   `check-prod-freshness OK — production serves the signed committed factory binary\n  sha256 ${localHash}  (${local.length} bytes)\n  ${new URL(release.manifest.image.url, productionOrigin)}\n  legacy alias: ${legacyAliasUrl}`,
   `\n  Studio build graph: ${studioBuildFileCount} verified files\n  ${studioBuildGraphUrl}`,
   `\n  Studio release: build ${liveStudioRelease.buildNumber} — ${liveStudioRelease.sourceRevision} (${liveStudioRelease.buildId})\n  ${studioReleaseUrl}`,
+  `\n  Public firmware updates: no-login readiness and pinned grant signature verified\n  ${publicUpdateService.url}`,
   `\n  Production Setup: ${productionSetupUrl}\n  verified production jobs: ${productionJobCount}\n  job index: ${productionJobIndexUrl}`,
   `\n  Private library: unauthenticated HTTP ${libraryResponse.status}, Cache-Control ${libraryCacheControl}\n  ${librarySessionUrl}`,
   nativeAuthReady

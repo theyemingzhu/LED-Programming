@@ -600,3 +600,19 @@ phase. If a screen shows "step N of M", the M must be the number of things the
 code actually requires (three today), and every fact must stay editable from every
 step. Before adding a phase, prove in code that something reads it.
 
+
+## 2026-09-26 — Flashing has no account or physical-button gate
+
+Adrian rejected owner sign-in for flashing after the no-button release. This
+supersedes the August 19 decision to require owner authentication for the online
+update grant. Flashing and reboot must not require an account or a physical
+BOOT/RESET press. Private project-library access remains a separate feature.
+
+The public `/api/firmware/update-grant` endpoint retains the existing card wire
+format so cards already running grant-capable firmware can update without a
+bootstrap flash. It signs the exact ephemeral card challenge without cookies or
+an account; firmware/ticket integrity, card/project binding, and preserving
+writes remain enforced. Readiness proves the configured signing key matches the
+card's pin. The production gate verifies anonymous GET and a synthetic POST
+signature, without contacting a real card. A missing signing configuration is
+an incomplete rollout, not an owner-sign-in task.
