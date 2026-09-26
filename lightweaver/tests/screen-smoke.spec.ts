@@ -1103,25 +1103,19 @@ test('connection center opens the stored setup host and offers explicit pairing 
   await expect(page.getByTestId('card-link-status')).not.toHaveAccessibleName(/Connected/);
 });
 
-test('patterns target selector wraps without overflow and the footer stays single-line', async ({ page }) => {
-  // The old hand-rolled ".lw-target-grid" (vertical-scroll, name+LED-count
-  // inputs per target) and ".lw-statusbar" (custom nowrap/overflow-hidden
-  // bar) are both gone. Their replacements — ".chips" (plain `flex-wrap:
-  // wrap` row of buttons, src/v3/v3-screens.css) and ".status-bar" (a fixed
-  // 32px-tall flex row, src/v3/v3-styles.css) — get the same "many items /
-  // don't break the page" guarantee from ordinary CSS instead of bespoke
-  // scroll-container logic, so there's no name/LED-count input pair per
-  // target to clone anymore. This test now proves the same two outcomes
-  // (many targets don't blow out the viewport; the footer stays one line)
-  // against the real structure.
+test('patterns section rows stay within the viewport and the footer stays single-line', async ({ page }) => {
+  // Populate the current section list with enough rows to exercise its width
+  // and vertical layout, then check that neither the list nor the page spills
+  // horizontally and the footer remains on one line.
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  const chipsRow = page.locator('.chips[aria-label="Target sections"]');
-  await chipsRow.evaluate(el => {
-    const existing = Array.from(el.querySelectorAll('.chip'));
+  const sections = page.locator('[aria-label="Target sections"]');
+  await expect(sections.getByRole('button').first()).toBeVisible();
+  await sections.evaluate(el => {
+    const existing = Array.from(el.querySelectorAll('button'));
     const source = existing[existing.length - 1] || existing[0];
     if (!source) return;
     for (let index = existing.length; index < 10; index += 1) {
@@ -1132,18 +1126,15 @@ test('patterns target selector wraps without overflow and the footer stays singl
     }
   });
 
-  const chipMetrics = await chipsRow.evaluate(el => ({
+  const sectionMetrics = await sections.evaluate(el => ({
     clientWidth: el.clientWidth,
     scrollWidth: el.scrollWidth,
-    chipTops: Array.from(el.querySelectorAll('.chip'), chip =>
-      Math.round(chip.getBoundingClientRect().top),
+    rowTops: Array.from(el.querySelectorAll('button'), row =>
+      Math.round(row.getBoundingClientRect().top),
     ),
   }));
-  // flex-wrap keeps the row from ever growing wider than its container...
-  expect(chipMetrics.scrollWidth).toBeLessThanOrEqual(chipMetrics.clientWidth + 1);
-  // ...by wrapping onto more than one row once there are enough chips.
-  expect(new Set(chipMetrics.chipTops).size).toBeGreaterThan(1);
-  // ...and none of that pushes the page itself into horizontal scroll.
+  expect(sectionMetrics.scrollWidth).toBeLessThanOrEqual(sectionMetrics.clientWidth + 1);
+  expect(new Set(sectionMetrics.rowTops).size).toBeGreaterThan(1);
   const pageOverflow = await page.evaluate(() => ({
     scrollW: document.documentElement.scrollWidth,
     clientW: document.documentElement.clientWidth,
