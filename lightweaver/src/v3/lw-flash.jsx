@@ -69,8 +69,7 @@ import { cardReturnDestination, clearCardReturnIntent } from '../lib/cardReturnI
 import { runPreservingUsbBootstrap } from '../lib/preservingUsbBootstrap.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { CARD_HOST_STORAGE_KEY, readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
-import { openOwnerLibrarySignIn, probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } from '../lib/ownerFirmwareUpdateGrant.js';
-import { requestProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
+import { probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } from '../lib/ownerFirmwareUpdateGrant.js';
 import {
   cardRestartedAfterUsbInspection,
   clearActiveUsbInspection,
@@ -546,29 +545,23 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const softwareGrantAvailable = mode === 'wifi'
       && cardSupportsSoftwareFirmwareUpdateGrant(readiness);
     // Whether this browser could actually obtain the software grant. The card
-    // capability alone is not enough: the grant is signed by the Studio site's
-    // owner-protected service, and a browser that is not signed in gets an
-    // opaque login redirect there — which used to surface as a bare
-    // "Failed to fetch" after the Start button.
+    // capability alone is not enough: the public Studio signer must be ready
+    // to sign this card's exact challenge before the update can start.
     const [grantService, setGrantService] = useState({ state: 'unknown', reason: '' });
     useEffect(() => {
       if (!softwareGrantAvailable) return undefined;
       if (import.meta.env.DEV) {
-        // The dev server's own library session route is a deliberate "signed
-        // out" 204 stub (see vite.config.js), never the real session JSON —
-        // so this origin truthfully has no grant service to reach, the same
-        // as the card's own served page. Fixtures opt into a specific probe
-        // answer; absent one, the truthful default is "no service", not
-        // "ready" (F12 — offering software authorization here used to lead
-        // straight into a bare "API route not found").
-        setGrantService(window.__LW_GRANT_PROBE_RESULT_FOR_TEST__ || { state: 'unavailable', reason: 'no-session-service' });
+        // Fixtures opt into an exact public signer response. The local Vite
+        // origin has no Pages Function to sign updates, so absent a fixture it
+        // must not claim readiness.
+        setGrantService(window.__LW_GRANT_PROBE_RESULT_FOR_TEST__ || { state: 'unavailable', reason: 'no-grant-service' });
         return undefined;
       }
       let active = true;
       probeFirmwareUpdateGrantService().then(result => { if (active) setGrantService(result); });
       return () => { active = false; };
     }, [softwareGrantAvailable]);
-    const softwareGrantBlocked = grantService.state === 'sign-in-required' || grantService.state === 'unavailable';
+    const softwareGrantBlocked = grantService.state === 'unavailable';
     const softwareGrantReady = softwareGrantAvailable && grantService.state === 'ready';
     const actionLabel = mode === 'wifi' ? 'Update over Wi-Fi' : 'Update once over USB';
     // F40 (Adrian: "I tried to look for where you're talking about, I don't
@@ -949,17 +942,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                 {!softwareGrantAvailable && <p role="status">This card cannot authorize a Wi-Fi update through Studio. Use the preserving USB update on a computer with Chrome or Edge.</p>}
                 {softwareGrantBlocked && softwareGrantAvailable && (
                   <div className="install-release" role="status" data-testid="software-grant-blocked">
-                    <span>{grantService.reason === 'no-session-service'
-                      ? 'This Studio has no software authorization service. Open the owner Studio site at led.mandalacodes.com and reconnect this exact card, or use preserving USB update.'
-                      : grantService.state === 'sign-in-required'
-                        ? 'Software authorization needs owner sign-in for this Studio site. Sign in, then check again; this card stays unchanged.'
-                        : 'Studio cannot reach its software authorization service right now. Check the connection and try again, or use preserving USB update.'}</span>
-                    {grantService.state === 'sign-in-required' && (
-                      <button className="btn" type="button" onClick={() => {
-                        if (grantService.reason === 'owner-access') openOwnerLibrarySignIn();
-                        else requestProjectsPanel();
-                      }}>Open owner sign-in</button>
-                    )}
+                    <span>{grantService.reason === 'no-grant-service'
+                      ? 'This Studio has no firmware update service. Open led.mandalacodes.com and reconnect this exact card, or use preserving USB update.'
+                      : 'Studio cannot reach its firmware update service right now. Check the connection and try again, or use preserving USB update.'}</span>
                     <button className="btn" type="button" onClick={() => {
                       setGrantService({ state: 'unknown', reason: '' });
                       void probeFirmwareUpdateGrantService().then(setGrantService);

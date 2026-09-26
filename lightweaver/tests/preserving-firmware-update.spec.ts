@@ -10,14 +10,9 @@ const TARGET_BUILD = '2'.repeat(40);
 const HEAD = 'a'.repeat(64);
 const FINGERPRINT = 'b'.repeat(64);
 
-// grantProbe stands in for `probeFirmwareUpdateGrantService`'s answer. Every
-// scenario here defaults to 'ready' so existing assertions about the
-// software-authorization path keep exercising it exactly as before; F12's
-// own scenario passes 'blocked' to get the truthful default this fixture
-// would otherwise short-circuit past — see lw-flash.jsx's DEV branch, which
-// never performs a real fetch under `npx vite` and so cannot be driven by
-// mocking /api/library/session directly.
-async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 'progress', capabilityShape = 'current', { returnHash = '', grantProbe = 'ready' }: { returnHash?: string, grantProbe?: 'ready' | 'blocked' | 'native-sign-in' } = {}) {
+// The fixture controls the public signer readiness response. The dev server
+// cannot sign real grants; production uses GET /api/firmware/update-grant.
+async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 'progress', capabilityShape = 'current', { returnHash = '', grantProbe = 'ready' }: { returnHash?: string, grantProbe?: 'ready' | 'blocked' | 'service-unavailable' } = {}) {
   if (outcome === 'reload-disconnected' || outcome === 'in-place-disconnect') {
     const exactRestartedStatus = {
       app: 'Lightweaver', provisioningContractVersion: 1,
@@ -34,9 +29,9 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
     localStorage.clear();
     sessionStorage.clear();
     (window as any).__LW_GRANT_PROBE_RESULT_FOR_TEST__ = grantProbe === 'blocked'
-      ? { state: 'unavailable', reason: 'no-session-service' }
-      : grantProbe === 'native-sign-in'
-        ? { state: 'sign-in-required', reason: 'native-session' }
+      ? { state: 'unavailable', reason: 'no-grant-service' }
+      : grantProbe === 'service-unavailable'
+        ? { state: 'unavailable', reason: 'http-503' }
         : { state: 'ready', reason: '' };
     // Stands in for whatever real surface (footer chip, Connection Center,
     // Setup) took the owner into this update: those callers call
@@ -535,13 +530,8 @@ test('preserving update: a software-capable card never offers a physical authori
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible();
 });
 
-// F12: a Studio origin with no grant service at all — the dev server's own
-// GET /api/library/session answers a deliberate 204 stub and its
-// POST /api/library/firmware-update-grant answers 404 {"error":{"code":
-// "not_found", ...}} (the same shape a card-hosted Studio's unmatched routes
-// return). The panel must never offer software authorization as if it could
-// work here; it must give a preserving USB route and a truthful explanation
-// instead of a dead Start button that would fail with "API route not found".
+// A local or card-hosted Studio origin has no public signer function. It must
+// offer the official Studio site or preserving USB without asking for login.
 test('preserving update: an origin with no grant service gives a software recovery and preserving USB path', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'progress', 'current', { grantProbe: 'blocked' });
   const panel = page.getByTestId('preserving-update-panel');
@@ -557,29 +547,33 @@ test('preserving update: an origin with no grant service gives a software recove
 
   const blocked = panel.getByTestId('software-grant-blocked');
   await expect(blocked).toBeVisible();
-  await expect(blocked).toContainText('no software authorization service');
-  await expect(blocked).toContainText('Open the owner Studio site');
+  await expect(blocked).toContainText('no firmware update service');
+  await expect(blocked).toContainText('Open led.mandalacodes.com');
   await expect(panel.getByRole('button', { name: 'Use preserving USB update instead' })).toBeVisible();
   await page.screenshot({ path: 'test-results/firmware-update-blocked.png', fullPage: true });
   expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__)).toEqual([]);
-  // This is not the owner-sign-in copy — signing in would not fix a route
-  // that does not exist, and offering that button here would be a lie.
-  await expect(blocked).not.toContainText('owner sign-in');
+  await expect(blocked).not.toContainText(/sign.in|account/i);
   await expect(blocked.getByRole('button', { name: 'Open owner sign-in' })).toHaveCount(0);
   await expect(blocked.getByRole('button', { name: 'Check again' })).toBeVisible();
 });
 
-test('preserving update: native sign-in opens the Studio account form before retry', async ({ page }) => {
-  await openPreservingFixture(page, 'wifi', 'progress', 'current', { grantProbe: 'native-sign-in' });
+test('preserving update: unavailable public signer offers retry and USB without account sign-in', async ({ page }) => {
+  await openPreservingFixture(page, 'wifi', 'progress', 'current', { grantProbe: 'service-unavailable' });
   const panel = page.getByTestId('preserving-update-panel');
   await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
   await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toHaveCount(0);
-  await panel.getByRole('button', { name: 'Open owner sign-in' }).click();
-  const projects = page.getByRole('dialog', { name: 'Projects' });
-  await expect(projects.getByRole('textbox', { name: 'Username' })).toBeVisible();
-  await expect(projects.getByRole('textbox', { name: 'Password' })).toBeVisible();
-  await expect(projects.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  await expect(panel).toContainText('cannot reach its firmware update service');
+  await expect(panel.getByRole('button', { name: 'Check again' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Use preserving USB update instead' })).toBeVisible();
+  await expect(panel).not.toContainText(/sign.in|account/i);
+  await expect(page.getByRole('dialog', { name: 'Projects' })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__LW_UPDATER_ARGUMENTS__)).toEqual([]);
+  await page.route('**/api/firmware/update-grant', route => route.fulfill({
+    json: { service: 'firmware-update-grant', ready: true },
+  }));
+  await panel.getByRole('button', { name: 'Check again' }).click();
+  await expect(panel.getByRole('button', { name: 'Start secure Wi-Fi update' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Projects' })).toHaveCount(0);
 });
 
 test('preserving update: Wi-Fi panel surfaces the card response detail for a rejected request', async ({ page }) => {
@@ -875,7 +869,7 @@ test('[factory-ota-door] an exact factory AP card ready for firmware update open
   const statusReadsBeforeStart = card.requests.filter(request => request.method === 'GET' && request.path === '/api/status').length;
   const panel = page.getByTestId('preserving-update-panel');
   await panel.getByRole('button', { name: 'Update over Wi-Fi' }).click();
-  await expect(panel).toContainText('no software authorization service');
+  await expect(panel).toContainText('no firmware update service');
   await expect(panel.getByRole('button', { name: 'Start preserving update' })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Use preserving USB update instead' })).toBeVisible();
   expect(preflightCalls).toBe(0);

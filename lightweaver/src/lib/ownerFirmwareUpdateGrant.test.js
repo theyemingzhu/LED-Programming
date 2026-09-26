@@ -22,7 +22,7 @@ function exactAuthority(calls) {
   };
 }
 
-test('requests exact card challenge then same-origin owner signature', async () => {
+test('requests exact card challenge then a public signed grant without cookies', async () => {
   const calls = [];
   const fetchCalls = [];
   const result = await requestSoftwareFirmwareUpdateGrant({
@@ -44,8 +44,8 @@ test('requests exact card challenge then same-origin owner signature', async () 
     operationGeneration: 8, expectedProjectHead: 'a'.repeat(64),
     studioOrigin: 'https://led.mandalacodes.com', releaseBuildId: BUILD, ticketSha256: TICKET,
   });
-  assert.equal(fetchCalls[0].url, '/api/library/firmware-update-grant');
-  assert.equal(fetchCalls[0].init.credentials, 'same-origin');
+  assert.equal(fetchCalls[0].url, '/api/firmware/update-grant');
+  assert.equal(fetchCalls[0].init.credentials, 'omit');
   assert.equal(fetchCalls[0].init.cache, 'no-store');
   assert.deepEqual(result, {
     grantPayload: '{"exact":"card-bytes"}', grantSignature: SIGNATURE,
@@ -53,7 +53,7 @@ test('requests exact card challenge then same-origin owner signature', async () 
   });
 });
 
-test('rejects changed payload, malformed signature, and unauthenticated response', async () => {
+test('rejects changed payload, malformed signature, and an unavailable signer', async () => {
   const common = {
     authority: exactAuthority([]), release: { manifest: { buildId: BUILD }, ticketSha256: TICKET },
     origin: 'https://led.mandalacodes.com',
@@ -62,30 +62,33 @@ test('rejects changed payload, malformed signature, and unauthenticated response
     ok: true, async json() { return { grantPayload: 'changed', signature: SIGNATURE, algorithm: 'ECDSA_P256_SHA256_P1363' }; },
   }) }), /invalid software update authorization/i);
   await assert.rejects(requestSoftwareFirmwareUpdateGrant({ ...common, fetchImpl: async () => ({
-    ok: false, async json() { return { error: { message: 'Sign in as the owner.' } }; },
-  }) }), /sign in as the owner/i);
+    ok: true, async json() { return { grantPayload: '{"exact":"card-bytes"}', signature: 'bad', algorithm: 'ECDSA_P256_SHA256_P1363' }; },
+  }) }), /invalid software update authorization/i);
+  await assert.rejects(requestSoftwareFirmwareUpdateGrant({ ...common, fetchImpl: async () => ({
+    ok: false, status: 503, async json() { return { error: { code: 'signer_unavailable' } }; },
+  }) }), error => error.reason === 'grant-service-unavailable' && /preserving USB/i.test(error.message));
 });
 
-test('an owner-protection redirect or network failure names the sign-in, not "Failed to fetch"', async () => {
+test('a redirect, forbidden origin, or network failure never sends the owner to sign-in', async () => {
   const common = {
     authority: exactAuthority([]), release: { manifest: { buildId: BUILD }, ticketSha256: TICKET },
     origin: 'https://led.mandalacodes.com',
   };
-  // Cloudflare Access answers the grant POST with an off-site login redirect.
+  // The public route must answer directly; any redirect is a service problem.
   await assert.rejects(
     requestSoftwareFirmwareUpdateGrant({ ...common, fetchImpl: async () => ({ type: 'opaqueredirect', status: 0 }) }),
-    error => error.reason === 'owner-sign-in-required' && /owner sign-in/i.test(error.message),
+    error => error.reason === 'grant-service-redirect' && !/sign.in|account/i.test(error.message),
   );
   await assert.rejects(
     requestSoftwareFirmwareUpdateGrant({ ...common, fetchImpl: async () => ({ status: 302, async json() { return null; } }) }),
-    error => error.reason === 'owner-sign-in-required',
+    error => error.reason === 'grant-service-redirect',
   );
-  // A JSON 401 (native auth, signed out) is the same owner action.
+  // A forbidden Studio origin is actionable without offering account login.
   await assert.rejects(
     requestSoftwareFirmwareUpdateGrant({ ...common, fetchImpl: async () => ({
-      ok: false, status: 401, async json() { return { error: { code: 'unauthenticated' } }; },
+      ok: false, status: 403, async json() { return { error: { code: 'invalid_origin' } }; },
     }) }),
-    error => error.reason === 'owner-sign-in-required',
+    error => error.reason === 'grant-service-forbidden' && !/sign.in|account/i.test(error.message),
   );
   // The raw TypeError never reaches the owner.
   await assert.rejects(
@@ -106,7 +109,7 @@ test('an owner-protection redirect or network failure names the sign-in, not "Fa
   );
 });
 
-test('a 404 "not_found" grant response names the owner Studio and preserving USB paths', async () => {
+test('a 404 grant response names the public Studio and preserving USB paths', async () => {
   const common = {
     authority: exactAuthority([]), release: { manifest: { buildId: BUILD }, ticketSha256: TICKET },
     origin: 'https://led.mandalacodes.com',
@@ -124,20 +127,20 @@ test('a 404 "not_found" grant response names the owner Studio and preserving USB
       }),
     }),
     error => error.reason === 'grant-service-missing'
-      && /owner Studio.*preserving USB/i.test(error.message)
+      && /led.mandalacodes.com.*preserving USB/i.test(error.message)
       && !/card button|press BOOT|press RESET/i.test(error.message)
       && !/^API route not found\.$/.test(error.message),
   );
 });
 
-test('probeFirmwareUpdateGrantService classifies the owner protection states', async () => {
+test('probeFirmwareUpdateGrantService treats redirects and HTTP failures as service failures', async () => {
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ type: 'opaqueredirect', status: 0 }) }),
-    { state: 'sign-in-required', reason: 'owner-access' },
+    { state: 'unavailable', reason: 'redirect' },
   );
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ status: 401 }) }),
-    { state: 'sign-in-required', reason: 'native-session' },
+    { state: 'unavailable', reason: 'http-401' },
   );
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => { throw new TypeError('Failed to fetch'); } }),
@@ -149,50 +152,48 @@ test('probeFirmwareUpdateGrantService classifies the owner protection states', a
   );
 });
 
-test('probeFirmwareUpdateGrantService must not claim "ready" on an origin with no real grant service', async () => {
-  // The dev server's Vite middleware answers a deliberate "signed out" stub:
-  // 204 No Content, no body at all. It is not a real session answer and must
-  // not be read as one.
+test('probeFirmwareUpdateGrantService must not claim ready without public signer proof', async () => {
+  // A generic successful response does not prove the signer is ready.
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({ status: 204 }) }),
-    { state: 'unavailable', reason: 'no-session-service' },
+    { state: 'unavailable', reason: 'no-grant-service' },
   );
-  // A card-hosted Studio has no library API; an unmatched GET falls back to
-  // its own served index page — 200, but text/html, not the session JSON.
+  // A card-hosted Studio may fall back to HTML for unknown GET routes.
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
       ok: true, status: 200, headers: headersWithContentType('text/html; charset=utf-8'),
       async json() { throw new Error('not JSON'); },
     }) }),
-    { state: 'unavailable', reason: 'no-session-service' },
+    { state: 'unavailable', reason: 'no-grant-service' },
   );
-  // A 200 JSON body that does not carry the real `{ session: { role } }`
-  // shape is equally untrustworthy — never infer "ready" from mere success.
+  // Arbitrary JSON cannot claim signing readiness.
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
       ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
       async json() { return { ok: true }; },
     }) }),
-    { state: 'unavailable', reason: 'no-session-service' },
+    { state: 'unavailable', reason: 'no-grant-service' },
   );
 });
 
-test('probeFirmwareUpdateGrantService reports ready only for the real signed-in session shape', async () => {
-  // Matches functions/api/library/_shared/router.js `publicSession` for an
-  // Access identity: { email, role }.
+test('probeFirmwareUpdateGrantService reports ready only for the public signer readiness shape', async () => {
+  const fetchCalls = [];
   assert.deepEqual(
-    await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
-      ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
-      async json() { return { session: { email: 'owner@example.com', role: 'owner' } }; },
-    }) }),
+    await probeFirmwareUpdateGrantService({ fetchImpl: async (url, init) => {
+      fetchCalls.push({ url, init });
+      return { ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
+        async json() { return { service: 'firmware-update-grant', ready: true }; } };
+    } }),
     { state: 'ready', reason: '' },
   );
-  // ...and for a native identity: { username, displayName, role, mustChangePassword }.
+  assert.equal(fetchCalls[0].url, '/api/firmware/update-grant');
+  assert.equal(fetchCalls[0].init.credentials, 'omit');
+  // An account session must not be mistaken for public signer readiness.
   assert.deepEqual(
     await probeFirmwareUpdateGrantService({ fetchImpl: async () => ({
       ok: true, status: 200, headers: headersWithContentType('application/json; charset=utf-8'),
-      async json() { return { session: { username: 'adrian', displayName: 'Adrian', role: 'owner', mustChangePassword: false } }; },
+      async json() { return { session: { username: 'adrian', role: 'owner' } }; },
     }) }),
-    { state: 'ready', reason: '' },
+    { state: 'unavailable', reason: 'no-grant-service' },
   );
 });

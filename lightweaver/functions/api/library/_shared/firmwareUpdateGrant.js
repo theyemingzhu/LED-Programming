@@ -1,5 +1,5 @@
 const encoder = new TextEncoder();
-const PINNED_UPDATE_GRANT_PUBLIC_KEY_SPKI =
+export const PINNED_UPDATE_GRANT_PUBLIC_KEY_SPKI =
   'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEjN50G723NWLOuZC40+eQbfqKT4XefIFCHB4qescfW6aI+QSI4QAd/mWySAdAIH1108fWO7pvZ+TJY14oii24eQ==';
 const KEY_MATCH_PROBE = encoder.encode('Lightweaver update grant key match v1');
 
@@ -192,7 +192,7 @@ export function createFirmwareUpdateGrantIssuer(env, {
     return signingKeyPromise;
   }
 
-  return async function issueFirmwareUpdateGrant(grantPayload, { studioOrigin } = {}) {
+  async function issueFirmwareUpdateGrant(grantPayload, { studioOrigin } = {}) {
     validateFirmwareUpdateGrantPayload(grantPayload, { studioOrigin });
     let signature;
     try {
@@ -211,5 +211,13 @@ export function createFirmwareUpdateGrantIssuer(env, {
       signature: base64Url(signature),
       algorithm: FIRMWARE_UPDATE_GRANT_ALGORITHM,
     };
+  }
+
+  // Readiness proves that the configured private key can sign for the exact
+  // public key already pinned by the card; a configured string alone is not ready.
+  issueFirmwareUpdateGrant.ready = async () => {
+    await signingKey();
+    return true;
   };
+  return issueFirmwareUpdateGrant;
 }
