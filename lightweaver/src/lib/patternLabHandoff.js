@@ -17,6 +17,7 @@ import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.j
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
 import {
   LWSEQ_HEADER_BYTES,
+  assertLwseqOutputTopology,
   buildStandaloneProfile,
   normalizeStandaloneOutputs,
 } from './standaloneController.js';
@@ -345,20 +346,21 @@ async function sha256Hex(bytes) {
   return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function assertHeader(bytes, manifest, outputCount) {
+function assertHeader(bytes, manifest, outputs) {
   if (bytes.byteLength !== LWSEQ_HEADER_BYTES + manifest.pixelCount * manifest.frameCount * 3) {
     throw new RangeError('LWSEQ byte length does not match its sidecar');
   }
   if (String.fromCharCode(...bytes.subarray(0, 6)) !== 'LWSEQ1') throw new TypeError('LWSEQ header is missing');
   const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (header.getUint16(8, true) !== 1
-    || header.getUint16(10, true) !== outputCount
+    || header.getUint16(10, true) !== outputs.length
     || header.getUint32(12, true) !== manifest.pixelCount
     || header.getUint32(16, true) !== manifest.frameCount
     || header.getUint16(20, true) !== manifest.fps
     || header.getUint16(22, true) !== 3) {
     throw new TypeError('LWSEQ header does not match its canonical bake metadata');
   }
+  assertLwseqOutputTopology(bytes, outputs);
 }
 
 function staleRecipeError() {
@@ -386,7 +388,7 @@ async function validateBakeResult(bakeResult, normalizedRecipe, bakeContext) {
   if (canonicalPatternLabBakeJson(manifest.recipe) !== expectedRecipeJson) throw staleRecipeError();
   const outputs = normalizeAssetOutputs(bakeResult.outputs, manifest.pixelCount);
   if (!outputs) throw new TypeError('The Pattern Lab bake outputs are incomplete');
-  assertHeader(bakeResult.bytes, manifest, outputs.length);
+  assertHeader(bakeResult.bytes, manifest, outputs);
   const expectedBytes = bakeResult.bytes.byteLength;
   if (bakeResult.estimate.totalBytes !== expectedBytes
     || bakeResult.estimate.headerBytes !== LWSEQ_HEADER_BYTES
@@ -712,6 +714,7 @@ async function validSequenceResult(result) {
     if (!bytes
       || bytes.byteLength !== asset.byteLength
       || await sha256Hex(bytes) !== asset.manifest.lwseqSha256) return null;
+    assertHeader(bytes, asset.manifest, asset.outputs);
     return asset;
   } catch {
     return null;

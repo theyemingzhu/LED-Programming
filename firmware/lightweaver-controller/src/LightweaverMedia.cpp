@@ -15,6 +15,7 @@
 #include "LightweaverCardStudio.h"
 #include "LightweaverRuntimeApi.h"
 #include "LightweaverWeb.h"
+#include "LightweaverSequencePlayback.h"
 
 #ifndef LW_SD_CS
 #define LW_SD_CS 10
@@ -259,6 +260,7 @@ bool validSequenceHeader(const String& path, size_t expectedBytes) {
   const uint32_t frames = u32(16);
   const uint16_t fps = u16(20);
   return u16(8) == 1 && outputs >= 1 && outputs <= 4 && pixels >= 1 && pixels <= 4096 &&
+      sequenceOutputTopologySyntax(header, sizeof(header)) &&
       frames >= 1 && fps >= 1 && fps <= 60 && u16(22) == 3 &&
       uint64_t(64) + uint64_t(pixels) * 3U * frames == expectedBytes;
 }

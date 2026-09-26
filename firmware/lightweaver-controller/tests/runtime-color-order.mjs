@@ -22,7 +22,7 @@ assert.match(
 );
 assert.match(
   mainSource,
-  /void copyLogicalToPhysicalLeds\(\)/,
+  /void copyLogicalToPhysicalLeds\(OutputSourceClass sourceClass\)/,
   'firmware should transform logical RGB pixels before FastLED.show()',
 );
 assert.match(
@@ -32,8 +32,8 @@ assert.match(
 );
 assert.match(
   mainSource,
-  /physicalLeds\[[^\]]+\]\s*=\s*outputColorPipeline\.transform\(leds\[[^\]]+\],\s*ledColorOrderCode\);/,
-  'logical RGB should be transformed into the physical buffer without modifying the logical canvas',
+  /copyCanvasToPhysicalOutputs\(physicalLeds, leds,[\s\S]*outputColorPipeline\.transform\(color, ledColorOrderCode\)/,
+  'canvas RGB should be transformed into the physical buffer without modifying the canvas',
 );
 assert.doesNotMatch(
   mainSource,

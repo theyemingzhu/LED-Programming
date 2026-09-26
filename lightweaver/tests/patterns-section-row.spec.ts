@@ -134,6 +134,40 @@ test('a card still holding one section says so and points at Install', async ({ 
   await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Install to send yours');
 });
 
+test('unequal GPIO sections keep their layout preview and same or separate patterns across screens', async ({ page }, testInfo) => {
+  const project = sectionProject('two-gpio-screen-journey');
+  project.layout.starterPending = false;
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
+    { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
+  ];
+  const zones = compiledZones(project).map(zone => ({ id: zone.id, label: zone.label }));
+  await mockReadyCard(page, project, zones);
+  await page.evaluate(() => { window.location.hash = '#screen=layout'; });
+  await expect(page.getByTestId('gpio-group-16')).toContainText('27 LEDs');
+  await expect(page.getByTestId('gpio-group-17')).toContainText('17 LEDs');
+  await expect(page.locator('.la-section-miniature')).toHaveCount(2);
+  await page.getByTestId('gpio-group-16').screenshot({ path: testInfo.outputPath('two-gpio-layout-row.png') });
+  await page.getByTestId('layout-section-pattern-action').filter({ hasText: 'Fire' }).click();
+  await expect(page).toHaveURL(/#screen=pattern/);
+  await expect(page.getByTestId('section-target-patch-default-outer-circle')).toHaveClass(/\bon\b/);
+  await page.getByTestId('use-on-every-section').click();
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Fire');
+  await page.getByTestId('section-target-patch-default-inner-circle').click();
+  await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId('pattern-piece-preview')).toBeVisible();
+  await page.getByTestId('pattern-piece-preview').screenshot({ path: testInfo.outputPath('two-gpio-patterns-phone.png') });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
+    .layout?.patchBoard?.patches?.map((patch: any) => patch.playback?.patternId))).toEqual(['fire', 'ocean']);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16');
+  await expect(page.getByTestId('section-gpio-patch-default-inner-circle')).toHaveText('GPIO 17');
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
+});
+
 test('All uses the common section look when the saved default differs', async ({ page }) => {
   const project = sectionProject('uniform-section-look');
   project.layout.patchBoard.patches[0].playback.patternId = 'ocean';

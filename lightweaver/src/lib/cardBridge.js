@@ -104,7 +104,7 @@ const RETRYABLE_BRIDGE_TYPES = new Set([
 // feature first shipped in. Cards report their version in the 'ready'
 // handshake (and on every relay reply); firmware older than the versioned
 // bridge reports nothing, which we treat as 0 (legacy).
-export const CARD_BRIDGE_PROTOCOL_VERSION = 7;
+export const CARD_BRIDGE_PROTOCOL_VERSION = 8;
 export const CARD_BRIDGE_FEATURE_VERSIONS = {
   frame: 1,
   'wifi-handoff-ack': 2,

@@ -360,7 +360,7 @@ void transmitPhysicalLeds(uint8_t brightnessByte, OutputSourceClass sourceClass)
 void clearPhysicalLeds();
 void recordPhysicalShow();
 void updateOutputTelemetry(uint32_t now);
-void copyLogicalToPhysicalLeds();
+void copyLogicalToPhysicalLeds(OutputSourceClass sourceClass);
 bool isValidLedColorOrder(const String& order);
 uint8_t computeColorOrderCode(const String& order);
 void fadeTo(float target, uint16_t durationMs);
@@ -1449,6 +1449,11 @@ bool readSequenceMetadata(File& file, uint32_t& frameCount, uint16_t& fps, uint3
   fps = readLe16(header + 20);
   frameBytes = pixelCount * channels;
 
+  if (!sequenceOutputTopologyMatches(header, sizeof(header), outputs, outputCount)) {
+    if (Serial) Serial.println("Sequence GPIO/count map is missing or changed; record again.");
+    return false;
+  }
+
   if (version != 1 || channels != 3 || pixelCount != totalPixels ||
       frameBytes > allocatedFrameBufferBytes || frameCount == 0 || fps == 0) return false;
   uint64_t requiredBytes = uint64_t(LWSEQ_HEADER_BYTES) + uint64_t(frameCount) * frameBytes;
@@ -1975,7 +1980,7 @@ void showLeds(uint8_t brightnessByte) {
 }
 
 void pushPhysicalLeds(uint8_t brightnessByte, OutputSourceClass sourceClass) {
-  copyLogicalToPhysicalLeds();
+  copyLogicalToPhysicalLeds(sourceClass);
   transmitPhysicalLeds(brightnessByte, sourceClass);
 }
 
@@ -2021,26 +2026,20 @@ void updateOutputTelemetry(uint32_t now) {
   outputFpsWindowStartedAt = now;
 }
 
-void copyLogicalToPhysicalLeds() {
+void copyLogicalToPhysicalLeds(OutputSourceClass sourceClass) {
   // Resolve the color order once per frame, not once per pixel.
   ledColorOrderCode = computeColorOrderCode(ledColorOrder);
   if (!pixelBuffersReady()) return;
   uint16_t limit = totalPixels > allocatedPixels ? allocatedPixels : totalPixels;
-  for (uint8_t outputIndex = 0; outputIndex < outputCount; outputIndex++) {
-    const OutputConfig& output = outputs[outputIndex];
-    uint16_t segmentStart = output.start;
-    for (uint8_t segmentIndex = 0; segmentIndex < output.segmentCount; segmentIndex++) {
-      const OutputSegmentConfig& segment = output.segments[segmentIndex];
-      for (uint16_t offset = 0; offset < segment.count && segmentStart + offset < limit; offset++) {
-        const uint16_t logicalIndex = segmentStart + offset;
-        const uint16_t physicalIndex = segment.reversed
-          ? segmentStart + segment.count - 1 - offset
-          : logicalIndex;
-        physicalLeds[physicalIndex] = outputColorPipeline.transform(leds[logicalIndex], ledColorOrderCode);
-      }
-      segmentStart += segment.count;
-    }
-  }
+  const bool sequencePhysicalFrame = sourceClass == OUTPUT_LOCAL && sequenceOpen &&
+      lookCount && looks[currentLookIndex].mode == "sequence";
+  const bool studioPhysicalFrame = sourceClass == OUTPUT_EXTERNAL &&
+      (frameSourceActive() == FRAME_STUDIO_PHYSICAL ||
+       frameSourceActive() == FRAME_HTTP_PHYSICAL);
+  copyCanvasToPhysicalOutputs(physicalLeds, leds, limit, outputs, outputCount,
+      sequencePhysicalFrame || studioPhysicalFrame, [&](const CRGB& color) {
+        return outputColorPipeline.transform(color, ledColorOrderCode);
+      });
 }
 
 uint8_t computeColorOrderCode(const String& order) {
@@ -2555,15 +2554,16 @@ int16_t runtimeGetHueShift() { return manualHueShift; }
 bool runtimeIsBlackedOut() { return blackedOut; }
 
 bool runtimeWriteHttpFrame(uint16_t startPixel, const uint8_t* rgb,
-                           size_t pixelCount) {
+                           size_t pixelCount, bool physicalOrder) {
   if (!rgb || !pixelCount || !leds || startPixel >= allocatedPixels ||
       pixelCount > static_cast<size_t>(allocatedPixels - startPixel)) return false;
-  if (!frameSourceClaim(FRAME_HTTP)) return false;
+  const FrameSource source = physicalOrder ? FRAME_HTTP_PHYSICAL : FRAME_HTTP;
+  if (!frameSourceClaim(source)) return false;
   for (size_t index = 0; index < pixelCount; index++) {
     const size_t source = index * 3;
     leds[startPixel + index] = CRGB(rgb[source], rgb[source + 1], rgb[source + 2]);
   }
-  frameSourceMarkExternal(FRAME_HTTP);
+  frameSourceMarkExternal(source);
   return true;
 }
 
@@ -2924,6 +2924,7 @@ String runtimeFirmwareInfo() {
   counts["brighter"] = controlEventCounts[CONTROL_BRIGHTER];
   counts["dimmer"] = controlEventCounts[CONTROL_DIMMER];
   doc["capabilities"]["outputColor"] = 1;
+  doc["capabilities"]["physicalFrameOrder"]["version"] = 1;
   doc["outputColor"]["contract"] = 1;
   doc["outputColor"]["colorOrder"] = ledColorOrder;
   doc["outputColor"]["gammaEnabled"] = outputColorPipeline.gammaEnabled();

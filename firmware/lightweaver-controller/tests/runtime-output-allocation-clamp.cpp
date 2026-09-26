@@ -18,6 +18,10 @@
 #include <cstdio>
 
 #include "LightweaverTypes.h"
+#include "LightweaverSequencePlayback.h"
+#include "LightweaverFrameSource.h"
+
+enum OutputSourceClass { OUTPUT_LOCAL, OUTPUT_EXTERNAL };
 
 namespace {
 constexpr uint16_t HOST_BUFFER_PIXELS = 8192;
@@ -35,6 +39,11 @@ uint16_t totalPixels = 0;
 uint16_t allocatedPixels = 0;
 String ledColorOrder = "GRB";
 uint8_t ledColorOrderCode = 1;
+bool sequenceOpen = false;
+uint8_t lookCount = 0;
+uint8_t currentLookIndex = 0;
+LookConfig looks[LW_MAX_LOOKS];
+FrameSource frameSourceActive() { return FRAME_INTERNAL; }
 
 bool pixelBuffersReady() { return leds != nullptr && physicalLeds != nullptr; }
 
@@ -111,7 +120,7 @@ void applyOutputs(uint16_t allocation, uint8_t count, const OutputConfig* source
 
 void runFrame() {
   poisonBuffers();
-  copyLogicalToPhysicalLeds();
+  copyLogicalToPhysicalLeds(OUTPUT_LOCAL);
   // Buffer first, geometry second: the overflow is the defect, the invariant
   // is only how it is prevented, and a failure should name the overflow.
   expectNoWriteBeyondAllocation();

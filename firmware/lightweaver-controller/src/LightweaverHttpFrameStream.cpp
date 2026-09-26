@@ -166,7 +166,8 @@ void handleFrame() {
     index++;
   }
   const uint32_t start = doc["start"] | 0U;
-  if (start > UINT16_MAX || !runtimeWriteHttpFrame(static_cast<uint16_t>(start), rgb, index)) {
+  if (start > UINT16_MAX || !runtimeWriteHttpFrame(static_cast<uint16_t>(start), rgb, index,
+      doc["lwPhysical"].as<int>() == 1)) {
     streamError(409, "frame source busy or frame range invalid"); return;
   }
   g_streamNextSequence++;

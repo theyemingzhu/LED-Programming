@@ -25,7 +25,8 @@
 import { canonicalProjectFileName } from './projectFiles.js';
 import { downloadJsonFile } from './downloadFile.js';
 import { importProjectFromFile } from './projectImportFile.js';
-import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
+import { storeRecordedMedia } from './recordedSequenceMedia.js';
+import { verifyStoredSequenceAsset } from './recordedSequenceAsset.js';
 
 function base64(bytes) {
   if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
@@ -55,7 +56,10 @@ export async function makePortableProject(project) {
     if (!asset.mediaRef) continue;
     if (!asset.mediaRef.sha256 || asset.mediaRef.byteLength !== asset.byteLength)
       throw new Error(`Recording “${asset.label || asset.id}” has invalid saved media metadata.`);
-    const bytes = await readRecordedMedia(asset.mediaRef.sha256);
+    // Historical multi-output LWSEQ files did not bind GPIO topology in the
+    // reserved header. Keep their exact bytes and editable source portable;
+    // install still requires a newly recorded, topology-bound file.
+    const bytes = await verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput: true });
     if (bytes.byteLength !== asset.byteLength) throw new Error(`Recording “${asset.label || asset.id}” has an incomplete media file.`);
     asset.portableMedia = { encoding: 'base64', bytes: bytes.byteLength,
       sha256: asset.mediaRef.sha256, data: base64(bytes) };
@@ -68,7 +72,7 @@ export async function importPortableProjectMedia(project) {
   const assets = copy?.devices?.standaloneController?.sequenceAssets || [];
   for (const asset of assets) {
     if (!asset.portableMedia) {
-      if (asset.mediaRef) await readRecordedMedia(asset.mediaRef.sha256);
+      if (asset.mediaRef) await verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput: true });
       continue;
     }
     const media = asset.portableMedia;
@@ -77,6 +81,7 @@ export async function importPortableProjectMedia(project) {
     const bytes = fromBase64(media.data);
     if (bytes.byteLength !== media.bytes) throw new Error('Portable recording is incomplete.');
     asset.mediaRef = await storeRecordedMedia(bytes, media.sha256);
+    await verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput: true });
     delete asset.portableMedia;
   }
   return copy;

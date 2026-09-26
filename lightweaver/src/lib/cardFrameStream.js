@@ -63,6 +63,7 @@ export const FRAME_OWNERSHIP_CHANNEL = 'lightweaver-card-frame-owner-v1';
 // chunk would both land at pixel 0 and clobber the first — those cards get the
 // first chunk plus an honest truncation signal instead.
 const FRAME_CHUNK_BRIDGE_VERSION = 3;
+const PHYSICAL_FRAME_BRIDGE_VERSION = 8;
 // A truncated frame is a persistent condition (every frame stays truncated
 // until the card is reflashed), and health fires once per pump. Re-arm the
 // one-shot notice flag at most this often so a UI can toast/log on it without
@@ -95,10 +96,19 @@ function bridgeReplyFailed(reply) {
 export function createBridgeFrameTransport(host = '') {
   return {
     kind: 'bridge',
-    async sendFrame(pixels, seg, { isCurrent = () => true } = {}) {
+    async sendFrame(pixels, seg, { isCurrent = () => true, physicalOrder = false } = {}) {
       const chunks = chunkFramePixels(pixels);
       if (!chunks.length) return { ok: true };
+      if (physicalOrder && getCardBridgeVersion() === 0) {
+        await sendCardBridgeRequest('status', {}, { host, timeoutMs: 1500, retryOnTimeout: false });
+      }
+      if (physicalOrder && getCardBridgeVersion() < PHYSICAL_FRAME_BRIDGE_VERSION) {
+        const error = new Error('This card page needs a firmware update to preview exact physical LED order.');
+        error.reason = 'physical-frame-unsupported';
+        throw error;
+      }
       const segField = Number.isInteger(seg) ? { seg } : {};
+      const physicalField = physicalOrder ? { lwPhysical: 1 } : {};
 
       if (chunks.length > 1 && getCardBridgeVersion() < FRAME_CHUNK_BRIDGE_VERSION) {
         if (!isCurrent()) return { ok: true, fenced: true };
@@ -109,6 +119,7 @@ export function createBridgeFrameTransport(host = '') {
         const reply = await sendCardBridgeRequest('frame', {
           pixels: chunks[0].pixels,
           ...segField,
+          ...physicalField,
         }, { host, timeoutMs: 1500, retryOnTimeout: false });
         if (bridgeReplyFailed(reply)) return reply;
         return {
@@ -137,6 +148,7 @@ export function createBridgeFrameTransport(host = '') {
           pixels: chunk.pixels,
           ...(chunk.start > 0 ? { start: chunk.start } : {}),
           ...segField,
+          ...physicalField,
         }, { host, timeoutMs: 1500, retryOnTimeout: false });
         if (bridgeReplyFailed(reply)) {
           // Frame-atomic: stop here and report the WHOLE frame undelivered.
@@ -173,25 +185,54 @@ export function createDirectFrameTransport(host = '', { WebSocketImpl, fetchImpl
   let opening = null;
   let backoffMs = 0;
   let retryAt = 0;
+  let physicalSupportVerified = false;
+
+  async function verifyPhysicalSupport(identity = null) {
+    if (physicalSupportVerified) return;
+    const observed = identity || await guardDirectCardMutation(resolvedHost, { fetchImpl: doFetch });
+    const response = await doFetch(`${cardHostToUrl(resolvedHost)}/api/status`, {
+      method: 'GET', cache: 'no-store', credentials: 'omit',
+    });
+    const status = response?.ok ? await response.json().catch(() => null) : null;
+    if (!observed?.id || status?.cardId !== observed.id
+      || status?.capabilities?.physicalFrameOrder?.version !== 1) {
+      const error = new Error('This card firmware cannot preview exact physical LED order. Update the card before streaming.');
+      error.reason = 'physical-frame-unsupported';
+      throw error;
+    }
+    physicalSupportVerified = true;
+  }
 
   function noteOpenFailure() {
     backoffMs = backoffMs ? Math.min(DIRECT_BACKOFF_MAX_MS, backoffMs * 2) : DIRECT_BACKOFF_MIN_MS;
     retryAt = nowFn() + backoffMs;
   }
 
-  async function openSocket() {
-    if (ws && ws.readyState === 1) return Promise.resolve(ws);
-    if (opening) return opening;
+  async function openSocket(physicalOrder = false) {
+    if (ws && ws.readyState === 1) {
+      if (physicalOrder) await verifyPhysicalSupport();
+      return ws;
+    }
+    if (opening) {
+      const socket = await opening;
+      if (physicalOrder) await verifyPhysicalSupport();
+      return socket;
+    }
     if (!WS) return Promise.reject(new Error('WebSocket is not available here.'));
     if (nowFn() < retryAt) {
       const error = new Error(`Waiting to retry ws://${resolvedHost}:81/ws`);
       error.reason = 'ws-backoff';
       return Promise.reject(error);
     }
-    await guardDirectCardMutation(resolvedHost, { fetchImpl: doFetch });
+    const identity = await guardDirectCardMutation(resolvedHost, { fetchImpl: doFetch });
+    if (physicalOrder) await verifyPhysicalSupport(identity);
     // Another caller may have completed an open while identity was checked.
     if (ws && ws.readyState === 1) return ws;
-    if (opening) return opening;
+    if (opening) {
+      const socket = await opening;
+      if (physicalOrder) await verifyPhysicalSupport();
+      return socket;
+    }
     if (nowFn() < retryAt) {
       // Still inside the backoff window: fail fast without opening a socket.
       // The pump counts this as an undelivered tick, which feeds the same
@@ -215,9 +256,11 @@ export function createDirectFrameTransport(host = '', { WebSocketImpl, fetchImpl
         // Never keep using a socket after an error. Its replacement must pass
         // the exact-host identity check again before construction.
         if (ws === socket) ws = null;
+        physicalSupportVerified = false;
       };
       socket.onclose = () => {
         if (ws === socket) ws = null;
+        physicalSupportVerified = false;
         if (opening) {
           opening = null;
           noteOpenFailure();
@@ -232,8 +275,8 @@ export function createDirectFrameTransport(host = '', { WebSocketImpl, fetchImpl
 
   return {
     kind: 'direct',
-    async sendFrame(pixels, seg, { isCurrent = () => true } = {}) {
-      const socket = await openSocket();
+    async sendFrame(pixels, seg, { isCurrent = () => true, physicalOrder = false } = {}) {
+      const socket = await openSocket(physicalOrder);
       if (!isCurrent()) return { ok: true, fenced: true };
       // Congestion is judged ONCE per frame, before chunk 0 — never between
       // chunks. A frame that has begun must finish, or the card would render
@@ -247,7 +290,7 @@ export function createDirectFrameTransport(host = '', { WebSocketImpl, fetchImpl
       // firmware update.
       for (const chunk of chunkFramePixels(pixels)) {
         if (!isCurrent()) return { ok: true, fenced: true };
-        socket.send(JSON.stringify(frameChunkPayload(chunk, seg)));
+        socket.send(JSON.stringify(frameChunkPayload(chunk, seg, { physicalOrder })));
       }
       return { ok: true };
     },
@@ -266,6 +309,7 @@ export function createDirectFrameTransport(host = '', { WebSocketImpl, fetchImpl
       opening = null;
       backoffMs = 0;
       retryAt = 0;
+      physicalSupportVerified = false;
     },
   };
 }
@@ -311,6 +355,7 @@ export function createHttpFrameTransport(host = '', {
   let lease = null;
   let revoked = false;
   let nextSequence = 0;
+  let physicalSupportVerified = false;
 
   const assertAuthority = () => {
     if (revoked || authority.revoked === true || !sameAuthoritySnapshot(initial, authoritySnapshot(authority))) {
@@ -346,6 +391,27 @@ export function createHttpFrameTransport(host = '', {
       expectedHead: authority.ownerCapabilityExpectedHead || '',
     };
   };
+  const ensurePhysicalSupport = async () => {
+    if (physicalSupportVerified) return;
+    assertAuthority();
+    let status;
+    if (typeof authority.request === 'function') status = await authority.request('/api/status');
+    else {
+      const response = await fetchImpl(`${baseUrl}/api/status`, {
+        method: 'GET', cache: 'no-store', credentials: 'omit',
+        ...(authority.transport === 'direct-lna' ? { targetAddressSpace: 'local' } : {}),
+      });
+      status = response?.ok ? await response.json().catch(() => null) : null;
+    }
+    assertAuthority();
+    if (status?.cardId !== initial.cardId || status?.bootId !== initial.bootId
+      || status?.capabilities?.physicalFrameOrder?.version !== 1) {
+      const error = new Error('This card firmware cannot preview exact physical LED order. Update the card before streaming.');
+      error.reason = 'physical-frame-unsupported';
+      throw error;
+    }
+    physicalSupportVerified = true;
+  };
   const acquireLease = async sequence => {
     const result = await post('/api/stream/lease', bindings());
     if (!result?.leaseId) throw new Error('The card did not grant an HTTP frame lease.');
@@ -361,9 +427,10 @@ export function createHttpFrameTransport(host = '', {
 
   return Object.freeze({
     kind: 'http',
-    async sendFrame(pixels, seg, { isCurrent = () => true, sequence } = {}) {
+    async sendFrame(pixels, seg, { isCurrent = () => true, sequence, physicalOrder = false } = {}) {
       assertAuthority();
       if (!Array.isArray(pixels) || !pixels.length) return { ok: true };
+      if (physicalOrder) await ensurePhysicalSupport();
       const requestedSequence = Number.isSafeInteger(Number(sequence)) ? Number(sequence) : nextSequence;
       await ensureLease(requestedSequence);
       if (requestedSequence < nextSequence) {
@@ -384,6 +451,7 @@ export function createHttpFrameTransport(host = '', {
           start,
           pixels: chunkPixels,
           ...(Number.isInteger(seg) ? { seg } : {}),
+          ...(physicalOrder ? { lwPhysical: 1 } : {}),
         });
         const reportedNext = Number(last?.nextSequence);
         wireSequence = Number.isSafeInteger(reportedNext) && reportedNext > wireSequence
@@ -556,6 +624,7 @@ export function createCardFrameStream({
   now = () => Date.now(),
   colorProfile = null,
   getColorProfile = null,
+  physicalOrder = true,
 } = {}) {
   const verifiedAuthority = authority || getActiveCardTransportAuthority(host);
   const wire = transport === 'bridge' || transport === 'legacy-bridge'
@@ -686,7 +755,7 @@ export function createCardFrameStream({
       && (!ownership || ownership.isOwner());
     const send = (async () => {
       try {
-        const result = await wire.sendFrame(frame, seg, { isCurrent });
+        const result = await wire.sendFrame(frame, seg, { isCurrent, physicalOrder });
         // A newer same-host stream may claim ownership while this send is in
         // flight. Its acknowledgement must not revive or mark this stream
         // healthy after it has yielded.

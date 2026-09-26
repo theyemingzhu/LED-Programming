@@ -190,13 +190,15 @@ function normalizeEvidenceCapabilities(value) {
     ...(Object.hasOwn(value, 'kaleidoscopeReflectionPoints')
       ? { kaleidoscopeReflectionPoints: Number.isFinite(capability) && capability >= 1 ? 1 : 0 }
       : {}),
-    ...(value.sequenceMedia?.version === 1 && Number.isSafeInteger(value.sequenceMedia.maxBytes)
+    ...([1, 2].includes(value.sequenceMedia?.version) && Number.isSafeInteger(value.sequenceMedia.maxBytes)
       && Number.isSafeInteger(value.sequenceMedia.chunkBytes)
       ? { sequenceMedia: {
-          version: 1, maxBytes: value.sequenceMedia.maxBytes,
+          version: value.sequenceMedia.version, maxBytes: value.sequenceMedia.maxBytes,
           chunkBytes: value.sequenceMedia.chunkBytes,
           storageReady: value.sequenceMedia.storageReady === true,
         } } : {}),
+    ...(value.physicalFrameOrder?.version === 1
+      ? { physicalFrameOrder: { version: 1 } } : {}),
   };
 }
 

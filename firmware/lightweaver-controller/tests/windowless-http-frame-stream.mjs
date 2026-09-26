@@ -31,8 +31,10 @@ assert.match(source, /runtimeCancelStream\(\)/,
   'Stop, timeout, and interruption return through the canonical Stop API');
 assert.match(source, /runtimeWriteHttpFrame\(/,
   'accepted frames write through the canonical runtime frame buffer API');
-assert.match(main, /frameSourceClaim\(FRAME_HTTP\)/);
-assert.match(main, /frameSourceMarkExternal\(FRAME_HTTP\)/);
+assert.match(main, /physicalOrder \? FRAME_HTTP_PHYSICAL : FRAME_HTTP/);
+assert.match(main, /frameSourceClaim\(source\)/);
+assert.match(main, /frameSourceMarkExternal\(source\)/);
+assert.match(source, /doc\["lwPhysical"\]\.as<int>\(\) == 1/);
 assert.match(frameSourceHeader, /FRAME_HTTP\s*=\s*3/,
   'HTTP is a peer producer in the single existing frame-source arbiter');
 assert.match(runtimeHeader, /runtimeWriteHttpFrame\(/);

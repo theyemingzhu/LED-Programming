@@ -62,6 +62,10 @@ void applyState(uint8_t* payload, size_t length) {
   if (err) return;
 
   bool framePushed = false;
+  // Studio explicitly marks frames that are already in compiled GPIO order.
+  // Ordinary WLED packets remain logical and keep segment-direction mapping.
+  const FrameSource pixelSource = doc["lwPhysical"].as<int>() == 1
+      ? FRAME_STUDIO_PHYSICAL : FRAME_WLED_REALTIME;
   JsonArray segs = doc["seg"].as<JsonArray>();
   if (!segs.isNull()) {
     // Keep the WebSocket and HTTP WLED paths equivalent: neither supports
@@ -75,7 +79,7 @@ void applyState(uint8_t* payload, size_t length) {
       if (!pixels.isNull() && pixels.size() > 0) {
         framePushed = true;
         // Only write if no other live source (e.g. Art-Net) owns the canvas.
-        bool frameAllowed = frameSourceClaim(FRAME_WLED_REALTIME);
+        bool frameAllowed = frameSourceClaim(pixelSource);
         int writeIdx = s["start"] | 0;
         if (writeIdx < 0) writeIdx = 0;
         bool frameWritten = false;
@@ -99,7 +103,7 @@ void applyState(uint8_t* payload, size_t length) {
             }
           }
         }
-        if (frameWritten) frameSourceMarkExternal(FRAME_WLED_REALTIME);
+        if (frameWritten) frameSourceMarkExternal(pixelSource);
       }
     }
   }

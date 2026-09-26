@@ -160,11 +160,11 @@ bool runtimeNativeZoneArmed(const String& zoneId);
 bool runtimeNativeRenderArmed();
 float runtimeNativeFadeScale();
 uint16_t runtimeNativeArmedZoneMask();
-// Writes a bounded RGB chunk into the one canonical logical LED canvas. The
-// implementation claims FRAME_HTTP through the existing source arbiter; it
-// does not create a second renderer or bypass Stop/timeout recovery.
+// Writes a bounded RGB chunk into the one canonical LED canvas. Studio marks
+// already-physical chunks explicitly; unmarked HTTP frames remain logical.
+// Both use the existing source arbiter and Stop/timeout recovery.
 bool runtimeWriteHttpFrame(uint16_t startPixel, const uint8_t* rgb,
-                           size_t pixelCount);
+                           size_t pixelCount, bool physicalOrder);
 String runtimeNetworkIdentity();
 // Existing blank-card commissioning authority, or a recent deliberate action
 // on a physical card control. Same-origin HTTP reachability is never enough.

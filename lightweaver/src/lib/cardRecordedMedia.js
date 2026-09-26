@@ -124,10 +124,10 @@ export async function installRecordedMediaForRuntimePackage(runtimePackage, {
   cancelled(signal);
   const evidence = await readEvidence({ host, transport });
   const mediaCapability = evidence?.capabilities?.sequenceMedia;
-  if (mediaCapability?.version !== 1
+  if (mediaCapability?.version !== 2
     || mediaCapability.maxBytes < Math.max(...assets.map(asset => asset.byteLength))
     || mediaCapability.chunkBytes < CHUNK_BYTES) {
-    throw new Error('This card cannot store recordings through Studio. Insert a writable microSD card and update its firmware, then retry.');
+    throw new Error('This card cannot safely play recorded physical output order and GPIO topology. Update its firmware and insert a writable microSD card, then retry.');
   }
   if (!await confirmPairing()) {
     cancelled({ aborted: true });

@@ -70,6 +70,17 @@ test('preserves the exact installed piece id as card project evidence', () => {
   assert.equal(normalizeCardIdentity(firmwareInfo).projectId, 'front-mandala');
 });
 
+test('preserves exact sequence media capability version for the topology-safe install gate', () => {
+  for (const version of [1, 2]) {
+    const evidence = normalizeCardProjectEvidence({ ...firmwareInfo,
+      capabilities: { sequenceMedia: { version, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048 } },
+    });
+    assert.deepEqual(evidence.capabilities.sequenceMedia, {
+      version, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048, storageReady: false,
+    });
+  }
+});
+
 test('normalizes status payloads and rejects missing or wrong identities', () => {
   const status = normalizeCardIdentity({
     cardId: 'lw-aabbccddeeff',
@@ -131,6 +142,16 @@ test('preserves bounded Kaleidoscope capability and exact applied mapping eviden
     capabilities: { kaleidoscopeReflectionPoints: 1 },
     kaleidoscopeMappings: Array.from({ length: 33 }, (_, index) => ({ ...mapping, id: `outer-${index}` })),
   }), /at most 32/i);
+});
+
+test('preserves only the exact physical-frame capability version', () => {
+  const card = { app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '2.0.0', buildId: 'frame-order' };
+  assert.deepEqual(normalizeCardProjectEvidence({ ...card,
+    capabilities: { physicalFrameOrder: { version: 1 } },
+  }).capabilities.physicalFrameOrder, { version: 1 });
+  assert.equal(normalizeCardProjectEvidence({ ...card,
+    capabilities: { physicalFrameOrder: { version: 2 } },
+  }).capabilities.physicalFrameOrder, undefined);
 });
 
 test('persists only stable nonsecret identity and connection hints under a versioned key', () => {

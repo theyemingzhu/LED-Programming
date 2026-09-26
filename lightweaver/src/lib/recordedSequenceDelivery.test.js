@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 import { compileWiring } from './wiringCompiler.js';
 import { bakeSceneExpressionFlow } from './sceneExpressionRecording.js';
@@ -11,6 +12,10 @@ import { normalizeCardPlaylist, makeSequencePlaylistItem } from './cardPlaylist.
 import { bakePatternLabRecipe } from './lwseqBake.js';
 import { classifyPatternLabCompatibility } from './patternLabCompatibility.js';
 import { createPatternLabHandoff, applyPatternLabHandoff } from './patternLabHandoff.js';
+import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
+import { prepareCardStoragePayload } from './cardStoragePayload.js';
+import { assertLwseqOutputTopology, toLwseqBytes } from './standaloneController.js';
+import { storeRecordedMedia } from './recordedSequenceMedia.js';
 
 const strips = [{ id: 'left', pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
   { id: 'right', pixels: [{ x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }] }];
@@ -57,6 +62,71 @@ function runtimeFor(assets) {
     brightness: 1,
   })) }, mediaAssets: assets };
 }
+
+test('LWSEQ1 reserved header binds ordered GPIO pins and unequal output boundaries', () => {
+  const outputs = [{ id: 'one', pin: 16, pixels: 2 }, { id: 'two', pin: 17, pixels: 3 }];
+  const frame = Array.from({ length: 5 }, () => ({ r: 0, g: 0, b: 0 }));
+  const bytes = toLwseqBytes([frame], { fps: 1, outputs });
+  // Independently fixed bytes for LWOP v1: marker, version/count, then four
+  // ordered LE (GPIO pin, pixel count) slots in LWSEQ1's reserved header.
+  assert.deepEqual([...bytes.subarray(24, 48)], [
+    76, 87, 79, 80, 1, 2, 0, 0,
+    16, 0, 2, 0, 17, 0, 3, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+  assert.equal(assertLwseqOutputTopology(bytes, outputs), true);
+  assert.throws(() => assertLwseqOutputTopology(bytes, [
+    { id: 'one', pin: 16, pixels: 3 }, { id: 'two', pin: 17, pixels: 2 },
+  ]), /GPIO pin or output boundary/i);
+  const legacy = bytes.slice();
+  legacy.fill(0, 24, 48);
+  assert.throws(() => assertLwseqOutputTopology(legacy, outputs), /older multi-output.*Re-record/i);
+  assert.equal(assertLwseqOutputTopology(legacy, [{ id: 'one', pin: 16, pixels: 5 }]), false);
+  legacy[47] = 1;
+  assert.throws(() => assertLwseqOutputTopology(legacy, [{ id: 'one', pin: 16, pixels: 5 }]), /topology header is invalid/i);
+  assert.throws(() => toLwseqBytes([frame], { fps: 1, outputs: [
+    { id: 'one', pin: 65536, pixels: 5 },
+  ] }), /must fit the physical header/i);
+  assert.throws(() => toLwseqBytes([frame], { fps: 1, outputs: [
+    { id: 'one', pin: 0, pixels: 5 },
+  ] }), /positive and distinct/i);
+  assert.throws(() => toLwseqBytes([frame], { fps: 1, outputs: [
+    { id: 'one', pin: 16, pixels: 2 }, { id: 'two', pin: 16, pixels: 3 },
+  ] }), /positive and distinct/i);
+  assert.throws(() => assertLwseqOutputTopology(bytes, [
+    { id: 'one', pin: 16, pixels: 2 }, { id: 'two', pin: 16, pixels: 3 },
+  ]), /duplicate GPIO pin/i);
+  assert.throws(() => toLwseqBytes([frame], { fps: 61, outputs }), /parser limits/i);
+  assert.throws(() => toLwseqBytes([], { fps: 1, outputs }), /at least one complete frame/i);
+});
+
+test('legacy unbound multi-output media stays portable for editing but cannot reach card upload', async () => {
+  const { next } = await recorded('legacy-multi');
+  const original = next.sequenceAssets[0];
+  const bytes = (await verifyStoredSequenceAsset(original)).slice();
+  bytes.fill(0, 24, 48);
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  const old = structuredClone(original);
+  old.file = `/sequences/${hash}.lwseq`;
+  old.sidecarFile = `${old.file}.json`;
+  old.assetRef = `sha256:${hash}`;
+  old.manifest.lwseqSha256 = hash;
+  old.mediaRef = await storeRecordedMedia(bytes, hash);
+  const project = { devices: { standaloneController: {
+    sequenceAssets: [old], playlist: [makeSequencePlaylistItem(old)],
+  } } };
+  const backup = await makePortableProject(project);
+  const restored = await importPortableProjectMedia(backup);
+  const recovered = restored.devices.standaloneController.sequenceAssets[0];
+  assert.deepEqual(recovered.source, old.source);
+  assert.deepEqual(await verifyStoredSequenceAsset(recovered, { allowLegacyMultiOutput: true }), bytes);
+  let cardCalls = 0;
+  await assert.rejects(() => installRecordedMediaForRuntimePackage(runtimeFor([recovered]), {
+    host: 'lightweaver.local', transport: 'bridge', project: { strips, wiring, compiledWiring },
+    readEvidence: async () => { cardCalls += 1; throw new Error('card should not be contacted'); },
+  }), /older multi-output.*Re-record/i);
+  assert.equal(cardCalls, 0);
+});
 
 test('recorded Flow updates the same scene asset and Playlist reference while replacing immutable media', async () => {
   const first = await recorded('same-scene');
@@ -116,6 +186,64 @@ test('same GPIO pins and counts with reversed physical order cannot install old 
   await assert.rejects(() => assertRecordedMediaCurrentLayout(asset, current, bytes), /no longer matches/i);
 });
 
+test('unequal reversed GPIO layout keeps native same/mixed looks and recorded clip through package and restore', async () => {
+  const authored = source('mixed-install');
+  authored.wiring = structuredClone(wiring);
+  authored.wiring.runs[1].physicalDirection = 'source-reverse';
+  authored.compiledWiring = compileWiring({ strips, wiring: authored.wiring });
+  assert.equal(authored.compiledWiring.ok, true);
+  const patchBoard = { patches: strips.map(strip => ({
+    id: `patch-${strip.id}`, source: { type: 'strip', stripId: strip.id,
+      startLed: 0, endLed: strip.pixels.length - 1 }, output: { mode: 'normal' }, playback: {},
+  })) };
+  authored.patchBoard = patchBoard;
+  const bakeResult = await bakeSceneExpressionFlow(authored);
+  const recording = await createRecordedSequenceAsset({ kind: 'expression-scene', bakeResult,
+    controller: {}, sourceSnapshot: authored });
+  const saved = await applyRecordedSequenceAsset({}, recording);
+  const asset = saved.sequenceAssets[0];
+  const controller = { ...saved, defaultLook: { patternId: 'aurora' },
+    looks: [
+      { id: 'same', label: 'Same native', defaultLook: { patternId: 'fire' },
+        sectionLooks: { 'patch-left': { patternId: 'fire' }, 'patch-right': { patternId: 'fire' } } },
+      { id: 'mixed', label: 'Mixed native', defaultLook: { patternId: 'fire' },
+        sectionLooks: { 'patch-left': { patternId: 'fire' }, 'patch-right': { patternId: 'ocean' } } },
+    ],
+    playlist: [
+      { type: 'combo', lookId: 'same', id: 'same-entry' },
+      makeSequencePlaylistItem(asset),
+      { type: 'combo', lookId: 'mixed', id: 'mixed-entry' },
+    ],
+    controls: { playlist: { enabled: true, fadeMs: 0 } },
+  };
+  const input = { strips, patchBoard, wiring: authored.wiring, compiledWiring: authored.compiledWiring,
+    standaloneController: controller };
+  const runtime = buildCardRuntimePackageFromProject(input);
+  assert.deepEqual(runtime.config.led.outputs.map(output => [output.pin, output.pixels]), [[16, 2], [17, 3]]);
+  assert.deepEqual(runtime.config.playlist.entries.map(entry => entry.patternId),
+    ['same-entry', asset.id, 'mixed-entry']);
+  assert.deepEqual(runtime.config.looks.filter(look => look.mode === 'combo')
+    .map(look => look.zones.map(zone => zone.patternId)), [['fire', 'fire'], ['fire', 'ocean']]);
+  const sequenceLook = runtime.config.looks.find(look => look.mode === 'sequence');
+  assert.equal(sequenceLook.file, asset.file);
+  assert.equal(sequenceLook.bytes, bakeResult.bytes.byteLength);
+  assert.equal(sequenceLook.sha256, asset.manifest.lwseqSha256);
+  assert.equal(sequenceLook.brightness, 1);
+  assert.equal(runtime.mediaAssets[0].id, asset.id);
+  const compact = prepareCardStoragePayload(runtime);
+  const storedLook = compact.config.looks.find(look => look.mode === 'sequence');
+  assert.deepEqual([storedLook.file, storedLook.bytes, storedLook.sha256, storedLook.fps, storedLook.brightness],
+    [asset.file, bakeResult.bytes.byteLength, asset.manifest.lwseqSha256, 1, 1]);
+  assert.equal(await assertRecordedMediaCurrentLayout(asset, input, bakeResult.bytes), true);
+
+  const portable = await makePortableProject({ devices: { standaloneController: controller } });
+  const restored = await importPortableProjectMedia(portable);
+  const restoredRuntime = buildCardRuntimePackageFromProject({ ...input,
+    standaloneController: restored.devices.standaloneController });
+  assert.deepEqual(restoredRuntime.config.playlist.entries, runtime.config.playlist.entries);
+  assert.deepEqual(await verifyStoredSequenceAsset(restoredRuntime.mediaAssets[0]), bakeResult.bytes);
+});
+
 test('Pattern Lab bake saves exact media and passes current physical layout before upload', async () => {
   const recipe = {
     version: 1, id: 'lab-recording', name: 'Lab recording',
@@ -152,7 +280,7 @@ test('Pattern Lab bake saves exact media and passes current physical layout befo
     host: 'lightweaver.local', transport: 'bridge',
     project: { strips, wiring: labWiring, compiledWiring: labCompiled },
     readEvidence: async () => ({ cardId: 'card', capabilities: { sequenceMedia: {
-      version: 1, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048,
+      version: 2, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048,
     } } }),
     readStatus: async () => ({ cardId: 'card', bootId: 'boot', projectHead: 'head' }),
     sendBridge: async (verb, payload) => {
@@ -214,7 +342,7 @@ test('batch media transfer survives capability expiry between two recordings and
   const installed = await installRecordedMediaForRuntimePackage(runtimePackage, {
     host: 'lightweaver.local', transport: 'bridge', project: { strips, wiring, compiledWiring },
     readEvidence: async () => ({ cardId: 'card', capabilities: { sequenceMedia: {
-      version: 1, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048,
+      version: 2, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048,
     } } }),
     readStatus: async () => ({ cardId: 'card', bootId: 'boot', projectHead: 'head' }),
     sendBridge: reply,
@@ -233,7 +361,15 @@ test('old firmware, canceled media, or card switch sends no Playlist config', as
     host: 'lightweaver.local', transport: 'bridge', project: { strips, wiring, compiledWiring },
     readEvidence: async () => ({ cardId: 'card', capabilities: {} }),
     sendBridge: async () => { ownerCalls += 1; },
-  }), /cannot store recordings/i);
+  }), /cannot safely play recorded physical output order/i);
+  assert.equal(ownerCalls, 0);
+  await assert.rejects(() => installRecordedMediaForRuntimePackage(runtimePackage, {
+    host: 'lightweaver.local', transport: 'bridge', project: { strips, wiring, compiledWiring },
+    readEvidence: async () => ({ cardId: 'card', capabilities: { sequenceMedia: {
+      version: 1, maxBytes: 16 * 1024 * 1024, chunkBytes: 2048,
+    } } }),
+    sendBridge: async () => { ownerCalls += 1; },
+  }), /cannot safely play recorded physical output order/i);
   assert.equal(ownerCalls, 0);
   let configCalls = 0;
   await assert.rejects(() => syncRuntimePackageToCard({

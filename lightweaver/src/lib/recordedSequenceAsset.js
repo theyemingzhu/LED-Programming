@@ -1,6 +1,6 @@
 import { canonicalSceneExpressionBakeJson } from './sceneExpressionRecording.js';
 import { normalizePatternLabSequenceAssets, MAX_PATTERN_LAB_SEQUENCE_ASSETS } from './patternLabHandoff.js';
-import { LWSEQ_HEADER_BYTES, buildStandaloneProfile } from './standaloneController.js';
+import { LWSEQ_HEADER_BYTES, assertLwseqOutputTopology, buildStandaloneProfile } from './standaloneController.js';
 import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { normalizeSceneExpression } from './sceneExpression.js';
@@ -33,7 +33,7 @@ async function sha256(bytes) {
   return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function assertHeader(bytes, sidecar, outputs) {
+function assertHeader(bytes, sidecar, outputs, { allowLegacyMultiOutput = false } = {}) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.byteLength !== LWSEQ_HEADER_BYTES + sidecar.frameCount * sidecar.pixelCount * 3
     || String.fromCharCode(...bytes.subarray(0, 6)) !== 'LWSEQ1'
@@ -43,6 +43,7 @@ function assertHeader(bytes, sidecar, outputs) {
     || view.getUint32(16, true) !== sidecar.frameCount
     || view.getUint16(20, true) !== sidecar.fps
     || view.getUint16(22, true) !== 3) throw new Error('LWSEQ header does not match the recording.');
+  assertLwseqOutputTopology(bytes, outputs, { allowLegacyMultiOutput });
 }
 
 function assertOutputs(outputs, sidecar) {
@@ -63,7 +64,7 @@ function uniqueId(label, assets) {
   return id;
 }
 
-export async function verifyStoredSequenceAsset(asset) {
+export async function verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput = false } = {}) {
   if (!asset?.mediaRef || asset.mediaRef.byteLength !== asset.byteLength
     || asset.mediaRef.sha256 !== asset.manifest?.lwseqSha256 || !HASH.test(asset.mediaRef.sha256)) {
     throw new Error('The recording has no verified media. Record it again.');
@@ -72,7 +73,7 @@ export async function verifyStoredSequenceAsset(asset) {
   if (bytes.byteLength !== asset.byteLength || await sha256(bytes) !== asset.mediaRef.sha256) {
     throw new Error('Recorded media differs from its saved SHA-256. Record it again.');
   }
-  assertHeader(bytes, asset.manifest, asset.outputs);
+  assertHeader(bytes, asset.manifest, asset.outputs, { allowLegacyMultiOutput });
   return bytes;
 }
 

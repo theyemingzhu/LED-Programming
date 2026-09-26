@@ -148,7 +148,7 @@ void scheduleApTeardown(uint32_t generation);
 // opener (targetOrigin = the already-validated studioOrigin) and focuses it,
 // instead of reloading the opener tab and discarding its in-memory state.
 // Studio feature-detects, so a pre-v7 card simply keeps reloading the tab.
-constexpr int LW_BRIDGE_VERSION = 7;
+constexpr int LW_BRIDGE_VERSION = 8;
 
 String apSsid() {
   uint64_t mac = ESP.getEfuseMac();
@@ -441,7 +441,8 @@ String studioBridgeScript() {
                 // a single-chunk frame is byte-identical to the v2 payload.
                 "const s={i:p.pixels};if(Number.isInteger(p.seg))s.id=p.seg;"
                 "if(Number.isInteger(p.start)&&p.start>0)s.start=p.start;"
-                "try{lwFrameWs.send(JSON.stringify({seg:[s]}));return lwFrameLastResult={relayed:true,reason:''}}catch(_){lwFrameNext=p;lwFrameLastResult={relayed:false,reason:'relay-send-failed'};try{lwFrameWs.close()}catch(_){};lwFrameRetryLater();return lwFrameLastResult}"
+                "const frame={seg:[s]};if(p.lwPhysical===1)frame.lwPhysical=1;"
+                "try{lwFrameWs.send(JSON.stringify(frame));return lwFrameLastResult={relayed:true,reason:''}}catch(_){lwFrameNext=p;lwFrameLastResult={relayed:false,reason:'relay-send-failed'};try{lwFrameWs.close()}catch(_){};lwFrameRetryLater();return lwFrameLastResult}"
               "};"
               "let lwFrameLastResult={relayed:false,reason:'relay-not-open'};"
               // A reply says relayed only after WebSocket.send returns. Queued frames
@@ -2785,6 +2786,7 @@ void handleFirmwareInfo() {
     capabilitiesInfo["capabilities"]["sequenceMedia"]["version"] = LW_SEQUENCE_MEDIA_VERSION;
     capabilitiesInfo["capabilities"]["sequenceMedia"]["maxBytes"] = LW_SEQUENCE_MEDIA_MAX_BYTES;
     capabilitiesInfo["capabilities"]["sequenceMedia"]["chunkBytes"] = LW_SEQUENCE_MEDIA_CHUNK_BYTES;
+    capabilitiesInfo["capabilities"]["physicalFrameOrder"]["version"] = 1;
     info = String();
     serializeJson(capabilitiesInfo, info);
   }

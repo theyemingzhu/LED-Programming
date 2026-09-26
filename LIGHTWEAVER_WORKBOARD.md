@@ -37,6 +37,27 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Multi-GPIO completion and push (built; Bench pending)
+
+Adrian requested completing the remaining multi-GPIO work and pushing it. Three
+Sol workers own firmware playback/media, runtime package/persistence, and
+UI/Bench integration respectively. Manager owns final integration, one browser
+slot, checkpoint and branch push. Fix concrete remaining contacts in the existing
+same/different/recorded workflow; physical output evidence remains a separate
+Bench gate. Preserve unrelated thumbnail edits and release fixtures.
+Fixed firmware double reversal for recordings and marked Studio preview frames.
+LWOP recording headers bind ordered GPIO/counts; firmware validates them before
+playback. Legacy multi-output media retains portable recovery but requires
+re-recording for playback. New capabilities: sequenceMedia2, physicalFrameOrder1,
+bridge8; old firmware fails clearly before marked output/media mutation.
+Checkpoint2798/2798 + production build; nine distinct browser cases; executable
+WSL mapping/owner/color/output tests and ESP32-S3 compilation pass. Scene/Show
+rehearsal fixtures were corrected for HMR module identity, with guards preserved.
+Publication target: `origin/codex/multi-output-pattern-workflow`; no merge,
+deployment, signing or flash. Physical output and offline SD restart remain
+unobserved. See [completion evidence](docs/plans/2026-09-25-multi-gpio-completion-evidence.md)
+and [recorded output contract](docs/recorded-output-contract.md).
+
 ### 2026-09-25 Remaining composition delivery (done locally; Bench pending)
 
 Adrian requested immediate parallel implementation after `7fea7a1b`. Three Sol

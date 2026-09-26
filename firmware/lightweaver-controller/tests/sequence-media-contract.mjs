@@ -9,12 +9,18 @@ const owner = readFileSync(resolve(root, 'LightweaverOwnerCapability.cpp'), 'utf
 const web = readFileSync(resolve(root, 'LightweaverWeb.cpp'), 'utf8');
 
 assert.match(header, /LW_SEQUENCE_MEDIA_MAX_BYTES = 16777216/);
+assert.match(header, /LW_SEQUENCE_MEDIA_VERSION = 2/);
 assert.match(header, /LW_SEQUENCE_MEDIA_CHUNK_BYTES = 2048/);
 assert.match(media, /LW_MEDIA_BATCH_MS = 30U \* 60U \* 1000U/);
 assert.match(media, /LW_MEDIA_LEASE_MS = 10U \* 60U \* 1000U/);
 assert.match(media, /LW_MEDIA_BATCH_MAX_BYTES = 48U \* 1024U \* 1024U/);
 assert.match(media, /%08lx%08lx%08lx%08lx/, 'upload and batch IDs need 128 random bits');
 assert.match(media, /validFile\(file, hash\)/);
+assert.match(media, /sequenceOutputTopologySyntax\(header, sizeof\(header\)\)/,
+  'uploads must reject missing or malformed multi-output header identity');
+assert.match(readFileSync(resolve(root, 'main.cpp'), 'utf8'),
+  /sequenceOutputTopologyMatches\(header, sizeof\(header\), outputs, outputCount\)/,
+  'sequence playback must match the saved ordered GPIO and length map');
 assert.match(media, /file == String\("\/sequences\/"\) \+ hash \+ "\.lwseq"/);
 assert.match(media, /batchAsset\(file, hash, bytes\)/, 'later uploads need to match declared batch assets');
 assert.match(media, /sendResult\(200, true, "bounded media batch authorized", nullptr, true\)/,

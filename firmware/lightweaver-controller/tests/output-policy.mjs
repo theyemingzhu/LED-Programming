@@ -213,14 +213,14 @@ function verifyOutputFunnelContracts() {
     'streaming frames should use the external output class and local frames the local class',
   );
 
-  assert.match(copy, /outputColorPipeline\.transform\s*\(\s*leds\s*\[\s*\w+\s*\]\s*,\s*ledColorOrderCode\s*\)/,
-    'logical pixels should pass through the configured output color pipeline');
+  assert.match(copy, /copyCanvasToPhysicalOutputs[\s\S]*outputColorPipeline\.transform\s*\(\s*color\s*,\s*ledColorOrderCode\s*\)/,
+    'canvas pixels should pass through the configured output color pipeline');
   assert.doesNotMatch(copy, /\bleds\s*\[[^\]]+\]\s*=/,
     'the physical copy seam must not mutate the logical canvas');
 
   assert.match(normalShow, /pushPhysicalLeds\s*\(\s*computeBrightnessByte\s*\(\s*\)/,
     'normal showLeds should compose brightness before entering the physical funnel');
-  assert.match(physicalPush, /copyLogicalToPhysicalLeds\s*\(\s*\)/,
+  assert.match(physicalPush, /copyLogicalToPhysicalLeds\s*\(\s*sourceClass\s*\)/,
     'the shared physical funnel should own the logical-to-physical copy');
   assert.match(physicalPush, /transmitPhysicalLeds\s*\(\s*brightnessByte\s*,\s*sourceClass\s*\)/,
     'normal output should delegate to the sole physical transmitter after copying');
