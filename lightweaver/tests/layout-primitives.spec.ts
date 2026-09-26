@@ -547,7 +547,8 @@ test('Draw strip rows drag into first-to-last wiring order', async ({ page }) =>
   const rows = page.locator('.la-strip-row');
   await expect(rows).toHaveCount(2);
   const secondName = await rows.nth(1).locator('.layer-name').innerText();
-  await rows.nth(1).dragTo(rows.nth(0));
+  // The upper half means "before"; a center drop can round into "after".
+  await rows.nth(1).dragTo(rows.nth(0), { targetPosition: { x: 12, y: 4 } });
 
   await expect(rows.first().locator('.layer-name')).toHaveText(secondName);
   await expect.poll(async () => page.evaluate(() => {

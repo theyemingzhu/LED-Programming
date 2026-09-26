@@ -250,7 +250,7 @@ test('groups selected strips and merges them into one composite strip', async ({
 
   await page.locator('.la-batch-actions input').fill('Heart outline');
   await page.getByRole('button', { name: 'Group' }).click();
-  await expect(page.getByText('Heart outline')).toBeVisible();
+  await expect(page.getByText('Heart outline', { exact: true })).toBeVisible();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
   await page.locator('.la-strip-row').nth(0).click();
