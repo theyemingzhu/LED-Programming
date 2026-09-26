@@ -784,7 +784,7 @@ test('Bridge return does not call a successful POST independent restoration proo
     () => page.evaluate(() => (window as any).__commissioningPushes.length),
     { timeout: 15_000 },
   ).toBe(1);
-  await expect(page.getByRole('alert')).toContainText(/independent.*(?:read-back|firmware and project evidence)|not marked.*restored/i);
+  await expect(page.getByRole('alert')).toContainText(/independent.*(?:read-back|firmware and project evidence|evidence is inconclusive)|not marked.*restored/i);
   const pushedIdentity = await page.evaluate(() => {
     const config = (window as any).__commissioningPushes[0].runtimePackage.config;
     return {

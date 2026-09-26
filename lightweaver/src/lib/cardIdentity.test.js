@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CARD_IDENTITY_STORAGE_KEY,
+  CARD_IDENTITY_FORGOT_AT_KEY,
+  cardIdentityForgotAfter,
   classifyPairedCardReadiness,
   compareCardIdentity,
   adoptExpectedCardIdentity,
@@ -209,6 +211,29 @@ test('explicit adoption and forgetting re-pairs without silent replacement', () 
   assert.equal(readPersistedCardIdentity({ storage }), null);
   assert.equal(adoptExpectedCardIdentity({ id: 'lw-second', name: 'Second' }, { storage }), true);
   assert.equal(readPersistedCardIdentity({ storage }).id, 'lw-second');
+});
+
+test('Forget removes pairing and active setup even if revocation storage is full', () => {
+  const values = new Map([[CARD_IDENTITY_STORAGE_KEY, '{"id":"lw-old"}']]);
+  const session = new Map([['lw_card_commissioning_active_v2', 'active-flow']]);
+  const storage = {
+    getItem: key => values.get(key) ?? null,
+    setItem: () => { throw new Error('quota exceeded'); },
+    removeItem: key => values.delete(key),
+  };
+  const sessionStorage = { removeItem: key => session.delete(key) };
+  const forgottenAt = Date.now();
+  assert.equal(forgetExpectedCardIdentity({ storage, sessionStorage, now: () => forgottenAt }), true);
+  assert.equal(values.has(CARD_IDENTITY_STORAGE_KEY), false);
+  assert.equal(session.has('lw_card_commissioning_active_v2'), false);
+  assert.equal(cardIdentityForgotAfter(forgottenAt, { storage }), true);
+  assert.equal(values.has(CARD_IDENTITY_FORGOT_AT_KEY), false);
+  assert.equal(cardIdentityForgotAfter(forgottenAt, {
+    storage: { getItem: () => { throw new Error('storage denied'); } },
+  }), true);
+  assert.equal(cardIdentityForgotAfter(forgottenAt, {
+    storage: { getItem: () => 'corrupt-marker' },
+  }), true);
 });
 
 test('the setup hotspot SSID is derived from the firmware card id, not invented', () => {

@@ -28,11 +28,13 @@ import { cardHostToUrl, normalizeCardHost, readStoredCardHost, rememberCardHost,
 import {
   classifyPairedCardReadiness,
   compareCardIdentity,
+  cardIdentityForgotAfter,
   normalizeCardIdentity,
   persistCardIdentity,
   readPersistedCardIdentity,
   verifyExpectedCardAtHost,
 } from './cardIdentity.js';
+import { readCardCommissioning } from './cardCommissioningFlow.js';
 import { isCardLinkConnected as isFreshCardLinkConnected, isCardTransportConnected } from './cardConnectionFlow.js';
 import { classifyCardReadiness, isDifferentCardMismatch } from './cardReadiness.js';
 import { recordCardLinkTransition } from './cardLinkJournal.js';
@@ -1688,9 +1690,21 @@ export function reportDirectCardStatus({
   if (connected) {
     const identity = card?.id ? card : normalizeCardIdentity(status || card || {}, host);
     const acknowledgedAt = new Date().toISOString();
-    const expectedCard = readPersistedCardIdentity() || null;
+    const rememberedCard = readPersistedCardIdentity();
+    // During an exact post-flash restoration, ordinary pairing is deliberately
+    // withheld until independent project readback. A background direct status
+    // poll must not demote that verified card to "found-unpaired" in the gap.
+    // This is a transient expectation from the authoritative active setup,
+    // never a persisted pairing or an authority for any other card/build.
+    const activeFlow = !rememberedCard && status ? readCardCommissioning() : null;
+    const commissioningCard = activeFlow?.stage === 'set-up-card'
+      && activeFlow.cardAcknowledgedAt
+      && !cardIdentityForgotAfter(activeFlow.cardAcknowledgedAt)
+      && classifyCardReadiness(status, { expectedCard: activeFlow.expectedCard }).connected
+      ? activeFlow.expectedCard : null;
+    const expectedCard = rememberedCard || commissioningCard || null;
     const comparison = expectedCard?.id ? compareCardIdentity(expectedCard, identity) : { ok: true };
-    if (identity.id && comparison.ok && expectedCard?.id) {
+    if (identity.id && comparison.ok && rememberedCard?.id) {
       rememberCardHost(host);
       writeStoredCardHost(host);
     }
