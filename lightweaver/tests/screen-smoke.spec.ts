@@ -1057,7 +1057,9 @@ test('flash screen is reachable for public chip setup', async ({ page }) => {
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await expect(page.getByText('Technician diagnostics', { exact: true })).toBeVisible();
-  await expect(page.getByText('Bootloader mode')).toBeVisible();
+  await expect(page.getByText('USB connection', { exact: true })).toBeVisible();
+  await expect(page.getByText('Studio enters the serial loader automatically.')).toBeVisible();
+  await expect(page.locator('.technician-disclosure')).not.toContainText(/hold BOOT|press RESET|bootloader mode/i);
   await expect(page.getByText('Lightweaver firmware', { exact: true })).toBeVisible();
   await expect(page.getByText('Fetch latest WLED')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
@@ -1071,6 +1073,8 @@ test('installer screen gives a worker the full chip setup checklist', async ({ p
 
   await expect(page.getByRole('heading', { name: 'Worker install' })).toBeVisible();
   await expect(page.getByText('Use Chrome or Edge on a laptop')).toBeVisible();
+  await expect(page.getByText('Studio enters the serial loader automatically.')).toBeVisible();
+  await expect(page.locator('main')).not.toContainText(/hold BOOT|tap RESET|enter bootloader mode/i);
   await expect(page.locator('.inst-wire', { hasText: 'Dial A' })).toContainText('GPIO 4');
   await expect(page.locator('.inst-wire', { hasText: 'Dial press' })).toContainText('GPIO 6');
   await expect(page.locator('.inst-wire', { hasText: 'Shared ground' })).toBeVisible();

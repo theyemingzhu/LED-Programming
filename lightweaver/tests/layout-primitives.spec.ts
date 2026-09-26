@@ -547,11 +547,38 @@ test('Draw strip rows drag into first-to-last wiring order', async ({ page }) =>
   const rows = page.locator('.la-strip-row');
   await expect(rows).toHaveCount(2);
   const secondName = await rows.nth(1).locator('.layer-name').innerText();
-  // Start on the drag handle, clear of the row's pattern-action button.
-  // Dropping in the upper half places the strip before the first row.
-  await rows.nth(1).locator('.la-wire-n').dragTo(rows.nth(0), {
-    targetPosition: { x: 12, y: 8 },
+  await expect.poll(async () => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');
+    return saved?.layout?.wiring?.outputs?.[0]?.runIds;
+  })).toEqual(['run-strip-1', 'run-strip-2']);
+  await page.evaluate(() => {
+    (window as any).__stripDragTrace = [];
+    for (const type of ['dragstart', 'drop']) {
+      document.addEventListener(type, event => {
+        const drag = event as DragEvent;
+        const hit = document.elementFromPoint(drag.clientX, drag.clientY);
+        (window as any).__stripDragTrace.push({
+          type,
+          target: (event.target as Element)?.closest?.('.la-strip-row')?.querySelector('.layer-name')?.textContent || '',
+          hit: hit?.closest?.('.la-strip-row')?.querySelector('.layer-name')?.textContent || '',
+          data: type === 'drop' ? drag.dataTransfer?.getData('application/x-lightweaver-strip') : '',
+        });
+      }, true);
+    }
   });
+  const source = await rows.nth(1).boundingBox();
+  const handle = await rows.nth(1).locator('.la-wire-n').boundingBox();
+  const target = await rows.nth(0).boundingBox();
+  if (!source || !handle || !target) throw new Error('Expected both strip rows and the drag handle.');
+  // Start on the real drag handle and drop inside the target's upper half.
+  // Measured coordinates avoid a fixed point on a wrapping row's edge.
+  await rows.nth(1).dragTo(rows.nth(0), {
+    sourcePosition: { x: handle.x + handle.width / 2 - source.x, y: handle.y + handle.height / 2 - source.y },
+    targetPosition: { x: Math.min(80, target.width / 3), y: Math.max(10, target.height / 4) },
+  });
+  const dragTrace = await page.evaluate(() => (window as any).__stripDragTrace);
+  expect(dragTrace).toContainEqual(expect.objectContaining({ type: 'dragstart', target: secondName }));
+  expect(dragTrace).toContainEqual(expect.objectContaining({ type: 'drop', target: 'Line', hit: 'Line', data: '["strip-2"]' }));
 
   await expect(rows.first().locator('.layer-name')).toHaveText(secondName);
   await expect.poll(async () => page.evaluate(() => {

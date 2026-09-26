@@ -21,7 +21,7 @@ import { useProject } from '../state/ProjectContext.jsx';
     ["Shared ground", "GND", "required between card and LED supply"],
   ];
   const STEPS = [
-    { t: "Flash the card", b: "Use Chrome or Edge on a laptop. Plug the ESP32-S3 in by USB, enter bootloader mode, then flash the Lightweaver firmware.", a: "Open flash", go: "flash" },
+    { t: "Flash the card", b: "Use Chrome or Edge on a laptop. Plug the ESP32-S3 in by USB, then select its port in Studio. Studio enters the serial loader automatically.", a: "Open flash", go: "flash" },
     { t: "Wire one output first", b: "Connect LED data to GPIO 16 through the level shifter. Power LEDs from the final supply, not USB. Confirm shared ground before lighting anything." },
     { t: "Join setup WiFi", b: "After flashing, look for a WiFi network whose name starts with Lightweaver- and ends in four characters unique to this card. Join it, open 192.168.4.1, then add the shop or customer WiFi and set the hostname." },
     { t: "Load the project", b: "Open the public Studio, choose patterns, layout, and settings. Save the card package through the card page so it survives reboot.", a: "Open settings", go: "settings" },
@@ -35,7 +35,7 @@ import { useProject } from '../state/ProjectContext.jsx';
   ];
   const FAILS = [
     ["No serial port", "Use desktop Chrome or Edge, a data USB cable, and close any serial monitor."],
-    ["Flash will not connect", "Hold BOOT, tap RESET, release BOOT, then click Connect again."],
+    ["Flash will not connect", "Check the USB cable and selected port, close any serial monitor, then retry Connect. Studio will try the automatic serial connection again."],
     ["No LEDs", "Check LED supply, shared ground, data direction arrow, and GPIO 16."],
     ["Wrong colors", "Change Color order in Settings, then save to card."],
     ["Dial backwards", "Swap Dial A and Dial B, or change rotation direction before saving."],
