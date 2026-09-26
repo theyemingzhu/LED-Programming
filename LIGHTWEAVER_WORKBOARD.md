@@ -37,6 +37,18 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Multi-GPIO release (active)
+
+Adrian explicitly requested shipment. Clean release branch
+`codex/ship-multi-gpio` starts at `1c4ee1f7`; unrelated thumbnail edits stay in
+the original checkout. Prepare one firmware version bump, verify source gates,
+merge through the integration PR, then wait for the protected signer and real
+production deployment. Final evidence must cover terminal main, strict no-store
+Studio marker and exact staged Studio/firmware graphs. Full launch checks run
+against the signed release; feature-source factory freshness remains deferred
+until protected signing. Physical Bench observations remain unperformed and
+must be reported separately; no destructive factory flash is planned.
+
 ### 2026-09-25 Multi-GPIO completion and push (pushed; Bench pending)
 
 Adrian requested completing the remaining multi-GPIO work and pushing it. Three

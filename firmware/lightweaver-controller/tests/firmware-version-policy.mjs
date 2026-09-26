@@ -18,7 +18,7 @@ const {
   parseVersion,
 } = await import(helperPath);
 
-assert.equal(readFileSync(versionPath, 'utf8').trim(), '1.1.44');
+assert.equal(readFileSync(versionPath, 'utf8').trim(), '1.1.45');
 
 assert.deepEqual(parseVersion('1.2.3'), [1, 2, 3]);
 for (const malformed of ['', '1', '1.2', 'v1.2.3', '1.2.3-beta', '01.2.3', '1.02.3', '1.2.03']) {
@@ -227,7 +227,7 @@ assert.match(
 for (const source of [mainSource, storageSource]) {
   assert.match(
     source,
-    /Non-PlatformIO compile fallback only; PlatformIO injects canonical VERSION\.\n#ifndef LW_FIRMWARE_VERSION\n#define LW_FIRMWARE_VERSION "1\.0\.0"/,
+    /Non-PlatformIO compile fallback only; PlatformIO injects canonical VERSION\.\r?\n#ifndef LW_FIRMWARE_VERSION\r?\n#define LW_FIRMWARE_VERSION "1\.0\.0"/,
   );
 }
 
