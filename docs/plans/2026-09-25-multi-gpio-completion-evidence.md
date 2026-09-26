@@ -71,7 +71,8 @@ weakened. The final fixture-only repair required no product changes or repeat
 of the passing checkpoint.
 
 Checkpoint log: `%TEMP%/lightweaver-multi-gpio-completion-checkpoint.log`.
-Push target: `origin/codex/multi-output-pattern-workflow`. No merge, deployment,
+Implementation commit `55c607de` was pushed successfully to
+`origin/codex/multi-output-pattern-workflow`. No merge, deployment,
 signing or card flash is part of this push. Pre-existing firmware thumbnail
 changes and release fixtures remain outside the commits; target compilation
 used the working tree, including those pre-existing thumbnail changes.

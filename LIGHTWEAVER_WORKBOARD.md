@@ -37,7 +37,7 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
-### 2026-09-25 Multi-GPIO completion and push (built; Bench pending)
+### 2026-09-25 Multi-GPIO completion and push (pushed; Bench pending)
 
 Adrian requested completing the remaining multi-GPIO work and pushing it. Three
 Sol workers own firmware playback/media, runtime package/persistence, and
@@ -53,7 +53,8 @@ bridge8; old firmware fails clearly before marked output/media mutation.
 Checkpoint2798/2798 + production build; nine distinct browser cases; executable
 WSL mapping/owner/color/output tests and ESP32-S3 compilation pass. Scene/Show
 rehearsal fixtures were corrected for HMR module identity, with guards preserved.
-Publication target: `origin/codex/multi-output-pattern-workflow`; no merge,
+Implementation commit `55c607de` pushed to
+`origin/codex/multi-output-pattern-workflow`; no merge,
 deployment, signing or flash. Physical output and offline SD restart remain
 unobserved. See [completion evidence](docs/plans/2026-09-25-multi-gpio-completion-evidence.md)
 and [recorded output contract](docs/recorded-output-contract.md).
