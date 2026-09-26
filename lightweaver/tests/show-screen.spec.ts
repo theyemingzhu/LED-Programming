@@ -45,6 +45,7 @@ async function installShowStubs(page: any) {
           commandReady: true,
           outputReady: true,
           playbackReady: true,
+          capabilities: { physicalFrameOrder: { version: 1 } },
           projectId: project.projectId,
           projectRevision: project.projectRevision,
           projectFingerprint: project.projectFingerprint,
@@ -226,6 +227,7 @@ async function connectMatchingShowCard(page: any) {
       commandReady: true,
       outputReady: true,
       playbackReady: true,
+      capabilities: { physicalFrameOrder: { version: 1 } },
       projectId: project.projectId,
       projectRevision: project.projectRevision,
       projectFingerprint: project.projectFingerprint,
@@ -376,6 +378,7 @@ test('connected preview and frames follow split, reversed, and off physical chai
 
   await page.getByRole('button', { name: 'Play on the lights' }).click();
   await expect.poll(async () => page.evaluate(() => (window as any).__streamedFrames().length)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).__frames.every((message: any) => message.lwPhysical === 1))).toBe(true);
   const streamed = await page.evaluate(() => (window as any).__streamedFrames().at(-1));
   expect(streamed).toHaveLength(6);
   expect(streamed[2]).toBe('000000');

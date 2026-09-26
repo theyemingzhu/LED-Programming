@@ -55,6 +55,7 @@ async function installCardHarness(page: Page) {
     if (url.pathname === '/api/firmware-info' || url.pathname === '/api/status') {
       await route.fulfill({ status: 200, headers, json: {
         cardId: 'test-card', name: 'Test card', firmwareVersion: '1.0.0', buildId: 'test-build',
+        capabilities: { physicalFrameOrder: { version: 1 } },
       } });
       return;
     }
@@ -106,6 +107,7 @@ test('library-only gradient still uses Preview on Lights frames and Stop restore
   await preview.click();
   await expect(page.getByRole('button', { name: 'Stop preview' })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate(() => window.__patternLabFrames.length)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__patternLabFrames.every(frame => JSON.parse(frame).lwPhysical === 1))).toBe(true);
 
   await page.getByRole('button', { name: 'Stop preview' }).click();
   await expect(page.locator('.plab-live-preview [role="status"]')).toContainText('Previous card look restored');
