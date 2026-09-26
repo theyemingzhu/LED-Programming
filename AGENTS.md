@@ -31,6 +31,17 @@ As of 2026-06 the runtime is **ESP32-S3 only**. The card runs the Lightweaver fi
 
 ## Fast development loop — mandatory
 
+### Standing owner decision: no physical button press for flashing or reboot
+
+Adrian clarified this on 2026-09-26: flashing/updating the card, as well as
+rebooting it, must not ask him to press BOOT, RESET, or a physical control.
+Use authenticated software update authorization and automatic USB reset where
+supported. If authorization, automatic connection, or restart fails, offer
+software recovery and report the exact blocker; never silently substitute a
+physical-button workflow or bypass authorization. Preserve configuration on
+configured cards. Carry this requirement into worker handoffs and acceptance
+checks; do not claim it verified from UI copy alone.
+
 Use `docs/development-workflow.md` as the source of truth for proportional
 verification. Default to the glitch loop for an individual browser or UI defect.
 

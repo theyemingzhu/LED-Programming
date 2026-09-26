@@ -133,6 +133,8 @@ test('technician controls remain separately labelled outside install mode', asyn
   const technician = page.locator('.technician-disclosure');
   await expect(technician.locator('details')).toHaveCount(0);
   await expect(technician.getByRole('button', { name: /Browse \.bin/i })).toBeVisible();
+  await expect(technician).toContainText('Studio enters the serial loader automatically');
+  await expect(technician).not.toContainText(/Hold BOOT|Press RESET|Release BOOT|Bootloader mode/i);
   await expect(page.getByText('Address', { exact: true })).toBeVisible();
   await expect(page.locator('textarea.fl-log')).toBeVisible();
 });

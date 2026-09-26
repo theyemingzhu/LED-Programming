@@ -7,6 +7,23 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## No-button flashing release — 2026-09-26
+
+Adrian authorized shipment. Studio Wi-Fi flashing now requires software update
+authorization and never falls back to physical BOOT/control confirmation.
+Unavailable authorization offers owner sign-in/retry or preserving USB; USB
+connection and restart remain automatic. Technician BOOT/RESET instructions are
+removed. Existing signature, exact-card and configuration-preservation checks
+remain. This is a Studio-only release; signed firmware stays 1.1.46/build 2147.
+
+Focused evidence: three regressions witnessed red; final eight Chromium cases
+and seven grant-client unit tests pass; eight server grant checks, flash-connect,
+firmware update web contract and production build pass. Blocked-service screen
+inspected. The original Windows full unit runner stalled; the exact release
+candidate is being verified in Linux and GitHub before merge. No hardware flash.
+Release candidate, merged gate, credentialed deploy and terminal live proof are
+pending. Previous main 69e1fb5f final launch run 36231211449 passed.
+
 ## Current expression integration status — 2026-09-23
 
 **Implementation and release: done. Shipped — Studio build 2048, firmware build

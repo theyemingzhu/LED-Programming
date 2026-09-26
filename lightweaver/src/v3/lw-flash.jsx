@@ -70,6 +70,7 @@ import { runPreservingUsbBootstrap } from '../lib/preservingUsbBootstrap.js';
 import { connectCardTransport, getActiveCardTransportAuthority } from '../lib/cardTransport.js';
 import { CARD_HOST_STORAGE_KEY, readStoredCardHost, readStoredCardHostHistory } from '../lib/cardConnection.js';
 import { openOwnerLibrarySignIn, probeFirmwareUpdateGrantService, requestSoftwareFirmwareUpdateGrant } from '../lib/ownerFirmwareUpdateGrant.js';
+import { requestProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
 import {
   cardRestartedAfterUsbInspection,
   clearActiveUsbInspection,
@@ -78,12 +79,6 @@ import {
   requireFreshRuntimeAfterUsbInspection,
 } from '../lib/usbInspection.js';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
-
-  const STEPS = [
-    { n: 1, label: "Hold BOOT", sub: "GPIO0 pin", kbd: "BOOT ↓" },
-    { n: 2, label: "Press RESET", sub: "EN pin — then release", kbd: "RESET ⟳" },
-    { n: 3, label: "Release BOOT", sub: "then click Connect", kbd: "BOOT ↑" },
-  ];
 
   const LIGHTWEAVER_FIRMWARE_NAME = 'lightweaver-controller-esp32s3-factory.bin';
 
@@ -208,7 +203,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         const msg = err?.message ?? String(err);
         setStatus(`✕ ${msg}`); setKind("err"); append(`Connection failed: ${msg}`);
         if (msg.includes('Failed to connect') || msg.includes('sync')) {
-          append('→ Hold BOOT → press+release RESET → release BOOT → then Connect');
+          append('→ Automatic USB connection did not complete. Check the cable and selected port, then retry Connect.');
         }
         loaderRef.current = null;
         transportRef.current = null;
@@ -320,17 +315,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               </div>
             )}
             <div>
-              <div className="sec-h"><span className="t">Bootloader mode</span><span className="m">do this before connecting</span><span className="line" /></div>
-              <div className="boot-steps">
-                {STEPS.map((s) => (
-                  <div key={s.n} className="boot-step">
-                    <div className="sn">STEP {s.n}</div>
-                    <div className="sl">{s.label}</div>
-                    <div className="ss">{s.sub}</div>
-                    <div className="kbd">{s.kbd}</div>
-                  </div>
-                ))}
-              </div>
+              <div className="sec-h"><span className="t">USB connection</span><span className="line" /></div>
+              <p>Select the card's USB port when you click Connect. Studio enters the serial loader automatically.</p>
             </div>
 
             <div>
@@ -535,8 +521,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     onSwitchToUsb,
   }) {
     const [confirming, setConfirming] = useState(false);
-    const [physicalConfirmed, setPhysicalConfirmed] = useState(false);
-    const [forcePhysicalAuthorization, setForcePhysicalAuthorization] = useState(false);
+    const [usbConfirmed, setUsbConfirmed] = useState(false);
     const [phase, setPhase] = useState('idle');
     const [acknowledgedBytes, setAcknowledgedBytes] = useState(0);
     const [error, setError] = useState('');
@@ -584,7 +569,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       return () => { active = false; };
     }, [softwareGrantAvailable]);
     const softwareGrantBlocked = grantService.state === 'sign-in-required' || grantService.state === 'unavailable';
-    const useSoftwareAuthorization = softwareGrantAvailable && !forcePhysicalAuthorization && !softwareGrantBlocked;
+    const softwareGrantReady = softwareGrantAvailable && grantService.state === 'ready';
     const actionLabel = mode === 'wifi' ? 'Update over Wi-Fi' : 'Update once over USB';
     // F40 (Adrian: "I tried to look for where you're talking about, I don't
     // quite see it"): a card that genuinely cannot take a Wi-Fi update yet
@@ -669,7 +654,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         // owner is shown a success and a failure for the same update at once.
         setError('');
         setConfirming(false);
-        setPhysicalConfirmed(false);
+        setUsbConfirmed(false);
         setPhase('reconnected');
         clearFirmwareUpdateSession();
       } else if (['restarting', 'pending-reboot', 'probation', 'valid', 'rolled-back'].includes(session.phase)) {
@@ -752,7 +737,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         setError(detail);
         setRecoveryBlocker(result.state === 'blocked' ? result.reason : '');
         setConfirming(false);
-        setPhysicalConfirmed(false);
+        setUsbConfirmed(false);
         setPhase('idle');
       }).catch(cause => {
         if (!active) return;
@@ -764,7 +749,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     }, [card.id, phase, readiness?.host, reconnectHost, target]);
 
     const start = async () => {
-      if ((!useSoftwareAuthorization && !physicalConfirmed) || !release) return;
+      if (!release || (mode === 'wifi' ? !softwareGrantReady : !usbConfirmed)) return;
       if (mode === 'usb' && ['sending', 'verification-unknown'].includes(readFirmwareUpdateSession()?.phase)) {
         setConfirming(false);
         setError('The previous USB update result is unknown. Check the exact running firmware before another update.');
@@ -800,30 +785,16 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             }
           }
           if (!testFactory && !authority) throw new Error('Reconnect this exact card before updating over Wi-Fi.');
-          let softwareGrant;
-          let physicalConfirmation;
-          if (useSoftwareAuthorization) {
-            softwareGrant = testFactory
-              ? window.__LW_SOFTWARE_UPDATE_GRANT_FOR_TEST__ || {
-                grantPayload: '{"test":"software-update-grant"}', grantSignature: 'A'.repeat(86),
-              }
-              : await requestSoftwareFirmwareUpdateGrant({ authority, release });
-          } else {
-            if (!testFactory && !authority.ownerCapability) {
-              await authority.issueOwnerCapability({
-                commissioningProof: 'owner-confirmed-physical-control',
-                expectedProjectHead: readiness?.projectHead || authority.projectHead,
-              });
+          const softwareGrant = testFactory
+            ? window.__LW_SOFTWARE_UPDATE_GRANT_FOR_TEST__ || {
+              grantPayload: '{"test":"software-update-grant"}', grantSignature: 'A'.repeat(86),
             }
-            physicalConfirmation = globalThis.crypto?.randomUUID?.()
-              || `physical-${Date.now()}-${Math.random()}`;
-          }
+            : await requestSoftwareFirmwareUpdateGrant({ authority, release });
           const makeUpdater = testFactory || createCardFirmwareUpdater;
           const updater = makeUpdater({
             authority,
             release,
             softwareGrant,
-            physicalConfirmation,
             projectFingerprint: readiness?.projectFingerprint || '',
             onProgress,
           });
@@ -907,7 +878,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           if (usbInspectionInvalidRef) usbInspectionInvalidRef.current = true;
           onUsbReleased?.();
           setConfirming(false);
-          setPhysicalConfirmed(false);
+          setUsbConfirmed(false);
           setError('USB transfer ended without a verified result. Do not repeat the update yet. Reconnect this exact card over USB to check the firmware now running.');
           setPhase('idle');
           return;
@@ -970,47 +941,45 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         )}
         {!usbResultUnknown && confirming && phase === 'idle' && (
           <div className="install-confirm-action">
-            {useSoftwareAuthorization ? (
+            {mode === 'wifi' ? (
               <>
-                <p>Studio securely binds this signed update to this exact card, project, and browser session.</p>
-                <button className="btn-lg" type="button" onClick={start}>Start secure Wi-Fi update</button>
-                <button className="btn" type="button" onClick={() => setForcePhysicalAuthorization(true)}>Use card button instead</button>
-              </>
-            ) : (
-              <>
-                <p>{mode === 'wifi'
-                  ? 'Briefly press BOOT/control once. Do not hold it and do not press RESET. Then confirm below.'
-                  : 'Studio read this card from the USB device selected in your browser. Confirm its ID before the one-time update.'}</p>
-                <label>
-                  <input type="checkbox" checked={physicalConfirmed} onChange={event => setPhysicalConfirmed(event.target.checked)} />
-                  <span>{mode === 'wifi'
-                    ? 'I physically confirmed this exact Lightweaver card.'
-                    : `I confirm the selected USB card is Lightweaver card ${card.id}.`}</span>
-                </label>
-                <button className="btn-lg" type="button" disabled={!physicalConfirmed} onClick={start}>Start preserving update</button>
-                {softwareGrantAvailable && mode === 'wifi' && (softwareGrantBlocked ? (
+                {softwareGrantReady && <p>Studio securely binds this signed update to this exact card, project, and browser session.</p>}
+                {softwareGrantReady && <button className="btn-lg" type="button" onClick={start}>Start secure Wi-Fi update</button>}
+                {grantService.state === 'unknown' && softwareGrantAvailable && <p role="status">Checking secure update authorization…</p>}
+                {!softwareGrantAvailable && <p role="status">This card cannot authorize a Wi-Fi update through Studio. Use the preserving USB update on a computer with Chrome or Edge.</p>}
+                {softwareGrantBlocked && softwareGrantAvailable && (
                   <div className="install-release" role="status" data-testid="software-grant-blocked">
-                    <span>
-                      {grantService.reason === 'no-session-service'
-                        ? 'This Studio has no software authorisation service (local or card-hosted). Use the card button.'
-                        : grantService.state === 'sign-in-required'
-                          ? 'Software authorization needs the owner sign-in for this Studio site. The card-button update above works without it.'
-                          : 'Studio cannot reach its software authorization service right now. The card-button update above works without it.'}
-                    </span>
-                    {grantService.reason === 'owner-access' && (
-                      <button className="btn" type="button" onClick={() => openOwnerLibrarySignIn()}>Open owner sign-in</button>
+                    <span>{grantService.reason === 'no-session-service'
+                      ? 'This Studio has no software authorization service. Open the owner Studio site at led.mandalacodes.com and reconnect this exact card, or use preserving USB update.'
+                      : grantService.state === 'sign-in-required'
+                        ? 'Software authorization needs owner sign-in for this Studio site. Sign in, then check again; this card stays unchanged.'
+                        : 'Studio cannot reach its software authorization service right now. Check the connection and try again, or use preserving USB update.'}</span>
+                    {grantService.state === 'sign-in-required' && (
+                      <button className="btn" type="button" onClick={() => {
+                        if (grantService.reason === 'owner-access') openOwnerLibrarySignIn();
+                        else requestProjectsPanel();
+                      }}>Open owner sign-in</button>
                     )}
                     <button className="btn" type="button" onClick={() => {
                       setGrantService({ state: 'unknown', reason: '' });
                       void probeFirmwareUpdateGrantService().then(setGrantService);
                     }}>Check again</button>
                   </div>
-                ) : (
-                  <button className="btn" type="button" onClick={() => {
-                    setPhysicalConfirmed(false);
-                    setForcePhysicalAuthorization(false);
-                  }}>Use secure software authorization</button>
-                ))}
+                )}
+                {canWebSerialInstall && <button className="btn" type="button" onClick={() => {
+                  setConfirming(false);
+                  setError('');
+                  onSwitchToUsb?.();
+                }}>Use preserving USB update instead</button>}
+              </>
+            ) : (
+              <>
+                <p>Studio read this card from the USB device selected in your browser. Confirm its ID before the one-time update.</p>
+                <label>
+                  <input type="checkbox" checked={usbConfirmed} onChange={event => setUsbConfirmed(event.target.checked)} />
+                  <span>I confirm the selected USB card is Lightweaver card {card.id}.</span>
+                </label>
+                <button className="btn-lg" type="button" disabled={!usbConfirmed} onClick={start}>Start preserving update</button>
               </>
             )}
           </div>
@@ -1066,7 +1035,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         {error && factoryUpdateReady && mode === 'wifi' && canWebSerialInstall && (
           <button className="btn" type="button" data-testid="preserving-update-usb-after-error" onClick={() => {
             setConfirming(false);
-            setPhysicalConfirmed(false);
+            setUsbConfirmed(false);
             setError('');
             onSwitchToUsb?.();
           }}>Use preserving USB update instead</button>
@@ -1225,10 +1194,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // readiness-gated. "This card CAN take a network update, and Studio is
     // genuinely connected to it" is the durable fact that decides which
     // panel renders; PreservingUpdatePanel already has its own path for "not
-    // authorized to write yet" (the physical-button / software-authorization
-    // choice), so a card that is capable but not immediately ready still
-    // lands on the correct door and finds out why from the card itself
-    // (a real preflight failure), instead of never seeing the door at all.
+    // authorized to write yet" (secure software authorization or a preserving
+    // USB exit), so a card that is capable but not immediately ready still
+    // lands on the correct door instead of never seeing it at all.
     const cardAdvertisesNetworkUpdate = Boolean(
       updateReadiness?.capabilities?.firmwareUpdate?.version === 1
       && updateReadiness.capabilities.firmwareUpdate.network === true,

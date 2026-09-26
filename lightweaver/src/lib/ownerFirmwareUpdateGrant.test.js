@@ -106,7 +106,7 @@ test('an owner-protection redirect or network failure names the sign-in, not "Fa
   );
 });
 
-test('a 404 "not_found" grant response names the card-button path, not the raw route-not-found body', async () => {
+test('a 404 "not_found" grant response names the owner Studio and preserving USB paths', async () => {
   const common = {
     authority: exactAuthority([]), release: { manifest: { buildId: BUILD }, ticketSha256: TICKET },
     origin: 'https://led.mandalacodes.com',
@@ -124,7 +124,8 @@ test('a 404 "not_found" grant response names the card-button path, not the raw r
       }),
     }),
     error => error.reason === 'grant-service-missing'
-      && /card button/i.test(error.message)
+      && /owner Studio.*preserving USB/i.test(error.message)
+      && !/card button|press BOOT|press RESET/i.test(error.message)
       && !/^API route not found\.$/.test(error.message),
   );
 });

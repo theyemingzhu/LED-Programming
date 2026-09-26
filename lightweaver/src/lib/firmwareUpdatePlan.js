@@ -67,8 +67,8 @@ export function factoryCardReadyForNetworkFirmwareUpdate(link = {}, {
 }
 
 // Software authorization arrived after the preserving network updater. Keep
-// this as a separate advertised bit so Studio can bootstrap older network-
-// capable cards through their existing physical confirmation path.
+// this as a separate advertised bit so Studio sends older cards without it to
+// the preserving USB update path.
 export function cardSupportsSoftwareFirmwareUpdateGrant(readiness = {}) {
   const capability = readiness?.capabilities?.firmwareUpdate;
   return capability?.version === 1
