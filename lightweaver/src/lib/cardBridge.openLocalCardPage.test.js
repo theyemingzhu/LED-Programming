@@ -225,10 +225,34 @@ test('a blocked popup reports popup-blocked so callers can show the visible copy
   assert.deepEqual(openLocalCardPage('192.168.50.3'), { ok: false, reason: 'popup-blocked' });
   assert.equal(opened.length, 1);
   assert.equal(opened[0].name, CARD_BRIDGE_WINDOW_NAME);
-  assert.equal(opened[0].features, undefined);
+  assert.equal(opened[0].features, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
 });
 
-test('bridge-only acquisition requests a compact passive utility window', () => {
+test('card windows open tall enough for the visible card page and fit smaller screens', () => {
+  for (const launch of [
+    () => openCardBridge('lightweaver.local'),
+    () => reserveCardBridgeWindow(),
+    () => openLocalCardPage('lightweaver.local'),
+  ]) {
+    for (const [screen, expectedSize] of [
+      [{ availWidth: 1920, availHeight: 1040 }, { width: 520, height: 760 }],
+      [{ availWidth: 390, availHeight: 600 }, { width: 358, height: 500 }],
+      [undefined, { width: 520, height: 760 }],
+    ]) {
+      const { win, opened } = stubWindow({ openResult: fakeCardTab() });
+      win.screen = screen;
+      launch();
+      const features = new URLSearchParams(opened[0].features?.replaceAll(',', '&'));
+      assert.equal(features.get('popup'), 'yes');
+      assert.equal(Number(features.get('height')), expectedSize.height,
+        'the complete card controls need a usable viewport, not a 180px utility strip');
+      assert.equal(Number(features.get('width')), expectedSize.width);
+      assert.equal(opened[0].name, CARD_BRIDGE_WINDOW_NAME, 'keep the one shared card window');
+    }
+  }
+});
+
+test('bridge-only acquisition requests a readable card window', () => {
   const tab = fakeCardTab();
   const { opened } = stubWindow({ openResult: tab });
 
@@ -453,7 +477,7 @@ test('an ordinary card-page click opens the visible page in bridge mode for the 
   assert.equal(fragment.get('studioBridge'), '1');
   assert.equal(fragment.get('studioOrigin'), 'https://led.mandalacodes.com');
   assert.equal(fragment.has('bridgeUtility'), false);
-  assert.equal(opened[0].features, undefined);
+  assert.equal(opened[0].features, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
 });
 
 test('ordinary card-page navigation strips a supplied bridge utility intent', () => {
@@ -671,14 +695,14 @@ test('repeat visits reuse the one named card tab, same handle, and focus it', ()
   assert.equal(first.ok, true);
   assert.equal(first.window, tab);
   assert.equal(opened.length, 1);
-  assert.deepEqual(opened[0], { url: 'http://192.168.50.4/#studioBridge=1', name: CARD_BRIDGE_WINDOW_NAME, features: undefined });
+  assert.deepEqual(opened[0], { url: 'http://192.168.50.4/#studioBridge=1', name: CARD_BRIDGE_WINDOW_NAME, features: CARD_BRIDGE_UTILITY_WINDOW_FEATURES });
   const firstLifecycle = getCardBridgeState().lifecycle;
 
   const second = openLocalCardPage('192.168.50.4', { path: '/settings', reason: 'open-card-page' });
   assert.equal(second.ok, true);
   assert.equal(second.window, first.window, 'the same named window handle is reused');
   assert.equal(opened.length, 2);
-  assert.deepEqual(opened[1], { url: 'http://192.168.50.4/settings#studioBridge=1', name: CARD_BRIDGE_WINDOW_NAME, features: undefined });
+  assert.deepEqual(opened[1], { url: 'http://192.168.50.4/settings#studioBridge=1', name: CARD_BRIDGE_WINDOW_NAME, features: CARD_BRIDGE_UTILITY_WINDOW_FEATURES });
   assert.equal(tab.focusCalls, 2, 'an already-open tab is focused');
   assert.ok(getCardBridgeState().lifecycle > firstLifecycle,
     'same-window same-host navigation starts a new revoked lifecycle');
@@ -708,7 +732,7 @@ test('an empty host falls back to the stored local card host', () => {
   const { opened, values } = stubWindow({ openResult: tab });
   values.set('lw_chip_card_host', '192.168.50.6');
   assert.equal(openLocalCardPage().ok, true);
-  assert.deepEqual(opened[0], { url: 'http://192.168.50.6/#studioBridge=1', name: CARD_BRIDGE_WINDOW_NAME, features: undefined });
+  assert.deepEqual(opened[0], { url: 'http://192.168.50.6/#studioBridge=1', name: CARD_BRIDGE_WINDOW_NAME, features: CARD_BRIDGE_UTILITY_WINDOW_FEATURES });
 });
 
 const handoffCorrelation = Object.freeze({

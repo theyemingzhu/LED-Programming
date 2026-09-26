@@ -120,7 +120,7 @@ export const CARD_BRIDGE_APP = 'LightweaverCardBridge';
 // card tab ever exists; unnamed '_blank' opens spawn extra tabs that race the
 // tracked bridge window.
 export const CARD_BRIDGE_WINDOW_NAME = 'lightweaver-card-bridge';
-export const CARD_BRIDGE_UTILITY_WINDOW_FEATURES = 'popup=yes,width=360,height=180';
+export const CARD_BRIDGE_UTILITY_WINDOW_FEATURES = 'popup=yes,width=520,height=760';
 export const LOCAL_CHIP_DEFAULT_KEY = 'lw_local_chip_default';
 
 const CARD_BRIDGE_RELEASE_REASONS = new Set(['disconnected']);
@@ -235,6 +235,18 @@ const bridgeAcquisitions = new Map();
 
 function browserWindow() {
   return typeof window !== 'undefined' ? window : null;
+}
+
+function cardPageWindowFeatures(win) {
+  // Older cards show their full controls even for bridge launches. Give that
+  // page room to open, and leave space for window chrome on smaller displays.
+  // Newer cards may still shrink their own passive utility after loading.
+  const fit = (preferred, available, chrome) => Number.isFinite(available) && available > 0
+    ? Math.min(preferred, Math.max(1, Math.floor(available - chrome)))
+    : preferred;
+  const width = fit(520, win?.screen?.availWidth, 32);
+  const height = fit(760, win?.screen?.availHeight, 100);
+  return `popup=yes,width=${width},height=${height}`;
 }
 
 function browserDocument(owner = browserWindow()) {
@@ -1318,7 +1330,7 @@ export function openCardBridge(rawHost = '', {
   const host = normalizeCardHost(rawHost || readStoredCardHost());
   const origin = cardHostToUrl(host);
   const bridgeUrl = buildCardBridgeLaunchUrl(host, studioUrl);
-  const opened = win.open(bridgeUrl, CARD_BRIDGE_WINDOW_NAME, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
+  const opened = win.open(bridgeUrl, CARD_BRIDGE_WINDOW_NAME, cardPageWindowFeatures(win));
   if (!opened || isCurrentBrowsingContext(opened, win)) {
     // Never treat this window as the bridge target, even if some host still
     // resolves the open back to self after the name was released above.
@@ -1370,7 +1382,7 @@ export function openLocalCardPage(rawHost = '', { path = '/', reason = 'open-car
   url.hash = fragment.toString();
   if (!win?.open) return { ok: false, reason: 'popup-blocked' };
   attachCardBridgeListener();
-  const opened = win.open(url.href, CARD_BRIDGE_WINDOW_NAME);
+  const opened = win.open(url.href, CARD_BRIDGE_WINDOW_NAME, cardPageWindowFeatures(win));
   if (!opened) {
     const active = reuseActiveBridgeWindow(host, origin);
     return active ? { ok: true, window: active } : { ok: false, reason: 'popup-blocked' };
@@ -2111,7 +2123,7 @@ export function reserveCardBridgeWindow() {
   const win = browserWindow();
   if (!win?.open) return null;
   try {
-    const opened = win.open('', CARD_BRIDGE_WINDOW_NAME, CARD_BRIDGE_UTILITY_WINDOW_FEATURES);
+    const opened = win.open('', CARD_BRIDGE_WINDOW_NAME, cardPageWindowFeatures(win));
     // Opening a named target can replace a live card document with the blank
     // reservation. Its old origin/identity must never retain authority during
     // the subsequent asynchronous discovery gap.
