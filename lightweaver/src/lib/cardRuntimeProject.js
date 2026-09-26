@@ -15,6 +15,7 @@ import {
   normalizeCardPlaylist,
   normalizePlaylistTiming,
 } from './cardPlaylist.js';
+import { normalizePatternLabSequenceAssets } from './patternLabHandoff.js';
 
 export function totalProjectPixels(strips = []) {
   return strips.reduce((sum, strip) => sum + (strip.pixels?.length || strip.pixelCount || strip.leds || 0), 0);
@@ -70,6 +71,7 @@ export function buildCardRuntimePackageFromProject({
   // runtime compilation even if a stale or hand-edited project references one.
   const savedLooks = normalizeSavedLooks(standaloneController?.looks)
     .filter(look => look.projectOnly !== true);
+  const sequenceAssets = normalizePatternLabSequenceAssets(standaloneController?.sequenceAssets);
   const legacyCycleIds = Array.isArray(standaloneController?.controls?.encoder?.patternCycleIds) &&
     !isDefaultPatternCycle(standaloneController.controls.encoder.patternCycleIds)
     ? standaloneController.controls.encoder.patternCycleIds
@@ -77,6 +79,13 @@ export function buildCardRuntimePackageFromProject({
   const rawPlaylist = isImplicitDefaultPatternPlaylist(standaloneController?.playlist)
     ? []
     : standaloneController?.playlist;
+  for (const item of rawPlaylist || []) {
+    if (item?.enabled === false || (item?.type !== 'sequence' && !item?.sequenceAssetId)) continue;
+    const asset = sequenceAssets.find(candidate => candidate.id === item.sequenceAssetId);
+    if (!asset?.mediaRef || asset.mediaRef.sha256 !== asset.manifest.lwseqSha256) {
+      throw new Error(`Playlist recording “${item.label || item.sequenceAssetId}” has missing media. Restore the original project backup or record it again.`);
+    }
+  }
   const zones = compiled?.zones || (patchBoard ? patchBoardToZones(patchBoard, strips) : []);
   const runtimeZones = zones.length ? applyVisualLookDefaultsToZones(zones, patchBoard, visualLook, compiled, strips) : [{
     id: 'full-piece',
@@ -96,6 +105,7 @@ export function buildCardRuntimePackageFromProject({
   }];
   const playlist = normalizeCardPlaylist(rawPlaylist, {
     savedLooks,
+    sequenceAssets,
     fallbackPatternIds: [visualLook.patternId, ...legacyCycleIds],
   });
   // The playlist-wide "played on the card" settings (fadeMs, whether the card
@@ -103,10 +113,11 @@ export function buildCardRuntimePackageFromProject({
   // normalizePlaylistTiming doc comment for why they are stored there rather
   // than as a bare standaloneController field.
   const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
-  const playlistConfig = buildCardPlaylistConfig(playlist, savedLooks, playlistTiming);
+  const playlistConfig = buildCardPlaylistConfig(playlist, savedLooks, playlistTiming, sequenceAssets);
   const looks = buildRuntimeLooksFromPlaylist({
     playlist,
     savedLooks,
+    sequenceAssets,
     patchBoard,
     strips,
     runtimeZones,
@@ -157,7 +168,7 @@ export function buildCardRuntimePackageFromProject({
   ];
   const patterns = resolvePackagePatterns(standaloneController, requestedPatternIds);
 
-  return makeCardRuntimePackage({
+  const runtimePackage = makeCardRuntimePackage({
     projectId,
     projectName,
     projectRevision,
@@ -194,6 +205,9 @@ export function buildCardRuntimePackageFromProject({
     syncZones: runtimeZones.length <= 1,
     playlist: playlistConfig,
   });
+  const mediaAssets = playlist.filter(item => item.type === 'sequence' && item.enabled !== false)
+    .map(item => sequenceAssets.find(asset => asset.id === item.sequenceAssetId));
+  return mediaAssets.length ? { ...runtimePackage, mediaAssets } : runtimePackage;
 }
 
 function cardSafeControls(controls = {}, playlist = []) {
@@ -279,6 +293,7 @@ function resolvePackagePatterns(standaloneController = {}, requestedPatternIds =
 function buildRuntimeLooksFromPlaylist({
   playlist = [],
   savedLooks = [],
+  sequenceAssets = [],
   patchBoard = null,
   strips = [],
   runtimeZones = [],
@@ -289,12 +304,23 @@ function buildRuntimeLooksFromPlaylist({
   symSettings = null,
 } = {}) {
   const savedLookById = new Map(savedLooks.map(look => [look.id, look]));
+  const sequenceAssetById = new Map(sequenceAssets.map(asset => [asset.id, asset]));
   const patchIdByZoneId = new Map(compiledWiring?.ok ? deriveSectionTargets({
     strips, patchBoard, compiledWiring, defaultLook: visualLook,
   }).filter(target => target.kind === 'section').map(target => [target.zoneId, target.patchId]) : []);
   return (playlist || [])
     .filter(item => item?.enabled !== false)
     .map(item => {
+      if (item.type === 'sequence') {
+        const asset = sequenceAssetById.get(item.sequenceAssetId);
+        if (!asset?.mediaRef) return null;
+        return {
+          id: item.id, label: item.label || asset.label,
+          mode: 'sequence', file: asset.file, fps: asset.manifest.fps,
+          loop: true, brightness: 1,
+          bytes: asset.byteLength, sha256: asset.manifest.lwseqSha256,
+        };
+      }
       if (item.type === 'combo') {
         const savedLook = savedLookById.get(item.lookId);
         if (!savedLook) return null;

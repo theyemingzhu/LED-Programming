@@ -13,6 +13,7 @@ import {
 import { assertPatternLabJsonSafe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { compileColorJourneyNativeRecipe } from './colorJourneyNative.js';
 import { isBuiltInPattern } from './patternRegistry.js';
+import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
 import { MAX_SAVED_LOOKS, normalizeSavedLooks } from './sectionLookModel.js';
 import {
   LWSEQ_HEADER_BYTES,
@@ -108,6 +109,17 @@ function validBudget(value, storage = false) {
 
 export function lookFromRecipe(recipe) {
   const source = recipe.sourceLook;
+  if (recipe.base?.sectionMix) {
+    const mixed = recipe.base.sectionMix;
+    return normalizeSavedLooks([{
+      id: source?.id || slug(recipe.name),
+      label: boundedString(recipe.name, MAX_LABEL_LENGTH),
+      defaultLook: clone(mixed.defaultLook),
+      sectionLooks: Object.fromEntries(mixed.sections.map(section => [section.id, clone(section.look)])),
+      patternLabRecipe: recipe,
+      updatedAt: 0,
+    }])[0];
+  }
   const selectedSource = source?.sectionLooks?.[source?.selectedTargetId] || source?.defaultLook;
   const exactSource = selectedSource?.patternId === recipe.base.patternId ? selectedSource : null;
   const defaultLook = resolvePatternLabVisualLook(recipe);
@@ -152,6 +164,16 @@ function validPositiveInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
 }
 
 function normalizeManifest(value) {
+  if (record(value) && value.format === 'lightweaver-flow-lwseq-sidecar') {
+    if (value.version !== 1 || !record(value.scene)
+      || !SHA256_PATTERN.test(value.sceneSha256)
+      || !SHA256_PATTERN.test(value.layoutPhysicalOrderSha256)
+      || !SHA256_PATTERN.test(value.lwseqSha256)
+      || !validPositiveInteger(value.fps, 24)
+      || !validPositiveInteger(value.frameCount, 24 * 60 * 15)
+      || !validPositiveInteger(value.pixelCount, 4096)) return null;
+    return clone(value);
+  }
   if (!record(value)
     || value.format !== 'lightweaver-lwseq-sidecar'
     || value.version !== 2
@@ -253,6 +275,7 @@ function normalizeSequenceAsset(value) {
   const sidecarFile = boundedString(value.sidecarFile, 170);
   const byteLength = Number(value.byteLength);
   const expectedBytes = LWSEQ_HEADER_BYTES + manifest.pixelCount * manifest.frameCount * 3;
+  const isFlow = manifest.format === 'lightweaver-flow-lwseq-sidecar';
   const recipeId = boundedString(value.recipe?.id, MAX_ID_LENGTH);
   const recipeName = boundedString(value.recipe?.name, MAX_LABEL_LENGTH);
   const outputs = normalizeAssetOutputs(value.outputs, manifest.pixelCount);
@@ -262,10 +285,20 @@ function normalizeSequenceAsset(value) {
     || value.assetRef !== `sha256:${manifest.lwseqSha256}`
     || byteLength !== expectedBytes
     || byteLength > MAX_PATTERN_LAB_LWSEQ_BYTES
-    || !recipeId
-    || !recipeName
-    || value.recipe?.sha256 !== manifest.recipeSha256
+    || (!isFlow && (!recipeId || !recipeName || value.recipe?.sha256 !== manifest.recipeSha256))
     || !outputs) return null;
+  const source = isFlow
+    ? { kind: 'expression-scene', payload: clone(manifest.scene), sha256: manifest.sceneSha256 }
+    : { kind: 'pattern-lab', payload: clone(manifest.recipe), sha256: manifest.recipeSha256 };
+  // The immutable sidecar is the source of truth. A legacy/migrated object's
+  // optional source copy may be stale; rebuilding it avoids losing the source.
+  const media = value.media;
+  const mediaRef = value.mediaRef;
+  if (media !== undefined && (!record(media) || media.encoding !== 'base64'
+    || media.bytes !== byteLength || media.sha256 !== manifest.lwseqSha256
+    || !base64ToBytes(media.data) || base64ToBytes(media.data).byteLength !== byteLength)) return null;
+  const validMediaRef = record(mediaRef) && mediaRef.kind === 'indexeddb-sha256'
+    && mediaRef.sha256 === manifest.lwseqSha256 && mediaRef.byteLength === byteLength;
   const asset = {
     version: 1,
     id,
@@ -275,7 +308,10 @@ function normalizeSequenceAsset(value) {
     file,
     sidecarFile,
     byteLength,
-    recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 },
+    ...(!isFlow ? { recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 } } : {}),
+    source,
+    ...(media ? { media: clone(media) } : {}),
+    ...(validMediaRef ? { mediaRef: clone(mediaRef) } : {}),
     outputs,
     manifest,
   };
@@ -399,7 +435,7 @@ function bytesToBase64(bytes) {
 
 function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
   const label = boundedString(normalizedRecipe.name, MAX_LABEL_LENGTH) || 'Pattern Lab sequence';
-  const file = `/sequences/${id}.lwseq`;
+  const file = `/sequences/${verified.manifest.lwseqSha256}.lwseq`;
   const sidecarFile = `${file}.json`;
   const asset = normalizeSequenceAsset({
     version: 1,
@@ -417,6 +453,8 @@ function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
     },
     outputs: verified.outputs,
     manifest: verified.manifest,
+    mediaRef: { kind: 'indexeddb-sha256', byteLength: verified.bytes.byteLength,
+      sha256: verified.manifest.lwseqSha256 },
   });
   if (!asset) throw new TypeError('The Pattern Lab sequence metadata is invalid');
   const profile = buildStandaloneProfile({
@@ -425,7 +463,8 @@ function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
     outputs: verified.outputs,
     controls: controller?.controls,
     led: controller?.led,
-    looks: [asset.look],
+    looks: [{ ...asset.look, bytes: verified.bytes.byteLength,
+      sha256: verified.manifest.lwseqSha256, brightness: 1 }],
     cardId: controller?.cardId,
   });
   profile.runtimeMode = 'sd-sequence';
@@ -705,10 +744,12 @@ export async function applyPatternLabHandoff(controller = {}, result = {}) {
       && existing.some(item => item.id === asset.id);
     if (!replacing && (existing.length >= MAX_PATTERN_LAB_SEQUENCE_ASSETS
       || existing.some(item => item.id === asset.id))) return controller;
+    const bytes = base64ToBytes(result.package.files[asset.file].data);
+    const mediaRef = await storeRecordedMedia(bytes, asset.manifest.lwseqSha256);
     return {
       ...source,
       activeSequenceAssetId: asset.id,
-      sequenceAssets: [asset, ...existing.filter(item => item.id !== asset.id)],
+      sequenceAssets: [{ ...asset, mediaRef }, ...existing.filter(item => item.id !== asset.id)],
     };
   }
   return controller;

@@ -1,11 +1,11 @@
-import { applyPatternLabLookColor, patternLabBasePalette, patternLabHasSourceLook } from './patternLabLookColor.js';
+import { applyPatternLabLookColor, applyPatternLabSectionMixColor, patternLabBasePalette, patternLabHasSourceLook, patternLabSectionMixFunctions, patternLabSectionMixStrips } from './patternLabLookColor.js';
 import { sampleColorJourney } from './colorJourney.js';
 import { PALETTE_DEFAULT } from '../data.js';
 import {
   blendPatternLabColors,
   finalizePatternLabColors,
 } from './patternLabCompositor.js';
-import { normalizePalette, renderPixelFrame } from './frameEngine.js';
+import { compilePattern, normalizePalette, renderPixelFrame } from './frameEngine.js';
 import { applyPatternLabMotionToStrips } from './patternLabMotion.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { patternLabLayerBaseSupport } from './patternLabLayers.js';
@@ -222,11 +222,17 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     motionWeights: context.motionWeights,
     bounds,
   });
+  const baseStrips = patternLabSectionMixStrips(renderContext.strips, normalized);
+  const perStripFns = normalized.base.sectionMix
+    ? patternLabSectionMixFunctions(renderContext.strips, normalized, compilePattern)
+    : renderContext.perStripFns;
 
   // The legacy stateless renderer has no seed input. Ignoring recipe.seed here
   // preserves its exact output; Pattern Lab evolution consumes seed separately.
   let frame = renderPixelFrame({
     ...renderContext,
+    strips: baseStrips,
+    perStripFns,
     patternId: normalized.base.patternId,
     ...(isColorJourney ? {
       activeFn: createColorJourneyPattern(normalized.journey, context.t, normalized.sourceLook?.nativeSourcePhase16),
@@ -235,6 +241,7 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     params: normalized.base.params,
     paletteNorm: normalizePalette(patternLabBasePalette(normalized)),
   });
+  applyPatternLabSectionMixColor(frame.pixels, baseStrips, normalized, context.t);
   for (const layer of normalized.layers) {
     if (layer.enabled === false || Number(layer.opacity) === 0) continue;
     const rendered = renderRecipeLayer(layer, renderContext, normalized.palette);

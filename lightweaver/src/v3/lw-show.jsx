@@ -41,6 +41,8 @@ import { createLiveControlAuthorityGate } from '../lib/cardLiveControl.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { handBackToOnlineStudio } from '../lib/runtimeMode.js';
 import SceneExpressionEditor from '../scene-expression/SceneExpressionEditor.jsx';
+import { verifySceneExpressionFlowBake } from '../lib/sceneExpressionRecording.js';
+import { createRecordedSequenceAsset, applyRecordedSequenceAsset } from '../lib/recordedSequenceAsset.js';
 import ShowSceneLibrary from './ShowSceneLibrary.jsx';
 
 const SLOW_MODES = MODE_LIBRARY.filter((m) => m.tier === 'slow');
@@ -239,6 +241,29 @@ function ShowScreen({
 }) {
   const project = useProject();
   const { strips, hidden, patchBoard, layerGroups, expressionScenes, setExpressionScenes } = project;
+  const recordFlowInProject = useCallback(async ({ scene, bakeResult, sourceSnapshot }) => {
+    const currentSource = {
+      ...sourceSnapshot,
+      scene,
+      strips: project.strips,
+      patchBoard: project.patchBoard,
+      wiring: project.wiring,
+      compiledWiring: project.compiledWiring,
+      sectionFamilies: project.sectionFamilies,
+      layoutLayerGroups: project.layoutLayerGroups,
+      palette: project.palette,
+      hidden: project.hidden,
+    };
+    const verified = await verifySceneExpressionFlowBake(bakeResult, currentSource);
+    if (!verified.ok) throw new Error(`The Flow recording is stale (${verified.reason}). Record the current layout again.`);
+    const result = await createRecordedSequenceAsset({
+      kind: 'expression-scene', bakeResult, controller: project.standaloneController,
+      label: scene.name, sourceSnapshot: currentSource,
+    });
+    const nextController = await applyRecordedSequenceAsset(project.standaloneController, result);
+    project.setStandaloneController(nextController);
+    return { ok: true, message: 'Recording saved in the project. Add it to Playlist, then install on the card.', asset: result.asset };
+  }, [project]);
   const mandalaTemplate = useMemo(() => createMandalaSpatialTemplate(), []);
   const connectedTemplate = useMemo(
     () => createConnectedSpatialTemplate({ strips, hidden, patchBoard }),
@@ -1050,6 +1075,7 @@ function ShowScreen({
       hostName="Show"
       project={project}
       onSaveProject={onSaveProject}
+      onRecordFlow={recordFlowInProject}
       onInstallScene={onInstallExpressionScene}
       installationReceipt={expressionInstallationReceipt}
       onStartPhysicalPreview={onStartExpressionScenePreview}

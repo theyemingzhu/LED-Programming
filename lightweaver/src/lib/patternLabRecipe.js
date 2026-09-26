@@ -120,6 +120,28 @@ export function normalizePatternLabRecipe(input = {}) {
   if (!id) throw new TypeError('Pattern Lab recipe ID is required');
   const base = { kind: 'lightweaver-pattern', patternId: 'aurora', params: {}, ...objectOr(source.base) };
   base.params = objectOr(base.params);
+  if (base.sectionMix !== undefined) {
+    const mix = base.sectionMix;
+    if (base.kind !== 'lightweaver-pattern' || !mix || typeof mix !== 'object' || Array.isArray(mix)
+      || mix.version !== 1 || !mix.defaultLook || typeof mix.defaultLook !== 'object'
+      || typeof mix.defaultLook.patternId !== 'string' || !Array.isArray(mix.sections)
+      || mix.sections.some(section => !section || typeof section.id !== 'string' || !section.id.trim()
+        || !Array.isArray(section.stripIds) || !section.stripIds.length
+        || section.stripIds.some(stripId => typeof stripId !== 'string' || !stripId.trim())
+        || !section.look || typeof section.look.patternId !== 'string')
+      || new Set(mix.sections.map(section => section.id)).size !== mix.sections.length) {
+      throw new TypeError('Pattern Lab mixed base assignment is malformed');
+    }
+    const looks = [mix.defaultLook, ...mix.sections.map(section => section.look)];
+    if (looks.some(look => typeof look.speed !== 'number' || !Number.isFinite(look.speed)
+      || look.speed < 0.05 || look.speed > 3
+      || typeof look.brightness !== 'number' || !Number.isFinite(look.brightness)
+      || look.brightness < 0 || look.brightness > 1)) {
+      throw new TypeError('Pattern Lab mixed base look needs finite speed and brightness');
+    }
+    base.sectionMix = { ...mix, defaultParams: objectOr(mix.defaultParams),
+      sections: mix.sections.map(section => ({ ...section, params: objectOr(section.params) })) };
+  }
 
   let palette = arrayOr(source.palette, DEFAULT_PALETTE).filter(color => typeof color === 'string' && color.trim()).map(color => color.trim());
   if (!palette.length) palette = clone(DEFAULT_PALETTE);

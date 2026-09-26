@@ -37,6 +37,27 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-25 Remaining composition delivery (done locally; Bench pending)
+
+Adrian requested immediate parallel implementation after `7fea7a1b`. Three Sol
+high workers completed separate boundaries: Scene Expression recording/delivery;
+mixed section base composition in Lab/direct/worker rendering; and recorded
+media installation plus Playlist/runtime integration. Shared media/recipe
+contracts are coordinated before dependent edits. Manager owns integration,
+browser slot 4173, evidence and one checkpoint. Existing firmware thumbnail
+changes and release fixtures remain separate. No deployment/signing/flash or
+exhaustive Prove run; physical acceptance stays unobserved until Bench proof.
+Flow now records the actual ordered renderer with editable scene persistence;
+Lab overlays retain distinct section patterns and settings. Verified recording
+bytes survive reload and portable export, enter Playlist explicitly, and upload
+with independent readback before Card/Bench configuration activation. Native
+package compatibility is preserved. Checkpoint: 2791/2791 units + production
+build; 29 distinct browser cases pass; eight firmware/bridge contracts and final
+ESP32-S3 compilation pass. Phone and section-mix screens inspected. Host C++
+behavior harness unavailable. Physical multi-GPIO playback, offline restart,
+missing-SD and interrupted-transfer recovery remain unobserved. See
+[delivery evidence](docs/plans/2026-09-25-recorded-composition-delivery-evidence.md).
+
 ### 2026-09-25 Flow and layer composition build (done locally; remaining delivery scope)
 
 Continuing U5–U8 after local commit `cdb69fbf`. Sol high owns the ordered
@@ -55,8 +76,9 @@ Checkpoint 2774/2774 units + production build; 20 distinct browser cases pass,
 including actual UI recording of 7200 frames across two GPIOs and inspecting the
 downloaded package. Desktop/phone screens inspected. See
 [evidence and remaining scope](docs/plans/2026-09-25-composition-integration-evidence.md).
-Standalone Flow delivery, recorded assets in procedural Playlist, and overlays
-over a pre-existing distinct section mix remain unsupported. Hardware/novice
+At this earlier checkpoint, standalone Flow delivery, recorded Playlist assets,
+and overlays over a distinct section mix remained unsupported; the delivery
+batch above now implements those boundaries. Hardware/novice
 acceptance unobserved. No deployment, signing, flash or Prove run. Concurrent
 firmware thumbnail edits and release fixtures are untouched.
 

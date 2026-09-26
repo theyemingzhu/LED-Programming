@@ -1,5 +1,7 @@
 import { test, expect } from './studioTest';
-import { choosePattern, openControls } from './helpers/pattern-lab';
+import { choosePattern, openControls, openStep } from './helpers/pattern-lab';
+import { createDefaultProject } from '../src/lib/projectModel.js';
+import { applySavedLookToPatchBoard } from '../src/lib/sectionLookModel.js';
 
 test('Lab adds, orders, mutes, targets and undoes overlay layers', async ({ page }) => {
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
@@ -53,4 +55,59 @@ test('layers fit the full phone inspector at 320 and 390 pixels', async ({ page 
     await stack.locator('.plab-layer-actions').scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath(`lab-layers-${width}.png`), fullPage: true });
   }
+});
+
+test('an existing section mix opens as the base beneath a new layer and survives project reopen', async ({ page }, testInfo) => {
+  const project = createDefaultProject();
+  project.id = 'mixed-base-browser';
+  project.layout.starterPending = false;
+  const defaultLook = { patternId: 'aurora', brightness: 0.35, speed: 0.7, customHue: 32, customSaturation: 230 };
+  const outerLook = { patternId: 'fire', brightness: 0.9, speed: 1.8, customHue: 174, customSaturation: 188 };
+  project.devices.standaloneController.looks = [{
+    id: 'mixed-sections', label: 'Mixed sections', defaultLook,
+    sectionLooks: { 'patch-default-outer-circle': outerLook }, updatedAt: 0,
+  }];
+  project.devices.standaloneController.activeLookId = 'mixed-sections';
+  project.devices.standaloneController.defaultLook = defaultLook;
+  project.layout.patchBoard = applySavedLookToPatchBoard({
+    patchBoard: project.layout.patchBoard,
+    strips: project.layout.strips,
+    savedLook: project.devices.standaloneController.looks[0],
+  });
+  await page.addInitScript(seed => {
+    if (localStorage.getItem('mixed-base-browser-seeded')) return;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(seed));
+    localStorage.setItem('mixed-base-browser-seeded', 'true');
+  }, project);
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('look-name')).toHaveValue('Mixed sections');
+  await page.getByTestId('open-pattern-lab').click();
+  await openControls(page);
+  await openStep(page, 'sculpt');
+  const stack = page.getByTestId('pattern-lab-layers');
+  await stack.getByRole('button', { name: 'Edit whole look to add layer' }).click();
+  await expect(stack.locator('.plab-layer-entry')).toHaveCount(1);
+  await expect(stack.locator('.plab-layer-base')).toContainText('Section mix');
+  await expect(stack).toContainText('Each section keeps its pattern, color, speed, and brightness');
+  await expect(page.getByTestId('pattern-lab-preparing')).toHaveCount(0);
+  await stack.locator('.plab-layer-base').screenshot({ path: testInfo.outputPath('mixed-section-base-row.png') });
+  await page.screenshot({ path: testInfo.outputPath('mixed-section-base.png'), fullPage: true });
+  await page.getByTestId('pattern-lab-undo').click();
+  await expect(stack.locator('.plab-layer-entry')).toHaveCount(0);
+  await stack.getByRole('button', { name: 'Edit whole look to add layer' }).click();
+  await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true }).click();
+  await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  const look = saved.devices.standaloneController.looks.find((entry: any) => entry.id === 'mixed-sections');
+  expect(look.patternLabRecipe.base.sectionMix.version).toBe(1);
+  expect(look.patternLabRecipe.base.sectionMix.sections[0].stripIds).toEqual(['default-outer-circle']);
+  expect(look.patternLabRecipe.base.sectionMix.sections[0].look).toMatchObject(outerLook);
+  expect(look.patternLabRecipe.base.sectionMix.defaultLook).toMatchObject(defaultLook);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByTestId('open-pattern-lab').click();
+  await openControls(page);
+  await openStep(page, 'sculpt');
+  const reopenedStack = page.getByTestId('pattern-lab-layers');
+  await reopenedStack.getByRole('button', { name: /Layers Base/ }).click();
+  await expect(reopenedStack.locator('.plab-layer-base')).toContainText('Section mix');
 });

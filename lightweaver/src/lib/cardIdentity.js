@@ -185,10 +185,18 @@ function normalizeRecipeCapabilities(value) {
 
 function normalizeEvidenceCapabilities(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (!Object.hasOwn(value, 'kaleidoscopeReflectionPoints')) return {};
   const capability = Number(value.kaleidoscopeReflectionPoints);
   return {
-    kaleidoscopeReflectionPoints: Number.isFinite(capability) && capability >= 1 ? 1 : 0,
+    ...(Object.hasOwn(value, 'kaleidoscopeReflectionPoints')
+      ? { kaleidoscopeReflectionPoints: Number.isFinite(capability) && capability >= 1 ? 1 : 0 }
+      : {}),
+    ...(value.sequenceMedia?.version === 1 && Number.isSafeInteger(value.sequenceMedia.maxBytes)
+      && Number.isSafeInteger(value.sequenceMedia.chunkBytes)
+      ? { sequenceMedia: {
+          version: 1, maxBytes: value.sequenceMedia.maxBytes,
+          chunkBytes: value.sequenceMedia.chunkBytes,
+          storageReady: value.sequenceMedia.storageReady === true,
+        } } : {}),
   };
 }
 

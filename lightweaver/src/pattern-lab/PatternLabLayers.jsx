@@ -91,7 +91,8 @@ export default function PatternLabLayers({ recipe, patterns, areas, scoped = fal
             </div>}
           </div>;
         })}
-        <div className="plab-layer-row plab-layer-base"><strong>Base</strong><span>{patterns.find(pattern => pattern.id === recipe?.base?.patternId)?.name || 'Starting pattern'}</span><span>{baseScope}</span></div>
+        <div className="plab-layer-row plab-layer-base"><strong>Base</strong><span>{recipe?.base?.sectionMix ? 'Section mix' : patterns.find(pattern => pattern.id === recipe?.base?.patternId)?.name || 'Starting pattern'}</span><span>{baseScope}</span></div>
+        {recipe?.base?.sectionMix && <p className="plab-layers-hint">Each section keeps its pattern, color, speed, and brightness beneath these layers.</p>}
       </div>}
     </section>
   );

@@ -17,27 +17,96 @@ export function patternLabLayerTarget(area) {
     : { kind: 'whole-piece', id: 'all' };
 }
 
-export function patternLabLayerBaseSupport(recipe) {
+function sameMembers(left, right) {
+  return Array.isArray(left) && Array.isArray(right)
+    && left.length === right.length
+    && new Set(left.map(String)).size === left.length
+    && left.every(id => right.map(String).includes(String(id)));
+}
+
+export function createPatternLabSectionMix(recipe, areas = []) {
+  const source = recipe?.sourceLook;
+  if (!source?.defaultLook) throw new TypeError('This complete look has no default pattern to use beneath layers.');
+  for (const id of Object.keys(source.sectionRecipes || {})) {
+    if (id !== 'all' && !source.sectionLooks?.[id]) {
+      throw new TypeError(`The base section ${id} has saved controls but no section look. Restore it before adding a layer.`);
+    }
+  }
+  const known = new Set();
+  const occupied = new Set();
+  const sections = Object.entries(source.sectionLooks || {}).map(([id, rawLook]) => {
+    const area = areas.find(candidate => candidate.kind === 'section' && candidate.id === id);
+    if (!area || !Array.isArray(area.stripIds) || !area.stripIds.length || known.has(id)) {
+      throw new TypeError(`The base section ${id} is missing or has no current lights. Restore its section before adding a layer.`);
+    }
+    known.add(id);
+    const stripIds = area.stripIds.map(String);
+    if (stripIds.some(stripId => occupied.has(stripId))) {
+      throw new TypeError(`The base section ${id} overlaps another section. Separate their lights before adding a layer.`);
+    }
+    stripIds.forEach(stripId => occupied.add(stripId));
+    const saved = source.sectionRecipes?.[id];
+    const unsupported = unsupportedSectionRecipe(saved, rawLook);
+    if (unsupported) throw new TypeError(`The base section ${id} uses ${unsupported}. Edit that section on its own before adding whole-look layers.`);
+    const params = saved?.base?.kind === 'lightweaver-pattern' && saved.base.patternId === rawLook?.patternId
+      ? structuredClone(saved.base.params || {}) : {};
+    return { id, stripIds, look: normalizeCardVisualLook(rawLook), params };
+  });
+  return { version: 1, defaultLook: normalizeCardVisualLook(source.defaultLook),
+    defaultParams: structuredClone(recipe.base?.params || {}), sections };
+}
+
+function unsupportedSectionRecipe(saved, look) {
+  if (!saved) return '';
+  if (saved.base?.kind !== 'lightweaver-pattern' || saved.base.patternId !== look?.patternId) return 'a different generator';
+  if (saved.layers?.length) return 'its own layers';
+  if (saved.evolution?.enabled === true) return 'evolution';
+  if (saved.journey?.enabled === true) return 'a journey';
+  if (Object.keys(saved.base.params?.advanced || {}).length) return 'advanced controls';
+  return '';
+}
+
+export function patternLabLayerBaseSupport(recipe, areas = null) {
   const sectionLooks = Object.values(recipe?.sourceLook?.sectionLooks || {});
+  for (const [id, look] of Object.entries(recipe?.sourceLook?.sectionLooks || {})) {
+    const unsupported = unsupportedSectionRecipe(recipe?.sourceLook?.sectionRecipes?.[id], look);
+    if (unsupported) return { supported: false,
+      message: `The base section ${id} uses ${unsupported}. Edit that section on its own before adding whole-look layers.` };
+  }
+  if (recipe?.base?.sectionMix) return { supported: true, message: '' };
   const defaultLook = recipe?.sourceLook?.defaultLook;
   const defaultVisual = defaultLook ? JSON.stringify(normalizeCardVisualLook(defaultLook)) : null;
-  if (sectionLooks.some(look => !defaultVisual
+  if (Object.keys(recipe?.sourceLook?.sectionRecipes || {}).some(id => id !== 'all')
+    || sectionLooks.some(look => !defaultVisual
     || JSON.stringify(normalizeCardVisualLook(look)) !== defaultVisual)) {
-    return {
-      supported: false,
-      message: 'This complete look has distinct section patterns or colors. Layers cannot preserve that base mix yet; keep editing its sections in Patterns.',
-    };
+    if (areas) {
+      try {
+        createPatternLabSectionMix(recipe, areas);
+        return { supported: true, message: '' };
+      } catch (error) {
+        return { supported: false, message: error.message };
+      }
+    }
+    return { supported: false, message: 'This mixed look needs its current section mapping before a layer can be added.' };
   }
   return { supported: true, message: '' };
 }
 
-export function addPatternLabLayer(recipe, { patternId = 'aurora', target = { kind: 'whole-piece', id: 'all' } } = {}) {
+export function addPatternLabLayer(recipe, { patternId = 'aurora', target = { kind: 'whole-piece', id: 'all' }, areas = null } = {}) {
   if (!recipe) throw new TypeError('Choose a recipe before adding a layer');
   if ((recipe.layers || []).length >= PATTERN_LAB_MAX_LAYERS) throw new RangeError(`Pattern Lab supports at most ${PATTERN_LAB_MAX_LAYERS} layers`);
   if (!isBuiltInPattern(patternId)) throw new RangeError(`Pattern Lab layers require a built-in pattern: ${patternId}`);
   const pattern = getPatternById(patternId);
+  const mixed = Object.keys(recipe?.sourceLook?.sectionRecipes || {}).some(id => id !== 'all')
+    || Object.values(recipe?.sourceLook?.sectionLooks || {}).some(look =>
+    JSON.stringify(normalizeCardVisualLook(look)) !== JSON.stringify(normalizeCardVisualLook(recipe?.sourceLook?.defaultLook || {})));
+  const sectionMix = recipe.base?.sectionMix || (mixed ? createPatternLabSectionMix(recipe, areas || []) : null);
   return {
     ...recipe,
+    ...(sectionMix && !recipe.base?.sectionMix ? {
+      base: { ...recipe.base, sectionMix },
+      playback: { ...recipe.playback, speed: 1, brightness: 1 },
+    } : {}),
     layers: [...(recipe.layers || []), {
       id: layerId(),
       name: pattern.name,
@@ -72,17 +141,31 @@ export function movePatternLabLayer(recipe, id, direction) {
   return { ...recipe, layers };
 }
 
-function sameMembers(left, right) {
-  return Array.isArray(left) && Array.isArray(right)
-    && left.length === right.length
-    && new Set(left.map(String)).size === left.length
-    && left.every(id => right.map(String).includes(String(id)));
-}
-
 export function validatePatternLabLayerTargets(recipe, { sectionTargets = [], strips = [], compiledWiring = null } = {}) {
   const areas = resolvePatternLabEditAreas({ sectionTargets, strips, compiledWiring });
   const stripIds = new Set((strips || []).map(strip => String(strip.id)));
   const issues = [];
+  const mix = recipe?.base?.sectionMix;
+  if (mix) {
+    if (mix.version !== 1 || !mix.defaultLook || !Array.isArray(mix.sections)) {
+      issues.push({ base: true, message: 'The mixed base section assignment is malformed.' });
+    } else {
+      const seenSections = new Set();
+      const occupied = new Set();
+      for (const section of mix.sections) {
+        const area = areas.find(candidate => candidate.kind === 'section' && candidate.id === String(section?.id));
+        const memberIds = section?.stripIds?.map(String) || [];
+        const duplicate = seenSections.has(String(section?.id)) || memberIds.some(id => occupied.has(id));
+        if (!section?.look || !area || !area.stripIds.length || !sameMembers(section.stripIds, area.stripIds)
+          || memberIds.some(id => !stripIds.has(id)) || duplicate) {
+          issues.push({ base: true, targetId: section?.id,
+            message: `The base section ${area?.label || section?.id || '(unknown)'} is missing, overlaps, or has changed lights. Restore its section mapping before saving or using this design.` });
+        }
+        seenSections.add(String(section?.id));
+        memberIds.forEach(id => occupied.add(id));
+      }
+    }
+  }
   for (const layer of recipe?.layers || []) {
     const target = layer?.target;
     if (!target || target.kind === 'whole-piece' || target.kind === 'all') continue;

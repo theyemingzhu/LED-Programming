@@ -17,6 +17,7 @@
 #include "LightweaverHttpFrameStream.h"
 #include "LightweaverFirmwareUpdate.h"
 #include "LightweaverProjectRepository.h"
+#include "LightweaverMedia.h"
 #include "LightweaverCardStudio.h"
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverNativeArmPolicy.h"
@@ -469,6 +470,9 @@ String studioBridgeScript() {
                   "else if(m.type==='beacon-ports'){response=await get('/api/beacon/port')}"
                   "else if(m.type==='beacon-port'){response=await post('/api/beacon/port',m.payload||{})}"
                   "else if(m.type==='firmware-info'){response=await get('/api/firmware-info')}"
+                  "else if(m.type==='owner-capability'){response=await post('/api/owner/capability',m.payload||{})}"
+                  "else if(m.type==='media-begin'||m.type==='media-chunk'||m.type==='media-commit'||m.type==='media-abort'){response=await post('/api/media/'+m.type.slice(6),m.payload||{},30000)}"
+                  "else if(m.type==='media-read'){response=await post('/api/media/read',m.payload||{},30000)}"
                   "else if(m.type==='wifi-handoff-ack'){response=await lwRelayWifiHandoffAck(ev)}"
                   "else if(m.type==='frame'){const sent=lwFrameSend(m.payload||{});response={ok:true,relayed:sent.relayed,wsOpen:!!(lwFrameWs&&lwFrameWs.readyState===1),reason:sent.reason}}"
                   "else if(m.type==='control'){const c=m.payload||{};if(c.cancelStream)lwFrameCancel();response=await post('/api/control',c)}"
@@ -2776,6 +2780,14 @@ void handleFirmwareInfo() {
       info = info.substring(0, brace + 1) + injected + info.substring(brace + 1);
     }
   }
+  JsonDocument capabilitiesInfo;
+  if (!deserializeJson(capabilitiesInfo, info) && capabilitiesInfo.is<JsonObject>()) {
+    capabilitiesInfo["capabilities"]["sequenceMedia"]["version"] = LW_SEQUENCE_MEDIA_VERSION;
+    capabilitiesInfo["capabilities"]["sequenceMedia"]["maxBytes"] = LW_SEQUENCE_MEDIA_MAX_BYTES;
+    capabilitiesInfo["capabilities"]["sequenceMedia"]["chunkBytes"] = LW_SEQUENCE_MEDIA_CHUNK_BYTES;
+    info = String();
+    serializeJson(capabilitiesInfo, info);
+  }
   server.send(200, "application/json", info);
 }
 
@@ -3673,6 +3685,7 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   registerLightweaverHttpFrameStream(server);
   registerLightweaverFirmwareUpdate(server);
   registerLightweaverProjectRepository(server);
+  registerLightweaverMedia(server);
   registerLightweaverCardStudio(server);
 
   // Pretend-WLED JSON API — lets the existing designer's WLED bar +

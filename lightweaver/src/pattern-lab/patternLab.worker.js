@@ -1,4 +1,4 @@
-import { applyPatternLabLookColor, patternLabBasePalette, patternLabHasSourceLook } from '../lib/patternLabLookColor.js';
+import { applyPatternLabLookColor, applyPatternLabSectionMixColor, patternLabBasePalette, patternLabHasSourceLook, patternLabSectionMixFunctions, patternLabSectionMixStrips } from '../lib/patternLabLookColor.js';
 import { patternLabLayerBaseSupport } from '../lib/patternLabLayers.js';
 import { createColorJourneyPattern, patternLabSamplingBounds } from '../lib/patternLabPatternAdapter.js';
 import {
@@ -238,9 +238,12 @@ async function renderRequest(requestId, payload) {
     motionWeights: options.motionWeights,
     bounds: samplingBounds,
   });
+  const baseStrips = patternLabSectionMixStrips(stateful || isColorJourney ? sampled : motionSampled, recipe);
+  const perStripFns = patternLabSectionMixFunctions(baseStrips, recipe,
+    patternId => compileAuthoritativePattern(patternId, indices, geometry.visiblePixelCount));
   const frame = renderPixelFrame({
     t: Number(payload.time) || 0,
-    strips: stateful || isColorJourney ? sampled : motionSampled,
+    strips: baseStrips,
     patternId: recipe.base?.patternId,
     activeFn,
     params: recipe.base?.params || {},
@@ -254,7 +257,9 @@ async function renderRequest(requestId, payload) {
     symSettings: geometry.symSettings,
     audioBands: geometry.audioBands,
     normBounds: samplingBounds,
+    perStripFns,
   });
+  applyPatternLabSectionMixColor(frame.pixels, baseStrips, recipe, payload.time);
   let renderedPixels = frame.pixels;
   for (const layer of recipe.layers || []) {
     if (layer.enabled === false || Number(layer.opacity) === 0) continue;

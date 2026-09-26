@@ -351,10 +351,10 @@ export default function PatternLabExport({
         )}
         {sequenceAssets.length > 0 && <details className="plab-advanced" data-testid="pattern-lab-saved-recordings">
           <summary>Saved recordings ({sequenceAssets.length})</summary>
-          <p>The project keeps each full recipe and verified hashes. To load it on a card again, reopen and bake it for the current artwork.</p>
+          <p>Verified recording media is kept in this browser for card installation. If its source or artwork changes, record it again before installing.</p>
           <ul className="plab-recordings-list">{sequenceAssets.map(asset => <li key={asset.id}>
             <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames</span>{' '}
-            <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>Edit in Lab</button>
+            <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>{asset.source?.kind === 'expression-scene' ? 'Edit scene' : 'Edit in Lab'}</button>
           </li>)}</ul>
         </details>}
       </div>

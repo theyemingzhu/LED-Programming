@@ -761,6 +761,7 @@ function Shell({ offlineUpdateController = null }) {
     projectName, setProjectName, serializeProject, flushProjectAutosave, replaceProject, replaceWithNewProject, requestReplacementConfirmation,
     projectLifecycle, projectLifecycleLabel, markProjectPersisted, markProjectEdited, markProjectInstalled, isProjectLifecycleMarkerCurrent,
     projectHasUnsavedChanges, reverifyProjectInstallation, setExpressionScenes,
+    compiledWiring, sectionTargets,
   } = useProject();
   const offlineUpdateState = useSyncExternalStore(
     offlineUpdateController?.subscribe || subscribeDisabledOfflineUpdate,
@@ -1494,6 +1495,24 @@ function Shell({ offlineUpdateController = null }) {
           transport: cardLink.transport,
           runtimePackage: packageForCard,
           allowProjectChange: true,
+          mediaInstall: packageForCard.mediaAssets?.length ? {
+            project: {
+              strips: snapshot.layout?.strips || [],
+              patchBoard: snapshot.layout?.patchBoard,
+              wiring: snapshot.layout?.wiring,
+              compiledWiring,
+              layoutLayerGroups: snapshot.layout?.layerGroups || [],
+              sectionFamilies: snapshot.layout?.sectionFamilies || [],
+              palette: snapshot.pattern?.palette || [],
+              hidden: snapshot.layout?.hidden || {},
+              bpm: snapshot.pattern?.bpm,
+              gammaEnabled: snapshot.pattern?.gammaEnabled,
+              gammaValue: snapshot.pattern?.gammaValue,
+              symSettings: snapshot.pattern?.symSettings,
+              sectionTargets,
+            },
+            confirmPairing: () => window.confirm('Touch a physical control on the Lightweaver card, then choose Continue to save recorded media to this exact card.'),
+          } : null,
         });
         const exactPrepared = { ...prepared, cardId: before.cardId };
         const verification = await waitForCardDeploymentVerification(
@@ -1519,10 +1538,12 @@ function Shell({ offlineUpdateController = null }) {
   }, [
     cardLink.host,
     cardStatus.host,
+    compiledWiring,
     markProjectInstalled,
     projectLifecycle.editedRevision,
     projectLifecycle.generation,
     serializeProject,
+    sectionTargets,
   ]);
   const openCardControl = useCallback(() => {
     // Ready → direct card controls. Length drift → length-only write.

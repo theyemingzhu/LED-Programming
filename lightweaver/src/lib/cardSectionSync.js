@@ -1,6 +1,7 @@
-import { CardPushError, pushConfigToCard } from './cardPushClient.js';
+import { CardPushError, pushConfigToCard, readCardStatusEnvelope } from './cardPushClient.js';
 import { readCardZonesFromCard } from './cardLiveControl.js';
 import { prepareCardDeployment, verifyCardPostSaveState } from './cardDeployment.js';
+import { installRecordedMediaForRuntimePackage } from './cardRecordedMedia.js';
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -85,9 +86,28 @@ export async function syncRuntimePackageToCard({
   sleep = delay,
   expectedCardId = '',
   verifyPostSave = verifyCardPostSaveState,
+  installMedia = installRecordedMediaForRuntimePackage,
+  readMediaStatus = readCardStatusEnvelope,
   allowLayoutChange = false,
   allowProjectChange = false,
+  mediaInstall = null,
 } = {}) {
+  let mediaReceipt = null;
+  if (runtimePackage?.mediaAssets?.length) {
+    if (!mediaInstall) throw new CardPushError(
+      'recording-media-required',
+      'This Playlist contains recordings. Install it from Playlist so Studio can verify and send the exact media first.',
+    );
+    mediaReceipt = await installMedia(runtimePackage, {
+      host, transport, ...mediaInstall,
+    });
+    if (mediaInstall.signal?.aborted) throw new CardPushError('cancelled', 'Recording install was canceled before configuration changed.');
+    const fresh = await readMediaStatus({ host, transport });
+    if (fresh.cardId !== mediaReceipt.cardId || fresh.bootId !== mediaReceipt.bootId
+      || String(fresh.projectHead || '') !== mediaReceipt.projectHead) {
+      throw new CardPushError('card-changed', 'The card or installed project changed after media upload. Playlist configuration was not sent.');
+    }
+  }
   const response = await pushConfig(runtimePackage, {
     host,
     transport,
@@ -95,6 +115,7 @@ export async function syncRuntimePackageToCard({
     reboot: 'if-needed',
     allowLayoutChange,
     allowProjectChange,
+    mediaVerified: Boolean(mediaReceipt),
   });
   if (response?.state === 'staged') {
     throw new CardPushError(

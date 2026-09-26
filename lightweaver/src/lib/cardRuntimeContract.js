@@ -638,6 +638,14 @@ function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PA
     }
     if (mode === 'sequence') {
       normalized.file = String(look.file || `/sequences/${String(index + 1).padStart(3, '0')}-${id}.lwseq`);
+      if (!/^\/sequences\/[a-f0-9]{64}\.lwseq$/.test(normalized.file)
+        || !Number.isSafeInteger(look.bytes) || look.bytes < 64 || look.bytes > 16 * 1024 * 1024
+        || !/^[a-f0-9]{64}$/.test(String(look.sha256 || ''))
+        || normalized.file !== `/sequences/${look.sha256}.lwseq`) {
+        throw new RangeError('Recorded sequence requires an immutable SHA-256 file, byte length, and hash.');
+      }
+      normalized.bytes = look.bytes;
+      normalized.sha256 = look.sha256;
     }
     if (zones.length) {
       normalized.zones = zones;

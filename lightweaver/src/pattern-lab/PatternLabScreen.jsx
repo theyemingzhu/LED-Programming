@@ -8,6 +8,9 @@ import {
 } from '../lib/patternLabCompatibility.js';
 import { PATTERN_LAB_EVOLUTION_CHARACTERS } from '../lib/patternLabEvolution.js';
 import { bakePatternLabRecipe } from '../lib/lwseqBake.js';
+import { verifySceneExpressionFlowBake } from '../lib/sceneExpressionRecording.js';
+import { resolveFlowRecordingScene } from '../lib/flowRecordingReopen.js';
+import { createRecordedSequenceAsset, applyRecordedSequenceAsset } from '../lib/recordedSequenceAsset.js';
 import { OFFLINE_AUDIO_CAPABILITY } from '../lib/offlineAudioLanes.js';
 import { compileColorJourneyNativeRecipe } from '../lib/colorJourneyNative.js';
 import { buildCardRuntimePackageFromProject } from '../lib/cardRuntimeProject.js';
@@ -522,6 +525,8 @@ export default function PatternLabScreen({
   expressionPreviewContextKey,
 }) {
   const project = useProject();
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const { workspaceAssets, resolveWorkspaceAssetConflict } = useCloudLibrary();
   const [patterns, setPatterns] = useState([]);
   const [sceneEditorOpen, setSceneEditorOpen] = useState(false);
@@ -649,7 +654,10 @@ export default function PatternLabScreen({
   // screen without disabling it.
   const sheetModal = mobileDrawer && sheetDetent === 'full';
   const previewBaseSupport = draft?.layers?.length ? patternLabLayerBaseSupport(draft) : { supported: true, message: '' };
-  const previewRecipe = previewBaseSupport.supported ? draft : null;
+  const previewTargetValidation = draft?.base?.sectionMix ? validatePatternLabLayerTargets(draft, {
+    sectionTargets: project.sectionTargets, strips: project.strips, compiledWiring: project.compiledWiring,
+  }) : { valid: true };
+  const previewRecipe = previewBaseSupport.supported && previewTargetValidation.valid ? draft : null;
   const previewDuration = draft?.journey?.stops?.reduce(
     (total, stop) => total + Number(stop.holdMs || 0) + Number(stop.fadeMs || 0),
     0,
@@ -1350,7 +1358,7 @@ export default function PatternLabScreen({
 
   function addLayer() {
     if (!draft) return null;
-    const baseSupport = patternLabLayerBaseSupport(draft);
+    const baseSupport = patternLabLayerBaseSupport(draft, editAreas);
     if (!baseSupport.supported) {
       setMessage(baseSupport.message);
       return null;
@@ -1363,6 +1371,7 @@ export default function PatternLabScreen({
     }
     const next = changeLayers(scoped ? 'Opened the whole look and added a layer.' : 'Added a layer.', () => addPatternLabLayer(whole.recipe, {
       patternId: whole.recipe.base?.kind === 'lightweaver-pattern' ? whole.recipe.base.patternId : 'aurora',
+      areas: editAreas,
     }));
     if (scoped && next) setMessage('Editing the whole look. The section design was kept.');
     return next?.layers.at(-1)?.id || null;
@@ -1620,6 +1629,20 @@ export default function PatternLabScreen({
     const projectId = project.projectId;
     const priorDraft = draft;
     try {
+      if (asset?.source?.kind === 'expression-scene') {
+        const reopened = await resolveFlowRecordingScene(asset, projectRef.current.expressionScenes);
+        if (request !== openSequenceRequestRef.current || latestProjectIdRef.current !== projectId) return;
+        projectRef.current.setExpressionScenes(current => {
+          const existing = current.scenes.find(scene => scene.id === reopened.scene.id);
+          return {
+            ...current,
+            activeSceneId: reopened.scene.id,
+            scenes: existing ? current.scenes : [...current.scenes, reopened.scene],
+          };
+        });
+        setSceneEditorOpen(true);
+        return;
+      }
       const recovered = await recipeFromSequenceAsset(asset);
       if (request !== openSequenceRequestRef.current
         || latestProjectIdRef.current !== projectId
@@ -1859,7 +1882,7 @@ export default function PatternLabScreen({
         ok: true,
         message: downloaded
           ? `${result.replaceSequenceAssetId ? 'Updated' : 'Added'} ${result.asset.label} as a recording and downloaded its verified controller package.`
-          : `${result.replaceSequenceAssetId ? 'Updated' : 'Added'} ${result.asset.label} as a recording. Record and bake again before loading the card.`,
+          : `${result.replaceSequenceAssetId ? 'Updated' : 'Added'} ${result.asset.label} as a recording. Its verified media is saved with this project for card installation.`,
       };
     }
     const successMessage = result.kind === 'project-look'
@@ -1867,6 +1890,47 @@ export default function PatternLabScreen({
       : `Added and selected ${result.look.label} in the project.`;
     return new Promise(resolve => {
       setPendingProjectSave({ message: successMessage, navigateAfter, resolve });
+    });
+  }
+
+  async function recordFlowInProject({ scene, bakeResult, sourceSnapshot }) {
+    const current = projectRef.current;
+    const projectId = current.projectId;
+    const fresh = {
+      ...sourceSnapshot,
+      scene,
+      strips: current.strips,
+      patchBoard: current.patchBoard,
+      wiring: current.wiring,
+      compiledWiring: current.compiledWiring,
+      sectionFamilies: current.sectionFamilies,
+      layoutLayerGroups: current.layoutLayerGroups,
+      palette: current.palette,
+      hidden: current.hidden,
+    };
+    const verified = await verifySceneExpressionFlowBake(bakeResult, fresh);
+    if (!verified.ok) throw new Error(`The Flow recording no longer matches this project (${verified.reason}). Record it again.`);
+    const result = await createRecordedSequenceAsset({
+      kind: 'expression-scene', bakeResult, controller: current.standaloneController,
+      label: scene.name, sourceSnapshot,
+    });
+    if (projectRef.current.projectId !== projectId || projectRef.current.standaloneController !== current.standaloneController) {
+      throw new Error('The project changed while this Flow recording was being saved. Record it again.');
+    }
+    const nextController = await applyRecordedSequenceAsset(current.standaloneController, result);
+    if (projectRef.current.projectId !== projectId || projectRef.current.standaloneController !== current.standaloneController) {
+      throw new Error('The project changed while this Flow recording was being saved. Record it again.');
+    }
+    const applied = current.setStandaloneController(nextController);
+    if (applied?.ok !== true) {
+      const first = applied?.errors?.[0];
+      throw new Error((typeof first === 'string' ? first : first?.message) || 'The project could not save this Flow recording.');
+    }
+    return new Promise(resolve => {
+      setPendingProjectSave({
+        message: `Recorded ${result.asset.label} in the project with its editable Flow source.`,
+        navigateAfter: false, resolve,
+      });
     });
   }
 
@@ -1928,6 +1992,7 @@ export default function PatternLabScreen({
       project={project}
       onSaveProject={onSaveProject}
       onInstallScene={onInstallExpressionScene}
+      onRecordFlow={recordFlowInProject}
       installationReceipt={expressionInstallationReceipt}
       onStartPhysicalPreview={onStartExpressionScenePreview}
       physicalPreviewContextKey={expressionPreviewContextKey}

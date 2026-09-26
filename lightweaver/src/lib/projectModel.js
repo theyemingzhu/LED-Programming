@@ -113,6 +113,7 @@ export function defaultStandaloneController(overrides = {}) {
   const rawPlaylist = isImplicitDefaultPatternPlaylist(overrides.playlist) ? [] : overrides.playlist;
   const playlist = normalizeCardPlaylist(rawPlaylist, {
     savedLooks: looks,
+    sequenceAssets,
     fallbackPatternIds: hasConfiguredCycle
       ? [defaultLook.patternId, ...rawCycleIds]
       : [],

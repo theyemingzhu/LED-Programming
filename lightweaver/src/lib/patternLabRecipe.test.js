@@ -195,3 +195,18 @@ test('preserves a normalized color journey and linked source metadata', () => {
   assert.notEqual(recipe.sourceLook, sourceLook);
   assert.deepEqual(normalizePatternLabRecipe(recipe), recipe);
 });
+
+test('imported mixed base requires finite speed and brightness without changing source looks', () => {
+  const recipe = createPatternLabRecipe({ id: 'mixed-import', base: {
+    kind: 'lightweaver-pattern', patternId: 'fire', params: {},
+    sectionMix: { version: 1, defaultLook: { patternId: 'fire', speed: 0.7, brightness: 0.35 },
+      sections: [{ id: 'petals', stripIds: ['strip-one'], look: { patternId: 'ocean', speed: 1.8, brightness: 0.9 } }] },
+  } });
+  assert.equal(recipe.base.sectionMix.defaultLook.brightness, 0.35);
+  assert.equal(recipe.base.sectionMix.sections[0].look.speed, 1.8);
+  assert.deepEqual(recipe.base.sectionMix.sections[0].params, {});
+  assert.deepEqual(normalizePatternLabRecipe(recipe), recipe);
+  assert.throws(() => normalizePatternLabRecipe({ ...recipe, base: { ...recipe.base,
+    sectionMix: { ...recipe.base.sectionMix, sections: [{ ...recipe.base.sectionMix.sections[0],
+      look: { patternId: 'ocean' } }] } } }), /finite speed and brightness/);
+});

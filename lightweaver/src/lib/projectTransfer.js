@@ -25,6 +25,62 @@
 import { canonicalProjectFileName } from './projectFiles.js';
 import { downloadJsonFile } from './downloadFile.js';
 import { importProjectFromFile } from './projectImportFile.js';
+import { readRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
+
+function base64(bytes) {
+  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function fromBase64(value) {
+  if (typeof value !== 'string' || !value.length || value.length % 4) throw new Error('Portable recording bytes are invalid.');
+  const bytes = typeof Buffer !== 'undefined'
+    ? new Uint8Array(Buffer.from(value, 'base64'))
+    : Uint8Array.from(atob(value), character => character.charCodeAt(0));
+  if (base64(bytes) !== value) throw new Error('Portable recording bytes are invalid.');
+  return bytes;
+}
+
+export async function makePortableProject(project) {
+  const portable = structuredClone(project);
+  const assets = portable?.devices?.standaloneController?.sequenceAssets || [];
+  for (const asset of assets) {
+    // Older project files retained the exact recipe and hash but never saved
+    // binary media. Preserve their editable source during backup and restore;
+    // the Playlist/install gate still refuses playback until re-recorded.
+    if (!asset.mediaRef) continue;
+    if (!asset.mediaRef.sha256 || asset.mediaRef.byteLength !== asset.byteLength)
+      throw new Error(`Recording “${asset.label || asset.id}” has invalid saved media metadata.`);
+    const bytes = await readRecordedMedia(asset.mediaRef.sha256);
+    if (bytes.byteLength !== asset.byteLength) throw new Error(`Recording “${asset.label || asset.id}” has an incomplete media file.`);
+    asset.portableMedia = { encoding: 'base64', bytes: bytes.byteLength,
+      sha256: asset.mediaRef.sha256, data: base64(bytes) };
+  }
+  return portable;
+}
+
+export async function importPortableProjectMedia(project) {
+  const copy = structuredClone(project);
+  const assets = copy?.devices?.standaloneController?.sequenceAssets || [];
+  for (const asset of assets) {
+    if (!asset.portableMedia) {
+      if (asset.mediaRef) await readRecordedMedia(asset.mediaRef.sha256);
+      continue;
+    }
+    const media = asset.portableMedia;
+    if (media.encoding !== 'base64' || media.bytes !== asset.byteLength
+      || media.sha256 !== asset.manifest?.lwseqSha256) throw new Error('Portable recording metadata does not match the project.');
+    const bytes = fromBase64(media.data);
+    if (bytes.byteLength !== media.bytes) throw new Error('Portable recording is incomplete.');
+    asset.mediaRef = await storeRecordedMedia(bytes, media.sha256);
+    delete asset.portableMedia;
+  }
+  return copy;
+}
 
 /**
  * A repository envelope is `{ envelopeVersion, …, project: {…} }`. Anything
@@ -59,7 +115,7 @@ export async function exportProjectToFile({
   buildPayload = null,
   download = downloadJsonFile,
 } = {}) {
-  const payload = buildPayload ? buildPayload() : serializeProject();
+  const payload = await makePortableProject(buildPayload ? buildPayload() : serializeProject());
   const ok = await download(canonicalProjectFileName(projectName), payload);
   if (ok) markPersisted?.('file');
   return ok === true;
@@ -81,7 +137,7 @@ export async function importProjectFromPickedFile(file, {
   clearSaveBlock,
   readProjectFile = importProjectFromFile,
 } = {}) {
-  const result = await readProjectFile(file, data => replaceProject(unwrapProjectFileDocument(data)));
+  const result = await readProjectFile(file, async data => replaceProject(await importPortableProjectMedia(unwrapProjectFileDocument(data))));
   if (result?.ok) {
     clearBrowserAssociation?.();
     detachCloudProject?.();

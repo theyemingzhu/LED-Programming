@@ -39,10 +39,12 @@ import {
   isImplicitDefaultPatternPlaylist,
   makeComboPlaylistItem,
   makePatternPlaylistItem,
+  makeSequencePlaylistItem,
   normalizeCardPlaylist,
   normalizePlaylistTiming,
   playlistContainsCombo,
   playlistContainsPattern,
+  playlistContainsSequence,
 } from '../lib/cardPlaylist.js';
 import { currentInstallation } from '../lib/projectLifecycle.js';
 import {
@@ -141,6 +143,15 @@ function realPatternShape(patternId) {
       patchBoard,
       wiring,
       compiledWiring,
+      layoutLayerGroups,
+      sectionFamilies,
+      palette,
+      hidden,
+      bpm,
+      gammaEnabled,
+      gammaValue,
+      symSettings,
+      sectionTargets,
       standaloneController,
       setStandaloneController,
       markCardLookConfirmed,
@@ -175,11 +186,15 @@ function realPatternShape(patternId) {
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const savedLooks = normalizeSavedLooks(standaloneController?.looks);
     const savedLookById = new Map(savedLooks.map((look) => [look.id, look]));
+    const sequenceAssets = (standaloneController?.sequenceAssets || []).filter(asset =>
+      asset?.mediaRef?.kind === 'indexeddb-sha256'
+      && asset.mediaRef.sha256 === asset?.manifest?.lwseqSha256);
+    const sequenceAssetById = new Map(sequenceAssets.map(asset => [asset.id, asset]));
 
     const rawPlaylist = isImplicitDefaultPatternPlaylist(standaloneController?.playlist)
       ? []
       : standaloneController?.playlist;
-    const playlist = normalizeCardPlaylist(rawPlaylist, { savedLooks, allowEmpty: true });
+    const playlist = normalizeCardPlaylist(rawPlaylist, { savedLooks, sequenceAssets, allowEmpty: true });
     // The playlist-wide "played on the card" settings — fade between looks,
     // and whether the card auto-plays it — live at controls.playlist (see
     // cardPlaylist.js's normalizePlaylistTiming doc comment for why they are
@@ -237,7 +252,7 @@ function realPatternShape(patternId) {
 
     // ── live playlist write-back to the standalone controller ─────────────
     const writePlaylist = (nextItems) => {
-      const normalized = normalizeCardPlaylist(nextItems, { savedLooks, allowEmpty: true });
+      const normalized = normalizeCardPlaylist(nextItems, { savedLooks, sequenceAssets, allowEmpty: true });
       playlistRevision.current += 1;
       if (!recoveryPendingRef.current) {
         cardActionGeneration.current += 1;
@@ -460,7 +475,7 @@ function realPatternShape(patternId) {
     };
 
     const setLiveItem = async (item) => {
-      if (!item || recoveryPendingRef.current) return;
+      if (!item || item.type === 'sequence' || recoveryPendingRef.current) return;
       latestLiveItem.current = item;
       const confirmed = item.type === 'combo'
         ? await previewSavedLookOnCard(savedLookById.get(item.lookId))
@@ -622,6 +637,11 @@ function realPatternShape(patternId) {
           runtimePackage: packageForCard,
           allowLayoutChange,
           allowProjectChange,
+          mediaInstall: {
+            project: { strips, patchBoard, wiring, compiledWiring, layoutLayerGroups,
+              sectionFamilies, palette, hidden, bpm, gammaEnabled, gammaValue, symSettings, sectionTargets },
+            confirmPairing: () => window.confirm('Touch a physical control on the Lightweaver card, then choose Continue to save recorded media to this exact card.'),
+          },
         });
         if (!installIsCurrent()) return;
         const exactPrepared = { ...runtimeBuild.prepared, cardId: before.cardId };
@@ -742,6 +762,12 @@ function realPatternShape(patternId) {
       if (!item) return;
       writePlaylist([...playlist, item]);
       void previewSavedLookOnCard(savedLook);
+    };
+
+    const addSequence = (asset) => {
+      if (recoveryPendingRef.current || !asset || playlistContainsSequence(playlist, asset.id)) return;
+      const item = makeSequencePlaylistItem(asset);
+      if (item) writePlaylist([...playlist, item]);
     };
 
     // ── drag + drop (the handle is the source; rows remain drop targets) ───
@@ -1064,7 +1090,10 @@ function realPatternShape(patternId) {
                   </span>
                   {playlist.map((item, i) => {
                     const savedLook = item.type === 'combo' ? savedLookById.get(item.lookId) : null;
-                    const p = item.type === 'combo'
+                    const recorded = item.type === 'sequence' ? sequenceAssetById.get(item.sequenceAssetId) : null;
+                    const p = item.type === 'sequence'
+                      ? realPatternShape('aurora')
+                      : item.type === 'combo'
                       ? { ...adaptSavedLook(savedLook), label: item.label }
                       : realPatternShape(item.patternId);
                     if (!p) return null;
@@ -1104,8 +1133,8 @@ function realPatternShape(patternId) {
                         </div>
                         <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>
                         <div className="pl-copy">
-                          <strong>{item.label}{item.type === 'combo' && <span className="mixtag">look</span>}</strong>
-                          <span>{item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
+                          <strong>{item.label}{item.type === 'combo' && <span className="mixtag">look</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
+                          <span>{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
                         </div>
                         <div className="pl-actions">
                           <label className="pl-dwell">
@@ -1134,7 +1163,7 @@ function realPatternShape(patternId) {
                             <span className="pl-dwell-unit">min</span>
                             <span className="pl-field-help" id={`playlist-length-help-${id}`}>Enter 0.02 to 60 minutes.</span>
                           </label>
-                          <button className={"plbtn" + (live === id ? " on" : "")} aria-pressed={live === id} disabled={recoveryPending} onClick={() => setLiveItem(item)}>Live</button>
+                          <button className={"plbtn" + (live === id ? " on" : "")} aria-pressed={live === id} disabled={recoveryPending || item.type === 'sequence'} title={item.type === 'sequence' ? 'Install this recording before playing it on the card' : undefined} onClick={() => setLiveItem(item)}>Live</button>
                           <div className="pl-row-menu">
                             <button
                               className="plbtn pl-more"
@@ -1223,6 +1252,18 @@ function realPatternShape(patternId) {
                   {!mixShapes.length && <p className="pl-empty">No saved looks yet — create them on Patterns.</p>}
                   {mixShapes.length > 0 && !mixesRemaining && <p className="pl-empty">All saved looks are in the playlist. Save more on Patterns.</p>}
                 </div>
+
+                {sequenceAssets.length > 0 && <div className="card pm-pane" data-testid="playlist-recordings">
+                  <div className="sec-h"><h2 className="t">Recordings</h2><span className="m">{sequenceAssets.length}</span></div>
+                  {sequenceAssets.map(asset => {
+                    const added = playlistContainsSequence(playlist, asset.id);
+                    return <button key={asset.id} className="pl-source" onClick={() => addSequence(asset)} disabled={added || recoveryPending}>
+                      <span className="pl-src-art"><LedRow pal={realPatternShape('aurora').pal} n={5} /></span>
+                      <span className="pl-src-nm">{asset.label}<span className="mixtag">recording</span></span>
+                      <span className="pl-src-add">{added ? I.check : I.plus}</span>
+                    </button>;
+                  })}
+                </div>}
 
                 <div className="card pm-pane">
                   <div className="sec-h"><h2 className="t">Pattern pool</h2><span className="m">{playlistPatternCount} added · {patternTiles.length} total</span></div>

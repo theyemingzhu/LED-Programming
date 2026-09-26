@@ -158,7 +158,7 @@ test('an imported layered recipe with a different saved section base cannot bake
     blendMode: 'normal', generator: { kind: 'lightweaver-pattern', patternId: 'fire', params: {} },
     target: { kind: 'whole-piece', id: 'all' },
   }];
-  assert.throws(() => estimatePatternLabBake(input), /cannot preserve that base mix/i);
+  assert.throws(() => estimatePatternLabBake(input), /cannot preserve that base mix|needs its current section mapping/i);
 });
 
 test('Kaleidoscope mapping participates deterministically in direct bake output and hashes', async () => {
@@ -358,6 +358,20 @@ test('wall clock, random, network, executable source, and unresolved audio input
     analysisVersion: 1, audioSha256: 'a'.repeat(64),
   }];
   await assert.rejects(bakePatternLabRecipe({ ...audio, fps: 1 }), /offline audio.*required|unresolved/i);
+});
+
+test('mixed section base validates every section pattern for built-in and offline audio eligibility', async () => {
+  const input = fixture();
+  input.recipe.version = 2;
+  input.recipe.base = { kind: 'lightweaver-pattern', patternId: 'gradient', params: {},
+    sectionMix: { version: 1, defaultLook: { patternId: 'aurora', speed: 1, brightness: 1 },
+      sections: [{ id: 'outer', stripIds: ['outer'],
+        look: { patternId: 'unknown-custom-pattern', speed: 1, brightness: 1 } }] } };
+  input.sectionTargets = [{ kind: 'section', id: 'outer', label: 'Outer', stripIds: ['outer'] }];
+  assert.throws(() => estimatePatternLabBake(input), /requires a built-in pattern.*unknown-custom-pattern/i);
+
+  input.recipe.base.sectionMix.sections[0].look.patternId = 'bass-pulse';
+  await assert.rejects(bakePatternLabRecipe({ ...input, fps: 1 }), /offline audio.*required|unresolved/i);
 });
 
 test('hostile accessors and non-plain bake inputs are rejected without evaluation', async () => {

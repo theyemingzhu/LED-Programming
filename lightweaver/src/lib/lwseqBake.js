@@ -154,7 +154,15 @@ function rejectExecutableRecipeFields(value, path = '$') {
 
 function recipePatternIds(recipe) {
   const ids = [];
-  if (recipe.base?.kind === 'lightweaver-pattern') ids.push(recipe.base.patternId);
+  if (recipe.base?.kind === 'lightweaver-pattern') {
+    ids.push(recipe.base.patternId);
+    if (recipe.base.sectionMix) {
+      ids.push(recipe.base.sectionMix.defaultLook?.patternId);
+      for (const section of recipe.base.sectionMix.sections || []) {
+        ids.push(section.look?.patternId);
+      }
+    }
+  }
   for (const layer of recipe.layers || []) {
     if (layer?.generator?.kind === 'lightweaver-pattern') ids.push(layer.generator.patternId);
   }

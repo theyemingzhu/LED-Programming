@@ -31,7 +31,7 @@ test('mixed saved section looks cannot silently become a single base when layeri
     },
   });
   assert.equal(patternLabLayerBaseSupport(mixed).supported, false);
-  assert.match(patternLabLayerBaseSupport(mixed).message, /cannot preserve that base mix/);
+  assert.match(patternLabLayerBaseSupport(mixed).message, /needs its current section mapping/);
   const uniform = createPatternLabRecipe({
     id: 'uniform',
     sourceLook: {
@@ -50,4 +50,49 @@ test('canonical section identity and exact membership must still resolve', () =>
   assert.equal(validatePatternLabLayerTargets(recipe, areas).valid, true);
   assert.equal(validatePatternLabLayerTargets(recipe, { ...areas, sectionTargets: [] }).valid, false);
   assert.equal(validatePatternLabLayerTargets(recipe, { ...areas, sectionTargets: [{ kind: 'section', id: 'petals', stripIds: ['left'] }] }).valid, false);
+});
+
+test('first overlay captures each source section and rejects stale base membership', () => {
+  const original = createPatternLabRecipe({ id: 'mixed-base',
+    playback: { speed: 0.75, brightness: 0.35 },
+    sourceLook: { defaultLook: { patternId: 'aurora', speed: 0.75, brightness: 0.35 },
+      sectionLooks: { petals: { patternId: 'fire', speed: 1.8, brightness: 0.9, customHue: 170 } },
+      sectionRecipes: { petals: { base: { kind: 'lightweaver-pattern', patternId: 'fire', params: { rise: 2.7 } } } } },
+  });
+  const currentAreas = [
+    { id: 'all', kind: 'all', stripIds: ['left', 'right', 'stem'] },
+    { id: 'petals', kind: 'section', stripIds: ['left', 'right'] },
+  ];
+  const currentProject = { sectionTargets: currentAreas.filter(area => area.kind === 'section'),
+    strips: [{ id: 'left' }, { id: 'right' }, { id: 'stem' }] };
+  const layered = addPatternLabLayer(original, { patternId: 'ocean', areas: currentAreas });
+  assert.equal(layered.base.sectionMix.version, 1);
+  assert.deepEqual(layered.base.sectionMix.sections[0].stripIds, ['left', 'right']);
+  assert.deepEqual(layered.base.sectionMix.sections[0].params, { rise: 2.7 });
+  assert.equal(layered.base.sectionMix.sections[0].look.brightness, 0.9);
+  assert.equal(layered.playback.brightness, 1);
+  assert.equal(layered.playback.speed, 1);
+  assert.deepEqual(original.layers, []);
+  assert.equal(validatePatternLabLayerTargets(layered, currentProject).valid, true);
+  assert.equal(validatePatternLabLayerTargets(layered, { ...currentProject, sectionTargets: [] }).valid, false);
+  assert.equal(validatePatternLabLayerTargets(layered, { ...currentProject, sectionTargets: [{ kind: 'section', id: 'petals', stripIds: ['left'] }] }).valid, false);
+});
+
+test('parameter-only section recipes remain distinct while richer section sources block layering', () => {
+  const base = createPatternLabRecipe({ id: 'params-only', sourceLook: {
+    defaultLook: { patternId: 'fire' },
+    sectionLooks: { petals: { patternId: 'fire' } },
+    sectionRecipes: { petals: { base: { kind: 'lightweaver-pattern', patternId: 'fire', params: { rise: 3 } },
+      layers: [], evolution: { enabled: false } } },
+  } });
+  const currentAreas = [{ id: 'all', kind: 'all', stripIds: ['left', 'right'] },
+    { id: 'petals', kind: 'section', stripIds: ['left'] }];
+  assert.equal(patternLabLayerBaseSupport(base, currentAreas).supported, true);
+  const layered = addPatternLabLayer(base, { areas: currentAreas });
+  assert.deepEqual(layered.base.sectionMix.sections[0].params, { rise: 3 });
+  const rich = { ...base, sourceLook: { ...base.sourceLook,
+    sectionRecipes: { petals: { ...base.sourceLook.sectionRecipes.petals,
+      layers: [{ id: 'section-overlay' }] } } } };
+  assert.match(patternLabLayerBaseSupport(rich, currentAreas).message, /own layers/);
+  assert.throws(() => addPatternLabLayer(rich, { areas: currentAreas }), /own layers/);
 });

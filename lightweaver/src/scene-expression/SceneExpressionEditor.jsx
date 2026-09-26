@@ -8,6 +8,7 @@ import { buildSceneExpressionAreaCatalog } from '../lib/sceneExpressionTargets.j
 import { inspectExpressionScenes } from '../lib/sceneExpressionProject.js';
 import { mapSceneExpressionPreviewFrame } from '../lib/sceneExpressionFrame.js';
 import { createSceneExpressionPreviewRenderer } from '../lib/sceneExpressionFlow.js';
+import { bakeSceneExpressionFlow, estimateSceneExpressionFlowRecording, verifySceneExpressionFlowBake } from '../lib/sceneExpressionRecording.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import {
   addSceneAssignment, addSceneStep, createSceneExpression, DEFAULT_CARD_COLOR, moveSceneStep,
@@ -37,7 +38,7 @@ function unsupportedTitle(code) {
 }
 
 export default function SceneExpressionEditor({
-  project, onSaveProject, onInstallScene, installationReceipt,
+  project, onSaveProject, onInstallScene, onRecordFlow, installationReceipt,
   onStartPhysicalPreview, physicalPreviewContextKey = '', onClose,
   hostName = 'Lab', closeLabel = '',
 }) {
@@ -53,6 +54,7 @@ export default function SceneExpressionEditor({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [saveState, setSaveState] = useState('idle');
   const [installState, setInstallState] = useState({ status: 'idle', message: '', source: '', reason: '' });
+  const [recordState, setRecordState] = useState({ status: 'idle', message: '' });
   const [physicalPreviewState, setPhysicalPreviewState] = useState({ status: 'idle', message: '' });
   const [physicalFrameReady, setPhysicalFrameReady] = useState(false);
   const playbackFrameRef = useRef(0);
@@ -60,10 +62,14 @@ export default function SceneExpressionEditor({
   const physicalPreviewRef = useRef(null);
   const mappedFrameRef = useRef(null);
   const sceneRef = useRef(scene);
+  const projectRef = useRef(project);
+  const recordingAbortRef = useRef(null);
+  const recordingSaveStartedRef = useRef(false);
   const pendingSourceCommitRef = useRef(null);
   const saveProjectRef = useRef(onSaveProject);
   const installSceneRef = useRef(onInstallScene);
   sceneRef.current = scene;
+  projectRef.current = project;
   saveProjectRef.current = onSaveProject;
   installSceneRef.current = onInstallScene;
   const activeStoredSource = activeStored ? JSON.stringify(activeStored) : '';
@@ -127,7 +133,6 @@ export default function SceneExpressionEditor({
     standaloneController: project.standaloneController,
     projectId: project.projectId, projectName: project.projectName,
   }), [scene, catalog, project]);
-  const status = statusCopy(compilation);
   const selectedStep = scene.steps.find(step => step.id === selectedStepId) || scene.steps[0];
   const assignment = selectedStep.assignments[selectedAssignment] || selectedStep.assignments[0] || null;
   const resolvedStep = resolved.steps?.find(step => step.id === selectedStep.id);
@@ -185,6 +190,29 @@ export default function SceneExpressionEditor({
     [previewStrips, project.viewBox],
   );
   const availableScenes = storedScenes.some(item => item.id === scene.id) ? storedScenes : [...storedScenes, scene];
+  const hasFlow = scene.steps.some(step => step.assignments.some(item => item.selection?.domain === 'continuous'));
+  const recordingInput = (currentScene, currentProject) => ({
+    scene: currentScene, strips: currentProject.strips, patchBoard: currentProject.patchBoard,
+    wiring: currentProject.wiring, compiledWiring: currentProject.compiledWiring,
+    sectionFamilies: currentProject.sectionFamilies, layoutLayerGroups: currentProject.layoutLayerGroups,
+    palette: currentProject.palette, hidden: currentProject.hidden, fps: 24,
+  });
+  let recordEstimate = null;
+  let recordUnavailable = '';
+  if (hasFlow && previewAvailability.ok) {
+    try { recordEstimate = estimateSceneExpressionFlowRecording(recordingInput(scene, project)); }
+    catch (error) { recordUnavailable = error.message; }
+  }
+  const status = hasFlow && previewAvailability.ok && recordEstimate && onRecordFlow
+    ? { tone: recordState.status === 'ready' ? 'ready' : 'preview',
+      title: recordState.status === 'ready' ? 'Flow recorded for Playlist' : 'Flow ready to record',
+      body: 'Record the complete scene as exact LED frames, then add the recording in Playlist. The card needs a writable microSD card.' }
+    : statusCopy(compilation);
+  const recordSize = recordEstimate
+    ? recordEstimate.totalBytes < 1024 * 1024
+      ? `${Math.ceil(recordEstimate.totalBytes / 1024)} KB`
+      : `${(recordEstimate.totalBytes / 1024 / 1024).toFixed(1)} MB`
+    : '';
 
   async function stopPhysicalPreview(reason = 'user') {
     const controller = physicalPreviewRef.current;
@@ -247,6 +275,12 @@ export default function SceneExpressionEditor({
   }
 
   useEffect(() => () => { void stopPhysicalPreview('unmount'); }, []);
+  useEffect(() => () => { if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort(); }, []);
+
+  useEffect(() => {
+    if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort();
+  }, [project.strips, project.patchBoard, project.wiring, project.compiledWiring,
+    project.sectionFamilies, project.layoutLayerGroups, project.palette, project.hidden]);
 
   useEffect(() => {
     if (physicalPreviewRef.current) void stopPhysicalPreview('context-changed');
@@ -293,6 +327,8 @@ export default function SceneExpressionEditor({
     });
   }
   function update(next) {
+    if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort();
+    setRecordState({ status: 'idle', message: '' });
     const normalized = normalizeSceneExpression(next);
     setScene(normalized);
     writeCanonicalSource(normalized);
@@ -300,6 +336,8 @@ export default function SceneExpressionEditor({
   }
   function patchAssignment(patch) { update(patchOrCreateSceneAssignment(scene, selectedStep.id, selectedAssignment, patch)); }
   function openScene(sceneId) {
+    if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort();
+    setRecordState({ status: 'idle', message: '' });
     const next = storedScenes.find(item => item.id === sceneId);
     if (!next) return;
     setScene(structuredClone(next));
@@ -310,6 +348,8 @@ export default function SceneExpressionEditor({
     setSaveState('idle');
   }
   function newScene() {
+    if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort();
+    setRecordState({ status: 'idle', message: '' });
     const id = `scene-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const next = createSceneExpression({ id, name: 'New scene' });
     setScene(next);
@@ -322,6 +362,44 @@ export default function SceneExpressionEditor({
   function save() {
     writeCanonicalSource(scene);
     setSaveState('saving');
+  }
+  async function recordFlow() {
+    if (!onRecordFlow || !hasFlow || !previewAvailability.ok || recordUnavailable || recordingAbortRef.current) return;
+    if (physicalPreviewRef.current) {
+      const stopped = await stopPhysicalPreview('record-flow');
+      if (!stopped?.restored && !stopped?.ownershipTransferred) {
+        setRecordState({ status: 'error', message: 'Previous card playback could not be verified. Recording did not start.' });
+        return;
+      }
+    }
+    const controller = new AbortController();
+    recordingAbortRef.current = controller;
+    recordingSaveStartedRef.current = false;
+    const sourceSnapshot = structuredClone(recordingInput(scene, project));
+    setRecordState({ status: 'recording', message: 'Rendering the complete scene…' });
+    try {
+      const committed = await stageCanonicalSource(sourceSnapshot.scene);
+      if (!committed || controller.signal.aborted) throw new DOMException('Scene changed while recording', 'AbortError');
+      const bakeResult = await bakeSceneExpressionFlow({ ...sourceSnapshot, signal: controller.signal });
+      const fresh = recordingInput(sceneRef.current, projectRef.current);
+      const verified = await verifySceneExpressionFlowBake(bakeResult, { ...fresh, signal: controller.signal });
+      if (!verified.ok) throw new Error(verified.reason === 'recording-stale-layout'
+        ? 'Artwork or wiring changed during recording. Record again.'
+        : 'Scene changed during recording. Record again.');
+      if (controller.signal.aborted) throw new DOMException('Recording canceled', 'AbortError');
+      recordingSaveStartedRef.current = true;
+      setRecordState({ status: 'saving', message: 'Saving the verified recording…' });
+      const result = await onRecordFlow({ scene: sourceSnapshot.scene, bakeResult, sourceSnapshot });
+      if (!result?.ok) throw new Error(result?.message || 'The recording could not be saved or installed.');
+      setRecordState({ status: 'ready', message: result.message || 'Complete Flow recording saved with its editable scene source.' });
+    } catch (error) {
+      const canceled = error?.name === 'AbortError' && !recordingSaveStartedRef.current;
+      setRecordState({ status: canceled ? 'idle' : 'error',
+        message: canceled ? 'Recording canceled.' : (error?.message || 'Flow recording failed.') });
+    } finally {
+      if (recordingAbortRef.current === controller) recordingAbortRef.current = null;
+      recordingSaveStartedRef.current = false;
+    }
   }
   async function install() {
     if (!onInstallScene || installState.status === 'installing') return;
@@ -412,17 +490,25 @@ export default function SceneExpressionEditor({
         <button className="btn" type="button" onClick={newScene}>New scene</button>
         <button className="btn" type="button" onClick={onClose}>{closeLabel || `Back to ${hostName}`}</button>
         <button className="btn" type="button" onClick={save} disabled={saveState === 'saving'}>{saveState === 'saving' ? 'Saving…' : 'Save scene'}</button>
-        <button className="btn primary" type="button" onClick={install} disabled={!compilation.ok || installState.status === 'installing' || exactOnCard || !onInstallScene}>{installState.status === 'installing' ? 'Putting scene on card…' : exactOnCard ? 'On card' : 'Put scene on card'}</button>
+        {hasFlow && <button className="btn primary" type="button" data-testid="scene-record-flow"
+          onClick={recordState.status === 'recording'
+            ? () => { if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort(); } : recordFlow}
+          disabled={recordState.status === 'saving' || !onRecordFlow || !previewAvailability.ok || Boolean(recordUnavailable)}>
+          {recordState.status === 'saving' ? 'Saving…' : recordState.status === 'recording' ? 'Cancel recording' : 'Record Flow'}
+        </button>}
+        {(!hasFlow || compilation.ok) && <button className="btn primary" type="button" onClick={install} disabled={!compilation.ok || installState.status === 'installing' || exactOnCard || !onInstallScene}>{installState.status === 'installing' ? 'Putting scene on card…' : exactOnCard ? 'On card' : 'Put scene on card'}</button>}
       </div>
     </header>
     <div className={`sexp-status ${status.tone}`} role="status">
       <strong>{status.title}</strong><span>{status.body}</span>
       {saveState === 'saved' && <em>Project saved</em>}
       {saveState === 'error' && <em>Save failed. Your edits remain open.</em>}
+      {hasFlow && <em data-testid="scene-record-status">{recordState.message || recordUnavailable || (recordEstimate ? `Record one complete loop · ${recordEstimate.durationSeconds.toFixed(1)}s · ${recordSize} · microSD required on card.` : !onRecordFlow ? 'Flow recording needs the sequence library.' : '')}</em>}
+      {recordState.status === 'ready' && <a href="#screen=playlist">Open Playlist</a>}
     </div>
     <div className="sexp-delivery" data-state={deliveryState} data-reason={installState.reason || undefined} data-current-draft-retained={installState.currentDraftRetained ? 'true' : undefined} data-receipt-verified={installationReceipt?.verified ? 'true' : 'false'}>
-      <strong>{scene.steps.length} scene step{scene.steps.length === 1 ? '' : 's'} will replace the card playlist.</strong>
-      <span>Your {project.standaloneController?.looks?.length || 0} saved library look{project.standaloneController?.looks?.length === 1 ? '' : 's'} {project.standaloneController?.looks?.length === 1 ? 'remains' : 'remain'} in the editable project source.</span>
+      <strong>{hasFlow && !compilation.ok ? 'Record this Flow to use it in Playlist.' : `${scene.steps.length} scene step${scene.steps.length === 1 ? '' : 's'} will replace the card playlist.`}</strong>
+      <span>{hasFlow && !compilation.ok ? 'The editable scene stays in Studio. Playlist installation checks the recording and card media before changing playback.' : `Your ${project.standaloneController?.looks?.length || 0} saved library look${project.standaloneController?.looks?.length === 1 ? '' : 's'} ${project.standaloneController?.looks?.length === 1 ? 'remains' : 'remain'} in the editable project source.`}</span>
       {(installState.message || exactOnCard) && <em>{installedSnapshotOnly ? 'An earlier snapshot is verified on the card. This project has newer edits or a different card is connected.' : installState.message || 'Scene source and playback were verified on the card.'}</em>}
     </div>
     <div className="sexp-grid">
@@ -433,7 +519,7 @@ export default function SceneExpressionEditor({
             patternId="aurora" playing={effectivePlaying}
             strips={previewRenderer?.ok ? previewStrips.map(segment => ({ ...segment, patternId: undefined })) : previewStrips}
             compiledFn={previewRenderer?.ok ? previewRenderer.compiledFn : null}
-            viewBox={previewViewBox} hidden={project.hidden} controlledTime={elapsedMs / 1000}
+            viewBox={previewViewBox} hidden={project.hidden} controlledTime={elapsedMs / 1000} motionSmoothing="off"
             onFrame={handlePreviewFrame}
             ariaLabel={`${scene.name} preview`} testId="scene-expression-preview"
           /> : <div className="sexp-empty"><strong>Draw the artwork in Layout first</strong><span>This scene will use its exact strips and groups.</span></div>}
