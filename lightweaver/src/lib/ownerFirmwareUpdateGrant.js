@@ -33,7 +33,7 @@ export async function requestSoftwareFirmwareUpdateGrant({
     // network-level failure surfaces as a bare TypeError ("Failed to fetch"),
     // which tells the owner nothing they can act on.
     if (cause?.reason || cause?.message !== 'Failed to fetch') throw cause;
-    const error = new Error('Studio could not reach this card to request its secure update challenge. Reconnect the exact card, then retry — or use the card button instead.');
+    const error = new Error('Studio could not reach this card to request its secure update challenge. Reconnect the exact card, then retry, or use the preserving USB update.');
     error.cause = cause;
     throw error;
   }
@@ -72,8 +72,7 @@ export async function requestSoftwareFirmwareUpdateGrant({
   }
   // A 404 `not_found` here is not "the update is broken" — it is a Studio
   // origin (local dev, or the card's own served page) that never had this
-  // route at all. Naming the card-button path is the only actionable thing
-  // to tell the owner; the raw "API route not found." body is not.
+  // route at all. Name the owner Studio and preserving USB recovery path.
   if (response.status === 404 && signed?.error?.code === 'not_found') {
     const error = new Error(GRANT_SERVICE_MISSING_GUIDANCE);
     error.reason = 'grant-service-missing';
@@ -94,9 +93,9 @@ export async function requestSoftwareFirmwareUpdateGrant({
   });
 }
 
-export const OWNER_SIGN_IN_GUIDANCE = 'Secure software authorization needs the owner sign-in for this Studio site, and this browser is not signed in. Open the owner sign-in and retry, or use the card button instead.';
+export const OWNER_SIGN_IN_GUIDANCE = 'Secure software authorization needs the owner sign-in for this Studio site. Open the owner sign-in and retry, or use the preserving USB update.';
 
-export const GRANT_SERVICE_MISSING_GUIDANCE = 'This Studio has no software update authorization service to reach here. Use the card button on the card instead.';
+export const GRANT_SERVICE_MISSING_GUIDANCE = 'This Studio has no software update authorization service. Open the owner Studio at led.mandalacodes.com and reconnect this exact card, or use the preserving USB update.';
 
 // A Cloudflare Access wall answers /api/library/* with an off-site login
 // redirect before the Studio's own code ever runs. Under `redirect: 'manual'`
