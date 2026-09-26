@@ -1243,8 +1243,13 @@ export function StripDiscoveryPanel({
   const mixedMeasuredPatterns = new Set(measuredPatternIds.filter(Boolean)).size > 1;
 
   useEffect(() => {
-    onLifecycleChange?.({ phase, busy, lighting });
-  }, [busy, lighting, onLifecycleChange, phase]);
+    onLifecycleChange?.({
+      phase, busy, lighting,
+      probeActive: Boolean(probeBusy || pinnedPort !== null),
+      auditionActive: Boolean(auditionBusy || auditionBaselineRef.current || auditionPendingRef.current
+        || auditionInFlightRef.current),
+    });
+  }, [auditionBusy, auditionPatterns, busy, lighting, onLifecycleChange, phase, pinnedPort, probeBusy]);
 
   // Abandoning discovery mid-run leaves the card holding the temporary bench
   // setup with no project of the owner's on it (findings 2026-08-06, #1).
@@ -1819,7 +1824,7 @@ export function StripDiscoveryPanel({
                 type="button"
                 className="btn primary"
                 data-testid="discovery-open-patterns"
-                onClick={() => { window.location.hash = '#screen=pattern'; }}
+                onClick={() => { if (go) go('pattern'); else window.location.hash = '#screen=pattern'; }}
               >
                 Open Patterns
               </button>

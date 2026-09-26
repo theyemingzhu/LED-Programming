@@ -727,6 +727,9 @@ function Shell({ offlineUpdateController = null }) {
   const view = useMemo(() => studioViewFromHash(routeHash, viewOptions()), [routeHash]);
   const cardRoute = useMemo(() => cardRouteFromHash(routeHash), [routeHash]);
   const cardSetupReturnHashRef = useRef('#screen=layout');
+  // A minimized light check remains mounted while the owner visits another
+  // Studio screen. Its in-memory counting and card lease must not restart.
+  const [cardSetupPersistent, setCardSetupPersistent] = useState(false);
   useEffect(() => {
     if (view !== 'discovery') cardSetupReturnHashRef.current = routeHash || '#screen=layout';
   }, [routeHash, view]);
@@ -1048,11 +1051,15 @@ function Shell({ offlineUpdateController = null }) {
   }, [flushProjectAutosave, navigateToView, openCardSection]);
 
   const closeCardSetup = useCallback(() => {
-    routeStore.replace(cardSetupReturnHashRef.current || '#screen=layout');
+    setCardSetupPersistent(false);
+    if (studioViewFromHash(routeStore.read(), viewOptions()) === 'discovery') {
+      routeStore.replace(cardSetupReturnHashRef.current || '#screen=layout');
+    }
   }, [routeStore]);
 
   const completeCardSetup = useCallback(() => {
     flushProjectAutosave();
+    setCardSetupPersistent(false);
     routeStore.replace('#screen=layout&mode=draw');
   }, [flushProjectAutosave, routeStore]);
 
@@ -2215,11 +2222,11 @@ function Shell({ offlineUpdateController = null }) {
     e.target.value = '';
   }, [projectImportCleanup, replaceProject]);
 
-  const cardSetupOpen = view === 'discovery';
-  const underlyingView = cardSetupOpen
+  const cardSetupOpen = view === 'discovery' || cardSetupPersistent;
+  const underlyingView = view === 'discovery'
     ? studioViewFromHash(cardSetupReturnHashRef.current, viewOptions())
     : view;
-  const underlyingCardRoute = cardSetupOpen
+  const underlyingCardRoute = view === 'discovery'
     ? cardRouteFromHash(cardSetupReturnHashRef.current)
     : cardRoute;
   const Screen = SCREEN_BY_ID[underlyingView];
@@ -2410,10 +2417,25 @@ function Shell({ offlineUpdateController = null }) {
           <CardSetupOverlay
             cardHost={cardLink.host || cardStatus.host}
             cardLink={cardLink}
-            go={navigateStudio}
+            go={next => {
+              // A discovery completion explicitly leaves this flow. The rail
+              // still uses navigateStudio so an idle dock can follow the owner.
+              setCardSetupPersistent(false);
+              navigateStudio(next);
+            }}
             onDismiss={closeCardSetup}
             onDisconnect={disconnectCardSetup}
             onComplete={completeCardSetup}
+            onMinimizedChange={next => {
+              if (next) {
+                setCardSetupPersistent(true);
+              } else if (view !== 'discovery') {
+                // Keep the persistent flag until close/complete/disconnect so
+                // this route change cannot transiently unmount the live panel.
+                cardSetupReturnHashRef.current = routeStore.read();
+                routeStore.replace('#screen=discovery');
+              }
+            }}
           />
         </Suspense>
       )}

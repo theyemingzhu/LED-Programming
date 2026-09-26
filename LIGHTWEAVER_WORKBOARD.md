@@ -54,6 +54,29 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-26 Compact, minimizable Bench discovery (active)
+
+Adrian requested a more compact discovery panel with minimize. Sprint mode;
+continue the authorized shipment after focused proof. The content-sized panel
+retains its mounted session in a Restore/Stop lights dock. Idle docking permits
+Studio navigation; active probes, counting and pattern auditions retain modal
+command ownership. Explicit completion exits the dock. Sol implemented the UI
+and regressions; Astra reviewed lifecycle guards; primary integrated and inspected
+the actual desktop and phone screens (about 700x355 and 374x497 respectively).
+Checkpoint: 2,801 unit tests and production build pass. All three new focused
+regressions pass (47.8s), alongside four existing discovery compatibility cases.
+Regressions cover
+retained counts/patterns, active probe ownership, phone sizing and no extra
+configuration writes/reboots. Their shared pattern helper now waits for natural
+post-reboot exact-card validation before audition. Final release evidence is
+pending; no firmware or physical-card change is required.
+
+The earlier three-GPIO acceptance release is merged as PR350/source6d3e8f33,
+Studio build 2163 / signed firmware build 2160. Tests run 36255579213 and actual
+credentialed deployment 36256264192 passed. Independent strict no-store release
+identity and all 63 Studio / 8 firmware graph files matched the staged revision;
+full launch run 36255596379 is still pending. Physical output remains unobserved.
+
 ### 2026-09-26 Manager: three-GPIO playlist software acceptance (done)
 
 Adrian is remote and explicitly requested machine-verifiable connection, Layout,
