@@ -54,6 +54,23 @@ worktrees, and task history remain available for the pending acceptance checks.
 
 ## Sprint queue
 
+### 2026-09-26 Manager: three-GPIO playlist software acceptance (done)
+
+Adrian is remote and explicitly requested machine-verifiable connection, Layout,
+three distinct GPIO patterns, Keep and Playlist persistence. On released Studio
+2161/source e934c65d, the exact new acceptance regression passes three consecutive
+runs: GPIO16/7/Fire, GPIO17/11/Ocean, GPIO18/19/Plasma; explicit save, reload,
+simulated installation and independent output/zone/look/playlist readback.
+Checkpoint: 2,801 unit tests and build pass. Seven connection/playlist browser
+checks pass; six simulator compatibility cases pass across documented runs.
+Initial browser actionability timeouts remain recorded; no product defect found.
+Live Studio retains the separately saved acceptance project. Real card72e0
+communication was verified, temporary previews restored to Candle/brightness166,
+and existing GPIO15/512-pixel configuration preserved. No flash/config install.
+Physical output observation is outside this software step. New test is registered
+in browser smoke and release UI gates. Details:
+`docs/plans/2026-09-26-three-gpio-playlist-acceptance.md`.
+
 ### 2026-09-25 Multi-GPIO release (active)
 
 Adrian explicitly requested shipment. Clean release branch
