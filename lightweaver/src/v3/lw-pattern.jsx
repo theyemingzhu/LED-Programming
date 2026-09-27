@@ -1073,6 +1073,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       ? activeLookId
       : (customPatternById.has(activePatternId) ? activePatternId : look.patternId);
     const sel = REAL_PATTERN_BY_ID.get(selId) || customPatternById.get(selId) || adaptPattern(selId) || ALL[0];
+    const selectedDisplayLabel = editingSavedLook?.label || sel.label;
     const patternNameFor = useCallback((patternId) => {
       if (!patternId) return '';
       const entry = REAL_PATTERN_BY_ID.get(patternId) || customPatternById.get(patternId) || adaptPattern(patternId) || getCardPatternById(patternId);
@@ -1129,7 +1130,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (sections.length) {
         return sections.map(t => `${targetLabel(t)} ${getCardPatternById(t.look?.patternId)?.label || t.look?.patternId}`).join(' + ');
       }
-      return `${sel.label} whole piece`;
+      return `${selectedDisplayLabel} whole piece`;
     })();
 
     const filtered = ALL.filter((p) => {
@@ -2811,9 +2812,9 @@ function writeSectionDisplayOrder(projectId, ids) {
                    <div className="sec-h"><span className="t">Sections</span><span className="m">{sectionCount} on this piece</span><span className="line" /></div>
                 <div className="card pm-pane pm-preview-pane">
                   <div className="pm-preview-controls" aria-label="Pattern preview controls">
-                    <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${sel.label}`}>
+                    <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${selectedDisplayLabel}`}>
                       <span className="t">Preview</span>
-                      <span className="m">{sel.label}</span>
+                      <span className="m">{selectedDisplayLabel}</span>
                     </div>
                     <button
                       type="button"
@@ -3104,7 +3105,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       rather than a stack of controls. The tuning pane was the
                       one panel on this screen with no head at all, so four
                       faders floated between two headed modules. */}
-                  <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
+                  <div className="sec-h"><span className="t">Tune</span><span className="m">{selectedDisplayLabel}</span><span className="line" /></div>
                   <div className="pm-save-look" aria-label="Save look">
                     <div className="pm-save-primary">
                       <input className="pm-input" data-testid="look-name" aria-label="Look name" placeholder="Look name (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
@@ -3150,7 +3151,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       const cc = px[0];
                       return <span key={i} style={{ background: `rgb(${cc.r},${cc.g},${cc.b})` }} />;
                     })}</span>
-                    <div className="pm-palmeta"><strong>{sel.label}</strong><span>{sel.sp} · {sel.cat.toUpperCase()}</span></div>
+                    <div className="pm-palmeta"><strong>{selectedDisplayLabel}</strong><span>{sel.sp} · {sel.cat.toUpperCase()}</span></div>
                   </div>
 
                   {/* Advanced: Breathe / Drift + Hue-shift, tucked in the mockup idiom */}

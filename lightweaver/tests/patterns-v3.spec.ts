@@ -2371,7 +2371,7 @@ test('the advanced hue-shift slider exposes its testids', async ({ page }) => {
   await expect(page.getByTestId('look-hue-shift-readout')).toHaveText('-24');
 });
 
-test('saving the current look as a mix adds a mix card to the grid', async ({ page }) => {
+test('saving a named mix keeps its name in Tune and Color after reload and selection', async ({ page }) => {
   await page.route('**/api/control', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   });
@@ -2381,6 +2381,7 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   const before = await page.locator('.pm-cards .pmcard').count();
 
+  await page.getByTestId('look-name').fill('Named section mix');
   await page.getByTestId('look-save-preset').click();
 
   // A new mix card (tagged 'mix') appears in the grid. The catalog sentinel
@@ -2388,6 +2389,13 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
   // visible catalog but does not own an exact rendered-card count.
   await expect(page.locator('.pm-cards .pmcard .mixtag')).toHaveCount(1);
   expect(await page.locator('.pm-cards .pmcard').count()).toBeGreaterThanOrEqual(before);
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const savedMix = page.locator('.pm-cards .pmcard').filter({ hasText: 'Named section mix' });
+  await expect(savedMix).toBeVisible();
+  await savedMix.click();
+  await expect(page.locator('.pm-tune-pane > .sec-h .m')).toHaveText('Named section mix');
+  await expect(page.locator('.pm-palette .pm-palmeta strong')).toHaveText('Named section mix');
 });
 
 test('the mirror geometry control switches the active geometry', async ({ page }) => {
