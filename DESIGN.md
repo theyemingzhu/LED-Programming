@@ -155,3 +155,10 @@ matching a professional instrument.
 - **Don't** add ornament, glassmorphism, or decorative color.
 - **Don't** confuse this pro studio look with the warmer visitor captive-portal
   page — they are intentionally different surfaces.
+
+## Surface-specific operating guidance
+
+[Layout inspector](.impeccable/surfaces/layout-inspector.md) records the owner's
+approved density-first, multi-strip overview and compact controls. Its current
+incumbent dark/warm identity takes precedence over this document's older palette
+for that surface; this is a narrow refinement, not a global redesign.

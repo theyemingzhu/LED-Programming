@@ -51,7 +51,9 @@ test('connected sections preserve a parent total at a boundary, retain identitie
   // This was red before the connected editor existed: the selected parent has
   // one explicit action that creates a family, rather than the legacy flat
   // Strip/Divide workflow.
-  await page.getByTestId('connected-add-split').click();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await page.locator('[data-testid^="divide-sections-"]').fill('2');
+  await page.locator('[data-testid^="divide-commit-"]').click();
   const editor = page.getByTestId('connected-section-editor');
   await expect(editor).toBeVisible();
   await expect(editor.getByTestId('connected-parent')).toContainText(/LEDs/i);
@@ -115,6 +117,10 @@ test('connected sections preserve a parent total at a boundary, retain identitie
 
 test('a locked connected family refuses Add split without changing its saved family', async ({ page }) => {
   await importedArtwork(page);
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await page.locator('[data-testid^="divide-sections-"]').fill('2');
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect.poll(() => familySnapshot(page)).toHaveLength(1);
 
   const before = await familySnapshot(page);
   await page.evaluate(() => {
@@ -133,7 +139,9 @@ test('a locked connected family refuses Add split without changing its saved fam
 
 test('a selected child highlights its canvas path, carries its own look and GPIO, and only merges on a shared GPIO', async ({ page }) => {
   await importedArtwork(page);
-  await page.getByTestId('connected-add-split').click();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await page.locator('[data-testid^="divide-sections-"]').fill('2');
+  await page.locator('[data-testid^="divide-commit-"]').click();
   const editor = page.getByTestId('connected-section-editor');
   await expect(editor).toBeVisible();
 

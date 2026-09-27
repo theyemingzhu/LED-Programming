@@ -54,7 +54,9 @@ test('section fields stay dense and keep accessible names without repeated visib
   await sections.fill('4');
   const toggleBox = (await toggle.boundingBox())!;
   const sectionsBox = (await sections.boundingBox())!;
-  expect(Math.abs((toggleBox.y + toggleBox.height / 2) - (sectionsBox.y + sectionsBox.height / 2))).toBeLessThan(10);
+  // The divider shares its compact header with More actions; tuning opens below.
+  expect(sectionsBox.y).toBeGreaterThanOrEqual(toggleBox.y + toggleBox.height);
+  expect(sectionsBox.y - toggleBox.y - toggleBox.height).toBeLessThanOrEqual(10);
   const fields = page.locator('[data-testid^="divide-count-"]');
   await expect(fields).toHaveCount(4);
   for (let i = 0; i < 4; i++) {

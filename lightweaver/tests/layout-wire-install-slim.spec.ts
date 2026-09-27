@@ -76,12 +76,12 @@ test('Wire keeps strip tools visible and drops the always-true first-to-last lab
   }
   const detail = strip.locator('.la-strip-detail').first();
   await expect(detail).toBeVisible();
+  await page.getByLabel('More strip actions', { exact: true }).click();
   await expect(detail.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
   await expect(detail.getByRole('button', { name: /Reverse data direction/ })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Set first LED' })).toBeVisible();
   await expect(detail.getByRole('button', { name: 'Edit Kaleidoscope reflection points' })).toBeVisible();
   await expect(detail.getByRole('button', { name: /Split / })).toBeVisible();
-  await page.getByLabel('More strip actions', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');

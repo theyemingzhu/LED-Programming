@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 // compiles to its own zone (wiringCompiler.js) and its own section target on
 // the Patterns screen, without any change to the wiring/card contract.
 //
-// Division opens on demand; sizing and the existing one-click Split stay visible.
+// Division opens on demand; the separate-strip shortcut lives in More actions.
 
 async function gotoFreshLayout(page: any) {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -155,11 +155,12 @@ test('an invalid section count stays visible and cannot divide', async ({ page }
   await expect(commit).toBeEnabled();
 });
 
-test('Split into two keeps working unchanged alongside the new Divide control', async ({ page }) => {
+test('independent Split into two remains available in More actions', async ({ page }) => {
   await gotoFreshLayout(page);
   await createOneStrip(page);
 
   const firstName = await page.locator('.la-strip-row .layer-name').first().innerText();
+  await page.getByLabel('More strip actions').click();
   await page.locator('[data-testid^="split-strip-"]').first().click();
   await expect(page.locator('.la-strip-row .layer-name')).toHaveText([firstName, `${firstName} 2`]);
   await expect(page.locator('.la-gpio-group')).toHaveCount(1);

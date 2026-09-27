@@ -13,23 +13,19 @@ async function createTwelveLedLine(page: any) {
   await picker.getByRole('button', { name: 'Create line' }).click();
   const row = page.locator('.la-strip-row');
   await expect(row).toBeVisible();
-  if (await page.getByRole('group', { name: 'Strip actions' }).count() === 0) await row.click();
-  await expect(page.getByRole('group', { name: 'Strip actions' })).toBeVisible();
+  if (await page.getByLabel('More strip actions').count() === 0) await row.click();
+  await expect(page.getByLabel('More strip actions')).toBeVisible();
 }
 
 test('Kaleidoscope editor exposes bounded count and per-point inline steppers', async ({ page }) => {
   await createTwelveLedLine(page);
-  const actions = page.getByRole('group', { name: 'Strip actions' });
-  // The compact inspector keeps only the three frequent editing actions here;
-  // ordering, duplication, and removal live in the strip-row overflow menu.
-  await expect(actions.getByRole('button')).toHaveCount(3);
-  await expect(actions.getByRole('button').allTextContents()).resolves.toEqual([
-    'Flip path', 'Reflection points', 'Split in two',
-  ]);
   await page.getByLabel('More strip actions', { exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
-
+  const actions = page.locator('.la-strip-menu-popover');
+  // Secondary editing and wire-order actions share one labeled disclosure.
+  await expect(actions.getByRole('button')).toHaveCount(7);
+  await expect(actions.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await expect(page.getByTestId('kaleidoscope-summary')).toHaveText('4 points · start LED 1');
   const fineTune = page.getByRole('button', { name: 'Fine-tune LEDs' });
@@ -146,8 +142,9 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
   await expect(page.getByRole('region', { name: 'Kaleidoscope reflection points' })).toHaveCount(0);
   await expect(page.locator('[data-testid="kaleidoscope-marker"]')).toHaveCount(0);
   await expect(page.locator('[data-strip-id="strip-1"]')
-    .getByRole('button', { name: 'Edit Kaleidoscope reflection points' })).toBeFocused();
+    .getByLabel('More strip actions')).toBeFocused();
 
+  await page.getByLabel('More strip actions').click();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await expect(page.getByTestId('kaleidoscope-summary')).toHaveText('5 points · start LED 5');
   await expect(page.getByRole('button', { name: 'Fine-tune LEDs' })).toHaveAttribute('aria-expanded', 'false');
@@ -160,7 +157,8 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   const row = page.locator('.la-strip-row');
-  if (await page.getByRole('group', { name: 'Strip actions' }).count() === 0) await row.click();
+  if (await page.getByLabel('More strip actions').count() === 0) await row.click();
+  await page.getByLabel('More strip actions').click();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await expect(page.getByTestId('kaleidoscope-summary')).toHaveText('5 points · start LED 5');
 });
@@ -177,7 +175,8 @@ test('marker drag snaps after zoom and pan, rejects collision without consuming 
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   const row = page.locator('.la-strip-row');
-  if (await page.getByRole('group', { name: 'Strip actions' }).count() === 0) await row.click();
+  if (await page.getByLabel('More strip actions').count() === 0) await row.click();
+  await page.getByLabel('More strip actions').click();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await page.getByRole('button', { name: 'Fine-tune LEDs' }).click();
   await page.getByRole('button', { name: 'Fine-tune reflection point 2' }).click();
@@ -220,6 +219,7 @@ test('marker drag snaps after zoom and pan, rejects collision without consuming 
 
 test('calibration is active only for the selected strip in Draw mode and reports preview off honestly', async ({ page }) => {
   await createTwelveLedLine(page);
+  await page.getByLabel('More strip actions').click();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await page.getByRole('button', { name: 'Pick starting reflection point on canvas' }).click();
   const unavailable = page.getByRole('status').filter({ hasText: 'Preview off' });
@@ -287,7 +287,8 @@ test('Draw resize reports reflection points reset by count reprojection', async 
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   const row = page.locator('.la-strip-row');
-  if (await page.getByRole('group', { name: 'Strip actions' }).count() === 0) await row.click();
+  if (await page.getByLabel('More strip actions').count() === 0) await row.click();
+  await page.getByLabel('More strip actions').click();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await page.getByRole('button', { name: 'Make strip smaller' }).click();
   await expect(row).toContainText('11 LEDs');

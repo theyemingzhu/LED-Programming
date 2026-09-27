@@ -1281,11 +1281,43 @@ export function DrawModePanel({
             <div className="panel-divider"/>
             {/* Always-visible add path (bench test: users never found Duplicate
                 or the pencil after the first strip). */}
+            <div className="la-strip-toolbar">
             <button type="button" className="btn la-add-strip" data-testid="layout-add-strip"
                     aria-expanded={addChooserOpen}
                     onClick={() => setAddChooserOpen(open => !open)}>
               + Add strip
             </button>
+            {strips.length > 0 && (
+              <div className="la-total-leds" data-testid="layout-total-led-control"
+                   title="Distributes the total by path length and uses the counts to set the drawing’s physical scale.">
+                <div className="la-total-led-field" role="group" aria-label="Total LED count tuning">
+                  <button type="button" className="btn" aria-label="One fewer total LED"
+                          disabled={Number(totalLedDraft) <= strips.length}
+                          onClick={() => changeTotalLedCount(String(Math.max(strips.length, Number(totalLedDraft || totalLeds) - 1)))}>−</button>
+                  <input
+                    type="number"
+                    min={strips.length}
+                    max={strips.length * LED_COUNT_MAX}
+                    step="1"
+                    value={totalLedDraft}
+                    aria-label="Total LEDs"
+                    data-testid="layout-total-led-count"
+                    inputMode="numeric"
+                    onFocus={event => event.target.select()}
+                    onChange={event => changeTotalLedCount(event.target.value)}/>
+                  <span className="la-inline-unit" aria-hidden="true">LEDs total</span>
+                  <button type="button" className="btn" aria-label="One more total LED"
+                          disabled={Number(totalLedDraft) >= strips.length * LED_COUNT_MAX}
+                          onClick={() => changeTotalLedCount(String(Math.min(strips.length * LED_COUNT_MAX, Number(totalLedDraft || totalLeds) + 1)))}>+</button>
+                </div>
+                {totalLedError && (
+                  <span role="alert" className="la-total-led-error" data-testid="layout-total-led-error">
+                    {totalLedError}
+                  </span>
+                )}
+              </div>
+            )}
+            </div>
             {addChooserOpen && (
               <div className="la-add-strip-chooser lw-shape-chooser" data-testid="layout-add-strip-chooser"
                    role="group" aria-label="New strip shape">
@@ -1357,36 +1389,6 @@ export function DrawModePanel({
                     ))}
                   </div>
                 </div>
-              </div>
-            )}
-            {strips.length > 0 && (
-              <div className="la-total-leds" data-testid="layout-total-led-control"
-                   title="Distributes the total by path length and uses the counts to set the drawing’s physical scale.">
-                <div className="la-total-led-field" role="group" aria-label="Total LED count tuning">
-                  <button type="button" className="btn" aria-label="One fewer total LED"
-                          disabled={Number(totalLedDraft) <= strips.length}
-                          onClick={() => changeTotalLedCount(String(Math.max(strips.length, Number(totalLedDraft || totalLeds) - 1)))}>−</button>
-                  <input
-                    type="number"
-                    min={strips.length}
-                    max={strips.length * LED_COUNT_MAX}
-                    step="1"
-                    value={totalLedDraft}
-                    aria-label="Total LEDs"
-                    data-testid="layout-total-led-count"
-                    inputMode="numeric"
-                    onFocus={event => event.target.select()}
-                    onChange={event => changeTotalLedCount(event.target.value)}/>
-                  <span className="la-inline-unit" aria-hidden="true">LEDs total</span>
-                  <button type="button" className="btn" aria-label="One more total LED"
-                          disabled={Number(totalLedDraft) >= strips.length * LED_COUNT_MAX}
-                          onClick={() => changeTotalLedCount(String(Math.min(strips.length * LED_COUNT_MAX, Number(totalLedDraft || totalLeds) + 1)))}>+</button>
-                </div>
-                {totalLedError && (
-                  <span role="alert" className="la-total-led-error" data-testid="layout-total-led-error">
-                    {totalLedError}
-                  </span>
-                )}
               </div>
             )}
             <div className="panel-head">
@@ -1497,7 +1499,6 @@ export function DrawModePanel({
                 const connectedStatus = connectedFamily
                   ? familyGeometryStatus(connectedFamily, strips)
                   : { ok: true };
-                const connectedEligible = Boolean(s.calibratedFromArtwork || s.sourceLayerId || s.sourcePathId);
                 const stripTargets = sectionTargetsByStrip.get(s.id) || [];
                 const routePins = wiring.outputs.filter(candidate => candidate.runIds.some(runId =>
                   wiring.runs.some(candidateRun => candidateRun.id === runId && candidateRun.type === 'strip' && candidateRun.source?.stripId === s.id)))
@@ -1518,6 +1519,76 @@ export function DrawModePanel({
                 const divideSectionError = `Enter a whole number from 2 to ${divideCap}.`;
                 const divideDisabledReason = divideBlockedReason(s, isSplit)
                   || (!divideSectionsValid ? divideSectionError : '');
+                const stripMenu = (
+                      <details className="la-strip-menu" onClick={event => event.stopPropagation()}
+                               onKeyDown={event => {
+                                 if (event.key !== 'Escape') return;
+                                 event.preventDefault();
+                                 event.stopPropagation();
+                                 event.currentTarget.open = false;
+                                 event.currentTarget.querySelector('summary')?.focus();
+                               }}>
+                        <summary aria-label="More strip actions" title="More strip actions">More actions <ChevronDownIcon/></summary>
+                        <div className="la-strip-menu-popover" role="group" aria-label={`More actions for ${s.name}`}>
+                            <button className="btn" aria-label="Flip path direction"
+                                    data-caption="Flip the drawing path so LED 1 swaps ends"
+                                    title="Flip the drawing path so pixel 0 swaps ends"
+                                    disabled={!!connectedFamily}
+                                    onClick={() => reverseStrip(s.id)}>
+                              Flip path
+                            </button>
+                            <button className={`btn${kaleidoscopeEditor?.stripId === s.id ? ' active' : ''}`}
+                                    ref={element => {
+                                      if (element) kaleidoscopeTriggerRefs.current.set(s.id, element);
+                                      else kaleidoscopeTriggerRefs.current.delete(s.id);
+                                    }}
+                                    aria-label="Edit Kaleidoscope reflection points"
+                                    data-caption="Edit Kaleidoscope reflection points"
+                                    title="Edit Kaleidoscope reflection points"
+                                    disabled={s.pixelCount < 2}
+                                    onClick={event => {
+                                      event.currentTarget.closest('details').open = false;
+                                      onToggleKaleidoscope(s.id);
+                                      window.requestAnimationFrame(() => {
+                                        kaleidoscopeTriggerRefs.current.get(s.id)?.closest('.la-strip-inspector')
+                                          ?.querySelector('.la-kaleidoscope-panel button')?.focus();
+                                      });
+                                    }}>
+                              Reflection points
+                            </button>
+                            <button className="btn" data-testid={`split-strip-${s.id}`}
+                                    aria-label={`Split ${s.name} into two strips`}
+                                    data-caption={splitBlockedReason(s, isSplit)
+                                      || `Split into two strips — ${splitPreview(s)}`}
+                                    title={splitBlockedReason(s, isSplit)
+                                      || `Split into two strips — ${splitPreview(s)}`}
+                                    disabled={!!connectedFamily || !!splitBlockedReason(s, isSplit)}
+                                    onClick={() => splitStripInTwo(s.id)}>
+                              <SplitIcon/>
+                              Split into separate strips
+                            </button>
+
+                          {(() => {
+                            const up = stripMoveTarget(wiring, strips, s.id, 'up');
+                            const down = stripMoveTarget(wiring, strips, s.id, 'down');
+                            return <>
+                              <button type="button" className="btn" disabled={!up || wiring.locked}
+                                      onClick={() => moveStripStep(s.id, 'up')}>Move up the wire</button>
+                              <button type="button" className="btn" disabled={!down || wiring.locked}
+                                      onClick={() => moveStripStep(s.id, 'down')}>Move down the wire</button>
+                            </>;
+                          })()}
+                          <button type="button" className="btn"
+                                  data-caption="Duplicate this strip"
+                                  title="Duplicate strip"
+                                  onClick={() => duplicateStrip(s.id)}>Duplicate strip</button>
+                          <button type="button" className="btn danger"
+                                  disabled={!!connectedFamily}
+                                  title={connectedFamily ? 'Merge this connected section first' : 'Remove strip'}
+                                  onClick={() => removeStrip(s.id)}>Remove strip</button>
+                        </div>
+                      </details>
+                );
                 return (
                   <div key={s.id} data-strip-id={s.id}>
                   <div
@@ -1590,6 +1661,7 @@ export function DrawModePanel({
                         const patternId = target.look?.patternId || 'aurora';
                         const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
                         return <button key={target.id} type="button" className="la-section-pattern-action"
+                                       title={`Change ${target.label || s.name} pattern: ${patternName}`}
                                        data-testid="layout-section-pattern-action" data-target-id={target.id}
                                        aria-label={`Change pattern for ${target.label || s.name}`}
                                        disabled={!onChangePattern}
@@ -1597,39 +1669,10 @@ export function DrawModePanel({
                                          event.stopPropagation();
                                          onChangePattern?.({ targetId: target.id, stripId: s.id });
                                        }}>
-                          {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span>Change →</span>
+                          {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
-                      {isOpen && <details className="la-strip-menu" onClick={event => event.stopPropagation()}
-                               onKeyDown={event => {
-                                 if (event.key !== 'Escape') return;
-                                 event.preventDefault();
-                                 event.stopPropagation();
-                                 event.currentTarget.open = false;
-                                 event.currentTarget.querySelector('summary')?.focus();
-                               }}>
-                        <summary aria-label="More strip actions" title="More strip actions">•••</summary>
-                        <div className="la-strip-menu-popover" role="group" aria-label={`More actions for ${s.name}`}>
-                          {(() => {
-                            const up = stripMoveTarget(wiring, strips, s.id, 'up');
-                            const down = stripMoveTarget(wiring, strips, s.id, 'down');
-                            return <>
-                              <button type="button" className="btn" disabled={!up || wiring.locked}
-                                      onClick={() => moveStripStep(s.id, 'up')}>Move up the wire</button>
-                              <button type="button" className="btn" disabled={!down || wiring.locked}
-                                      onClick={() => moveStripStep(s.id, 'down')}>Move down the wire</button>
-                            </>;
-                          })()}
-                          <button type="button" className="btn"
-                                  data-caption="Duplicate this strip"
-                                  title="Duplicate strip"
-                                  onClick={() => duplicateStrip(s.id)}>Duplicate strip</button>
-                          <button type="button" className="btn danger"
-                                  disabled={!!connectedFamily}
-                                  title={connectedFamily ? 'Merge this connected section first' : 'Remove strip'}
-                                  onClick={() => removeStrip(s.id)}>Remove strip</button>
-                        </div>
-                      </details>}
+
                     </div>
                     {isOpen && (
                       <div className={`la-strip-detail la-strip-inspector${connectedFamily ? ' lw-connected-editor-shell' : ''}`}
@@ -1698,14 +1741,14 @@ export function DrawModePanel({
                                     <span>Section {memberIndex + 1} · {member.name}</span>
                                     <span>{member.pixelCount} LEDs</span>
                                   </button>
-                                  <label><span>Section {memberIndex + 1} GPIO output</span>
+                                  {member.id === s.id && <>
+                                  <label><span>GPIO output</span>
                                     <select aria-label={`Section ${memberIndex + 1} GPIO override`} value={memberPin}
                                             disabled={wiring.locked}
                                             onChange={event => assignStripGpio(member.id, Number(event.target.value))}>
                                       <GpioOptions choices={gpioChoicesForStrip(member.id)} />
                                     </select>
                                   </label>
-                                  {member.id === s.id && <>
                                   <input type="text" value={member.name} aria-label={`Section ${memberIndex + 1} name`}
                                          onChange={event => renameStrip(member.id, event.target.value)} />
                                   <label><span>Actual LEDs</span>
@@ -1790,25 +1833,7 @@ export function DrawModePanel({
                             </section>
                           </>
                         )}
-                        {!connectedFamily && connectedEligible && (
-                          <div className="la-connected-entry">
-                            <button type="button" className="btn"
-                                    ref={divideTriggerRef}
-                                    data-testid="connected-add-split"
-                                    aria-label={`Add split to ${s.name}`}
-                                    title={divideBlockedReason(s, isSplit) || 'Create two connected sections with independent patterns'}
-                                    disabled={!!divideBlockedReason(s, isSplit)}
-                                    onClick={() => {
-                                      const result = divideStripIntoSections(s.id, 2);
-                                      setConnectedError(result ? '' : divideBlockedReason(s, isSplit) || 'The strip could not be split.');
-                                    }}>
-                              <SplitIcon/><span>Add split</span>
-                            </button>
-                          </div>
-                        )}
-                        {/* Connected families own count, pattern and GPIO in one
-                            coherent surface. Standalone strips keep the general
-                            physical inspector below their primary Add split action. */}
+                        {/* Count, scale and wiring stay directly editable. */}
                         {!connectedFamily && <>
                         <div className="lw-sel-grid">
                           <div className="la-strip-physical-field">
@@ -1945,6 +1970,8 @@ export function DrawModePanel({
                               <span>Divide into sections</span>
                               {divideOpen ? <ChevronDownIcon/> : <ChevronRightIcon/>}
                             </button>
+                            {stripMenu}
+                          </div>
                             {divideOpen && <div className="la-divide-stepper" role="group" aria-label="Section count tuning">
                               <button type="button" className="btn" aria-label="Fewer sections"
                                       disabled={!!divideBlockedReason(s, isSplit) || (divideSectionsValid && divideSectionsValue <= 2)}
@@ -1963,7 +1990,6 @@ export function DrawModePanel({
                                       disabled={!!divideBlockedReason(s, isSplit) || (divideSectionsValid && divideSectionsValue >= divideCap)}
                                       onClick={() => setDivideSections(prev => ({ ...prev, [s.id]: String(Math.min(divideCap, (divideSectionsValue || 2) + 1)) }))}>+</button>
                             </div>}
-                          </div>
                           {divideOpen && <div id={`divide-panel-${s.id}`}
                                className="la-divide-panel" role="region"
                                aria-label={`Divide ${s.name} into sections`}>
@@ -2020,38 +2046,7 @@ export function DrawModePanel({
                           </div>}
                         </div>
                         </>}
-                        <div className="actions" role="group" aria-label="Strip actions">
-                            <button className="btn" aria-label="Flip path direction"
-                                    data-caption="Flip the drawing path so LED 1 swaps ends"
-                                    title="Flip the drawing path so pixel 0 swaps ends"
-                                    disabled={!!connectedFamily}
-                                    onClick={() => reverseStrip(s.id)}>
-                              Flip path
-                            </button>
-                            <button className={`btn${kaleidoscopeEditor?.stripId === s.id ? ' active' : ''}`}
-                                    ref={element => {
-                                      if (element) kaleidoscopeTriggerRefs.current.set(s.id, element);
-                                      else kaleidoscopeTriggerRefs.current.delete(s.id);
-                                    }}
-                                    aria-label="Edit Kaleidoscope reflection points"
-                                    data-caption="Edit Kaleidoscope reflection points"
-                                    title="Edit Kaleidoscope reflection points"
-                                    disabled={s.pixelCount < 2}
-                                    onClick={() => onToggleKaleidoscope(s.id)}>
-                              Reflection points
-                            </button>
-                            <button className="btn" data-testid={`split-strip-${s.id}`}
-                                    aria-label={`Split ${s.name} into two strips`}
-                                    data-caption={splitBlockedReason(s, isSplit)
-                                      || `Split into two strips — ${splitPreview(s)}`}
-                                    title={splitBlockedReason(s, isSplit)
-                                      || `Split into two strips — ${splitPreview(s)}`}
-                                    disabled={!!connectedFamily || !!splitBlockedReason(s, isSplit)}
-                                    onClick={() => splitStripInTwo(s.id)}>
-                              <SplitIcon/>
-                              Split in two
-                            </button>
-                        </div>
+                        {connectedFamily && stripMenu}
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}
@@ -2148,7 +2143,7 @@ export function DrawModePanel({
                                     onClick={() => {
                                       setFineTuneOpenByStrip(current => ({ ...current, [s.id]: false }));
                                       onCloseKaleidoscope();
-                                      window.requestAnimationFrame(() => kaleidoscopeTriggerRefs.current.get(s.id)?.focus());
+                                      window.requestAnimationFrame(() => kaleidoscopeTriggerRefs.current.get(s.id)?.closest('details')?.querySelector('summary')?.focus());
                                     }}>
                                     Save &amp; close
                                   </button>

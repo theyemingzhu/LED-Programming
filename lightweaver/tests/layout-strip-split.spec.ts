@@ -15,6 +15,7 @@ async function createOneStrip(page: any) {
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
   await expect(page.locator('[data-testid^="split-strip-"]')).toHaveCount(1);
+  await page.getByLabel('More strip actions').click();
 }
 
 // Autosave is debounced, so a reload assertion must wait for the write.
