@@ -15,6 +15,11 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
   await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(8);
   await page.locator('.la-strip-row').first().click();
+  await expect(page.getByText('Color tag', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Strip brightness', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Strip added · update', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Ribbon 1 layout settings', exact: true })).toBeVisible();
+  await expect(page.getByTestId('layout-total-led-control')).toContainText('Project LEDs');
   const evidence: any[] = [];
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -113,4 +118,29 @@ test('locked imported strip divides into four connected sections without card wr
     await page.screenshot({ path: testInfo.outputPath(`four-sections-${width}.png`) });
   }
   expect(writes).toEqual([]);
+});
+
+
+test('artwork creates a named strip and mapped layers open only their own layout settings', async ({ page }) => {
+  await page.goto('/#screen=layout');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.setInputFiles('input[accept=".svg"]', { name: 'ribbons.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(artwork) });
+  await page.locator('.layer-row').first().click();
+  const create = page.getByRole('region', { name: 'Add selected artwork as strip' });
+  await expect(create).toContainText('Ribbon 1');
+  await page.getByLabel('Layer LED count', { exact: true }).fill('41');
+  await page.getByRole('button', { name: 'Create strip from Ribbon 1', exact: true }).click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(1);
+  await expect(page.getByLabel('Strip LED count', { exact: true })).toHaveValue('41');
+  await expect(create).toHaveCount(0);
+  await page.locator('.layer-row').nth(1).click();
+  await expect(create).toContainText('Ribbon 2');
+  await page.getByRole('button', { name: 'Create strip from Ribbon 2', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Ribbon 2 layout settings', exact: true })).toBeVisible();
+  await page.locator('.layer-row').first().click();
+  await expect(page.getByRole('region', { name: 'Ribbon 1 layout settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ribbon 2 layout settings', exact: true })).toHaveCount(0);
+  await expect(create).toHaveCount(0);
+  await expect(page.getByLabel('Strip LED count', { exact: true })).toHaveValue('41');
 });

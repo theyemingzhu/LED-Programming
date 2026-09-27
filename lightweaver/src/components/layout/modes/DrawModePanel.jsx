@@ -7,14 +7,12 @@ import {
   GroupIcon,
   SplitIcon,
   TbIcon,
-  EmitCompass,
   InlineRename,
 } from '../shared/InspectorPrimitives.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planSectionsAtRunBoundaries, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
 import {
-  STRIP_COLORS,
   DENSITY_OPTIONS,
   stripSourceKey,
   clampLedCount,
@@ -23,10 +21,6 @@ import {
 import { STARTER_PRIMITIVES } from '../../../lib/layoutPrimitives.js';
 import {
   LED_COUNT_MAX,
-  LED_COUNT_SLIDER_MAX,
-  LED_COUNT_SLIDER_MIN,
-  ledCountToSliderValue,
-  sliderValueToLedCount,
 } from '../../../lib/controlScale.js';
 import { PrimitiveStarter } from './PrimitiveStarter.jsx';
 import {
@@ -171,7 +165,7 @@ export function DrawModePanel({
   const {
     strips, layers, hidden, setHidden,
     svgText, pxPerMm, density,
-    editCounts, setEditCounts, layerGroups, layerOrder, setLayers,
+    editCounts, setEditCounts, layerGroups, layerOrder,
     selectStrip, selectLayer, selectPaths, toggleStripSel,
     clearLayoutSelection, renameLayoutSelection,
     selLayer, existingStrip,
@@ -181,10 +175,10 @@ export function DrawModePanel({
     totalLeds, starterLayoutActive, usbLedMaxPixels,
     stripListRef,
     // size
-    getLedCount, resampleStrip, stripDensity, setStripPhysical, setStripCount,
+    getLedCount, stripDensity, setStripPhysical, setStripCount,
     setTotalLedCount, setStripCountAndCalibrate,
     // strips
-    updateStrip, removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
+    removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
     divideStripIntoSections, separateExistingRuns, moveConnectedBoundary, addConnectedSplit,
     mergeConnectedSection, correctConnectedSectionCount, detachSectionFamily,
     addPrimitiveStrip, scaleStrip,
@@ -202,7 +196,6 @@ export function DrawModePanel({
     deleteLayer, createLayerGroup, deleteLayerGroup,
     toggleGroupExpanded, toggleGroupHidden, reorderLayerOrder, setLayerGroups,
     // canvas + preview
-    setDirectedGlow, enableLightPreview,
     setDrawMode, setWaypoints, setGhostPt,
     drawMode, waypoints,
     pendingDraw, pendingDrawName, setPendingDrawName,
@@ -252,8 +245,8 @@ export function DrawModePanel({
   const kaleidoscopeTriggerRefs = useRef(new Map());
   const [addLengthM, setAddLengthM] = useState(1);
   useEffect(() => {
-    if (selStripId) setPanelStripId(selStripId);
-  }, [selStripId]);
+    if (selStripId || existingStrip?.id) setPanelStripId(selStripId || existingStrip.id);
+  }, [selStripId, existingStrip?.id]);
   useEffect(() => {
     // A deleted strip cannot keep the panel; fall back to one that still exists.
     if (panelStripId && !strips.some(strip => strip.id === panelStripId)) {
@@ -1132,148 +1125,24 @@ export function DrawModePanel({
           </div>
         )}
 
-        {/* ── Layer inspector (mockup .inspector) ── */}
-        {selLayer && (() => {
-          const isOmni = existingStrip?.emit === 'omni';
-          const ledVal = editCounts[selLayer.layerId] ?? getLedCount(selLayer);
-          const pitch = (selLayer.svgLength > 0 && ledVal > 1)
-            ? ((selLayer.svgLength / pxPerMm) / ledVal).toFixed(1) : '—';
-          return (
-          <>
-          <div className="panel-divider"/>
-          <div className="inspector">
-            <div className="insp-head">
-              <span className="sw" style={{ background: selLayer._color }}/>
-              <span className="nm">{selLayer.name}</span>
-              <span className="tag">Inspector</span>
-            </div>
-            <div className="insp-body">
-              <div className="field">
-                <span className="k">Length</span>
-                <span className="v"><span className="inspector-value">{selLayer.svgLength > 0 ? Math.round(selLayer.svgLength / pxPerMm) : '—'}<span className="u">mm</span></span></span>
-              </div>
-              {selLayer.subPaths?.length > 1 && (
-                <div className="field">
-                  <span className="k">Sub-paths</span>
-                  <span className="v"><span className="inspector-value">{selLayer.subPaths.length}</span></span>
-                </div>
-              )}
-              {/* Density lives in Size mode only now (docs/layout-redesign-plan.md
-                  step 10 — the toolbar + inspector duplicates were removed). */}
-
-              {/* LED count — slider + number (live resample) */}
-              <div className="la-ledrow">
-                <span className="k">LED count</span>
-                <div className="la-ledctrl">
-                  {editCounts[selLayer.layerId] != null && (
-                    <button style={{ color: 'var(--text-faint)', padding: '0 3px' }} title="Reset to calculated"
-                            onClick={() => setEditCounts(c => { const next = { ...c }; delete next[selLayer.layerId]; return next; })}>↺</button>
-                  )}
-                  <input className="lw" type="range" min={LED_COUNT_SLIDER_MIN} max={LED_COUNT_SLIDER_MAX} step="1"
-                         value={ledCountToSliderValue(ledVal)}
-                         aria-label="Layer LED count slider"
-                         onChange={e => {
-                           const val = sliderValueToLedCount(e.target.value);
-                           setEditCounts(c => ({ ...c, [selLayer.layerId]: val }));
-                           if (existingStrip) resampleStrip(existingStrip.id, val);
-                         }}/>
-                  <input className="num-input" type="number" min="1" max={LED_COUNT_MAX}
-                         value={ledVal}
-                         aria-label="Layer LED count"
-                         inputMode="numeric"
-                         onFocus={e => e.target.select()}
-                         onChange={e => {
-                           const val = clampLedCount(e.target.value);
-                           setEditCounts(c => ({ ...c, [selLayer.layerId]: val }));
-                           if (existingStrip) resampleStrip(existingStrip.id, val);
-                         }}
-                         onBlur={() => { if (existingStrip) resampleStrip(existingStrip.id, getLedCount(selLayer)); }}
-                         onKeyDown={e => {
-                           if (e.key === 'Enter') {
-                             if (existingStrip) resampleStrip(existingStrip.id, getLedCount(selLayer));
-                             else addStrip();
-                           }
-                         }}
-                         style={{ borderColor: editCounts[selLayer.layerId] != null ? 'var(--accent)' : undefined }}/>
-                </div>
-              </div>
-              <div className="field">
-                <span className="k">Pitch</span>
-                <span className="v"><span className="inspector-value">{pitch}<span className="u">mm/LED</span></span></span>
-              </div>
-              <div className="field-sep"/>
-
-              {/* Emit — one widget for BOTH mode + angle (step 10): the compass
-                  center hub toggles Omni⇄Directed; the dial sets the angle. The
-                  old separate Omni/Directed mini-seg was folded into the hub. */}
-              <EmitCompass
-                angle={existingStrip?.angle || 0}
-                omni={isOmni || !existingStrip}
-                onToggleEmit={existingStrip ? () => {
-                  if (isOmni) {
-                    setDirectedGlow(true); enableLightPreview();
-                    updateStrip(existingStrip.id, { emit: 'dir' });
-                  } else {
-                    updateStrip(existingStrip.id, { emit: 'omni', angle: 0 });
-                  }
-                } : undefined}
-                setAngle={a => {
-                  if (!existingStrip) return;
-                  setDirectedGlow(true); enableLightPreview();
-                  updateStrip(existingStrip.id, { angle: a });
-                }}/>
-
-              <div className="field-sep"/>
-
-              {/* Color tag */}
-              <div className="field">
-                <span className="k">Color tag</span>
-                <span className="v">
-                  <div className="la-tags">
-                    {STRIP_COLORS.slice(0, 5).map(c => (
-                      <button key={c} className={`la-tag${selLayer._color === c ? ' on' : ''}`}
-                              style={{ background: c }}
-                              title="Set layer color"
-                              onClick={() => {
-                                setLayers(prev => prev.map(l => l.layerId === selLayer.layerId ? { ...l, _color: c } : l));
-                                if (existingStrip) updateStrip(existingStrip.id, { color: c });
-                              }}/>
-                    ))}
-                  </div>
-                </span>
-              </div>
-
-              {/* Brightness */}
-              {existingStrip && (
-                <div className="slider-row" style={{ marginTop: 6 }}>
-                  <div className="lab">
-                    <span className="k">Brightness</span>
-                    <span className="v">{Math.round((existingStrip.brightness ?? 1) * 100)}%</span>
-                  </div>
-                  <input className="lw" type="range" min="0" max="100"
-                         value={Math.round((existingStrip.brightness ?? 1) * 100)}
-                         aria-label="Strip brightness"
-                         onChange={e => updateStrip(existingStrip.id, { brightness: parseInt(e.target.value, 10) / 100 })}/>
-                </div>
-              )}
-
-              {/* Add / Update CTA */}
-              {existingStrip
-                ? <button className="insp-cta" style={{ color: 'var(--ok)', borderColor: 'color-mix(in oklch, var(--ok) 40%, var(--border))' }}
-                          onClick={addStrip} title="Re-sample this strip with current settings">{TbIcon.check}Strip added · update</button>
-                : <button className="insp-cta" onClick={addStrip}>{TbIcon.strip}Add as strip</button>}
-
-              {existingStrip && (
-                <div className="la-insp-actions">
-                  <button className="btn" onClick={() => reverseStrip(existingStrip.id)} title="Flip the drawing path so pixel 0 swaps ends">↔ Flip path direction</button>
-                  <button className="btn danger" onClick={() => removeStrip(existingStrip.id)}>Remove</button>
-                </div>
-              )}
-            </div>
-          </div>
-          </>
-          );
-        })()}
+        {/* Unmapped artwork has one creation action. Existing strips are edited
+            only in their own row below, never in a second layer inspector. */}
+        {selLayer && !existingStrip && !selStripId && (
+          <section className="la-artwork-create" aria-label="Add selected artwork as strip">
+            <strong>{selLayer.name}</strong>
+            <label>
+              <span>LEDs</span>
+              <input type="number" min="1" max={LED_COUNT_MAX}
+                     value={editCounts[selLayer.layerId] ?? getLedCount(selLayer)}
+                     aria-label="Layer LED count" inputMode="numeric"
+                     onFocus={event => event.target.select()}
+                     onChange={event => setEditCounts(current => ({ ...current,
+                       [selLayer.layerId]: clampLedCount(event.target.value) }))}/>
+            </label>
+            <button type="button" className="btn" onClick={addStrip}
+                    aria-label={`Create strip from ${selLayer.name}`}>Create strip from artwork</button>
+          </section>
+        )}
 
         {/* ── Add strip + strips list ── */}
         {!starterLayoutActive && (
@@ -1305,7 +1174,7 @@ export function DrawModePanel({
                     inputMode="numeric"
                     onFocus={event => event.target.select()}
                     onChange={event => changeTotalLedCount(event.target.value)}/>
-                  <span className="la-inline-unit" aria-hidden="true">LEDs total</span>
+                  <span className="la-inline-unit" aria-hidden="true">Project LEDs</span>
                   <button type="button" className="btn" aria-label="One more total LED"
                           disabled={Number(totalLedDraft) >= strips.length * LED_COUNT_MAX}
                           onClick={() => changeTotalLedCount(String(Math.min(strips.length * LED_COUNT_MAX, Number(totalLedDraft || totalLeds) + 1)))}>+</button>
@@ -1458,12 +1327,12 @@ export function DrawModePanel({
               {gpioGroups.map(({ output, strips: groupedStrips, linkedStrips, sectionCount }) => (
                 <section key={output.id} className="la-gpio-group" data-testid={`gpio-group-${output.pin}`}>
                   <div className="la-gpio-group-head">
-                    <span>GPIO {output.pin}</span>
+                    <span>Data wire · GPIO {output.pin}</span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>
                   {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => strip.name).join(', ')}</div>}
                   {groupedStrips.map((s, i) => {
-                const isSel = s.id === selStripId;
+                const isSel = s.id === (selStripId || existingStrip?.id);
                 const isBatchSel = selectedStripIds.includes(s.id);
                 // The Selected strip module belongs to the selected strip, and
                 // to nothing else. It used to be driven by a per-row expander
@@ -1590,7 +1459,8 @@ export function DrawModePanel({
                       </details>
                 );
                 return (
-                  <div key={s.id} data-strip-id={s.id}>
+                  <div key={s.id} data-strip-id={s.id}
+                       className={`la-strip-item${isOpen ? ' is-editing' : ''}`}>
                   <div
                        className={`la-strip-row${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
                        draggable
@@ -1672,21 +1542,25 @@ export function DrawModePanel({
                           {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
-
+                      {connectedFamily && <span className="la-strip-family-label">
+                        {connectedFamily.parentName} · section {connectedFamily.memberIds.indexOf(s.id) + 1} of {connectedMembers.length}
+                      </span>}
                     </div>
                     {isOpen && (
                       <div className={`la-strip-detail la-strip-inspector${connectedFamily ? ' lw-connected-editor-shell' : ''}`}
                            data-testid={connectedFamily ? 'connected-section-editor' : undefined}
                            data-family-id={connectedFamily?.id}
-                           aria-label={connectedFamily ? `${connectedFamily.parentName} connected sections` : undefined}
+                           role="region"
+                           aria-label={connectedFamily ? `${connectedFamily.parentName} connected sections` : `${s.name} layout settings`}
                            onClick={e => e.stopPropagation()}>
+                        {!connectedFamily && <div className="la-strip-settings-label">Layout · {s.name}</div>}
                         {connectedFamily && (
                           <>
                             <div className="lw-connected-summary">
                               <div className="lw-connected-parent" data-testid="connected-parent">
                                 <div>
                                   <strong>{connectedFamily.parentName}</strong>
-                                  <span>{connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs · {connectedMembers.length} sections</span>
+                                  <span>{connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs · {connectedMembers.length} connected sections</span>
                                 </div>
                                 <label>
                                   <span>GPIO</span>

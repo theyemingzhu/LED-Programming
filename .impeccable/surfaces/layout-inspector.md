@@ -33,3 +33,10 @@ row and selected-detail heights at a roughly 300px desktop inspector and a
 390px phone. Check name readability, overflow, and accessible secondary actions.
 Preserve phone touch targets. Keep before/after evidence; tests alone do not
 prove information density.
+
+Owner correction: Layout manages geometry and wiring, not color tags or
+brightness. Do not revive the old artwork inspector above the strip editor.
+Unmapped artwork has a named Create strip action; mapped artwork uses its strip's
+single editor. Identify project-wide LED totals, data-wire groupings, the strip
+whose settings are open, and each connected section's parent. No detached Update,
+Flip, or Remove rows above the strip inventory.
