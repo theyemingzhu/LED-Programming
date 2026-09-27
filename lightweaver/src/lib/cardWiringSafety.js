@@ -9,6 +9,7 @@ import { isCardLedType } from './cardHardwareContract.js';
 import { guardDirectCardMutation } from './cardIdentity.js';
 
 export const CARD_WIRING_STATES = Object.freeze([
+  'factory',
   'known-good',
   'staged',
   'testing',

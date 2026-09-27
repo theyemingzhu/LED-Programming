@@ -1,0 +1,85 @@
+{
+  "cardId": "lw-b0fe81f61b44",
+  "bootId": "boot-57d443ef-b0fe81f61b44",
+  "buildNumber": 2160,
+  "buildId": "8c45aa2a2bf97acdfd73cc318d86d71fc51bb6ac",
+  "firmwareVersion": "1.1.47",
+  "projectRevision": 1,
+  "projectFingerprint": "d93ebe18ab7780b1",
+  "provisionalSetup": true,
+  "outputs": [
+    {
+      "id": "bench-18",
+      "pin": 18,
+      "pixels": 256,
+      "segments": [
+        {
+          "id": "bench-18-full",
+          "count": 256,
+          "direction": "forward"
+        }
+      ],
+      "gpio": 18,
+      "count": 256
+    }
+  ],
+  "controls": {
+    "encoder": {
+      "a": 4,
+      "b": 5,
+      "press": 0,
+      "configuredAlternatePress": 6,
+      "effectiveAlternatePress": 6,
+      "rotateDirection": "clockwise-brighter",
+      "brightnessStep": 18,
+      "aLow": true,
+      "bLow": true,
+      "pressPressed": false,
+      "alternatePressPressed": false
+    },
+    "previous": 7,
+    "next": 8,
+    "blackout": 9,
+    "statusLed": 2,
+    "previousPressed": false,
+    "nextPressed": false,
+    "blackoutPressed": false,
+    "brightnessAnalog": -1,
+    "manualBrightness": 1,
+    "lastEvent": "none",
+    "lastEventAtMs": 0,
+    "eventCounts": {
+      "next": 0,
+      "previous": 0,
+      "blackout": 0,
+      "brighter": 0,
+      "dimmer": 0
+    }
+  },
+  "maxMilliamps": 2000,
+  "outputColor": {
+    "contract": 1,
+    "colorOrder": "GRB",
+    "gammaEnabled": false,
+    "gammaValue": 2.2,
+    "calibration": {
+      "red": 1,
+      "green": 1,
+      "blue": 1
+    }
+  },
+  "led": {
+    "brightnessLimit": 0.65
+  },
+  "ledType": "WS2812B",
+  "limits": {
+    "pixels": 65535,
+    "outputs": 4,
+    "looks": 32,
+    "zones": 12,
+    "rangesPerZone": 6,
+    "configStorageBytes": 3968
+  },
+  "commandReady": true,
+  "outputReady": true
+}

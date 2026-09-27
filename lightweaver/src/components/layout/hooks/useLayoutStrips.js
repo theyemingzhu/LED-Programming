@@ -378,7 +378,6 @@ export function useLayoutStrips(ctx) {
   // `sections` is a count (the even plan) or an array of the owner's own
   // counts (uneven divide); both resolve to the same plan shape.
   const divideStripIntoSections = useCallback((id, sections) => {
-    if (wiring.locked) return null;
     const source = strips.find(st => st.id === id);
     if (!source) return null;
     const counts = Array.isArray(sections)
@@ -439,6 +438,13 @@ export function useLayoutStrips(ctx) {
     });
 
     const wiringResult = updateWiring(draft => {
+      // Like direct GPIO/direction edits in Draw, an intentional division
+      // reopens the installed plan in the same history transaction.
+      if (draft.locked) {
+        draft.locked = false;
+        draft.verified = false;
+        draft.runs.forEach(run => { run.verified = false; });
+      }
       const existing = draft.runs.find(run => run.type === 'strip' && run.source?.stripId === id);
       if (existing) {
         existing.source = { ...existing.source, from: 0, to: Math.max(0, counts.counts[0] - 1) };

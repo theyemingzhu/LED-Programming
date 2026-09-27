@@ -16,6 +16,12 @@ import {
   waitForCardWiringReconnect,
 } from './cardWiringSafety.js';
 
+test('factory wiring status is a valid read-only state before the first project', () => {
+  const status = normalizeCardWiringStatus({ app: 'Lightweaver', state: 'factory', hasCandidate: false, outputs: [] });
+  assert.equal(status.state, 'factory');
+  assert.equal(status.hasCandidate, false);
+});
+
 test('candidate evidence is an uncached exact status GET and rejects another activation', async () => {
   const calls = [];
   const common = { host: '192.168.4.1', transport: 'direct', fetchImpl: async (url, init) => {
@@ -115,6 +121,7 @@ function jsonResponse(body, { ok = true, status = 200 } = {}) {
 
 test('normalizes every public wiring state and rejects unknown states', () => {
   assert.deepEqual(CARD_WIRING_STATES, [
+    'factory',
     'known-good',
     'staged',
     'testing',

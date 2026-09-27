@@ -30,13 +30,14 @@ import {
 import { resolveRotaryInputAction, selectFreshUsbRotaryEvents } from '../lib/usbRotaryInput.js';
 import {
   clearAutosaveQuarantine,
+  deferAutosaveForSavedLibraryRestore,
   quarantineAutosavePayload,
   readAutosaveQuarantine,
   readProjectLifecycleRecord,
-  readRestorableProjectJson,
+  readPreferredStartupProject,
   readStorageJsonWithBackup,
   writeProjectLifecycleRecord,
-  writeStorageJsonWithBackup,
+  writeRestorableProjectJsonWithBackup,
 } from '../lib/projectStorage.js';
 import {
   createProjectLifecycle,
@@ -53,7 +54,7 @@ import {
   replaceProjectSafely,
 } from '../lib/projectLifecycle.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
-import { createProjectEnvelope } from '../lib/projectRepository.js';
+import { saveAutosaveProjectSnapshot } from '../lib/projectAutosaveRepository.js';
 import { applyExpressionScenesUpdate } from '../lib/sceneExpressionProject.js';
 import { migrateRunSectionReferences } from '../lib/sectionRunConversion.js';
 
@@ -821,12 +822,16 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
   // ── Auto-load from localStorage on mount ─────────────────────────────────
   const didLoadRef = useRef(false);
+  const restoredFromLibraryRef = useRef(false);
   useEffect(() => {
     if (didLoadRef.current) return;
     didLoadRef.current = true;
     try {
       if (initialProjectEnvelope?.project && initialProjectEnvelope?.contentHash) {
-        repositoryHeadRef.current = initialProjectEnvelope.contentHash;
+        repositoryHeadRef.current = {
+          projectId: initialProjectEnvelope.projectId,
+          contentHash: initialProjectEnvelope.contentHash,
+        };
         suppressNextLifecycleEditRef.current = true;
         applyProject(initialProjectEnvelope.project);
         setAutosaveRestoredFrom('card');
@@ -838,15 +843,16 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       }
       // Try each stored copy and keep the raw payload + reason when nothing
       // restores (parse failure, forward/unknown version, invalid shape).
-      const { payload: savedProject, restoredFrom: savedCopy, failure } =
-        readRestorableProjectJson(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY);
+      const { payload: savedProject, restoredFrom: savedCopy, failure, primaryFailure } =
+        readPreferredStartupProject(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY);
 
       // B-2: quarantine an unrestorable autosave payload NOW — synchronously,
       // before the first debounced flush can overwrite both live copies with
       // the default project. Never runs when a copy restored (failure is null),
       // including the corrupt-primary / healthy-backup case.
-      const quarantineRecord = failure
-        ? quarantineAutosavePayload(failure.raw, { reason: failure.reason })
+      const unrestorable = primaryFailure || failure;
+      const quarantineRecord = unrestorable
+        ? quarantineAutosavePayload(unrestorable.raw, { reason: unrestorable.reason })
         : readAutosaveQuarantine();
       if (quarantineRecord) {
         setAutosaveQuarantine({ at: quarantineRecord.at, reason: quarantineRecord.reason });
@@ -862,15 +868,17 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
       const restoredFrom = savedCopy === 'primary' ? 'autosave'
         : savedCopy === 'backup' ? 'backup'
+          : savedCopy === 'library' ? 'library'
           : (migrateProject(legacyProject) || migrateProject(legacyLayoutProject)) ? 'legacy'
             : null;
+      restoredFromLibraryRef.current = restoredFrom === 'library';
 
       // B-1: a startup restore is not an edit — suppress the fingerprint
       // change applyProject is about to cause, then set the truthful boot
       // lifecycle explicitly instead of letting it fall out as false-dirty.
       suppressNextLifecycleEditRef.current = true;
       applyProject(project);
-      setAutosaveRestoredFrom(restoredFrom);
+      setAutosaveRestoredFrom(restoredFrom === 'library' ? null : restoredFrom);
 
       // The persisted lifecycle record only describes the v3 autosave payload;
       // legacy restores (and quarantined boots) never trust it.
@@ -879,9 +887,11 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         : null;
       dispatchProjectLifecycle({
         type: 'boot',
-        lifecycle: restoredFrom
-          ? lifecycleForRestoredProject(lifecycleRecord)
-          : createProjectLifecycle(),
+        lifecycle: restoredFrom === 'library'
+          ? markPersisted(createProjectLifecycle(), 'browser')
+          : restoredFrom
+            ? lifecycleForRestoredProject(lifecycleRecord)
+            : createProjectLifecycle(),
       });
     } catch {}
   }, [applyProject, initialProjectEnvelope]);
@@ -998,34 +1008,20 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   const flushProjectAutosave = useCallback(() => {
     clearTimeout(saveTimerRef.current);
     try {
-      const saved = writeStorageJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject());
+      const saved = writeRestorableProjectJsonWithBackup(LS_AUTOSAVE_KEY, LS_AUTOSAVE_BACKUP_KEY, serializeProject());
       if (saved) setLastSaved(Date.now());
       if (saved && repository?.save) {
         const project = serializeProject();
-        const expectedHead = repositoryHeadRef.current;
         const lifecycleSnapshot = projectLifecycleRef.current;
         const persistenceMarker = repositoryPersistenceMarker(repository, lifecycleSnapshot);
-        const envelope = createProjectEnvelope(project, {
-          parentHash: expectedHead,
-          localRevision: Math.max(1, lifecycleSnapshot.editedRevision + 1),
-          source: repository.source || { kind: 'browser' },
-        });
         repositoryQueueRef.current = repositoryQueueRef.current
           .then(async () => {
-            let currentExpectedHead = repositoryHeadRef.current;
-            if (!currentExpectedHead && repository.read) {
-              currentExpectedHead = (await repository.read(project.id))?.contentHash || null;
-              repositoryHeadRef.current = currentExpectedHead;
-            }
-            const currentEnvelope = currentExpectedHead === expectedHead
-              ? envelope
-              : createProjectEnvelope(project, {
-                  parentHash: currentExpectedHead,
-                  localRevision: Math.max(1, lifecycleSnapshot.editedRevision + 1),
-                  source: repository.source || { kind: 'browser' },
-                });
-            const persisted = await repository.save(currentEnvelope, currentExpectedHead);
-            repositoryHeadRef.current = persisted.contentHash;
+            repositoryHeadRef.current = await saveAutosaveProjectSnapshot({
+              repository,
+              project,
+              head: repositoryHeadRef.current,
+              localRevision: Math.max(1, lifecycleSnapshot.editedRevision + 1),
+            });
             setLastSaved(Date.now());
             if (persistenceMarker) {
               dispatchProjectLifecycle({ type: 'persisted', ...persistenceMarker });
@@ -1041,9 +1037,13 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
 
   useEffect(() => {
     clearTimeout(saveTimerRef.current);
+    // A saved library copy recovered over an unreadable primary must not
+    // immediately erase the old primary and backup merely by being opened.
+    if (deferAutosaveForSavedLibraryRestore(restoredFromLibraryRef.current, projectLifecycle)) return undefined;
+    restoredFromLibraryRef.current = false;
     saveTimerRef.current = setTimeout(flushProjectAutosave, 500);
     return () => clearTimeout(saveTimerRef.current);
-  }, [flushProjectAutosave]);
+  }, [flushProjectAutosave, projectLifecycle]);
 
   const loadProject = useCallback((data) => {
     return applyProject(data);

@@ -45,7 +45,7 @@ import {
   readActiveProjectLibraryRecordId,
   readProjectLibraryRecordSnapshot,
   readProjectLifecycleRecord,
-  readStorageJsonWithBackup,
+  readPreferredStartupProject,
   saveCurrentProjectToLibraryGuarded,
   setProjectLibrarySaveBlocked,
   writeActiveProjectLibraryRecordId,
@@ -343,8 +343,9 @@ function bootstrapFirstRunSetupRoute() {
   try {
     if (window.location.hash) return;
     const rememberedCard = readPersistedCardIdentity();
-    const savedProjectRaw = readStorageJsonWithBackup(PROJECT_AUTOSAVE_KEY, PROJECT_AUTOSAVE_BACKUP_KEY);
-    const lifecycleRecord = readProjectLifecycleRecord();
+    const startupCopy = readPreferredStartupProject(PROJECT_AUTOSAVE_KEY, PROJECT_AUTOSAVE_BACKUP_KEY);
+    const savedProjectRaw = startupCopy.payload;
+    const lifecycleRecord = startupCopy.restoredFrom === 'library' ? null : readProjectLifecycleRecord();
     const savedProject = savedProjectRaw
       ? { layout: savedProjectRaw.layout, installation: lifecycleRecord?.installation || null }
       : null;

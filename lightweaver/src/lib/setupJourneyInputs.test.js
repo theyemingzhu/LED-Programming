@@ -50,7 +50,7 @@ const discoveredProject = () => ({
   id: 'lotus-gate',
   name: 'Lotus Gate',
   portRoles: [{ pin: 18, role: 'strip', pixelCount: 41 }],
-  devices: { standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true } } },
+  devices: { standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' } } },
   layout: { starterPending: true, strips: [] },
 });
 

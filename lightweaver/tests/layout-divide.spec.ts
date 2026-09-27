@@ -253,3 +253,59 @@ test('Divide disclosure opens by keyboard and collapses after selection changes 
   await expect(page.locator('[data-testid^="divide-sections-"]')).toBeHidden();
   await page.screenshot({ path: 'test-results/layout-divide-collapsed.png' });
 });
+
+test('an installed locked card strip divides locally, invalidates verification, and undoes in one step', async ({ page }) => {
+  const { createDefaultProject } = await import('../src/lib/projectModel.js');
+  const { projectSkeletonFromCardStatus } = await import('../src/lib/discoveryCommit.js');
+  const skeleton = projectSkeletonFromCardStatus({
+    knownGoodProject: true, outputReady: true, projectId: 'installed-division',
+    outputs: [{ id: 'out1', pin: 18, pixels: 41, segments: [{ id: 'run-strip-1', count: 41, direction: 'forward' }] }],
+  });
+  const project = createDefaultProject();
+  project.id = 'installed-division';
+  Object.assign(project.layout, { strips: skeleton.strips, patchBoard: skeleton.patchBoard, wiring: skeleton.wiring, starterPending: false });
+  project.layout.patchBoard.patches[0].playback.patternId = 'fire';
+  expect(project.layout.wiring.locked).toBe(true);
+  await page.goto('/#screen=layout');
+  await page.evaluate(saved => {
+    localStorage.clear();
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(saved));
+  }, project);
+  await page.reload();
+  await page.locator('.la-strip-row .layer-name').first().click();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await expect(page.locator('[data-testid^="divide-sections-"]')).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId('divide-unlock-notice')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
+  await page.getByTestId('divide-unlock-notice').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/layout-divide-locked-390.png', fullPage: true });
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
+  await expectSectionCounts(page, [11, 10, 10, 10]);
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(4);
+  expect(await rowCounts(page)).toEqual([11, 10, 10, 10]);
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout);
+  await expect.poll(async () => (await saved())?.strips?.length).toBe(4);
+  const divided = await saved();
+  expect(divided.wiring.outputs).toHaveLength(1);
+  expect(divided.wiring.outputs[0].pin).toBe(18);
+  expect(divided.wiring.outputs[0].runIds).toEqual(divided.wiring.runs.map((run: any) => run.id));
+  expect(divided.wiring.runs).toHaveLength(4);
+  expect(divided.wiring.runs[0].id).toBe('run-strip-1');
+  expect(divided.strips[0].id).toBe('strip-1');
+  expect(divided.wiring.locked).toBe(false);
+  expect(divided.wiring.verified).toBe(false);
+  expect(divided.wiring.runs.every((run: any) => !run.verified)).toBe(true);
+  expect(divided.patchBoard.patches[0].playback.patternId).toBe('fire');
+  await page.getByTitle(/Undo/).first().click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(1);
+  await expect.poll(async () => (await saved())?.wiring).toEqual({ ...project.layout.wiring, migrationWarnings: [] });
+  expect((await saved()).strips[0].pixelCount).toBe(41);
+  await page.getByTitle(/Redo/).first().click();
+  await expect.poll(async () => (await saved())?.strips?.length).toBe(4);
+  await page.reload();
+  await expect(page.locator('.la-strip-row')).toHaveCount(4);
+  expect(await rowCounts(page)).toEqual([11, 10, 10, 10]);
+  expect((await saved()).wiring).toEqual(divided.wiring);
+});

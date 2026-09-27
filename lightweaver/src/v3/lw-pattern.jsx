@@ -76,9 +76,10 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardProjectEvidence } from '../lib/cardPushClient.js';
+import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
-import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { assertCardDeploymentPreflightIdentity, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
 import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
 import { freshJourneyEvidence } from '../lib/cardJourneyEvidence.js';
@@ -690,6 +691,33 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (authority.ok) return 'ready';
       return authority.state === 'project-mismatch' ? 'project' : 'recovery';
     }, [cardLink?.readiness, hasCurrentProjectAuthorization]);
+    // A saved look changes the Studio fingerprint before it can be installed,
+    // and a reload no longer carries the old installation record. The Card
+    // status Save to card path accepts this same-project edit from fresh card
+    // evidence. Patterns uses that rule too while keeping live controls on the
+    // exact installed-fingerprint grant above. The config client still refuses
+    // project and pin-layout changes independently before writing.
+    const matchesSameProjectCardEvidence = useCallback((evidence = {}) => {
+      const readiness = cardLink?.readiness || {};
+      const expectedCardId = String(cardLink?.expectedCard?.id || cardLink?.expectedCard?.cardId || '').trim().toLowerCase();
+      return Boolean(expectedCardId && projectId)
+        && String(evidence.cardId || '').trim().toLowerCase() === expectedCardId
+        && String(readiness.cardId || '').trim().toLowerCase() === expectedCardId
+        && String(evidence.firmwareVersion || '').trim() === String(readiness.firmwareVersion || '').trim()
+        && String(evidence.buildId || '').trim() === String(readiness.buildId || '').trim()
+        && String(evidence.projectId || '').trim() === String(projectId || '').trim()
+        && installedProjectIdFromCardStatus(readiness) === String(projectId || '').trim()
+        && (!readiness.projectFingerprint || String(evidence.projectFingerprint || '').trim().toLowerCase() === String(readiness.projectFingerprint).trim().toLowerCase())
+        && (readiness.projectRevision == null || Number(evidence.projectRevision) === Number(readiness.projectRevision));
+    }, [cardLink?.expectedCard, cardLink?.readiness, projectId]);
+    const currentPatternInstallAccess = useCallback(() => {
+      if (patternAccessRef.current !== 'ready') return patternAccessRef.current;
+      if (currentPatternCardAccess() === 'ready') return 'ready';
+      return matchesSameProjectCardEvidence({
+        ...cardLink?.readiness,
+        projectId: installedProjectIdFromCardStatus(cardLink?.readiness),
+      }) ? 'ready' : 'project';
+    }, [cardLink?.readiness, currentPatternCardAccess, matchesSameProjectCardEvidence]);
     // Preview authority, deliberately weaker than install authority.
     //
     // A live preview writes nothing: the card holds it in RAM, a reboot
@@ -700,8 +728,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     // that turned the pattern grid, which exists to try patterns, into a
     // surface that refused every tap until the owner installed first.
     //
-    // `currentPatternCardAccess` above keeps the full project gate and stays
-    // the gate for installs, which do persist.
+    // `currentPatternCardAccess` above keeps the full project gate for live
+    // controls. Explicit installs can use the verified prior installation
+    // card checked by `currentPatternInstallAccess`.
     const currentPatternPreviewAccess = useCallback(() => patternAccessRef.current, []);
 
     // What the card holds, from the shared journey evidence (one /api/zones
@@ -1834,13 +1863,13 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     };
     const openCardInstaller = async () => {
       if (!handoffUrl) return;
-      if (currentPatternCardAccess() !== 'ready') {
-        blockPatternCardEffect(currentPatternCardAccess());
+      if (currentPatternInstallAccess() !== 'ready') {
+        blockPatternCardEffect(currentPatternInstallAccess());
         return;
       }
       try {
         const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
-        if (!matchesCurrentCardProjectEvidence(evidence)) {
+        if (!matchesCurrentCardProjectEvidence(evidence) && !matchesSameProjectCardEvidence(evidence)) {
           blockPatternCardEffect('project');
           return;
         }
@@ -1876,8 +1905,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         setStatus('This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.');
         return;
       }
-      if (currentPatternCardAccess() !== 'ready') {
-        blockPatternCardEffect(currentPatternCardAccess());
+      if (currentPatternInstallAccess() !== 'ready') {
+        blockPatternCardEffect(currentPatternInstallAccess());
         return;
       }
       if (installIntentRef.current) return;
@@ -1916,13 +1945,34 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         prepareCardStoragePayload(packageForCard);
         const safety = await checkCardLayoutWriteSafety(packageForCard, 'saving');
         if (!safety.ok) return;
-        if (currentPatternCardAccess() !== 'ready') {
-          blockPatternCardEffect(currentPatternCardAccess());
+        if (currentPatternInstallAccess() !== 'ready') {
+          blockPatternCardEffect(currentPatternInstallAccess());
           return;
         }
         const before = await readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport });
-        if (!matchesCurrentCardProjectEvidence(before)) {
+        if (!matchesCurrentCardProjectEvidence(before) && !matchesSameProjectCardEvidence(before)) {
           blockPatternCardEffect('project');
+          return;
+        }
+        const [cardStatus, wiringStatus] = await Promise.all([
+          readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }),
+        ]);
+        assertCardDeploymentPreflightIdentity(before, cardStatus);
+        if ((wiringStatus.cardId && wiringStatus.cardId !== before.cardId)
+          || (wiringStatus.buildId && wiringStatus.buildId !== before.buildId)) {
+          throw new Error('The card changed during the wiring check. Nothing was sent.');
+        }
+        const structuralWiringChanged = cardConfigStructuralWiringChangedFromInfo(
+          { ...cardStatus, outputs: wiringStatus.outputs }, packageForCard,
+        );
+        if (wiringStatus.hasCandidate || structuralWiringChanged) {
+          // The Card status installer owns staging, activation, the timed real-
+          // light test, and confirmation. Patterns has no authority to confirm
+          // a changed physical section layout or re-post an existing candidate.
+          window.location.hash = wiringStatus.hasCandidate
+            ? '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate'
+            : '#screen=card&section=setup&task=install-project&next=patterns';
           return;
         }
         const exactPrepared = { ...prepared, cardId: before.cardId };
@@ -1936,7 +1986,16 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           allowProjectChange: undefined,
         });
         if (response?.state === 'staged') {
-          throw new Error(STAGED_WIRING_CONFLICT_MESSAGE);
+          window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate';
+          return;
+        }
+        const postWriteWiring = await getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }).catch(() => null);
+        if (postWriteWiring?.hasCandidate) {
+          // Some card builds acknowledge /api/config before the candidate is
+          // exposed in that reply. The Card status flow can resume the exact
+          // candidate; never re-post this installation from Patterns.
+          window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate';
+          return;
         }
         const verification = await waitForCardDeploymentVerification(exactPrepared, {
           readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
@@ -2117,21 +2176,20 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     };
 
     // Toggle playlist membership for any browse card (pattern or saved mix).
-    const togglePl = (id, e) => {
+    const togglePl = (patternCard, e) => {
       e.stopPropagation();
-      const adapted = REAL_PATTERN_BY_ID.get(id);
-      if (adapted) {
-        setPatternInPlaylist(id, !playlistContainsPattern(playlist, id));
+      if (!patternCard.mix) {
+        setPatternInPlaylist(patternCard.id, !playlistContainsPattern(playlist, patternCard.id));
         return;
       }
       // saved mix card: id is the adapted look id; find the real saved look.
-      const realLook = findSavedLook(id);
+      const realLook = findSavedLook(patternCard.id);
       if (realLook?.projectOnly) return;
       if (realLook) setSavedLookInPlaylist(realLook, !playlistContainsCombo(playlist, realLook.id));
     };
-    const inPlaylist = (id) => {
-      if (REAL_PATTERN_BY_ID.has(id)) return playlistContainsPattern(playlist, id);
-      const realLook = findSavedLook(id);
+    const inPlaylist = (patternCard) => {
+      if (!patternCard.mix) return playlistContainsPattern(playlist, patternCard.id);
+      const realLook = findSavedLook(patternCard.id);
       return realLook ? playlistContainsCombo(playlist, realLook.id) : false;
     };
 
@@ -2416,7 +2474,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     // is not refused as a mismatch.
     const authorizedPatternCardAccess = deriveCardAccess(cardLink, {
       connected,
-      authorized: projectAuthorizationCurrent,
+      authorized: currentPatternInstallAccess() === 'ready',
     }).install;
     // Shared install precondition (src/lib/cardInstallGate.js). savePreviewToCard
     // only sets allowLayoutChange for the explicit bench test-strip override, and
@@ -2428,10 +2486,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       busy: cardSave.conflictsDisabled,
       cardAccess: authorizedPatternCardAccess,
     });
-    // F22: `authorizedPatternCardAccess` (.install) is demoted to 'project'
-    // the instant Studio's project no longer matches the card's installed
-    // fingerprint EXACTLY — the right gate for an install, which persists a
-    // structural claim onto the card, but recovering the lights sends a
+    // F22: `authorizedPatternCardAccess` (.install) can be demoted to 'project'
+    // when the card holds another project. Recovering lights sends a
     // fixed warm-white frame and asserts nothing about which project is
     // installed. Gating the button on it hid the one working recovery action
     // (Card Home's identical button is not gated this way at all) behind the
@@ -2937,7 +2993,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       status is off-screen — it is always visible. */}
                   <div className="pm-cards">
                      {filtered.slice(0, visibleCount).map((p) => {
-                       const cardInPlaylist = inPlaylist(p.id);
+                       const cardInPlaylist = inPlaylist(p);
                        const savedMix = p.mix ? findSavedLook(p.id) : null;
                        const mixPairs = Object.entries(savedMix?.sectionLooks || {}).map(([id, sectionLook]) => {
                          const section = sectionTargets.find(target => target.id === id);
@@ -2953,7 +3009,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                            ? 'Lab design · open in Lab for the full design'
                            : (mixPairs.length ? mixPairs.slice(0, 2).join(' · ') : `${patternNameFor(savedMix?.defaultLook?.patternId)} on all sections`);
                        return (
-                    <div key={p.id} className="pmcard-wrap">
+                    <div key={`${p.mix ? 'mix' : 'pattern'}:${p.id}`} className="pmcard-wrap">
                       <button type="button" className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")} data-pattern-id={p.id} aria-pressed={p.id === selId} onClick={() => selectCard(p)}>
                         {/* Speed rides the LED window's top-right corner; the
                             playlist star takes the row slot it used to hold.
@@ -2984,7 +3040,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                           aria-label={cardInPlaylist ? `Remove ${p.label} from playlist` : `Add ${p.label} to playlist`}
                           title={cardInPlaylist ? "In playlist \u2014 tap to remove" : "Add to playlist"}
                           className={"pmcard-pl" + (cardInPlaylist ? " on" : "")}
-                          onClick={(e) => togglePl(p.id, e)}
+                          onClick={(e) => togglePl(p, e)}
                         >
                           <span className="pmcard-pl-pill">
                             <svg viewBox="0 0 24 24" className="plstar" aria-hidden="true"><path d="M12 3l2.6 5.6 6 .7-4.4 4.1 1.2 6L12 16.8 6.6 19.4l1.2-6L3.4 9.3l6-.7z" /></svg>

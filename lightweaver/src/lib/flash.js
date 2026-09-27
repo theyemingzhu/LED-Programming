@@ -2,20 +2,24 @@ import { ESPLoader, Transport } from 'esptool-js';
 import {
   connectEspWithResetSequence,
   makeEspConnectTerminal,
+  releaseEspTransport,
 } from './flashConnection.js';
 import { writeVerifiedFlash } from './flashPlan.js';
 import { cardIdFromEspMac } from './cardCommissioningFlow.js';
 import { espCanReportFirmwareIdentity, readLightweaverFirmwareIdentity } from './usbFirmwareIdentity.js';
+import { selectEspSerialPort } from './serialPortSelection.js';
 
 export { espCanReportFirmwareIdentity };
 
 const WLED_API_URL = 'https://api.github.com/repos/wled/WLED/releases/latest';
 
-export async function connectESP({ onAttempt, onLog } = {}) {
-  const port = await navigator.serial.requestPort();
+export async function connectESP({ port: suppliedPort = null, onAttempt, onLog } = {}) {
+  const port = await selectEspSerialPort({ suppliedPort });
   return connectEspWithResetSequence({
     port,
     onAttempt,
+    attemptTimeoutMs: 45_000,
+    disconnectTimeoutMs: 5_000,
     createTransport: selectedPort => new Transport(selectedPort, false),
     createLoader: ({ transport }) => new ESPLoader({
       transport,
@@ -53,12 +57,7 @@ export async function readConnectedEspFirmwareIdentity(loader, hardware, options
 }
 
 export async function disconnectESP(loader, transport) {
-  try {
-    if (transport) await transport.disconnect();
-    return true;
-  } catch (_) {
-    return false;
-  }
+  return releaseEspTransport(transport, { timeoutMs: 5_000 });
 }
 
 export async function flashFirmware(loader, file, address, eraseAll, onProgress) {

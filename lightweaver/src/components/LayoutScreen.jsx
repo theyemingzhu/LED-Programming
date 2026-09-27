@@ -564,7 +564,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               data-testid="layout-check-and-install"
               title="Check the lights and install this project on the connected card."
               data-tooltip="Check the lights and install this project on the connected card."
-              onClick={() => openCardFlow('install-project')}
+              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
             >
               Install on card
             </button>

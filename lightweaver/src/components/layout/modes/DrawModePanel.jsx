@@ -473,10 +473,11 @@ export function DrawModePanel({
   // Division is an occasional action; retain each strip's draft while the
   // disclosure is closed, but never carry an open editor into a new selection.
   const [divideOpen, setDivideOpen] = useState(false);
+  const [divideError, setDivideError] = useState('');
   const [runSeparationError, setRunSeparationError] = useState('');
   const divideTriggerRef = useRef(null);
   const divideSelectionKey = JSON.stringify([selStripId, selLayerId, selectedStripIds]);
-  useEffect(() => setDivideOpen(false), [divideSelectionKey, panelStripId]);
+  useEffect(() => { setDivideOpen(false); setDivideError(''); }, [divideSelectionKey, panelStripId]);
   useEffect(() => setRunSeparationError(''), [divideSelectionKey, panelStripId]);
   const [divideSections, setDivideSections] = useState({}); // stripId → editable string
   // stripId → the owner's own counts, once a field has been edited. Absent
@@ -498,12 +499,11 @@ export function DrawModePanel({
   const divideSectionsCap = strip => Math.max(2, Math.min(MAX_SPLIT_SECTIONS, Math.trunc(Number(strip?.pixelCount) || 0)));
 
   // Why Divide is unavailable, said the way the owner would say it. Empty
-  // string means the control is live. Shares its reasons with Split — both
-  // controls change how many strips a run is cut into.
+  // string means the control is live. Division reopens a verified plan
+  // atomically, like the other direct Draw-mode edits.
   const divideBlockedReason = (strip, alreadySplit) => {
-    if (wiring.locked) return 'Wiring is locked — unlock it in Test & Install.';
-    if (alreadySplit) return 'Already divided into runs in Advanced wiring.';
-    if (!planStripSplitCounts(strip?.pixelCount, 2)) return 'Needs at least 2 LEDs to divide.';
+    if (alreadySplit) return 'Already divided into runs. Use Separate at existing run boundaries above, or edit the runs in Advanced wiring.';
+    if (!planStripSplitCounts(strip?.pixelCount, 2)) return 'Needs at least 2 LEDs to divide. Increase the strip LED count first.';
     return '';
   };
   // "11, 10, 10, 10 LEDs" — the answer to "what will I get?" before committing.
@@ -1967,6 +1967,11 @@ export function DrawModePanel({
                           {divideOpen && <div id={`divide-panel-${s.id}`}
                                className="la-divide-panel" role="region"
                                aria-label={`Divide ${s.name} into sections`}>
+                            {wiring.locked && !divideBlockedReason(s, isSplit) && <p data-testid="divide-unlock-notice">
+                              Dividing reopens this verified layout for editing. Recheck it in Test &amp; Install before sending it to the card. The lights on the card stay unchanged.
+                            </p>}
+                            {divideBlockedReason(s, isSplit) && <p role="status">{divideBlockedReason(s, isSplit)}</p>}
+                            {divideError && <p role="alert">{divideError}</p>}
                             <div className="la-divide-pair">
                               <span id={`divide-sections-error-${s.id}`}
                                     data-testid={`divide-error-${s.id}`}
@@ -2000,10 +2005,13 @@ export function DrawModePanel({
                                       disabled={!!divideDisabledReason}
                                       onClick={() => {
                                         if (!divideSectionsValid) return;
+                                        setDivideError('');
                                         const divided = divideStripIntoSections(s.id, divideCountsFor(s, divideSectionsValue));
                                         if (divided) {
                                           setDivideOpen(false);
                                           divideTriggerRef.current?.focus();
+                                        } else {
+                                          setDivideError('This strip could not be divided. Check its path and runs in Advanced wiring, then try again.');
                                         }
                                       }}>
                                 {divideSectionsValid ? `Divide into ${divideSectionsValue} sections` : 'Divide into sections'}

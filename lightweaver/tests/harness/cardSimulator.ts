@@ -1192,6 +1192,7 @@ export function createCardSimulator(
     'wiring-confirm': { method: 'POST', path: '/api/wiring/confirm' },
     'wiring-rollback': { method: 'POST', path: '/api/wiring/rollback' },
     'beacon-ports': { method: 'GET', path: '/api/beacon/port' },
+    'beacon-port': { method: 'POST', path: '/api/beacon/port' },
     reboot: { method: 'POST', path: '/api/reboot' },
     config: { method: 'POST', path: '/api/config' },
   };
@@ -1369,7 +1370,10 @@ export function createCardSimulator(
       if (type === 'release-bridge') return { ok: true, response: { released: true } };
       if (type === 'frame') return { ok: true, response: { ok: true, relayed: true, wsOpen: true } };
       const route = BRIDGE_PATHS[type];
-      if (!route) return { ok: false, reason: 'invalid-payload', error: 'unknown bridge request' };
+      if (!route) {
+        if (!unhandled.includes(`bridge:${type}`)) unhandled.push(`bridge:${type}`);
+        return { ok: false, reason: 'invalid-payload', error: 'unknown bridge request' };
+      }
       requests.push({ method: route.method, path: route.path, body: payload, at: Date.now() });
       const answer = respond(route.method, route.path, payload);
       if (answer.status >= 400) return { ok: false, reason: 'http', error: `HTTP ${answer.status}` };

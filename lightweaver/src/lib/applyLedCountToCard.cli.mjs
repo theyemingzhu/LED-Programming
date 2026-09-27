@@ -22,11 +22,21 @@ if (!host || !Number.isSafeInteger(pixels) || pixels < 1) {
   process.exit(2);
 }
 
-const result = await applyLedCountOnCard({
-  host,
-  pixels,
-  ...(pinArg == null ? {} : { pin: Number(pinArg) }),
-});
+let result;
+try {
+  result = await applyLedCountOnCard({
+    host,
+    pixels,
+    ...(pinArg == null ? {} : { pin: Number(pinArg) }),
+  });
+} catch (error) {
+  console.error(JSON.stringify({
+    applied: false,
+    reason: error?.reason || 'write-failed',
+    message: error?.message || 'The card rejected the LED count.',
+  }, null, 2));
+  process.exit(1);
+}
 console.log(JSON.stringify({ applied: result.applied, reason: result.reason || '', saved: result.result?.saved === true }, null, 2));
 if (!result.applied) {
   if (result.reason === 'not-a-length-change') {

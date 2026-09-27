@@ -153,6 +153,17 @@ export function writeStorageJsonWithBackup(primaryKey, backupKey, value, options
   return true;
 }
 
+export function writeRestorableProjectJsonWithBackup(primaryKey, backupKey, project, options = {}) {
+  // A live edit can briefly produce a structurally incomplete snapshot. It
+  // must not replace either recovery copy with a project boot would reject.
+  try {
+    if (!migrateProject(project)) return false;
+  } catch {
+    return false;
+  }
+  return writeStorageJsonWithBackup(primaryKey, backupKey, project, options);
+}
+
 // ── Restorable autosave read + quarantine (defect B-2) ─────────────────────
 //
 // `readStorageJsonWithBackup` only recovers from a corrupt *primary* copy. It
@@ -181,6 +192,7 @@ export function readRestorableProjectJson(primaryKey, backupKey, options = {}) {
   const none = { payload: null, restoredFrom: null, failure: null };
   if (!storage) return none;
   let failure = null;
+  let primaryFailure = null;
   const copies = [['primary', primaryKey], ['backup', backupKey]];
   for (const [role, key] of copies) {
     if (!key) continue;
@@ -196,15 +208,39 @@ export function readRestorableProjectJson(primaryKey, backupKey, options = {}) {
       parsed = JSON.parse(raw);
     } catch {
       if (!failure) failure = { reason: 'parse-error', raw };
+      if (role === 'primary') primaryFailure = { reason: 'parse-error', raw };
       continue;
     }
     if (!migrateProject(parsed)) {
       if (!failure) failure = { reason: classifyUnrestorableProject(parsed), raw };
+      if (role === 'primary') primaryFailure = { reason: classifyUnrestorableProject(parsed), raw };
       continue;
     }
-    return { payload: parsed, restoredFrom: role, failure: null };
+    return { payload: parsed, restoredFrom: role, failure: null,
+      ...(primaryFailure ? { primaryFailure } : {}) };
   }
   return { ...none, failure };
+}
+
+// An explicit Save project is a verified browser-library copy. If the live
+// autosave primary cannot open, prefer that active saved copy over an older
+// automatic backup. A valid primary always wins so unsaved edits survive a
+// reload. Selection is read-only; the caller handles recovery/quarantine.
+export function readPreferredStartupProject(primaryKey, backupKey, options = {}) {
+  const autosave = readRestorableProjectJson(primaryKey, backupKey, options);
+  if (autosave.restoredFrom === 'primary') return autosave;
+  try {
+    const activeId = readActiveProjectLibraryRecordId(options);
+    const record = activeId ? readProjectLibraryRecordSnapshot(activeId, options).record : null;
+    if (record?.project) return { ...autosave, payload: record.project, restoredFrom: 'library' };
+  } catch { /* keep the restorable backup, if there is one */ }
+  return autosave;
+}
+
+export function deferAutosaveForSavedLibraryRestore(restoredFromLibrary, lifecycle) {
+  return restoredFromLibrary === true
+    && lifecycle?.generation === 0
+    && lifecycle?.editedRevision === 0;
 }
 
 function sanitizeQuarantineRecord(value) {

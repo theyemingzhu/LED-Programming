@@ -51,8 +51,28 @@ async function pairDiscoveredCardOnce(link = {}, {
   adoptBridge = adoptDiscoveredCardBridgeIdentity,
   rePairBridge = rePairDiscoveredCardBridgeIdentity,
   readIdentity = readPersistedCardIdentity,
+  readBridgeState = getCardBridgeState,
+  expectedCard = null,
 } = {}) {
   try {
+    if (expectedCard) {
+      const live = readBridgeState();
+      const discovered = live.discoveredCard;
+      if (readIdentity()?.id || link.transport !== 'bridge'
+        || normalizeCardHost(live.host) !== normalizeCardHost(expectedCard.host)
+        || normalizeCardHost(link.host) !== normalizeCardHost(expectedCard.host)
+        || discovered?.id !== expectedCard.id
+        || discovered.firmwareVersion !== expectedCard.firmwareVersion
+        || discovered.buildId !== expectedCard.buildId
+        || Number(discovered.buildNumber) !== Number(expectedCard.buildNumber)) {
+        return {
+          ok: false, reason: 'wrong-card', takeoverHost: '',
+          message: 'The card changed since USB verification. Reopen the selected card before pairing.',
+        };
+      }
+      await adoptBridge(expectedCard.host, { expectedCard });
+      return { ok: true };
+    }
     if (link.transport === 'direct' && link.discoveredCard?.id) {
       await adoptDirect();
     } else if (readIdentity()?.id) {

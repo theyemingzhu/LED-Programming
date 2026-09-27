@@ -275,6 +275,10 @@ test('install-project resumes commissioning only while a stage is resumable', ()
     resolveCardIntent('install-project', NEEDS_PROJECT),
     { action: 'route', hash: SETUP_TASK('install-project') },
   );
+  assert.deepEqual(
+    resolveCardIntent('install-project', { ...NEEDS_PROJECT, startProjectInstall: true }),
+    { action: 'route', hash: `${SETUP_TASK('install-project')}&next=patterns` },
+  );
   // update-firmware is unmoved by commissioning state: it is the flasher.
   assert.deepEqual(
     resolveCardIntent('update-firmware', { ...NEEDS_PROJECT, resumableCommissioning: true }),

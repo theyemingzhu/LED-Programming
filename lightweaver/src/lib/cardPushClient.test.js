@@ -1,16 +1,37 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { webcrypto } from 'node:crypto';
+import { classifyCardDeploymentResume, orchestrateCardDeploymentStart } from './cardDeployment.js';
 import {
   assertCardColorJourneySupport,
   assertCardKaleidoscopeSupport,
   cardConfigNeedsRebootFromInfo,
   cardConfigPinLayoutChangedFromInfo,
+  cardConfigStructuralWiringChangedFromInfo,
+  assignCardWiringIdentityForChange,
+  assignExactCandidateWiringIdentity,
   CardPushError,
   pushConfigToCard,
+  readCardFirmwareInfoEnvelope,
   readCardProjectEvidence,
   readCardStatusEnvelope,
   shouldDirectApplyLedCountChange,
 } from './cardPushClient.js';
+
+test('firmware-info envelope preserves live controls and color fields for count proof', async () => {
+  const result = await readCardFirmwareInfoEnvelope({
+    host: '192.168.18.70', transport: 'direct',
+    fetchImpl: async (url, options) => {
+      assert.match(String(url), /\/api\/firmware-info$/);
+      assert.equal(options.cache, 'no-store');
+      return response({ cardId: 'lw-a', bootId: 'boot-a', buildNumber: 2160,
+        ledType: 'WS2812B', outputColor: { colorOrder: 'GRB' },
+        controls: { encoder: { a: 4, b: 5 } } });
+    },
+  });
+  assert.equal(result.controls.encoder.a, 4);
+  assert.equal(result.outputColor.colorOrder, 'GRB');
+});
 
 const runtimePackage = {
   format: 'lightweaver-card-runtime-package',
@@ -25,6 +46,35 @@ const runtimePackage = {
     looks: [],
   },
 };
+
+test('probation candidate reuses only its exact positive wiring identity on reload', async () => {
+  const config = {
+    projectRevision: 13, projectFingerprint: 'a'.repeat(64),
+    led: { type: 'WS2812B', colorOrder: 'RGB', maxMilliamps: 1500, outputs: [
+      { id: 'one', pin: 18, pixels: 28, segments: [{ id: 'run-first', count: 14, direction: 'forward' }, { id: 'run-middle', count: 14, direction: 'forward' }] },
+      { id: 'two', pin: 21, pixels: 13, segments: [{ id: 'run-last', count: 13, direction: 'forward' }] },
+    ] },
+  };
+  const identity = { cardId: 'lw-aabbccddeeff', buildId: 'build-123' };
+  const digest = (await import('./productionWiringIdentity.js')).productionWiringDigest;
+  const candidate = {
+    app: 'Lightweaver', ...identity, state: 'testing', hasCandidate: true,
+    activationId: 'candidate-probation', projectRevision: 13, projectFingerprint: 'a'.repeat(64),
+    wiringRevision: 1, wiringDigest: await digest(config.led, webcrypto),
+  };
+  assert.equal(await assignExactCandidateWiringIdentity(config, candidate, identity, { cryptoImpl: webcrypto }), true);
+  assert.equal(config.wiringRevision, 1);
+  assert.equal(config.wiringDigest, candidate.wiringDigest);
+  const prepared = { ...identity, config };
+  assert.equal(classifyCardDeploymentResume(prepared, candidate), 'resume-physical-test');
+  for (const drift of [{ buildId: 'other' }, { projectFingerprint: 'b'.repeat(64) }, { wiringDigest: 'f'.repeat(64) }]) {
+    const changed = structuredClone(config);
+    delete changed.wiringRevision; delete changed.wiringDigest;
+    assert.equal(await assignExactCandidateWiringIdentity(changed, { ...candidate, ...drift }, identity, { cryptoImpl: webcrypto }), false);
+    assert.equal(changed.wiringRevision, undefined);
+    assert.equal(classifyCardDeploymentResume({ ...identity, config: changed }, { ...candidate, ...drift }), 'candidate-conflict');
+  }
+});
 
 const colorJourneyRuntimePackage = {
   ...runtimePackage,
@@ -396,6 +446,28 @@ test('explicit bridge config transport is honored on an HTTP Studio page', { con
   }
 });
 
+test('bridge config refusal preserves its reason instead of claiming a browser block', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('https:');
+  try {
+    await assert.rejects(pushConfigToCard(runtimePackage, {
+      host: '192.168.18.70', transport: 'bridge', autoDiscover: false,
+      initialConfigAuthorityImpl: () => false,
+      bridgeRequestImpl: async type => {
+        if (type === 'firmware-info') return { piece: { id: 'commissioned-piece' }, outputs: [{ pin: 16, pixels: 8 }] };
+        const error = new Error('The verified card is not runtime-ready for this mutation.');
+        error.reason = 'runtime-not-ready';
+        throw error;
+      },
+    }), error => error instanceof CardPushError
+      && error.reason === 'runtime-not-ready'
+      && !/mixed content|browser blocked/i.test(error.message));
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
 test('explicit direct config transport is honored on an HTTPS Studio page', { concurrency: false }, async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
@@ -569,6 +641,82 @@ test('pixel count on the same GPIO is a length change, not a pin-layout change',
   assert.equal(shouldDirectApplyLedCountChange({ outputs: [{ pin: 16, pixels: 41 }] }, countedRuntimePackage), false);
 });
 
+test('same-GPIO section split is structural while a single-run length remains direct', () => {
+  const current = { ledType: 'WS2812B', maxMilliamps: 1500, outputs: [{ id: 'one-output', pin: 18, pixels: 41,
+    segments: [{ id: 'one-output-full', count: 41, direction: 'forward' }] }] };
+  const base = { led: { type: 'WS2812B', maxMilliamps: 1500, outputs: [{ id: 'one-output', pin: 18, pixels: 41,
+    segments: [{ id: 'one-output-full', count: 41, direction: 'forward' }] }] } };
+  const split = { led: { ...base.led, outputs: [{ ...base.led.outputs[0], segments: [
+    { id: 'first', count: 14, direction: 'forward' },
+    { id: 'second', count: 14, direction: 'forward' },
+    { id: 'third', count: 13, direction: 'forward' },
+  ] }] } };
+  assert.equal(cardConfigStructuralWiringChangedFromInfo(current, split), true);
+  assert.equal(cardConfigStructuralWiringChangedFromInfo(current, { led: { ...base.led, outputs: [{ ...base.led.outputs[0], pixels: 44, segments: [{ id: 'one-output-full', count: 44, direction: 'forward' }] }] } }), false);
+});
+
+test('same-GPIO three-section install stages one exact candidate and resumes without another POST', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  const cardId = 'lw-aabbccddeeff';
+  const buildId = 'build-123';
+  const current = {
+    app: 'Lightweaver', cardId, firmwareVersion: '1.2.3', buildId,
+    piece: { id: 'commissioned-piece' }, ledType: 'WS2812B', maxMilliamps: 1500,
+    wiringRevision: 0, outputs: [{ id: 'one-output', pin: 18, pixels: 41,
+      segments: [{ id: 'one-output-full', count: 41, direction: 'forward' }] }],
+  };
+  const target = structuredClone(runtimePackage);
+  target.config.projectRevision = 2;
+  target.config.projectFingerprint = 'a'.repeat(64);
+  target.config.led = { type: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 1500, pixels: 41,
+    outputs: [{ id: 'one-output', pin: 18, pixels: 41, segments: [
+      { id: 'first', count: 14, direction: 'forward' },
+      { id: 'second', count: 14, direction: 'forward' },
+      { id: 'third', count: 13, direction: 'forward' },
+    ] }] };
+  const preparedConfig = structuredClone(target.config);
+  await assignCardWiringIdentityForChange(preparedConfig, current, { cryptoImpl: webcrypto });
+  assert.equal(preparedConfig.wiringRevision, 1);
+  assert.match(preparedConfig.wiringDigest, /^[a-f0-9]{64}$/);
+  const calls = [];
+  try {
+    const result = await pushConfigToCard({ ...target, config: preparedConfig }, {
+      host: '192.168.18.70', transport: 'direct', autoDiscover: false, reboot: 'if-needed',
+      allowLayoutChange: true,
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), method: init.method || 'GET', body: init.body });
+        if (String(url).endsWith('/api/firmware-info')) return response(current);
+        if (String(url).endsWith('/api/wiring/candidate')) return response({ ok: true, state: 'staged', activationId: 'candidate-split' });
+        throw new Error(`unexpected request ${url}`);
+      },
+    });
+    assert.equal(result.state, 'staged');
+    const mutation = calls.filter(call => call.method === 'POST');
+    assert.equal(mutation.length, 1);
+    assert.match(mutation[0].url, /\/api\/wiring\/candidate$/);
+    const sent = JSON.parse(mutation[0].body).candidate;
+    assert.equal(sent.wiringRevision, preparedConfig.wiringRevision);
+    assert.equal(sent.wiringDigest, preparedConfig.wiringDigest);
+    const candidate = { state: 'staged', hasCandidate: true, activationId: result.activationId,
+      cardId, buildId, projectRevision: sent.projectRevision, projectFingerprint: sent.projectFingerprint,
+      wiringRevision: sent.wiringRevision, wiringDigest: sent.wiringDigest };
+    const prepared = { cardId, buildId, config: preparedConfig };
+    assert.equal(classifyCardDeploymentResume(prepared, candidate), 'resume-activation');
+    const resumed = await orchestrateCardDeploymentStart(prepared, {
+      readFirmwareInfo: async () => current,
+      readStatus: async () => current,
+      readWiringStatus: async () => candidate,
+      config: async () => { throw new Error('resume must not POST'); },
+    });
+    assert.equal(resumed.action, 'resume-activation');
+    assert.equal(calls.filter(call => call.method === 'POST').length, 1);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
 test('writes a typed LED count over /api/config without the Test & Install candidate dance', { concurrency: false }, async () => {
   const originalWindow = globalThis.window;
   const originalFetch = globalThis.fetch;
@@ -598,6 +746,35 @@ test('writes a typed LED count over /api/config without the Test & Install candi
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('a staged direct config response never triggers the requested reboot', { concurrency: false }, async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  const calls = [];
+  try {
+    const result = await pushConfigToCard(countedRuntimePackage, {
+      host: '192.168.18.70', transport: 'direct', autoDiscover: false, reboot: true,
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), method: init.method || 'GET' });
+        if (String(url).endsWith('/api/firmware-info')) return response({
+          app: 'Lightweaver', cardId: 'lw-aabbccddeeff',
+          firmwareVersion: '1.2.3', buildId: 'build-123',
+          piece: { id: 'commissioned-piece' }, outputs: [{ pin: 16, pixels: 256 }],
+        });
+        if (String(url).endsWith('/api/config')) return response({
+          ok: true, state: 'staged', activationId: 'candidate-a',
+          requiresReboot: false, requiresConfirmation: true,
+        });
+        throw new Error(`unexpected request ${url}`);
+      },
+    });
+    assert.equal(result.state, 'staged');
+    assert.equal(calls.filter(call => call.url.endsWith('/api/reboot')).length, 0);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
   }
 });
 

@@ -29,6 +29,7 @@ import { stageCardWiringCandidate } from './cardWiringSafety.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
 import { BENCH_DEFAULT_PORT_PIXELS, BENCH_PROJECT_ID } from './benchConfig.js';
 import { hasColorJourneyRecipeCapability, runtimeConfigUsesColorJourney } from './colorJourneyNative.js';
+import { assignProductionWiringIdentity, productionWiringDigest } from './productionWiringIdentity.js';
 
 export function getCardHostname() {
   return readStoredCardHost();
@@ -143,9 +144,9 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
       throw new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
     }
     const json = await r.json().catch(() => ({ ok: true }));
-    const shouldReboot = options.reboot === true ||
+    const shouldReboot = json?.state !== 'staged' && (options.reboot === true ||
       json?.requiresReboot === true ||
-      (options.reboot === 'if-needed' && await cardNeedsConfigReboot(host, runtimePackage, options));
+      (options.reboot === 'if-needed' && await cardNeedsConfigReboot(host, runtimePackage, options)));
     if (shouldReboot) {
       await requestCardReboot(host, options);
       return { ...json, rebooting: true };
@@ -206,8 +207,75 @@ export function cardConfigPinLayoutChangedFromInfo(current = {}, runtimePackage 
   return !outputPinsMatch(current?.outputs, targetOutputs);
 }
 
+// Compare the physical identity the card actually reports. A lone run may
+// change length on its existing output without a candidate; changing section
+// boundaries, names, direction, protocol, or current ceiling needs one.
+export function cardConfigStructuralWiringChangedFromInfo(current = {}, runtimePackage = {}) {
+  const targetLed = (runtimePackage.config || runtimePackage)?.led || {};
+  const target = Array.isArray(targetLed.outputs) ? targetLed.outputs : [];
+  if (!target.length) return false;
+  const active = Array.isArray(current.outputs) ? current.outputs : [];
+  if (active.length !== target.length) return true;
+  const activeType = current.ledType || current.led?.type;
+  const activeLimit = current.maxMilliamps ?? current.led?.maxMilliamps;
+  if (activeType && activeType !== targetLed.type) return true;
+  if (activeLimit !== undefined && Number(activeLimit) !== Number(targetLed.maxMilliamps)) return true;
+  return target.some((next, index) => {
+    const prior = active[index] || {};
+    if (Number(prior.pin ?? prior.gpio) !== Number(next.pin)) return true;
+    if (prior.id && prior.id !== next.id) return true;
+    const priorSegments = Array.isArray(prior.segments) && prior.segments.length
+      ? prior.segments : [{ id: `${prior.id || next.id}-full`, count: prior.pixels ?? prior.count, direction: prior.direction || 'forward' }];
+    const nextSegments = Array.isArray(next.segments) && next.segments.length
+      ? next.segments : [{ id: `${next.id}-full`, count: next.pixels, direction: next.direction || 'forward' }];
+    if (priorSegments.length !== nextSegments.length) return true;
+    return nextSegments.some((segment, segmentIndex) => {
+      const previous = priorSegments[segmentIndex];
+      if (previous.id !== segment.id || (previous.direction || 'forward') !== (segment.direction || 'forward')) return true;
+      // Only a one-run output may grow or shrink without changing boundaries.
+      return nextSegments.length > 1 && Number(previous.count) !== Number(segment.count);
+    });
+  });
+}
+
+export async function assignCardWiringIdentityForChange(config, current = {}, { cryptoImpl } = {}) {
+  if (!cardConfigStructuralWiringChangedFromInfo(current, config)) return config;
+  const currentRevision = Number(current.wiringRevision) || 0;
+  const revision = Number(config.wiringRevision) > currentRevision
+    ? Number(config.wiringRevision) : currentRevision + 1;
+  const expectedDigest = await productionWiringDigest(config.led, cryptoImpl);
+  if (config.wiringDigest && config.wiringDigest !== expectedDigest) {
+    throw new CardPushError('wiring-identity-mismatch', 'The prepared wiring digest does not match this project. Nothing was sent.');
+  }
+  return assignProductionWiringIdentity(config, { cryptoImpl, revision });
+}
+
+// During probation the card may report the candidate geometry and revision as
+// its current status. Preparing a fresh install from that status must recover
+// the existing candidate's identity, not increment it or leave it blank.
+// A mismatch returns false so the deployment coordinator keeps its strict
+// candidate-conflict decision and performs no configuration write.
+export async function assignExactCandidateWiringIdentity(config, candidate = {}, expected = {}, { cryptoImpl } = {}) {
+  const active = candidate.hasCandidate === true || ['staged', 'testing'].includes(candidate.state)
+    || candidate.candidateState === 'awaiting-confirmation';
+  if (!active || candidate.app !== 'Lightweaver' || !candidate.activationId
+      || !expected.cardId || candidate.cardId !== expected.cardId
+      || !expected.buildId || candidate.buildId !== expected.buildId
+      || Number(candidate.projectRevision) !== Number(config.projectRevision)
+      || !config.projectFingerprint || candidate.projectFingerprint !== config.projectFingerprint
+      || !Number.isSafeInteger(candidate.wiringRevision) || candidate.wiringRevision < 1
+      || !/^[a-f0-9]{64}$/.test(candidate.wiringDigest || '')) return false;
+  const digest = await productionWiringDigest(config.led, cryptoImpl);
+  if (digest !== candidate.wiringDigest || (config.wiringDigest && config.wiringDigest !== digest)
+      || (config.wiringRevision && config.wiringRevision !== candidate.wiringRevision)) return false;
+  config.wiringRevision = candidate.wiringRevision;
+  config.wiringDigest = digest;
+  return true;
+}
+
 export function shouldDirectApplyLedCountChange(current = {}, runtimePackage = {}) {
   return !cardConfigPinLayoutChangedFromInfo(current, runtimePackage)
+    && !cardConfigStructuralWiringChangedFromInfo(current, runtimePackage)
     && cardConfigNeedsRebootFromInfo(current, runtimePackage);
 }
 
@@ -282,6 +350,19 @@ export async function readCardProjectEvidence({ host, timeoutMs = 3000, transpor
   return normalizeCardProjectEvidence(result);
 }
 
+// Count preparation needs the full live firmware-info envelope, including
+// controls and output colour fields that project-identity normalization omits.
+export async function readCardFirmwareInfoEnvelope({ host, timeoutMs = 3000, transport, fetchImpl = fetch } = {}) {
+  if (transport === 'bridge' || (transport !== 'direct' && isMixedContentBlocked())) {
+    return sendCardBridgeRequest('firmware-info', { cache: 'no-store', nonce: Date.now() }, {
+      host, timeoutMs, retryOnTimeout: true,
+    });
+  }
+  const result = await readFirmwareInfoToHost(host, timeoutMs, fetchImpl);
+  if (!result) throw new CardPushError('readback', 'The card did not return fresh firmware-info evidence.');
+  return result;
+}
+
 export async function readCardStatusEnvelope({ host, timeoutMs = 3000, transport, fetchImpl = fetch } = {}) {
   if (transport === 'bridge' || (transport !== 'direct' && isMixedContentBlocked())) {
     return sendCardBridgeRequest('status', { cache: 'no-store', nonce: Date.now() }, {
@@ -322,7 +403,7 @@ async function resolveConfigRebootForCard(host, runtimePackage, options = {}) {
         retryOnTimeout: true,
       }, options).catch(() => null)
     : await readFirmwareInfoToHost(host, timeoutMs, options.fetchImpl || globalThis.fetch);
-  const pinLayoutChanged = current ? cardConfigPinLayoutChangedFromInfo(current, runtimePackage) : false;
+  const pinLayoutChanged = current ? cardConfigStructuralWiringChangedFromInfo(current, runtimePackage) : false;
   const outputsChanged = current ? cardConfigNeedsRebootFromInfo(current, runtimePackage) : false;
   const projectChanged = current ? cardConfigProjectMismatchFromInfo(current, runtimePackage) : false;
   const reboot = options.reboot === true ||
@@ -354,6 +435,9 @@ export async function requestCardReboot(host, options = {}) {
 function normalizeConfigPushError(host, err, transport = '') {
   if (err instanceof CardConfigCapacityError) return err;
   if (err instanceof CardPushError) return err;
+  if (transport === 'bridge' && err?.reason) {
+    return new CardPushError(err.reason, err.message || 'The card bridge refused this configuration.', err);
+  }
   if (transport === 'bridge' || (!transport && isMixedContentBlocked())) {
     return new CardPushError(
       'mixed-content',
@@ -401,14 +485,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         commissioningFlowId: options.commissioningFlowId,
       }, options);
     } catch (err) {
-      if (err instanceof CardPushError) throw err;
-      throw new CardPushError(
-        'mixed-content',
-        err?.reason === 'bridge-missing' || err?.reason === 'bridge-timeout'
-          ? 'Open the card page once by clicking Card disconnected, then return to Studio so it can save through the card’s own page.'
-          : 'Browser blocked the connection (mixed content). Use the local card installer handoff.',
-        err,
-      );
+      throw normalizeConfigPushError(host, err, transport);
     }
   }
   let exactIdentity = null;
@@ -476,6 +553,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   // identifier that the UI must use for test, confirmation, or rollback.
   if (rebootPlan.layoutChanged) {
     try {
+      await assignCardWiringIdentityForChange(preparedPayload.config, rebootPlan.current);
       return await stageCardWiringCandidate(preparedPayload.config, {
         host,
         timeoutMs: options.timeoutMs || 6000,
@@ -506,14 +584,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         options,
       );
     } catch (err) {
-      if (err instanceof CardPushError) throw err;
-      throw new CardPushError(
-        'mixed-content',
-        err?.reason === 'bridge-missing' || err?.reason === 'bridge-timeout'
-          ? 'Open the card page once by clicking Card disconnected, then return to Studio so it can save through the card’s own page.'
-          : 'Browser blocked the connection (mixed content). Use the local card installer handoff.',
-        err,
-      );
+      throw normalizeConfigPushError(host, err, transport);
     }
   }
   try {
@@ -536,6 +607,13 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           }
           if (retryRebootPlan.layoutChanged && options.allowLayoutChange !== true) {
             throw layoutMismatchError(retryRebootPlan.current, runtimePackage);
+          }
+          if (retryRebootPlan.layoutChanged) {
+            await assignCardWiringIdentityForChange(preparedPayload.config, retryRebootPlan.current);
+            return await stageCardWiringCandidate(preparedPayload.config, {
+              host: found.host, timeoutMs: options.timeoutMs || 6000, transport,
+              fetchImpl: options.fetchImpl, bridgeRequestImpl: options.bridgeRequestImpl,
+            });
           }
           const retryOptions = {
             ...options,

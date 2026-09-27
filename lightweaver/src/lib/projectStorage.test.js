@@ -654,7 +654,52 @@ test('readRestorableProjectJson falls back to the backup with no failure when th
   const result = readRestorableProjectJson('lw_autosave_v3', 'lw_autosave_v3_backup', { storage });
   assert.equal(result.restoredFrom, 'backup');
   assert.equal(result.payload.id, project.id);
-  assert.equal(result.failure, null, 'a restoring backup means no quarantine');
+  assert.equal(result.failure, null, 'the backup restores successfully');
+  assert.equal(result.primaryFailure.reason, 'parse-error', 'the unreadable primary remains available to preserve before autosave rewrites it');
+});
+
+test('startup opens the explicitly saved active project before an old backup when primary is invalid', () => {
+  const storage = memoryStorage();
+  const old = { ...createDefaultProject(), id: 'lwproj-old', name: 'Untitled Project' };
+  const saved = { ...createDefaultProject(), id: 'lightweaver-bench-discovery-v1', name: 'GPIO 18 — 41 lights' };
+  storage.setItem('lw_autosave_v3', '{invalid-primary');
+  storage.setItem('lw_autosave_v3_backup', JSON.stringify(old));
+  const record = saveProjectLibraryRecord(createProjectLibraryRecord(saved, { id: 'saved-card-project', now: 200 }), { storage });
+  writeActiveProjectLibraryRecordId(record.id, { storage });
+  const before = [storage.getItem('lw_autosave_v3'), storage.getItem('lw_autosave_v3_backup')];
+
+  const selected = projectStorageApi.readPreferredStartupProject('lw_autosave_v3', 'lw_autosave_v3_backup', { storage });
+  assert.equal(selected.payload.id, saved.id);
+  assert.equal(selected.payload.name, saved.name);
+  assert.equal(selected.restoredFrom, 'library');
+  assert.deepEqual([storage.getItem('lw_autosave_v3'), storage.getItem('lw_autosave_v3_backup')], before);
+
+  storage.setItem('lw_autosave_v3', JSON.stringify({ ...saved, name: 'Latest unsaved edit' }));
+  const current = projectStorageApi.readPreferredStartupProject('lw_autosave_v3', 'lw_autosave_v3_backup', { storage });
+  assert.equal(current.payload.name, 'Latest unsaved edit', 'a valid open autosave keeps precedence over an older explicit save');
+  assert.equal(current.restoredFrom, 'primary');
+});
+
+test('autosave refuses a snapshot that startup could not restore and preserves both copies', () => {
+  const storage = memoryStorage();
+  const previous = { ...createDefaultProject(), id: 'previous', name: 'Saved work' };
+  writeStorageJsonWithBackup('lw_autosave_v3', 'lw_autosave_v3_backup', previous, { storage });
+  const duplicate = { ...previous, layout: { ...previous.layout,
+    strips: [{ id: 'same' }, { id: 'same' }],
+  } };
+  assert.equal(projectStorageApi.writeRestorableProjectJsonWithBackup(
+    'lw_autosave_v3', 'lw_autosave_v3_backup', duplicate, { storage },
+  ), false);
+  assert.equal(JSON.parse(storage.getItem('lw_autosave_v3')).name, 'Saved work');
+  assert.equal(JSON.parse(storage.getItem('lw_autosave_v3_backup')).name, 'Saved work');
+});
+
+test('opening a saved library recovery copy defers automatic overwrite until an edit or replacement', () => {
+  const defer = projectStorageApi.deferAutosaveForSavedLibraryRestore;
+  assert.equal(defer(true, { generation: 0, editedRevision: 0 }), true);
+  assert.equal(defer(true, { generation: 0, editedRevision: 1 }), false);
+  assert.equal(defer(true, { generation: 1, editedRevision: 0 }), false);
+  assert.equal(defer(false, { generation: 0, editedRevision: 0 }), false);
 });
 
 test('readRestorableProjectJson also restores a healthy backup behind a forward-version primary', () => {

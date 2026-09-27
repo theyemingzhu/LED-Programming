@@ -25,6 +25,10 @@ export function prepareCardDeployment(project = {}, cardEvidence = {}) {
   });
 }
 
+export function refreshCardDeploymentFingerprint(prepared) {
+  return Object.freeze({ ...prepared, fingerprint: semanticFingerprint(prepared.config) });
+}
+
 export function classifyCardDeploymentResume(prepared = {}, status = {}) {
   const state = String(status.state || '').trim().toLowerCase();
   const candidateState = String(status.candidateState || '').trim().toLowerCase();

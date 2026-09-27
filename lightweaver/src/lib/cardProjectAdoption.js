@@ -62,6 +62,7 @@ import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
 import { createDefaultProject } from './projectModel.js';
 import { cardPartialOrigin } from './projectCopyLabel.js';
 import { colorJourneyLayoutKey, normalizeStoredNativeColorJourney, patternLabRecipeFromNativeColorJourney } from './colorJourneyNative.js';
+import { deriveSectionTargets } from './sectionLookModel.js';
 
 export const SAVE_FAILURE_MESSAGES = Object.freeze({
   'browser-recovery-failed': 'Studio could not create a browser recovery copy. Your current project is still open; free browser storage and retry.',
@@ -115,22 +116,68 @@ function visualLookFromZone(zone = {}, fallbackPatternId = 'aurora') {
   };
 }
 
+function importedLookId(patternId = '') {
+  const id = String(patternId);
+  // A combo's card id encodes its saved-look id once. Keep the original card
+  // id on the playlist entry so import/export does not add another prefix.
+  return id.startsWith('combo-') && id.length > 6 ? id.slice(6) : `card-${id}`;
+}
+
+function cardSectionLooks(patternZones = [], installedZones = [], targets = [], fallbackPatternId = 'aurora') {
+  const sourceZones = (patternZones || []).filter(zone => zone?.id);
+  const sectionTargets = targets.filter(target => target.kind === 'section' && target.patchId);
+  const installedById = new Map(installedZones.filter(zone => zone?.id).map(zone => [zone.id, zone]));
+  const assignments = new Map();
+  const usedSources = new Set();
+  for (const [index, target] of sectionTargets.entries()) {
+    let source = sourceZones.find(zone => zone.id === target.zoneId || zone.id === target.patchId || zone.id === target.stripId);
+    if (!source) {
+      source = sourceZones.find(zone => {
+        const ranges = (zone.ranges?.length ? zone.ranges : installedById.get(zone.id)?.ranges) || [];
+        return ranges.some(range => Number(range.start) <= target.start
+          && Number(range.start) + Number(range.count) > target.start);
+      });
+    }
+    if (!source && sourceZones.length === sectionTargets.length) {
+      source = sourceZones[index];
+    }
+    if (!source && sourceZones.length === 1) source = sourceZones[0];
+    if (source) {
+      usedSources.add(source);
+      assignments.set(target.patchId, visualLookFromZone(source, fallbackPatternId));
+    }
+  }
+  // Preserve an unmatched card zone as evidence instead of silently dropping it.
+  for (const zone of sourceZones) {
+    if (!usedSources.has(zone) && !assignments.has(zone.id)) assignments.set(zone.id, visualLookFromZone(zone, fallbackPatternId));
+  }
+  return Object.fromEntries(assignments);
+}
+
 export function reconstructInstalledCardState({ skeleton = {}, patterns = null, zones = null, cardId = '' } = {}) {
   const installedPatterns = Array.isArray(patterns?.patterns) ? patterns.patterns : [];
   const installedZones = Array.isArray(zones?.zones) ? zones.zones : [];
   const startupPatternId = String(zones?.startupPatternId || installedZones[0]?.patternId || installedPatterns[0]?.id || 'aurora');
   const startupZone = installedZones.find(zone => zone?.patternId === startupPatternId) || installedZones[0] || {};
+  const sectionTargets = deriveSectionTargets({ strips: skeleton.strips, patchBoard: skeleton.patchBoard, wiring: skeleton.wiring });
+  const lookIdByPatternId = new Map();
+  const usedLookIds = new Set();
+  for (const pattern of installedPatterns) {
+    const baseId = importedLookId(pattern.id);
+    let lookId = baseId;
+    for (let suffix = 2; usedLookIds.has(lookId); suffix += 1) lookId = `${baseId}-${suffix}`;
+    usedLookIds.add(lookId);
+    lookIdByPatternId.set(pattern.id, lookId);
+  }
   const looks = installedPatterns.map(pattern => {
     let nativeRecipe = null;
     try { nativeRecipe = normalizeStoredNativeColorJourney(pattern.nativeRecipe); } catch { nativeRecipe = null; }
     return ({
-      id: pattern.id,
+      id: lookIdByPatternId.get(pattern.id),
       type: 'compound',
       label: pattern.label || pattern.id,
       defaultLook: visualLookFromZone(pattern.zones?.[0], pattern.runtimePatternId || pattern.id || startupPatternId),
-      sectionLooks: Object.fromEntries((pattern.zones || [])
-        .filter(zone => zone?.id)
-        .map(zone => [zone.id, visualLookFromZone(zone, pattern.runtimePatternId || pattern.id || startupPatternId)])),
+      sectionLooks: cardSectionLooks(pattern.zones, installedZones, sectionTargets, pattern.runtimePatternId || pattern.id || startupPatternId),
       ...(nativeRecipe ? {
         nativeRecipe,
         nativeRecipeLayoutKey: colorJourneyLayoutKey(skeleton),
@@ -147,7 +194,7 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
   const playlist = installedPatterns.map((pattern, index) => ({
     id: pattern.id,
     type: 'combo',
-    lookId: pattern.id,
+    lookId: lookIdByPatternId.get(pattern.id),
     label: pattern.label || pattern.id,
     enabled: true,
     createdAt: index,
@@ -167,7 +214,7 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
     devices: {
       standaloneController: {
         defaultLook: visualLookFromZone(startupZone, startupPatternId),
-        activeLookId: String(patterns?.currentId || startupPatternId),
+        activeLookId: lookIdByPatternId.get(patterns?.currentId || startupPatternId) || '',
         looks,
         playlist,
         controls: { encoder: { patternCycleIds: looks.map(look => look.defaultLook.patternId) } },

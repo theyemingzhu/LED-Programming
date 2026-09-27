@@ -155,6 +155,99 @@ test('a verified unpaired factory status after a bridge timeout offers pairing, 
   link.destroy();
 });
 
+test('USB-targeted pairing refuses changed firmware in fresh status before saving identity', async () => {
+  const host = '192.168.50.95';
+  const tab = fakeCardTab();
+  const { values, emitMessage } = stubWindow({ openResult: tab });
+  assert.equal(openCardBridge(host), tab);
+  emitMessage({ origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 6 } });
+  const firstRequest = tab.postMessages.at(-1).message;
+  const expectedCard = { id: 'lw-target-95', firmwareVersion: '1.2.0', buildId: 'target-build', buildNumber: 1300, host };
+  emitMessage({ origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', id: firstRequest.id, ok: true, version: 6,
+      response: { cardId: expectedCard.id, firmwareVersion: expectedCard.firmwareVersion,
+        buildId: expectedCard.buildId, buildNumber: expectedCard.buildNumber } } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const pair = pairDiscoveredCard({ transport: 'bridge', host }, { expectedCard });
+  const pairRequest = tab.postMessages.at(-1).message;
+  assert.equal(pairRequest.type, 'status');
+  emitMessage({ origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', id: pairRequest.id, ok: true, version: 6,
+      response: { app: 'Lightweaver', provisioningContractVersion: 1,
+        cardId: expectedCard.id, firmwareVersion: expectedCard.firmwareVersion,
+        buildId: 'different-build', buildNumber: 1301, bootId: 'boot-changed',
+        runtimePhase: 'factory', mode: 'factory-flash', source: 'defaults',
+        knownGoodProject: false, commandReady: false, outputReady: false } } });
+  const result = await pair;
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'wrong-card');
+  assert.equal(values.has('lw_card_identity_v1'), false);
+});
+
+async function openPairedBenchForConfig(host, overrides = {}) {
+  const tab = fakeCardTab();
+  const { values, emitMessage } = stubWindow({ openResult: tab });
+  const cardId = `lw-bench-${host.split('.').at(-1)}`;
+  values.set('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId,
+    firmwareVersion: '1.2.0', buildId: 'target-build', buildNumber: 1300 }));
+  assert.equal(openCardBridge(host), tab);
+  const respond = (request, response) => emitMessage({ origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', id: request.id, ok: true, version: 6, response } });
+  emitMessage({ origin: `http://${host}`, source: tab,
+    data: { app: 'LightweaverCardBridge', type: 'ready', host, version: 6 } });
+  const status = {
+    app: 'Lightweaver', provisioningContractVersion: 1, cardId, bootId: `boot-${host}`,
+    firmwareVersion: '1.2.0', buildId: 'target-build', buildNumber: 1300,
+    runtimePhase: 'ready', mode: 'website-flash', source: 'internal-flash',
+    projectId: 'lightweaver-bench-discovery-v1', projectRevision: 1,
+    projectFingerprint: 'a'.repeat(16), provisionalSetup: true,
+    knownGoodProject: false, commandReady: true, outputReady: true,
+    configValid: true, safeMode: false, ...overrides,
+  };
+  respond(tab.postMessages.at(-1).message, status);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const read = sendCardBridgeRequest('status', {}, { host });
+  respond(tab.postMessages.at(-1).message, status);
+  await read;
+  return { tab, values, respond, host };
+}
+
+test('paired provisional bench permits one real config replacement, including the same project ID', async () => {
+  const { tab, respond, host } = await openPairedBenchForConfig('192.168.50.96');
+  const payload = { piece: { id: 'lightweaver-bench-discovery-v1' },
+    projectFingerprint: 'b'.repeat(16), provisional: false };
+  const first = sendCardBridgeRequest('config', payload, { host });
+  const sent = tab.postMessages.at(-1).message;
+  assert.equal(sent.type, 'config');
+  respond(sent, { ok: true });
+  await first;
+  const sendCount = tab.postMessages.length;
+  await assert.rejects(sendCardBridgeRequest('config', payload, { host }),
+    error => error.reason === 'runtime-not-ready');
+  assert.equal(tab.postMessages.length, sendCount, 'unchanged bench status cannot send a second config');
+});
+
+test('provisional, configured, recovering, safe-mode, wrong-card and unready bench evidence cannot replace config', async () => {
+  const variants = [
+    { status: {}, payload: { provisional: true } },
+    { status: { knownGoodProject: true, provisionalSetup: false, commandReady: false } },
+    { status: { runtimePhase: 'recovering' } },
+    { status: { safeMode: true } },
+    { status: { cardId: 'lw-other-card' } },
+    { status: { commandReady: false } },
+  ];
+  for (const [index, variant] of variants.entries()) {
+    const { tab, host } = await openPairedBenchForConfig(`192.168.50.${97 + index}`, variant.status);
+    const count = tab.postMessages.length;
+    await assert.rejects(sendCardBridgeRequest('config', {
+      piece: { id: 'lw-real-project' }, projectFingerprint: 'b'.repeat(16),
+      ...variant.payload,
+    }, { host }), error => ['runtime-not-ready', 'identity-missing', 'wrong-card'].includes(error.reason));
+    assert.equal(tab.postMessages.length, count, `variant ${index} must not send config`);
+  }
+});
+
 test('malformed or unsupported unpaired status never becomes a discovered card', async () => {
   const cases = [
     {

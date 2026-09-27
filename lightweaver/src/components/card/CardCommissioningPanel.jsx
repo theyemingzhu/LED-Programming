@@ -31,6 +31,9 @@ import {
 } from '../../lib/cardBridge.js';
 import { acceptWifiHandoff } from '../../lib/cardWifiHandoff.js';
 import { setupNetworkLabelForCardId, setupNetworkSsidForCardId } from '../../lib/cardIdentity.js';
+import { classifyCardReadiness } from '../../lib/cardReadiness.js';
+import { STRIP_DISCOVERY_ROUTE } from '../../lib/cardAction.js';
+import { assignProductionWiringIdentity } from '../../lib/productionWiringIdentity.js';
 import { canPushDirectlyToCard, discoverCardStatus, readStoredCardHost, readStoredCardHostHistory } from '../../lib/cardConnection.js';
 import { compileWiring } from '../../lib/wiringCompiler.js';
 import { createWiringChaseSession } from '../../lib/wiringChase.js';
@@ -58,6 +61,7 @@ import {
   waitForCommissioningReconnect,
   readCardCommissioning,
   readCardRestorationAttempt,
+  readCardRestorationLease,
   recordCardRestorationResponse,
   inspectCardCommissioning,
   releaseCardRestoration,
@@ -276,6 +280,7 @@ export function CardCommissioningPanel({
   const [initialState] = useState(() => inspectCardCommissioning());
   const [flow, setFlow] = useState(initialState.flow);
   const [restoreState, setRestoreState] = useState('idle');
+  const [inspectionRetry, setInspectionRetry] = useState(0);
   const [detection, setDetection] = useState({ state: 'idle' });
   const [lightCheckState, setLightCheckState] = useState('idle');
   const [lightCheckNotice, setLightCheckNotice] = useState('');
@@ -473,6 +478,64 @@ export function CardCommissioningPanel({
     });
   }, [flow, link]);
 
+  useEffect(() => {
+    const verifiedBlankCard = (link?.state === 'connected-bridge' || link?.state === 'connected-direct')
+      && link.cardBlank === true && Boolean(link.validatedBootId);
+    if (flow?.operation !== 'inspect-card' || flow.stage !== 'set-up-card'
+      || !flow.cardAcknowledgedAt || restoreState === 'working'
+      || (!isCardLinkConnected(link) && !verifiedBlankCard)
+      || !link?.validatedBootId || !link?.host) return undefined;
+    if (flow.stationHost && link.host !== flow.stationHost) return undefined;
+    let active = true;
+    void (async () => {
+      try {
+        if (readCardRestorationLease(flow)) return;
+        const status = await readCardStatusEnvelope({
+          host: link.host, transport: link.transport, timeoutMs: 3000,
+        });
+        if (!active || readCardRestorationLease(flow)
+          || readCardCommissioning({ flowId: flow.flowId })?.operation !== 'inspect-card'
+          || status?.cardId !== flow.expectedCard?.id
+          || status.firmwareVersion !== flow.expectedCard.firmwareVersion
+          || status.buildId !== flow.expectedCard.buildId
+          || Number(status.buildNumber) !== Number(flow.installTarget?.buildNumber)
+          || status.bootId !== link.validatedBootId) return;
+        const readiness = classifyCardReadiness(status, { expectedCard: flow.expectedCard });
+        if (!['blank', 'connected'].includes(readiness.state)) return;
+        const wiring = await getCardWiringStatus({ host: link.host, transport: link.transport, timeoutMs: 3000 });
+        if (!active || readCardRestorationLease(flow)) return;
+        if (wiring.app !== 'Lightweaver' || wiring.cardId !== flow.expectedCard.id
+          || wiring.firmwareVersion !== flow.expectedCard.firmwareVersion
+          || wiring.buildId !== flow.expectedCard.buildId
+          || Number(wiring.raw?.buildNumber) !== Number(flow.installTarget?.buildNumber)) {
+          setFailure('The wiring check did not prove this exact card and firmware. Reconnect this card, then retry its setup check.');
+          return;
+        }
+        if (wiring.hasCandidate || ['staged', 'testing'].includes(wiring.state)) {
+          setFailure('A previous restore staged a wiring change on this card. It has not been confirmed. Resolve that staged change for this exact card before starting strip discovery; Studio will not resend the project.');
+          return;
+        }
+        if ((readiness.state === 'blank' && wiring.state !== 'factory')
+          || (readiness.state === 'connected' && wiring.state !== 'known-good')) return;
+        const priorAttempt = readCardRestorationAttempt(flow);
+        if (priorAttempt && (readiness.state !== 'blank' || status.configValid !== false
+          || !Array.isArray(status.outputs) || status.outputs.length !== 0
+          || status.projectId || status.projectFingerprint || Number(status.projectRevision) !== 0)) return;
+        setFailure('');
+        const startingRoute = window.location.hash;
+        await clearCardCommissioning({ flowId: flow.flowId });
+        // Clearing this flow notifies subscribers and unmounts this panel. Its
+        // own cleanup must not cancel the route that exact readback authorized.
+        if (window.location.hash !== startingRoute || readCardCommissioning({ flowId: flow.flowId })) return;
+        if (readiness.state === 'blank') window.location.hash = `#${STRIP_DISCOVERY_ROUTE}`;
+        else onComplete?.();
+      } catch {
+        if (active) setFailure('Studio could not finish the exact card and wiring check. Reconnect this card, then retry. The saved setup was kept.');
+      }
+    })();
+    return () => { active = false; };
+  }, [flow, link, onComplete, restoreState, inspectionRetry]);
+
   const reconnectHost = commissioningReconnectHost(flow, link, {
     storedHost: readStoredCardHost(),
     history: readStoredCardHostHistory(),
@@ -500,6 +563,7 @@ export function CardCommissioningPanel({
   // so it waits for the owner (Adrian's call, 2026-08-31: better to confirm).
   const reconcileRestoreOnly = Boolean(
     flow?.cardAcknowledgedAt
+    && flow.operation !== 'inspect-card'
     && restorePreflight.ok
     && restoreState === 'idle'
     && readCardRestorationAttempt(flow),
@@ -627,7 +691,7 @@ export function CardCommissioningPanel({
       || flow.cardAcknowledgedAt
       || !['setup-joined', 'station-detected'].includes(flow.networkState)
       || canPushDirectlyToCard()
-      || detection.state === 'return-to-gallery'
+      || (detection.state === 'return-to-gallery' && flow.operation !== 'inspect-card')
     ) return undefined;
     let active = true;
     let timer = null;
@@ -902,10 +966,13 @@ export function CardCommissioningPanel({
         }
         throw new Error('A previous restore may already have reached this card, but exact independent evidence is inconclusive. Inspect or recover this setup; Studio will not send the project again automatically.');
       }
+      const runtimePackage = runtimePackageFromSnapshot(flow.project.snapshot, flow.project);
+      await assignProductionWiringIdentity(runtimePackage.config, {
+        revision: runtimePackage.config.wiringRevision || 1,
+      });
       const claim = await claimCardRestoration(flow);
       if (!claim.ok) throw new Error(claim.reason === 'restore-in-progress' ? 'This exact project restore is already running in another tab. Wait for it to finish or retry after the recovery window.' : claim.reason === 'recovery-required' ? 'A previous restore requires inspection and will not be sent again automatically.' : 'The saved setup is unavailable. Nothing was sent.');
       lease = claim.lease;
-      const runtimePackage = runtimePackageFromSnapshot(flow.project.snapshot, flow.project);
       const selectedPush = typeof window.__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__ === 'function'
         ? window.__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__
         : pushProject;
@@ -931,6 +998,14 @@ export function CardCommissioningPanel({
       }
       if (response?.state === 'staged') {
         const candidateReadback = await readCandidateEvidence(response.activationId, { host: link.host, timeoutMs: 8000 });
+        if (candidateReadback.wiringRevision !== runtimePackage.config.wiringRevision
+          || candidateReadback.wiringDigest !== runtimePackage.config.wiringDigest
+          || candidateReadback.ledType !== runtimePackage.config.led.type
+          || candidateReadback.colorOrder !== runtimePackage.config.led.colorOrder
+          || candidateReadback.maxMilliamps !== runtimePackage.config.led.maxMilliamps
+          || JSON.stringify(finalOutputs(candidateReadback.candidateOutputs)) !== JSON.stringify(finalOutputs(runtimePackage.config.led.outputs))) {
+          throw new Error('The staged wiring does not match the prepared Studio package. Inspect this exact candidate before any activation; Studio will not send it again.');
+        }
         const activationEvidence = bindCardWiringActivationEvidence(response, candidateReadback);
         const next = stageCardProjectForPhysicalCheck(flow, activationEvidence);
         adoptCommissionedCardBridgeIdentity(flow.flowId);
@@ -1404,6 +1479,13 @@ export function CardCommissioningPanel({
                 <button type="button" className="btn" onClick={reconnectInstalledCard} disabled={reconnecting}>{reconnecting ? 'Reconnecting…' : 'Reconnect installed card'}</button>
               )}
             </>
+          ) : flow.operation === 'inspect-card' ? (
+            <div>
+              <p role="status">Checking this card’s saved setup before continuing. Studio will not resend a project from USB inspection.</p>
+              <button type="button" className="btn" onClick={() => {
+                void Promise.resolve(onReconnect?.(flow.stationHost || link?.host)).catch(() => {}).finally(() => setInspectionRetry(value => value + 1));
+              }}>Retry exact card check</button>
+            </div>
           ) : (
             <>
               <p>This is the right card, on the right firmware. Put your saved project back on it — its outputs, light map, zones, patterns, playlist and controls.</p>

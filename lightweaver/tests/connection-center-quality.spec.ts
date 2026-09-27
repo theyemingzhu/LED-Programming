@@ -792,6 +792,8 @@ test('Bridge return does not call a successful POST independent restoration proo
       projectFingerprint: config.projectFingerprint,
       productionJobId: config.productionJobId,
       productionJobDigest: config.productionJobDigest,
+      wiringRevision: config.wiringRevision,
+      wiringDigest: config.wiringDigest,
     };
   });
   const active = await activeCommissioning(page);
@@ -800,6 +802,8 @@ test('Bridge return does not call a successful POST independent restoration proo
     projectFingerprint: active?.project?.fingerprint,
     productionJobId: undefined,
     productionJobDigest: undefined,
+    wiringRevision: 1,
+    wiringDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
   });
 
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -829,23 +833,21 @@ test('Bridge return does not call a successful POST independent restoration proo
 test('a staged GPIO restoration stops at the Check lights handoff without legacy full-white output', async ({ page }) => {
   await page.route('http://lightweaver.local/api/wiring/status', async route => {
     const flow = await activeCommissioning(page);
+    const prepared = await page.evaluate(() => (window as any).__preparedCommissioningConfig);
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       app: 'Lightweaver', ok: true, state: 'staged', activationId: 'candidate-safe-7', outputs: [{ pin: 18, pixels: 44 }],
-      candidateOutputs: [{
-        id: 'out-a',
-        pin: 18,
-        pixels: 44,
-        segments: [{ id: 'strip-a', count: 44, direction: 'forward' }],
-      }],
+      candidateOutputs: prepared.led.outputs,
       cardId: 'lw-441bf681feb0', firmwareVersion: '1.2.3', buildId: 'a'.repeat(40),
       projectRevision: flow?.project?.revision, projectFingerprint: flow?.project?.fingerprint,
-      wiringRevision: 2, wiringDigest: 'd'.repeat(64), ledType: 'WS2815', colorOrder: 'RGB', maxMilliamps: 1500,
+      wiringRevision: prepared.wiringRevision, wiringDigest: prepared.wiringDigest,
+      ledType: prepared.led.type, colorOrder: prepared.led.colorOrder, maxMilliamps: prepared.led.maxMilliamps,
     }) });
   });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'serial', { configurable: true, value: undefined });
     (window as any).__LW_BRIDGE_NAVIGATE_FOR_TEST__ = () => {};
-    (window as any).__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__ = async () => {
+    (window as any).__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__ = async (runtimePackage: any) => {
+      (window as any).__preparedCommissioningConfig = runtimePackage.config;
       const { normalizeCardWiringStatus } = await import('/src/lib/cardWiringSafety.js');
       return normalizeCardWiringStatus({
         state: 'staged',
@@ -879,18 +881,17 @@ test('a staged GPIO restoration stops at the Check lights handoff without legacy
   await expect(page.getByText(/test its GPIO wiring before making it permanent/i)).toBeVisible();
   await expect(page.getByRole('button', { name: /Run light check|warm white/i })).toHaveCount(0);
   await expect.poll(async () => (await activeCommissioning(page))?.project?.pendingActivationId).toBe('candidate-safe-7');
+  const prepared = await page.evaluate(() => (window as any).__preparedCommissioningConfig);
   await expect.poll(async () => (await activeCommissioning(page))?.project?.pendingWiring).toEqual({
-    wiringRevision: 2,
-    wiringDigest: 'd'.repeat(64),
-    ledType: 'WS2815',
-    colorOrder: 'RGB',
-    maxMilliamps: 1500,
-    outputs: [{
-      id: 'out-a',
-      pin: 18,
-      pixels: 44,
-      segments: [{ id: 'strip-a', count: 44, direction: 'forward' }],
-    }],
+    wiringRevision: prepared.wiringRevision,
+    wiringDigest: prepared.wiringDigest,
+    ledType: prepared.led.type,
+    colorOrder: prepared.led.colorOrder,
+    maxMilliamps: prepared.led.maxMilliamps,
+    outputs: prepared.led.outputs.map((output: any) => ({
+      id: output.id, pin: output.pin, pixels: output.pixels,
+      segments: output.segments.map((segment: any) => ({ id: segment.id, count: segment.count, direction: segment.direction })),
+    })),
   });
 });
 

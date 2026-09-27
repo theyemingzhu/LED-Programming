@@ -39,26 +39,10 @@ export function CardInstallAction({
     wiring, updateWiring, compiledWiring, patchBoard,
     projectId, projectName, standaloneController, strips,
   } = useProject();
-  const stripsById = useMemo(() => new Map(strips.map(strip => [strip.id, strip])), [strips]);
-  const runsById = useMemo(() => new Map(wiring.runs.map(run => [run.id, run])), [wiring.runs]);
-  // CardPushControl still accepts the legacy transport shape. Build that shape
-  // from canonical wiring at the boundary; patchBoard is never read or mutated.
-  const cardTransportBoard = useMemo(() => normalizePatchBoard({
-    physicalLocked: wiring.locked,
-    patches: wiring.runs.filter(run => run.type !== 'cable').map(run => run.type === 'inactive'
-      ? { id: run.id, name: 'Reserved · unlit', source: { type: 'off', ledCount: run.count }, output: { mode: 'off' } }
-      : {
-          id: run.id,
-          name: stripsById.get(run.source.stripId)?.name || run.id,
-          source: {
-            type: 'strip', stripId: run.source.stripId,
-            startLed: run.physicalDirection === 'source-reverse' ? run.source.to : run.source.from,
-            endLed: run.physicalDirection === 'source-reverse' ? run.source.from : run.source.to,
-          },
-          output: { mode: 'normal' },
-        }),
-    chains: wiring.outputs.map(output => ({ id: output.id, name: output.name || output.id, rowIds: output.runIds.filter(id => runsById.get(id)?.type !== 'cable') })),
-  }, strips), [wiring, strips, stripsById, runsById]);
+  // Compiled wiring supplies the physical GPIO/segment geometry. The saved
+  // patch board supplies each section's playback and stable patch identity;
+  // rebuilding patches from runs loses both and makes every saved mix Aurora.
+  const cardTransportBoard = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
   const installController = useMemo(() => ({
     ...standaloneController,
     outputs: compiledWiring.outputs.map(output => ({
@@ -138,7 +122,15 @@ export function CardInstallAction({
     ? new URLSearchParams(window.location.hash.slice(1))
     : new URLSearchParams();
   const continueToPatterns = cardRoute.get('next') === 'patterns';
+  const resumeCandidate = continueToPatterns && cardRoute.get('resume') === 'candidate';
   const installTaskOpen = cardRoute.get('task') === 'install-project';
+  const replaceProjectIntent = continueToPatterns && cardRoute.get('replace') === 'project';
+  const cardProjectId = String(cardLink.readiness?.projectId || cardLink.readiness?.piece?.id || '').trim();
+  const differentProjectOnCard = Boolean(cardLink.card?.id && cardLink.readiness?.cardId === cardLink.card.id
+    && cardProjectId && projectId && cardProjectId !== projectId);
+  const openProjectReplacement = () => {
+    window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&replace=project';
+  };
 
   // The full Check-and-install surface stands down while Setup owns the next
   // step. The compact Status door does not: Save to card is the one write
@@ -165,6 +157,13 @@ export function CardInstallAction({
             data-testid="layout-finish-before-save"
             onClick={onEditInWire}
           >Finish Layout</button>
+        </>
+      ) : differentProjectOnCard && !replaceProjectIntent ? (
+        <>
+          {!compact && <p className="lww-flow-message">This card holds a different project. Save the open Studio project to replace it on this exact card.</p>}
+          <button type="button" className={cta} data-testid="replace-card-project" onClick={openProjectReplacement}>
+            Save this project to the card
+          </button>
         </>
       ) : compact ? (
         <CardPushControl
@@ -218,6 +217,8 @@ export function CardInstallAction({
               standaloneController={installController}
               disabled={!installGate.allowed}
               autoStart={continueToPatterns}
+              resumeCandidate={resumeCandidate}
+              replaceProjectIntent={replaceProjectIntent}
               onInstalled={continueToPatterns ? () => { window.location.hash = '#screen=pattern'; } : undefined}
             />
           </section>

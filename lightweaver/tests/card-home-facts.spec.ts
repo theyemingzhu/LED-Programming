@@ -6,6 +6,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION, type CardStateSpec } from './harness/cardStates';
+import { BENCH_PROJECT_ID } from '../src/lib/benchConfig.js';
 
 async function seedInstalledMatch(page: Page, spec: CardStateSpec, led: Record<string, unknown>) {
   const card = createCardSimulator(spec);
@@ -50,6 +51,56 @@ test('the facts read the project, and the power limit reads the path the editor 
   await expect(facts.getByTestId('fact-brightness')).toContainText('115');
   // Nothing on Card Home is still to do once installed.
   await expect(page.getByTestId('setup-todo')).toHaveCount(0);
+});
+
+test('a card-reported GRB setting is not described as a color check on the strip', async ({ page }) => {
+  await seedInstalledMatch(page, cardState('installed-match'), { confirmedColorOrder: '' });
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId('fact-color-order')).toContainText('Not confirmed');
+  await expect(page.getByTestId('fact-color-order')).not.toContainText('Confirmed on the strip');
+  await expect(page.getByRole('button', { name: /Lights 41 on GPIO 18/ })).toContainText('Color order not confirmed');
+});
+
+test('a local look edit keeps the connected same-project card ready for Save', async ({ page }) => {
+  const spec = cardState('installed-match');
+  const card = await seedInstalledMatch(page, spec, {});
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+
+  // Model an edit kept in this browser after the installed revision. The
+  // card still holds the same project and its live status remains healthy.
+  await page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    project.devices.standaloneController.playlist = [
+      { id: 'aurora', type: 'pattern', patternId: 'aurora', label: 'Aurora', enabled: true, createdAt: 1 },
+      { id: 'plasma', type: 'pattern', patternId: 'plasma', label: 'Plasma', enabled: true, createdAt: 2 },
+    ];
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', /content-mismatch|project-mismatch/, { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
+  await expect(page.getByRole('button', { name: 'Save to card' })).toBeEnabled();
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
+  expect(card.unhandled).toEqual([]);
+});
+
+test('a counted revision-one install is not described as temporary Find-my-strips setup', async ({ page }) => {
+  const spec = {
+    ...cardState('installed-match'),
+    projectId: BENCH_PROJECT_ID,
+    projectRevision: 1,
+    provisionalSetup: false,
+  };
+  const card = await seedInstalledMatch(page, spec, {});
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
+  await expect(page.getByTestId('setup-journey')).not.toContainText('Temporary light setup');
+  expect(card.unhandled).toEqual([]);
 });
 
 test('the supply size is typed in the power row and sets the limit the card caps itself at', async ({ page }) => {

@@ -118,23 +118,11 @@ export function isBenchProjectEvidence(evidence) {
   // lw-b0fe81f61b44 (revision 4, GPIO 18 still at 256) and Studio locked it
   // as a finished install.
   if (isUncountedDiscoveryHeadroom(evidence)) return true;
-  // A card can be holding the UNTOUCHED scaffolding and still report
-  // `provisionalSetup: false` — Adrian's own card does, read on 2026-08-23:
-  // the sentinel project id, BENCH_DEFAULT_PORT_PIXELS on the probed pin, a
-  // piece still called "Untitled Project", and the bench revision. Believing
-  // that `false` made Studio treat its OWN scaffolding as a stranger's
-  // project, so the install gate refused to write over it as
-  // 'project-mismatch' — a warning about clobbering somebody's work, aimed at
-  // a config Studio wrote itself, and the one thing standing between the owner
-  // and the way out of discovery.
-  //
-  // The discriminator is the revision, not the id. A project derived from
-  // discovery and then properly installed keeps the id but advances past
-  // BENCH_PROJECT_REVISION — that is what the earlier fix was protecting, and
-  // it still holds. Scaffolding that has never been installed over is still
-  // sitting at the revision the bench config was written with.
-  if (evidence.projectId === BENCH_PROJECT_ID
-    && Number(evidence.projectRevision) === BENCH_PROJECT_REVISION) return true;
+  // Revision 1 alone is not evidence of scaffolding. An installed, counted
+  // project can retain the sentinel id and be installed at revision 1. The
+  // explicit card claim wins for counted outputs; the uncounted 256-pixel
+  // ceiling above remains the fallback for older cards that called their
+  // untouched discovery config a finished install.
   if (typeof evidence.provisionalSetup === 'boolean') return evidence.provisionalSetup;
   return evidence.projectId === BENCH_PROJECT_ID;
 }

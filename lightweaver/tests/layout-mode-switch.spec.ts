@@ -63,6 +63,7 @@ test('the Check and install CTA opens Card install', async ({ page }) => {
   await gotoLayout(page);
   await page.getByTestId('layout-check-and-install').click();
   await expectFreshCardInstallEntry(page);
+  await expect(page).toHaveURL(/&next=patterns/);
 });
 
 test('#screen=layout&mode=wire opens Card install, not a Layout tab', async ({ page }) => {

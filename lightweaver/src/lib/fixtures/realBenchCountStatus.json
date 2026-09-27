@@ -1,0 +1,57 @@
+{
+  "cardId": "lw-b0fe81f61b44",
+  "bootId": "boot-57d443ef-b0fe81f61b44",
+  "buildNumber": 2160,
+  "projectId": "lightweaver-bench-discovery-v1",
+  "piece": {
+    "name": "Lightweaver Bench Discovery",
+    "hostname": "lightweaver"
+  },
+  "projectRevision": 1,
+  "projectFingerprint": "d93ebe18ab7780b1",
+  "provisionalSetup": true,
+  "outputs": [
+    {
+      "id": "bench-18",
+      "pin": 18,
+      "pixels": 256,
+      "gpio": 18,
+      "count": 256,
+      "segments": [
+        {
+          "id": "bench-18-full",
+          "count": 256,
+          "direction": "forward"
+        }
+      ]
+    }
+  ],
+  "maxMilliamps": 2000,
+  "led": {
+    "pixels": 256,
+    "type": "WS2812B",
+    "colorOrder": "GRB",
+    "outputGammaEnabled": false,
+    "outputGammaValue": 2.2,
+    "calibration": {
+      "red": 1,
+      "green": 1,
+      "blue": 1
+    },
+    "maxMilliamps": 2000,
+    "estimatedFullWhiteMilliamps": 15360,
+    "limitedFullWhiteMilliamps": 2000
+  },
+  "limits": {
+    "pixels": 65535,
+    "outputs": 4,
+    "looks": 32,
+    "zones": 12,
+    "rangesPerZone": 6,
+    "configStorageBytes": 3968
+  },
+  "commandReady": true,
+  "outputReady": true,
+  "runtimeSource": "internal-flash",
+  "runtimePhase": "ready"
+}

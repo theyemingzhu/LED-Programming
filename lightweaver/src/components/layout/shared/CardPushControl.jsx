@@ -9,9 +9,14 @@ import {
   readCardStatusEnvelope,
   buildCardConfigHandoffUrl,
   CardPushError,
+  assignCardWiringIdentityForChange,
+  assignExactCandidateWiringIdentity,
+  cardConfigStructuralWiringChangedFromInfo,
 } from '../../../lib/cardPushClient.js';
 import {
   prepareCardDeployment,
+  refreshCardDeploymentFingerprint,
+  classifyCardDeploymentResume,
   cardStatusAsConfig,
   assertCardDeploymentPreflightIdentity,
   correlateCardDeploymentReadinessEvidence,
@@ -23,6 +28,7 @@ import {
   activateAndWaitForCardWiring,
   confirmCardWiringCandidate,
   getCardWiringStatus,
+  readCardWiringCandidateEvidence,
   rollbackCardWiringCandidate,
 } from '../../../lib/cardWiringSafety.js';
 import { openLocalCardPage } from '../../../lib/cardBridge.js';
@@ -140,6 +146,8 @@ export function CardPushControl({
   standaloneController,
   disabled = false,
   autoStart = false,
+  resumeCandidate = false,
+  replaceProjectIntent = false,
   onInstalled,
   // True while a Setup ladder above this control already owns the page's
   // primary action. Applies to the Install button ONLY. The wiring-candidate
@@ -201,7 +209,7 @@ export function CardPushControl({
   // Serialize the current patch board into the firmware's runtime contract.
   // Direct push is only for local HTTP/file Studio sessions; hosted HTTPS
   // flows use the copy-paste fallback shown by the error state.
-  const pushToCard = async (retryAttempt = null) => {
+  const pushToCard = async (retryAttempt = null, { readOnlyCandidate = false } = {}) => {
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
     return withCardWriteOwnership('install-project', cleanHost, () => withStudioHardwareOperation('install-project', async () => {
     setCardHostname(cleanHost);
@@ -213,6 +221,7 @@ export function CardPushControl({
     setInstallAlreadyCurrent(false);
     setInstallRestarting(false);
     setPushFallbackJson(''); setPushFallbackPackage(null);
+    failedAttemptRef.current = null;
     try {
       if (!attempt) {
         const project = {
@@ -221,7 +230,9 @@ export function CardPushControl({
           projectRevision: projectLifecycle.editedRevision,
           strips,
           patchBoard: board,
+          wiring,
           compiledWiring,
+          symSettings,
           standaloneController,
         };
         const mediaProject = { strips, patchBoard: board, wiring, compiledWiring,
@@ -253,12 +264,29 @@ export function CardPushControl({
           wiringStatus = null;
           handoffOnly = true;
         }
-        const prepared = prepareCardDeployment(project, {
+        let prepared = prepareCardDeployment(project, {
           cardId: before.cardId,
           buildId: before.buildId,
           activationId: wiringStatus?.activationId,
-          previousConfig: cardStatusAsConfig(status),
+          previousConfig: cardStatusAsConfig({ ...status, outputs: wiringStatus?.outputs || status.outputs }),
         });
+        const liveWiring = { ...status, outputs: wiringStatus?.outputs || status.outputs };
+        if (!handoffOnly) {
+          const hasCandidate = wiringStatus?.hasCandidate === true
+            || ['staged', 'testing'].includes(wiringStatus?.state)
+            || wiringStatus?.candidateState === 'awaiting-confirmation';
+          if (hasCandidate) {
+            // Exact candidate evidence takes precedence over the active
+            // geometry: while testing, both /api/status and wiring status
+            // can describe the probationary output, so a fresh structural
+            // comparison cannot derive the original revision.
+            await assignExactCandidateWiringIdentity(prepared.config, wiringStatus, before);
+          } else if (cardConfigStructuralWiringChangedFromInfo(liveWiring, prepared.config)) {
+            await assignCardWiringIdentityForChange(prepared.config, liveWiring);
+          }
+          validateCardPushAttempt({ revision: projectLifecycle.editedRevision, generation: projectLifecycle.generation }, readProjectLifecycle());
+          prepared = refreshCardDeploymentFingerprint(prepared);
+        }
         // A second install of exactly the project the card already holds and
         // already reports ready is permitted by the write lease above
         // (correctly — nothing here disagrees about who owns the card) but
@@ -278,13 +306,14 @@ export function CardPushControl({
         // acknowledged installed revision and Retry installs successfully"
         // does exactly this to exercise its own retry path) is a deliberate
         // explicit resend and must still reach the card.
-        const alreadyCurrent = !handoffOnly
+        const alreadyCurrent = !readOnlyCandidate && !handoffOnly
           && !currentInstallation(readProjectLifecycle())
           && isCardAlreadyCurrent(prepared, status)
           && !wiringStatus?.hasCandidate
           && !prepared.runtimePackage?.mediaAssets?.length;
         attempt = {
           host: cleanHost,
+          readOnlyCandidate,
           revision: projectLifecycle.editedRevision,
           generation: projectLifecycle.generation,
           zoneCount: prepared.config.zones.length,
@@ -293,6 +322,7 @@ export function CardPushControl({
           prepared,
           handoffOnly,
           alreadyCurrent,
+          replaceProjectIntent,
         };
       }
       assertCurrentAttempt(attempt);
@@ -325,6 +355,9 @@ export function CardPushControl({
             readStatus: () => readCardStatusEnvelope({ host: attempt.host, transport: getCardLinkState().transport }),
             readWiringStatus: () => getCardWiringStatus({ host: attempt.host, transport: getCardLinkState().transport }),
             config: async () => {
+              if (readOnlyCandidate) {
+                throw new CardPushError('candidate-missing', 'No matching staged wiring remains on this card. Nothing was sent. Start a new install intentionally.');
+              }
               assertCurrentAttempt(attempt);
               setPushStatus(`Sending revision ${attempt.revision} to ${cleanHost}...`);
               if (attempt.pkg?.mediaAssets?.length) {
@@ -344,7 +377,8 @@ export function CardPushControl({
               }
               configPushAttempted = true;
               return pushConfigToCard(attempt.pkg, { host: attempt.host, transport: getCardLinkState().transport,
-                allowLayoutChange: true, mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
+                allowLayoutChange: true, allowProjectChange: attempt.replaceProjectIntent === true,
+                mediaVerified: Boolean(attempt.pkg?.mediaAssets?.length) });
             },
           },
         );
@@ -368,6 +402,7 @@ export function CardPushControl({
           host: attempt.host,
           cardId: attempt.wiringStatus?.cardId,
           buildId: attempt.wiringStatus?.buildId,
+          readOnlyCandidate,
         });
         throw new CardPushError(
           'candidate-conflict',
@@ -394,6 +429,19 @@ export function CardPushControl({
       }
       const response = deploymentStart.response;
       if (response?.state === 'staged' && response.activationId) {
+        let candidateEvidence;
+        try {
+          candidateEvidence = await readCardWiringCandidateEvidence(response.activationId, {
+            host: attempt.host, transport: getCardLinkState().transport,
+          });
+        } catch (error) {
+          failedAttemptRef.current = { ...attempt, awaitingCandidateReadback: true };
+          throw new CardPushError('candidate-readback', `Wiring was staged, but Studio could not verify its exact identity (${error?.message || 'readback unavailable'}). Retry only reads this candidate.`, error);
+        }
+        if (classifyCardDeploymentResume(attempt.prepared, candidateEvidence) !== 'resume-activation') {
+          failedAttemptRef.current = { ...attempt, awaitingCandidateReadback: true };
+          throw new CardPushError('candidate-conflict', 'The staged wiring did not match the exact card, build, project, and wiring identity. Nothing else was sent.');
+        }
         setWiringCandidate({ activationId: response.activationId, attempt });
         setWiringTestState('staged');
         failedAttemptRef.current = null;
@@ -408,8 +456,20 @@ export function CardPushControl({
       const cardIsRestarting = response?.requiresReboot === true || response?.rebooting === true;
       setPushStatus(cardIsRestarting ? 'Card restarted — verifying…' : 'Verifying the exact project on the card…');
       if (cardIsRestarting) setInstallRestarting(true);
+      let verification;
       try {
-        const { verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host);
+        ({ verification } = await waitForReadyDeploymentVerification(attempt.prepared, attempt.host));
+      } catch (verifyError) {
+        // Once a config may have reached the card, a failed read is
+        // inconclusive, whether or not the reply mentioned a reboot.
+        setInstallRestarting(false);
+        failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true, verifyReason: verifyError?.reason };
+        const message = `${cardIsRestarting ? 'The card restarted, but Studio' : 'Studio'} could not verify this install (${verifyError?.reason || 'readback unavailable'}). Retry reads the card again without sending the project.`;
+        dispatchAction({ type: 'fail', error: message });
+        setPushStatus(message);
+        return;
+      }
+      try {
         await publishVerifiedReadiness(attempt.prepared, attempt.host);
         assertCurrentAttempt(attempt);
         dispatchAction({ type: 'confirm' });
@@ -425,22 +485,20 @@ export function CardPushControl({
         setInstallRestarting(false);
         setPushStatus(`Installed revision ${attempt.revision} on card · ${attempt.zoneCount} zone${attempt.zoneCount === 1 ? '' : 's'} at ${cleanHost}`);
         onInstalled?.();
-      } catch (verifyError) {
-        if (!cardIsRestarting) throw verifyError;
-        // The card restarted, but Studio still cannot prove it holds this
-        // exact project — it may still be booting, or the write genuinely
-        // never landed. Either way this is NOT the generic "Push failed"
-        // path below: Retry here must read the card again before it is
-        // ever allowed to resend (see retryAfterCardRestart) — a blind
-        // resend would write a config the card may already hold.
+      } catch (postVerifyError) {
+        // Exact card readback already succeeded. A later Studio publish or
+        // local project change cannot turn that fact into "card missing".
         setInstallRestarting(false);
-        failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true };
-        dispatchAction({ type: 'fail', error: 'The card restarted but does not hold this project yet.' });
-        setPushStatus('The card restarted but does not hold this project yet.');
+        failedAttemptRef.current = { ...attempt, awaitingRestartConfirmation: true, cardVerified: true, verifyReason: postVerifyError?.reason };
+        const message = postVerifyError?.reason === 'project-changed'
+          ? `Installed revision ${attempt.revision} on the card, but the Studio project changed during verification. Start a new install for the current Studio project.`
+          : `Installed revision ${attempt.revision} on the card, but Studio could not finish refreshing its status (${postVerifyError?.reason || 'status unavailable'}). Retry reads the card again without sending the project.`;
+        dispatchAction({ type: 'fail', error: message });
+        setPushStatus(message);
       }
     } catch (err) {
       setInstallRestarting(false);
-      failedAttemptRef.current = attempt;
+      if (!failedAttemptRef.current?.awaitingCandidateReadback) failedAttemptRef.current = attempt;
       const message = err instanceof CardPushError ? err.message : `Push failed: ${err.message || err}`;
       dispatchAction({ type: 'fail', error: message });
       if (attempt?.pkg && LOCAL_BRIDGE_RECOVERY_REASONS.has(err?.reason)) {
@@ -457,15 +515,35 @@ export function CardPushControl({
   };
 
   // Retry after a restart-recovery failure (see the `awaitingRestartConfirmation`
-  // attempt above). Reads the card once before ever resending: if it now
-  // proves the card holds this exact project (it may simply have finished
-  // booting between the failure and this click), that read IS the
-  // installation and nothing is sent again; only a genuine, freshly-confirmed
-  // mismatch falls through to the ordinary retry, which resends for real.
+  // attempt above). Retry is read-only: an unavailable or incomplete read
+  // cannot prove the previous write failed, so it never resends that write.
   const retryAfterCardRestart = async () => {
     const pending = failedAttemptRef.current;
+    if (pending?.readOnlyCandidate && !pending.awaitingCandidateReadback) {
+      return pushToCard(null, { readOnlyCandidate: true });
+    }
+    if (pending?.awaitingCandidateReadback) {
+      dispatchAction({ type: 'retry' });
+      try {
+        const status = await getCardWiringStatus({ host: pending.host, transport: getCardLinkState().transport });
+        const action = classifyCardDeploymentResume(pending.prepared, status);
+        if (action === 'candidate-conflict' || action === 'stage-new') {
+          throw new CardPushError('candidate-conflict', 'The exact staged candidate could not be verified. Inspect this card before starting a new install.');
+        }
+        setWiringCandidate({ activationId: status.activationId, attempt: pending });
+        setWiringTestState(action === 'resume-activation' ? 'staged' : 'testing');
+        failedAttemptRef.current = null;
+        setPushStatus('This exact wiring installation is staged. Continue the light test; nothing was sent again.');
+      } catch (error) {
+        setPushStatus(error.message || 'Candidate readback is still inconclusive. Retry only reads the card.');
+        dispatchAction({ type: 'fail', error: error.message || 'Candidate readback unavailable.' });
+      }
+      return;
+    }
     if (!pending?.awaitingRestartConfirmation) return pushToCard(pending);
+    let cardVerified = pending.cardVerified === true;
     setPushStatus('Reading the card again before retrying…');
+    dispatchAction({ type: 'retry' });
     try {
       const verification = await waitForCardDeploymentVerification(pending.prepared, {
         readEvidence: () => readReadyDeploymentEvidence(pending.host),
@@ -473,6 +551,7 @@ export function CardPushControl({
         intervalMs: 0,
         requireReady: true,
       });
+      cardVerified = true;
       await publishVerifiedReadiness(pending.prepared, pending.host);
       assertCurrentAttempt(pending);
       dispatchAction({ type: 'confirm' });
@@ -487,11 +566,15 @@ export function CardPushControl({
       failedAttemptRef.current = null;
       setPushStatus(`Installed revision ${pending.revision} on card · ${pending.zoneCount} zone${pending.zoneCount === 1 ? '' : 's'} at ${pending.host}`);
       onInstalled?.();
-    } catch {
-      // Confirmed: the card genuinely does not hold this project yet. This
-      // is no longer a blind retry — the read above just proved it — so
-      // resend for real.
-      await pushToCard(pending);
+    } catch (error) {
+      const message = error?.reason === 'project-changed'
+        ? `Installed revision ${pending.revision} on the card, but the Studio project changed. Start a new install for the current Studio project.`
+        : cardVerified
+          ? `Revision ${pending.revision} was verified on the card. Studio could not finish refreshing its status (${error?.reason || 'readback unavailable'}). Retry only reads the card.`
+          : `Studio still cannot verify revision ${pending.revision} on the card (${error?.reason || 'readback unavailable'}). Retry only reads the card; use ${actionLabel} to start a new send.`;
+      failedAttemptRef.current = { ...pending, cardVerified, verifyReason: error?.reason };
+      dispatchAction({ type: 'fail', error: message });
+      setPushStatus(message);
     }
   };
 
@@ -520,14 +603,6 @@ export function CardPushControl({
     }
     }));
   };
-
-  const autoActivatedRef = useRef('');
-  useEffect(() => {
-    const activationId = wiringCandidate?.activationId || '';
-    if (!autoStart || wiringTestState !== 'staged' || !activationId || autoActivatedRef.current === activationId) return;
-    autoActivatedRef.current = activationId;
-    void startWiringTest();
-  }, [autoStart, wiringCandidate, wiringTestState]);
 
   const finishWiringTest = async visible => {
     if (!wiringCandidate) return;
@@ -641,8 +716,8 @@ export function CardPushControl({
   useEffect(() => {
     if (!autoStart || disabled || autoStartedRef.current) return;
     autoStartedRef.current = true;
-    void pushToCard();
-  }, [autoStart, disabled]);
+    void pushToCard(null, { readOnlyCandidate: resumeCandidate });
+  }, [autoStart, disabled, resumeCandidate]);
   const discardOldCandidateAndRetry = async () => {
     if (!candidateConflict?.activationId) return;
     let cleared = false;
@@ -659,7 +734,13 @@ export function CardPushControl({
         setPushStatus(error.message || 'The unfinished light test could not be discarded. The working setup is still safe.');
       }
     });
-    if (cleared) await pushToCard();
+    if (cleared) {
+      if (candidateConflict.readOnlyCandidate) {
+        setPushStatus('Staged change discarded. The working setup remains on the card. Start a new install when ready.');
+      } else {
+        await pushToCard();
+      }
+    }
   };
   const openInstaller = () => {
     const host = failedAttemptRef.current?.host || getCardHostname();
@@ -681,7 +762,7 @@ export function CardPushControl({
         <button
           className={yieldPrimary ? 'btn la-card-push-btn' : 'btn primary la-card-push-btn'}
           data-testid="layout-send-to-card"
-          disabled={disabled || pushing || wiringTransactionActive}
+          disabled={disabled || resumeCandidate || pushing || wiringTransactionActive}
           onClick={() => pushToCard()}
           data-tooltip="Send this verified project to the card, replacing its active project after card verification."
         >
@@ -699,7 +780,7 @@ export function CardPushControl({
             : installRestarting ? { 'data-testid': 'card-install-restarting' } : {})}
         >
           {pushStatus}
-          {action.status === 'failed' && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
+          {action.status === 'failed' && !failedAttemptRef.current?.awaitingRestartConfirmation && action.confirmedRevision != null && <p>Confirmed revision {action.confirmedRevision} remains on the card.</p>}
           {pushFallbackJson && (
             <div className="lw-wire-recovery" role="group" aria-label="Mixed-content recovery">
               <textarea readOnly value={pushFallbackJson} onClick={e => e.target.select()} className="la-card-push-fallback"/>
@@ -708,7 +789,7 @@ export function CardPushControl({
             </div>
           )}
           {candidateConflict?.activationId ? (
-            <button className="btn" data-testid="discard-candidate-and-retry" title="Discard the unfinished card light test, keep the working setup, and retry this install." data-tooltip="Discard the unfinished card light test, keep the working setup, and retry this install." onClick={() => void discardOldCandidateAndRetry()}>Discard old test and retry</button>
+            <button className="btn" data-testid="discard-candidate-and-retry" title="Discard the unfinished card light test and keep the working setup." data-tooltip="Discard the unfinished card light test and keep the working setup." onClick={() => void discardOldCandidateAndRetry()}>{candidateConflict.readOnlyCandidate ? 'Discard staged change' : 'Discard old test and retry'}</button>
           ) : action.status === 'failed' && (
             <button className="btn" title="Try the failed card installation again using the same prepared project." data-tooltip="Try the failed card installation again using the same prepared project." onClick={() => void retryAfterCardRestart()}>Retry</button>
           )}
