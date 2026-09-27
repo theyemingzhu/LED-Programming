@@ -23,7 +23,7 @@
   box-shadow: none;
 }
 .pm .pl-row.is-live .pl-index strong { color: var(--lw-live-ink); }
-.pm .pl-copy strong { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+.pm .pl-copy strong { font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; }
 /* Bead size is not a taste decision here — these windows are fixed
    (44 / 40 / 26 px wide, borderless) and .ledrow does not wrap, so a
    strand wider than its window is clipped at both ends and the pattern
@@ -44,7 +44,7 @@
 .pm .pl-chip-art .ledrow { gap: 2px; }
 .pm .pl-chip-art .led { width: 4px; height: 4px; }
 .pm .pl-src-nm,
-.pm .pl-chip-nm { font-family: var(--font-mono); font-size: 12px; }
+.pm .pl-chip-nm { font-family: var(--font-ui); font-size: 12px; font-weight: 600; }
 .pm .pl-count,
 .pm .pl-empty { letter-spacing: 0.04em; }
 
@@ -53,28 +53,19 @@
 .pm .pl-list {
   gap: 8px;
   padding: 0 14px 14px;
-  border: 1px solid var(--border-hair);
-  border-radius: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
   background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
+  background-image: none;
 }
 .pm .pl-list > .sec-h {
   margin: 0 -14px 4px;
-  padding: 12px 14px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border-hair);
+  padding: 13px 14px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-soft);
 }
 .pm .pl-list > .sec-h::before {
-  content: "";
-  flex: 0 0 auto;
-  align-self: center;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+  content: none;
 }
 .pm .pl-list > .sec-h .line { display: none; }
 .pm .pl-list > .sec-h .m { margin-left: auto; }
@@ -190,9 +181,7 @@
   min-width: 0;
   font-size: 12.5px;
   color: var(--text-mid);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .pm .pl-transport-actions {
   display: flex;
@@ -253,32 +242,28 @@
 .pm .pl-cardnow {
   margin-top: 14px;
   padding: 0 14px 14px;
-  border: 1px solid var(--border-hair);
-  border-radius: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
   background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
+  background-image: none;
 }
 .pm .pl-cardnow > .sec-h {
   margin: 0 -14px 12px;
-  padding: 12px 14px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border-hair);
+  padding: 13px 14px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-soft);
 }
 .pm .pl-cardnow > .sec-h::before {
+  content: none;
+}
+.pm .pl-cardnow > .sec-h.is-live::before {
   content: "";
   flex: 0 0 auto;
   align-self: center;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--idle);
-}
-.pm .pl-cardnow > .sec-h.is-live::before {
   background: var(--lw-live);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live) 45%, transparent);
 }
 .pm .pl-cardnow > .sec-h .line { display: none; }
 .pm .pl-cardnow > .sec-h .m {
@@ -322,14 +307,12 @@
   font-weight: 400;
   line-height: 1.15;
   color: var(--text-hi);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .pm .pl-stat .n {
   font-size: 12px;
   line-height: 1.35;
-  color: var(--text-faint);
+  color: var(--text-mid);
 }
 .pm .pl-stat.is-live { border-color: var(--lw-live-ink); }
 .pm .pl-stat.is-live .v { color: var(--lw-live-ink); }
@@ -357,3 +340,27 @@
 }
 .pl-pool.pl-pool .pl-chip-nm { flex: 0 0 auto; }
 .pl-pool.pl-pool .pl-chip-add { margin-left: 2px; }
+
+/* Live, Copy and Remove are available row actions, even when idle. */
+.pm .plbtn,
+.pm .pl-grip {
+  color: var(--text-hi);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+}
+.pm .plbtn:hover:not(:disabled),
+.pm .pl-grip:hover { color: var(--text-hi); background: var(--control-hover); }
+.pm .plbtn.on {
+  color: var(--control-selected-ink);
+  background: var(--control-selected);
+  border-color: var(--control-selected-edge);
+}
+.pm .plbtn:disabled {
+  opacity: 1;
+  color: var(--control-disabled-ink);
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+}
+.pm .plbtn:focus-visible,
+.pm .pl-grip:focus-visible { outline-color: var(--focus-ring); }
+.pm .pl-timing-overflow { color: var(--text-mid); }

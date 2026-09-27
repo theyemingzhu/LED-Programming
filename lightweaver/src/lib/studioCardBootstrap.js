@@ -1,10 +1,28 @@
-import { candidateCardHosts, readStoredCardHost } from './cardConnection.js';
+import {
+  candidateCardHosts,
+  canPushDirectlyToCard,
+  CARD_HOST_FALLBACKS,
+  readStoredCardHost,
+} from './cardConnection.js';
 import { readPersistedCardIdentity, persistCardIdentity } from './cardIdentity.js';
 import { bootstrapCardLink, isCardLinkConnected } from './cardLink.js';
 import { connectCardTransport } from './cardTransport.js';
 
+function persistAuthority(persistIdentity, expectedCard, authority) {
+  persistIdentity({
+    ...expectedCard,
+    ...authority.card,
+    id: authority.cardId,
+    address: authority.host,
+    bootId: authority.bootId,
+  }, { acknowledgedAt: new Date().toISOString() });
+}
+
 // Restore the exact card Studio already paired with. Bridge handoffs retain
 // priority; ordinary public-Studio reloads use one read-only local status GET.
+// A first visit with no remembered card still probes the two well-known
+// addresses a just-plugged-in card answers on — only when this page can talk
+// to the LAN. Public HTTPS cannot, and we never sweep the subnet.
 export async function bootstrapStudioCardConnection({
   bootstrapLink = bootstrapCardLink,
   connectTransport = connectCardTransport,
@@ -13,12 +31,25 @@ export async function bootstrapStudioCardConnection({
   candidateHosts = candidateCardHosts,
   persistIdentity = persistCardIdentity,
   isConnected = isCardLinkConnected,
+  canPushDirect = canPushDirectlyToCard,
+  unpairedHosts = CARD_HOST_FALLBACKS,
 } = {}) {
   const bridgeState = await bootstrapLink();
   if (isConnected(bridgeState)) return bridgeState;
 
   const expectedCard = readIdentity();
-  if (!expectedCard?.id) return bridgeState;
+  if (!expectedCard?.id) {
+    if (!canPushDirect()) return bridgeState;
+    let authority = null;
+    for (const host of unpairedHosts) {
+      authority = await connectTransport({ host, expectedCardId: '' });
+      if (authority?.connected) {
+        persistAuthority(persistIdentity, {}, authority);
+        return authority;
+      }
+    }
+    return bridgeState;
+  }
 
   const hosts = candidateHosts(readHost(), expectedCard);
   let authority = null;
@@ -48,12 +79,6 @@ export async function bootstrapStudioCardConnection({
   // — is `isDifferentCardMismatch`, which is unaffected: nothing here can be
   // reached by another card, because `connectTransport` was given
   // `expectedCard.id` and refuses any other id as `wrong-card`.
-  persistIdentity({
-    ...expectedCard,
-    ...authority.card,
-    id: authority.cardId,
-    address: authority.host,
-    bootId: authority.bootId,
-  }, { acknowledgedAt: new Date().toISOString() });
+  persistAuthority(persistIdentity, expectedCard, authority);
   return authority;
 }

@@ -234,9 +234,11 @@ test('a card that stops confirming still lapses on the staleness window', () => 
 });
 
 // ── ensureCardEditAuthorization ───────────────────────────────────────────
-// A connected, verified, exactly-matching card must be able to receive pattern
-// commands after a reload, without a second press of the Setup button — but
-// only when every fact the binding asserts is independently evidenced.
+// A connected, exactly-matching card must be able to receive pattern
+// commands after a reload or a pair, without a Hardware verify click — but
+// only when every fact the binding asserts is independently evidenced
+// from the live card. An installation record is optional confirmation,
+// not a second human errand.
 
 const autoBinding = Object.freeze({ ...binding, intent: '' });
 const autoEvidence = Object.freeze({
@@ -268,6 +270,19 @@ test('derives an authorization from a ready link, fresh card evidence, and a ver
   assert.equal(hasCurrentCardProjectAuthorization(autoBinding, { now: NOW + 1 }), true);
 });
 
+test('a paired matching card authorizes without a Hardware verify click', () => {
+  assert.equal(ensureCardEditAuthorization(autoRequest({
+    installation: null,
+  }), { now: NOW }), true);
+  assert.equal(hasCurrentCardProjectAuthorization(autoBinding, { now: NOW + 1 }), true);
+
+  clearCardEditAuthorization();
+  assert.equal(ensureCardEditAuthorization(autoRequest({
+    installation: { ...autoInstallation, verified: false },
+  }), { now: NOW + 2 }), true);
+  assert.equal(hasCurrentCardProjectAuthorization(autoBinding, { now: NOW + 3 }), true);
+});
+
 test('a derived authorization carries no intent, so it never answers a card handoff claim', () => {
   ensureCardEditAuthorization(autoRequest(), { now: NOW });
   assert.equal(consumeCardEditAuthorization({ ...autoBinding, intent: 'pattern:ocean' }, { now: NOW + 1 }), false);
@@ -294,13 +309,11 @@ test('refuses to derive an authorization on any break in the evidence chain', ()
     ['stale boot id', { cardEvidence: { ...autoEvidence, bootId: 'boot-8' } }],
     ['card holds another project', { cardEvidence: { ...autoEvidence, projectId: 'project-2' } }],
     ['card fingerprint diverged', { cardEvidence: { ...autoEvidence, projectFingerprint: 'b'.repeat(64) } }],
-    ['card reports no revision', { cardEvidence: { ...autoEvidence, projectRevision: null } }],
-    ['card revision moved on', { cardEvidence: { ...autoEvidence, projectRevision: 10 } }],
-    ['no installation record', { installation: null }],
-    ['installation not verified', { installation: { ...autoInstallation, verified: false } }],
-    ['installation names another card', { installation: { ...autoInstallation, cardId: 'lw-112233445566' } }],
-    ['installation fingerprint diverged', { installation: { ...autoInstallation, projectFingerprint: 'b'.repeat(64) } }],
-    ['installation revision diverged', { installation: { ...autoInstallation, projectRevision: 8 } }],
+    ['card reports no revision against a verified install', { cardEvidence: { ...autoEvidence, projectRevision: null } }],
+    ['card revision moved on against a verified install', { cardEvidence: { ...autoEvidence, projectRevision: 10 } }],
+    ['verified installation names another card', { installation: { ...autoInstallation, cardId: 'lw-112233445566' } }],
+    ['verified installation fingerprint diverged', { installation: { ...autoInstallation, projectFingerprint: 'b'.repeat(64) } }],
+    ['verified installation revision diverged', { installation: { ...autoInstallation, projectRevision: 8 } }],
     ['studio project is not the installed one', {
       binding: { ...autoBinding, studioProjectId: 'project-2' },
     }],

@@ -1,0 +1,17 @@
+{
+  "step": "fa-wifi-saved",
+  "heading": "Your Lightweaver",
+  "firstHeading": "Open Patterns",
+  "firstButton": "Open Patterns",
+  "firstPrimary": "Open Patterns",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Open Patterns"
+  ],
+  "journeyTask": "open-patterns",
+  "journeyComplete": "true",
+  "project": "Matrix piece",
+  "installed": "Installed project matches",
+  "lightsPhaseOpen": false,
+  "reviewLightsVisible": false
+}

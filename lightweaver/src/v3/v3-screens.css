@@ -62,7 +62,6 @@
   font-weight: 650; letter-spacing: .1em; text-transform: uppercase;
 }
 .card-workspace-header h1 { margin: 5px 0 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -.025em; }
-.card-workspace-header h1:focus,
 .card-workspace-header h1:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); }
 .card-overview { display: grid; gap: 18px; }
 .card-overview-state {
@@ -1158,6 +1157,42 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 @media (max-width: 640px) {
   .association-save-banner { top: 168px; }
   .projects-panel { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+  .topbar-project-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+  }
+  .topbar-project-row > span {
+    display: block;
+    min-width: 0;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .topbar-project-row > .projects-row-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .topbar-project-row > .cloud-rename { width: 100%; }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm {
+    color: var(--text-hi);
+    background: var(--control-fill);
+    border-color: var(--control-edge);
+  }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm:hover:not(:disabled) {
+    background: var(--control-hover);
+  }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm.danger {
+    color: var(--text-hi);
+    box-shadow: inset 3px 0 0 var(--danger);
+  }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm:disabled {
+    color: var(--control-disabled-ink);
+    background: var(--control-disabled-fill);
+    border-color: var(--control-disabled-edge);
+  }
   /* Touch-sized library controls on narrow screens — the panel is the one
      place these rows appear, so the rule lives with the panel. */
   .projects-panel .cloud-project-actions .btn,

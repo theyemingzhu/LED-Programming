@@ -11,7 +11,7 @@ import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 // These specs assert on the EXACT mockup PatternScreen that now ships
 // (src/v3/lw-pattern.jsx). The DOM is the mockup's own: .pm wrapper, .pmcard
 // browse cards, .pm-targetcard, .chips/.chip, and the testids
-// that the live component exposes (save-current-combo,
+// that the live component exposes (look-save-preset,
 // section-target-*, look-color-picker, look-*-slider/-readout, and visible
 // preview state exposed by the compact preview toolbar).
 
@@ -464,7 +464,7 @@ test('mapped preview lists LED-backed targets only and crops to the selected geo
   await expect(stage).not.toHaveAttribute('data-preview-view-box', project.layout.viewBox);
 });
 
-test('preview toolbar is one compact desktop row and the redundant card panel is absent', async ({ page }) => {
+test('preview toolbar keeps the selected section readable in two compact desktop rows', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const project = createPiecePreviewProject('piece-preview-desktop-controls');
   await gotoSavedProjectPatterns(page, project);
@@ -480,12 +480,19 @@ test('preview toolbar is one compact desktop row and the redundant card panel is
   ]);
   const [controlsBox, metadataBox, previousBox, targetBox, nextBox, toggleBox] = boxes;
   expect(controlsBox && metadataBox && previousBox && targetBox && nextBox && toggleBox).toBeTruthy();
-  const rowY = metadataBox!.y;
-  for (const box of [previousBox!, targetBox!, nextBox!, toggleBox!]) {
-    expect(Math.abs(box.y - rowY)).toBeLessThanOrEqual(1);
+  expect(Math.abs(toggleBox!.y - metadataBox!.y)).toBeLessThanOrEqual(1);
+  for (const box of [previousBox!, targetBox!, nextBox!]) {
+    expect(box.y).toBeGreaterThan(metadataBox!.y);
     expect(box.height).toBeGreaterThanOrEqual(44);
   }
-  expect(controlsBox!.height).toBeLessThanOrEqual(44);
+  expect(controlsBox!.height).toBeLessThanOrEqual(92);
+  expect(targetBox!.width).toBeGreaterThanOrEqual(120);
+  await expect(target).toHaveValue('patch-default-outer-circle');
+  expect(await target.evaluate(select => (select as HTMLSelectElement).selectedOptions[0]?.textContent)).toBe('Outer circle');
+  expect(await target.evaluate(select => {
+    const box = select.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === select;
+  })).toBe(true);
   // The redundant "Card" panel must stay gone from the Patterns screen itself
   // (the rail's Card destination is not this panel, so the check scopes to
   // the screen body).
@@ -806,7 +813,7 @@ test('Advanced exposes a gentle bounded breathing envelope', async ({ page }) =>
   await sectionTarget.click();
   await expect(page.getByTestId('breathe-summary')).toHaveText('Breathe · 76–94% · 12s');
 
-  await page.getByTestId('save-current-combo').click();
+  await page.getByTestId('look-save-preset').click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3') || '')).toContain('"breatheLowerPct":92');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('.pmx-advanced summary').click();
@@ -2016,7 +2023,7 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   const before = await page.locator('.pm-cards .pmcard').count();
 
-  await page.getByTestId('save-current-combo').click();
+  await page.getByTestId('look-save-preset').click();
 
   // A new mix card (tagged 'mix') appears in the grid. The catalog sentinel
   // may concurrently reveal its next batch, so saving must not shrink the

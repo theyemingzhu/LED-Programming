@@ -161,3 +161,29 @@ test('migrates v1 movement and energy endpoints with the exact formulas', () => 
     assert.equal(Object.hasOwn(result.macros, 'energy'), false);
   }
 });
+
+test('preserves a normalized color journey and linked source metadata', () => {
+  const sourceLook = { id: 'look-7', label: 'Amber room', defaultLook: { patternId: 'solid' }, sectionLooks: [] };
+  const sourceLookBaseline = { palette: ['#aa5500'], macros: { color: .4 } };
+  const recipe = createPatternLabRecipe({
+    id: 'journey',
+    base: { kind: 'color-journey', id: 'slow-color-drift' },
+    journey: {
+      stops: [
+        { id: 'amber', color: '#f2a65a', holdMs: 30_000, fadeMs: 90_000 },
+        { id: 'violet', color: '#6d4cc7', holdMs: 30_000, fadeMs: 90_000 },
+        { id: 'blue', color: '#3478c9', holdMs: 30_000, fadeMs: 90_000 },
+      ],
+      motionSpeedSeconds: 22,
+    },
+    sourceLook,
+    sourceLookBaseline,
+  });
+  assert.equal(recipe.base.kind, 'color-journey');
+  assert.equal(recipe.journey.motionSpeedSeconds, 22);
+  assert.equal(recipe.journey.stops.length, 3);
+  assert.deepEqual(recipe.sourceLook, sourceLook);
+  assert.deepEqual(recipe.sourceLookBaseline, sourceLookBaseline);
+  assert.notEqual(recipe.sourceLook, sourceLook);
+  assert.deepEqual(normalizePatternLabRecipe(recipe), recipe);
+});

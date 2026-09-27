@@ -129,6 +129,7 @@ export function assembleSetupJourney({
   project,
   evidence = emptyCardJourneyEvidence(),
   verification,
+  rememberedHost,
 } = {}) {
   const journey = deriveSetupJourney({
     cardLink,
@@ -138,6 +139,7 @@ export function assembleSetupJourney({
     resolution: setupJourneyResolution({ cardLink, project, evidence }),
     wiringStatus: setupJourneyWiringStatus({ cardLink, evidence }),
     verification,
+    rememberedHost,
   });
   // Merged onto the journey rather than fed into deriveSetupJourney: blackout
   // is orthogonal to every completion/task verdict that function already

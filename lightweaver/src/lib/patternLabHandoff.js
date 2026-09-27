@@ -108,22 +108,30 @@ export function lookFromRecipe(recipe) {
   const technical = resolvePatternLabMacros(recipe);
   const paletteColor = recipe.palette[Math.min(recipe.palette.length - 1, Math.floor(recipe.palette.length / 2))];
   const color = hexToCardColor(paletteColor);
+  const source = recipe.sourceLook;
+  const selectedSource = source?.sectionLooks?.[source?.selectedTargetId] || source?.defaultLook;
+  const exactSource = selectedSource?.patternId === recipe.base.patternId ? selectedSource : null;
+  const paletteChanged = !exactSource || JSON.stringify(recipe.palette) !== JSON.stringify(recipe.sourceLookBaseline?.palette);
+  const colorMacroChanged = !exactSource || recipe.macros?.color !== recipe.sourceLookBaseline?.macros?.color;
   const defaultLook = normalizeCardVisualLook({
+    ...(exactSource || {}),
     patternId: recipe.base.patternId,
     brightness: recipe.playback.brightness,
     speed: recipe.playback.speed,
-    hueShift: Math.round(technical.color.warmth * 18),
-    customHue: color.customHue,
-    customSaturation: Math.round(technical.color.saturation * 255),
+    ...(!exactSource || colorMacroChanged ? { hueShift: Math.round(technical.color.warmth * 18) } : {}),
+    ...(paletteChanged ? { customHue: color.customHue, customSaturation: color.customSaturation } : {}),
+    ...(colorMacroChanged ? { customSaturation: Math.round(technical.color.saturation * 255) } : {}),
   });
-  const sectionLooks = Object.fromEntries((recipe.targets || [])
+  const sectionLooks = exactSource && source.sectionLooks ? clone(source.sectionLooks) : Object.fromEntries((recipe.targets || [])
     .filter(target => target?.kind === 'section' && String(target.id || '').trim())
     .map(target => [slug(target.id), defaultLook]));
+  if (source?.selectedTargetId && source.selectedTargetId !== 'all') sectionLooks[source.selectedTargetId] = defaultLook;
   return normalizeSavedLooks([{
-    id: slug(recipe.name),
+    id: source?.id || slug(recipe.name),
     label: boundedString(recipe.name, MAX_LABEL_LENGTH),
-    defaultLook,
+    defaultLook: source?.selectedTargetId && source.selectedTargetId !== 'all' ? source.defaultLook : defaultLook,
     sectionLooks,
+    patternLabRecipe: recipe,
     updatedAt: 0,
   }])[0];
 }
@@ -443,6 +451,7 @@ export async function createPatternLabHandoff({
   controller = null,
   cancelled = false,
   exportError = null,
+  saveAsNew = false,
 } = {}) {
   if (cancelled) return blocked('cancelled', 'Use in Project was canceled.');
   if (exportError) return blocked('export-failed', 'The Pattern Lab export did not finish.', exportError.message || exportError);
@@ -463,16 +472,18 @@ export async function createPatternLabHandoff({
     if (normalized.base.kind !== 'lightweaver-pattern' || !isBuiltInPattern(normalized.base.patternId)) {
       return blocked('look-unsupported', 'This recipe cannot become a native card look.');
     }
-    if (normalized.evolution?.enabled === true || normalized.layers.length > 0) {
+    if (normalized.journey?.enabled === true || normalized.evolution?.enabled === true || normalized.layers.length > 0) {
       return blocked('look-unsupported', 'Evolution and layered Pattern Lab recipes must remain baked sequences.');
     }
     const existing = normalizeSavedLooks(controller?.looks);
-    if (existing.length >= MAX_SAVED_LOOKS) {
+    const updating = !saveAsNew && existing.some(look => look.id === normalized.sourceLook?.id);
+    if (!updating && existing.length >= MAX_SAVED_LOOKS) {
       return blocked('look-capacity', `The card already has the maximum of ${MAX_SAVED_LOOKS} saved looks.`);
     }
     const look = lookFromRecipe(normalized);
-    look.id = uniqueId(look.label || look.id, new Set(existing.map(item => item.id)));
-    return { kind: 'look', look };
+    look.id = updating ? normalized.sourceLook.id : uniqueId(look.label || look.id, new Set(existing.map(item => item.id)));
+    look.patternLabRecipe = normalizePatternLabRecipe({ ...normalized, sourceLook: { ...normalized.sourceLook, id: look.id, label: look.label, defaultLook: look.defaultLook, sectionLooks: look.sectionLooks } });
+    return { kind: 'look', look, ...(updating ? { replaceLookId: look.id } : {}) };
   }
 
   if (compatibility.classification === 'bake-to-card') {
@@ -562,14 +573,16 @@ export async function applyPatternLabHandoff(controller = {}, result = {}) {
   const source = clone(controller || {});
   if (result.kind === 'look') {
     const existing = normalizeSavedLooks(source.looks);
-    if (existing.length >= MAX_SAVED_LOOKS) return controller;
+    const updating = typeof result.replaceLookId === 'string' && result.replaceLookId === result.look?.id && existing.some(look => look.id === result.replaceLookId);
+    if (!updating && existing.length >= MAX_SAVED_LOOKS) return controller;
     const normalized = normalizeSavedLooks([result.look])[0];
-    if (!normalized || existing.some(look => look.id === normalized.id) || isBuiltInPattern(normalized.id)) return controller;
+    if (!normalized || (!updating && existing.some(look => look.id === normalized.id)) || isBuiltInPattern(normalized.id)) return controller;
     return {
       ...source,
       defaultLook: clone(normalized.defaultLook),
       activeLookId: normalized.id,
-      looks: [normalized, ...existing],
+      looks: [normalized, ...existing.filter(look => look.id !== normalized.id)],
+      ...(Array.isArray(source.playlist) ? { playlist: source.playlist.map(entry => entry.lookId === normalized.id || entry.comboId === normalized.id ? { ...entry, label: normalized.label } : entry) } : {}),
     };
   }
   if (result.kind === 'sequence') {

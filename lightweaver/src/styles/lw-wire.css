@@ -44,12 +44,21 @@
 }
 
 .lww-power-warning {
-  margin: 0 0 4px;
-  color: var(--danger);
-  font-size: 12px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+  border-block: 1px solid var(--border-soft);
+  border-inline-start: 1px solid var(--danger);
+  background: var(--bg-elev);
+  color: var(--text-hi);
+  font-size: 12.5px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
+.lww-power-warning p { margin: 0; }
+.lww-power-warning strong { color: var(--text-hi); }
+.lww-power-warning .btn { justify-self: start; }
 
 /* ---------- middle: single primary flow area ---------- */
 
@@ -136,6 +145,13 @@
   border-top: 1px solid var(--border-hair);
 }
 
+.lww-fold-intro {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .lww-specialist-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -207,7 +223,7 @@
   background: var(--bg-elev-2);
   box-shadow: 0 8px 22px color-mix(in srgb, var(--bg-canvas) 58%, transparent);
   color: var(--text-hi);
-  font: 500 10.5px/1.35 var(--font-sans);
+  font: 500 10.5px/1.35 var(--font-ui);
   pointer-events: none;
   text-align: left;
   white-space: normal;

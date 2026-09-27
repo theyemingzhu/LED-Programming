@@ -1,3 +1,5 @@
+import { normalizeColorJourney } from './colorJourney.js';
+
 export const PATTERN_LAB_RECIPE_VERSION = 2;
 export const PATTERN_LAB_MAX_LAYERS = 3;
 
@@ -136,9 +138,10 @@ export function normalizePatternLabRecipe(input = {}) {
   playback.brightness = major === 1
     ? 0.15 + oldEnergy * 0.85
     : bounded(playbackSource.brightness, 0, 1, DEFAULT_PLAYBACK.brightness);
+  const linkedNativeSpeed = base.kind === 'lightweaver-pattern' && source.sourceLook?.defaultLook;
   playback.speed = major === 1
     ? 0.25 + oldMovement * 1.75
-    : bounded(playbackSource.speed, 0.25, 2, DEFAULT_PLAYBACK.speed);
+    : bounded(playbackSource.speed, linkedNativeSpeed ? 0.05 : 0.25, linkedNativeSpeed ? 3 : 2, DEFAULT_PLAYBACK.speed);
 
   const evolutionSource = objectOr(source.evolution);
   const evolution = { ...DEFAULT_EVOLUTION, ...evolutionSource };
@@ -158,6 +161,8 @@ export function normalizePatternLabRecipe(input = {}) {
   const layers = arrayOr(source.layers);
   assertPatternLabLayerCount(layers);
 
+  const journey = source.journey === undefined ? undefined : normalizeColorJourney(source.journey);
+
   return {
     ...source,
     version: PATTERN_LAB_RECIPE_VERSION,
@@ -170,6 +175,9 @@ export function normalizePatternLabRecipe(input = {}) {
     evolution,
     seed: (Number.isFinite(Number(source.seed)) ? Math.trunc(Number(source.seed)) : 1) >>> 0,
     layers,
+    ...(journey ? { journey } : {}),
+    ...(source.sourceLook ? { sourceLook: objectOr(source.sourceLook) } : {}),
+    ...(source.sourceLookBaseline ? { sourceLookBaseline: objectOr(source.sourceLookBaseline) } : {}),
     targets: arrayOr(source.targets, [{ kind: 'whole-piece', id: 'all' }]),
     requirements: arrayOr(source.requirements),
     provenance: arrayOr(source.provenance),

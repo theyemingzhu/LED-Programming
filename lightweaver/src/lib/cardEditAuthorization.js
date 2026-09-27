@@ -169,9 +169,8 @@ export function renewCardEditAuthorization(binding, options) {
 //   - the binding matches FRESH card evidence field for field (card, firmware,
 //     build, boot, installed project id + fingerprint) — a stale or retained
 //     binding cannot mint, only a live one can
-//   - the open project carries a VERIFIED installation record naming the same
-//     card, the same project fingerprint, and the same project revision the
-//     card reports right now
+//   - a verified installation record, when present, must still agree; pairing
+//     a matching card does not require that extra Hardware click
 //
 // The derived grant deliberately carries NO intent. An intent is a card-issued
 // handoff request ("open pattern:ocean"); deriving one here would let Studio
@@ -192,14 +191,21 @@ export function ensureCardEditAuthorization(request = {}, options) {
     || !sameText(binding.installedProjectId, evidence.projectId)
     || !sameId(binding.installedProjectFingerprint, evidence.projectFingerprint)) return false;
 
+  // A live card that already reports this exact Studio project is proof
+  // enough. The Hardware "verify" click used to be a second errand for the
+  // same facts, so pairing a matching card still raised "Open Hardware and
+  // verify" over a footer that said Connected. An installation record, when
+  // present and verified, may still refuse a contradiction — it must not
+  // block a live match that has none.
   const installation = request.installation || null;
-  if (!installation || installation.verified !== true) return false;
-  if (!sameId(binding.cardId, installation.cardId)) return false;
-  if (!sameId(binding.installedProjectFingerprint, installation.projectFingerprint)) return false;
-  const cardRevision = Number(evidence.projectRevision);
-  if (!Number.isSafeInteger(cardRevision)
-    || cardRevision < 0
-    || cardRevision !== Number(installation.projectRevision)) return false;
+  if (installation && installation.verified === true) {
+    if (!sameId(binding.cardId, installation.cardId)) return false;
+    if (!sameId(binding.installedProjectFingerprint, installation.projectFingerprint)) return false;
+    const cardRevision = Number(evidence.projectRevision);
+    if (!Number.isSafeInteger(cardRevision)
+      || cardRevision < 0
+      || cardRevision !== Number(installation.projectRevision)) return false;
+  }
 
   return issueCardEditAuthorization({ ...binding, intent: '' }, options);
 }

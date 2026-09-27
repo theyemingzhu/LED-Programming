@@ -591,3 +591,13 @@ test('dark-output explanations distinguish zero strip brightness and an observed
   assert.match(explanations[0].message, /Every visible strip has zero brightness/);
   assert.match(explanations[1].message, /Every sampled pixel in the last preview frame is black/);
 });
+
+test('Color journey never promises native playback or recording before its standalone path exists', () => {
+  const result = classifyPatternLabCompatibility({
+    id: 'journey', name: 'Slow color drift', base: { kind: 'color-journey' },
+    layers: [], evolution: { durationSeconds: 360 },
+  }, { metrics: { pixelCount: 41, fps: 24, operationsPerFrame: 410, stateBytes: 0, framebufferBytes: 123, nativeConfigBytes: 1000, durationSeconds: 360 } });
+  assert.equal(result.classification, 'studio-only');
+  assert.ok(result.reasons.some(item => item.code === 'color-journey-stream-only'));
+  assert.ok(!result.actions.some(item => item.id === 'bake'));
+});

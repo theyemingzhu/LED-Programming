@@ -8,9 +8,11 @@ import { openControls } from './helpers/pattern-lab';
 test('Sculpt in Lab opens Lab on the Patterns selection', async ({ page }) => {
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await page.locator('.pmcard[data-pattern-id="plasma"]').click();
+  const selectedName = 'My plasma evening';
+  await page.getByTestId('look-name').fill(selectedName);
   await page.getByTestId('open-pattern-lab').click();
   await expect(page).toHaveURL(/screen=pattern-lab/);
-  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue('Plasma Wave');
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue(selectedName);
 });
 
 test('Use in Project on a native look returns to Patterns', async ({ page }) => {

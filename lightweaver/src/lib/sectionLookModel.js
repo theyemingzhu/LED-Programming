@@ -1,5 +1,7 @@
 import { chainPixelOffsets, mainChain, normalizePatchBoard } from './patchBoard.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
+import { normalizePatternLabRecipe } from './patternLabRecipe.js';
+import { derivePlaylistLookIds } from './cardPlaylist.js';
 import { compileWiring } from './wiringCompiler.js';
 
 export const ALL_SECTIONS_TARGET_ID = 'all';
@@ -145,12 +147,14 @@ export function normalizeSavedLooks(looks = []) {
     const id = sanitizeId(look.id || look.label || `look-${normalized.length + 1}`);
     if (!id || seen.has(id)) continue;
     seen.add(id);
+    const linkedRecipe = normalizeLinkedRecipe(look.patternLabRecipe);
     normalized.push({
       id,
       type: COMPOUND_PATTERN_TYPE,
       label: String(look.label || titleFromId(id)),
       defaultLook: normalizeSectionVisualLook(look.defaultLook || look.look || {}),
       sectionLooks: normalizeSectionLooks(look.sectionLooks || look.zones || {}),
+      ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
       updatedAt: Number.isFinite(Number(look.updatedAt)) ? Number(look.updatedAt) : 0,
     });
     if (normalized.length >= MAX_SAVED_LOOKS) break;
@@ -164,27 +168,51 @@ export function saveCurrentLookToController(controller = {}, {
   lookId = '',
   defaultLook = {},
   targets = [],
+  patternLabRecipe = null,
 } = {}) {
   const id = sanitizeId(lookId || label || `look-${Date.now()}`) || `look-${Date.now()}`;
+  const existing = normalizeSavedLooks(controller.looks);
+  const previous = existing.find(look => look.id === id);
+  if (!previous && existing.length >= MAX_SAVED_LOOKS) {
+    throw new RangeError(`This project already has ${MAX_SAVED_LOOKS} saved looks. Update a look or delete one before saving as new.`);
+  }
+  const linkedRecipe = normalizeLinkedRecipe(patternLabRecipe);
   const saved = {
     id,
     type: COMPOUND_PATTERN_TYPE,
     label: String(label || titleFromId(id)),
     defaultLook: normalizeSectionVisualLook(defaultLook),
     sectionLooks: sectionLooksFromTargets(targets),
+    ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
     updatedAt: Date.now(),
   };
-  const existing = normalizeSavedLooks(controller.looks);
   const looks = [
     saved,
     ...existing.filter(look => look.id !== saved.id),
-  ].slice(0, MAX_SAVED_LOOKS);
+  ];
 
   return {
     ...(controller || {}),
     defaultLook: saved.defaultLook,
     activeLookId: saved.id,
     looks,
+    ...(Array.isArray(controller.playlist) ? { playlist: controller.playlist.map(entry => entry.lookId === id || entry.comboId === id ? { ...entry, label: saved.label } : entry) } : {}),
+  };
+}
+
+function normalizeLinkedRecipe(value) {
+  if (!value) return null;
+  try { return normalizePatternLabRecipe(value); } catch { return null; }
+}
+
+// Look, playlist and encoder references change together in a single controller write.
+export function deleteSavedLookFromController(controller = {}, lookId) {
+  const looks = normalizeSavedLooks(controller.looks).filter(look => look.id !== lookId);
+  const playlist = (controller.playlist || []).filter(entry => entry.lookId !== lookId && entry.comboId !== lookId);
+  return {
+    ...controller, looks, playlist,
+    activeLookId: controller.activeLookId === lookId ? '' : controller.activeLookId,
+    controls: { ...controller.controls, encoder: { ...controller.controls?.encoder, patternCycleIds: derivePlaylistLookIds(playlist) } },
   };
 }
 

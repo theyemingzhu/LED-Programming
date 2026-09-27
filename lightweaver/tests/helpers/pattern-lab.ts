@@ -213,6 +213,9 @@ export async function touchTargetShortfalls(
 // step was open at once and this was unnecessary; a spec that skips it now
 // waits sixty seconds for a control that is deliberately not on screen.
 export async function openStep(page: Page, name: 'choose' | 'sculpt' | 'evolve'): Promise<void> {
+  const fineTune = page.locator('.plab-fine-tune');
+  await expect(fineTune).toBeAttached();
+  if (!(await fineTune.evaluate(node => (node as HTMLDetailsElement).open))) await fineTune.locator('summary').first().click();
   await page.getByTestId(`pattern-lab-step-${name}`).locator('.plab-step-open').click();
   await expect(page.getByTestId(`pattern-lab-step-${name}`)).toHaveAttribute('data-active', 'true');
 }

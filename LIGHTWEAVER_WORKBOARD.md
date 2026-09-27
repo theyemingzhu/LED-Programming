@@ -9,6 +9,130 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Sprint queue
 
+2026-09-27: **CONNECT-RESTORE — active**. Repair/verify connection first (Prove
+not requested). Preserve existing work and restore established behavior using
+Git/Bench history. Primary owns hardware/UI integration; lower-cost Luna owns
+bounded connection source/regressions. USB present, remembered LAN card absent;
+same symptom and non-flashing reset recovery recorded on August 25. Current
+evidence/resumption: [connection recovery](docs/bench-sessions/2026-09-27-connection-recovery.md).
+
+2026-09-27: **ORANGE-RESTORE — done locally; not committed or deployed**.
+Adrian prefers the original dark lettering on orange. Restored dark on-accent
+ink in both themes and original primary hover/transparent border; orange hue
+and softened neutral edges preserved. Bounded Gallery Luna/low correction.
+Build and diff check passed; manager verified rebuilt Layout in the browser.
+Screenshot: /tmp/lightweaver-restraint-20260927/restored-orange.png.
+
+2026-09-27: **CONTROL-RESTRAINT — done locally; not committed or deployed**.
+Adrian rejected the repeated bright outlines as less classy. Four shared resting
+and disabled edge tokens softened in both themes; readable text/fills, selected
+accent and keyboard focus retained. This explicitly supersedes the earlier
+always-strong-edge direction and its resting-edge contrast target. Gallery chat
+GPT-6 Luna/low made the bounded correction. Build and diff check passed; manager
+inspected actual desktop Studio and phone Daylight, then restored Studio and the
+normal viewport. No new tests or full checkpoint for four cosmetic values.
+Baseline and final screenshot: /tmp/lightweaver-restraint-20260927.
+
+2026-09-27: **REFINEMENT — done locally; not committed or deployed**.
+Adrian requested another more refined pass. Two reused owners explicitly on
+GPT-6 Sol/medium; manager + polish/impeccable guidance, incumbent warm identity
+and current General Sans/Spline Sans Mono preserved. Layout toolbar now has
+single-layer controls; same-role headings use consistent sentence case, spacing
+and UI type. Decorative form grids, header dots and excess bevels removed across
+Patterns/Playlist/Card/Show/Settings/Lab; measuring grids retained on previews.
+Undefined font token corrected; Show prose and non-interactive heading focus
+presentation refined while keyboard control focus remains. No behavior changes.
+Evidence: 2,473/2,473 unit tests, production build and seven focused browser checks
+passed. Workers inspected desktop/phone in both themes in bounded rounds;
+manager inspected final live Layout and saved screenshots. Prior 289px test
+selector width and persistent warning/settings behavior preserved. Detector ran
+once: four existing layout-transition warnings (all present in HEAD) plus the
+intentional visual-preview grid advisory; no new flagged patterns. Logs/baseline
+in /tmp/lightweaver-refinement-20260927. Screens refreshed in interface-clarity/
+and creative-workspace/ under .claude/ux-screens. No extra frontier worker.
+PRODUCT/DESIGN records still describe an older palette/schema; refresh only if
+requested. Resumption: Adrian reviews local4173 preview; release separately.
+
+2026-09-27: **INTERFACE-CLARITY — done locally; not committed or deployed**.
+Approved by “start”; Manager Playbook v6 / scoped feature recipe v5.
+[Contract and evidence](docs/plans/2026-09-27-interface-clarity-cleanup.md).
+- Shared control states now have distinct readable ink, fills and edges in both
+  themes. Representative text >=4.5:1 and control edges >=3:1; quieter grids.
+- Layout chipset selector grew from reported 207px to measured 289px at 1280×720.
+  Full hint below short identity; flat panel edges; persistent power warning
+  outside the fold; review action opens/focuses existing unchanged supply field.
+- Local overrides cleaned across Card, Patterns/Lab, Playlist, Show, Settings and
+  Workshop. Phone Projects rows show full names above recognizable actions.
+Routing: reused Gallery/Workflow/Creative chats on explicit GPT-6 Sol/medium;
+exact Add strip and phone project-row residual corrections GPT-6 Luna/low.
+One director, disjoint file ownership; no backend/card/persistence changes.
+Verification: 2,473/2,473 unit tests and production build. Initial checkpoint caught
+one missing hover description; fixed with focused 3/3 and checkpoint rerun passed.
+Layout 2/2 and Card/creative continuity 5/5; final cosmetic changes rebuilt and
+screens checked. CUA coverage: Layout 1280/800/390 both themes; Patterns desktop/
+phone both themes; Playlist populated desktop/phone; Show desktop/phone plus
+Daylight; Card/Settings phone Daylight; Workshop desktop/phone Daylight; Projects
+Daylight desktop and final manager390px dark check. All temporary viewports reset.
+Screens: .claude/ux-screens/interface-clarity/; detailed logs and starting patch
+in /tmp/lightweaver-clarity-20260927. Prior unrelated tracked work preserved.
+Resumption: Adrian reviews http://127.0.0.1:4173/#screen=layout; release only on
+separate instruction. No commit, push, deployment, firmware or hardware action.
+
+2026-09-27: **UI-FINISH-MANAGER — done locally, not committed or deployed**.
+All three approved passes implemented; existing unfinished work preserved.
+Manager Playbook v6 / scoped feature recipe v5. Contract and evidence:
+[UI finish](docs/plans/2026-09-27-ui-finish-manager.md).
+- Gallery: clearer dark/daylight supporting text, title hierarchy and keyboard
+  focus; shared styles retain the warm palette and existing fonts.
+- Workflow: Card leads with its actual next action; completed light steps stay
+  accessible, and returning to them keeps the play action in view.
+- Creative: preview and section context together; readable two-row selector;
+  taller desktops keep the preview pinned, short desktops scroll full controls;
+  phone browsing precedes tuning; Lab has a visible return and action guidance.
+Routing (explicit follow-up model/effort before implementation; chat creation
+itself performed no work): Gallery Sol/medium for shared CSS; Workflow Sol/high
+for first-action/backward-navigation invariants; Creative Sol/medium for existing
+workspace composition. Exact two-declaration type refinement used Luna/low.
+No additional frontier director; costs unknown. Review found and corrected the
+38px desktop selector and short-screen sticky/flex overlap with focused red/green
+regressions rather than broadening work.
+Chats: Gallery `01a0e03b-756f-7990-b155-e88ed1ed5d96`; Workflow
+`01a0e03b-ee81-7ca3-a1ed-a453ba5b43d8`; Creative
+`01a0e043-8683-7181-aef3-50f5de65b5be`.
+Evidence: 2,473/2,473 integrated unit tests; production build passed, rebuilt
+successfully after final CSS fixes. Card focused + first-action + J01 10/10,
+different-project protection passed; creative 3/3, two toolbar checks passed,
+existing handoff/edit continuity 5/5 and mobile/target checks 4/4. Real CUA screens
+inspected at desktop, 390px phone and manager's 1280x720 laptop; Gallery/Card in
+both themes. Screens: `.claude/ux-screens/creative-workspace/` and `first-action/`.
+Source review and whitespace checks clean; unrelated pre-existing tracked diffs
+match the starting snapshot. No physical-light proof, firmware changes or release.
+Resumption: review the local preview on port 4173; release only if Adrian asks.
+
+2026-09-20: **FIRST-ACTION-MANAGER opened** — primary walks every arrival as a
+stranger. Auto-detect the card/browser state, put that next step first, keep
+count / colour order / LED management reachable backward. Ledger:
+[docs/journeys/first-action-manager.md](docs/journeys/first-action-manager.md).
+Walk: `tests/first-action-walk.spec.ts`. Arrivals: unplugged, plugged-blank,
+plugged-loaded, outdated, post-update Wi-Fi, Wi-Fi saved. No product fix,
+flash, or deploy until the first walk names the actual first paints.
+
+2026-09-09: **PATTERN-EDIT-MANAGER implemented locally** — approved autonomous execution
+of [the creative/editing plan](docs/plans/2026-09-09-pattern-editing-manager.md).
+Adrian prioritizes visual drag/drop colors, easy exploration and Keep. Branch
+`codex/pattern-creative-workflow`; base advanced externally from `5b10a41a` to
+`51a7af3b` during this run; preserve the newer control-transport changes.
+Working behavior: Slow color drift with draggable colors, locks, Pace, Character,
+three visual variations, Undo, rehearsal, Keep/reopen and unsaved recovery.
+Patterns stable Update/Rename/Delete+Undo; no thirteenth-save eviction; native
+Lab roundtrip preserves exact color/playback/sections and linked identity.
+Live preview follows native→Mandelbrot→Lotus; Stop restores streamed sessions;
+Piece/Strip retains render coordinates. Primary checkpoint 2,465/2,465 unit tests
+and production build passed; focused desktop browser paths passed after fixes.
+Desktop/390px phone screens directly inspected. Color journeys require Studio
+open; recording and standalone playback are explicitly unsupported. Physical
+color/playback and section-to-zone mapping remain unverified. No release/flash.
+
 2026-09-05: **FLOW-BLUEPRINT handoff ready** — planning-only integration blueprint
 with E01–E14 existing-code ledger, B0–B6 ownership/dependencies and J01–J14
 acceptance scenarios. [Plan](docs/plans/2026-09-05-unified-card-journey.md) and
@@ -23,6 +147,8 @@ on firmware 1524; no hardware mutation or release is part of this checkpoint.
 
 | ID | Outcome | Area / likely ownership | Status | Focused proof |
 | --- | --- | --- | --- | --- |
+| FIRST-ACTION-001 | Every arrival auto-detects; one first action; count/colour/LED management stay reachable backward | Studio Card Home / setup journey; primary owns the walk and ledger | active | Walk 7/7 + J01. Going back to Lights after complete keeps Open Patterns as the only primary |
+| PATTERN-EDIT-VIS-001 | Exact native look entering Lab; Live preview native→Mandelbrot→Lotus→Stop; six-minute drift | Same physical hues/order and intended animation/restoration on the configured strip | Local `codex/pattern-creative-workflow`; automated mocks only | needs-eyes |
 | WINDOWLESS-001 | Public Studio direct-LNA/local-origin transport, offline repository/PWA, and explicit project continuity | Studio source | done | 1,364 unit assertions + focused Chromium cold-offline pass |
 | WINDOWLESS-002 | Card HTTP streaming, owner capability, atomic project storage, and embedded local Studio server | Firmware source | done | 4 focused contracts + generated-bundle PlatformIO pass |
 | WINDOWLESS-003 | Card/PWA build targets, encrypted staging, release lanes, and integrated browser/artifact contracts | CI / release / browser tests | done | 8 tooling contracts + Pages staging + production/card builds |

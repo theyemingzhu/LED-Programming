@@ -1,3 +1,4 @@
+import { sampleColorJourney } from './colorJourney.js';
 import { PALETTE_DEFAULT } from '../data.js';
 import {
   blendPatternLabColors,
@@ -47,6 +48,22 @@ function layerTargetMatches(layer, strip) {
   if (!target || target.kind === 'whole-piece' || target.kind === 'all') return true;
   if (target.kind === 'section') return String(target.id || '') === String(strip?.id || '');
   throw new RangeError(`Unsupported Pattern Lab layer target: ${String(target.kind)}`);
+}
+
+// New Lab Mandelbrot/Lotus designs opt into centered line sampling. Saved
+// legacy recipes and every other renderer retain their original coordinates.
+export function patternLabSamplingBounds(strips, declared, recipe) {
+  const bounds = geometryBounds(strips, declared);
+  if (recipe?.base?.params?.__labSpatialV1 !== true) return bounds;
+  const points = (strips || []).flatMap(strip => strip?.pts || []);
+  if (!points.length) return bounds;
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  return {
+    ...bounds,
+    minX: Math.max(...xs) === Math.min(...xs) ? xs[0] - bounds.range / 2 : bounds.minX,
+    minY: Math.max(...ys) === Math.min(...ys) ? ys[0] - bounds.range / 2 : bounds.minY,
+  };
 }
 
 function geometryBounds(strips, declared) {
@@ -131,6 +148,19 @@ function finalizeFrame(frame, options) {
   return { ...frame, pixels, stripFrames };
 }
 
+// Journey timing stays in literal seconds, independently of the legacy pattern
+// clock. Movement changes only luminance, retaining the authored RGB hue.
+export function createColorJourneyPattern(journey, elapsedSeconds = 0) {
+  const elapsed = Math.max(0, Number(elapsedSeconds) || 0);
+  const { rgb } = sampleColorJourney(journey, elapsed * 1000);
+  const depth = { restrained: 0.12, balanced: 0.25, expressive: 0.42 }[journey?.character] ?? 0.12;
+  const period = Math.max(1, Number(journey?.motionSpeedSeconds) || 18);
+  return (_index, x, y) => {
+    const movement = 1 - depth * (0.5 + 0.5 * Math.sin((x + y * 0.35 - elapsed / period) * Math.PI * 2));
+    return { r: rgb[0] * movement, g: rgb[1] * movement, b: rgb[2] * movement };
+  };
+}
+
 export function recipeFromPattern(patternId, context = {}) {
   const pattern = requireBuiltInPattern(patternId);
 
@@ -139,9 +169,10 @@ export function recipeFromPattern(patternId, context = {}) {
     base: {
       kind: 'lightweaver-pattern',
       patternId,
-      params: Object.fromEntries(
-        parseParamsFromCode(pattern.code).map(param => [param.name, param.value]),
-      ),
+      params: {
+        ...Object.fromEntries(parseParamsFromCode(pattern.code).map(param => [param.name, param.value])),
+        ...(['mandelbrot', 'lotus'].includes(patternId) ? { __labSpatialV1: true } : {}),
+      },
     },
     palette: sourcePalette(context.palette),
     provenance: [{ source: 'lightweaver', patternId }],
@@ -150,7 +181,8 @@ export function recipeFromPattern(patternId, context = {}) {
 
 export function renderPatternLabRecipeFrame(recipe, context = {}) {
   const normalized = normalizePatternLabRecipe(recipe);
-  requireBuiltInPattern(normalized.base.patternId);
+  const isColorJourney = normalized.base.kind === 'color-journey';
+  if (!isColorJourney) requireBuiltInPattern(normalized.base.patternId);
 
   const finalOptions = {
     masterBrightness: context.masterBrightness ?? 1,
@@ -167,9 +199,9 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     });
   }
   for (const key of RECIPE_OWNED_RENDER_KEYS) delete renderContext[key];
-  const bounds = geometryBounds(renderContext.strips, renderContext.normBounds);
+  const bounds = patternLabSamplingBounds(renderContext.strips, renderContext.normBounds, normalized);
   renderContext.normBounds = bounds;
-  renderContext.strips = applyPatternLabMotionToStrips(renderContext.strips, {
+  renderContext.strips = isColorJourney ? renderContext.strips : applyPatternLabMotionToStrips(renderContext.strips, {
     elapsedSeconds: renderContext.t,
     seed: normalized.seed,
     motionWeights: context.motionWeights,
@@ -181,6 +213,10 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
   let frame = renderPixelFrame({
     ...renderContext,
     patternId: normalized.base.patternId,
+    ...(isColorJourney ? {
+      activeFn: createColorJourneyPattern(normalized.journey, context.t),
+      masterSaturation: 1, masterHueShift: 0,
+    } : {}),
     params: normalized.base.params,
     paletteNorm: normalizePalette(normalized.palette),
   });

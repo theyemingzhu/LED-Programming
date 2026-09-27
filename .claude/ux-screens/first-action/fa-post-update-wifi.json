@@ -1,0 +1,17 @@
+{
+  "step": "fa-post-update-wifi",
+  "heading": "Set up your Lightweaver",
+  "firstHeading": "Continue Wi-Fi setup",
+  "firstButton": "Continue Wi-Fi setup",
+  "firstPrimary": "Continue Wi-Fi setup",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Continue Wi-Fi setup"
+  ],
+  "journeyTask": "configure-wifi",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "Project not installed",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": false
+}

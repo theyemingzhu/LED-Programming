@@ -15,7 +15,7 @@ import { hasResumableCommissioning, openCardFlow } from '../lib/cardFlowEntry.js
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
-import { cardConnectionOptionsFor } from '../lib/cardConnection.js';
+import { cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
@@ -24,7 +24,7 @@ import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
-import { guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
+import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { findAndConnectCard } from '../lib/cardFind.js';
@@ -232,6 +232,7 @@ export function SetupScreen({
       const replacement = await replaceProject({
         ...currentProject,
         ...(status?.projectId ? { id: status.projectId } : {}),
+        name: adoptedProjectName(currentProject?.name, status),
         ...(parts?.origin ? { origin: parts.origin } : {}),
         ...(Array.isArray(parts?.portRoles) ? { portRoles: parts.portRoles } : {}),
         layout: {
@@ -466,6 +467,7 @@ export function SetupScreen({
     cardLifecycle,
     project: currentProject,
     commissioningFlow,
+    rememberedHost: readStoredCardHost() || cardHost,
     refresh: false,
   });
   const wiringTestActive = journey.taskId === 'confirm-visible-lights';
@@ -866,6 +868,29 @@ export function SetupScreen({
   const firmwareCurrent = firmwareStatus?.state === 'current'
     || firmwareStatus?.state === 'development-build';
   const viewedPhaseId = selectedPhaseId || (installIntentOpen ? 'verify' : journey.currentPhaseId) || 'verify';
+  // The journey still decides the task. This is only its plain-language label,
+  // shown before the supporting phase history and card readouts.
+  const nextActionHeading = journey.setupComplete ? returnDestination.label : ({
+    'connect-card': 'Find my card',
+    'pair-card': 'Pair this card',
+    'reconnect-card': 'Reconnect this card',
+    'recover-operation': 'Read this card again',
+    'update-firmware': 'Install or update firmware',
+    'configure-wifi': 'Continue Wi-Fi setup',
+    'install-project': hasResumableCommissioning(commissioningFlow) ? 'Put your project back on the card' : 'Test and save to card',
+    'load-matching-project': resolution.resolved && cardActions?.adoptCardProject ? 'Use the card’s copy' : 'Use this card’s project',
+    'discover-lights': offerTypedCount ? 'Use this count' : 'Find and count the lights',
+    'place-lights': 'Place lights in the artwork',
+    'test-and-save': installIntentOpen ? 'Test and save to card' : 'Open Patterns',
+    'confirm-visible-lights': 'The lights look correct',
+    'open-patterns': 'Open Patterns',
+  }[journey.taskId] || 'Continue setup');
+  // Put the step the owner is using before the history, without changing the
+  // journey's four durable outcomes or removing any completed-step controls.
+  const orderedPhases = [
+    ...journey.phases.filter(phase => phase.id === viewedPhaseId),
+    ...journey.phases.filter(phase => phase.id !== viewedPhaseId),
+  ];
   const renderActiveTask = phase => {
     if (phase.status === 'upcoming') {
       return <p className="lw-setup-task" data-testid="setup-active-task">Finish the earlier setup phases before using this phase&rsquo;s controls.</p>;
@@ -930,7 +955,7 @@ export function SetupScreen({
                 // reconnecting-bridge / revalidating window with no live
                 // transport to read from. `exactTransport` is the same
                 // connection-health check the identity row's Connection field
-                // already renders live above this button, so disabling on it
+                // also renders below the task, so disabling on it
                 // adds no new copy — it just stops the click from racing a
                 // connection that is not there yet.
                 <button type="button" className="btn primary" data-testid="setup-start-from-card" disabled={!exactTransport} onClick={byOwner(startFromCard)}>
@@ -1043,7 +1068,7 @@ export function SetupScreen({
             {phase.progress.map(item => <li key={item.id} data-status={item.status}>{item.status === 'done' ? '✓' : '·'} {item.id === 'color' ? 'Color order' : item.id === 'count' ? 'Light count' : item.id === 'boundary' ? 'Final and next-dark boundary' : 'Output'}</li>)}
           </ul>
           {ledCountEntry}
-          <button type="button" className={ledCountEntry ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
+          <button type="button" className={ledCountEntry || journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-lights-action" disabled={!exactTransport} onClick={() => go('#screen=discovery')}>
             {evidence.count > 0 && !evidence.outputs.every(output => isUncountedHeadroomCount(output.pixelCount))
               ? 'Review the connected lights'
               : ledCountEntry
@@ -1069,7 +1094,7 @@ export function SetupScreen({
           </ul>
           <button
             type="button"
-            className="btn primary"
+            className={journey.setupComplete ? 'btn' : 'btn primary'}
             data-testid="setup-layout-action"
             onClick={() => go('#screen=layout&mode=draw')}
           >
@@ -1082,7 +1107,7 @@ export function SetupScreen({
       <div className="lw-setup-task" data-testid="setup-active-task">
         <dl className="lw-setup-summary">
           {/* Card and Project drop once setup is complete: the identity row
-              directly above the phase ladder already states both, and this
+              after the phase ladder already states both, and this
               table used to repeat them a third and fourth time on the one
               screen that had just been compressed to end repeated tellings. */}
           {!journey.setupComplete && (
@@ -1106,7 +1131,7 @@ export function SetupScreen({
         ) : !installIntentOpen ? (
           <>
             <p>This sends your project to the card, reads it back to check it arrived exactly, then lights the strip so you can confirm with your own eyes before it becomes permanent.</p>
-            <button type="button" className="btn primary" data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>
+            <button type="button" className={journey.setupComplete ? 'btn' : 'btn primary'} data-testid="setup-verify-action" disabled={!exactTransport} onClick={openPatterns}>Open Patterns</button>
           </>
         ) : null}
       </div>
@@ -1127,17 +1152,14 @@ export function SetupScreen({
       data-journey-task={journey.taskId}
       data-journey-complete={journey.setupComplete ? 'true' : 'false'}
     >
+      <div className="lw-setup-next" data-testid="setup-next-action">
+        <span>Next on your card</span>
+        <h2>{nextActionHeading}</h2>
+      </div>
       {/* The lede used to explain the ladder here ("Connect to the card, then
           Studio resumes whatever is still unfinished…"). Phase 1 is that
           sentence, with the button attached. Explaining a step directly above
           the step is the same repetition this screen was compressed to end. */}
-      <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
-        <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
-        <div><span>Connection</span><strong>{identityStatus}</strong></div>
-        <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
-        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
-      </section>
-
       <div className="card-status-area" data-testid="setup-card-status" aria-live="polite">
         {ledCountState.message && (
           <p role="status" data-testid="setup-led-count-status">{ledCountState.message}</p>
@@ -1173,18 +1195,12 @@ export function SetupScreen({
             data-testid="setup-card-ready"
             aria-label="Card ready"
           >
-            {/* The identity row directly above already states the connection
+            {/* The identity row below already states the connection
                 and whether the open project is the installed one. Repeating
                 that here as a heading plus a paragraph was two more tellings
                 of one fact, so the healthy card keeps only its doors. Old
                 firmware is a DIFFERENT fact the row does not carry, so that
                 case keeps its sentence and its Update action. */}
-            {firmwareBannerCopy && (
-              <>
-                <h2>{firmwareBannerCopy.heading}</h2>
-                <p>{firmwareBannerCopy.body}</p>
-              </>
-            )}
             <div className="lw-setup-banner-actions">
               {/* Same one-primary rule as the rest of Card Home. This banner
                   can render while the ladder still has an active task (an
@@ -1199,6 +1215,11 @@ export function SetupScreen({
                 <button type="button" className="btn" data-testid="setup-update-card" onClick={() => go('#screen=card&section=install')}>Update card</button>
               )}
             </div>
+            {firmwareBannerCopy && (
+              <p data-testid="setup-optional-firmware">
+                {firmwareBannerCopy.heading}. {firmwareBannerCopy.body}
+              </p>
+            )}
           </section>
         )}
         {savedMatchLoadOffer && (
@@ -1226,14 +1247,9 @@ export function SetupScreen({
       </div>
 
       <section className="lw-setup-phases" aria-label="Setup outcomes">
-        <p className="lw-setup-progress" data-testid="setup-progress">
-          {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
-          {viewedPhaseId !== journey.currentPhaseId
-            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
-            : ''}
-        </p>
         <ol className="lw-setup-phase-list">
-            {journey.phases.map((phase, index) => {
+            {orderedPhases.map(phase => {
+              const index = journey.phases.findIndex(item => item.id === phase.id);
               const active = phase.id === viewedPhaseId;
               const current = phase.id === journey.currentPhaseId;
               return (
@@ -1245,7 +1261,15 @@ export function SetupScreen({
                   data-status={phase.status}
                   aria-current={current ? 'step' : undefined}
                 >
-                  <button type="button" className="lw-setup-phase-head" onClick={() => setSelectedPhaseId(phase.id)} aria-expanded={active}>
+                  <button
+                    type="button"
+                    className="lw-setup-phase-head"
+                    onClick={() => {
+                      setSelectedPhaseId(phase.id);
+                      requestAnimationFrame(() => document.querySelector('.lw-setup-next')?.scrollIntoView({ block: 'start', behavior: 'auto' }));
+                    }}
+                    aria-expanded={active}
+                  >
                     <span className="lw-setup-phase-marker" aria-hidden="true">{phase.status === 'done' ? '✓' : index + 1}</span>
                     <div>
                       <h2>{phase.title}</h2>
@@ -1260,6 +1284,19 @@ export function SetupScreen({
               );
             })}
         </ol>
+        <p className="lw-setup-progress" data-testid="setup-progress">
+          {journey.setupComplete ? 'Setup complete' : `Phase ${journey.phases.findIndex(phase => phase.id === journey.currentPhaseId) + 1} of 4`}
+          {viewedPhaseId !== journey.currentPhaseId
+            ? ` · Viewing phase ${journey.phases.findIndex(phase => phase.id === viewedPhaseId) + 1}`
+            : ''}
+        </p>
+      </section>
+
+      <section className="lw-setup-identity" data-testid="setup-identity-row" aria-label="Current card and project" aria-live="polite">
+        <div><span>Card</span><strong>{exactCardName(cardLink, cardHost)}</strong></div>
+        <div><span>Connection</span><strong>{identityStatus}</strong></div>
+        <div><span>Project</span><strong>{currentProject?.name || currentProject?.id || 'Untitled project'}</strong></div>
+        <div><span>Installed</span><strong>{installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true)}</strong></div>
       </section>
 
       <input ref={importRef} className="lw-setup-import" type="file" accept={PROJECT_IMPORT_ACCEPT} hidden data-testid="setup-import-input" onChange={onImportFile} />

@@ -62,10 +62,12 @@ export function createPatternLabPreviewSession({
   let lastError = null;
   let restored = null;
   let rollbackPromise = null;
+  let cancelled = false;
+  let delivered = false;
 
   function setState(next) {
     state = next;
-    try { onStateChange?.({ state, active: state === 'live', error: lastError, restored }); } catch {}
+    try { onStateChange?.({ state, active: state === 'live', error: lastError, restored, delivered }); } catch {}
   }
 
   async function restore() {
@@ -81,7 +83,11 @@ export function createPatternLabPreviewSession({
 
   async function rollback(reason = 'stop', terminalState = 'restored') {
     if (rollbackPromise) return rollbackPromise;
-    if (!stream && state === 'idle') return undefined;
+    cancelled = true;
+    if (!stream) {
+      setState('stopped');
+      return undefined;
+    }
     rollbackPromise = (async () => {
       setState('stopping');
       try {
@@ -119,7 +125,13 @@ export function createPatternLabPreviewSession({
   }
 
   function onHealth(health) {
-    if (state !== 'live' || health?.delivered !== false) return;
+    if (state !== 'live') return;
+    if (health?.delivered === true) {
+      delivered = true;
+      setState('live');
+      return;
+    }
+    if (health?.delivered !== false) return;
     lastError = health.lastError || Object.assign(new Error('Physical preview stream stopped.'), {
       reason: health.reason || 'delivery-failed',
     });
@@ -145,6 +157,7 @@ export function createPatternLabPreviewSession({
           snapshot = null;
           snapshotAvailable = false;
         }
+        if (cancelled) return false;
         stream = createStream({ host, fps, onHealth });
         const started = stream.start();
         if (started === false) throw new Error('Pattern Lab physical preview stream could not start');
@@ -176,6 +189,7 @@ export function createPatternLabPreviewSession({
         state,
         active: state === 'live',
         snapshotAvailable,
+        delivered,
         error: lastError,
         restored,
       };

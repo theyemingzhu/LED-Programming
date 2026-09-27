@@ -1,7 +1,7 @@
 /* Lightweaver v3 — safe automatic installer + technician diagnostics. */
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { I } from './lw-shared.jsx';
-import { connectESP, disconnectESP, espCanReportFirmwareIdentity, flashFirmware, inspectConnectedESP, readConnectedEspFirmwareIdentity, writeApplicationWithoutReset } from '../lib/flash.js';
+import { connectESP, disconnectESP, espCanReportFirmwareIdentity, flashFirmware, inspectConnectedESP, isUsbPortSelectionCancelled, readConnectedEspFirmwareIdentity, writeApplicationWithoutReset } from '../lib/flash.js';
 import {
   FLASH_COMPLETE_RELEASED_LOG,
   FLASH_COMPLETE_RELEASED_STATUS,
@@ -198,6 +198,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         setConnected(true);
         setStatus(`● ${chip}`); setKind("ok"); append(`Connected: ${chip}`);
       } catch (err) {
+        if (isUsbPortSelectionCancelled(err)) {
+          setStatus('Disconnected'); setKind(''); append('USB picker closed without a card.');
+          loaderRef.current = null;
+          transportRef.current = null;
+          return;
+        }
         const msg = err?.message ?? String(err);
         setStatus(`✕ ${msg}`); setKind("err"); append(`Connection failed: ${msg}`);
         if (msg.includes('Failed to connect') || msg.includes('sync')) {
@@ -1368,7 +1374,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         inspectionRef.current = null;
         loaderRef.current = null;
         transportRef.current = null;
-        setCardState({ state: 'error', hardware: null, error: error?.message || String(error) });
+        if (isUsbPortSelectionCancelled(error)) {
+          setCardState({ state: 'idle', hardware: null, error: '' });
+        } else {
+          setCardState({ state: 'error', hardware: null, error: error?.message || String(error) });
+        }
       } finally {
         findingRef.current = false;
       }

@@ -16,13 +16,7 @@
 .pm .pm-browse > .sec-h::before,
 .pm .pm-pane > .sec-h::before,
 .pm .pm-target > .sec-h::before {
-  content: "";
-  flex: 0 0 auto;
-  align-self: center;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+  content: none;
 }
 
 
@@ -33,11 +27,11 @@
 .pm .pmcard {
   gap: 7px;
   border-radius: 2px;
-  border-color: var(--border-hair);
-  background: var(--lw-well);
+  border-color: var(--control-edge);
+  background: var(--control-fill);
   transition: border-color .12s, background .12s;
 }
-.pm .pmcard:hover { border-color: var(--border-soft); }
+.pm .pmcard:hover { background: var(--control-hover); }
 
 /* An index down the left of the bank, mirroring the tempo chip on the right.
    It is not a slot number and does not survive filtering — it is the reading
@@ -56,10 +50,10 @@
 }
 .pm .pmcard-wrap:has(.pmcard.on)::before { color: var(--lw-live-ink); }
 .pm .pmcard-nm {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: -0.005em;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 .pm .pmcard-sp { letter-spacing: 0.1em; }
 /* selection is amber — this pattern is what the card is playing.
@@ -165,12 +159,10 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-mid);
+  overflow-wrap: anywhere;
 }
 .pm .pm-targetcard .tc-stat-v {
   display: block;
@@ -180,9 +172,7 @@
   font-weight: 400;
   line-height: 1.2;
   color: var(--text-hi);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 /* the number leads and its unit follows it, while the DOM keeps the unit
    first so the installed-project readback still reads "LEDs44" */
@@ -204,7 +194,7 @@
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.12em;
-  color: var(--text-faint);
+  color: var(--text-mid);
 }
 /* the pattern tile carries a swatch, so that one value stays a row */
 .pm .pm-targetcard .tc-patval {
@@ -258,8 +248,8 @@
 .pm .pm-browse,
 .pm .pm-target,
 .pm .pm-pane {
-  border: 1px solid var(--border-hair);
-  border-radius: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
   background-color: var(--bg-panel);
   box-shadow: none;
   overflow: hidden;
@@ -272,9 +262,9 @@
 .pm .pm-target > .sec-h,
 .pm .pm-pane > .sec-h {
   margin: 0 -14px 12px;
-  padding: 12px 14px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border-hair);
+  padding: 13px 14px 10px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-soft);
 }
 /* a bar does not need a rule across it, and the count belongs at the end */
 .pm .pm-browse > .sec-h .line,
@@ -285,14 +275,11 @@
 .pm .pm-pane > .sec-h .m { margin-left: auto; }
 .pm .pm-pane > .sec-h .pm-save { margin-left: auto; }
 
-/* the measured field belongs to the module body, not under its bar */
+/* The grid remains on the preview stage, not under controls. */
 .pm .pm-browse,
 .pm .pm-target,
 .pm .pm-pane {
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
+  background-image: none;
 }
 
 /* ── tiles: four across, the strand large enough to read ──── */
@@ -314,9 +301,9 @@
   display: flex;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--text-faint);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-mid);
 }
 .pm .pmcard-sub .pmcard-cat { color: var(--text-faint); }
 .pm .pmcard.on .pmcard-sub .pmcard-sp { color: var(--lw-live-ink); }
@@ -490,22 +477,18 @@
   box-shadow: inset 0 1px 3px oklch(0.03 0 0 / 0.55);
 }
 
-/* The preview header squeezed the pattern name to "L…" — and that name is the
-   answer to "what am I looking at", asserted by four specs. Splitting it onto
-   two rows was the obvious fix and the WRONG one: `preview toolbar is one
-   compact desktop row` exists to keep this a single 44px row, deliberately.
-   So the row is rebalanced instead. The name gets a real floor; the target
-   select gives up the width, because the section it names is now also spelled
-   out in Design target directly below — the one place it was unreadable was
-   the only place it had to be. */
+/* The narrow inspector needs both the pattern name and a readable target.
+   Put the preview label and piece toggle above the target selector, with
+   chevrons beside the selector. Both rows remain within the compact toolbar. */
 .pm .pm-preview-controls {
-  /* The pattern name is what this module is showing you, and four specs read
-     it from here — it gets the floor. The target select yields, because the
-     section it names is spelled out again in Design target directly below,
-     and the two arrows step through the same list. */
-  grid-template-columns: minmax(132px, 1fr) 24px minmax(38px, .5fr) 24px auto;
+  grid-template-columns: 24px minmax(0, 1fr) 24px minmax(0, 1fr) 24px;
   gap: 4px;
 }
+.pm .pm-preview-meta { grid-column: 1 / 4; grid-row: 1; height: 44px; }
+.pm .pm-piece-toggle { grid-column: 4 / 6; grid-row: 1; white-space: nowrap; }
+.pm .pm-preview-step[aria-label="Previous LED target"] { grid-column: 1; grid-row: 2; }
+.pm .pm-preview-select { grid-column: 2 / 5; grid-row: 2; }
+.pm .pm-preview-step[aria-label="Next LED target"] { grid-column: 5; grid-row: 2; }
 
 /* Beads / Gradient — a rendering switch on the same interpolated palette. */
 .pm .pm-ledmode {
@@ -594,4 +577,58 @@
   left: 9px;
   z-index: 2;
   color: var(--text-lo);
+}
+
+/* Keep the artwork and the section it controls together while the right
+   inspector scrolls. The bank has its own scroll on a roomy desktop. */
+.pm .pm-instrument { position: sticky; top: 0; z-index: 2; background: var(--bg-app); }
+.pm .pm-observe { position: static; }
+.pm .pm-observe .pm-piece-stage { height: clamp(170px, 23vh, 210px); }
+.pm .pm-observe .pm-target { margin: 8px 0 10px; padding: 0 10px 10px; }
+.pm .pm-observe .pm-target > .sec-h { margin: 0 -10px 8px; padding: 8px 10px; }
+.pm .pm-observe .pm-target > .chips {
+  display: flex;
+  max-width: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+.pm .pm-observe .pm-target > .chips .chip { flex: 0 0 auto; }
+.pm .pm-observe .pm-targetcard { grid-template-columns: minmax(0, 1fr) auto; }
+.pm .pm-observe .pm-targetcard .tc-stat { padding: 7px 9px; }
+.pm .pm-observe .pm-targetcard .tc-live {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 0;
+  border-top: 1px solid var(--border-hair);
+}
+.pm .pm-observe .pm-targetcard .tc-stat-k { font-size: 10.5px; }
+.pm .pm-observe .pm-targetcard .tc-stat-v,
+.pm .pm-observe .pm-targetcard .tc-total strong { font-size: 12px; }
+.pm .pm-browse > .pm-livebar { display: flex; gap: 10px; flex-wrap: wrap; }
+.pm .pm-livebar-hint { color: var(--text-mid); font-size: 11px; }
+.pm .pm-lab-handoff { margin: 5px 0 8px; color: var(--text-mid); font-size: 11px; line-height: 1.4; }
+
+/* A short desktop cannot hold the preview stack and a usable tuning area at
+   once. Let the inspector scroll as a whole; the selector remains two rows. */
+@media (min-width: 901px) and (max-height: 800px) {
+  .pm .pm-instrument { position: static; z-index: auto; }
+  .pm .pm-aside > .pm-instrument,
+  .pm .pm-aside > .pm-pane { flex-shrink: 0; }
+}
+
+@media (max-width: 900px) {
+  .pm .pm-instrument { position: static; padding-bottom: 0; }
+  .pm .pm-aside > .pm-tune-pane { order: 1; }
+  .pm .pm-aside > .pm-pane:not(.pm-tune-pane) { order: 2; }
+  .pm .pm-observe .pm-piece-stage { height: 160px; }
+}
+@media (max-width: 480px) {
+  .pm .pm-observe .pm-piece-stage { height: 180px; }
+  .pm .pm-observe .pm-targetcard { grid-template-columns: minmax(0, 1fr) auto; }
+  .pm .pm-observe .pm-targetcard .tc-stat { border-top: 0; }
+  .pm .pm-observe .pm-targetcard .tc-live { border-top: 1px solid var(--border-hair); }
 }

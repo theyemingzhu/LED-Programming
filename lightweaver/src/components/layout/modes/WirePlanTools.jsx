@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getCardLinkState, subscribeCardLink } from '../../../lib/cardLink.js';
 import { classifyCardReadiness } from '../../../lib/cardReadiness.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
@@ -53,6 +53,8 @@ export function WirePlanTools({ state, cardHost }) {
   const [selectedCustomRunId, setSelectedCustomRunId] = useState('');
   const [psuAmpsDraft, setPsuAmpsDraft] = useState(() => String(readPowerSupplySettings(standaloneController).psuAmps));
   const [milliampsDraft, setMilliampsDraft] = useState(() => String(readPowerSupplySettings(standaloneController).milliampsPerPixel));
+  const powerDetailsRef = useRef(null);
+  const powerSupplyInputRef = useRef(null);
   const stripsById = useMemo(() => new Map(strips.map(strip => [strip.id, strip])), [strips]);
   const runsById = useMemo(() => new Map(wiring.runs.map(run => [run.id, run])), [wiring.runs]);
   // Strips the guided setup learned about from the real card: one entry per
@@ -242,6 +244,13 @@ export function WirePlanTools({ state, cardHost }) {
     milliampsPerPixel,
     ...next,
   }));
+  const reviewPowerSettings = () => {
+    if (powerDetailsRef.current) powerDetailsRef.current.open = true;
+    requestAnimationFrame(() => {
+      powerSupplyInputRef.current?.focus();
+      powerSupplyInputRef.current?.scrollIntoView({ block: 'nearest' });
+    });
+  };
   const stripWord = physicalStripCount === 1 ? 'strip' : 'strips';
   // How the card that is plugged in right now relates to the design. Never used
   // to change the design — a development card is allowed to be smaller than the
@@ -314,13 +323,14 @@ export function WirePlanTools({ state, cardHost }) {
           })}
         </section>
       )}
-      {powerEstimate.status === 'over' && (
-        <p className="lww-power-warning" role="alert">
-          Needs {powerEstimate.maxAmps.toFixed(1)} A at full white — your supply is {powerSettings.psuAmps} A.
-        </p>
-      )}
-
       </details>
+
+      {powerEstimate.status === 'over' && (
+        <section className="lww-power-warning" data-testid="wire-power-warning" aria-label="Power needs review">
+          <p role="alert"><strong>Power needs review.</strong> At full white, estimated draw is {powerEstimate.maxAmps.toFixed(1)} A; your supply is {powerSettings.psuAmps} A.</p>
+          <button type="button" className="btn" title="Open the power supply settings without changing their values." data-tooltip="Open the power supply settings without changing their values." onClick={reviewPowerSettings}>Review power settings</button>
+        </section>
+      )}
 
       <section className="lww-tools-panel" data-testid="advanced-installation-tools" aria-label="Wire tools">
         <div className="panel-head">
@@ -353,6 +363,7 @@ export function WirePlanTools({ state, cardHost }) {
           {mutationError && <p className="lw-wiring-error" role="alert">{mutationError}</p>}
           <details className="lww-custom-mapping">
             <summary>Custom mapping</summary>
+            <p className="lww-fold-intro">Split strips, bridge runs, or reserve LED positions without changing the card.</p>
             <div className="lww-specialist-actions">
               <button className="btn" disabled={wiring.locked} aria-pressed={wireOverlayMode === 'chop'} title="Turn on the canvas tool for dividing the selected LED strip at a physical cut point." data-tooltip="Turn on the canvas tool for dividing the selected LED strip at a physical cut point." onClick={toggleSplitTool}>Split a strip mid-wire</button>
               <button
@@ -428,8 +439,9 @@ export function WirePlanTools({ state, cardHost }) {
               </div>
             )}
           </details>
-          <details className="lww-card-hardware" data-testid="wire-power-section">
+          <details className="lww-card-hardware" data-testid="wire-power-section" ref={powerDetailsRef}>
             <summary>Card hardware</summary>
+            <p className="lww-fold-intro">Review physical control pins and the supply used for the full-white estimate.</p>
             <div className="lw-pin-group">
               <strong>Physical controls</strong>
               {BOARD_CONTROL_FIELDS.map(field => <label key={field.key}>{field.label}
@@ -441,7 +453,7 @@ export function WirePlanTools({ state, cardHost }) {
             </div>
             <div className="lww-power-fields">
               <label>Power supply amps
-                <input type="number" min="0.5" step="0.5" inputMode="decimal"
+                <input type="number" min="0.5" step="0.5" inputMode="decimal" ref={powerSupplyInputRef}
                        value={psuAmpsDraft} aria-label="Power supply amps"
                        onFocus={event => event.target.select()}
                        onChange={event => {

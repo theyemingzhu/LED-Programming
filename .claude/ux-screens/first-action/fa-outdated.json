@@ -1,0 +1,17 @@
+{
+  "step": "fa-outdated",
+  "heading": "Set up your Lightweaver",
+  "firstHeading": "Install or update firmware",
+  "firstButton": "Install or update firmware",
+  "firstPrimary": "Install or update firmware",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Install or update firmware"
+  ],
+  "journeyTask": "update-firmware",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "Project not installed",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": false
+}

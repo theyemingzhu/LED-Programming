@@ -495,11 +495,15 @@
 .la-add-strip {
   display: flex; align-items: center; justify-content: center;
   margin: 4px 10px 2px; width: calc(100% - 20px);
-  border: 1px dashed var(--border);
-  color: var(--accent); font-weight: 600;
+  border: 1px solid var(--control-edge);
+  color: var(--text-hi); background: var(--control-fill); font-weight: 600;
 }
-.la-add-strip:hover { border-color: var(--accent); background: var(--bg-elev); }
-.la-add-strip[aria-expanded="true"] { border-style: solid; border-color: var(--accent); }
+.la-add-strip:hover { border-color: var(--control-edge); background: var(--control-hover); }
+.la-add-strip[aria-expanded="true"] {
+  color: var(--control-selected-ink);
+  border-color: var(--control-selected-edge);
+  background: var(--control-selected);
+}
 
 .la-add-strip-chooser {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
@@ -550,13 +554,14 @@
 
 /* Chipset is one value for the whole card, so it reads as a row of the piece's
    physical setup rather than a per-strip field. */
-.la-led-chipset { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.la-led-chipset { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px 8px; min-width: 0; }
 .la-led-chipset > .k { color: var(--text-mid); font-size: 11px; flex-shrink: 0; }
-/* The chipset dropdown carries the reel hint in its option text, so it takes
-   the remaining row width instead of the fixed GPIO-select size. */
+/* The selected option names only chipset and voltage; the full reel hint wraps
+   below, where it can be read without stealing control width. */
 .la-led-chipset .la-gpio-wrap { flex: 1 1 auto; min-width: 0; }
-.la-led-chipset .la-chipset-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
-.la-led-chipset-row { padding: 6px 6px 2px; }
+.la-led-chipset .la-chipset-select { width: 100%; min-width: 0; }
+.la-led-chipset .la-chipset-hint { grid-column: 1 / -1; margin: 0; color: var(--text-mid); font-size: 11px; line-height: 1.4; }
+.la-led-chipset-row { padding: 0; }
 
 /* Draw strip controls form one instrument panel, not a stack of loose black
    controls. The GPIO group owns the surface; its rows are simply sections. */

@@ -215,6 +215,16 @@ assert.match(flashSource, /writeVerifiedFlash/);
     /LIGHTWEAVER_FIRMWARE_URL|fetch\(/,
     'technician firmware selection must not bypass the signed release with a mutable alias',
   );
+  assert.match(
+    flashSource,
+    /export \{ espCanReportFirmwareIdentity, isUsbPortSelectionCancelled \}/,
+    'USB picker cancel must be classified, not dumped as a raw Serial exception',
+  );
+  assert.match(
+    screen,
+    /isUsbPortSelectionCancelled\(error\)/,
+    'Find connected card must treat a dismissed USB picker as cancel, not an error notice',
+  );
 }
 
 console.log('flash-connect tests passed');

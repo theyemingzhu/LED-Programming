@@ -82,7 +82,7 @@ function exactWiringTest(wiringStatus, cardLink) {
   return !expectedBuild || String(wiringStatus.buildId || '').trim() === expectedBuild;
 }
 
-function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution }) {
+function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution, rememberedHost }) {
   const stage = commissioningStage(commissioningFlow);
   if (cardLink?.activity === 'failed' || cardLink?.reason === 'operation-uncertain') {
     return [{ id: 'recover-operation', phaseId: 'connect' }];
@@ -92,6 +92,12 @@ function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolutio
   }
   if (stage === 'set-up-card'
     && ['setup-required', 'setup-joined'].includes(commissioningFlow?.networkState)) {
+    return [{ id: 'wifi', phaseId: 'connect' }];
+  }
+  // Last stored address is the setup AP: Join Wi-Fi is the next step, even
+  // while the card is still silent and lifecycle still says connect-card.
+  // A failed LAN probe must not invent this — only the remembered host.
+  if (normalizeHost(rememberedHost) === SETUP_MODE_HOST) {
     return [{ id: 'wifi', phaseId: 'connect' }];
   }
   if (stage === 'set-up-card') return [{ id: 'install-project', phaseId: 'connect' }];
@@ -133,7 +139,16 @@ function connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolutio
   if (cardLink?.state === 'reconnecting' || cardLink?.state === 'reconnecting-bridge') {
     return [{ id: 'reconnect-card', phaseId: 'connect' }];
   }
-  if (!connectedExactCard(cardLink)) return [{ id: 'connect-card', phaseId: 'connect' }];
+  // A remembered setup AP is the next step even before the card answers —
+  // Looking for it on the LAN after an update is the wrong first action.
+  // Only the stored host counts here: a failed probe must not turn an
+  // unplugged first visit into Join Wi-Fi.
+  if (!connectedExactCard(cardLink)) {
+    if (normalizeHost(rememberedHost) === SETUP_MODE_HOST) {
+      return [{ id: 'wifi', phaseId: 'connect' }];
+    }
+    return [{ id: 'connect-card', phaseId: 'connect' }];
+  }
   if (normalizeHost(cardLink?.host) === SETUP_MODE_HOST) return [{ id: 'wifi', phaseId: 'connect' }];
   return [];
 }
@@ -290,8 +305,15 @@ export function deriveSetupJourney({
   resolution,
   verification,
   wiringStatus,
+  rememberedHost,
 } = {}) {
-  const blockers = connectBlockers({ cardLink, cardLifecycle, commissioningFlow, resolution });
+  const blockers = connectBlockers({
+    cardLink,
+    cardLifecycle,
+    commissioningFlow,
+    resolution,
+    rememberedHost,
+  });
   const progress = lightProgress(project);
   const currentLayoutProgress = layoutProgress(project);
 

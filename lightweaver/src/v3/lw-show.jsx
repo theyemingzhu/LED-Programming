@@ -174,15 +174,8 @@ const PAINT_GAP_MS = 1000 / 48 - 4;
 // sound source, template, bench strip, engine mode, the demo tracks — so it
 // is the only place the screen's selected-state vocabulary is decided.
 //
-// It used to fill the chosen chip with clay. Clay means one thing across the
-// Studio now: THIS CONTROL WRITES TO THE CARD. None of these do; they choose
-// what the piece listens to and how it answers. So a chosen chip is named in
-// amber, the colour reserved for what is happening right now, and the clay
-// fill is left to "Play on the lights" alone.
-//
-// --lw-live-ink, not --layer-1: amber as TEXT is unreadable on the Daylight
-// panel, and the token drops to a bronze of the same hue there. The fallback
-// keeps the chip legible if this ever renders outside a console scope.
+// The same control tokens cover idle and selected choices in both themes;
+// the transport keeps its separate live-output emphasis.
 const chipStyle = (on) => ({
   // 10px, not 12: mono is wider than the UI face at the same size, and at
   // 12px of side padding the three Sound chips needed 262.8px inside a 257px
@@ -194,9 +187,9 @@ const chipStyle = (on) => ({
   fontSize: 12,
   fontWeight: on ? 500 : 400,
   cursor: 'pointer',
-  border: `1px solid ${on ? 'var(--lw-live-ink, var(--accent))' : 'var(--border-hair)'}`,
-  background: on ? 'color-mix(in srgb, var(--lw-live-ink, var(--accent)) 8%, transparent)' : 'var(--bg-elev)',
-  color: on ? 'var(--lw-live-ink, var(--accent))' : 'var(--text-mid)',
+  border: `1px solid ${on ? 'var(--control-selected-edge)' : 'var(--control-edge)'}`,
+  background: on ? 'var(--control-selected)' : 'var(--control-fill)',
+  color: on ? 'var(--control-selected-ink)' : 'var(--text-hi)',
 });
 
 function Chip({ on, onClick, children, title }) {
@@ -1187,7 +1180,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                 the band it was told to hear.
               */}
               <div style={{ marginTop: 10 }} data-testid="show-demo-tracks">
-                <div className="mono" style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)', marginBottom: 6 }}>
+                <div className="mono sh-control-heading" style={{ marginBottom: 6 }}>
                   Built-in music
                 </div>
                 <div role="group" aria-label="Built-in music" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1211,7 +1204,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                         }}
                       >
                         <span style={{ fontWeight: 600 }}>{track.name}</span>
-                        <span style={{ fontSize: 10.5, fontWeight: 400, lineHeight: 1.4, opacity: on ? 0.85 : 0.75 }}>
+                        <span className="sh-demo-description">
                           {track.description}
                         </span>
                       </button>
@@ -1224,10 +1217,10 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                   <button type="button" className="btn" data-testid="show-pause" onClick={toggleSongPause}>
                     {songPaused ? 'Resume song' : 'Pause song'}
                   </button>
-                  <span className="mono" data-testid="show-transport-state" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
+                  <span className="mono sh-transport-state" data-testid="show-transport-state">
                     {songPaused ? 'paused' : 'playing'}
                   </span>
-                  <span className="mono" style={{ minWidth: 0, fontSize: 10, color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileName}</span>
+                  <span className="mono sh-file-name">{fileName}</span>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -1290,19 +1283,19 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
               ) : (
               <section className="sh-mod" data-testid="show-section-mode">
               <div className="sec-h"><span className="t">Mode</span><span className="line" /></div>
-              <div className="mono" style={{ fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '2px 0 6px' }}>Slow &amp; meditative</div>
+              <div className="mono sh-control-heading" style={{ margin: '2px 0 6px' }}>Slow &amp; meditative</div>
               <ChipRow>
                 {SLOW_MODES.map((m) => (
                   <Chip key={m.key} on={modeKey === m.key} onClick={() => chooseMode(m.key)} title={m.desc}>{m.name}</Chip>
                 ))}
               </ChipRow>
-              <div className="mono" style={{ fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-faint)', margin: '10px 0 6px' }}>Livelier</div>
+              <div className="mono sh-control-heading" style={{ margin: '10px 0 6px' }}>Livelier</div>
               <ChipRow>
                 {LIVELY_MODES.map((m) => (
                   <Chip key={m.key} on={modeKey === m.key} onClick={() => chooseMode(m.key)} title={m.desc}>{m.name}</Chip>
                 ))}
               </ChipRow>
-              <div style={{ fontSize: 12, lineHeight: 1.55, color: 'var(--text-lo)', marginTop: 9, minHeight: '3.1em' }}>{modeInfo.desc}</div>
+              <div className="sh-control-help" style={{ marginTop: 9, minHeight: '3.1em' }}>{modeInfo.desc}</div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
                 <button
@@ -1344,7 +1337,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                       Export file
                     </button>
                   </div>
-                  <div className="mono" style={{ fontSize: 10, lineHeight: 1.5, color: 'var(--text-faint)', marginTop: 8, minHeight: '1.4em' }}>
+                  <div className="mono sh-control-help" style={{ marginTop: 8, minHeight: '1.4em' }}>
                     {tuneStatus || KNOB_META.find(({ key }) => Math.abs(knobs[key] - KNOB_DEFAULTS[key]) > 1e-6)?.hint || 'Move a slider to hear the piece change, then Save as default.'}
                   </div>
                 </div>
@@ -1359,7 +1352,7 @@ function ShowScreen({ connected, cardLink, currentProject, go }) {
                 <Chip on={preset === 'Active'} onClick={() => choosePreset('Active')} title="Listens more closely — deeper swells, never faster">Active</Chip>
               </ChipRow>
               <Slider k="Brightness" v={master.toFixed(2)} value={master} min={0.2} max={0.85} step={0.01} onChange={changeMaster} />
-              <div style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-faint)', marginTop: 8 }}>
+              <div className="sh-control-help" style={{ marginTop: 8 }}>
                 Warm, never harsh. Nothing spins fast or snaps — mostly-dark is allowed, which makes the gold precious.
               </div>
               </section>

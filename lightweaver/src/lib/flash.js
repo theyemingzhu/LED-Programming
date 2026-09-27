@@ -6,8 +6,9 @@ import {
 import { writeVerifiedFlash } from './flashPlan.js';
 import { cardIdFromEspMac } from './cardCommissioningFlow.js';
 import { espCanReportFirmwareIdentity, readLightweaverFirmwareIdentity } from './usbFirmwareIdentity.js';
+import { isUsbPortSelectionCancelled } from './usbPortSelection.js';
 
-export { espCanReportFirmwareIdentity };
+export { espCanReportFirmwareIdentity, isUsbPortSelectionCancelled };
 
 const WLED_API_URL = 'https://api.github.com/repos/wled/WLED/releases/latest';
 

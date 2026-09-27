@@ -36,9 +36,7 @@
 /* ── page masthead ───────────────────────────────────────── */
 
 .card-workspace-screen .card-workspace-kicker {
-  font-size: 10.5px;
-  letter-spacing: 0.16em;
-  color: var(--text-lo);
+  display: none;
 }
 .card-workspace-screen .card-workspace-header h1 {
   font-size: clamp(26px, 3vw, 34px);
@@ -46,25 +44,25 @@
   letter-spacing: -0.032em;
 }
 
-/* ── identity strip: four readouts in one machined bar ───── */
+/* ── identity readouts: useful context after the next action ─ */
 
 .card-workspace-screen .lw-setup-identity {
   border-radius: var(--r-lg);
   border-color: var(--border-soft);
-  background: var(--bg-panel);
-  box-shadow: var(--lw-mod);
+  background: var(--bg-elev);
+  box-shadow: none;
   overflow: hidden;
 }
-.card-workspace-screen .lw-setup-identity > div { padding: 14px 18px; border-right-color: var(--border-soft); }
+.card-workspace-screen .lw-setup-identity > div { padding: 10px 14px; border-right-color: var(--border-soft); }
 .card-workspace-screen .lw-setup-identity span {
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.1em;
   color: var(--text-lo);
 }
 .card-workspace-screen .lw-setup-identity strong {
-  font-size: 14.5px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 /* ── the phase ladder as a module ────────────────────────── */
@@ -82,7 +80,7 @@
 .card-workspace-screen .lw-setup-phase.is-current {
   border-color: var(--border-soft);
   background: var(--bg-panel);
-  box-shadow: var(--lw-mod);
+  box-shadow: none;
 }
 /* the marker reads as a machined disc; the live one lights */
 .card-workspace-screen .lw-setup-phase-marker {
@@ -98,7 +96,7 @@
   background: var(--lw-live);
   border-color: transparent;
   color: var(--lw-on-live);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--lw-live) 34%, transparent), inset 0 1px 0 oklch(1 0 0 / 0.3);
+  box-shadow: none;
 }
 .card-workspace-screen .lw-setup-phase.is-done .lw-setup-phase-marker {
   background: var(--bg-elev-2);
@@ -108,12 +106,12 @@
 .card-workspace-screen .lw-setup-phase-head h2 { letter-spacing: -0.012em; }
 .card-workspace-screen .lw-setup-phase-head p { font-size: 12.5px; color: var(--text-lo); }
 
-/* ── section folds: a module header bar with a status light ─ */
+/* ── section folds with a readable disclosure control ─────── */
 
 .card-workspace-screen .card-page-fold {
   border-radius: var(--r-lg);
   border-color: var(--border-soft);
-  box-shadow: var(--lw-mod);
+  box-shadow: none;
   overflow: hidden;
 }
 .card-workspace-screen .card-page-fold > summary {
@@ -122,26 +120,26 @@
   gap: 11px;
   background: var(--bg-elev);
   border-bottom: 1px solid transparent;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 .card-workspace-screen .card-page-fold[open] > summary { border-bottom-color: var(--border-soft); }
-/* the caret becomes a status light, so a fold reads like every other module */
+/* A chevron makes the fold action explicit. */
 .card-workspace-screen .card-page-fold > summary::before {
   content: "";
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--idle);
-  transition: background .12s, box-shadow .12s;
+  border: solid var(--text-mid);
+  border-width: 0 1.5px 1.5px 0;
+  background: none;
+  transform: rotate(-45deg);
+  transition: transform .12s;
 }
 .card-workspace-screen .card-page-fold[open] > summary::before {
-  content: "";
-  background: var(--lw-live-ink);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live-ink) 80%, transparent);
+  transform: rotate(45deg);
 }
 .card-workspace-screen .card-page-fold > summary:hover { background: var(--bg-elev-2); }
 .card-workspace-screen .card-page-fold-body { padding: 16px 18px 20px; }
@@ -157,7 +155,7 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--r-lg);
   background: var(--bg-panel);
-  box-shadow: var(--lw-mod);
+  box-shadow: none;
 }
 .card-workspace-screen .lww-flow > .lww-flow-heading {
   justify-self: stretch;
@@ -168,18 +166,13 @@
   padding: 13px 18px;
   background: var(--bg-elev);
   border-bottom: 1px solid var(--border-soft);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 .card-workspace-screen .lww-flow > .lww-flow-heading::before {
-  content: "";
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+  content: none;
 }
 .card-workspace-screen .lww-flow-message { font-size: 12.5px; color: var(--text-lo); }
 
@@ -200,7 +193,7 @@
 .card-workspace-screen .card-support-grid > button {
   border-radius: var(--r-lg);
   border-color: var(--border-soft);
-  box-shadow: var(--lw-mod);
+  box-shadow: none;
 }
 .card-workspace-screen .card-support-grid > button:hover,
 .card-workspace-screen .card-support-grid > button.selected {
@@ -218,11 +211,11 @@
   border-radius: 8px;
   font-size: 13.5px;
   font-weight: 600;
-  background: var(--bg-elev-2);
-  border-color: var(--border);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
   box-shadow: var(--lw-raise), var(--lw-lift);
 }
-.card-workspace-screen .btn:hover { background: var(--bg-sel); border-color: var(--accent-line); }
+.card-workspace-screen .btn:hover:not(:disabled) { background: var(--control-hover); }
 .card-workspace-screen .btn.primary,
 .card-workspace-screen .btn-lg {
   color: var(--on-accent);
@@ -233,18 +226,25 @@
 .card-workspace-screen .btn-lg { min-height: 44px; height: auto; border-radius: 8px; }
 .card-workspace-screen .btn-lg.ghost {
   color: var(--text-hi);
-  background: var(--bg-elev-2);
-  border-color: var(--border);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
   box-shadow: var(--lw-raise), var(--lw-lift);
 }
 .card-workspace-screen .btn.ghost-sm {
   min-height: 38px;
-  background: transparent;
-  border-color: var(--border-soft);
-  color: var(--text-mid);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+  color: var(--text-hi);
   box-shadow: none;
 }
-.card-workspace-screen .btn:disabled { opacity: 0.45; box-shadow: none; }
+.card-workspace-screen .btn.ghost-sm:hover:not(:disabled) { background: var(--control-hover); }
+.card-workspace-screen .btn:disabled {
+  opacity: 1;
+  color: var(--control-disabled-ink);
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+  box-shadow: none;
+}
 
 /* The Settings panel already carries this language and defines its own
    tokens; it must not inherit the page's button sizing on top of its own. */

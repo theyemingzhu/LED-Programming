@@ -1,104 +1,69 @@
-/* ============================================================
-   Light Weaver v3 — Layout, "Console / Blueprint" treatment
-   ------------------------------------------------------------
-   Layout was shown as three candidates. The answer was neither
-   alone, so this is the merge, and the split is deliberate:
+/* Layout pairs outlined controls and quiet sans headings with a measured
+   canvas. Numeric readouts retain the mono voice. Scoped under .la so both
+   Studio and Daylight use the same hierarchy. */
 
-     PHYSICAL CHROME comes from Console. The toolbar's groups
-     become sunken key wells with raised keys, the side panel
-     gets a module's depth, and the panel heads become header
-     bars with a status light. This is the part of Layout you
-     operate, and it should feel like hardware.
-
-     MEASURED REGISTER comes from Blueprint. Labels are mono
-     with wide tracking, rules are hairlines, values sit in
-     small sunken wells, and the panel carries a faint measured
-     field. This is the part of Layout you READ, and it should
-     feel like a drawing, not an app.
-
-   Nothing here touches the canvas renderer. The LED dots, the
-   strand, the glow modes and the selection frame are drawn by
-   LayoutCanvas.jsx with their own tests; how big a pixel is at
-   a given zoom is a rendering decision, not a styling one.
-
-   Scoped under .la; tokens only; Daylight keeps working.
-   ============================================================ */
-
-/* ── toolbar: sunken key wells, raised keys ──────────────── */
+/* ── toolbar: clear keys, quiet grouping ──────────────────── */
 
 .la .toolbar {
   gap: 10px;
   background: var(--bg-panel);
   border-bottom-color: var(--border-soft);
-  box-shadow: 0 6px 18px oklch(0.05 0.005 60 / 0.22);
+  box-shadow: none;
 }
 /* A group with nothing in it would otherwise draw an empty well: the mode
    actions group is populated per mode, so it is genuinely empty in some. */
 .la .toolbar .tb-group:empty { display: none; }
 .la .toolbar .tb-group {
-  gap: 3px;
-  padding: 3px;
-  background: var(--lw-well);
-  border: 1px solid var(--border-hair);
-  border-radius: var(--r-md);
-  box-shadow: var(--lw-inset-deep);
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 .la .toolbar .tb-btn {
   height: 28px;
   border-radius: var(--r-sm);
-  background: var(--bg-elev-2);
-  border-color: var(--border-soft);
-  box-shadow: var(--lw-raise);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+  box-shadow: none;
   font-size: 12px;
 }
-.la .toolbar .tb-btn:hover { background: var(--bg-sel); border-color: var(--border); }
-.la .toolbar .tb-btn:disabled { opacity: 0.4; box-shadow: none; }
-/* A pressed key names a live state, so it lights rather than filling with
-   clay — clay is the one control that writes to the card. */
-.la .toolbar .tb-btn.active {
-  background: transparent;
-  border-color: var(--lw-live-ink);
-  color: var(--lw-live-ink);
+.la .toolbar .tb-btn:hover:not(:disabled) { background: var(--control-hover); border-color: var(--control-edge); }
+.la .toolbar .tb-btn:disabled {
+  opacity: 1;
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+  color: var(--control-disabled-ink);
+  box-shadow: none;
 }
-/* the dividers were separating groups that now separate themselves */
+.la .toolbar .tb-btn.active {
+  background: var(--control-selected);
+  border-color: var(--control-selected-edge);
+  color: var(--control-selected-ink);
+}
+.la .toolbar .tb-btn.active:hover { background: var(--control-selected); border-color: var(--control-selected-edge); }
+/* Whitespace separates the groups without another drawn edge. */
 .la .toolbar .tb-div { display: none; }
 
-/* On a phone the toolbar is capped at 110px and scrolls inside it
-   (v3-layout-modes.css). The key wells cost 3px of padding and a border per
-   group, which pushed its scroll height from 250px to 284px — a third of a
-   row more to scroll past on the screen with the least room. The wells are
-   what make this feel like hardware on a desk; on a phone there is no desk,
-   so below the breakpoint the groups go back to being plain runs of keys and
-   the keys keep their raised faces. */
+/* The phone toolbar wraps and scrolls within its capped height. */
 @media (max-width: 900px) {
   .la .toolbar { gap: 8px; }
-  .la .toolbar .tb-group {
-    gap: 4px;
-    padding: 0;
-    background: none;
-    border: 0;
-    box-shadow: none;
-  }
-  /* the raised face stays; the visible border does not. Each key's border is
-     2px of width, and ten keys of it is a whole extra wrapped row here. */
-  .la .toolbar .tb-btn { border-color: transparent; }
-  .la .la-zoom { padding: 2px; }
 }
 .la .la-zoom {
-  gap: 3px;
-  padding: 3px;
-  border-radius: var(--r-md);
-  background: var(--lw-well);
-  border-color: var(--border-hair);
-  box-shadow: var(--lw-inset-deep);
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .la .la-zoom button {
   height: 26px;
   border-radius: var(--r-sm);
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--lw-raise);
+  background: var(--control-fill);
+  border: 1px solid var(--control-edge);
+  box-shadow: none;
 }
+.la .la-zoom button:hover:not(:disabled) { background: var(--control-hover); }
 .la .la-zoom .zv {
   height: 26px;
   color: var(--text-mid);
@@ -116,55 +81,38 @@
   background-size: var(--lw-graph-step) var(--lw-graph-step);
 }
 
-/* ── panel heads: a header bar with a status light ───────── */
-/* They are position:sticky, so the background must stay opaque or the rows
-   scroll through them. Keep the fill, add the rule and the light. */
+/* ── panel heads: one inset and one type hierarchy ────────── */
+/* Sticky heads stay opaque so rows do not show through while scrolling. */
 
-/* NOT every .panel-head is a panel header. Two are sub-heads embedded
-   inside a panel — the wire plan's and strip discovery's — and the wire
-   plan's turns into a COLUMN below a 320px container, which the side panel
-   always is. Given a header bar and a leading dot, it stacked them into a
-   centred three-line block. Style only the real headers, and leave the two
-   embedded ones exactly as their own files set them. */
+/* Wire plan has its own summary layout; the other heads share a rhythm. */
 .la .panel-head:not(.lww-plan-head) {
   align-items: center;
-  /* space-between with three children puts the dot, the title and the meta
-     at thirds, which floats the title in the middle of the bar. The dot
-     belongs against the title; only the meta goes right. */
   justify-content: flex-start;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--border-hair);
-  background: var(--bg-elev);
+  background: var(--bg-panel);
 }
 .la .strip-discovery.is-embedded > .panel-head {
-  padding: 14px 16px 10px;
+  padding: 11px 14px;
   background: var(--bg-panel);
   border-bottom: 0;
 }
-.la .strip-discovery.is-embedded > .panel-head::before { content: none; }
-.la .panel-head:not(.lww-plan-head)::before {
-  content: "";
-  flex: 0 0 auto;
-  order: -1;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
-}
+.la .panel-head:not(.lww-plan-head)::before { content: none; }
 .la .panel-head:not(.lww-plan-head) .ttl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
-  color: var(--text-lo);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-hi);
 }
 .la .panel-head:not(.lww-plan-head) .meta { margin-left: auto; }
-.la .panel-head .meta { letter-spacing: 0.06em; }
+.la .panel-head .meta { letter-spacing: 0.02em; }
 
 /* ── strips: a schedule, not a list of cards ─────────────── */
 
-.la .la-strip-row .layer-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; }
+.la .la-strip-row .layer-name { font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; }
 .la .la-strip-row .layer-len,
 .la .la-strip-row .la-wire-n {
   font-family: var(--font-mono);
@@ -175,8 +123,8 @@
   background: color-mix(in srgb, var(--lw-live) 7%, var(--bg-panel));
   box-shadow: inset 2px 0 0 var(--lw-live-ink);
 }
-.la .la-strip-row.sel .layer-name,
-.la .la-strip-row.sel .la-wire-n { color: var(--lw-live-ink); }
+.la .la-strip-row.sel .layer-name { color: var(--text-hi); font-weight: 600; }
+.la .la-strip-row.sel .la-wire-n { color: var(--text-mid); }
 .la .layer-swatch { border-radius: 2px; }
 .la .la-strip-rev {
   border-radius: 2px;
@@ -242,53 +190,28 @@
     0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
-/* ═══ the wire plan is a module, not a caption ═════════════
-   It carried the run's facts as loose text under a bare label,
-   below a panel that had already become a module — so the one
-   block describing what will actually be wired read as the
-   least important thing in the column.
-
-   Its head is a sub-head, not a panel header (see the exclusion
-   above), and below a 320px container it stacks into a column —
-   which the side panel always is. So the status light is placed
-   rather than flowed: a leading dot in a column layout becomes a
-   line of its own.
-   ═══════════════════════════════════════════════════════════ */
+/* The Wire plan, warning, and controls share one outer edge. The Layout
+   inspector owns the page inset; the Wire wrapper adds no second one. */
 
 .la .lw-wire-path.is-embedded {
-  margin: 14px 16px 16px;
-  padding: 0 13px 13px;
+  margin: 0 0 12px;
+  padding: 0;
   border: 1px solid var(--border-hair);
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
 }
-.la .lw-wire-path.is-embedded > .lww-plan-head {
-  position: relative;
-  margin: 0 -13px 11px;
-  padding: 11px 13px 11px 30px;
-  background: var(--bg-elev);
+.la .lww-plan > summary.panel-head {
+  padding: 11px 28px 11px 14px;
   border-bottom: 1px solid var(--border-hair);
-}
-.la .lw-wire-path.is-embedded > .lww-plan-head::before {
-  content: "";
-  position: absolute;
-  left: 13px;
-  top: 16px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+  background: transparent;
 }
 .la .lww-plan-head .ttl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.2em;
-  color: var(--text-lo);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-hi);
 }
 /* the run itself reads as a sheet: mono, measured, one fact per line */
 .la .lww-plan-summary {
@@ -308,7 +231,7 @@
    layout stacks, and the sentence lost its last two words to an ellipsis —
    "44 LEDs in this de…". Let it wrap; it is the only line on this panel that
    says what will actually be wired. */
-.la .lw-wire-path.is-embedded > .lww-plan-head .meta {
+.la .lww-plan > summary.panel-head .meta {
   max-width: 100%;
   white-space: normal;
   overflow: visible;
@@ -319,22 +242,14 @@
   color: var(--text-mid);
 }
 
-/* ═══ strip schedule + build sheet ═════════════════════════
-   The two read-outs somebody wires from. Both are modules in
-   the same idiom as the panels above them: a header bar with a
-   status light, a measured field behind the body, mono
-   throughout because every value in them is a measurement.
-   ═══════════════════════════════════════════════════════════ */
+/* Strip schedule and build sheet use the same panel edge and heading inset.
+   Their actual wiring measurements remain mono. */
 
 .la .lwbs {
-  margin: 0 16px 16px;
+  margin: 0 0 12px;
   border: 1px solid var(--border-hair);
-  border-radius: 2px;
+  border-radius: var(--r-sm);
   background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
   overflow: hidden;
 }
 .la .lwbs > .panel-head {
@@ -440,8 +355,8 @@
    they produce.
 
    It is now one module in the same idiom as every other
-   panel in this column: a filled header bar with a status
-   light and the strip's name as its meta, a dense two-up
+   panel in this column: a clear header and the strip's name
+   as its meta, a dense two-up
    register beneath it, and the actions last, because they
    are what you do to a strip once you have read it.
 
@@ -462,7 +377,7 @@
   border-bottom: 0;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
 }
-.la .la-strip-detail .lw-sel-head .ttl { font-size: 10px; letter-spacing: 0.18em; }
+.la .la-strip-detail .lw-sel-head .ttl { font-size: 13px; letter-spacing: 0; }
 /* The name is the meta, so a long one clips rather than pushing the bar wide;
    the whole string stays reachable through the title attribute. */
 .la .la-strip-detail .lw-sel-head .meta {
@@ -641,7 +556,7 @@
 }
 
 /* Wire tools reads as a panel in its own right now. */
-.la .lww-tools-panel { margin-top: 12px; }
+.la .lww-tools-panel { margin-top: 0; }
 
 /* The wire-plan head flips to a column under 320px (lw-wire.css container
    query) so its long meta line can wrap. That put the fold chevron on a row
@@ -664,17 +579,26 @@
    now, in the same vocabulary as everything beside it: framed, one head, a
    single fold idiom, one vertical rhythm. */
 .la .lww-tools-panel {
-  margin: 0 16px 16px;
-  border: 1px solid var(--border-hair);
-  border-radius: 2px;
-  background-color: var(--bg-panel);
-  background-image:
-    linear-gradient(var(--lw-graph) 1px, transparent 1px),
-    linear-gradient(90deg, var(--lw-graph) 1px, transparent 1px);
-  background-size: var(--lw-graph-step) var(--lw-graph-step);
-  overflow: hidden;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
-.la .lww-tools-panel > .panel-head::before { background: var(--lw-clay, var(--accent)); }
+.la .lww-tools-panel > .panel-head {
+  padding: 12px 14px 0;
+  border-top: 1px solid var(--border-hair);
+  border-bottom: 0;
+  background: transparent;
+}
+.la .lww-tools-panel > .panel-head::before { content: none; }
+.la .lww-tools-panel > .panel-head .ttl {
+  color: var(--text-hi);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
 
 .la .lww-tools-panel .lww-advanced-tools-body {
   display: flex;
@@ -689,16 +613,16 @@
 .la .lww-tools-panel .la-led-chipset-row { display: block; min-width: 0; }
 .la .lww-tools-panel .la-led-chipset {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   min-width: 0;
 }
 .la .lww-tools-panel .la-led-chipset .k {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--text-lo);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-mid);
 }
 .la .lww-tools-panel .la-gpio-wrap { min-width: 0; }
 
@@ -714,13 +638,12 @@
   min-width: 0;
   min-height: 34px;
   padding: 0 9px;
-  border: 1px solid var(--border-hair);
+  border: 1px solid var(--control-edge);
   border-radius: 2px;
-  background: var(--bg-canvas);
+  background: var(--control-fill);
   color: var(--text-hi);
   font-family: var(--font-mono);
-  font-size: 12px;
-  text-overflow: ellipsis;
+  font-size: 13px;
 }
 
 /* Buttons sit on a row and take their own width, as they do everywhere else
@@ -750,12 +673,12 @@
   padding: 0 22px 0 0;
   list-style: none;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: var(--text-lo);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-mid);
 }
 .la .lww-tools-panel details > summary::-webkit-details-marker { display: none; }
 .la .lww-tools-panel details > summary::after {
@@ -788,29 +711,15 @@
   display: grid;
   gap: 5px;
   min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 500;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--text-lo);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-mid);
 }
 .la .lww-tools-panel .lww-power-fields,
 .la .lww-tools-panel .lww-wiring-fields { display: grid; gap: 8px; }
-
-/* Alignment. The wire panel carries 13px of side padding, so anything inside
-   it starts indented from the Strip schedule and Build sheet, which are its
-   siblings in the column. Wire plan was inset 14px and Wire tools 30px — three
-   panels doing the same job, none of their left edges agreeing. Both are
-   pulled back out to the column's own edge. */
-/* Wire plan and Wire tools sit inside a wrapper that carries 13px of side
-   padding, so their edges land at 1151/1410 while the Strip schedule and
-   Build sheet — siblings of that wrapper — sit at 1137/1424. Rather than
-   fight the wrapper's padding (it also spaces the two loose paragraphs
-   inside it), the outer two are inset to meet the inner two. Four panels,
-   one left edge. */
-.la .la-wire-panel > .lww-tools-panel { margin: 0; }
-.la .lwbs { margin-left: 30px; margin-right: 30px; }
 
 /* The plan's summary is its whole content when shut — "2 strips · 44 LEDs in
    this design" clipped to "…in this desi…" is the one line that had to fit. */

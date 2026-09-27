@@ -83,3 +83,30 @@ test('recipeUsesNativeCardLook rejects non-bank, layered, evolved, and non-patte
   assert.equal(recipeUsesNativeCardLook(null), false);
   assert.equal(recipeUsesNativeCardLook({}), false);
 });
+
+test('saved native look round trip keeps exact zero saturation, modifiers, identity and sections', async () => {
+  const { lookFromRecipe } = await import('./patternLabHandoff.js');
+  const { normalizeSectionVisualLook } = await import('./sectionLookModel.js');
+  const { normalizePatternLabRecipe } = await import('./patternLabRecipe.js');
+  const look = { id: 'my-native-look', label: 'My native look', defaultLook: normalizeSectionVisualLook({ patternId: 'aurora', brightness: 0.4, speed: 1.7, customHue: 32, customSaturation: 0, hueShift: 80, customBreathe: true, breatheLowerPct: 24, breatheUpperPct: 93, breatheCycleSeconds: 17, customDrift: true }), sectionLooks: { left: normalizeSectionVisualLook({ patternId: 'fire', customHue: 99 }) } };
+  const recipe = normalizePatternLabRecipe(recipeFromLook(look));
+  const restored = lookFromRecipe(recipe);
+  assert.equal(restored.id, look.id);
+  assert.equal(restored.label, look.label);
+  assert.deepEqual(restored.defaultLook, look.defaultLook);
+  assert.deepEqual(restored.sectionLooks, look.sectionLooks);
+});
+
+test('opening a selected section preserves global and other section looks, then edits only that section', async () => {
+  const { lookFromRecipe } = await import('./patternLabHandoff.js');
+  const { normalizeSectionVisualLook } = await import('./sectionLookModel.js');
+  const source = { id: 'sections', label: 'Sections', selectedTargetId: 'left', defaultLook: normalizeSectionVisualLook({ patternId: 'aurora' }), sectionLooks: { left: normalizeSectionVisualLook({ patternId: 'fire', customHue: 39 }), right: normalizeSectionVisualLook({ patternId: 'solid', customSaturation: 0 }) } };
+  const recipe = recipeFromLook(source);
+  assert.equal(recipe.base.patternId, 'fire');
+  recipe.playback.brightness = 0.3;
+  const restored = lookFromRecipe(recipe);
+  assert.deepEqual(restored.defaultLook, source.defaultLook);
+  assert.deepEqual(restored.sectionLooks.right, source.sectionLooks.right);
+  assert.equal(restored.sectionLooks.left.brightness, 0.3);
+  assert.equal(restored.sectionLooks.left.customHue, 39);
+});

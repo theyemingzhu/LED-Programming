@@ -515,6 +515,9 @@ function evaluatePatternLabCompatibility(recipe, descriptor, metrics, options) {
   const budgets = buildBudgets(recipe, descriptor, metrics, options);
   const reasons = [];
   const changes = [];
+  if (recipe.base?.kind === 'color-journey') {
+    reasons.push(reason('color-journey-stream-only', 'Color journeys play through Studio. Keep this phone awake; standalone recording is not available yet.', { bakeable: false }));
+  }
 
   for (const [index, layer] of (recipe.layers || []).entries()) {
     const issue = layerGeneratorIssue(layer, index);

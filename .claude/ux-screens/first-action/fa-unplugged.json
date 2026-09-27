@@ -1,0 +1,17 @@
+{
+  "step": "fa-unplugged",
+  "heading": "Set up your Lightweaver",
+  "firstHeading": "Find my card",
+  "firstButton": "Find my card",
+  "firstPrimary": "Find my card",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Find my card"
+  ],
+  "journeyTask": "connect-card",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "Project not installed",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": false
+}

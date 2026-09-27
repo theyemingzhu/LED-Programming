@@ -65,7 +65,7 @@
   padding: 0 18px 14px;
   border-radius: var(--r-lg);
   border-color: var(--border-soft);
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 12px 26px oklch(0.05 0.005 60 / 0.32);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -76,35 +76,37 @@
   gap: 11px;
   margin: 0 -18px 4px;
   padding: 13px 18px;
-  background: var(--bg-elev);
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border-soft);
 }
 .set .card.set-card > .sec-h::before {
-  content: "";
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+  content: none;
 }
 .set .card.set-card > .sec-h .t {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-transform: none;
   color: var(--text-hi);
 }
 .set .card.set-card > .sec-h .m {
   margin-left: auto;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-lo);
 }
 
 /* the two modules that describe live hardware get a lit LED */
 .set .set-card.is-live > .sec-h::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   background: var(--lw-live-ink);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--lw-live-ink) 80%, transparent);
+  box-shadow: none;
 }
 
 /* ── rows ────────────────────────────────────────────────── */
@@ -269,11 +271,11 @@
   border-radius: 8px;
   font-size: 13.5px;
   font-weight: 600;
-  background: var(--bg-elev-2);
-  border-color: var(--border);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
   box-shadow: var(--lw-raise), var(--lw-lift);
 }
-.set .btn:hover { background: var(--bg-sel); border-color: var(--accent-line); }
+.set .btn:hover:not(:disabled) { background: var(--control-hover); }
 .set .btn.primary {
   color: var(--on-accent);
   background: linear-gradient(var(--accent-hi), var(--accent));
@@ -287,13 +289,19 @@
   min-height: 38px;
   padding: 0 14px;
   font-size: 12.5px;
-  background: transparent;
-  border-color: var(--border-soft);
-  color: var(--text-mid);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+  color: var(--text-hi);
   box-shadow: none;
 }
-.set .btn.ghost-sm:hover { background: var(--bg-elev); border-color: var(--border); color: var(--text-hi); }
-.set .btn:disabled { opacity: 0.45; box-shadow: none; }
+.set .btn.ghost-sm:hover:not(:disabled) { background: var(--control-hover); }
+.set .btn:disabled {
+  opacity: 1;
+  color: var(--control-disabled-ink);
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+  box-shadow: none;
+}
 /* the note under an action is a consequence of it, not a caption glued to it */
 .set .set-actions + .hh,
 .set .set-actions + p { margin-top: 11px; }
@@ -370,8 +378,8 @@
   margin-top: 2px;
   font-family: var(--font-mono);
   font-style: normal;
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-lo);
 }
@@ -395,7 +403,7 @@
   box-shadow: var(--lw-inset);
 }
 .set .set-output-row .set-outfield { justify-content: flex-end; gap: 7px; }
-.set .set-output-row .set-outfield span { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+.set .set-output-row .set-outfield span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .set .set-output-row .set-output-ro.pm-input {
   height: auto;
   padding: 0;
