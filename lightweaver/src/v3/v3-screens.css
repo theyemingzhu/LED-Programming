@@ -1222,42 +1222,6 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
    the transient notice so both can show. */
 .association-save-banner { top: 122px; }
 @media (max-width: 640px) {
-  .topbar-project-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-    gap: 8px;
-  }
-  .topbar-project-row > span {
-    display: block;
-    min-width: 0;
-    overflow: visible;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-  .topbar-project-row > .projects-row-actions {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .topbar-project-row > .cloud-rename { width: 100%; }
-  .topbar-project-row .projects-row-actions .btn.ghost-sm {
-    color: var(--text-hi);
-    background: var(--control-fill);
-    border-color: var(--control-edge);
-  }
-  .topbar-project-row .projects-row-actions .btn.ghost-sm:hover:not(:disabled) {
-    background: var(--control-hover);
-  }
-  .topbar-project-row .projects-row-actions .btn.ghost-sm.danger {
-    color: var(--text-hi);
-    box-shadow: inset 3px 0 0 var(--danger);
-  }
-  .topbar-project-row .projects-row-actions .btn.ghost-sm:disabled {
-    color: var(--control-disabled-ink);
-    background: var(--control-disabled-fill);
-    border-color: var(--control-disabled-edge);
-  }
   .association-save-banner { top: 168px; }
   .projects-panel { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
   /* Touch-sized library controls on narrow screens — the panel is the one

@@ -90,6 +90,32 @@ test('the 9/27 control, Layout identity, and narrow Projects refinements stay us
   await toolbarControl.hover();
   const hoverFill = await toolbarControl.evaluate(element => getComputedStyle(element).backgroundColor);
   expect(hoverFill).not.toBe(restingFill);
+  await page.evaluate(() => {
+    const primary = document.createElement('button');
+    primary.className = 'btn primary';
+    primary.dataset.testid = 'refinement-primary-control';
+    document.body.append(primary);
+    const disabled = document.createElement('button');
+    disabled.className = 'tb-btn';
+    disabled.disabled = true;
+    disabled.dataset.testid = 'refinement-disabled-toolbar-control';
+    document.body.append(disabled);
+  });
+  const primary = page.getByTestId('refinement-primary-control');
+  const normalPrimary = await primary.evaluate(element => {
+    const style = getComputedStyle(element);
+    return { borderColor: style.borderColor, color: style.color, background: style.backgroundColor };
+  });
+  await primary.hover();
+  const hoverPrimary = await primary.evaluate(element => ({
+    borderColor: getComputedStyle(element).borderColor,
+    color: getComputedStyle(element).color,
+    background: getComputedStyle(element).backgroundColor,
+  }));
+  expect(hoverPrimary.borderColor).toBe(normalPrimary.borderColor);
+  expect(hoverPrimary.color).toBe(normalPrimary.color);
+  expect(hoverPrimary.background).not.toBe(normalPrimary.background);
+  await expect(page.getByTestId('refinement-disabled-toolbar-control')).toHaveCSS('opacity', '1');
   const darkSelectedEdge = await page.locator('html').evaluate(element =>
     getComputedStyle(element).getPropertyValue('--control-selected-edge').trim());
   await page.locator('html').evaluate(element => element.setAttribute('data-theme', 'daylight'));

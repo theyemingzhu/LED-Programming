@@ -1,0 +1,125 @@
+/* Public Studio refinements approved on 2026-09-27. This file is imported
+   only by main.jsx; card-main.jsx keeps the signed card stylesheet graph. */
+
+:root {
+  /* Quiet neutral edges at rest; clay-orange states carry emphasis. */
+  --control-fill: oklch(0.285 0.010 75);
+  --control-hover: oklch(0.345 0.012 75);
+  --control-edge: oklch(0.360 0.010 75);
+  --control-selected: oklch(0.365 0.045 65);
+  --control-selected-edge: oklch(0.755 0.105 70);
+  --control-selected-ink: oklch(0.965 0.010 78);
+  --control-disabled-fill: oklch(0.215 0.007 75);
+  --control-disabled-edge: oklch(0.270 0.007 75);
+  --control-disabled-ink: oklch(0.610 0.010 75);
+  --focus-ring: oklch(0.800 0.130 72);
+}
+
+:root[data-theme="daylight"] {
+  --control-fill: oklch(0.935 0.012 78);
+  --control-hover: oklch(0.875 0.018 75);
+  --control-edge: oklch(0.800 0.012 75);
+  --control-selected: oklch(0.875 0.040 68);
+  --control-selected-edge: oklch(0.450 0.100 56);
+  --control-selected-ink: oklch(0.250 0.035 60);
+  --control-disabled-fill: oklch(0.955 0.008 80);
+  --control-disabled-edge: oklch(0.865 0.010 80);
+  --control-disabled-ink: oklch(0.490 0.010 75);
+  --focus-ring: oklch(0.450 0.100 56);
+}
+
+button:focus-visible { outline-color: var(--focus-ring); }
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible { outline-color: var(--focus-ring); }
+
+.btn {
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+}
+.btn:hover:not(:disabled) { background: var(--control-hover); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hi); border-color: transparent; }
+.btn:disabled {
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+  color: var(--control-disabled-ink);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.btn.primary:disabled {
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+  color: var(--control-disabled-ink);
+}
+
+.tb-btn {
+  color: var(--text-hi);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+}
+.tb-btn:hover:not(:disabled) { background: var(--control-hover); }
+.tb-btn.solid { background: var(--control-fill); color: var(--text-hi); border-color: var(--control-edge); }
+.tb-btn.solid:hover:not(:disabled) { background: var(--control-hover); }
+.tb-btn.active { background: var(--control-selected); color: var(--control-selected-ink); border-color: var(--control-selected-edge); }
+.tb-btn:disabled { background: var(--control-disabled-fill); color: var(--control-disabled-ink); border-color: var(--control-disabled-edge); opacity: 1; cursor: not-allowed; }
+
+.seg { border-color: var(--control-edge); }
+.seg button.on {
+  background: var(--control-selected);
+  color: var(--control-selected-ink);
+  box-shadow: inset 0 0 0 1px var(--control-selected-edge);
+}
+.viewtoggle { border-color: var(--control-edge); }
+.viewtoggle button.on {
+  background: var(--control-selected);
+  color: var(--control-selected-ink);
+  box-shadow: inset 0 0 0 1px var(--control-selected-edge);
+}
+
+.la .la-led-chipset { display: grid; gap: 5px; min-width: 0; }
+.la-chipset-hint {
+  grid-column: 1 / -1;
+  color: var(--text-lo);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (max-width: 640px) {
+  .topbar-project-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+  }
+  .topbar-project-row > span {
+    display: block;
+    min-width: 0;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .topbar-project-row > .projects-row-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .topbar-project-row > .cloud-rename { width: 100%; }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm {
+    color: var(--text-hi);
+    background: var(--control-fill);
+    border-color: var(--control-edge);
+  }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm:hover:not(:disabled) {
+    background: var(--control-hover);
+  }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm.danger {
+    color: var(--text-hi);
+    box-shadow: inset 3px 0 0 var(--danger);
+  }
+  .topbar-project-row .projects-row-actions .btn.ghost-sm:disabled {
+    color: var(--control-disabled-ink);
+    background: var(--control-disabled-fill);
+    border-color: var(--control-disabled-edge);
+  }
+}
