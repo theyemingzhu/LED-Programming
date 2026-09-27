@@ -13,16 +13,29 @@ export const USB_FIRMWARE_READ_TIMEOUT_MS = 25_000;
 // authenticated by its publisher-signed update ticket. A one-chunk digest
 // avoids scanning every unknown card for the full image; a match is only a
 // candidate until the entire signed application digest also matches.
-const SIGNED_2070 = Object.freeze({
-  firmwareVersion: '1.1.42',
-  buildId: '64b1f5da6725d472d54e59cfa8352c8b0bf864d9',
-  buildNumber: 2070,
-  size: 2_280_496,
-  sha256: 'a2c68e32af9534b5947560faf5d0f4c1b85a6a39cf78fc9a140c017510b793fd',
-  chunkOffset: 0xD0000,
-  chunkSha256: 'e09732fb0b40511341d793446ee9bbd3541204c36699030c07227df8753794a5',
-  tableSha256: '9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60',
-});
+const SIGNED_HISTORICAL_IMAGES = Object.freeze([
+  Object.freeze({
+    firmwareVersion: '1.1.39',
+    buildId: '92bfd6ab1e287b2bd818c5ce79062dc4f12f2a2b',
+    buildNumber: 1939,
+    size: 2_232_992,
+    sha256: '714bf301851a7d1e64da19edf8efe1528b59f47de9881eaf20c980fdb047178c',
+    chunkOffset: 0xD0000,
+    chunkSha256: 'd0ab579d236b26f8c6b363a166e52fba3a71c3d79702b7f8c7b46a27124f3840',
+    tableSha256: '9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60',
+  }),
+  Object.freeze({
+    firmwareVersion: '1.1.42',
+    buildId: '64b1f5da6725d472d54e59cfa8352c8b0bf864d9',
+    buildNumber: 2070,
+    size: 2_280_496,
+    sha256: 'a2c68e32af9534b5947560faf5d0f4c1b85a6a39cf78fc9a140c017510b793fd',
+    chunkOffset: 0xD0000,
+    chunkSha256: 'e09732fb0b40511341d793446ee9bbd3541204c36699030c07227df8753794a5',
+    tableSha256: '9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60',
+  }),
+]);
+const SIGNED_IMAGE_LAST_CHUNK_OFFSET = Math.max(...SIGNED_HISTORICAL_IMAGES.map(candidate => candidate.chunkOffset));
 // At 921600 baud, reading the signed 2.28 MB app can exceed the ordinary
 // 25-second exploratory scan. Only an exact candidate gets this total bound.
 const SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS = 60_000;
@@ -146,31 +159,36 @@ export async function readLightweaverFirmwareIdentity(
         onProgress?.({ bytesRead: relative + size, totalBytes: LIGHTWEAVER_APP_PARTITION_SIZE });
         return identity;
       }
-      if (relative < SIGNED_2070.chunkOffset) signedPrefix.push(chunk.slice());
-      else if (relative === SIGNED_2070.chunkOffset) {
-        if (await sha256Hex(chunk) === SIGNED_2070.chunkSha256) {
-          signedImage = new Uint8Array(SIGNED_2070.size);
-          for (let index = 0; index < signedPrefix.length; index += 1) {
-            signedImage.set(signedPrefix[index], index * USB_FIRMWARE_READ_CHUNK_SIZE);
+      if (!signedImage) {
+        const imagesAtChunk = SIGNED_HISTORICAL_IMAGES.filter(candidate => relative === candidate.chunkOffset);
+        if (imagesAtChunk.length) {
+          const chunkSha256 = await sha256Hex(chunk);
+          const candidate = imagesAtChunk.find(image => image.chunkSha256 === chunkSha256);
+          if (candidate) {
+            signedImage = { candidate, bytes: new Uint8Array(candidate.size) };
+            for (let index = 0; index < signedPrefix.length; index += 1) {
+              signedImage.bytes.set(signedPrefix[index], index * USB_FIRMWARE_READ_CHUNK_SIZE);
+            }
+            // A caller-supplied deadline remains authoritative. Only the default
+            // exploratory scan receives enough time to finish an exact candidate.
+            if (!Object.hasOwn(options, 'timeoutMs')) {
+              deadline = Math.max(deadline, startedAt + SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS);
+            }
           }
-          // A caller-supplied deadline remains authoritative. Only the default
-          // exploratory scan receives enough time to finish an exact candidate.
-          if (!Object.hasOwn(options, 'timeoutMs')) {
-            deadline = Math.max(deadline, startedAt + SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS);
-          }
-        }
-        signedPrefix = [];
+          signedPrefix = [];
+        } else if (relative < SIGNED_IMAGE_LAST_CHUNK_OFFSET) signedPrefix.push(chunk.slice());
       }
       if (signedImage) {
-        const length = Math.min(chunk.length, SIGNED_2070.size - relative);
-        if (length > 0) signedImage.set(chunk.subarray(0, length), relative);
+        const length = Math.min(chunk.length, signedImage.candidate.size - relative);
+        if (length > 0) signedImage.bytes.set(chunk.subarray(0, length), relative);
       }
       onProgress?.({
-        bytesRead: signedImage ? Math.min(relative + size, SIGNED_2070.size) : relative + size,
-        totalBytes: signedImage ? SIGNED_2070.size : LIGHTWEAVER_APP_PARTITION_SIZE,
+        bytesRead: signedImage ? Math.min(relative + size, signedImage.candidate.size) : relative + size,
+        totalBytes: signedImage ? signedImage.candidate.size : LIGHTWEAVER_APP_PARTITION_SIZE,
       });
-      if (signedImage && relative + size >= SIGNED_2070.size) {
-        if (await sha256Hex(signedImage) !== SIGNED_2070.sha256) return null;
+      if (signedImage && relative + size >= signedImage.candidate.size) {
+        const candidate = signedImage.candidate;
+        if (await sha256Hex(signedImage.bytes) !== candidate.sha256) return null;
         if (shouldStop?.() === true || now() >= deadline) return null;
         // The image hash identifies stored app0 bytes. Only a separate fresh
         // partition-table and OTA selector read can promote it to the currently
@@ -184,7 +202,7 @@ export async function readLightweaverFirmwareIdentity(
           invalidateRead('incomplete-partition-table-read');
           return null;
         }
-        const canonicalTable = await sha256Hex(table) === SIGNED_2070.tableSha256;
+        const canonicalTable = await sha256Hex(table) === candidate.tableSha256;
         let selection = null;
         let selectorReadFailed = false;
         if (canonicalTable) {
@@ -202,9 +220,9 @@ export async function readLightweaverFirmwareIdentity(
           return null;
         }
         return Object.freeze({
-          firmwareVersion: SIGNED_2070.firmwareVersion,
-          buildId: SIGNED_2070.buildId,
-          buildNumber: SIGNED_2070.buildNumber,
+          firmwareVersion: candidate.firmwareVersion,
+          buildId: candidate.buildId,
+          buildNumber: candidate.buildNumber,
           ...(selection || {}),
           source: selection?.activeAppOffset === LIGHTWEAVER_APP_PARTITION_OFFSET
             ? 'usb-flash' : 'usb-app0-image',

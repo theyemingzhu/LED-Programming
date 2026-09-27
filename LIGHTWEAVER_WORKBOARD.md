@@ -7,6 +7,35 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Physical card connection manager — 2026-09-27 (active, Bench)
+
+This manager chat owns the local Mac connection follow-up. Started from clean
+main `d2d98264`; recognition fix is on `codex/usb-build-1939-recognition`.
+Existing preview PID 5310 uses root `lightweaver/` on port 4173. No second
+preview, flash, erase, or Mac network change. Public HTTPS response confirms
+internet.
+
+Fresh USB descriptor and ROM inspection agree on MAC `44:1b:f6:81:fe:b0`,
+card `lw-b0fe81f61b44`, ESP32-S3 with 8 MB PSRAM. Partition table matches the
+signed preserving layout; OTA selector now proves stable app0, sequence 1.
+Boot reports compiled defaults, no saved Wi-Fi/project and zero pixels.
+Stored image 1939 predates USB Wi-Fi provisioning; signed target remains 2160.
+Current signed manifest, update ticket and application verify successfully.
+
+Normal in-app browser Find connected card click shows no chooser or screen
+change. Native Chrome control remains outside the previously allowed boundary;
+no workaround permission grant was attempted. User chooser observation is
+pending. Full physical app0 SHA now matches signed1939 exactly. Studio lacked
+recognition for that signed image; a focused regression witnessed red, and the
+fix plus all 20 reader tests pass, including corrupted-image and app1 refusal.
+Updated reader correctly identifies the actual card dump as1939/app0. Checkpoint
+passes all2,803 units and the production build. Release is underway; this does
+not prove browser USB or LAN operation.
+See [the Bench record](docs/bench-sessions/2026-09-27-lw-b0fe81f61b44-usb-connection.md).
+
+Next: complete the normal USB chooser for this exact card and observe Studio's
+identity/compatibility result. Physical connection is not yet verified.
+
 ## Session consolidation — 2026-09-27 (done; Bench follow-up open)
 
 The current **Fix Find my card detection** chat owns remaining LED/Lightweaver
