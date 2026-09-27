@@ -523,9 +523,9 @@
 .lw-wiring-candidate p { margin: 0; color: var(--text-mid); font-size: 11px; line-height: 1.45; }
 .lw-wiring-candidate > div { display: flex; flex-wrap: wrap; gap: 7px; }
 .lw-wiring-candidate .btn { min-height: 38px; }
-.la-card-push-row { display: flex; gap: 8px; align-items: stretch; }
+.la-card-push-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .la-card-push-btn {
-  flex: 1;
+  flex: 0 1 auto;
   justify-content: center;
   gap: 8px;
 }
@@ -776,8 +776,8 @@
   .lw-install-review { grid-template-columns: 1fr; }
   .lw-install-review > div:nth-last-child(-n+2) { border-bottom: 1px solid var(--border-hair); }
   .lw-install-review > div:last-child { border-bottom: 0; }
-  .la-card-push-row { display: grid; grid-template-columns: 1fr; }
-  .la-card-push-btn,.la-export-ledmap { min-height: 48px; width: 100%; }
+  .la .la-install-actions > .btn { min-height: 44px; }
+  .la-card-push-btn,.la-export-ledmap { min-height: 48px; width: auto; max-width: 100%; }
 }
 
 @media (pointer: coarse) {

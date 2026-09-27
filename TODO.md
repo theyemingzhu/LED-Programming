@@ -295,27 +295,14 @@ The 2026-06-16 audit fixes (firmware C1/H1/H2/M1/M4, Studio C2/H3/M3/M5/M6, Pi/m
 - [ ] **Visitor-ui branding** — customize the brand constant and match the scenes list to the real saved WLED presets _(agent · quick)_
   The captive-portal selector should show Lightweaver branding and offer the actual scenes saved on the controller. Done when the visitor-ui uses the Lightweaver brand and its scene list matches the saved WLED presets. → Plan: [docs/roadmap.md](docs/roadmap.md)
 
-### Mapper and firmware follow-ups
+### Firmware follow-ups
 
-- [ ] **USB controller mode** — add a direct USB mode using the verified bench serial protocol as the first hardware handshake _(agent · moderate)_
-  A wired serial path lets the mapper drive the card directly without the network, proving the protocol before wireless. Done when the mapper can drive the controller over USB serial using the bench protocol. → Plan: [docs/roadmap.md](docs/roadmap.md)
-- [ ] **Split mapper file** — break the 4,713-line mapper main file into state, ui, render, and export modules _(agent · deep)_
-  The single oversized file is hard to maintain and extend; splitting it by concern makes the design tool workable. Done when the mapper main file is split into separate state, ui, render, and export modules with no behavior change. → Plan: [docs/roadmap.md](docs/roadmap.md)
+The standalone LED art mapper is retired from the customer interface; Studio Layout owns artwork and strip editing. Its old feature backlog is no longer active.
+
 - [ ] **Branded effects** — build the first custom WLED effects (Candle Drift, Ember Slow, Warm Pulse, Amber Aurora, Gallery Idle) _(agent · moderate)_
   Bespoke warm effects give the installation its own visual identity beyond the stock WLED library. Done when the five named effects run on the controller. → Plan: [docs/roadmap.md](docs/roadmap.md)
-- [ ] **Offline export** — build standalone-controller export (lightweaver.json and microSD sequence packages) for offline ESP32 playback _(agent · deep)_
-  This lets the card play scenes from local storage with no host or network present, the key to a self-running gallery install. Done when the mapper exports lightweaver.json and microSD sequence packages the ESP32 can play offline. → Plan: [docs/roadmap.md](docs/roadmap.md)
-- [ ] **Mapper unit tests** — add a Vitest unit suite for the mapper pattern helpers and export functions _(agent · moderate)_
-  Tests lock down the pattern math and export formats so refactors and new features don't silently break output. Done when a Vitest suite covers the mapper pattern helpers and export functions and passes. → Plan: [docs/roadmap.md](docs/roadmap.md)
-
-### Mapper design tool feature roadmap
-
-- [ ] **Per-section controls** — add quick per-section controls (brightness, hue shift, direction reversal) and master brightness _(agent · moderate)_
-  Fast per-zone tweaks let Adrian shape a look without editing patterns, which is the core day-to-day mapper interaction. Done when each section has brightness, hue-shift, and direction controls plus a working master brightness. → Plan: [led-art-mapper/ROADMAP.md](led-art-mapper/ROADMAP.md)
-- [ ] **Palettes and tempo** — add the color palette system, BPM tap tempo with beat variables, scene presets, and per-pattern parameter sliders _(agent · deep)_
-  These give patterns shared color and rhythm so scenes can move in time and be saved for reuse. Done when palettes, BPM-tapped beat variables, scene presets, and per-pattern sliders all work in the mapper. → Plan: [led-art-mapper/ROADMAP.md](led-art-mapper/ROADMAP.md)
-- [ ] **Show tooling** — build scene crossfades, the timeline sequencer, and the spatial effect bus _(agent · deep)_
-  This is the sequencing layer that turns individual scenes into a timed, blended show across the installation. Done when scenes crossfade, the timeline sequencer plays an ordered show, and the spatial effect bus is functional. → Plan: [led-art-mapper/ROADMAP.md](led-art-mapper/ROADMAP.md)
+- [ ] **Offline export** — build standalone-controller export (lightweaver.json and microSD sequence packages) from Studio for offline ESP32 playback _(agent · deep)_
+  This lets the card play scenes from local storage with no host or network present, the key to a self-running gallery install. Done when Studio exports lightweaver.json and microSD sequence packages the ESP32 can play offline. → Plan: [docs/roadmap.md](docs/roadmap.md)
 
 ### Remaining review findings (deferred from the 2026-06-11 fix pass)
 

@@ -177,10 +177,7 @@ export function classifyChangedPaths(paths, {
       continue;
     }
 
-    if (isAnyPath(path, [
-      'lightweaver/scripts',
-      'led-art-mapper',
-    ]) || isAnyPath(path, [
+    if (isPath(path, 'lightweaver/scripts') || isAnyPath(path, [
       'lightweaver/vite.config.js',
       'lightweaver/index.html',
       'lightweaver/card.html',

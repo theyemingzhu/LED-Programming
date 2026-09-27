@@ -3,3 +3,9 @@
 .sexp-palette{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.sexp-palette input{width:100%;height:38px;padding:3px;border:1px solid var(--sx-line);border-radius:4px;background:#22211d}
 .sexp-head{flex-wrap:wrap;gap:20px 24px}.sexp-head>div:first-child{flex:1 1 420px;min-width:0}.sexp-title{width:min(620px,100%)}.sexp-head-actions{flex:1 1 520px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
 @media(max-width:760px){.sexp-head{align-items:flex-start;padding:20px;flex-direction:column}.sexp-head>div:first-child{flex:none;width:100%}.sexp-title{width:100%;font-size:32px}.sexp-head-actions{flex:none;width:100%;display:grid;grid-template-columns:1fr 1fr}.sexp-head-actions select{width:100%;max-width:none}.sexp-head-actions button{width:100%}.sexp-status,.sexp-delivery{display:grid;min-height:unset;gap:6px;padding:11px 20px 15px;line-height:1.45}.sexp-status span{display:block}.sexp-status em,.sexp-delivery em{width:100%;margin:0}.sexp-grid{display:flex;flex-direction:column}.sexp-preview{order:1;padding:14px 14px 0}.sexp-canvas{height:34vh;min-height:245px}.sexp-timeline{order:2;padding:18px 14px}.sexp-inspector{order:3;max-height:none;overflow:visible;padding:22px 16px 92px;border-top:1px solid var(--sx-line);border-left:0}.sexp-step-list article{flex-basis:200px}.sexp-inline{grid-template-columns:1fr}.sexp-targets{grid-template-columns:1fr 1fr}}
+/* Mobile actions keep their labels visible without becoming equal-width tiles. */
+@media (max-width: 760px) {
+  .sexp-head-actions { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+  .sexp-head-actions select { width: min(180px, 100%); min-height: 44px; }
+  .sexp-head-actions button { width: auto; max-width: 100%; min-height: 44px; white-space: normal; }
+}

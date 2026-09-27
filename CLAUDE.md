@@ -18,7 +18,7 @@ As of 2026-06 the runtime is **ESP32-S3 only**. The card runs the Lightweaver fi
 ## Current contents
 - `research.md` — hardware options (ESP32-S3, WLED firmware, Madrix integration), Art-Net/E1.31 protocols, control architecture, color management
 - `branded-installation-ui.md` — visitor-facing branded UI design spec (captive portal, scene selector)
-- `led-art-mapper/` — Vite app for designing LED strip paths over artwork SVGs and exporting external geometry formats
+- `lightweaver/src/components/LayoutScreen.jsx` — active Studio Layout for artwork SVGs, strip paths, and wiring
 - `lightweaver/` — React Studio/control app, controller package export, runtime contract tests, and deferred Pi proxy
 - `firmware/lightweaver-controller/` — standalone ESP32-S3 Lightweaver card firmware for local playback
 - `docs/deployment-checklist.md` — bench-to-gallery checklist, including code/runtime launch gate
@@ -40,10 +40,10 @@ As of 2026-06 the runtime is **ESP32-S3 only**. The card runs the Lightweaver fi
 - **Deployment split**: the Lightweaver browser UI lives at `led.mandalacodes.com`. The active command path stays local through the Lightweaver card page or verified local bridge.
 
 ## Architectural decisions
-- `led-art-mapper/` is the standalone geometry tool. Its WLED and coordinate artifacts are external exports, not the active card runtime contract.
+- Artwork geometry and strip editing live in the Studio Layout screen; the retired standalone mapper is not a customer surface.
 - `lightweaver/` (React) is the public Studio, installer, design, commissioning, and control surface.
 - `visitor-ui/` is a **future Pi-hosted** branded React UI (captive-portal scene selector per `branded-installation-ui.md`). **Not in the current ESP-only plan** — the firmware card page is today's visitor UI. Retained for a future Pi integration; visitor-facing polish goes into the firmware page for now.
-- **Tests** live under `/e2e/` using `@playwright/test`. **Diagnostic scripts** are archived in `/scripts/debug/`.
+- **Studio tests** live under `lightweaver/tests/`; the root `/e2e/` suite covers only the retired standalone mapper. **Diagnostic scripts** are archived in `/scripts/debug/`.
 
 ## Shipment vocabulary and standing authorization
 
@@ -131,16 +131,15 @@ Wi-Fi update are older than the live site. A bench card on a dev build is
 unaffected; a customer card gets the drift at the next release.
 
 ## Agent ownership boundaries
-- `led-art-mapper/app/src/` — owned by led-art-mapper agent; do not edit
 - `lightweaver/src/` — owned by lightweaver-app agent; do not edit
 - `firmware/lightweaver-controller/src/` — owned by firmware agent; do not edit
 - `scripts/`, `.github/`, `docs/`, root markdown files, `lightweaver/scripts/`, `lightweaver/vite.config.js`, `lightweaver/package.json` (scripts section only), `.gitignore` — owned by CI/docs agent
 
 ## Tools already built
-- `led-art-mapper/` — design tool: draw LED strip paths over artwork, set pixel counts, write live patterns (JS), and export WLED/FastLED/CSV geometry for external consumers
+- `lightweaver/` Layout — draw and edit LED strip paths over artwork inside the active Studio
 
 ## Next steps
-- [x] Tooling: led-art-mapper design tool, lightweaver React building blocks, visitor-ui scaffold
+- [x] Tooling: Lightweaver Studio Layout and controller package export, visitor-ui scaffold
 - [x] Operational docs: `docs/deployment-checklist.md`, `docs/hardware-setup.md`, `docs/segments.md`
 - [x] Launch gate: `npm run launch:check` in `lightweaver/` runs core runtime contract tests and production build
 - [ ] Complete current signed Lightweaver firmware acceptance on the physical ESP32-S3 card
@@ -161,7 +160,7 @@ Full policy: `docs/branch-maintenance.md`. The short version every session must 
 - **Project roadmap (living source of truth)** → `docs/roadmap.md`
 - **Hardware research** → `research.md`
 - **Visitor UI design plan** → `branded-installation-ui.md`
-- **LED layout design tool** → `led-art-mapper/`
+- **LED layout design tool** → `lightweaver/src/components/LayoutScreen.jsx`
 - **Direction / strategy log** → `THINKING.md` (rejected paths + tensions across chats)
 - **Outstanding work** → `TODO.md` (project root)
 

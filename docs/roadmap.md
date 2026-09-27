@@ -339,20 +339,16 @@ These cannot be done by agents. See `docs/hardware-setup.md` for step-by-step.
 
 - [x] Add the free desktop Chrome/Edge Web Serial production lane for one-card flashing and loading. Native Bridge packaging remains deferred and is not part of Production Setup.
 - [ ] Flash current no-relay firmware to any existing cards that were built with the old relay polling module.
-- [ ] **Refactor**: split 4,713-line `led-art-mapper/app/src/main.js` into modules (state, ui, render, export) — *deferred from this round; best done in a focused session because it touches everything*
 - [ ] Extend runtime target badges to Pattern, Timeline, and Export screens
 - [ ] WLED Basic installer: run controller compatibility audit, back up existing presets, then apply the generated package directly to a connected WLED controller
 - [ ] Lightweaver custom WLED effect build: first branded ambient set for Candle Drift, Ember Slow, Warm Pulse, Amber Aurora, and Gallery Idle
 - [ ] Standalone controller export: generate `lightweaver.json` and `.lwseq` microSD packages for ESP32-S3 playback
-- [ ] Add Vitest unit suite for `led-art-mapper` pattern helpers + export functions
-- [ ] Tighten Playwright selectors flagged with `// TODO: tighten selector` in `e2e/*.spec.ts`
 - [ ] Wire visitor-ui brightness slider to debounce instead of commit-on-release (current behavior is intentional — confirm UX)
 - [ ] Add `lightweaver` UI hook-up for the new JSON API methods (currently only the hook exposes them)
 
 ## Open — nice-to-have
 
 - [ ] Pattern syntax validator with friendly inline errors (currently runtime-only)
-- [ ] Accessibility pass on `led-art-mapper` (ARIA, keyboard nav, shortcut documentation)
 - [ ] Visitor-ui idle screensaver / brand animation while no scene is selected
 - [ ] Telemetry: log preset selections to a local file for installation analytics
 

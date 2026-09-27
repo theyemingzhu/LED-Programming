@@ -1215,8 +1215,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   .prod-output-tabs button { flex-basis: calc(50% - 3px); }
   .prod-recovery-head { align-items: stretch; flex-direction: column; }
   .prod-recovery-head code { align-self: flex-start; }
-  .prod-recovery-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
-  .prod-recovery-actions .btn { width: 100%; white-space: normal; }
+  .prod-recovery-actions .btn { max-width: 100%; white-space: normal; }
 }
 @media (prefers-reduced-motion: reduce) {
   .prod-progress span { transition: none; }

@@ -404,7 +404,7 @@ test('opening while the card is recovering renders the busy recovery action dire
   await expect(page.getByRole('button', { name: 'My card already lights up' })).toHaveCount(0);
 });
 
-test('working setup card shows AP steps before continuing through the setup host', async ({ page }) => {
+test('working setup card gives one concise AP path before continuing through the setup host', async ({ page }) => {
   await installCardPopupMock(page, 'lw-setup-card', '192.168.4.1');
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
@@ -417,9 +417,11 @@ test('working setup card shows AP steps before continuing through the setup host
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog).not.toContainText('Lightweaver-XXXX');
   await expect(dialog).toContainText('name starts with');
-  await expect(dialog).toContainText(/finish setup/i);
+  await expect(dialog).toContainText(/Power the card, join .*finish Wi-Fi setup on the card page, then return to Studio\./i);
+  await expect(dialog.locator('.card-connection-setup-steps')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'The card is already on my Wi-Fi' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls.length)).toBe(0);
-  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await dialog.getByRole('button', { name: 'Continue after setup' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls[0]?.url || '')).toContain('192.168.4.1');
 });
 
@@ -1089,7 +1091,7 @@ test('connection center opens the stored setup host and offers explicit pairing 
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Continue after setup' }).click();
 
   await expect.poll(() => page.evaluate(() => (window as any).__cardPopupCalls[0]?.url || '')).toContain('192.168.4.1');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_chip_card_host'))).toBe('192.168.4.1');

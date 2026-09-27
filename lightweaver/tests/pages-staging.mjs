@@ -112,7 +112,10 @@ assert.equal(
   'playwright test tests/cloud-project-library.spec.ts --project=chromium --workers=1',
 );
 assert.match(pkg.scripts['test:projects'], /tests\/cloud-bindings\.mjs/);
-assert.match(pkg.scripts['launch:source'], /npm run test:projects && npm run test:projects:browser && npm run test:mapper/);
+assert.match(pkg.scripts['launch:source'], /npm run test:projects && npm run test:projects:browser && npm run test:production-jobs/);
+assert.doesNotMatch(pkg.scripts['launch:source'], /test:mapper/);
+assert.doesNotMatch(pkg.scripts['ci:source-build'], /test:mapper/);
+assert.equal(pkg.scripts['test:mapper'], undefined);
 assert.equal(
   (pkg.scripts['launch:source'].match(/npm run test:cloud-bindings/g) || []).length,
   0,

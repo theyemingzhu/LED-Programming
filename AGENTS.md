@@ -18,10 +18,12 @@ As of 2026-06 the runtime is **ESP32-S3 only**. The card runs the Lightweaver fi
 ## Current contents
 - `research.md` — hardware options (ESP32-S3, WLED firmware, Madrix integration), Art-Net/E1.31 protocols, control architecture, color management
 - `branded-installation-ui.md` — visitor-facing branded UI design spec (captive portal, scene selector)
-- `led-art-mapper/` — Vite app for designing LED strip paths over artwork SVGs; exports `ledmap.json` for WLED
+- `lightweaver/src/components/LayoutScreen.jsx` — active Studio Layout for artwork SVGs, strip paths, and wiring
 - `lightweaver/` — React Studio/control app, Pi proxy server (deferred), controller package export, and runtime contract tests
 - `firmware/lightweaver-controller/` — standalone ESP32-S3 Lightweaver card firmware for local playback
 - `docs/deployment-checklist.md` — bench-to-gallery checklist, including code/runtime launch gate
+
+The old `led-art-mapper/app/` is retired reference source with optional manual tests. Do not open or run it as the Studio preview; customer interface work belongs in `lightweaver/`.
 
 ## Key decisions from research
 - **WLED firmware** recommended for quick start (100+ effects, REST/JSON API, Art-Net support)
@@ -140,13 +142,12 @@ against the terminal `origin/main` revision, including any protected firmware
 signer commit triggered by the merge.
 
 ## Agent ownership boundaries
-- `led-art-mapper/app/src/` — owned by led-art-mapper agent; do not edit
 - `lightweaver/src/` — owned by lightweaver-app agent; do not edit
 - `firmware/lightweaver-controller/src/` — owned by firmware agent; do not edit
 - `scripts/`, `.github/`, `docs/`, root markdown files, `lightweaver/scripts/`, `lightweaver/vite.config.js`, `lightweaver/package.json` (scripts section only), `.gitignore` — owned by CI/docs agent
 
 ## Tools already built
-- `led-art-mapper/` — design tool: draw LED strip paths over artwork, set pixel counts, write live patterns (JS), export `ledmap.json` / FastLED header / CSV
+- `lightweaver/` Layout — draw and edit LED strip paths over artwork inside the active Studio
 - `lightweaver/` — React Studio with WLED WebSocket hook, ESP32 Web Serial flasher, controller package export, and launch test script
 - `firmware/lightweaver-controller/` — sellable standalone card firmware with local config page, rotary controls, and microSD sequence support
 
@@ -158,7 +159,7 @@ signer commit triggered by the merge.
 - **Project roadmap (living source of truth)** → `docs/roadmap.md`
 - **Hardware research** → `research.md`
 - **Visitor UI design plan** → `branded-installation-ui.md`
-- **LED layout design tool** → `led-art-mapper/`
+- **LED layout design tool** → `lightweaver/src/components/LayoutScreen.jsx`
 - **Direction / strategy log** → `THINKING.md` (rejected paths + tensions across chats)
 - **Outstanding work** → `TODO.md` (project root)
 - **Customer runtime modes** → `docs/lightweaver-customer-runtime.md`

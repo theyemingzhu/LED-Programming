@@ -2,7 +2,7 @@
 
 WLED **segments** are named ranges of LEDs on the same strip that can each run their own effect, colour, palette, and brightness. For Lightweaver, each laser-cut zone of the artwork should be a segment so the visitor UI and Madrix can address zones independently without re-wiring the strip.
 
-Fill in the table below once the artwork is final and the strip has been laid out in `led-art-mapper/`. Replace the placeholder rows; keep the column headers.
+Fill in the table below once the artwork is final and the strip has been laid out in Studio Layout. Replace the placeholder rows; keep the column headers.
 
 ---
 

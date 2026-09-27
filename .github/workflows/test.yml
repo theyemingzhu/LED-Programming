@@ -12,7 +12,6 @@ on:
       - main
     paths:
       - 'lightweaver/**'
-      - 'led-art-mapper/**'
       - 'packages/installer-core/**'
       - 'firmware/**'
       - 'release/**'
@@ -82,12 +81,10 @@ jobs:
           cache: npm
           cache-dependency-path: |
             lightweaver/package-lock.json
-            led-art-mapper/app/package-lock.json
       - name: Install pinned source dependencies
         run: |
           npm ci --prefix lightweaver
           node lightweaver/scripts/ensure-rollup-native.mjs
-          npm ci --prefix led-art-mapper/app
           npx --prefix lightweaver playwright install --with-deps chromium
       - name: Apply D1 migrations to isolated local CI state
         working-directory: lightweaver
