@@ -2816,6 +2816,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       <span className="t">Preview</span>
                       <span className="m">{selectedDisplayLabel}</span>
                     </div>
+                    <div className="pm-preview-nav" role="group" aria-label="Preview navigation">
                     <button
                       type="button"
                       className={`pm-piece-toggle${previewMode === 'piece' ? ' on' : ''}`}
@@ -2828,7 +2829,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       aria-label="Previous LED target"
                       disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) <= 0}
                       onClick={() => stepPatternPreviewTarget(-1)}
-                    >‹</button>
+                    ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 4-4 4 4 4" /></svg></button>
                     <label className="pm-preview-select">
                       <span className="sr-only">Preview target</span>
                       <select
@@ -2848,7 +2849,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                       aria-label="Next LED target"
                       disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) >= previewTargetIds.length - 1}
                       onClick={() => stepPatternPreviewTarget(1)}
-                    >›</button>
+                    ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></button>
+                    </div>
                   </div>
                   <div
                     data-testid="pattern-project-preview"
