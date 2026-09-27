@@ -276,7 +276,7 @@
 }
 .lw-connected-parent { flex-wrap: wrap; align-items: flex-start; }
 .lw-connected-parent > div { align-items: baseline; flex: 1 1 110px; min-width: 100px; flex-wrap: wrap; }
-.lw-connected-parent label { flex: 1 1 118px; min-width: 0; }
+.lw-connected-parent label { flex: 0 0 auto; gap: 6px; }
 .lw-connected-parent span,
 .lw-connected-child label > span { color: var(--text-mid); font-size: 11px; }
 .lw-connected-parent select,
@@ -289,6 +289,8 @@
   color: var(--text-hi);
   padding: 5px 6px;
 }
+/* Reserve the pin text plus the native select arrow at a 300px inspector. */
+.lw-connected-parent select { flex: 0 0 88px; width: 88px; min-width: 88px; }
 .lw-connected-bar {
   display: flex;
   width: 100%;

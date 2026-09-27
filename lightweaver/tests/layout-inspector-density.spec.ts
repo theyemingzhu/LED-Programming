@@ -94,9 +94,21 @@ test('locked imported strip divides into four connected sections without card wr
   await expect(page.getByTestId('connected-child')).toHaveCount(4);
   await expect(page.getByLabel('Section 1 actual LEDs')).toHaveCount(1);
   await expect(page.getByLabel('Section 2 GPIO override')).toHaveCount(0);
-  for (const width of [1440, 390]) {
+  await page.getByLabel('Parent GPIO', { exact: true }).selectOption('18');
+  for (const width of [1069, 390]) {
     await page.setViewportSize({ width, height: 1000 });
+    if (width === 1069) await page.locator('.la .side').evaluate((element: HTMLElement) => {
+      element.style.width = '300px';
+      element.style.flexBasis = '300px';
+    });
     await page.getByTestId('connected-section-editor').scrollIntoViewIfNeeded();
+    const gpio = page.getByLabel('Parent GPIO', { exact: true });
+    await expect(gpio).toHaveValue('18');
+    const gpioBox = (await gpio.boundingBox())!;
+    expect(gpioBox.width).toBeGreaterThanOrEqual(88);
+    const panelBox = (await page.locator('.la .side').boundingBox())!;
+    expect(gpioBox.x + gpioBox.width).toBeLessThanOrEqual(panelBox.x + panelBox.width);
+
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`four-sections-${width}.png`) });
   }

@@ -1689,7 +1689,7 @@ export function DrawModePanel({
                                   <span>{connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs · {connectedMembers.length} sections</span>
                                 </div>
                                 <label>
-                                  <span>Parent GPIO</span>
+                                  <span>GPIO</span>
                                   <select aria-label="Parent GPIO"
                                           value={connectedMembers.every(member => outputForStrip(member.id)?.pin === outputForStrip(connectedMembers[0]?.id)?.pin)
                                             ? outputForStrip(connectedMembers[0]?.id)?.pin ?? ''
