@@ -7,6 +7,136 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current customer setup — 2026-09-24 (active: project and light setup)
+
+User granted permission to perform the diagnostics/actions needed to finish,
+explicitly resolving the pending Windows read-only network inspection exception.
+Gallery connection is verified. Priority is actual project/pattern installation
+and playback, with the reproduced navigation defect shipping independently.
+
+BREAKTHROUGH 2026-09-24 04:57 Windows time: card2088 joined Pillaroflight,
+DHCP192.168.18.22. Root compared working Windows profile with supplied card entry:
+one-character credential mismatch. Corrected masked local card form; success
+message confirms connected address. No firmware/security/router changes needed.
+Never record the credential. Studio subsequently verified exact card
+lw-301bd5a172e0 / firmware2088 on gallery192.168.18.22 and reached Step2of3,
+Find and verify the lights. Card has no installed project, saved output, or LED
+count. Discovery modal opened; no GPIO selected and no physical light proof.
+Artwork/output/count clarification pending while independent software work proceeds.
+Navigation packet80b0c797 shipped as Studio2111 / firmware2088, PR336,
+terminal main697ea205. Manual deploy35997113003 succeeded; strict63-file Studio
+and8-file signed-firmware live graph proof passed. Two focused browser tests/build
+passed; exact-main broad CI35997069849 in progress at last check. Actual remote
+retest blocked by Chrome debugger attachment failure; native pointer fallback
+returns noWindowsAvailable. Gallery setup proof above was earned on2109.
+Interface agent correcting a separately observed misleading discovery toast:
+factory current cap is100mA, not hard-coded1500mA. No power limits change.
+Root approvede218bf0c after source/test review and local100mA screenshot;
+two focused browser regressions red-to-green and production build passed.
+Copy packet mergedPR337 atf7ab6d86; Studio2113 deployed via35997984179,
+canonical no-cache marker confirms exact revision/build. Strict63-file Studio
+and8-file firmware graph proof passed; firmware remains2088. Browser reconnection requested
+asynchronously; artwork/output/count question also remains pending.
+Broader2111 CI exposed one stale fresh-install fallback assertion. Test-only
+correction PR338 merged61cf006f after focused1/1PASS: actual Wi-Fi-page URL,
+USB/SSID retained, no false stage advance, no credential submission. Final
+manual deployment35998892107 succeeded, canonical no-cache marker61cf006f,
+Studio2115 / signedfirmware2088. Exact clean build/stage passed; strict terminal
+63-file Studio /8-file signedfirmware graph proof PASS. Exact-main broad Tests
+35998845487 in progress at final check; corrected focused regressionPASS.
+No product or firmware source changed in this last merge.
+Fresh remote attachment retry still returnsDebugger unattached; no further card
+mutations. Resume at Projects after remote reconnection and artwork/output/count
+are known; no physical acceptance or customer-ready claim is supported yet.
+This supersedes historical handshake/permission blockers below.
+
+Windows successfully joined Pillaroflight using its existing saved profile.
+Active properties: WPA2-Personal, 5GHz channel149, DHCP192.168.18.12,
+gateway192.168.18.1. Earlier disconnected saved-profile dialog showed WPA3/AES;
+that is not evidence of active AP security. Card2088 supports WPA3-SAE/PMF;
+exact pinned-stack audit found no proven missing security switch. Root next
+tests card setup AP while preserving Ethernet/Tailscale. No credential revealed.
+Direct setupAP connection succeeded; Studio HTTP and local bridge verify2088.
+Card own HTTP Wi-Fi form scanned Pillaroflight and one controlled supplied-key
+submission returned the same security-handshake failure. Router192.168.18.1
+identifies HuaweiEG8041V5 and needs admin login (no login attempted). Windows
+netsh read-only BSSID scan requires location permission; no permission bypass.
+Interface agent fixing reproduced AP Wi-Fi navigation loop: USB fallback returns
+installer, connected overview Continue Wi-Fi setup opens verified popover instead
+of actual `/?wifiSetup=1` card page. Root reached actual card page separately.
+
+Live Studio2109 / signed firmware2088. Exact main2d95b9ad, manual production
+deploy35965227235 and strict63-file Studio/8-file firmware live proof pass;
+broad2109 CI35965180922 succeeded;2107 CI35962347124 succeeded.
+Actual Interstellar paired COM3 hello proves card lw-301bd5a172e0 runs2088;
+USB scan now WORKS and lists Pillaroflight. One actual join returned the card's
+generic connection_failed after about20–30s, not a USB timeout. No gallery
+connection or light proof yet. Fresh2105 join captured association stage,
+driverReason15, card note station association timed out (WPA4-way handshake
+timeout per Espressif, not unique evidence of wrong password). USB reconnect
+then returned attempt_mismatch again without another credential submission.
+Saved-attempt recovery was corrected and proven on2107 as recorded below.
+
+Root approved Studio-only USB pacing70e4c59f and footer USB proof7ca20d76.
+Pacing reproduces pinned256B receive-queue overflow (hello fits, scan loses data)
+and fixes it with64B writes/20ms gaps;20 focused tests and build pass. Combined
+35 units/build and3 recovery browser cases pass after updating the serial mock
+to buffer newline-delimited frames. PR331 merged71c80fdf, Studio2101; manual
+deploy35959035259 succeeded with strict live graph proof. No firmware/flash/signing.
+Packet2aed5b86 merged PR332 and live2103: exposes existing safe failureStage/
+driverReason/allowlisted lastError in Connection details;22unit/1browser/build pass.
+Firmware USB reason0 can mask association/IP/STA_STOP failures;
+do not infer wrong password. Fallback192.168.4.1 and lightweaver.local unreachable;
+its retry popup steals focus from USB chooser, reproduced again on2103. Approved
+6c8c7610 marks background preserving recovery explicitly and permits only reuse
+of already-open same-host popup without navigation/focus; explicit user Connect
+unchanged.44focused tests/standard build passed before deployment.
+Popup fix now live2105 and proven on actual Interstellar: Install no longer opens
+popup; normal COM3 chooser and exact2088 hello work. The2105 form showed
+attempt_mismatch after read-only Reconnect following fresh reason15 failure.
+Saved-attempt source diagnosis completed; firmware review found
+no credential-buffer/config defect explaining handshake15, so no speculative
+firmware/security changes. Requested explicit permission for read-only Windows
+network properties, an exception to user's public-Studio-only boundary; pending.
+UI manager completed the navigation-only fix, live and proven on2107;
+false-update service-worker protocol work deferred. No function removals.
+Completed Studio-only batch: navigation e39d1daa (11 units/1 browser/build)
+and same-session read-only attempt check58efbb7a (3 browser cases/build).
+Combined8-file integration passed11 units/2 focused browser cases/build;
+PR334 merged b89a013b; manual deploy35962374552/live graph pass. Actual2107
+Card overview Continue Wi-Fi setup reaches Install resume; COM3 verifies2088.
+One fresh controlled join on2107 again returned driver15/association timeout.
+Actual Check current attempt retained the same failure/details without chooser,
+USB reconnect or attempt_mismatch. Root left exact2088 USB session open.
+No more blind credential retries; Windows read-only permission still pending.
+Follow-up: same-session status remains stable after several minutes. Exact2088
+source confirms USB scans reject Joining during15s auto-retry, then permit10s
+SetupAp gap; current Studio aborts at firstbusy. UI manager owns bounded20s
+busy-retry picker fix plus repeated-copy reduction in lw-flash, preserving all
+controls/identity guards; no firmware change. Frozen41c44b6a approved (3files;
+4focused browser cases,2final timing cases,build,actual local screenshot pass).
+PR335 merged2d95b9ad, Studio2109 deployed and strictly proven live. Actual
+Interstellar COM3 verifies2088; compactform inspected; ONE scan click returned
+Pillaroflight in picker and selecting it populatedSSID. No credentials resent.
+Public Studio setup remains blocked by prior WPA handshake15, pending permission
+to inspect Windows connection details. No extra cosmetic work queued ahead of
+this blocker; no network/security changes or further blind join retries.
+Serial reopening can reproduce attempt loss in the
+regression model, but has not been proven to reboot this physical card.
+Use the supplied credential only in the masked form; never persist it in records.
+Remote computer remains wired/Tailscale; no OS network changes or physical button.
+Artwork/wiring inputs and physical LED observations remain unverified.
+Blocked audit: same pending Windows read-only permission across three consecutive
+goal turns. Authorized independent fixes completed and actual picker proven.
+Final CI snapshot35965180922: source/cloud/firmware pass, browser still running.
+Resume only after permission or new network evidence: inspect Windows Wi-Fi
+connection properties read-only, without changing Ethernet, Tailscale or security;
+then check that same CI run and continue the actual card journey. Do not claim
+gallery join, installed artwork/patterns, physical playback or recovery proven.
+
+Entries below retain historical evidence; this section takes precedence for
+current state.
+
 ## Current expression integration status — 2026-09-23
 
 **Implementation and release: done. Shipped — Studio build 2048, firmware build
@@ -67,11 +197,761 @@ Recovery and firmware version 1.1.40 preparation are committed as `88967d1b`.
 Focused proof: 71 Studio units, 11 USB browser cases, a subsequent timeout/reopen
 case, firmware compile, 18 native firmware tests, and the production USB
 dispatcher recovery contract pass. Main's visible card Wi-Fi guidance is
-integrated; final candidate gate pending. The separate shipping task owns
+integrated. The separate shipping task owns
 merge, protected signing, deployment, and live proof; this task owns readiness.
 The connected card is a configured fixture, not an authorized blank/spare.
 Fresh-install physical proof remains unperformed. Current scope is the canonical
 `led.mandalacodes.com` origin; custom client domains need separate trust design.
+
+Final source candidate is pushed as `4c1c50a3`, Studio build 2063, firmware source
+version 1.1.40. Additional fixes clear a stale failure after successful Wi-Fi
+retry, route Change wiring to the actual Specs controls, and remove a React
+warning exposed by that route. The preceding frozen candidate passed 2,656
+units, 149 project tests, 73 cloud browser cases, 27 mapper tests, 385 browser
+regressions, and 68 production cases. Release UI passed 382/384 before exposing
+the warning; both failures and both wiring regressions passed on the final fix.
+Final build, Pages staging, and exact 63-file build graph verification pass.
+Exact final CI passed at Actions run `35835336821`; the shipping task independently
+confirmed it and owns the PR315 merge and release sequence.
+Published factory freshness still fails until protected signing. Local Prove
+remains INCOMPLETE: full post-signer launch, exact live deployment, and physical
+blank-card acceptance are still required. Evidence records under
+`docs/prove-sessions/2026-09-23-*` retain failed/interrupted runs and retries.
+
+Software release proof completed on signed main
+`2463533c80e0ea225f1ef5eeb7fed880bf8c427f`: Studio build 2065, firmware build 2064
+(version 1.1.40). Production deploy `35837712629` succeeded. The full terminal
+`node scripts/lightweaver-dev.mjs release` passed, including all 384 release UI
+cases and signed factory freshness. Strict `PROD_CHECK_REQUIRED=1 npm run
+check:prod` passed against the live no-store revision and all 63 Studio files;
+the staged and live firmware graphs each passed 8/8 exact-file verification.
+Independent public desktop/narrow checks passed wiring and Wi-Fi input access,
+local save/reload, and layout inspection. Temporary gate server stopped and
+isolated checkout tracked files remained clean. Evidence:
+`/tmp/lw-terminal-release-2463533c-*.log` and
+`/tmp/lw-terminal-prove-2026-09-23.md`.
+Physical fresh-install/card-and-light acceptance remains BLOCKED pending an
+identified blank/spare card or verified recovery path and human observation;
+the configured fixture was not reset or flashed. Overall Prove is INCOMPLETE
+for that physical gate, despite completed software shipment checks.
+
+### 2026-09-23 End-to-end connection and usability (Bench + bounded Sprint, active)
+
+**Current continuation — 2026-09-24:** PR324 is pushed at `aa6b9112`, not
+merged or deployed. Exact-head runs35947100240 and35947595514 failed browser
+assertions for intentionally revised copy; the second passed all14 fresh USB
+Wi-Fi cases but found the stale factory-card heading assertion. Release owner
+is correcting that assertion, integrating the reviewed six-line mapper Flash
+phone width/wrapping fix, and running the affected browser lane before redispatch.
+It owns the sole preview until handoff. Source/firmware/production lanes passed;
+no final all-lane success is claimed. Production recovery needs its error-state
+visual check; mapper Flash needs390px/desktop proof after the width correction.
+Other compact CSS surfaces have rendered proof. The visible Interface Manager
+has been reopened for Adrian's screenshot feedback; its separate connection-modal
+copy changes remain outside this frozen release.
+
+Final two-file correction is now committed/pushed as `e74ce51c` (branch
+build2086); exact-head Tests35948524571 dispatched while local browser smoke
+session47051 continues. Earlier local groups passed14 USB Wi-Fi,7 Card/workflow,
+and4 HTTPS hardware cases. Neither full local success nor remote CI success is
+claimed yet. Parallel dispatch shortens the release path; visual gates still
+precede merge. All other source remains frozen.
+
+Local browser smoke now PASS103/103. Production Safe recovery390px focused case
+PASS1/1; root viewed `/private/tmp/lightweaver-production-safe-recovery-390.png`
+and confirmed readable text and visible Reconnect/Export controls without
+clipping. Preview released to visible Interface Manager for only mapper Flash
+390px/desktop proof. Remote CI35948524571 independently verified in progress on
+exact `e74ce51c0c938840e1efa0293b1da3520262df25`; no merge or deploy yet.
+
+CI35948524571 is now independently confirmed SUCCESS for all selected lanes on
+e74ce51c. User then clarified in the visible Interface Manager task that the old
+mapper is not their v3 interface and must stop consuming this work. Primary
+removed legacy mapper visuals as a release gate and instructed release owner to
+restore only `led-art-mapper/app/styles.css` to PR base708ef309, excluding all
+legacy cosmetic edits. Studio v3 compact CSS and recovery changes remain. No
+legacy source deletion or capability reduction is included. The manager later
+returned passing phone/desktop header-containment proof, but that patch is not
+being integrated. Legacy retirement stays a separate user-directed follow-up.
+Final delta is scope reduction; prior full CI evidence remains tied truthfully
+to e74ce51c, with exact merged-main selected checks/sign/deploy/live proof still
+required. Proceed to real public Studio/card journey after release.
+
+PR324 is now independently verified MERGED at
+`1fa7835ca950d11592d9662988451fae13799ab4`, final reviewed branch
+`a1fc97ce0827f64ba68a4cac45092697e3bf2067` (branch build2087). The final
+branch commit only restores mapper CSS to base, confirmed by root; mapper build
+passes and the cumulative PR has no mapper path. Post-merge Tests, protected
+signing, real production deployment and terminal live proof remain outstanding.
+This is merged, not deployed or shipped. Actual card remains unupdated.
+
+Exact-main Tests35949487223 on1fa7835c remains active; source/firmware/cloud/
+production pass, browser smoke is still running. A bounded preflight caught
+the second factory-card old-copy assertion at card-workspace:1778 outside the
+103-case CI selection. Corrective draft PR325 is prepared at9a629245 with focused
+RED then GREEN proof and no product change; existing behavior guards remain.
+Hold its merge until protected signer finishes to avoid invalidating that run,
+then integrate the test-only delta and run terminal release proof on exact main.
+Logs `/private/tmp/lw-factory-setup-copy-smoke-{red,green}.log`.
+
+Exact-main Tests35949487223 now SUCCESS across all selected lanes on product
+merge1fa7835c (main build2088). Protected signer35950179007 has started for that
+source. PR325 remains unmerged until signing finishes. Root reviewed its exact
+one-assertion diff and authorized release owner to integrate it at that safe
+point, then complete final gates/deployment/live proof without another approval.
+
+**Actual remote progress — 2026-09-24 about03:20–03:22UTC:** protected signer
+35950179007 and real deploy35950631424 succeeded. Live Studio2089 at4d97d9bc,
+signed firmware1.1.44/build2088/source1fa7835c. Interstellar refreshed from2081
+through2083 to2089 using only public Studio in Chrome. Normal USB chooser paired
+JTAG/serial COM3; new scan freshly proved exact lw-301bd5a172e0, ESP32-S3 16MB,
+active signed1.1.42/build2070 and exposed preserving update. Root confirmed the
+browser-read card ID (no physical BOOT claim) and started preserving update.
+UI reached100%,2.18MB/2.18MB acknowledged, then failed with
+`Invalid head of packet (0x45): Possible serial noise or corruption`.
+POST-WRITE INSTALLED BUILD IS UNKNOWN; old2070 label is stale, not evidence.
+No factory erase or blind repeat was attempted. USB safety owner investigates
+readback/reset and existing public runtime-resume route before any further write.
+
+Test-only PR325 merged at23df4503; true commit count2091, correcting earlier2090
+estimate. Selected source/browser CI35950871790 passed; real deploy35951613078
+succeeded with exact HTTP200/no-store live marker. Deployed Studio2091,
+firmware2088. The baseline terminal release gate was deliberately stopped
+(session85190, exit130) to free the sole browser server for urgent recovery
+regressions. Its partial log `/private/tmp/lw-terminal-1-1-44-23df4503-release.log`
+is INCOMPLETE/superseded, never a full pass.
+Software evidence is separate from failed actual-card verification. Queued
+interrupted scan visibility fix has a witnessed red/green4-case patch at
+`/private/tmp/lw-interrupted-usb-scan.patch`, not integrated and not blocking
+current hardware diagnosis. A bounded browser recovery correction is being
+prepared against the existing signed firmware2088; no new signing cycle.
+
+Actual error source diagnosis:100% means compressed-block ACK, before esptool
+flash finish/MD5 and wrapper full SHA readback.0x45 is a non-SLIP first byte
+(possibly ASCII E, cause unproven). Runner currently disconnects without app
+reset on post-write failure and incorrectly suggests repeating. Saved session
+remains `sending`, which existing runtime resume rejects. Bounded browser-only
+follow-up is now assigned in isolation: USB owner handles best-effort software
+reset, verification-unknown classification and tests; app owner exposes exact
+target runtime USB verification from saved sending/unknown session, with no
+credential send or reflash and no success until exact fresh card/build/boot
+proof. No firmware/protocol change or new signing is authorized for this fix.
+Root alone controls Interstellar; current error screen is preserved for recovery.
+
+Primary reviewed the in-progress recovery and caught a real-session blocker:
+ROM-only inspection has no previous boot ID. Recovery now accepts that absence
+while still requiring fresh exact MAC/hardware and a nonempty runtime boot ID,
+signed target version/build ID/build number. If an earlier boot ID exists, it
+must differ. Wrong card/hardware cannot authorize app reset or continuation.
+Focused regressions are in progress. User explicitly prioritizes actual setup
+and working fixes ahead of serial release/signing waits. Queued compact UI and
+legacy retirement packets remain outside this urgent correction.
+
+Urgent focused recovery cases passed6/6: legacy saved-sending ROM reset to exact
+target hello, same-page error blocks repeat, wrong ROM card, old build, stale
+boot, and missing hello. Production build passed. Two older browser expectations
+are being aligned with keeping unverified/ineligible outcomes on the preserving
+panel. Root review also required a busy guard and suppression of the already-open
+confirmation action after failure. Full target hello proves a running target,
+not completion of the earlier failed host MD5/SHA readback. Physical card remains
+unknown until the corrected public action is live and actually used.
+
+Release-path correction: canonical candidate embedded bundle changed, but the
+release owner reread `firmwareBundleOnly`, `build-firmware.yml`, and
+`deploy-site.yml` and confirmed Studio-only drift ALREADY supports firmware
+tests with signer skipped and direct Studio deploy. Earlier assertion that
+new signing was mandatory was incorrect. Primary stopped unnecessary public-only
+refactoring and authorized immediate four-file integration through this existing
+path, keeping signed firmware2088 artifacts unchanged. Exact actual-session
+empty previousBootId/reload recovery passed; all6 new cases and two affected
+legacy outcomes pass. No new firmware version or signing cycle is needed.
+
+PR326 merged at41031a3b2bc8c005b83da5bf66d5b6a6dcd482fb, Studio2093.
+Exact merged-source Tests35952964709 is live (source/browser/cloud/firmware
+test lanes, production/artifact skipped). Redundant manual all-lane run
+35952865335 was cancelled: repo policy intentionally uses local PR proof and
+one merged-source gate. Firmware VERSION/source/published artifacts are unchanged
+from2091, retaining signed2088. Final terminal gate runs concurrently as
+session45624, log `/private/tmp/lw-terminal-1-1-44-41031a3b-release.log`, sole local
+preview owner. Neither signing nor this long terminal proof may delay testing
+the actual public recovery once selected CI and real deployment finish.
+
+2093 exact-main CI failed only J07 in journey-edits.spec.ts:77/78 final journey
+cases passed; baseline project.id was undefined before async initial adoption,
+then populated after reload. Source/cloud/firmware tests passed.2093 NOT DEPLOYED;
+public and actual remote remain2091, card firmware unknown. The terminal gate45624
+was deliberately stopped(exit130), partial log INCOMPLETE, preview freed. Root
+reviewed the4-line test-only wait for initial persisted ID before baseline;
+unchanged id/layout invariants and real confirm path remain. Focused J07 passed
+1/1 in8.2s after exact CI red3 retries. Release owner integrates that test-only
+correction through one selected main gate; no new terminal gate before actual
+card recovery and no firmware signing.
+
+**User-authorized order change:** after6.5h without connection, Adrian explicitly
+asked to do the work and prove it afterward rather than wait for GitHub browser
+tests. Existing manual Deploy site path supports exact-main publication with
+signature/artifact checks and live proof while broader browser proof remains
+outstanding. Root authorized source=manual revision72320ad8a2161d89fbed41e7d97345f83c7dbd96,
+Studio2095, deploy35954781268. No workflow/security/signature change and no new
+firmware signing. Exact2095 source/build passed; browser FAILED only later
+preserving-firmware-update.spec.ts:610 strict selector finding2 status elements
+(earlier journey78/78 including correctedJ07 passed). Worker wifi_stability_review
+owns isolated test-only selector correction; release owner solely deploy/live
+proof. Keep main fixed until2095 publish/actual recovery, never call CI green or
+overall Shipped until remaining proof completed. Physical card still unknown.
+
+**Actual2095 recovery attempt:** manual deploy35954781268 succeeded with exact
+no-store marker72320ad8/Studio2095 and signed firmware2088 unchanged. Root
+refreshed public Studio on Interstellar, observed "Not verified after USB
+transfer" + "Check running firmware over USB", selected paired COM3 via normal
+Chrome chooser. Recovery ended with "The card did not answer over USB in time"
+and result remains unknown. No firmware/credential resend, erase, BOOT press,
+remote shell or direct private API was used. Current screen Needs attention,
+firmwareunknown/latest2088, Studio2095. CUA click+AX batching sometimes timed out;
+fresh screenshots showed whether actions dispatched, individual clicks worked.
+JS owner investigates single hello3s after reset vs boot timing; firmware owner
+independently checks startup/reset/USB transport. PR328 isolated selector fix
+6b1c0458 (focused1/1) remains open/unmerged. Main stays2095 during diagnosis.
+
+Firmware read-only review found plausible startup race: USB115200/CDC enabled,
+but hello reader starts in loop only after max2sSerialwait+200ms+storage/AP/output
+setup; reset helper waits700ms. No evidence yet of actual boot success/failure.
+Bounded recovery-only JS fix809c5e69 in /private/tmp/lw-usb-hello-retry now retries
+read-only hello on same freshly MAC-verified port within shared12s open budget,
+new IDs per request, wrong identity immediate reject, old responses ignored.
+Busy button says Checking card. Root reviewed/accepted;18unit/7browser/build
+pass. Release owner authorized integrate with PR328 selector fix and MANUAL
+exact-main deploy immediately, no generic browser gate wait/new signing.
+If actual retry still fails, public Studio has no serial boot-log reader;
+existing technician Log is operation-only and Flash must not be used as a
+diagnostic. No extra reflash/credential writes authorized by a timeout alone.
+
+**2026-09-24 current recovery checkpoint:** Deployed Studio build 2097,
+signed firmware build 2088 (1.1.44), exact main
+`c1a9bbd2d6bb97fe3d21d74f724c3b5bd5d7db93`. PR329 includes bounded hello
+retries and the PR328 selector correction; manual deploy35956003864 succeeded,
+and the release owner verified the strict no-store marker. Broad Tests35955977794
+continues independently; not a hardware proof. The actual card remains UNKNOWN
+after the 2095 hello timeout. Interstellar video froze, then the original CRD tab
+went blank; a fresh tab to the same authorized session now shows Connecting.
+No 2097 hardware recovery has run. Resume with public Studio refresh and paired
+COM3 Check running firmware over USB; require exact target hello before setup.
+While remote access recovers, approved the prepared compact UI/password toggle/
+shorter guidance batch6f2fc43d for integration on2097, preserving all USB recovery
+behavior. Focused local verification and manual deploy precede broad CI per
+Adrian's explicit requested order. No new firmware, signing or flash in UI batch.
+
+**UI checkpoint deployed:** PR330 merged as
+`4165985d7704ad07ee9dac4189cf98fa54d53a31`, Studio build2099; signed firmware
+build2088 unchanged. Manual deploy35957088116 succeeded and independent no-store
+marker matches exact main2099. Combined52 focused units,16 Chromium cases and
+build passed; all10 intended source/test files integrated without conflict.
+Compact controls, password Show/Hide and collapsible Wi-Fi guidance preserve all
+actions and2097 recovery. Live staged-file graph verification remains pending.
+CRD recovery tab941833385 and original941833116 (Chrome browser2 after runtime
+reset) still show blank content; fresh tab briefly reached Connecting. Browser
+control attachment times out, native Chrome remains responsive. Host-list page
+also blank, so host availability is unverified. Asked Adrian whether his visible
+screen shows desktop/blank/error; independent software work continued. No actual
+card recovery2097/2099 attempted. Goal remains incomplete, not client-ready.
+
+Independent2099 live proof completed: clean detached4165985d build/staging plus
+`PROD_CHECK_REQUIRED=1 npm run check:prod` passed all63 deployed Studio files,
+strict no-store release marker, signed firmware image and production/cache/auth
+probes. Logs `/private/tmp/lw-studio-2099-{build,stage,strict-prod}.log`.
+Prior2097 Tests35955977794 finished SUCCESS. Current2099 Tests35957062442 has
+source/cloud/firmware/classify PASS; browser smoke remains running. No full local
+terminal gate restarted. Revalidated remote session still blank on2026-09-24;
+read-only USB check and subsequent actual-artwork acceptance remain unperformed.
+
+**Actual card progress, 2026-09-24:** Interstellar recovered. Public Studio2099
+Resume Wi-Fi setup with USB + paired COM3 returned exact target2088 runtime hello
+and opened Connect updated card to Wi-Fi. This proves the target app runs; it does
+not retroactively prove the failed host flash readback. Card network still
+unverified. Scan timed out; Retry USB setup immediately verified the same runtime.
+Entered intended SSID and user-supplied password only in masked public setup form;
+Join Wi-Fi over USB also timed out. Retrying without credential resend returned
+attempt_mismatch. No additional firmware write, erase, physical button or OS
+network change. Password excluded from records.
+
+Concrete transport defect found by Sol investigator: pinned ESP32-S3 HWCDC RX
+queue defaults256 bytes and drops excess burst bytes; firmware consumes256 per
+loop, with no RX-buffer enlargement. Hello about109B fits, authenticated setup
+commands315–330B or longer do not reliably fit. Assigned Studio-only paced64B
+chunks with overflow regression, original deadlines, stopped writes on timeout,
+and no credential resend. Separate footer regression proves preserving USB hello
+was omitted from firmware evidence bus; fix labels USB verification without LAN
+Connected claim. Combine focused fixes, manually deploy, then retry actual card.
+Exact2099 Tests35957062442 completed SUCCESS; independent63-file live proof PASS.
+
+Next-batch UI manager has isolated commits94367df1 (compact actions/modal) and
+97a7dd3b (USB Wi-Fi Show/Hide) on codex/v3-compact-actions in worktrees/v3-compact-actions/led.
+Show/Hide focused red/green and3 impacted browser/privacy/narrow checks pass,
+provisioning Node15/15/build pass;390px screenshot inspected by manager. No
+push/deploy; full spec deferred while2093 gate owns preview. These changes must
+not delay actual recovery and must be merged against updated lw-flash carefully.
+
+Fresh remote screenshot confirms Studio2081, Not connected, interrupted Step2,
+and the old card window's static “Connection active” text. No remote mutation,
+card update, project transfer, or physical light proof was performed. Next
+machine step: finish PR324 release/live proof, then refresh public Studio on
+Interstellar and resume the exact-card preserving USB journey. Artwork/wiring
+and private credential entry remain unresolved inputs; do not guess them.
+
+Source-verified retry sequence: interrupted Step2 → Connect card → Find connected
+card opens the normal browser chooser and runs signed identity/partition/OTA
+reads (serial reset may temporarily stop the setup AP). Only fresh exact-card
+and active2070 proof can expose Update once over USB; Start preserving update
+is the first app flash mutation. Resume with USB instead expects the interrupted
+target build already installed and will not update an old2070 card. Reconnect
+over Wi-Fi is only the normal LAN/card-page connection handler, no USB/flash or
+credential send. These are source facts, not yet actual-card verification.
+
+**Latest state — 2026-09-24:** Studio build2083 is DEPLOYED at708ef309 via
+real deploy35941330276; no-store marker verified. Signed firmware build2074
+remains published. Final2083 release gate FAILED386/387 on restoration fixture
+ordering; focused unchanged case passes, fixture stabilization is in progress.
+NOT SHIPPED. Actual card remains build2070 until proven updated. Latest remote
+Studio was2081, disconnected; Windows radio On but not associated with card AP.
+Automatic approval review rejected AP Connect and later USB reconnect/inspect;
+no retry or alternate access was attempted. Do not bypass rejected actions.
+
+Public customer entry is ONLY https://led.mandalacodes.com. All source, builds,
+tests and deployment work occur on this Mac. Remote desktop is customer UI and
+normal browser permission dialogs only: no remote shell, DevTools, direct card
+HTTP diagnostics, or private owner/Project Library login. User cannot physically
+press the card. No physical confirmation may be fabricated.
+
+Visible screenshot task **Lightweaver Interface Manager** is open at
+`01a0d108-67fc-7c90-a77e-c4ce74074bc2`, isolated checkout35f3; it coordinates
+screenshots with root, which remains sole integrator. Compact Card Home routing,
+paired Wi-Fi wording and setup guidance are under focused verification, preserving
+recovery capabilities/history. Independent local read-only USB research targets
+signed2070 identity parser drift and a truthful remote preserving-update path.
+No update, project transfer, playback or physical light proof has occurred.
+Earlier chronological access instructions below are superseded by this boundary.
+
+**Current coherent browser batch (active):** Card Home Update opens preserving
+update instead of stale Wi-Fi step; paired Wi-Fi wording; blank-card Continue
+setup with retained secondary checks and history; clear interrupted recovery
+USB/LAN hierarchy; truthful USB exact-device consent distinct from Wi-Fi BOOT
+authorization. Studio builder owns source/UI tests. Release owner stabilized
+restore fixture ordering before the final valid-card event; focused case passes.
+USB researcher owns only identity library/tests: installed2070 signed app hash
+`a2c68e32af9534b5947560faf5d0f4c1b85a6a39cf78fc9a140c017510b793fd`
+verified against signed historical ticket; old parser fails actual binary layout.
+Approved exact signed-image recognition with bounded progress/cancel, preserving
+legacy behavior and every bootstrap safety guard. USB protocol is unchanged; the bridge-copy correction is included below.
+One integrated checkpoint/release after this batch; no cosmetic-only release now.
+
+USB safety library packet is locally verified (48 focused tests): signed2070
+full app and source partition hashes plus stable app0 OTA-selector evidence are
+required before reporting current firmware. Bootstrap rechecks selector bytes
+immediately before writing. Higher-sequence NEW/PENDING/unknown selectors cannot
+fall back to older app0; app1/ambiguous/mutated evidence rejects writes. Scanner
+and bootstrap limit serial packet inactivity to5s and restore loader settings;
+UI must discard/release failed inspections. Total time can still exceed nominal
+scan budget while packets continue arriving; this is not a hard wall-clock abort.
+UI wiring and post-preserving-update USB Wi-Fi continuation remain in progress.
+
+Tentative canonical build proved embedded card Studio bytes changed, so this is
+now a firmware-sensitive release batch. Release owner will bump1.1.43→1.1.44 once
+at final freeze, then compile/contracts/sign/deploy/live proof. One firmware-owner
+copy fix is integrated: card bridge window says “Keep this card window open while
+using Studio,” no false Connection active claim. Focused blank-card surface check
+passes. Independent compact-button CSS from visible manager35f3 has been applied locally
+(eight disjoint CSS files). Its final integrated visual gate remains pending and
+must not delay the critical actual-card recovery release.
+
+Preserving USB Wi-Fi continuation: distinct context reuses exact card/build/boot
+USB hello and checks explicit fresh-install eligibility; it does not run destructive
+completeCardInstall. Credential-free attempt record is bound to the same saved
+USB update session (32 focused library tests pass). New continuation browser
+checks4/4 pass: join, ineligible hello, wrong card, reload without credential resend.
+Scanner failure/unproven browser checks3/3 pass. Final app source is FROZEN: final focused browser8/8, route/setup43/43,
+production build and diff check pass. Bounded integration review closed after
+fixing eligibility-before-reconciliation (a successful join makes NEW provisioning
+ineligible; saved exact attempt must still be recoverable without another send).
+Desktop/narrow app visuals pass. Visible manager now owns sole preview for the
+eight CSS files' remaining integrated visual gate; source changes require a real
+failure. Release owner then owns final canonical/version1.1.44 boundary, checkpoint,
+CI/PR/merge/signer/deploy/strict live proof. Source is uncommitted, not deployed;
+actual public/physical state remains unchanged.
+
+Release checkpoint: VERSION1.1.44 and version policy pass. Integrated checkpoint
+passes2681/2681 units plus production build; log
+`/private/tmp/lw-1-1-44-integrated-checkpoint.log`. Final canonical embedded bundle
+SHA `1ed1fd396bce2b4fe89e3d38bb01920d00dd743f177426f463b0adfdbaab1471`
+(size846142) differs the signed baseline, confirming firmware/signing lane.
+Visible manager owns final integrated CSS visual gate; release owner is authorized
+to commit/push/PR and execute the existing release chain when that gate passes.
+No repeated checkpoint unless source changes.
+
+Committed and pushed `69bf1f1ac69e97fff223404e6688615ae01e2401` (branch build2084),
+36 intended product/version/test files. [Draft PR324](https://github.com/theyemingzhu/LED-Programming/pull/324)
+is attached and mergeable; exact-head Tests run35947100240 is independently
+confirmed IN_PROGRESS at that SHA. Manual dispatch selected source, browser,
+cloud, production, and firmware jobs. Final CSS visuals are pending; no merge,
+signing, deploy or hardware write yet. Root workboard and untracked evidence docs
+are intentionally excluded from this product commit.
+
+Asked the user which artwork/project and verified wiring plan to use: remote
+Untitled Project is empty. This missing setup input does not block code fixes,
+but must not be replaced by guessed geometry, pixel count, or GPIO pins.
+
+User authorizes autonomous live Interstellar control, focused fixes, compact UI,
+and shipment. Primary manages/integrates; Sol builders own source. Sole real
+machine operator: interstellar_bench_control. Detailed evidence belongs in
+`docs/bench-sessions/2026-09-23-configured-card-wifi-handshake.md` (untracked).
+
+**Remote-only constraint:** user explicitly cannot reach or press buttons on the
+card. Never request BOOT/control press or falsely confirm it. Private owner
+sign-in was explicitly rejected as a customer path and is abandoned. Earlier
+physical-button and owner-login suggestions are withdrawn. Physical visual
+output cannot be assumed from remote telemetry; report the exact proof available.
+
+**Actual card:** lw-301bd5a172e0, firmware2070/v1.1.42. Temporary Windows 2.4GHz
+WPA2 hotspot proved exact-card station join and DHCP. Hotspot is OFF and its saved
+settings unchanged. Windows subsequently joined saved Pillaroflight on actual
+2.4GHz/channel4/WPA2-Personal/802.11n using supported temporary Preferred Band;
+no password read or re-entry, cipher not exposed. Original No Preference restored;
+Windows rejoined card AP and exact HTTP confirmed the same bf1a24d5 boot/build2070,
+blank network/project. Gallery join remains unresolved; a strong picker signal and
+reason15 handshake failure do not prove a wrong password or router cipher cause.
+Temporary test settings were cleared with a guarded Wi-Fi-only reset, preserving
+project/pattern data. Card has an empty project and no saved Wi-Fi credentials.
+
+A subsequent Studio USB inspection left the card in ROM loader when entering
+Step3. Supported 'Restart card for Wi-Fi connection' recovered runtime/AP.
+Latest exact HTTP: boot-bf1a24d5-301bd5a172e0, build2070, setup-ap active,
+configured=false, empty SSID/project. Windows rejoined Lightweaver-72E0;
+192.168.4.1 shows Pillaroflight selected/password blank. Ethernet/Tailscale intact.
+No firmware flash or project write occurred. Do not repeat old Studio's broken
+USB→Step3 path before release. No physical LED proof has been observed.
+
+**Credential boundary:** auto-review REJECTED saved Windows password extraction
+before execution because specific user consent is required. No secret was read
+or exposed. Explicit local-only reuse question remains pending; no indirect
+extraction or workaround. Gallery completion needs that consent or direct entry.
+
+**Software:** branch codex/bench-connection-recovery, PR319, source821ab0f0,
+build2072/version1.1.43. Compact Studio/card controls, persistent status observation,
+lost-response explicit retry, and AP-client recovery protection passed focused
+regressions, ESP32-S3 compile and desktop/narrow visuals. Integrated checkpoint:
+2,657 units + build pass. Exact-head Tests35877641611 passed before follow-up.
+
+**Integrated actual-journey follow-up:** Studio owner studio_reconnect_authority
+fixed USB release before Step3, pending-Find navigation, stale saved-origin remount,
+and stale-link acknowledgement using exact-card session/fresh bridge authority.
+An introduced effect feedback loop was caught in mocked-browser testing and fixed;
+never claim its ~1,100 open attempts/sec were observed in production. Corrected
+popup fixture records blocked attempts. Four focused browser cases + 60 flow units
+pass, including valid handoff with one automatic open. Closed WindowProxy handling
+now uses live hasCardBridge(); impacted browser cases2/2 and bridge contract pass.
+Final bounded review CLOSED with no remaining P1/P2. Source frozen, eight owned
+product files (including card-bridge-handoff.mjs), committed/pushed as6ff4c703.
+Exact-head Tests35883573522 passed. PR319 MERGED at6074a6d90d90434a8eacbf8ffaf6d06f0deeedaf,
+source build2074. Exact-main Tests35884865279 and protected signer35886059681
+PASSED. Signed terminal main e2823075f47157cf8bb55216733d308c548760d9 has Studio2075;
+signed firmware1.1.43/build2074/buildId6074a6d9. Exact signed deploy35886846166
+PASSED; independent no-cache markers confirm those exact live revisions/builds.
+Deployed, NOT YET SHIPPED. Initial terminal gate stopped at ai-pattern-server.mjs
+empty JSON; focused escalated check passed, sandboxed reproduction showed listen
+EPERM. Failure log retained. Controlled retry passed 2,659 units and preceding
+browser lanes, then was intentionally stopped at 108/387 final release UI cases
+to integrate the actual-card blocker below. Exit130 is interruption, not failure;
+278 cases remain unrun. Owned port9483 preview stopped. Final terminal gate/live
+graph proof must run against the corrected final revision. Keep workboard and
+untracked Bench/Prove records out of product commits.
+
+Single next step: fix and verify the factory-card preserving-update entry on
+branch codex/factory-card-preserving-update (base e2823075), then ship the coherent
+browser correction and resume the supported preserving update. Firmware2074
+remains unchanged. Sole operator requires fresh identity/config preflight,
+signed artifacts, and no erase/project writes.
+Actual Studio2075 Step3 USB release PASSED: AP returned on new boot
+boot-8cca7dee-301bd5a172e0, still firmware2070, same empty config/project. Settled
+USB firmware scan showed Unknown, so destructive install was avoided. Explicit
+Connection details host192.168.4.1 + card-page fallback now shows connection active
+and Studio 'Found — pair'. Exact fresh factory status reports commandReady=false
+but firmwareUpdateReady=true and network update capability version1. Studio
+incorrectly hides preserving update behind ordinary command readiness. Owner
+studio_reconnect_authority fixes the narrow factory exception and acquires fresh
+existing connectCardTransport authority on Start, pinned to host/card/boot/build;
+wifi_stability_review reviews. Bridge identity alone cannot authorize direct OTA.
+Four-file browser packet is frozen and bounded review passed with no P1/P2.
+Focused planner units21/21, browser3/3 including existing F40 behavior, and narrow
+direct-failure1/1 pass; desktop and 390x844 fallback visual inspected without
+horizontal overflow. release_readiness owns checkpoint, integration and final
+shipment proof. Checkpoint2,661 units + production build passed. Product commit
+0b371b02 merged through PR320 as dbd164e7ecc5efd757a92ece33d68117f2050e77
+(Studio2077). Exact-main Tests35892355577 PASSED; real deploy35893490668 PASSED.
+Independent no-cache canonical marker confirms exact dbd164e7/Studio2077 and
+signed firmware1.1.43/build2074/buildId6074a6d9. DEPLOYED, not yet SHIPPED:
+sole terminal gate runs detached at dbd164e7; strict staged/live graph proof
+pending. Operator now retries supported preserving update on actual card,
+starting from recorded boot8cca/build2070/blank config. No factory erase or USB
+Unknown override is authorized. Actual2077 retry remains BLOCKED before writes:
+Card overview says Found — pair / Card release Unknown, though HTTP confirms
+installed build2070. No Pair action is visible. Root cause: working-card setup
+guidance in nextCardConnectionAction shadows found-unpaired's existing pairing
+action; Continue only opens the card page, leaving card/readiness absent. The
+factory OTA selector correctly rejects that state. wifi_stability_review now
+acts as app owner for the narrow action-order correction and actual-state
+regression; no selector relaxation. Release owner stops obsolete full gate with
+partial evidence retained, prepares follow-up branch at2077. Operator stops
+safely with AP/bridge intact pending corrected build. No physical update.
+Follow-up branch codex/factory-card-pairing-recovery is based on dbd164e7.
+Narrow pairing precedence fix: unit regression witnessed red then green33/33;
+Chromium actual-state journey Found — pair → Connect → persisted exact card →
+preserving Update Lightweaver panel passed1/1. Existing pairing freshly checks
+card/host/lifecycle; selector/firmware/USB unchanged. Root approved frozen
+three-file packet for release. Checkpoint2,662 units + build passed. Product
+e40d9531 merged via PR321 as f81b635448ea814e6b3daa486f71cfe8835accf2
+(Studio2079); exact-main Tests35894982943 PASSED. Real deploy35896122188 PASSED;
+independent no-cache marker confirms exact f81b6354/Studio2079, signed firmware
+unchanged1.1.43/build2074/buildId6074a6d9. DEPLOYED, not yet SHIPPED. Sole terminal
+gate running detached f81b6354, log
+`/private/tmp/lw-terminal-1-1-43-f81b6354-release.log`; strict graph proof pending.
+Actual2079 retry still no physical update: exact HTTP boot8cca/build2070/APactive,
+blank Wi-Fi/project. Studio settled Needs attention → Update this Lightweaver
+card / Update card, overview installed release Unknown. Auto-review rejected
+explicit card-page fallback click twice, including fresh screenshot retry,
+citing unverifiable target/current dialog/update prerequisites. No workaround;
+root asked specific approval for the visible fallback connect at192.168.4.1.
+No reply yet. Operator stopped mutations with AP/bridge intact. Reviewer performs
+read-only diagnosis of real factory pairing/readiness state; no new source edits.
+Read-only Card Home → Advanced → Connection log obtained safely. Actual2079:
+17:36:09 connecting(15s),17:36:24 disconnected/no-answer(5s),17:36:29
+disconnected/identity-missing. Earlier17:12:33 found-unpaired/evidence-fresh.
+Log visible in Innerstellar CRD tab941833116; source reviewer traces that precise
+event order. No new writes. Final gate continues independently, no failure yet;
+groups73/38/11/3/6/45/116 passed, active127 at99/127 at last report. Physical
+firmware stays2070. Source maps15s no-answer then5s retry to bridge status:
+applyAuthoritativeBridgeStatus emits identity-missing when persisted pairing is
+absent, even with valid card status. This can misleadingly offer firmware Update.
+Live absent-pairing remains unproven, but the independent source defect is clear.
+Root authorized narrow browser correction: valid current full status without
+pairing stays discovered/unpaired and requires explicit Connect; invalid/stale/
+wrong identity rejected, no implicit pairing/control/update. Acting app owner
+wifi_stability_review must witness regression red/green before release owner
+stops superseded2079 gate or ships follow-up. No firmware change. Frozen two-file
+bridge packet on codex/bridge-unpaired-recovery passed107/107 focused tests;
+actual postMessage retry regression red→green, explicit Pair revalidates/persists,
+stable factory status opens preserving eligibility, malformed/unsupported replies
+remain rejected. Root reviewed/approved full-identity/contract/boot/current-bridge
+guards and no auto-pair/authority grant. Release owner integrates.
+Superseded2079 gate stopped exit130 after2,662 units and247/387 release UI cases
+passed (1 interrupted,139 unrun); port9483 closed, partial log retained.
+PR322 (two bridge files) MERGED as69369d07fce778bffda4a0b7adc365aecc72f668,
+Studio2081. Checkpoint2,664 units + production build passed. Exact-main
+Tests35899150736 PASSED. Real deploy35900287957 PASSED. Independent no-cache
+canonical marker confirms69369d07/Studio2081 and signed firmware1.1.43/build2074/
+buildId6074a6d9. DEPLOYED, not yet SHIPPED; final gate/strict graphs pending.
+isolated final checkout at69369d07 now running sole final gate:
+`/private/tmp/lw-terminal-1-1-43-69369d07-release.log`. Durable release resume
+state: `/private/tmp/lw-final-release-2081-state.md`. All selected main lanes green.
+Operator must not use a different route to bypass rejected fallback connection;
+actual retry awaits pending specific approval. Usage meter100%, ordinaryUsageAllowed=true;
+continue while allowed, no reset credit used/authorized. Actual card2070/unupdated.
+User subsequently restored usage (tool reports0%) and requested status. Recovered
+final log:2664 units and all earlier browser lanes passed; releaseUI386/387 passed,
+one failure screen-smoke.spec.ts:1096 expects old Finish card setup instead of
+reviewed Pair this Lightweaver card. Gate exited1 before build/stage/strict graphs.
+Acting app owner wifi_stability_review corrects only proven stale assertion,
+retaining no-silent-pair safety checks; correction frozen with focused red→green
+and6/6related browser cases. Root approved; release_readiness coordinates final
+test-only integration and required proof. No production source/firmware change.
+User then reported remote Studio2079/firmware2074 and asked whether we were
+watching/working. Clarified published2081 is not confirmed loaded in remote app.
+Fresh read-only operator check: Connection log/Needs attention; last event
+identity-missing17:36:29; card-page bridge Connection active. Sharing banner
+obscures build labels, so user2079 reading matches last independently verified
+remote version. No reconnect performed; pending approval unchanged. Root then
+authorized independent public Studio refresh only to verify loaded build after
+user's version concern; no Connect/Pair/fallback/update/card write. This is not
+a workaround for the rejected connection action; operator stops if refresh itself
+is rejected. Final test-only PR323 merged708ef309cf20eb7ae649e86e9cb4b0fcf9e49657,
+Studio2083. Exact-main Tests35940568813 source passed/browser running. Sole final
+gate clean detached708ef309 log `/private/tmp/lw-terminal-1-1-43-708ef309-release.log`;
+durable state `/private/tmp/lw-final-release-2083-state.md`.
+Operator's safe public-app-only refresh succeeded: beforevisibleStudio2079,
+aftervisibleStudio2081/Not connected/Card firmware unknown · latest2074. Card-page
+PWA remains Connection active. No Connect/Pair/fallback/update/network/USB action.
+Final2083 first local gate hit known sandbox listenEPERM in ai-pattern-server;
+source/CI unaffected. Release owner performs one escalated environment-correct
+rerun with first failure log retained, no source patch.
+User clarified explicit goal: use remote desktop end-to-end for a nontechnical
+client from opening Studio through art configuration/pattern loading and actual
+art playback, preserving function and fixing observed usability defects with
+primarily Sol agents. Root created active goal (no token budget). This is Bench
+plus bounded fixes, not exhaustive Prove. Operator renewed for supported
+reconnect/Pair/preserving update, then read-only inventory of existing projects/
+artwork/LED settings; no arbitrary pin/count/default project writes. Exact public
+2083 marker708ef309 verified, signed firmware1.1.43/build2074 unchanged. Final
+software proof continues independently; physical outcomes must be observed.
+Actual breakthrough after renewed authorization: supported fallback → Found—pair →
+explicit Connect succeeded on visibleStudio2081. CardHome now Connected, installed
+2070→target2074, Needs project; project Untitled Project not installed, Outputs
+None yet, Lights Not counted, RGB not confirmed, artwork Not drawn. No cardwrite.
+Observed next blockers: Update card CTA resumes persisted Step3 galleryWiFi
+instead preserving update; Still to do says Connect to your card / Finish WiFi
+despite Connected on setup AP; blank-card Health/Recover lights wording confusing.
+Operator truthfully confirms onLightweaver72E0, doesnotguessgallerypassword or
+writearbitraryproject/pins/counts. wifi_stability_review owns source diagnosis/
+supportedroute guidance and coherent UXfixbatch; release2083 proof continues.
+Supported Step2 Install safely does expose exact preserving Update Lightweaver:
+installed1.1.42/2070 → signed1.1.43/2074, exactcard lw-301bd5a172e0, keepssettings.
+Update preflight requires truthful BOOT/control confirmation or owner software
+authorization. Operator opened supported owner sign-in; Cloudflare Access
+Lightweaver Project Library has empty Email/Send login code, no session. Root
+asked owner email or brief actual button press; no answer yet, checkbox untouched.
+No flash. Operator independently inventories existing projects/artwork/patterns/
+LED settings, without arbitrary defaults. Gallery password extraction remains
+separately unapproved.
+Approved bounded UX batch on codex/card-home-update-intent (base708ef309): Card
+release Update CTA explicit intent selects Step2 only, ordinary resume unchanged;
+active configure-wifi task label becomes Set up card Wi-Fi; verified blank card
+Health uses normal setup wording/compact Continue setup instead of guaranteed-
+failing Verify/Recover actions. Configured recovery/authority guards unchanged.
+Acting app owner wifi_stability_review builds focused tests + desktop/narrow
+visuals. Baseline2083 gate continues to completion in isolated checkout.
+Superseded2077 gate interrupted exit130 after
+earlier lanes passed and10/116 of active browser lane, log retained; port9483
+closed. Account99% weekly used; do not consume reset credits without consent.
+Manual dispatch35891796789 failed conservatively at firmware publishability
+because event.before was absent; do not call it passed. Repository policy uses
+local PR evidence plus exact merged-source main gate. Signed firmware2074 stays
+unchanged. Physical OTA still unproven.
+Operator found no direct Connect action in Finish card setup; Continue only
+produces Found — pair, with no permission prompt. Direct fetch remains untested,
+not failed. Historical stale
+station flow caused another retarget before that correction; source cause beyond
+old flow timing remains unproven, no follow-up source edit. Gallery password step
+remains separately blocked; no completed physical update or end-to-end gallery
+connection may yet be claimed.
+
+### 2026-09-23 Live Wi-Fi handshake diagnosis (Bench, active)
+
+User screenshot and fresh Windows-side reads at 12:19 UTC confirm the actual card
+now runs firmware1.1.42/build2070, with a new boot and matching prior card identity.
+This was owner-installed, not flashed by this task. Setup AP is active; no station
+IP; latest observed failureStage=association, failureReason=handshake_incomplete,
+driverReason=15 (four-way security handshake timeout), attemptCount4/generation2.
+Screenshot's earlier generic failure may differ from later retry status; the card
+page stops polling after 67.5s while firmware retries continue. User privately
+verified Show password matches exactly and cannot access router security settings.
+Password source path has no trimming/case change for valid nonempty input. No
+root cause is proven; do not blame password or router from reason15 alone.
+User confirms Windows has Tailscale and direct wired connection. Sol performs
+bounded read-only adapter/routing/security-metadata diagnosis; no network changes,
+card writes, profile keys/password reads, reset or flash. Prior Windows nearby
+query lacked target metadata; verifying query validity and safe metadata fallback.
+Windows routes verified: direct card AP Wi-Fi, separate wired gateway and Tailscale;
+no overlap explains card-level handshake failure. The earlier netsh target-not-seen
+result was invalid: command exited1 due to Windows Location permission denial.
+Saved target profile metadata says WPA3-Personal/GCMP-256 (historical, not current
+BSSID proof). Pinned ESP32-S3 SDK explicitly disables CONFIG_ESP_WIFI_GCMP_SUPPORT;
+WPA3 SAE itself is enabled. Cipher compatibility is a concrete hypothesis, not a
+proven live cause. Windows read-only WinRT checks confirm hotspot is Off and supports
+2.4GHz/WPA2 over the wired profile. A concrete temporary hotspot test is prepared:
+stage while Off, submit temporary credentials to exact card before switching the
+PC Wi-Fi radio, enable hotspot, identify WinRT client and verify exact card status;
+do not acknowledge handoff, stop hotspot within five minutes, reconnect setup AP,
+owner restores original gallery password. It overwrites saved card Wi-Fi details;
+The later autonomous-control instruction authorizes this bounded diagnostic with
+the now-confirmed populated original form as recovery. Operator owns execution;
+Historical plan above is superseded by the end-to-end entry: hotspot join/DHCP
+passed, restoration form was lost, and Wi-Fi-only cleanup is being verified.
+Fresh Windows UI reports WPA2-Personal on 5GHz/channel149; this does not prove
+the card's 2.4GHz security mode, and weakens the historical GCMP hypothesis.
+Gallery root cause remains unproven; no SDK migration is justified by this test.
+
+### 2026-09-23 Wi-Fi diagnostics and picker stability (software shipped)
+
+Adrian approved implementing a more stable setup flow after the explanation of
+the existing network picker and ambiguous association timeout. Primary remains
+manager and sole integrator. Sol/high owns firmware attempt/phase/reason design,
+implementation and card-page picker in firmware source/tests. Studio Sol owns
+bounded USB picker/pre-entry and setup guidance in Studio source/tests, preserving
+exact-card authority. Release Sol prepares the integration branch and later runs
+one coherent checkpoint; no overlapping source owners. Designs return before
+edits so retry, stale-event and success semantics are explicit. Preserve existing
+interfaces and secrets; no hardware writes, factory erase or network changes.
+Target: useful verified implementation in 20–30 minutes before release work.
+Branch `codex/wifi-stability-diagnostics` starts at exact signed main `356a979d`.
+Approved firmware design keeps submission generation authority, fences deliberate
+station stops before new attempts, distinguishes association from address wait,
+preserves real reasons across retries, and clears failures on new credentials or
+verified success. Driver reasons remain observations, never a guaranteed password
+diagnosis. Existing status fields remain; diagnostics are optional additions.
+Studio clarification is complete: relevant USB browser suite 13/13 and actual
+desktop/narrow visuals pass, without protocol/authority changes. Initial firmware
+policy red/green and ESP32-S3 compile pass; firmware final visual/race checks remain.
+Firmware seven focused contracts/native behavior and generated 1440/390 card-page
+visuals pass. Independent Sol/high review found two bounded edges, both fixed with
+red/green regressions: stale Rescan responses/poll chains and stale failure stage
+on a new accepted USB attempt/stop timeout. Reviewer verified fixes and reports no
+remaining P1/P2 findings. New diagnostics harness is wired into core CI. Final
+ESP32-S3 compile and seven firmware checks pass. The one integrated checkpoint
+passed all 2,657 units and production build; no skips/failures. At the 20-minute review,
+both implementations were working; remaining work was bounded integration proof.
+Release preparation is authorized under Adrian's standing instruction to ship
+completed work: version 1.1.42, one product commit and ready PR, exact-branch CI,
+then manager merge decision and protected signer/deploy/terminal release proof.
+PR318 (14 product/version/test files) merged after exact-branch Tests35852871330
+passed. Merge `64b1f5da6725d472d54e59cfa8352c8b0bf864d9`, source build2070;
+main Tests35853914460 passed. Protected signer35854844095 passed, producing
+terminal `317c9071714a296a6c366c11b19738f2f4df16c9`: Studio build2071,
+firmware1.1.42/build2070/source64b1f5da. **Shipped — Studio build2071,
+firmware build2070.** Real deploy35855430297 succeeded. Full terminal release
+gate passed in 27m20s: 2,657 units, 911 browser cases, new native diagnostics,
+build/staging and signed factory freshness. Strict required production check
+passed exact terminal main, all 63 Studio files and staged/live firmware graphs
+(8 files each). Independent public desktop/narrow visuals passed, including new
+network guidance and local project save/reload. Detached release checkout clean;
+owned test server9392 stopped. Evidence `/tmp/lw-terminal-1-1-42-release-evidence.md`.
+Single resumption step: restore the exact physical card connection, use the normal
+owner-authorized preserving updater, then observe real join/retry behavior.
+Physical ESP32 event timing, AP continuity and DHCP behavior remain Bench
+evidence, not inferred from host tests; no real card has been updated.
+
+### 2026-09-23 Windows card Wi-Fi feedback (Bench, pending card access)
+
+Adrian's real card page on the Windows machine reports firmware build 1939,
+while the screenshot shows Studio build 2065. The last successful read-only
+status confirmed saved credentials and an association timeout, with no station
+address. A later SSH check failed before status; current join state is unknown.
+This older AP path exposes no authentication-specific reason, so the
+password has not been proven wrong. This is not the Mac's configured fixture.
+No card was reset or flashed and no network settings were changed.
+
+Branch `codex/card-wifi-feedback` starts from signed main `2463533c`. The bounded
+follow-up adds card-page Show/Hide password, waits for confirmed card Wi-Fi join
+before instructing a computer network switch, and offers explicit reconnect
+through existing exact-card verification. Narrow setup-panel clipping is fixed.
+Checkpoint: 2,657 units and production build pass; focused firmware contract,
+ESP32-S3 compile, 58 flow units, three related browser cases and desktop/narrow
+visual inspections pass. PR317 merged as `a28685f6`; protected signer produced
+terminal `356a979d46e1df92d02be4346482a32da49c9bd4`. Real deployment 35847230523
+succeeded. **Shipped — Studio build 2068, firmware build 2067 (1.1.41).**
+Full terminal release gate passed in 27m29s: 2,657 units and 911 browser cases.
+Strict required production check passed, with all 63 Studio files and staged/live
+firmware graphs (8 files each) verified against exact terminal main `356a979d`.
+Independent public desktop/narrow browser acceptance passed. Isolated checkout
+is clean and its owned test server stopped. Evidence:
+`/tmp/lw-terminal-1-1-41-release-evidence.md`. New firmware is not installed on
+the observed card; physical acceptance and its current join state remain unproven.
+This task owns the follow-up release; the prior shipping task is closed.
+Single resumption step: restore the exact Windows card connection, then use the
+normal owner-authorized application-only preserving updater after fresh preflight.
+Physical BOOT/control availability was asked; answer pending. No update writes
+or authorization bypasses are permitted while that normal authorization is absent.
+The signed public 1.1.41 application-only package passed the official manifest,
+ticket/signature and image-hash verifier. It is compatible with the previously
+observed API/schema/updater versions, subject to fresh live preflight. A single
+later Windows read reached the computer but not the card status endpoints; restore
+the exact card route before any update. No further connection polling is active.
 
 ### 2026-09-23 Card Wi-Fi handoff clarity (done locally)
 After joining the Lightweaver hotspot, Studio now gives three short setup steps
