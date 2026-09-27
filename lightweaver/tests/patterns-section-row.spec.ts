@@ -90,7 +90,7 @@ test('section chips carry their pattern names and the card-holds line is read fr
     { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
     { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
   ];
-  const zones = compiledZones(project).map(zone => ({ id: zone.id, label: zone.label }));
+  const zones = compiledZones(project).map(zone => ({ id: zone.id, label: zone.label, ranges: zone.ranges }));
   await mockReadyCard(page, project, zones);
 
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
@@ -141,7 +141,7 @@ test('unequal GPIO sections keep their layout preview and same or separate patte
     { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
     { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
   ];
-  const zones = compiledZones(project).map(zone => ({ id: zone.id, label: zone.label }));
+  const zones = compiledZones(project).map(zone => ({ id: zone.id, label: zone.label, ranges: zone.ranges }));
   await mockReadyCard(page, project, zones);
   await page.evaluate(() => { window.location.hash = '#screen=layout'; });
   await expect(page.getByTestId('gpio-group-16')).toContainText('27 LEDs');
@@ -172,7 +172,7 @@ test('All uses the common section look when the saved default differs', async ({
   const project = sectionProject('uniform-section-look');
   project.layout.patchBoard.patches[0].playback.patternId = 'ocean';
   project.devices.standaloneController.defaultLook.patternId = 'fire';
-  await mockReadyCard(page, project, compiledZones(project).map(zone => ({ id: zone.id, label: zone.label })));
+  await mockReadyCard(page, project, compiledZones(project).map(zone => ({ id: zone.id, label: zone.label, ranges: zone.ranges })));
   await expect(page.getByTestId('section-pattern-all')).toHaveText('Ocean');
   await page.getByTestId('section-target-all').click();
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
@@ -190,8 +190,29 @@ test('a one-section piece offers Divide in Layout instead of an empty row', asyn
   project.layout.wiring = makeDefaultWiring(project.layout.strips);
   project.layout.layerGroups = [];
   const zones = compiledZones(project);
-  await mockReadyCard(page, project, zones.map(zone => ({ id: zone.id, label: zone.label })));
+  await mockReadyCard(page, project, zones.map(zone => ({ id: zone.id, label: zone.label, ranges: zone.ranges })));
   await expect(page.getByTestId('card-holds')).toHaveText(`Card holds ${zones[0].label}`);
   await page.getByTestId('divide-in-layout').click();
   await expect(page).toHaveURL(/#screen=layout&mode=draw/);
+});
+
+
+test('a reused section ID with stale ranges cannot change the whole installed strip', async ({ page }) => {
+  const project = sectionProject('section-range-regression');
+  const zones = compiledZones(project);
+  const total = project.layout.strips.reduce((sum, strip) => sum + strip.pixelCount, 0);
+  const cardZones = [{ ...zones[0], ranges: [{ start: 0, count: total }], brightness: 1 }];
+  await mockReadyCard(page, project, cardZones);
+  await expect(page.getByTestId('card-holds')).toHaveText('Card holds one section; Install to send yours');
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
+  await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
+  await expect(page.getByText(/The card still has a different section layout/)).toBeVisible();
+  expect(controlPosts).toEqual([]);
+  await expect(page.getByRole('button', { name: 'Test & Install sections', exact: true })).toBeVisible();
+  // Once normal installation supplies matching ranges, the same action targets
+  // only that section. No global pattern command or configuration write occurs.
+  cardZones.splice(0, cardZones.length, ...zones.map(zone => ({ ...zone, brightness: 1 })));
+  await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
+  await expect.poll(() => controlPosts.filter(post => post.patternId === 'fire').length).toBe(1);
+  expect(controlPosts.at(-1)).toMatchObject({ zone: zones[0].id, syncZones: false });
 });

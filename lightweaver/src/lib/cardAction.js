@@ -1,6 +1,11 @@
 export const PHYSICAL_PREVIEW_FAILURE_MESSAGE = 'Studio changed, but the card did not verify that it applied the preview command. Reconnect and retry.';
 
 const CARD_ACTION_FAILURES = Object.freeze({
+  'section-layout-mismatch': Object.freeze({
+    message: 'The card still has a different section layout. Test & Install these sections before changing their patterns on the lights. The lights were not changed.',
+    actionId: 'install-sections',
+    actionLabel: 'Test & Install sections',
+  }),
   'identity-missing': Object.freeze({
     message: 'This card is running old software and cannot report which preview command it applied. Update the card, then retry.',
     actionId: 'update-card',

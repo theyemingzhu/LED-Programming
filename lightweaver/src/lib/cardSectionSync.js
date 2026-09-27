@@ -1,5 +1,5 @@
 import { CardPushError, pushConfigToCard, readCardStatusEnvelope } from './cardPushClient.js';
-import { readCardZonesFromCard } from './cardLiveControl.js';
+import { cardZoneRangesMatch, readCardZonesFromCard } from './cardLiveControl.js';
 import { prepareCardDeployment, verifyCardPostSaveState } from './cardDeployment.js';
 import { installRecordedMediaForRuntimePackage } from './cardRecordedMedia.js';
 
@@ -206,20 +206,22 @@ export async function ensureCardSectionsForPreview({
 export function cardSectionDifference(sectionTargets = [], zonesPayload = null) {
   const sections = (Array.isArray(sectionTargets) ? sectionTargets : [])
     .filter(target => target?.kind === 'section')
-    .map(target => ({ zoneId: String(target.zoneId || ''), label: String(target.label || target.zoneId || '') }))
+    .map(target => ({ zoneId: String(target.zoneId || ''), label: String(target.label || target.zoneId || ''), ...(target.ranges ? { ranges: target.ranges } : {}) }))
     .filter(section => section.zoneId);
   if (!Array.isArray(zonesPayload?.zones)) {
     return { known: false, held: [], missing: sections, extra: [] };
   }
   const cardZones = zonesPayload.zones
-    .map(zone => ({ zoneId: String(zone?.id || ''), label: String(zone?.label || zone?.id || '') }))
+    .map(zone => ({ zoneId: String(zone?.id || ''), label: String(zone?.label || zone?.id || ''), ranges: zone?.ranges }))
     .filter(zone => zone.zoneId);
   const cardById = new Map(cardZones.map(zone => [zone.zoneId, zone]));
   const projectIds = new Set(sections.map(section => section.zoneId));
+  const matches = section => cardById.has(section.zoneId)
+    && (!section.ranges || cardZoneRangesMatch(section.ranges, cardById.get(section.zoneId).ranges));
   return {
     known: true,
-    held: sections.filter(section => cardById.has(section.zoneId)),
-    missing: sections.filter(section => !cardById.has(section.zoneId)),
+    held: sections.filter(matches),
+    missing: sections.filter(section => !matches(section)),
     extra: cardZones.filter(zone => !projectIds.has(zone.zoneId)),
   };
 }
@@ -233,6 +235,6 @@ export function cardSectionSummary(sectionTargets = [], zonesPayload = null) {
   }
   const heldText = heldNames.length
     ? heldNames.join(', ')
-    : (difference.extra.length === 1 ? 'one section' : `${difference.extra.length} sections`);
+    : (zonesPayload.zones.length === 1 ? 'one section' : `${zonesPayload.zones.length} sections`);
   return `Card holds ${heldText}; Install to send yours`;
 }

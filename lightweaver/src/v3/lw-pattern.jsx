@@ -81,7 +81,7 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { assertCardDeploymentPreflightIdentity, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, cardZoneRangesMatch, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
 import { freshJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { useCardJourneyEvidence } from '../hooks/useSetupJourney.js';
 import { cardSectionSummary } from '../lib/cardSectionSync.js';
@@ -1228,19 +1228,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           return;
         }
         try {
-          // Was: a fresh `/api/firmware-info` read on every tap, whose result
-          // had to prove this Studio project was the installed one before a
-          // single light command went out. That is install authority, and it
-          // cost a full round-trip of latency ahead of every preview. A
-          // preview persists nothing, so it is gated on the card being the
-          // right card and ready — checked above — and sends immediately.
-          //
-          // Was also: `ensureCardSectionsForPreview`, which pushed a whole
-          // `/api/config` when the target zone was missing from the card.
-          // Writing the card's storage to preview a pattern is an install
-          // wearing a preview's name; ask the card to fall back to the whole
-          // strip instead, which `pushLivePreviewToCard` reports back through
-          // `previewZoneFallback` rather than doing silently.
+          // A divided draft may reuse an installed zone ID with a different
+          // extent. Verify its exact ranges before a native section command;
+          // missing or stale sections must never become a whole-piece edit.
           // A tap that lands while the card is still starting used to become a
           // failure message. The card answers 423 for a second or two after a
           // boot or a config write, and readiness is polled far less often than
@@ -1265,12 +1255,12 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           const previewOptions = {
             host: cardHost,
             timeoutMs: 2200,
-            fallbackMissingZoneToAll: true,
+            ...(target?.kind === 'section' ? { expectedZoneRanges: target.ranges || [] } : {}),
             preferBridge,
             revision: sequence,
             ...(expectedControlPatch ? { expectedControlPatch } : {}),
           };
-          const response = await retryWhileTransient(
+          await retryWhileTransient(
             () => pushLivePreviewToCard(previewLook, previewOptions),
             {
               attempts: 3,
@@ -1285,25 +1275,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
             setPreviewFailure(null);
             markCardLookConfirmed({ ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true });
-            // The pattern is on the strip either way, so this is a note, not a
-            // failure — but the owner is looking at a section tab and the whole
-            // piece just changed, so say which one actually happened.
-            const usedFallback = previewResponseUsedZoneFallback(response);
-            // Only speak if the authorization has not moved under us. Losing it
-            // raises "verify that this exact Studio project is still installed
-            // before sending lights" — and this branch used to overwrite that,
-            // with the section note or with an empty string, because a preview
-            // issued BEFORE the loss can land up to a second after it (the send
-            // retries three times, 350ms apart). Measured, the warning appeared
-            // at 22ms and was gone at 61ms, roughly one run in forty: the owner
-            // was then told nothing and would send lights believing the card
-            // still matched. A routine note is not worth a safety warning, so
-            // when the world has changed this response says nothing at all.
             if (projectAuthorizationRef.current === authorizationAtRequest) {
-              setStatusKind(usedFallback ? 'ok' : '');
-              setStatus(usedFallback
-                ? `The card has no “${targetLabel(target)}” section yet, so this played on the whole piece. Install to give the card your sections.`
-                : '');
+              setStatusKind('');
+              setStatus('');
             }
           }
         } catch (error) {
@@ -1673,7 +1647,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (target?.kind !== 'section' || !target.zoneId) return;
       if (patternAccessRef.current !== 'ready' || flashInFlightRef.current) return;
       const heldZones = Array.isArray(cardZonesPayload?.zones) ? cardZonesPayload.zones : null;
-      if (heldZones && heldZones.length < 2) return;
+      if (!heldZones || heldZones.length < 2 || sectionTargets.filter(item => item.kind === 'section')
+        .some(item => !cardZoneRangesMatch(item.ranges, heldZones.find(zone => zone.id === item.zoneId)?.ranges))) return;
       flashInFlightRef.current = true;
       const expectedCardId = cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '';
       flashSectionOnCard({
@@ -2033,8 +2008,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           const zone = selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '';
           if (currentPatternCardAccess() === 'ready') {
             await pushLivePreviewToCard(
-              { ...nextLook, zone, syncZones: nextLook.syncZones },
-              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200 },
+              { ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' },
+              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [] } : {}) },
             ).catch(() => null);
           }
         }
@@ -2400,7 +2375,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         setDraftLooks({});
         if (!response.rebooting && currentPatternCardAccess() === 'ready') {
           const zone = selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '';
-          await pushLivePreviewToCard({ ...nextLook, zone }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200 }).catch(() => null);
+          await pushLivePreviewToCard({ ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [] } : {}) }).catch(() => null);
         }
         setStatusKind('');
         setStatus('');
@@ -2514,6 +2489,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     };
     const runPreviewFailureAction = () => {
       switch (previewFailure?.actionId) {
+        case 'install-sections':
+          window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns';
+          break;
         case 'update-card':
           window.location.hash = '#screen=flash';
           break;
