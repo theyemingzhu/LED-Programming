@@ -552,12 +552,13 @@
 
 /* Chipset is one value for the whole card, so it reads as a row of the piece's
    physical setup rather than a per-strip field. */
-.la-led-chipset { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.la-led-chipset > .k { color: var(--text-mid); font-size: 11px; flex-shrink: 0; }
-/* The chipset dropdown carries the reel hint in its option text, so it takes
-   the remaining row width instead of the fixed GPIO-select size. */
+.la-led-chipset { display: grid; gap: 5px; min-width: 0; }
+.la-led-chipset > .k { color: var(--text-mid); font-size: 11px; }
+/* Keep chipset identity concise in the control and explain the selected reel
+   below it so the text stays readable even in the narrow inspector. */
 .la-led-chipset .la-gpio-wrap { flex: 1 1 auto; min-width: 0; }
-.la-led-chipset .la-chipset-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.la-led-chipset .la-chipset-select { width: 100%; min-width: 0; }
+.la-chipset-hint { grid-column: 1 / -1; color: var(--text-lo); font-size: 11px; line-height: 1.4; }
 .la-led-chipset-row { padding: 6px 6px 2px; }
 
 /* Draw strip controls form one instrument panel, not a stack of loose black

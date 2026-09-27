@@ -30,75 +30,64 @@
   gap: 10px;
   background: var(--bg-panel);
   border-bottom-color: var(--border-soft);
-  box-shadow: 0 6px 18px oklch(0.05 0.005 60 / 0.22);
+  box-shadow: none;
 }
 /* A group with nothing in it would otherwise draw an empty well: the mode
    actions group is populated per mode, so it is genuinely empty in some. */
 .la .toolbar .tb-group:empty { display: none; }
 .la .toolbar .tb-group {
-  gap: 3px;
-  padding: 3px;
-  background: var(--lw-well);
-  border: 1px solid var(--border-hair);
-  border-radius: var(--r-md);
-  box-shadow: var(--lw-inset-deep);
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 .la .toolbar .tb-btn {
   height: 28px;
   border-radius: var(--r-sm);
-  background: var(--bg-elev-2);
-  border-color: var(--border-soft);
-  box-shadow: var(--lw-raise);
+  background: var(--control-fill);
+  border-color: var(--control-edge);
+  box-shadow: none;
   font-size: 12px;
 }
-.la .toolbar .tb-btn:hover { background: var(--bg-sel); border-color: var(--border); }
-.la .toolbar .tb-btn:disabled { opacity: 0.4; box-shadow: none; }
+.la .toolbar .tb-btn:hover:not(:disabled) { background: var(--control-hover); border-color: var(--control-edge); }
+.la .toolbar .tb-btn:disabled {
+  opacity: 1;
+  background: var(--control-disabled-fill);
+  border-color: var(--control-disabled-edge);
+  color: var(--control-disabled-ink);
+  box-shadow: none;
+}
 /* A pressed key names a live state, so it lights rather than filling with
    clay — clay is the one control that writes to the card. */
 .la .toolbar .tb-btn.active {
-  background: transparent;
-  border-color: var(--lw-live-ink);
-  color: var(--lw-live-ink);
+  background: var(--control-selected);
+  border-color: var(--control-selected-edge);
+  color: var(--control-selected-ink);
 }
+.la .toolbar .tb-btn.active:hover { background: var(--control-selected); border-color: var(--control-selected-edge); }
 /* the dividers were separating groups that now separate themselves */
 .la .toolbar .tb-div { display: none; }
 
-/* On a phone the toolbar is capped at 110px and scrolls inside it
-   (v3-layout-modes.css). The key wells cost 3px of padding and a border per
-   group, which pushed its scroll height from 250px to 284px — a third of a
-   row more to scroll past on the screen with the least room. The wells are
-   what make this feel like hardware on a desk; on a phone there is no desk,
-   so below the breakpoint the groups go back to being plain runs of keys and
-   the keys keep their raised faces. */
+/* The phone toolbar wraps and scrolls within its capped height. */
 @media (max-width: 900px) {
   .la .toolbar { gap: 8px; }
-  .la .toolbar .tb-group {
-    gap: 4px;
-    padding: 0;
-    background: none;
-    border: 0;
-    box-shadow: none;
-  }
-  /* the raised face stays; the visible border does not. Each key's border is
-     2px of width, and ten keys of it is a whole extra wrapped row here. */
-  .la .toolbar .tb-btn { border-color: transparent; }
-  .la .la-zoom { padding: 2px; }
 }
 .la .la-zoom {
-  gap: 3px;
-  padding: 3px;
-  border-radius: var(--r-md);
-  background: var(--lw-well);
-  border-color: var(--border-hair);
-  box-shadow: var(--lw-inset-deep);
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .la .la-zoom button {
   height: 26px;
   border-radius: var(--r-sm);
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-soft);
-  box-shadow: var(--lw-raise);
+  background: var(--control-fill);
+  border: 1px solid var(--control-edge);
+  box-shadow: none;
 }
+.la .la-zoom button:hover:not(:disabled) { background: var(--control-hover); }
 .la .la-zoom .zv {
   height: 26px;
   color: var(--text-mid);

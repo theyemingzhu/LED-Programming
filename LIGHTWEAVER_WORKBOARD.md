@@ -7,6 +7,32 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Session consolidation — 2026-09-27 (active)
+
+The current **Fix Find my card detection** chat owns remaining LED/Lightweaver
+closeout and Bench follow-up. See [the session inventory](docs/session-closeout-2026-09-27.md).
+Main `66135132` is independently verified live: Studio **2165**, signed firmware
+**2160**; Tests and launch check passed. Older "pending release" entries below
+are historical and do not override this exact-revision evidence. The current
+owner requirement remains no login and no physical-button flashing approval.
+
+Eight completed/superseded chats are archived. Historical setup,
+interface-manager, and layout/GPIO chats are consolidated here; their
+unperformed physical acceptance stays `needs-eyes`, not passed. All five dirty
+checkout snapshots are committed and pushed to explicit preservation branches.
+Four missing September 27 UI refinements are restored selectively on current
+main; five focused browser checks passed and the software release gate is in
+progress before closing the UI refinement chats. Branch cleanup follows
+integration; preserve unique work and open PRs.
+
+**Bench: blocked.** Local Mac card `lw-b0fe81f61b44` has app0 image evidence for
+1939, not proof of its active slot or successful connection. Resolve browser USB
+selection and use the signed exact-card preserving route; never change the Mac's
+Wi-Fi or substitute factory erase/login/BOOT/RESET. The historical gallery card
+`lw-301bd5a172e0` is different; its prior 2088 connection does not prove this card.
+Real light output, mapping, power-cycle, and novice acceptance remain unobserved.
+No exhaustive Prove run was requested during this closeout.
+
 ## No-button flashing release — 2026-09-26
 
 Adrian authorized shipment. Studio Wi-Fi flashing now requires software update
