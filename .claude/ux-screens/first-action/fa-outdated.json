@@ -1,0 +1,17 @@
+{
+  "step": "fa-outdated",
+  "heading": "lightweaver.local",
+  "firstHeading": "Connect to your card",
+  "firstButton": "Install or update firmware",
+  "firstPrimary": "Install or update firmware",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Install or update firmware"
+  ],
+  "journeyTask": "update-firmware",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": false
+}

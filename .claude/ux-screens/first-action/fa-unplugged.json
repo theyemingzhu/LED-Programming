@@ -1,0 +1,17 @@
+{
+  "step": "fa-unplugged",
+  "heading": "Start Lightweaver",
+  "firstHeading": "",
+  "firstButton": "CardSet up the card",
+  "firstPrimary": "CardSet up the card",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "CardSet up the card"
+  ],
+  "journeyTask": "connect-card",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "",
+  "lightsPhaseOpen": false,
+  "reviewLightsVisible": false
+}

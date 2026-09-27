@@ -115,9 +115,11 @@ export function CardInstallAction({
     // Verification auto-locks the wiring. Safe from looping: changeKind null
     // plus an unchanged wiring fingerprint (locked is excluded from it) means
     // locking never invalidates the verification it depends on.
-    if (!commissioningVerified || !compiledWiring.ok || wiring.locked) return;
+    // Compact Status is a save door only — locking here would rewrite the
+    // open project while Card Home is resolving a matching-project switch.
+    if (compact || !commissioningVerified || !compiledWiring.ok || wiring.locked) return;
     updateWiring(draft => { draft.locked = true; }, { changeKind: null });
-  }, [commissioningVerified, compiledWiring.ok, wiring.locked, updateWiring]);
+  }, [compact, commissioningVerified, compiledWiring.ok, wiring.locked, updateWiring]);
   // The LED check below lights real LEDs, which means 'frame' messages, which
   // the bridge refuses while the card reports playbackReady=false. A card with
   // no project always reports exactly that — so offering the check here is

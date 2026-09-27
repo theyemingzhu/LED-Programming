@@ -1,0 +1,17 @@
+{
+  "step": "fa-plugged-blank-connected",
+  "heading": "Lightweaver",
+  "firstHeading": "Find and verify the lights",
+  "firstButton": "Find and count the lights",
+  "firstPrimary": "Find and count the lights",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Find and count the lights"
+  ],
+  "journeyTask": "discover-lights",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": true
+}
