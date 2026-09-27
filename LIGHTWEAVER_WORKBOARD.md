@@ -7,7 +7,7 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
-## Physical card connection manager — 2026-09-27 (active, Bench)
+## Physical card connection manager — 2026-09-27 (blocked, Bench)
 
 This manager chat owns the local Mac connection follow-up. Started from clean
 main `d2d98264`; recognition fix is on `codex/usb-build-1939-recognition`.
@@ -29,8 +29,14 @@ pending. Full physical app0 SHA now matches signed1939 exactly. Studio lacked
 recognition for that signed image; a focused regression witnessed red, and the
 fix plus all 20 reader tests pass, including corrupted-image and app1 refusal.
 Updated reader correctly identifies the actual card dump as1939/app0. Checkpoint
-passes all2,803 units and the production build. Release is underway; this does
-not prove browser USB or LAN operation.
+passes all2,803 units and the production build. Source commit `813092cf` is
+pushed in draft [PR353](https://github.com/theyemingzhu/LED-Programming/pull/353).
+Not shipped: manual Tests run36314178855 has passed source/cloud/production,
+but its conservative missing-base classification selects a firmware-release
+version gate and fails because1.1.47 is already signed. Actual base-to-head
+classification says `firmwareBundleOnly:true`; no firmware bump is warranted.
+Browser smoke and software launch run36314177126 are still running at handoff.
+No merge/deploy. This does not prove browser USB or LAN operation.
 See [the Bench record](docs/bench-sessions/2026-09-27-lw-b0fe81f61b44-usb-connection.md).
 
 Next: complete the normal USB chooser for this exact card and observe Studio's

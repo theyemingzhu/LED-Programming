@@ -1,7 +1,7 @@
 # Local Mac card USB connection — 2026-09-27
 
 - Mode: Bench; bounded connection recovery, no exhaustive Prove authorization.
-- Outcome: in progress; normal browser USB selection not completed.
+- Outcome: blocked; normal browser USB selection not completed.
 - Card: `lw-b0fe81f61b44`; USB `/dev/cu.usbmodem14301`.
 - Fresh USB serial descriptor and ROM MAC: `44:1b:f6:81:fe:b0`.
 - Chip: ESP32-S3 QFN56 v0.2; embedded PSRAM 8 MB.
@@ -80,6 +80,24 @@ before any write. Credentials must not be recorded in Git or chat.
 ## Human observations
 
 USB chooser appearance/selection: pending. LED behavior: unobserved.
+
+## Software delivery status
+
+Recognition fix is committed/pushed as `813092cf` in draft PR353. It is not
+PR-ready, merged, deployed or shipped. Hosted Tests36314178855 passed source,
+cloud and production, but failed the firmware version step. Workflow dispatch
+provides no base SHA, selecting conservative all-path behavior and
+`firmwareBundleOnly:false`. Running the unchanged classifier on actual
+`d2d98264..813092cf` reports `firmwareBundleOnly:true`, so this browser reader
+change does not call for a new firmware release. No version bump or gate bypass
+was performed. Browser smoke and launch36314177126 remain running as of this
+handoff; inspect their final results before any release continuation. Current
+production remains the previously verified Studio2169/signed firmware2160.
+
+Actual Studio USB chooser, runtime firmware/boot identity, Wi-Fi provisioning,
+HTTP status readback and disconnect/reconnect lifecycle remain unverified.
+No card data backup has been made and no flash write is authorized by this
+record alone; reread fresh exact-card safety evidence before a preserving write.
 
 ## Single next step
 
