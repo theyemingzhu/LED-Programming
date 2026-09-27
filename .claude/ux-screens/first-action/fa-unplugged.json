@@ -1,0 +1,17 @@
+{
+  "step": "fa-unplugged",
+  "heading": "Start Lightweaver",
+  "firstHeading": "Build the piece in this browser",
+  "firstButton": "Plug in and find card",
+  "firstPrimary": "Plug in and find card",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Plug in and find card"
+  ],
+  "journeyTask": "connect-card",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "",
+  "lightsPhaseOpen": false,
+  "reviewLightsVisible": false
+}

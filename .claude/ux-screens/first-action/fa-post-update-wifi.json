@@ -1,0 +1,17 @@
+{
+  "step": "fa-post-update-wifi",
+  "heading": "192.168.4.1",
+  "firstHeading": "Connect to your card",
+  "firstButton": "Continue Wi-Fi setup",
+  "firstPrimary": "Continue Wi-Fi setup",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Continue Wi-Fi setup"
+  ],
+  "journeyTask": "configure-wifi",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": false
+}

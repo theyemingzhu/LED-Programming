@@ -1,0 +1,17 @@
+{
+  "step": "fa-plugged-loaded-first",
+  "heading": "Matrix piece",
+  "firstHeading": "Connect to your card",
+  "firstButton": "Use this card’s project",
+  "firstPrimary": "Use this card’s project",
+  "primaryCount": 1,
+  "primaryLabels": [
+    "Use this card’s project"
+  ],
+  "journeyTask": "load-matching-project",
+  "journeyComplete": "false",
+  "project": "Untitled Project",
+  "installed": "",
+  "lightsPhaseOpen": true,
+  "reviewLightsVisible": false
+}
