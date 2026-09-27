@@ -1,0 +1,398 @@
+{
+  "date": "2026-09-27",
+  "merged_local_removed": [
+    {
+      "branch": "claude/compassionate-shannon-d02fb8",
+      "sha": "270ae48b79d300203c407d303406234f8bd4bcec",
+      "status": "deleted",
+      "detail": "Deleted branch claude/compassionate-shannon-d02fb8 (was 270ae48b)."
+    },
+    {
+      "branch": "claude/led-control-architecture-a48c4e",
+      "sha": "f42005a1c90f2a1a9efd89cb8897e50491123b60",
+      "status": "deleted",
+      "detail": "Deleted branch claude/led-control-architecture-a48c4e (was f42005a1)."
+    },
+    {
+      "branch": "claude/led-multi-pattern-control-18b95e",
+      "sha": "3048fbc67009ff86e673363aeffe3d7ccdee0ea1",
+      "status": "deleted",
+      "detail": "Deleted branch claude/led-multi-pattern-control-18b95e (was 3048fbc6)."
+    },
+    {
+      "branch": "codex/bench-connection-recovery",
+      "sha": "6ff4c703643ebfd09e202485deb590c7664713b0",
+      "status": "deleted",
+      "detail": "Deleted branch codex/bench-connection-recovery (was 6ff4c703)."
+    },
+    {
+      "branch": "codex/bridge-close-suppression",
+      "sha": "c342c78902732ae7862a89534cb10429fe127cc0",
+      "status": "deleted",
+      "detail": "Deleted branch codex/bridge-close-suppression (was c342c789)."
+    },
+    {
+      "branch": "codex/bridge-pairing-smoke",
+      "sha": "0c9a42a1753cad674e02aa90ee31267800c8cae7",
+      "status": "deleted",
+      "detail": "Deleted branch codex/bridge-pairing-smoke (was 0c9a42a1)."
+    },
+    {
+      "branch": "codex/bridge-unpaired-recovery",
+      "sha": "95dbbf8e77bb97a4642d7a8faf460145baf2aae8",
+      "status": "deleted",
+      "detail": "Deleted branch codex/bridge-unpaired-recovery (was 95dbbf8e)."
+    },
+    {
+      "branch": "codex/card-home-update-intent",
+      "sha": "a1fc97ce0827f64ba68a4cac45092697e3bf2067",
+      "status": "deleted",
+      "detail": "Deleted branch codex/card-home-update-intent (was a1fc97ce)."
+    },
+    {
+      "branch": "codex/card-wifi-feedback",
+      "sha": "a678b354df20cc53a3360a2983fdf9f376cfc563",
+      "status": "deleted",
+      "detail": "Deleted branch codex/card-wifi-feedback (was a678b354)."
+    },
+    {
+      "branch": "codex/card-wifi-setup-clarity",
+      "sha": "963c8ccf51204538ea459d8d490569a18915edcf",
+      "status": "deleted",
+      "detail": "Deleted branch codex/card-wifi-setup-clarity (was 963c8ccf)."
+    },
+    {
+      "branch": "codex/compact-strip-inspector",
+      "sha": "b9c600b5ba7bdb88ad08fb0ba7300b09f22a530f",
+      "status": "deleted",
+      "detail": "Deleted branch codex/compact-strip-inspector (was b9c600b5)."
+    },
+    {
+      "branch": "codex/discovery-power-copy",
+      "sha": "e218bf0cd8603ac2de3a40ae87e6eb6cab3a332c",
+      "status": "deleted",
+      "detail": "Deleted branch codex/discovery-power-copy (was e218bf0c)."
+    },
+    {
+      "branch": "codex/factory-card-pairing-recovery",
+      "sha": "e40d953127484c32bd394da59af81e88fcc30f07",
+      "status": "deleted",
+      "detail": "Deleted branch codex/factory-card-pairing-recovery (was e40d9531)."
+    },
+    {
+      "branch": "codex/factory-card-preserving-update",
+      "sha": "0b371b02e8ae7bd4aa2bfa413d55557f0f380175",
+      "status": "deleted",
+      "detail": "Deleted branch codex/factory-card-preserving-update (was 0b371b02)."
+    },
+    {
+      "branch": "codex/factory-setup-copy-smoke",
+      "sha": "9a62924571d3504d866ef107679c68bbaa72d10c",
+      "status": "deleted",
+      "detail": "Deleted branch codex/factory-setup-copy-smoke (was 9a629245)."
+    },
+    {
+      "branch": "codex/fresh-card-connect-wizard",
+      "sha": "9b6975c1a52c32167887f4021b1b7e1311aaba49",
+      "status": "deleted",
+      "detail": "Deleted branch codex/fresh-card-connect-wizard (was 9b6975c1)."
+    },
+    {
+      "branch": "codex/fresh-install-fallback-proof",
+      "sha": "5bf5f84e383ca427b130441b6dc35d6507cabc61",
+      "status": "deleted",
+      "detail": "Deleted branch codex/fresh-install-fallback-proof (was 5bf5f84e)."
+    },
+    {
+      "branch": "codex/j07-autosave-fixture",
+      "sha": "aa3efc7053c389ac4f956e979a6e0d9fecb9ea61",
+      "status": "deleted",
+      "detail": "Deleted branch codex/j07-autosave-fixture (was aa3efc70)."
+    },
+    {
+      "branch": "codex/pattern-creative-release-fix",
+      "sha": "a86cd4fe7a057add8febc4c4a1ed9ff9c3e4632d",
+      "status": "deleted",
+      "detail": "Deleted branch codex/pattern-creative-release-fix (was a86cd4fe)."
+    },
+    {
+      "branch": "codex/pattern-creative-reviewed",
+      "sha": "d591be40d57348b2eb800540ad5aaa9b8536d619",
+      "status": "deleted",
+      "detail": "Deleted branch codex/pattern-creative-reviewed (was d591be40)."
+    },
+    {
+      "branch": "codex/post-ack-usb-recovery",
+      "sha": "d9a245b01f57e59279c3cdc54e2d272a3f46d3f3",
+      "status": "deleted",
+      "detail": "Deleted branch codex/post-ack-usb-recovery (was d9a245b0)."
+    },
+    {
+      "branch": "codex/scene-integration-manager",
+      "sha": "a6ab5fe2ca09be0614be9903748f1b79a50339b3",
+      "status": "deleted",
+      "detail": "Deleted branch codex/scene-integration-manager (was a6ab5fe2)."
+    },
+    {
+      "branch": "codex/september-release-cleanup",
+      "sha": "4449b01bb4782c35a006b1f873174730a148fe09",
+      "status": "deleted",
+      "detail": "Deleted branch codex/september-release-cleanup (was 4449b01b)."
+    },
+    {
+      "branch": "codex/svg-count-connected-worker-readiness",
+      "sha": "58c98685730fe6e81cd8d3b3b65cb94bdfd870c6",
+      "status": "deleted",
+      "detail": "Deleted branch codex/svg-count-connected-worker-readiness (was 58c98685)."
+    },
+    {
+      "branch": "codex/tree-manager-integration",
+      "sha": "3b25ea7bdda1b06bf12754ab88b915bcb3b71ec3",
+      "status": "deleted",
+      "detail": "Deleted branch codex/tree-manager-integration (was 3b25ea7b)."
+    },
+    {
+      "branch": "codex/usb-hello-runtime-recovery",
+      "sha": "d78f7cdad7131b2194d04fbf67509c22887439dc",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-hello-runtime-recovery (was d78f7cda)."
+    },
+    {
+      "branch": "codex/usb-join-diagnostics-ui",
+      "sha": "0953a6bc52819612979a7292e74e23f25cb9ba82",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-join-diagnostics-ui (was 0953a6bc)."
+    },
+    {
+      "branch": "codex/usb-paced-write-recovery",
+      "sha": "09990e3cd449fe55fee55d0dd55b60dc56296823",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-paced-write-recovery (was 09990e3c)."
+    },
+    {
+      "branch": "codex/usb-setup-page-fallback",
+      "sha": "80b0c797fb2726bce230f9abeb043e9a35daaf11",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-setup-page-fallback (was 80b0c797)."
+    },
+    {
+      "branch": "codex/usb-wifi-scan-retry",
+      "sha": "47567eaa3d1af217e329f24005b4ac8a7585b8cb",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-wifi-scan-retry (was 47567eaa)."
+    },
+    {
+      "branch": "codex/usb-wifi-session-recovery",
+      "sha": "40553f00666cda8bb8a16455a3fc32d00c76c6b3",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-wifi-session-recovery (was 40553f00)."
+    },
+    {
+      "branch": "codex/usb-wifi-setup",
+      "sha": "4c1c50a38e0c6f27d1d4239671e0c731676561a4",
+      "status": "deleted",
+      "detail": "Deleted branch codex/usb-wifi-setup (was 4c1c50a3)."
+    },
+    {
+      "branch": "codex/v3-compact-actions-integrated",
+      "sha": "876e67e8afe04fe1f1f4ebab3cd11be6084fa103",
+      "status": "deleted",
+      "detail": "Deleted branch codex/v3-compact-actions-integrated (was 876e67e8)."
+    },
+    {
+      "branch": "codex/wifi-stability-diagnostics",
+      "sha": "9f8c754c3937de57e91e1e3abb45898a0b519dea",
+      "status": "deleted",
+      "detail": "Deleted branch codex/wifi-stability-diagnostics (was 9f8c754c)."
+    },
+    {
+      "branch": "docs/close-w16",
+      "sha": "5cdd12f3165c18ae9bc06346cd1ca9cc529daf23",
+      "status": "deleted",
+      "detail": "Deleted branch docs/close-w16 (was 5cdd12f3)."
+    },
+    {
+      "branch": "first-action/auto-detect",
+      "sha": "0dbc9e4b5ab4e1b3110c9cce36284a858ca60c3c",
+      "status": "deleted",
+      "detail": "Deleted branch first-action/auto-detect (was 0dbc9e4b)."
+    },
+    {
+      "branch": "sprint/start-actions",
+      "sha": "47b055fbab93018e7d65cf2530dd32da4a6d8817",
+      "status": "deleted",
+      "detail": "Deleted branch sprint/start-actions (was 47b055fb)."
+    }
+  ],
+  "archived_branches": [
+    {
+      "branch": "archive/round2-f41-one-primary",
+      "sha": "ee96bf3f4ffd79049ffbce83bbc0fdb989271f85",
+      "tag": "archive/led-closeout-20260927/archive/round2-f41-one-primary"
+    },
+    {
+      "branch": "archive/round2-night-batch-5",
+      "sha": "52fceff6f5f29419d137a4d9d397514762bf42d1",
+      "tag": "archive/led-closeout-20260927/archive/round2-night-batch-5"
+    },
+    {
+      "branch": "codex/artwork-aware-pattern-lab",
+      "sha": "69eed773b586c04e5da72eda592dd66cc525c6b9",
+      "tag": "archive/led-closeout-20260927/codex/artwork-aware-pattern-lab"
+    },
+    {
+      "branch": "codex/bridge-close-suppresses-auto",
+      "sha": "6c8c7610debdac6af75230959f68f0af6dab05cd",
+      "tag": "archive/led-closeout-20260927/codex/bridge-close-suppresses-auto"
+    },
+    {
+      "branch": "codex/expression-p0-implementation",
+      "sha": "6e6649407b0b1043326dc132197ad912d17bac9c",
+      "tag": "archive/led-closeout-20260927/codex/expression-p0-implementation"
+    },
+    {
+      "branch": "codex/expression-project-source",
+      "sha": "cacdc032004508b0386ffb7de8933f3ee9976ae8",
+      "tag": "archive/led-closeout-20260927/codex/expression-project-source"
+    },
+    {
+      "branch": "codex/expression-scene-delivery",
+      "sha": "83862d443436cb3607100f5d1728b3c243a19392",
+      "tag": "archive/led-closeout-20260927/codex/expression-scene-delivery"
+    },
+    {
+      "branch": "codex/expression-show-handoff",
+      "sha": "54852e907e2a80f34da4f6001e8d797aedb66ca3",
+      "tag": "archive/led-closeout-20260927/codex/expression-show-handoff"
+    },
+    {
+      "branch": "codex/install-firmware-summary",
+      "sha": "3ec27b8b9feedbb1e27330c0e0687c70e04a217e",
+      "tag": "archive/led-closeout-20260927/codex/install-firmware-summary"
+    },
+    {
+      "branch": "codex/layout-clarity-manager",
+      "sha": "40e966248e17fc36342311394c7fc56b7b8cc4b2",
+      "tag": "archive/led-closeout-20260927/codex/layout-clarity-manager"
+    },
+    {
+      "branch": "codex/layout-gpio-pattern-fixes",
+      "sha": "db55227b5ecc49b01a4288b70b8283af700bace1",
+      "tag": "archive/led-closeout-20260927/codex/layout-gpio-pattern-fixes"
+    },
+    {
+      "branch": "codex/layout-touch-target-release",
+      "sha": "167293939f24351c93ac02b0a8399906608704eb",
+      "tag": "archive/led-closeout-20260927/codex/layout-touch-target-release"
+    },
+    {
+      "branch": "codex/notice-no-shift-fix",
+      "sha": "426c640ec1f30e7dca15b619273869726d8577f2",
+      "tag": "archive/led-closeout-20260927/codex/notice-no-shift-fix"
+    },
+    {
+      "branch": "codex/pattern-creative-workflow",
+      "sha": "6cd4f718d54259ff34277586dc31504479012b3f",
+      "tag": "archive/led-closeout-20260927/codex/pattern-creative-workflow"
+    },
+    {
+      "branch": "codex/pattern-lab-mobile-release",
+      "sha": "aeb1f5345a22286b81d69d73aaeca72e7615387d",
+      "tag": "archive/led-closeout-20260927/codex/pattern-lab-mobile-release"
+    },
+    {
+      "branch": "codex/public-worker-readiness",
+      "sha": "a2cf5bed5bde1e90580c6250764631888f1b478c",
+      "tag": "archive/led-closeout-20260927/codex/public-worker-readiness"
+    },
+    {
+      "branch": "codex/release-gate-repair",
+      "sha": "0d8f868e00cffe850e933f16c0ddc9499f712aff",
+      "tag": "archive/led-closeout-20260927/codex/release-gate-repair"
+    },
+    {
+      "branch": "codex/scale-color-journeys",
+      "sha": "cd48fb59fc2a069a4234ffb99de1b51d932fcd62",
+      "tag": "archive/led-closeout-20260927/codex/scale-color-journeys"
+    },
+    {
+      "branch": "codex/scene-expression-frame",
+      "sha": "f601f2b2b4825560110e0812cb098e79aefad9b6",
+      "tag": "archive/led-closeout-20260927/codex/scene-expression-frame"
+    },
+    {
+      "branch": "codex/scene-expression-production",
+      "sha": "a159d3eb03151dc7ede5075899bbf31c937af019",
+      "tag": "archive/led-closeout-20260927/codex/scene-expression-production"
+    },
+    {
+      "branch": "codex/scene-expression-targeting",
+      "sha": "ffcf2da00f41932c8860706385d9c0abb1903a68",
+      "tag": "archive/led-closeout-20260927/codex/scene-expression-targeting"
+    },
+    {
+      "branch": "codex/standalone-color-journeys",
+      "sha": "29374eaae0a35bac7224131b51b594d7d50780c2",
+      "tag": "archive/led-closeout-20260927/codex/standalone-color-journeys"
+    },
+    {
+      "branch": "codex/status-locator-test",
+      "sha": "6b1c0458557373f1220d68f6835aa7c085c80e69",
+      "tag": "archive/led-closeout-20260927/codex/status-locator-test"
+    },
+    {
+      "branch": "codex/usb-paced-commands",
+      "sha": "70e4c59f98e3ed3993716a33d8eb8ec883c6d161",
+      "tag": "archive/led-closeout-20260927/codex/usb-paced-commands"
+    },
+    {
+      "branch": "codex/usb-wifi-attempt-recheck",
+      "sha": "58efbb7a27c41bb51758196de4460b4abccd91f2",
+      "tag": "archive/led-closeout-20260927/codex/usb-wifi-attempt-recheck"
+    },
+    {
+      "branch": "codex/v3-compact-actions",
+      "sha": "6f2fc43d44c888f6bd3304585ea3ffb7bb0f62b4",
+      "tag": "archive/led-closeout-20260927/codex/v3-compact-actions"
+    },
+    {
+      "branch": "codex/wifi-copy-scan-2107",
+      "sha": "41c44b6acaa5f315907140ec1d24d800f746d575",
+      "tag": "archive/led-closeout-20260927/codex/wifi-copy-scan-2107"
+    },
+    {
+      "branch": "codex/wifi-resume-navigation",
+      "sha": "e39d1daae3f5d18780a4dee7b43a64b3a3d3391a",
+      "tag": "archive/led-closeout-20260927/codex/wifi-resume-navigation"
+    },
+    {
+      "branch": "firmware-release/1.1.33",
+      "sha": "4b743e2ff1efd6d7b5ec66993efc62b4f006c91b",
+      "tag": "archive/led-closeout-20260927/firmware-release/1.1.33"
+    },
+    {
+      "branch": "first-action/known-station-wifi",
+      "sha": "d602a9741e7b8133dab4b06fbc280dcdaa8a8237",
+      "tag": "archive/led-closeout-20260927/first-action/known-station-wifi"
+    },
+    {
+      "branch": "wip/root-checkout-2026-09-08",
+      "sha": "d29544f2e32d3877608e612f07946aeb0cfcc79a",
+      "tag": "archive/led-closeout-20260927/wip/root-checkout-2026-09-08"
+    }
+  ],
+  "remote_branches_removed": [
+    "codex/multi-output-pattern-workflow",
+    "round2/f33b-patterns-repair-route",
+    "archive/round2-f41-one-primary",
+    "archive/round2-night-batch-5",
+    "codex/artwork-aware-pattern-lab",
+    "codex/install-firmware-summary",
+    "codex/layout-gpio-pattern-fixes",
+    "codex/standalone-color-journeys",
+    "codex/status-locator-test",
+    "codex/v3-compact-actions",
+    "codex/wifi-resume-navigation"
+  ],
+  "recovery_prefix": "archive/led-closeout-20260927/"
+}

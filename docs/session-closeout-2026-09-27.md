@@ -28,10 +28,10 @@ does not certify physical-card acceptance or erase its checkout.
 | Fix layout, GPIO, and patterns | Released changes on main; final local shipment note pushed; archived | Real three-output observation transferred to the central Bench backlog |
 | Build USB Wi-Fi setup for Lightweaver | Released USB setup and recovery changes on main; local notes pushed; archived | Gallery artwork/output/count and physical playback transferred to the central Bench backlog |
 | Lightweaver Interface Manager | Compact setup/action and recovery changes represented on main; local snapshot pushed; archived | Old local mapper-retirement edits are preserved but not integrated; they conflict with current project scope |
-| Propose three UI improvement paths | Saved snapshot pushed; four final visual refinements being restored selectively | Current-screen verification and release required before closure |
-| Lightweaver — Gallery polish | Shared neutral control-edge refinements being restored | Included in the same UI closeout batch |
-| Lightweaver — Effortless workflow | Layout outline/type-label refinements being restored | Included in the same UI closeout batch |
-| Lightweaver — Creative workspace | Narrow-screen project identity/action refinements being restored | Included in the same UI closeout batch |
+| Propose three UI improvement paths | Snapshot pushed; four refinements restored in PR352; archived | Release tracked centrally in PR352 |
+| Lightweaver — Gallery polish | Shared neutral control-edge refinements restored and verified; archived | Included in PR352 |
+| Lightweaver — Effortless workflow | Layout outline/type-label refinements restored and verified; archived | Included in PR352 |
+| Lightweaver — Creative workspace | Narrow-screen project identity/action refinements restored and verified; archived | Included in PR352 |
 | Fix Find my card detection | Current coordinating chat; stays open | Local card connection remains unresolved |
 
 ## Restored visual refinements
@@ -48,8 +48,10 @@ also inspected the real in-app Layout preview.
 Evidence: [phone Projects](../.claude/ux-screens/session-closeout-20260927/projects-390.png),
 [desktop Layout](../.claude/ux-screens/session-closeout-20260927/layout-1440.png),
 [phone Layout](../.claude/ux-screens/session-closeout-20260927/layout-390.png).
-The broader software release check is running; this paragraph is not yet a
-shipment claim.
+The broader software release gate and deployment are tracked in
+[PR352](https://github.com/theyemingzhu/LED-Programming/pull/352). Archiving the
+completed worker chats transfers release coordination here; it does not claim
+physical-card acceptance.
 
 ## Preservation and superseded work
 
@@ -75,7 +77,9 @@ compact action, and the broad guard would disable auto-lock for every compact
 install task. No reproduced defect justified integrating it during closeout.
 
 `codex/layout-gpio-pattern-fixes`, `codex/v3-compact-actions`, and
-`codex/wifi-resume-navigation` are also pushed as recoverable session history.
+`codex/wifi-resume-navigation` were also pushed as recoverable session history,
+then preserved in the archive tags described below before their branch names
+were removed.
 The compact actions, Wi-Fi password visibility/help, and exact-card preserving
 update resume behavior are already represented on main despite differing patch
 identities. Older test fixtures and workboards must not replace current versions.
@@ -84,6 +88,25 @@ Draft PR [312](https://github.com/theyemingzhu/LED-Programming/pull/312) is a
 separate cross-repository Cursor handoff containing documentation only. It is
 outside the Lightweaver feature closeout and remains open. General worktree
 cleanup and health-research chats sharing this directory are also outside scope.
+
+## Completed librarian and branch cleanup
+
+**12 historical development chats archived.** The current connection-recovery
+chat is the single continuation for release coordination and the open Bench
+checks below. Unrelated chats were not archived.
+
+**68 old local branch names and 11 remote branches removed.** Of the local
+branches, 37 were fully contained in main. The other 31 exact commit tips were
+first tagged under `archive/led-closeout-20260927/<original-branch>` and verified
+on GitHub before their branch references were removed with exact-tip checks.
+Four clean, idle checkouts were detached at the same commits; their files were
+preserved. No force push, file deletion, or history rewrite was used.
+
+The [machine-readable recovery map](branch-closeout-2026-09-27.json) records every
+removed name, original commit, and archival tag. Main, five explicit recovery
+branches, and the active PR352 branch remain locally. The remote also retains
+the unrelated open draft PR312. The PR352 branch can be removed normally after
+its integration; the five preservation branches intentionally remain recoverable.
 
 ## Central unresolved Bench work
 

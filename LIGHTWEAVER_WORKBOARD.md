@@ -7,7 +7,7 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
-## Session consolidation — 2026-09-27 (active)
+## Session consolidation — 2026-09-27 (done; Bench follow-up open)
 
 The current **Fix Find my card detection** chat owns remaining LED/Lightweaver
 closeout and Bench follow-up. See [the session inventory](docs/session-closeout-2026-09-27.md).
@@ -16,14 +16,19 @@ Main `66135132` is independently verified live: Studio **2165**, signed firmware
 are historical and do not override this exact-revision evidence. The current
 owner requirement remains no login and no physical-button flashing approval.
 
-Eight completed/superseded chats are archived. Historical setup,
-interface-manager, and layout/GPIO chats are consolidated here; their
+Twelve completed/superseded chats are archived. Historical setup,
+interface-manager, layout/GPIO, and UI refinement chats are consolidated here; their
 unperformed physical acceptance stays `needs-eyes`, not passed. All five dirty
 checkout snapshots are committed and pushed to explicit preservation branches.
 Four missing September 27 UI refinements are restored selectively on current
-main; five focused browser checks passed and the software release gate is in
-progress before closing the UI refinement chats. Branch cleanup follows
-integration; preserve unique work and open PRs.
+main; five focused browser checks passed. [PR352](https://github.com/theyemingzhu/LED-Programming/pull/352)
+tracks the integrated release gate and deployment. The librarian pass is complete.
+Branch cleanup removed 68 old local branch names and 11 remote branches. Exact
+history for 31 archived tips is verified on GitHub under
+`archive/led-closeout-20260927/`; see the
+[recovery map](docs/branch-closeout-2026-09-27.json). Main, the five recovery
+branches, and the current integration branch remain; cross-repository draft
+PR312 is retained. No historical source was silently discarded.
 
 **Bench: blocked.** Local Mac card `lw-b0fe81f61b44` has app0 image evidence for
 1939, not proof of its active slot or successful connection. Resolve browser USB
