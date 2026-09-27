@@ -58,6 +58,9 @@ import './styles/v3-layout-console.css';
 // The notice layer loads last so its floating stack wins the cascade over
 // every screen stylesheet that used to draw its own in-flow message box.
 import './styles/lw-notice.css';
+// Approved public Studio polish. Kept out of card-main.jsx so it cannot alter
+// the signed embedded card bundle.
+import './styles/approved-ui-refinements.css';
 import App from './v3/app.jsx';
 import { createOfflineUpdateController } from './lib/offlineUpdate.js';
 import { detectRuntimeMode } from './lib/runtimeMode.js';

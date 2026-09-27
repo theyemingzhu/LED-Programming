@@ -23,8 +23,9 @@ test('the layout starter offers both card chipsets and nothing else', async ({ p
   const chipset = picker.getByTestId('led-chipset-control');
   await expect(chipset).toBeVisible();
   await expect(chipset.getByTestId('led-chipset-select').locator('option'))
-    .toHaveText([/^WS2812B — /, /^WS2815 — /]);
-  await expect(picker.getByTestId('led-chipset-hint')).toHaveCount(0);
+    .toHaveText(['WS2812B · 5V', 'WS2815 · 12V']);
+  await expect(chipset.getByTestId('led-chipset-hint'))
+    .toHaveText('12V strip with a backup data line');
 });
 
 test('a chipset picked in the starter persists into the project and reaches the strips list', async ({ page }) => {
