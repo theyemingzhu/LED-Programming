@@ -1,0 +1,128 @@
+/* Patterns workspace: a compact target register above a usable pattern bank.
+   Display order below is a browser preference; it never changes LED routes. */
+.pm.pm-workspace .pm-main { min-width: 0; }
+.pm.pm-workspace .pm-target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, .82fr);
+  gap: 0 12px;
+  padding-bottom: 8px;
+  margin: 0 0 8px;
+}
+.pm.pm-workspace .pm-target > .sec-h { grid-column: 1 / -1; margin-bottom: 6px; padding-top: 8px; padding-bottom: 8px; }
+.pm.pm-workspace .pm-target .pm-preview-pane { min-width: 0; margin: 0; }
+.pm.pm-workspace .pm-target .pm-preview-controls {
+  grid-template-columns: minmax(76px, 1fr) minmax(75px, auto) 24px minmax(76px, .85fr) 24px;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+.pm.pm-workspace .pm-target .pm-preview-meta { height: 44px; }
+.pm.pm-workspace .pm-target .pm-preview-step,
+.pm.pm-workspace .pm-target .pm-piece-toggle,
+.pm.pm-workspace .pm-target .pm-preview-select select { min-height: 44px; height: 44px; }
+.pm.pm-workspace .pm-target .pm-preview-step { font-size: 18px; }
+.pm.pm-workspace .pm-target .pm-piece-toggle { font-size: 10px; }
+.pm.pm-workspace .pm-target .pm-piece-stage { height: 79px; }
+@media (min-height: 850px) { .pm.pm-workspace .pm-target .pm-piece-stage { height: 92px; } }
+.pm.pm-workspace .pm-section-list {
+  min-height: 0;
+  max-height: 128px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-hair);
+  background: var(--bg-canvas);
+  scrollbar-width: thin;
+}
+.pm.pm-workspace .pm-section-entry { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--border-hair); }
+.pm.pm-workspace .pm-section-entry:last-child { border-bottom: 0; }
+.pm.pm-workspace .pm-section-entry.on { background: var(--accent-soft); }
+.pm.pm-workspace .pm-section-entry[draggable="true"] { cursor: grab; }
+.pm.pm-workspace .pm-section-entry[draggable="true"]:active { cursor: grabbing; }
+.pm.pm-workspace .pm-section-item {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 27px;
+  padding: 3px 5px;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+}
+.pm.pm-workspace .pm-section-identity { flex-direction: row; align-items: baseline; gap: 6px; }
+.pm.pm-workspace .pm-section-identity strong { flex: 0 1 auto; max-width: 65%; font-size: 11.5px; }
+.pm.pm-workspace .pm-section-identity small { flex: 1 1 auto; font-size: 9px; }
+.pm.pm-workspace .pm-section-look { flex: 0 1 34%; max-width: 34%; font-size: 11px; }
+.pm.pm-workspace .pm-section-look span:last-child { display: none; }
+.pm.pm-workspace .pm-order-tools { flex: none; display: flex; align-items: center; gap: 1px; padding: 0 3px; color: var(--text-lo); }
+.pm.pm-workspace .pm-order-tools button { display: grid; place-items: center; width: 24px; height: 25px; color: var(--text-mid); border-radius: 2px; }
+.pm.pm-workspace .pm-order-tools button:hover:not(:disabled) { color: var(--text-hi); background: var(--bg-elev); }
+.pm.pm-workspace .pm-order-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pm.pm-workspace .pm-order-tools button:disabled { opacity: .3; }
+.pm.pm-workspace .pm-order-tools svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.pm.pm-workspace .pm-drag-mark { display: grid; place-items: center; width: 14px; }
+.pm.pm-workspace .pm-drag-mark svg { fill: currentColor; stroke: none; }
+.pm.pm-workspace .pm-section-help { grid-column: 1 / -1; margin: 5px 0; }
+.pm.pm-workspace .pm-section-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 5px 12px;
+  min-height: 26px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border-hair);
+  font-size: 11px;
+}
+.pm.pm-workspace .pm-section-footer .pm-cardholds { margin: 0; color: var(--text-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm.pm-workspace .pm-section-footer .wordlink { flex: none; font-size: 11px; white-space: nowrap; }
+.pm.pm-workspace .pm-browse { margin: 0; }
+.pm.pm-workspace .pm-browse > .sec-h { margin-bottom: 0; padding-top: 8px; padding-bottom: 8px; }
+.pm.pm-workspace .pm-bank-context { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0 0 6px; padding: 4px 0; border-bottom: 1px solid var(--border-hair); }
+.pm.pm-workspace .pm-browse .pm-bank-scope { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; border: 0; font-size: 11px; line-height: 1.3; }
+.pm.pm-workspace .pm-bank-context .pm-saved { flex: 0 1 auto; max-width: 50%; white-space: normal; overflow-wrap: anywhere; font-size: 11px; }
+.pm.pm-workspace .pm-bank-context .pm-apply-all { flex: none; white-space: nowrap; font-size: 11px; }
+.pm.pm-workspace .pm-bank-filters { display: flex; align-items: center; gap: 10px; min-width: 0; margin-bottom: 6px; }
+.pm.pm-workspace .pm-bank-filters .search { flex: 0 1 220px; min-width: 145px; max-width: none; margin: 0; }
+.pm.pm-workspace .pm-bank-filters .pt-tools { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; }
+.pm.pm-workspace .pm-bank-filters .pt-tools .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.pm.pm-workspace .pm-bank-filters .pt-count { flex: none; white-space: nowrap; }
+.pm.pm-workspace .pm-save-look { padding: 7px 0 6px; margin-bottom: 5px; border-bottom: 1px solid var(--border-hair); }
+.pm.pm-workspace .pm-save-primary { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pm.pm-workspace .pm-save-primary .pm-input { flex: 1 1 98px; min-width: 70px; height: 30px; font-size: 11px; }
+.pm.pm-workspace .pm-save-primary .btn { flex: none; min-height: 30px; white-space: nowrap; }
+.pm.pm-workspace .pm-save-status { flex: 0 1 auto; min-width: 0; color: var(--text-mid); font-size: 11px; line-height: 1.25; overflow-wrap: anywhere; }
+.pm.pm-workspace .pm-save-secondary { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.pm.pm-workspace .pm-save-secondary .btn { min-height: 26px; }
+@media (min-width: 901px) and (min-height: 680px) {
+  .pm.pm-workspace { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+  .pm.pm-workspace .pm-grid { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+  .pm.pm-workspace .pm-main { display: flex; flex-direction: column; min-height: 0; }
+  .pm.pm-workspace .pm-main > .pm-target { flex: 0 0 auto; }
+  .pm.pm-workspace .pm-main > .pm-browse { flex: 1 1 auto; min-height: 400px; display: flex; flex-direction: column; }
+  .pm.pm-workspace .pm-main > .pm-browse > .pm-cards { flex: 1 1 auto; min-height: 300px; overflow-y: auto; align-content: start; }
+}
+@media (max-width: 1100px) {
+  .pm.pm-workspace .pm-section-footer { flex-wrap: wrap; }
+}
+@media (max-width: 900px) {
+  .pm.pm-workspace .pm-target { grid-template-columns: 1fr; }
+  .pm.pm-workspace .pm-target .pm-preview-controls { grid-template-columns: minmax(60px, 1fr) auto 24px minmax(70px, 1fr) 24px; }
+  .pm.pm-workspace .pm-target .pm-preview-meta,
+  .pm.pm-workspace .pm-target .pm-piece-toggle,
+  .pm.pm-workspace .pm-target .pm-preview-step,
+  .pm.pm-workspace .pm-target .pm-preview-select { grid-column: auto; grid-row: auto; }
+  .pm.pm-workspace .pm-target .pm-piece-stage { height: 120px; }
+  .pm.pm-workspace .pm-section-list { max-height: 112px; margin-top: 7px; }
+  .pm.pm-workspace .pm-instrument { position: static; }
+  .pm.pm-workspace .pm-bank-filters { flex-wrap: wrap; }
+  .pm.pm-workspace .pm-bank-filters .search { flex: 1 1 100%; }
+  .pm.pm-workspace .pm-bank-filters .pt-tools { flex: 1 1 100%; }
+}
+@media (max-width: 560px) {
+  .pm.pm-workspace .pm-target .pm-preview-controls { grid-template-columns: minmax(0, 1fr) auto 24px minmax(65px, 1fr) 24px; }
+  .pm.pm-workspace .pm-preview-meta .t { display: none; }
+  .pm.pm-workspace .pm-target .pm-piece-toggle { padding: 0 4px; }
+  .pm.pm-workspace .pm-section-identity small { display: none; }
+  .pm.pm-workspace .pm-section-look { flex-basis: 42%; max-width: 42%; }
+  .pm.pm-workspace .pm-bank-context { flex-wrap: wrap; }
+  .pm.pm-workspace .pm-save-primary { flex-wrap: wrap; }
+  .pm.pm-workspace .pm-save-status { flex-basis: 100%; }
+}

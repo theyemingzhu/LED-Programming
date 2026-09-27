@@ -116,6 +116,20 @@ import { computeSymmetryFit } from '../lib/symmetry.js';
 import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderCheck.jsx';
 import { PatternPreview } from './PatternPreview.jsx';
 import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
+import './patterns-workspace.css';
+
+const sectionOrderKey = projectId => `lw_pattern_section_display_v1:${String(projectId || 'default')}`;
+function readSectionDisplayOrder(projectId) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(sectionOrderKey(projectId)) || '[]');
+    return Array.isArray(value) ? value.filter(id => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function writeSectionDisplayOrder(projectId, ids) {
+  try { window.localStorage.setItem(sectionOrderKey(projectId), JSON.stringify(ids)); } catch { /* Optional UI preference. */ }
+}
 
   // Mockup geometry id -> live symSettings.
   const GEOMETRY_SETTINGS = {
@@ -541,7 +555,6 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     // the same tile while the first is in flight is one owner intent, not two
     // commands: it joins the pending send instead of issuing another.
     const inFlightPreview = useRef(null);
-    const syncedPreviewSelectionRef = useRef('');
     const installIntentRef = useRef(null);
 
     const patternAuthorizationBinding = useMemo(() => {
@@ -1070,6 +1083,41 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       compiledWiring,
       patternNameFor,
     }), [effectiveSectionTargets, compiledWiring, patternNameFor]);
+    const [sectionDisplayOrder, setSectionDisplayOrder] = useState(() => ({ projectId, ids: readSectionDisplayOrder(projectId) }));
+    useEffect(() => {
+      setSectionDisplayOrder({ projectId, ids: readSectionDisplayOrder(projectId) });
+    }, [projectId]);
+    const displayedSectionRows = useMemo(() => {
+      const rows = presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID || previewTargetIds.includes(row.id));
+      const savedOrder = sectionDisplayOrder.projectId === projectId ? sectionDisplayOrder.ids : readSectionDisplayOrder(projectId);
+      const positions = new Map(savedOrder.map((id, index) => [id, index]));
+      const natural = new Map(rows.map((row, index) => [row.id, index]));
+      return rows.sort((a, b) => {
+        if (a.id === ALL_SECTIONS_TARGET_ID) return -1;
+        if (b.id === ALL_SECTIONS_TARGET_ID) return 1;
+        return (positions.get(a.id) ?? (savedOrder.length + natural.get(a.id)))
+          - (positions.get(b.id) ?? (savedOrder.length + natural.get(b.id)));
+      });
+    }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
+    const dragSectionId = useRef('');
+    const moveDisplayedSection = (sourceId, targetId) => {
+      if (!sourceId || !targetId || sourceId === targetId) return;
+      const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
+      const from = ids.indexOf(sourceId);
+      const to = ids.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      ids.splice(from, 1);
+      ids.splice(to, 0, sourceId);
+      setSectionDisplayOrder({ projectId, ids });
+      writeSectionDisplayOrder(projectId, ids);
+      requestAnimationFrame(() => sectionRowRefs.current.get(sourceId)?.focus());
+    };
+    const nudgeDisplayedSection = (id, direction) => {
+      const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
+      const index = ids.indexOf(id);
+      if (index < 0 || index + direction < 0 || index + direction >= ids.length) return;
+      moveDisplayedSection(id, ids[index + direction]);
+    };
     const sectionRowRefs = useRef(new Map());
     const bankRef = useRef(null);
     const bankOriginRef = useRef(null);
@@ -1349,17 +1397,6 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       keepScratchAfterSave.current = false;
       setLookSaveState(ok ? 'Saved in this project' : 'Could not save this project in browser storage. Free some space and try again.');
     }, [pendingLookSave, flushProjectAutosave]);
-
-    useEffect(() => {
-      if (
-        previewUiState.projectId !== projectId ||
-        !previewTargetIds.includes(lastPreviewTargetId)
-      ) return;
-      const restoreKey = `${projectId}:${lastPreviewTargetId}`;
-      if (syncedPreviewSelectionRef.current === restoreKey) return;
-      syncedPreviewSelectionRef.current = restoreKey;
-      setSelectedTargetId(lastPreviewTargetId);
-    }, [lastPreviewTargetId, previewTargetKey, previewUiState.projectId, projectId]);
 
     useEffect(() => {
       if (cardReturnConsumed.current || typeof window === 'undefined') return;
@@ -1667,7 +1704,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       setPreviewUiState(previous => ({
         ...previous,
         projectId,
-        mode: target.kind === 'section' ? 'strip' : 'piece',
+        mode: target.kind === 'all' ? 'piece' : previous.mode,
         lastTargetId: target.kind === 'section' && previewTargetIds.includes(target.id)
           ? target.id
           : (previewTargetIds.includes(previous.lastTargetId) ? previous.lastTargetId : previewTargetIds[0] || ''),
@@ -1690,7 +1727,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       selectTarget(target);
       requestAnimationFrame(() => {
         bankRef.current?.focus({ preventScroll: true });
-        bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'start' });
+        bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'nearest' });
       });
     };
     useEffect(() => {
@@ -1710,12 +1747,12 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (target) {
         setHandoffInvalid(false);
         setSelectedTargetId(target.id);
-        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'strip', lastTargetId: target.id }));
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece', lastTargetId: target.id }));
         bankOriginRef.current = target.id;
         setBankOriginId(target.id);
         requestAnimationFrame(() => {
           bankRef.current?.focus({ preventScroll: true });
-          bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'start' });
+          bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'nearest' });
         });
       } else {
         setHandoffInvalid(true);
@@ -1735,7 +1772,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         return;
       }
       const target = sectionTargets.find(candidate => candidate.id === value && candidate.kind === 'section');
-      if (target && previewTargetIds.includes(target.id)) selectTarget(target);
+      if (target && previewTargetIds.includes(target.id)) {
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'strip', lastTargetId: target.id }));
+      }
     };
 
     const stepPatternPreviewTarget = (direction) => {
@@ -1747,9 +1786,6 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
 
     const togglePatternPiecePreview = () => {
       const nextMode = previewMode === 'piece' ? 'strip' : 'piece';
-      if (nextMode === 'strip' && previewTargetIds.includes(lastPreviewTargetId)) {
-        setSelectedTargetId(lastPreviewTargetId);
-      }
       setPreviewUiState(previous => ({
         ...previous,
         projectId,
@@ -2650,13 +2686,11 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     return (
       <div className="screen">
         <div className="screen-scroll">
-          <div className="pm">
+          <div className="pm pm-workspace">
             {/* hero */}
             <header className="pm-hero">
               <div className="pm-title">
-                <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
-                <p>Choose a pattern or Lab look, tune it, then install card-ready designs when ready.</p>
                 {/* F18: while the pattern-gate notice is up, it already
                     carries this exact verdict as its own alert with the
                     actionable next step ("Verify project in Card status") —
@@ -2864,13 +2898,21 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                   </div>
                 </div>
 
-                   <div className="pm-section-list" aria-label="Target sections">
-                     {presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID || previewTargetIds.includes(row.id)).map(row => {
+                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections">
+                     {displayedSectionRows.map((row, rowIndex) => {
                        const target = sectionTargets.find(item => item.id === row.id);
                        const selected = !handoffInvalid && row.id === selectedTarget?.id;
-                       return <button
-                         type="button"
+                       const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
+                       return <div
                          key={row.id}
+                         className={`pm-section-entry${selected ? ' on' : ''}`}
+                         draggable={canReorder}
+                         onDragStart={event => { if (!canReorder) return; dragSectionId.current = row.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.id); }}
+                         onDragOver={event => { if (canReorder && dragSectionId.current) event.preventDefault(); }}
+                         onDrop={event => { event.preventDefault(); moveDisplayedSection(dragSectionId.current, row.id); dragSectionId.current = ''; }}
+                         onDragEnd={() => { dragSectionId.current = ''; }}
+                       ><button
+                         type="button"
                          ref={node => { if (node) sectionRowRefs.current.set(row.id, node); else sectionRowRefs.current.delete(row.id); }}
                          data-testid={`section-target-${row.id}`}
                          className={`pm-section-item${selected ? ' on' : ''}`}
@@ -2880,7 +2922,11 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                          <span className="pm-section-identity"><strong>{row.label}</strong><small>{row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`}</small></span>
                          <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
-                       </button>;
+                       </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
+                         <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
+                         <button type="button" data-testid={`section-move-up-${row.id}`} aria-label={`Move ${row.label} up in display order`} disabled={rowIndex <= 1} onClick={() => nudgeDisplayedSection(row.id, -1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg></button>
+                         <button type="button" data-testid={`section-move-down-${row.id}`} aria-label={`Move ${row.label} down in display order`} disabled={rowIndex >= displayedSectionRows.length - 1} onClick={() => nudgeDisplayedSection(row.id, 1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+                       </span>}</div>;
                      })}
                    </div>
                   {selectedTarget?.kind === 'section' && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
@@ -2893,30 +2939,21 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                     </p>}
                   {/* One status line about sections: what the card holds, read from
                       the card itself. Empty until the card has been read. */}
-                  {cardHoldsLine &&
-                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
-                  }
-                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
-                    <p className="pm-cardholds">
-                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
-                        Use this look on every section
-                      </button>
-                    </p>
-                  }
-                  {sectionCount <= 1 &&
-                    <p className="pm-cardholds">
-                      One section drives the whole piece.{' '}
+                  <div className="pm-section-footer">
+                    {cardHoldsLine && <span className="pm-cardholds" data-testid="card-holds" title={cardHoldsLine}>{cardHoldsLine}</span>}
+                    {sectionCount <= 1 &&
                       <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
-                    </p>
-                  }
-                   {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
+                    }
+                    {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
                      selectStrip(layoutReturnStrip);
                      window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
                    }}>Back to Layout</button>}
+                    {sectionCount > 1 && !layoutReturnStrip && <button type="button" className="wordlink" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Edit layout</button>}
+                  </div>
                 </div>
 
                 {/* browse */}
-                 <div className="pm-browse" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }} style={{ margin: "5px 0px 0px" }}>
+                 <div className="pm-browse" data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
                   {/* One header bar for the whole module: the light, the name,
                       and the counts pushed right. The counts are read with a
                       single separator so the bar scans as one sentence rather
@@ -2939,31 +2976,32 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                               className={ledMode === 'gradient' ? 'on' : undefined}
                               onClick={() => chooseLedMode('gradient')}>Gradient</button>
                     </div><span className="line" /></div>
-                  {sectionCount > 1 && <p className="pm-bank-scope" data-testid="pattern-bank-scope">
-                    <strong>{handoffInvalid ? 'Choose a current section' : selectedTarget?.kind === 'section'
+                  <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">
+                    <strong>{handoffInvalid ? 'Choose a current section' : `Editing: ${selectedTarget?.kind === 'section'
                       ? `${targetLabel(selectedTarget)}${sectionGpioLabels.get(selectedTarget.id) ? ` · ${sectionGpioLabels.get(selectedTarget.id)}` : ''}`
-                      : 'All sections'}</strong>
-                    {handoffInvalid ? ' · Layout changed; select a section above to continue.' : selectedTarget?.kind === 'section'
-                      ? ' · A pattern choice changes only this section; the others keep their patterns.'
-                      : ' · A pattern choice gives every section the same pattern.'}
-                    {!handoffInvalid && ' Keep this look saves the design; Install on card keeps it on the card.'}
+                      : 'All sections'}`}</strong>
+                    {handoffInvalid ? ' · Layout changed; select a section above to continue.' : <span className="sr-only">{selectedTarget?.kind === 'section'
+                      ? 'A pattern choice changes only this section; the others keep their patterns.'
+                      : 'A pattern choice gives every section the same pattern.'}</span>}
                     {bankOriginId && !handoffInvalid && <button type="button" className="wordlink pm-back-sections" data-testid="back-to-sections" onClick={() => { const row = sectionRowRefs.current.get(bankOriginId); row?.scrollIntoView({ block: 'nearest' }); row?.focus(); bankOriginRef.current = null; setBankOriginId(''); }}>Done choosing</button>}
-                  </p>}
+                  </p>
+                  {sectionCount > 1 && selectedTarget?.kind === 'section' && <button type="button" className="wordlink pm-apply-all" data-testid="use-on-every-section" onClick={useLookOnEverySection}>Apply to all sections</button>}
 
                   {/* Was: a "Preview taps on the LED card" checkbox. There is no
                       moment in this screen's job where a tap should not reach the
                       card — it is the scratchpad for trying patterns on the real
                       strip — and an off checkbox only produced taps that looked
                       broken. Every tap sends. */}
-                  <div className="pm-livebar">
-                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
+                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction) === 'Applied by Lightweaver runtime' ? 'Preview sent to card' : cardActionStatusLabel(previewAction)}</span>
                   </div>
-                  <div className="search" style={{ maxWidth: "none", marginBottom: 10 }}>{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
-                  <div className="pt-tools" style={{ padding: "0px", margin: "0px 0px 10px" }}>
+                  <div className="pm-bank-filters">
+                  <div className="search">{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
+                  <div className="pt-tools">
                     <div className="chips">
                       {PATTERN_CATS.map((c) => <button key={c.id} className={"chip" + (cat === c.id ? " on" : "")} onClick={() => setCat(c.id)}>{c.label}</button>)}
                     </div>
                     <span className="pt-count">{Math.min(visibleCount, filtered.length)} of {filtered.length} shown</span>
+                  </div>
                   </div>
                   {/* This refusal now floats (see the 'pattern-gate-notice'
                       effect above) instead of living in document flow here,
@@ -3067,16 +3105,20 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       one panel on this screen with no head at all, so four
                       faders floated between two headed modules. */}
                   <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
-                  <div aria-label="Keep your look" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px 16px', marginBottom: 8 }}>
-                    <input className="pm-input" data-testid="look-name" style={{ flex: '1 1 180px', minWidth: 0 }} aria-label="Look name" placeholder="Name this look (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                     <button type="button" className="btn" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open Studio-only design in Lab' : editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
+                  <div className="pm-save-look" aria-label="Save look">
+                    <div className="pm-save-primary">
+                      <input className="pm-input" data-testid="look-name" aria-label="Look name" placeholder="Look name (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
+                      <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open in Lab' : editingColorJourney ? 'Open in Lab' : editingSavedLook ? 'Update look' : 'Save look'}</button>
+                      <span role="status" data-testid="look-save-status" className="pm-save-status" title="Saved looks belong to this browser project. Install on card separately.">{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved look' : lookSaveState === 'Saved in this project' ? 'Saved in project' : lookSaveState || (editingProjectOnly ? 'Studio only · open in Lab' : editingSavedLook ? 'Saved in project' : 'Draft in this browser'))}</span>
+                    </div>
+                    {(editingSavedLook || deletedLook) && <div className="pm-save-secondary">
                     {editingSavedLook && <>
                       <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new'}</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={renameLook}>Rename</button>
                       <button type="button" className="btn" data-testid="look-delete" onClick={deleteLook}>Delete{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` · ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist uses` : ''}</button>
                     </>}
                     {deletedLook && <button type="button" className="btn" data-testid="look-delete-undo" onClick={undoDeleteLook}>Undo delete {deletedLook.label}</button>}
-                    <div role="status" data-testid="look-save-status" style={{ flexBasis: '100%', display: 'block', lineHeight: 1.5, minHeight: 20, paddingTop: 4 }}>{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved changes · working copy kept on this browser' : lookSaveState || (editingProjectOnly ? 'Studio only · kept in Patterns and excluded from card installs' : editingSavedLook ? 'In this project' : 'Choose, play, then keep your look'))}</div>
+                    </div>}
                   </div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">

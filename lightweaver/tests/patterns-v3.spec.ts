@@ -263,7 +263,6 @@ test('compact preview follows open artwork paths and named sections', async ({ p
   await gotoSavedProjectPatterns(page, project);
   await expect(page.getByTestId('section-target-patch-default-outer-circle')).toContainText('Crest');
   await expect(page.getByTestId('section-target-patch-default-inner-circle')).toContainText('Branch');
-  await page.getByRole('button', { name: 'On my piece' }).click();
   await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-mode', 'piece');
   await page.locator('.pm-target').evaluate(element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: testInfo.outputPath('open-path-compact-preview.png') });
@@ -458,7 +457,7 @@ test('a failed quick color shift keeps the last card-confirmed order', async ({ 
   });
 });
 
-test('fresh strip preview and design target stay synchronized without committing the audition', async ({ page }) => {
+test('fresh whole-piece preview and design target stay synchronized without committing the audition', async ({ page }) => {
   await gotoFreshPatterns(page);
 
   const targetSelect = page.getByLabel('Preview target');
@@ -471,16 +470,24 @@ test('fresh strip preview and design target stay synchronized without committing
     return JSON.stringify(project.layout?.patchBoard || null);
   });
 
-  await expect(targetSelect).toHaveValue('patch-default-outer-circle');
-  await expect(outerTarget).toHaveClass(/\bon\b/);
+  await expect(targetSelect).toHaveValue('piece');
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await expect(previewHeading).toContainText('Lava Lamp');
-  await expect(stage).toHaveAttribute('data-preview-patterns', 'lava');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'lava,lava');
+  await expect(page.getByTestId('look-save-status')).toHaveText('Draft in this browser');
 
+  await outerTarget.click();
+  await expect(outerTarget).toHaveClass(/\bon\b/);
+  await expect(targetSelect).toHaveValue('piece');
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await expect(previewHeading).toContainText('Plasma');
-  await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma,lava');
+  await expect(page.getByTestId('look-save-status')).toHaveText('Unsaved look');
 
-  await page.getByRole('button', { name: 'On my piece' }).click();
+  await targetSelect.selectOption('patch-default-outer-circle');
+  await expect(stage).toHaveAttribute('data-preview-mode', 'strip');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma');
+  await targetSelect.selectOption('piece');
   await expect(outerTarget).toHaveClass(/\bon\b/);
   await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma,lava');
   await page.waitForTimeout(650);
@@ -491,20 +498,50 @@ test('fresh strip preview and design target stay synchronized without committing
   expect(savedAfter).toBe(savedBefore);
 });
 
-test('mapped preview lists LED-backed targets only and crops to the selected geometry', async ({ page }) => {
+test('mapped preview defaults to every LED-backed target and crops an explicit focus', async ({ page }) => {
   const project = createPiecePreviewProject();
   await gotoSavedProjectPatterns(page, project);
 
   const targetSelect = page.getByLabel('Preview target');
   await expect(targetSelect.locator('option')).toHaveText(['Whole piece', 'Outer circle', 'Inner circle']);
   await expect(targetSelect.locator('option', { hasText: 'Artwork only — no LEDs' })).toHaveCount(0);
-  await expect(targetSelect).toHaveValue('patch-default-outer-circle');
+  await expect(targetSelect).toHaveValue('piece');
 
   const stage = page.getByTestId('pattern-piece-preview');
+  await expect(stage).toHaveAttribute('data-preview-mode', 'piece');
+  await expect(stage).toHaveAttribute('data-preview-led-count', '44');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'fire,ocean');
+  await targetSelect.selectOption('patch-default-outer-circle');
   await expect(stage).toHaveAttribute('data-preview-mode', 'strip');
   await expect(stage).toHaveAttribute('data-preview-target', 'patch-default-outer-circle');
   await expect(stage).toHaveAttribute('data-preview-led-count', '27');
   await expect(stage).not.toHaveAttribute('data-preview-view-box', project.layout.viewBox);
+});
+
+test('Layout section handoff selects the edit target while previewing the whole piece', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-layout-handoff');
+  await gotoSavedProjectPatterns(page, project);
+  const generation = await page.evaluate(() => (
+    JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').generation ?? 0
+  ));
+  await page.evaluate(projectId => {
+    localStorage.setItem(`lw_pattern_piece_preview_v2:${projectId}`, JSON.stringify({
+      mode: 'strip', lastTargetId: 'patch-default-outer-circle',
+    }));
+  }, project.id);
+
+  const targetId = 'patch-default-inner-circle';
+  const returnStrip = project.layout.strips[1].id;
+  await page.goto(`/#screen=pattern&target=${encodeURIComponent(targetId)}&project=${encodeURIComponent(project.id)}&generation=${generation}&returnStrip=${encodeURIComponent(returnStrip)}`, { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId(`section-target-${targetId}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('return-to-layout-section')).toBeVisible();
+  await expect(page.getByLabel('Preview target')).toHaveValue('piece');
+  const stage = page.getByTestId('pattern-piece-preview');
+  await expect(stage).toHaveAttribute('data-preview-mode', 'piece');
+  await expect(stage).toHaveAttribute('data-preview-targets', 'patch-default-outer-circle,patch-default-inner-circle');
+  await expect(stage).toHaveAttribute('data-preview-led-count', '44');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'fire,ocean');
 });
 
 test('preview toolbar is one compact desktop row and the redundant card panel is absent', async ({ page }) => {
@@ -571,8 +608,10 @@ test('preview dropdown and chevrons move through LED targets without wrapping', 
   const next = page.getByRole('button', { name: 'Next LED target' });
   const targetSelect = page.getByLabel('Preview target');
   await expect(previous).toBeDisabled();
-  await expect(next).toBeEnabled();
+  await expect(next).toBeDisabled();
 
+  await targetSelect.selectOption('patch-default-outer-circle');
+  await expect(next).toBeEnabled();
   await next.click();
   await expect(targetSelect).toHaveValue('patch-default-inner-circle');
   await expect(previous).toBeEnabled();
@@ -614,14 +653,17 @@ test('On my piece returns to the last strip and restores preview state per proje
   const otherPage = await otherContext.newPage();
   await otherPage.addInitScript(({ savedProject, previousProjectId }) => {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
-    localStorage.setItem(`lw_pattern_piece_preview_v1:${previousProjectId}`, JSON.stringify({
-      mode: 'piece',
+    localStorage.setItem(`lw_pattern_piece_preview_v2:${previousProjectId}`, JSON.stringify({
+      mode: 'strip',
       lastTargetId: 'patch-default-inner-circle',
+    }));
+    localStorage.setItem(`lw_pattern_piece_preview_v1:${savedProject.id}`, JSON.stringify({
+      mode: 'strip', lastTargetId: 'patch-default-inner-circle',
     }));
   }, { savedProject: anotherProject, previousProjectId: project.id });
   await otherPage.goto(new URL('/#screen=patterns', page.url()).toString(), { waitUntil: 'domcontentloaded' });
-  await expect(otherPage.getByRole('button', { name: 'On my piece' })).toHaveAttribute('aria-pressed', 'false');
-  await expect(otherPage.getByLabel('Preview target')).toHaveValue('patch-default-outer-circle');
+  await expect(otherPage.getByRole('button', { name: 'On my piece' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(otherPage.getByLabel('Preview target')).toHaveValue('piece');
   await otherContext.close();
 });
 
@@ -632,7 +674,7 @@ test('deleted remembered target falls back to the first LED-backed target', asyn
     localStorage.setItem(key, JSON.stringify({ mode: 'strip', lastTargetId: 'deleted-target' }));
   }, {
     savedProject: project,
-    key: `lw_pattern_piece_preview_v1:${project.id}`,
+    key: `lw_pattern_piece_preview_v2:${project.id}`,
   });
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
 
@@ -647,7 +689,6 @@ test('whole-piece preview composites saved assignments plus the unsaved selected
 
   await page.getByTestId('section-target-patch-default-inner-circle').click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
-  await page.getByRole('button', { name: 'On my piece' }).click();
 
   const stage = page.getByTestId('pattern-piece-preview');
   await expect(stage).toHaveAttribute('data-preview-mode', 'piece');
@@ -856,8 +897,9 @@ test('a saved edit of the installed project can be installed on the same card', 
   await page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]').click();
   await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
   await page.getByTestId('look-name').fill('Aurora — steady 30%');
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Save look');
   await page.getByTestId('look-save-preset').click();
-  await expect(page.getByTestId('look-save-status')).toContainText('Saved in this project');
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
   await expect.poll(() => page.evaluate(() => {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return project.devices?.standaloneController?.looks?.some(look => look.label === 'Aurora — steady 30%');
@@ -2287,7 +2329,8 @@ test('a slider changes its readout and sends a tuned color modifier', async ({ p
   // carried the patch id would name a zone the firmware does not have, and
   // collapsing the two namespaces is exactly the regression that made every
   // per-section look silently stop saving.
-  await expect(page.getByLabel('Preview target')).toHaveValue('patch-default-outer-circle');
+  await expect(page.getByTestId('section-target-patch-default-outer-circle')).toHaveClass(/\bon\b/);
+  await expect(page.getByLabel('Preview target')).toHaveValue('piece');
 
   // The tuned look is pushed to the card, addressed by its card zone id.
   await expect.poll(() => controlRequests.some(r => (
