@@ -9,6 +9,78 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+LAUNCH PR354 ACTIVE: classifier correction7ebf95c9 now proves exact repair diff
+validation=true/signing=false;32 classifier and30 release/installer tests pass.
+Primary reviewed minimal fixture3b32dbf7 and drag-order435bce73 changes; focused
+install/readback and drag/export checks green. Mobile42 passed. Consolidator
+finishes only unperformed release cases with exact app source unchanged from
+mergedmain2195. PR https://github.com/theyemingzhu/LED-Programming/pull/354
+is draft until remainder verified. No deployment yet, publisher holds stay until
+ready. Current user instruction authorizes launch through independent live proof.
+
+LAUNCH REPAIRS 02:55UTC: playlist safety refusal reproduced as test electrical
+profile mismatch (WS2815/1500mA vs simulated WS2812B/2000mA); 3b32dbf7 aligns
+fixture, focused install+readback green without app safety changes. Classifier
+cd35203a retains validation for exact browser USB helpers without demanding signed
+firmware; 31 classifier,11 release,19 installer tests passed. Primary found own
+CI-only repair diff still classifies as signer-required; same Sol worker owns
+focused correction before merge. Consolidator found obsolete numeric drag-handle
+assertions in patch-board.spec.ts, owns bounded test repair then unperformed
+release remainder. Preview2190/user45LED draft/card2160 preserved. Publishers
+remain held until verified candidate ready; current full-launch authorization
+permits restoration and deployment. Usage83% weekly, ordinary use allowed; reuse
+passed exact-main CI and focused evidence, no redundant agents or broad reruns.
+
+ACTIVE FULL LAUNCH AUTHORIZED: owner says Continue until fully launched.
+Supersedes merge-only hold; parent will restore publisher workflows once verified
+candidate ready. Repair branch codex/launch-integration-fixes from main b8ffc751.
+App owner01a0e50f Sol/medium repairs playlist smoke, bounded src/test ownership.
+Read-only release_policy_diagnosis Astra/medium assesses validation versus signing
+classification; stronger reasoning justified by cross-workflow release authority,
+then bounded implementation returns to Sol. Consolidator01a0e503 Sol/medium runs
+only unperformed launch stages on mergedmain, reusing proven CI stages and stopping
+at first real failure. Primary integrates/merges/deploys/strict live proof; no
+physical card or future pattern-details pass until current shipment verified.
+
+POST-SHIP PATTERN DETAILS brief ready, implementation still queued: manager
+01a0e5dd identified pitch in LayoutCanvas.jsx canvas callout and fixed148x32
+stripLabels.js geometry. Proposed single-line name, compact collision bounds;
+retain measurement surfaces in wiring/build sheet. Explicit Pattern details action
+can reuse LayoutScreen exact-target/project/generation/returnStrip deep link.
+Existing Patterns controls cover speed0.05–3x, hue/saturation/brightness, breathing,
+drift and hue shift. Respect shared section targets and disclose affected strips;
+no invented per-strip schema. Acceptance: preview, target isolation, Undo/save/reload,
+return focus, desktop/mobile labels. One app-owned workstream after verified shipped
+revision handoff. Manager made no edits/worktrees or preview changes.
+
+NEXT PASS queued AFTER verified current shipment: manager chat
+01a0e5dd-3ede-7f20-8de2-dbef3cc061bc, Manage strip pattern details after shipment.
+Owner requests one-line displayed Strip/Part labels without millimetres-of-pitch
+and a Pattern details edit button for per-part speed and other supported controls.
+Sol/medium manager prepares read-only scope now; no implementation/worktree or
+workers until primary sends exact verified shipment evidence. Preserve per-part
+assignment, immediate preview, Undo/save/reload, compact UI and current45LED draft.
+Parent owns release blockers/integration/live4173/card and must notify this manager
+after shipment; no new deployment authorization inferred from this future request.
+
+FINAL MERGE RESULT: origin/main b8ffc751 / build2195 contains all requested
+changes (PR353). Main Tests36369930041 concluded FAILURE: source/build, cloud,
+production passed; browser smoke three-gpio-playlist-workflow.spec.ts:210 timed
+out awaiting POST /api/config after Install playlist on card; firmware lane passed
+sensitive checks then rejected VERSION1.1.47 because signed1.1.47 already exists.
+Do not call integration fully green or shipped. No firmware bump/bypass/retry
+performed. Next bounded diagnosis: playlist install contract vs mock, and whether
+installer-core changed-path classification incorrectly mandates signed firmware.
+User boundary remains main-first, shipping later; both publisher workflows held.
+No new worker active. Local finalUI2190 and physicalcard2160 unchanged.
+
+MERGED (not shipped): PR353 merged all25 branch commits into origin/main
+b8ffc751405b21b02ad7b24704e20e2db7c7e70a, Git build2195; ancestry verified.
+Main Tests run36369930041 in progress. Local visible app2190 remains latest UI,
+firmware2160 unchanged. BOTH Deploy site289066915 and Build firmware binary
+289045102 remain disabled_manually per merge-first authorization. No deployment
+until new owner shipping go-ahead; retain unperformed launch remainder for then.
+
 MERGE READY:332ba91a corrects four stale browser assertions; all five focused
 cases pass, including preserved mix save/reopen and namespaced playlist references.
 Primary reviewed, no application defect or weakened behavior check. User asks main
