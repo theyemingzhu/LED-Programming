@@ -111,6 +111,9 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     if (!targetId || params.get('screen') !== 'layout') return;
     if (params.get('project') === projectId && params.get('generation') === String(projectLifecycle?.generation ?? 0)) {
       requestAnimationFrame(() => requestAnimationFrame(() => {
+        [...document.querySelectorAll('[data-testid="edit-pattern-details"]')]
+          .find(button => button.dataset.targetId === targetId)?.focus();
+        if (document.activeElement?.matches?.('[data-testid="edit-pattern-details"]')) return;
         [...document.querySelectorAll('[data-testid="layout-section-pattern-action"]')]
           .find(button => button.dataset.targetId === targetId)?.focus();
       }));
@@ -362,9 +365,6 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     refs: { svgRef, artworkRef, vpRef, spaceRef, stripDragSuppressClickRef },
     strips: state.starterLayoutActive && mode === 'draw' ? [] : strips, layers, hidden,
     sectionFamilies: state.sectionFamilies,
-    // The canvas labels each strip with its pitch, which is its drawn length
-    // divided by the gaps between its lights — so it needs the drawing scale.
-    pxPerMm: state.pxPerMm,
     starterGhost,
     viewBox, computedViewBox, vbScale, svgText, artworkHTML, totalLeds,
     selection: { selStripId, selLayer, pathSel, selectedPathDecorations, existingStrip },

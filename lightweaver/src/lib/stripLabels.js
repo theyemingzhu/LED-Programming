@@ -32,12 +32,21 @@ export function displayStripName(strip, sectionFamilies = []) {
   return connectedPartDisplayName(strip, family);
 }
 
+export function canvasStripLabel(strip, sectionFamilies = []) {
+  const family = sectionFamilies.find(item => item.memberIds?.includes(strip?.id));
+  const name = displayStripName(strip, sectionFamilies);
+  if (/^Strip \d+$/.test(family?.parentName || '') && /^Part \d+$/.test(name)) {
+    return `${family.parentName.replace(' ', '')}/${name.replace(' ', '')}`;
+  }
+  return /^Strip \d+$/.test(name) ? name.replace(' ', '') : name;
+}
+
 // Place small screen-sized cards near their own midpoints. Try the closest
 // lanes first and omit an annotation when a crowded viewport has no room.
 export function placeStripLabels(strips, scale, bounds, selectedId = null) {
   const placed = [];
   const width = 148 * scale;
-  const height = 32 * scale;
+  const height = 20 * scale;
   const gap = 4 * scale;
   for (const strip of strips) {
     const mid = strip.pixels[Math.floor(strip.pixels.length / 2)];

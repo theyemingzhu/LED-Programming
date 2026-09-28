@@ -33,7 +33,7 @@ const screenFontPx = (locator: any) => locator.evaluate((node: SVGGraphicsElemen
   return parseFloat(getComputedStyle(node).fontSize) * Math.hypot(ctm.a, ctm.b);
 });
 
-test('a strip callout names the strip with its count and spacing', async ({ page }) => {
+test('a strip callout keeps its name on one line without pitch', async ({ page }) => {
   await freshLayout(page);
   await expect(page.locator('.lw-strip-callout')).toHaveCount(0);
 
@@ -43,12 +43,10 @@ test('a strip callout names the strip with its count and spacing', async ({ page
   await expect(callout.locator('line')).toHaveCount(0);
   await expect(page.getByTestId('selected-strip-badge')).toHaveCount(0);
 
-  // The name, then the two facts a builder needs off the drawing itself.
+  // Measurements belong in Specs, leaving the artwork annotation compact.
   await expect(callout).toContainText('Line');
-  await expect(callout).toContainText(/\d+ px/);
-  await expect(callout).toContainText(/mm pitch/);
-  // A pitch of 0 would be a lie about a strip that has a drawn length.
-  await expect(callout).not.toContainText('0.0 mm pitch');
+  await expect(callout.locator('text')).toHaveCount(1);
+  await expect(callout).not.toContainText(/mm pitch|\d+ px/);
 });
 
 test('callout labels hold their size on screen while the drawing zooms', async ({ page }) => {
