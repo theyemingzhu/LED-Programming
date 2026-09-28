@@ -846,6 +846,7 @@ test('a section spanning two GPIOs exposes one pattern scope and opens its strip
   await gotoSavedProjectPatterns(page, project);
 
   await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16 · GPIO 17');
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
   await expect(page.getByTestId('section-spans-gpios')).toContainText("these GPIOs share this section's pattern");
   await page.getByTestId('open-spanning-section-in-layout').click();
   await expect(page).toHaveURL(/#screen=layout&mode=draw/);
@@ -1422,7 +1423,7 @@ test('an exact paired ready card still applies Ocean immediately', async ({ page
 
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
   await expect.poll(() => controlRequests.some(request => request.patternId === 'ocean')).toBe(true);
-  await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
+  await expect(page.getByTestId('physical-preview-status')).toHaveText('Preview sent to card');
 });
 
 test('a paired installed card that is not ready enters recovery verification, never blank setup', async ({ page }) => {
@@ -1536,8 +1537,8 @@ test('Studio preview changes immediately while runtime application waits for the
   await expect(cardReadout).toContainText('Sending to Lightweaver');
   await expect.poll(() => Boolean(releaseControl)).toBe(true);
   releaseControl?.();
-  await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
-  await expect(cardReadout).toContainText('Applied by Lightweaver runtime');
+  await expect(page.getByTestId('physical-preview-status')).toHaveText('Preview sent to card');
+  await expect(cardReadout).toContainText('Preview sent to card');
 });
 
 test('an old card keeps the Studio selection and offers a card software update', async ({ page }) => {
@@ -1836,7 +1837,7 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Fire');
 });
 
-test('disabling live preview invalidates a pending bridge selection', async ({ page }) => {
+test('an always-on pattern tap sends once after bridge readiness without replaying through the bridge', async ({ page }) => {
   const controlRequests: Record<string, unknown>[] = [];
   await pairReadyPatternCard(page, 'lw-disable-preview');
   await page.route('**/api/control', async route => {
@@ -1870,8 +1871,8 @@ test('disabling live preview invalidates a pending bridge selection', async ({ p
     }));
   });
 
-  await page.waitForTimeout(200);
-  expect(controlRequests).toHaveLength(0);
+  await expect.poll(() => controlRequests.length).toBe(1);
+  expect(controlRequests[0].patternId).toBe('ocean');
   expect((await page.evaluate(() => (window as any).__bridgeMessages)).filter((entry: any) => entry.message.type === 'control')).toHaveLength(0);
 });
 
