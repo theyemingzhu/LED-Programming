@@ -80,6 +80,8 @@ test('an existing section mix opens as the base beneath a new layer and survives
     localStorage.setItem('mixed-base-browser-seeded', 'true');
   }, project);
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').getByRole('button', { name: 'Edit Mixed sections' }).click();
   await expect(page.getByTestId('look-name')).toHaveValue('Mixed sections');
   await page.getByTestId('open-pattern-lab').click();
   await openControls(page);

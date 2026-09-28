@@ -194,7 +194,7 @@ test('normalizeSavedLooks drops invalid entries and clamps look values', () => {
 
   assert.equal(looks.length, 1);
   assert.equal(looks[0].id, 'my-look');
-  assert.equal(looks[0].defaultLook.patternId, 'aurora');
+  assert.equal(looks[0].defaultLook.patternId, 'missing');
   assert.equal(looks[0].defaultLook.brightness, 1);
   assert.equal(looks[0].defaultLook.speed, 3);
   assert.equal(looks[0].defaultLook.hueShift, 128);

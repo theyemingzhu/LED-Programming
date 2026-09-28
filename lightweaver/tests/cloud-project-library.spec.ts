@@ -1817,8 +1817,25 @@ for (const width of [320, 390]) {
   });
 }
 
-async function installAuthEpochHarness(page: Page) {
+async function openIsolatedCloudHarnessPage(page: Page) {
+  // The Studio entry point mounts asynchronously. A harness that replaces its
+  // body races that mount and can load a second, timestamped copy of Context.
+  await page.route(url => url.pathname === '/', route => route.fulfill({
+    status: 200,
+    contentType: 'text/html',
+    body: `<!doctype html><html><head><script type="module">
+      import RefreshRuntime from '/@react-refresh';
+      RefreshRuntime.injectIntoGlobalHook(window);
+      window.$RefreshReg$ = () => {};
+      window.$RefreshSig$ = () => type => type;
+      window.__vite_plugin_react_preamble_installed__ = true;
+    </script></head><body></body></html>`,
+  }));
   await page.goto('/');
+}
+
+async function installAuthEpochHarness(page: Page) {
+  await openIsolatedCloudHarnessPage(page);
   await page.evaluate(async () => {
     document.body.innerHTML = '<div id="auth-epoch-root"></div>';
     const React = (await import('/node_modules/.vite/deps/react.js')).default;
@@ -3006,7 +3023,7 @@ test('demotes a forbidden authenticated session without retrying', async ({ page
 });
 
 test('cancels a pending transient retry when the cloud provider unmounts', async ({ page }) => {
-  await page.goto('/');
+  await openIsolatedCloudHarnessPage(page);
   await page.evaluate(async () => {
     document.body.innerHTML = '<div id="cloud-unmount-root"></div>';
     const React = (await import('/node_modules/.vite/deps/react.js')).default;

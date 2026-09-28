@@ -19,6 +19,7 @@ import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { evaluateCardInstallGate, readCardCommissioningVerification } from '../lib/cardInstallGate.js';
 import { normalizeSavedLooks } from '../lib/sectionLookModel.js';
+import { addProjectStacksToPlaylist, getProjectStackCompatibility, getProjectStackReview, summarizeProjectStack } from '../lib/projectStacks.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { normalizeCardVisualLook } from '../lib/cardVisualLook.js';
 import {
@@ -37,7 +38,6 @@ import {
   CARD_PLAYLIST_LIMIT,
   derivePlaylistLookIds,
   isImplicitDefaultPatternPlaylist,
-  makeComboPlaylistItem,
   makePatternPlaylistItem,
   makeSequencePlaylistItem,
   normalizeCardPlaylist,
@@ -80,6 +80,45 @@ import {
   formatPlaylistLengthMinutes,
   parsePlaylistLengthMinutes,
 } from '../lib/playlistDuration.js';
+import '../styles/project-stacks-playlist.css';
+
+function readPlaylistSource(projectId, hasStacks) {
+  try {
+    const saved = window.localStorage.getItem(`lw_playlist_source_${projectId}`);
+    if (saved === 'patterns' || saved === 'stacks') return saved;
+  } catch { /* Browsing remains available without local storage. */ }
+  return hasStacks ? 'stacks' : 'patterns';
+}
+
+function stackNeedsSectionReview(look, targets) {
+  const review = getProjectStackReview(look, targets);
+  return review.removedSectionIds.length > 0 || (look?.sectionSnapshotVersion === 1 && review.needsReview);
+}
+
+function sectionIsOff(section) {
+  return !section?.patternId || section.patternId === 'blackout' || section.patternId === 'off'
+    || Number(section.look?.brightness) === 0;
+}
+
+function sectionPatternLabel(section) {
+  return sectionIsOff(section) ? 'Off' : realPatternShape(section.patternId).label;
+}
+
+function StackAssignments({ summary }) {
+  return <ul className="pl-stack-assignment-list">
+    {summary.sections.map(section => <li key={section.id}>
+      <span>{section.label}</span>
+      <span>{sectionPatternLabel(section)}</span>
+    </li>)}
+  </ul>;
+}
+
+function StackArtwork({ summary }) {
+  return <span className="pl-art pl-art-combo" aria-label={`${summary.sectionCount} section preview`}>
+    {summary.sections.map(section => <span key={section.id} className="pl-art-slice" title={`${section.label}: ${sectionPatternLabel(section)}`}
+      style={{ background: sectionIsOff(section) ? '#171b21' : realPatternShape(section.patternId).grad }} />)}
+  </span>;
+}
 
 function omitKey(source, key) {
   const next = { ...source };
@@ -154,6 +193,7 @@ function realPatternShape(patternId) {
       sectionTargets,
       standaloneController,
       setStandaloneController,
+      flushProjectAutosave,
       markCardLookConfirmed,
       markProjectInstalled,
       projectLifecycle,
@@ -173,6 +213,8 @@ function realPatternShape(patternId) {
     const previewSequence = React.useRef(0);
     const cardActionGeneration = useRef(0);
     const playlistRevision = useRef(0);
+    const playlistSavePending = useRef(false);
+    const [playlistSaveStatus, setPlaylistSaveStatus] = useState('');
     const latestLiveItem = useRef(null);
     const [drag, setDrag] = useState({ from: null, over: null });
     const [reorderAnnouncement, setReorderAnnouncement] = useState('');
@@ -180,12 +222,35 @@ function realPatternShape(patternId) {
     const [openRowMenuId, setOpenRowMenuId] = useState(null);
     const reorderHandleRefs = useRef(new Map());
     const rowMenuTriggerRefs = useRef(new Map());
+    const playlistOrderRef = useRef(null);
+    const sourcePickerRef = useRef(null);
     const pendingReorderFocus = useRef(null);
     const pointerDrag = useRef(null);
 
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const savedLooks = normalizeSavedLooks(standaloneController?.looks);
     const savedLookById = new Map(savedLooks.map((look) => [look.id, look]));
+    const [sourceChoice, setSourceChoice] = useState(() => readPlaylistSource(projectId, savedLooks.length > 0));
+    const [selectedStackIds, setSelectedStackIds] = useState([]);
+    const [expandedStackIds, setExpandedStackIds] = useState([]);
+    const [stackFeedback, setStackFeedback] = useState('');
+    const [repeatFeedback, setRepeatFeedback] = useState('');
+    React.useEffect(() => {
+      setSourceChoice(readPlaylistSource(projectId, savedLooks.length > 0));
+      setSelectedStackIds([]);
+      setExpandedStackIds([]);
+      setStackFeedback('');
+      setRepeatFeedback('');
+    }, [projectId]);
+    const chooseSource = (source) => {
+      setSourceChoice(source);
+      try { window.localStorage.setItem(`lw_playlist_source_${projectId}`, source); } catch { /* Session-only choice. */ }
+    };
+    const toggleStackSelection = (id) => setSelectedStackIds(current => current.includes(id)
+      ? current.filter(candidate => candidate !== id) : [...current, id]);
+    const toggleStackDetails = (id) => setExpandedStackIds(current => current.includes(id)
+      ? current.filter(candidate => candidate !== id) : [...current, id]);
+    const stackSummaries = new Map(savedLooks.map(look => [look.id, summarizeProjectStack(look, sectionTargets)]));
     const sequenceAssets = (standaloneController?.sequenceAssets || []).filter(asset =>
       asset?.mediaRef?.kind === 'indexeddb-sha256'
       && asset.mediaRef.sha256 === asset?.manifest?.lwseqSha256);
@@ -195,6 +260,14 @@ function realPatternShape(patternId) {
       ? []
       : standaloneController?.playlist;
     const playlist = normalizeCardPlaylist(rawPlaylist, { savedLooks, sequenceAssets, allowEmpty: true });
+    const selectedStacksInLibraryOrder = savedLooks.filter(look => selectedStackIds.includes(look.id));
+    const stackPlaylistPositions = new Map();
+    playlist.forEach((item, index) => {
+      if (item.type !== 'combo') return;
+      const positions = stackPlaylistPositions.get(item.lookId) || [];
+      positions.push(index + 1);
+      stackPlaylistPositions.set(item.lookId, positions);
+    });
     // The playlist-wide "played on the card" settings — fade between looks,
     // and whether the card auto-plays it — live at controls.playlist (see
     // cardPlaylist.js's normalizePlaylistTiming doc comment for why they are
@@ -260,7 +333,7 @@ function realPatternShape(patternId) {
         setPlaylistSyncing(false);
         setPlaylistStatus(null);
       }
-      setStandaloneController((prev) => {
+      const result = setStandaloneController((prev) => {
         const current = prev || {};
         return {
           ...current,
@@ -274,7 +347,18 @@ function realPatternShape(patternId) {
           },
         };
       });
+      if (result?.ok === false) return false;
+      playlistSavePending.current = true;
+      setPlaylistSaveStatus('Saving playlist in this browser…');
+      return true;
     };
+
+    React.useEffect(() => {
+      if (!playlistSavePending.current) return;
+      playlistSavePending.current = false;
+      const saved = flushProjectAutosave();
+      setPlaylistSaveStatus(saved ? 'Playlist saved in this browser.' : 'Playlist could not be saved in this browser. Try again.');
+    }, [playlist, flushProjectAutosave]);
 
     const moveTo = (fromIndex, toIndex) => {
       if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= playlist.length || toIndex >= playlist.length) return;
@@ -372,10 +456,18 @@ function realPatternShape(patternId) {
     const dup = (i) => {
       const item = playlist[i];
       if (!item) return;
+      if (playlist.length >= CARD_PLAYLIST_LIMIT) {
+        setRepeatFeedback(`Playlist full: ${CARD_PLAYLIST_LIMIT} manual entries is the limit. Nothing was repeated.`);
+        return;
+      }
+      if (playlistTiming.enabled && item.enabled !== false && enabledPlaylistCount >= CARD_PLAYLIST_ENTRY_LIMIT) {
+        setRepeatFeedback(`Playlist full: ${CARD_PLAYLIST_ENTRY_LIMIT} timed entries is the limit. Nothing was repeated.`);
+        return;
+      }
       const clone = { ...item, id: `${item.id}-copy-${Date.now()}`, createdAt: Date.now() };
       const next = [...playlist];
       next.splice(i + 1, 0, clone);
-      writePlaylist(next);
+      if (writePlaylist(next)) setRepeatFeedback('');
     };
 
     const remove = (i) => writePlaylist(playlist.filter((_, k) => k !== i));
@@ -756,12 +848,37 @@ function realPatternShape(patternId) {
     };
 
     const addCombo = (savedLook) => {
-      if (recoveryPendingRef.current) return;
+      if (recoveryPendingRef.current || !savedLook) return;
       if (playlistContainsCombo(playlist, savedLook.id)) { void previewSavedLookOnCard(savedLook); return; }
-      const item = makeComboPlaylistItem(savedLook);
-      if (!item) return;
-      writePlaylist([...playlist, item]);
-      void previewSavedLookOnCard(savedLook);
+      try {
+        if (stackNeedsSectionReview(savedLook, sectionTargets)) {
+          throw new Error('Review sections in Patterns before adding this stack.');
+        }
+        const next = addProjectStacksToPlaylist(standaloneController, [savedLook.id]);
+        if (!writePlaylist(next.playlist)) throw new Error('Playlist change was refused. Check this project’s wiring before trying again.');
+        setStackFeedback(`${savedLook.label} added to playlist.`);
+        if (connected) void previewSavedLookOnCard(savedLook);
+      } catch (error) {
+        setStackFeedback(error instanceof RangeError ? `Not enough playlist slots. ${error.message}` : error.message);
+      }
+    };
+
+    const addSelectedStacks = () => {
+      if (recoveryPendingRef.current) return;
+      const orderedIds = selectedStacksInLibraryOrder.map(look => look.id);
+      if (!orderedIds.length) return;
+      try {
+        if (orderedIds.some(id => stackNeedsSectionReview(savedLookById.get(id), sectionTargets))) {
+          throw new Error('Review sections in Patterns before adding these stacks.');
+        }
+        const next = addProjectStacksToPlaylist(standaloneController, orderedIds);
+        const added = next.playlist.length - (standaloneController?.playlist?.length || 0);
+        if (!writePlaylist(next.playlist)) throw new Error('Playlist change was refused. Check this project’s wiring before trying again.');
+        setSelectedStackIds([]);
+        setStackFeedback(added ? `${added} ${added === 1 ? 'stack' : 'stacks'} added to playlist.` : 'Selected stacks are already in the playlist.');
+      } catch (error) {
+        setStackFeedback(error instanceof RangeError ? `Not enough playlist slots. ${error.message}` : error.message);
+      }
     };
 
     const addSequence = (asset) => {
@@ -827,8 +944,6 @@ function realPatternShape(patternId) {
     };
 
     // ── derived view data (real banks, mockup shapes) ─────────────────────
-    // Mixes pool: real saved looks adapted to the mockup mix shape.
-    const mixShapes = savedLooks.map((look) => ({ ...adaptSavedLook(look), id: look.id, label: look.label || look.name || 'Saved mix' }));
     // Keep the bank in one canonical order. Added patterns remain in place so
     // the library does not reshuffle under the operator's pointer or memory.
     const patternTiles = DEFAULT_CARD_PATTERN_BANK.map((pattern) => ({
@@ -836,7 +951,6 @@ function realPatternShape(patternId) {
       added: playlistContainsPattern(playlist, pattern.id),
     }));
     const playlistPatternCount = patternTiles.filter((pattern) => pattern.added).length;
-    const mixesRemaining = savedLooks.some((look) => !playlistContainsCombo(playlist, look.id));
 
     // ── timed playlist: what the card itself reports right now ────────────
     // cardLink.readiness is the same normalized envelope this screen already
@@ -846,7 +960,7 @@ function realPatternShape(patternId) {
     const cardPlaylistEntryLabel = (() => {
       if (!cardPlaylistStatus?.patternId) return '';
       const matched = playlist.find((item) => item.id === cardPlaylistStatus.patternId);
-      return matched?.label || cardPlaylistStatus.patternId;
+      return (matched?.type === 'combo' ? savedLookById.get(matched.lookId)?.label : '') || matched?.label || cardPlaylistStatus.patternId;
     })();
     const playlistStatusLine = (() => {
       if (!cardPlaylistStatus) return '';
@@ -1003,6 +1117,7 @@ function realPatternShape(patternId) {
                 <button className="btn" onClick={openCard}>{I.open}Open card page</button>
               </div>
             </header>
+            {playlistSaveStatus && <p className="pl-project-save-status" role="status" data-testid="playlist-project-save-status">{playlistSaveStatus}</p>}
 
             <div className="pm-grid">
               <section className="pm-main">
@@ -1040,7 +1155,7 @@ function realPatternShape(patternId) {
                   </div>
                 }
 
-                <div className="pl-list">
+                <div className="pl-list" ref={playlistOrderRef} tabIndex={-1} data-testid="playlist-order-section">
                   {/* The list is a module, so it says what it is and how many, in
                       its own bar. The count used to float in the card-address row
                       above, where it described something two elements away. */}
@@ -1048,6 +1163,10 @@ function realPatternShape(patternId) {
                     <h2 className="t">Playlist order</h2>
                     <span className="m">{playlist.length} looks · dial press advances</span>
                     <span className="line" />
+                  </div>
+                  <div className="pl-order-help-row">
+                    <p className="pl-order-help" data-testid="playlist-order-help">Drag rows to set playback order. Each stack&apos;s sections play together.</p>
+                    <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add stacks</button>
                   </div>
                   <div className="pl-timing">
                     <label className="pl-timing-field">
@@ -1075,11 +1194,11 @@ function realPatternShape(patternId) {
                       />
                       <span>Play on the card</span>
                     </label>
-                    <p className="pl-timing-note">Each look loops for its Length, then fades to the next.</p>
+                    <p className="pl-timing-note">Each look loops for its Length, then fades to the next{playlistTiming.enabled ? '; the last returns to the first.' : '.'}</p>
                   </div>
-                  {playlistOverflow > 0 &&
+                  {playlistTiming.enabled && playlistOverflow > 0 &&
                     <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
-                      Only the first {CARD_PLAYLIST_ENTRY_LIMIT} looks reach the card. {playlistOverflow} more {playlistOverflow === 1 ? 'is' : 'are'} in the order but will not play there.
+                      Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
                     </p>
                   }
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
@@ -1088,13 +1207,16 @@ function realPatternShape(patternId) {
                   <span className="pl-reorder-status" aria-live="polite" data-testid="playlist-reorder-status">
                     {reorderAnnouncement}
                   </span>
+                  {repeatFeedback && <p className="pl-repeat-feedback" role="status" data-testid="playlist-repeat-feedback">{repeatFeedback}</p>}
                   {playlist.map((item, i) => {
                     const savedLook = item.type === 'combo' ? savedLookById.get(item.lookId) : null;
+                    const displayLabel = savedLook?.label || item.label;
+                    const stackSummary = savedLook ? stackSummaries.get(savedLook.id) : null;
                     const recorded = item.type === 'sequence' ? sequenceAssetById.get(item.sequenceAssetId) : null;
                     const p = item.type === 'sequence'
                       ? realPatternShape('aurora')
                       : item.type === 'combo'
-                      ? { ...adaptSavedLook(savedLook), label: item.label }
+                      ? { ...adaptSavedLook(savedLook), label: displayLabel }
                       : realPatternShape(item.patternId);
                     if (!p) return null;
                     const id = item.id;
@@ -1111,9 +1233,9 @@ function realPatternShape(patternId) {
                           <button
                             className={"pl-grip" + (drag.from === i ? " is-grabbing" : "")}
                             draggable
-                            aria-label={`Reorder ${item.label}`}
+                            aria-label={`Reorder ${displayLabel}`}
                             aria-describedby="playlist-reorder-instructions"
-                            title={`Reorder ${item.label}`}
+                            title={`Reorder ${displayLabel}`}
                             ref={(node) => {
                               if (node) reorderHandleRefs.current.set(id, node);
                               else reorderHandleRefs.current.delete(id);
@@ -1131,10 +1253,10 @@ function realPatternShape(patternId) {
                           <strong>{String(i + 1).padStart(2, "0")}</strong>
                           <span>{i === 0 ? "startup" : "press"}</span>
                         </div>
-                        <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>
+                        {stackSummary ? <StackArtwork summary={stackSummary} /> : <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>}
                         <div className="pl-copy">
-                          <strong>{item.label}{item.type === 'combo' && <span className="mixtag">look</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
-                          <span>{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? "section look" : `${p.label} across the piece`}</span>
+                          <strong>{displayLabel}{item.type === 'combo' && <span className="mixtag">Stack</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
+                          <span>{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? `${stackSummary?.sectionCount || 0} sections` : `${p.label} across the piece`}</span>
                         </div>
                         <div className="pl-actions">
                           <label className="pl-dwell">
@@ -1156,7 +1278,7 @@ function realPatternShape(patternId) {
                                   resetItemLengthDraft(id);
                                 }
                               }}
-                              aria-label={`Length in minutes for ${item.label}`}
+                              aria-label={`Length in minutes for ${displayLabel}`}
                               aria-describedby={`playlist-length-help-${id}`}
                               data-testid={`playlist-dwell-${id}`}
                             />
@@ -1167,7 +1289,7 @@ function realPatternShape(patternId) {
                           <div className="pl-row-menu">
                             <button
                               className="plbtn pl-more"
-                              aria-label={`More actions for ${item.label}`}
+                              aria-label={`More actions for ${displayLabel}`}
                               aria-haspopup="menu"
                               aria-expanded={openRowMenuId === id}
                               aria-controls={`playlist-row-menu-${id}`}
@@ -1182,14 +1304,19 @@ function realPatternShape(patternId) {
                             {openRowMenuId === id &&
                               <>
                                 <button className="pl-row-menu-backdrop" aria-label="Close playlist row actions" onClick={() => closeRowMenu(true)} />
-                                <div className="pl-row-menu-pop" id={`playlist-row-menu-${id}`} role="menu" aria-label={`Actions for ${item.label}`}>
-                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>Duplicate {item.label}</span></button>
-                                  <button role="menuitem" className="pl-row-menu-item danger" onClick={() => { closeRowMenu(false); remove(i); }}>{I.trash}<span>Remove {item.label}</span></button>
+                                <div className="pl-row-menu-pop" id={`playlist-row-menu-${id}`} role="menu" aria-label={`Actions for ${displayLabel}`}>
+                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>{item.type === 'combo' ? 'Repeat this stack' : `Duplicate ${displayLabel}`}</span></button>
+                                  <button role="menuitem" className="pl-row-menu-item danger" onClick={() => { closeRowMenu(false); remove(i); }}>{I.trash}<span>Remove {displayLabel}</span></button>
                                 </div>
                               </>
                             }
                           </div>
                         </div>
+                        {stackSummary && <div className="pl-row-stack-details">
+                          <button type="button" className="pl-stack-details-toggle" aria-expanded={expandedStackIds.includes(`row-${id}`)} onClick={() => toggleStackDetails(`row-${id}`)}>{expandedStackIds.includes(`row-${id}`) ? 'Hide sections' : 'Show sections'}</button>
+                          {expandedStackIds.includes(`row-${id}`) && <StackAssignments summary={stackSummary} />}
+                          <a className="pl-stack-details-toggle" href={`#screen=pattern&editStack=${encodeURIComponent(savedLook.id)}`}>Edit stack</a>
+                        </div>}
                       </article>
                     );
                   })}
@@ -1218,7 +1345,7 @@ function realPatternShape(patternId) {
                       data-testid="playlist-stat-playing"
                     >
                       <span className="k">Playing</span>
-                      <strong className="v">{playingItem ? playingItem.label : '—'}</strong>
+                      <strong className="v">{playingItem ? (playingItem.type === 'combo' ? savedLookById.get(playingItem.lookId)?.label : '') || playingItem.label : '—'}</strong>
                       {/* Was a fourth, boolean-only vocabulary for "has this
                           reached the card" ("live preview confirmed" / "no
                           live look sent"). Same underlying state
@@ -1237,20 +1364,64 @@ function realPatternShape(patternId) {
               </section>
 
               <aside className="pm-aside">
-                <div className="card pm-pane">
-                  <div className="sec-h"><h2 className="t">Saved looks</h2><span className="m">{mixShapes.length}</span></div>
-                  {mixShapes.map((m) => {
-                    const added = playlistContainsCombo(playlist, m.id);
-                    return (
-                      <button key={m.id} className="pl-source" onClick={() => addCombo(savedLookById.get(m.id))} disabled={added || recoveryPending}>
-                        <span className="pl-src-art"><LedRow pal={m.pal} n={5} /></span>
-                        <span className="pl-src-nm">{m.label}<span className="mixtag">look</span></span>
-                        <span className="pl-src-add">{added ? I.check : I.plus}</span>
-                      </button>
-                    );
-                  })}
-                  {!mixShapes.length && <p className="pl-empty">No saved looks yet — create them on Patterns.</p>}
-                  {mixShapes.length > 0 && !mixesRemaining && <p className="pl-empty">All saved looks are in the playlist. Save more on Patterns.</p>}
+                <div className="card pm-pane" data-testid="playlist-source-picker" ref={sourcePickerRef} tabIndex={-1}>
+                  <button type="button" className="pl-order-jump pl-back-to-order" onClick={() => { playlistOrderRef.current?.scrollIntoView({ block: 'start' }); playlistOrderRef.current?.focus({ preventScroll: true }); }}>Back to order</button>
+                  <div className="pl-source-tabs" role="tablist" aria-label="Playlist sources">
+                    <button type="button" className="pl-source-tab" role="tab" aria-selected={sourceChoice === 'stacks'} onClick={() => chooseSource('stacks')}>Project stacks ({savedLooks.length})</button>
+                    <button type="button" className="pl-source-tab" role="tab" aria-selected={sourceChoice === 'patterns'} onClick={() => chooseSource('patterns')}>Patterns</button>
+                  </div>
+                  {sourceChoice === 'stacks' ? <div role="tabpanel" aria-label="Project stacks">
+                    <div className="sec-h"><h2 className="t">Project stacks</h2><span className="m">{savedLooks.length}</span></div>
+                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Selected stacks are added at the end, in library order. Arrange playback in Playlist order. Repeat a stack from its playlist row.</p>
+                    {!!selectedStacksInLibraryOrder.length && <ol className="pl-stack-selection-preview" data-testid="playlist-stack-selection-preview" aria-label="Selected stacks in add order">
+                      {selectedStacksInLibraryOrder.map((look, index) => <li key={look.id}>{index + 1}. {look.label}</li>)}
+                    </ol>}
+                    {!!savedLooks.length && <button type="button" className="btn pl-stack-add-selected" disabled={!selectedStackIds.length || recoveryPending} onClick={addSelectedStacks}>Add selected{selectedStackIds.length ? ` (${selectedStackIds.length})` : ''}</button>}
+                    {stackFeedback && <p className="pl-stack-feedback" role="status" data-testid="playlist-stack-feedback">{stackFeedback}</p>}
+                    <div className="pl-stack-list">
+                      {savedLooks.map(look => {
+                        const summary = stackSummaries.get(look.id);
+                        const compatibility = getProjectStackCompatibility(look);
+                        const needsReview = stackNeedsSectionReview(look, sectionTargets);
+                        const eligible = compatibility.ok && !needsReview;
+                        const added = playlistContainsCombo(playlist, look.id);
+                        const expanded = expandedStackIds.includes(look.id);
+                        return <div key={look.id} className="pl-stack-card" data-testid={`playlist-stack-${look.id}`}>
+                          <div className="pl-stack-head">
+                            <input type="checkbox" aria-label={`Select ${look.label}`} checked={selectedStackIds.includes(look.id)} disabled={!eligible || added || recoveryPending} onChange={() => toggleStackSelection(look.id)} />
+                            <StackArtwork summary={summary} />
+                            <strong>{look.label}</strong><span className="mixtag">Stack</span>
+                          </div>
+                          <div className="pl-stack-meta">
+                            <span>{summary.sectionCount} {summary.sectionCount === 1 ? 'section' : 'sections'}</span>
+                            {added && <span>In playlist: {(stackPlaylistPositions.get(look.id) || []).join(', ')}</span>}
+                            {!eligible && <span className="pl-stack-ineligible">{needsReview ? 'Review sections' : 'Unavailable on card'}</span>}
+                          </div>
+                          {!eligible && <p className="pl-stack-feedback">{needsReview ? 'Section layout changed. Open this stack in Patterns to review its assignments.' : compatibility.reason}</p>}
+                          <div className="pl-stack-actions">
+                            {eligible && <button type="button" className={!added ? 'pl-stack-primary' : undefined} disabled={recoveryPending || (added && !connected)} onClick={() => addCombo(look)}>{added ? 'Preview' : 'Add stack'}</button>}
+                            <a href={`#screen=pattern&editStack=${encodeURIComponent(look.id)}`}>Edit stack</a>
+                            <button type="button" aria-expanded={expanded} onClick={() => toggleStackDetails(look.id)}>{expanded ? 'Hide sections' : 'Show sections'}</button>
+                          </div>
+                          {expanded && <StackAssignments summary={summary} />}
+                        </div>;
+                      })}
+                    </div>
+                    {!savedLooks.length && <p className="pl-empty">No project stacks yet. Create one on Patterns.</p>}
+                  </div> : <div role="tabpanel" aria-label="Patterns">
+                    <div className="sec-h"><h2 className="t">Pattern pool</h2><span className="m">{playlistPatternCount} added · {patternTiles.length} total</span></div>
+                    <p className="pl-pool-help">Select a pattern to add it. Added patterns stay in place.</p>
+                    <div className="pl-pool">
+                      {patternTiles.map((p) => (
+                        <button key={p.id} className={"pl-chip pl-pattern-tile" + (p.added ? " is-added" : "")} disabled={recoveryPending} aria-pressed={p.added}
+                          aria-label={p.added ? `${p.label}, already in playlist; preview` : `Add ${p.label}`}
+                          onClick={() => addPattern(p.id)} title={p.added ? `Preview ${p.label}` : `Add ${p.label}`}>
+                          <span className="pl-chip-art"><LedRow pal={p.pal} n={4} /></span><span className="pl-chip-nm">{p.label}</span>
+                          <span className="pl-pattern-action">{p.added ? 'Added' : 'Add'}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>}
                 </div>
 
                 {sequenceAssets.length > 0 && <div className="card pm-pane" data-testid="playlist-recordings">
@@ -1265,27 +1436,6 @@ function realPatternShape(patternId) {
                   })}
                 </div>}
 
-                <div className="card pm-pane">
-                  <div className="sec-h"><h2 className="t">Pattern pool</h2><span className="m">{playlistPatternCount} added · {patternTiles.length} total</span></div>
-                  <p className="pl-pool-help">Select a pattern to add it. Added patterns stay in place.</p>
-                  <div className="pl-pool">
-                    {patternTiles.map((p) => (
-                      <button
-                        key={p.id}
-                        className={"pl-chip pl-pattern-tile" + (p.added ? " is-added" : "")}
-                        disabled={recoveryPending}
-                        aria-pressed={p.added}
-                        aria-label={p.added ? `${p.label}, already in playlist; preview` : `Add ${p.label}`}
-                        onClick={() => addPattern(p.id)}
-                        title={p.added ? `Preview ${p.label}` : `Add ${p.label}`}
-                      >
-                        <span className="pl-chip-art"><LedRow pal={p.pal} n={4} /></span>
-                        <span className="pl-chip-nm">{p.label}</span>
-                        <span className="pl-pattern-action">{p.added ? 'Added' : 'Add'}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </aside>
             </div>
           </div>

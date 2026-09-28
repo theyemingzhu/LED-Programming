@@ -107,7 +107,7 @@ test('buildCardPlaylistConfig derives entries the same way the dial derives patt
   });
 });
 
-test('buildCardPlaylistConfig truncates to CARD_PLAYLIST_ENTRY_LIMIT enabled entries, in order', () => {
+test('buildCardPlaylistConfig refuses excess enabled entries without silently dropping them', () => {
   assert.equal(CARD_PLAYLIST_ENTRY_LIMIT, 16);
   const overflowing = Array.from({ length: 20 }, (_, index) => ({
     type: 'pattern',
@@ -115,9 +115,8 @@ test('buildCardPlaylistConfig truncates to CARD_PLAYLIST_ENTRY_LIMIT enabled ent
     id: `entry-${index + 1}`,
     dwellSeconds: 30,
   }));
-  const config = buildCardPlaylistConfig(overflowing, [], { enabled: true });
-  assert.equal(config.entries.length, CARD_PLAYLIST_ENTRY_LIMIT);
-  assert.deepEqual(config.entries.map(entry => entry.patternId), Array.from({ length: 16 }, (_, index) => `entry-${index + 1}`));
+  assert.throws(() => buildCardPlaylistConfig(overflowing, [], { enabled: true }), /16 entries/);
+  assert.equal(overflowing.length, 20);
 });
 
 test('buildCardPlaylistConfig defaults to disabled with no entries when no timing is given', () => {
@@ -125,4 +124,12 @@ test('buildCardPlaylistConfig defaults to disabled with no entries when no timin
   assert.equal(config.enabled, false);
   assert.equal(config.fadeMs, 1500);
   assert.deepEqual(config.entries, [{ patternId: 'plasma', dwellSeconds: 30 }]);
+});
+
+test('manual bank retains 19 looks while enabled timed playback refuses overflow',()=>{
+ const bank=Array.from({length:19},(_,i)=>({id:`manual-${i}`,type:'pattern',patternId:'fire'}));
+ assert.equal(buildCardPlaylistConfig(bank,[],{enabled:false}).entries.length,19);
+ assert.throws(()=>buildCardPlaylistConfig(bank,[],{enabled:true}),/16 entries/);
+ const overflow=Array.from({length:33},(_,i)=>({...bank[0],id:`manual-${i}`}));
+ assert.throws(()=>buildCardPlaylistConfig(overflow,[],{enabled:false}),/32 installed/);
 });

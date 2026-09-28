@@ -154,6 +154,7 @@ test('three GPIO section patterns stay in Layout and a kept combo installs with 
     await page.getByTestId(`section-target-${section.id}`).click();
     await page.locator(`.pm-cards .pmcard[data-pattern-id="${section.patternId}"]`).click();
   }
+  await page.getByTestId('stack-new').click();
   await page.getByTestId('look-name').fill('Three-output combo');
   await page.getByTestId('look-save-preset').click();
   await expect.poll(() => page.evaluate(() => {
@@ -188,10 +189,12 @@ test('three GPIO section patterns stay in Layout and a kept combo installs with 
     return saved.devices?.standaloneController?.looks?.find(look => look.label === 'Three-output combo');
   });
   expect(savedLook).toBeTruthy();
-  const comboCard = page.locator(`.pmcard[data-pattern-id="${savedLook.id}"]`);
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  const comboCard = page.getByTestId('project-stack-card').filter({ has: page.locator('.project-stack-card-head strong').filter({ hasText: /^Three-output combo$/ }) });
   await expect(comboCard).toBeVisible();
-  await page.getByRole('button', { name: 'Add Three-output combo to playlist' }).click();
-  await expect(page.getByRole('button', { name: 'Remove Three-output combo from playlist' })).toHaveAttribute('aria-pressed', 'true');
+  await comboCard.getByRole('button', { name: /Edit Three-output combo/ }).click();
+  await page.getByTestId('stack-save-add').click();
+  await expect(page.getByTestId('stack-arrange-playlist')).toBeVisible();
 
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
   await expect(page.getByTestId('workspace-notice')).toContainText('saved in browser library');
@@ -210,7 +213,8 @@ test('three GPIO section patterns stay in Layout and a kept combo installs with 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('.pm')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Remove Three-output combo from playlist' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await expect(page.getByTestId('project-stack-card').filter({ hasText: 'Three-output combo' })).toBeVisible();
   await page.getByRole('button', { name: 'Playlist', exact: true }).click();
   await expect(page.getByTestId('playlist-row-combo-' + savedLook.id)).toBeVisible();
   await page.getByTestId('playlist-enabled-toggle').click();

@@ -86,6 +86,8 @@ test('a supported mapped journey enters the project with its authored timing int
   await expect(page.getByTestId('pattern-lab-verdict')).toHaveAttribute('data-classification', 'live-on-card');
   await handoff.getByRole('button', { name: 'Add to Patterns', exact: true }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').getByRole('button', { name: 'Edit Amber violet drift' }).click();
   await expect(page.getByTestId('look-name')).toHaveValue('Amber violet drift');
   await expect.poll(() => page.evaluate(() => {
     const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
@@ -98,9 +100,16 @@ test('a supported mapped journey enters the project with its authored timing int
     return project.devices.standaloneController.looks.find((look: any) => look.patternLabRecipe?.base?.kind === 'color-journey');
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  const journeyStack = page.getByTestId('project-stack-card').filter({ hasText: 'Amber violet drift' });
+  await journeyStack.getByRole('button', { name: 'Select Amber violet drift' }).click();
+  await expect(journeyStack.getByRole('button', { name: 'Select Amber violet drift' })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
+    .devices?.standaloneController?.activeLookId)).toBe(savedJourney.id);
+  await journeyStack.getByRole('button', { name: 'Edit Amber violet drift' }).click();
   await expect(page.getByTestId('look-name')).toHaveValue('Amber violet drift');
-  await page.locator(`button[data-pattern-id="${savedJourney.id}"]`).click();
   await expect(page.getByTestId('look-save-preset')).toHaveText('Open in Lab');
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-save-as-new').click();
   await expect(page).toHaveURL(/screen=pattern-lab/);
   await openControls(page);

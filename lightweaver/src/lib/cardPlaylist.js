@@ -127,7 +127,7 @@ export function normalizeCardPlaylist(playlist = [], {
     fallbackIds.forEach((patternId, index) => pushPattern({ patternId }, index));
   }
 
-  return normalized.slice(0, CARD_PLAYLIST_LIMIT);
+  return normalized;
 }
 
 export function playlistFromPatternCycleIds(patternCycleIds = [], {
@@ -180,14 +180,16 @@ export function derivePlaylistLookIds(playlist = []) {
 // derives the dial's patternCycleIds — each entry's own `id`, which is the
 // installed look id a combo entry produces or the built-in pattern id a
 // pattern entry names. Only enabled entries reach the card, in playlist
-// order, capped at CARD_PLAYLIST_ENTRY_LIMIT (the dial's own 32-entry
-// CARD_PLAYLIST_LIMIT is unrelated and untouched by this cap).
+// order. Active timed playback refuses more than 16 entries; a disabled timed
+// playlist may retain the manual bank of up to 32 installed looks.
 export function buildCardPlaylistConfig(playlist = [], savedLooks = [], timing = {}, sequenceAssets = []) {
   const { enabled, fadeMs } = normalizePlaylistTiming(timing);
   const normalized = normalizeCardPlaylist(playlist, { savedLooks, sequenceAssets, allowEmpty: true });
+  const activeCount = normalized.filter(item => item.enabled !== false).length;
+  if (activeCount > CARD_PLAYLIST_LIMIT) throw new RangeError(`The card supports ${CARD_PLAYLIST_LIMIT} installed looks. Remove entries before installation.`);
+  if (enabled && activeCount > CARD_PLAYLIST_ENTRY_LIMIT) throw new RangeError(`The timed playlist supports ${CARD_PLAYLIST_ENTRY_LIMIT} entries. Remove entries before installation.`);
   const entries = normalized
     .filter(item => item.enabled !== false)
-    .slice(0, CARD_PLAYLIST_ENTRY_LIMIT)
     .map(item => ({
       patternId: item.id,
       dwellSeconds: clampDwellSeconds(item.dwellSeconds),

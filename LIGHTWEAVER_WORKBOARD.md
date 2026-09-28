@@ -9,6 +9,113 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Stack chip width and packing — verified local build
+Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local d8c3f0df.
+Working: chips reduced from 220x134px to 148x104px on the actual desktop.
+Five fit across instead of three; ten fit in two rows. Phone retains two columns,
+unclipped single-row actions and square palettes. No selection behavior change.
+Evidence: density regression RED before CSS and GREEN after; 2/2 affected browser
+checks passed. Actual 1280x800 and 390x844 reviewed; production build PASS
+(/tmp/stacks-tight-build.log). Screenshots: stack-tight-desktop.png and
+stack-tight-phone.png in this chat's visualizations directory.
+Next: owner review in existing 9220 preview. Local only; no deployment/firmware.
+
+### Compact stack action row — verified local build
+Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 62ac29d7.
+Working: Preview, Edit and Playlist share one 30px row, including used status.
+Evidence: focused desktop/390px layout and action regression PASS; actual desktop
+and phone inspected; production build PASS (/tmp/stacks-compact-actions-build.log).
+Screenshots: stack-actions-compact-desktop.png and stack-actions-compact-phone.png
+in this chat's visualizations directory. No behavior, firmware or release change.
+Next: owner review in existing 9220 preview.
+
+### Stack selection, explicit actions and gradient tiles — verified local build
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local cebfa3d0.
+Working: selecting a stack switches locally without opening its editor, scrolling,
+or sending a card command. Explicit Preview shows the whole stack in Studio;
+Edit opens controls; Add to playlist adds once and then shows In playlist.
+Smooth square palette thumbnails identify each section; Off remains dark.
+Phone controls and four-thumbnail rows fit at 390px. Draft/save guards preserved.
+Evidence: 17/17 focused Patterns browser tests; integrated checkpoint 2869/2869
+unit tests and build PASS; final spacing build PASS. Actual desktop and phone
+reviewed. Logs: /tmp/stacks-actions-checkpoint.log and
+/tmp/stacks-actions-build-final.log. Screenshots: stack-actions-desktop.png and
+stack-actions-phone.png in this chat's visualizations directory.
+No deployment, firmware, storage schema or card changes.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+### Stack chips and explicit creation — verified local build
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 74067ccf.
+Working: compact side-by-side chips with one expanded editor; visible New stack,
+Stack name, Save stack and Save changes. Creation/expansion scrolls to the editor
+and focuses its name. Full section assignments are visible; Patterns has a clear
+Return to save action. Existing unfinished new stacks can be resumed.
+Persistence: New captures current default and every displayed section without
+changing the source record. Draft writes are verified before switching; unfinished
+new drafts preserve untouched sections across chip changes/reload. Errors remain
+visible. Existing layout-review and Lab guards remain enforced.
+Evidence: focused New/save/Resume/lifecycle/browser checks passed; integrated
+checkpoint 2869/2869 unit tests; final production build PASS. Actual 1280x800 and
+390x844 reviewed. /tmp/stacks-chips-checkpoint.log and
+/tmp/stacks-chips-build-final.log; screenshots stack-chips-desktop.png and
+stack-chips-phone.png in this chat's visualizations directory.
+No deployment, firmware changes, card mutation, or storage schema change.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+
+### Compact stack workflow — verified local refinement
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 0d492d27.
+Working: compact single-row stack library, clickable names, color segments, direct
+Add for unused stacks, section assignments and lifecycle actions under More.
+Save uses one name/action row; secondary playlist/details actions remain accessible.
+Errors/review warnings stay visible; linked-update notice appears when dirty.
+Actual 1280x800: saved row 222→61px; save panel 249→150px. Phone rows 73px;
+44px controls retained, metadata wraps, no decorative grid behind stack library.
+Evidence: 24 relevant browser checks passed, final swatch sizing regression passed,
+production build PASS; actual desktop/phone checked. Screenshots: stack-minimal-
+desktop.png and stack-minimal-phone.png in this chat's visualizations directory.
+No deployment, firmware, persistence schema or card mutation. Capacity unchanged.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+
+### Stack finesse and functional ordering — verified local refinement
+Owner: this manager; Sprint. State: done at approved local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on91de724b in samecheckout.
+Working: compact savepanel keeps Tune visible; More/details disclosure; separate
+Save-as-new versus Repeat; usedstack offers Arrange playlist; picker previews
+append order and playlistpositions; phone Add stacks/Back to order navigation.
+Evidence:56distinct relevantbrowser checks passing;2869/2869units; production
+build PASS. Actual1280x800/390x844 inspected. Final evidence:
+/tmp/stacks-finesse-arrange-final.log, /tmp/stacks-finesse-checkpoint.log,
+/tmp/stacks-finesse-build-final.log, /tmp/lightweaver-stack-finesse-desktop.png.
+Plan:docs/plans/2026-09-28-project-pattern-stacks-refinement.md.
+No deployment/firmware change/cardmutation. Cardcapacitylimitunchanged.
+Next: ownerreview in existing9220 preview, then authorized integration/release.
+
+### Project pattern stacks — verified local build (chat 01a0e6bf)
+Owner: this manager; Sprint. State: done at the approved local-build boundary.
+Artifact: branch `codex/project-pattern-stacks`, managed checkout
+`/Users/adrianrasmussen/.codex/worktrees/project-pattern-stacks/led`, base6dbffe67.
+Working: full-section snapshots, separate project shelf and playlist picker,
+Save & add, multi-add, Update/Duplicate/Rename/Revert/Delete/Undo, selective copy,
+per-stack draft recovery, truthful storage errors/retry and section-change review.
+Evidence: 2869/2869 unit tests; 97 distinct relevant browser checks covered and
+passing after focused repairs; final production build PASS. Final8check log:
+`/tmp/lightweaver-stacks-last-checks.log`; checkpoint:
+`/tmp/lightweaver-stacks-checkpoint-final.log`. Desktop/phone inspected; image
+`/tmp/lightweaver-project-stacks-review.png`; isolated preview127.0.0.1:9220.
+Limit: ten4-section stacks save/reopen/export correctly; representative card
+payload7243bytes exceeds existing3968. No silent loss; oversized install refused.
+Dependency: firmware capacity expansion remains a separate pending scope decision.
+No release, firmware/card writes or physical appearance proof. Owner4173 preserved.
+Next: authorized integration/release; expanded card capacity needs its own approval.
+Plan/evidence: `docs/plans/2026-09-28-project-pattern-stacks-build.md`.
+
 RELEASE CANDIDATE VERIFIED: branch codex/browser-gate-latency throughb3f09b72.
 Source9ceec06f fixes exact probation confirm/rollback, pre-send causechain and
 same-component duplicate install; source review constraints passed,2857 integrated

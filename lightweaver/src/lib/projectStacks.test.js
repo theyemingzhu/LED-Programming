@@ -1,0 +1,101 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { saveCurrentLookToController, normalizeSavedLooks, deleteSavedLookFromController } from './sectionLookModel.js';
+import { addProjectStacksToPlaylist, getProjectStackCompatibility, summarizeProjectStack, getProjectStackReview, repairProjectStack, duplicateProjectStack, renameProjectStack } from './projectStacks.js';
+import { createDefaultCircleLayout } from './defaultCircleLayout.js';
+import { makeDefaultWiring } from './wiringModel.js';
+import { createDefaultPatchBoard } from './patchBoard.js';
+import { deriveSectionTargets } from './sectionLookModel.js';
+import { createProjectLibraryRecord, saveProjectLibraryRecord, listProjectLibraryRecords, duplicateProjectLibraryRecord } from './projectStorage.js';
+import { defaultStandaloneController, createDefaultProject, migrateProject } from './projectModel.js';
+import { prepareCardStoragePayload, compactCardStorageConfig, CARD_CONFIG_STORAGE_LIMIT_BYTES } from './cardStoragePayload.js';
+import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
+
+const targets = [0,1,2,3].map(i => ({ id: `s${i}`, kind: 'section', label: `Section ${i}`, look: { patternId: ['fire','ocean','scanner','blackout'][i], speed: 1.2 } }));
+test('independent identities, stable order, explicit updates and linked renames/deletion', () => {
+ let c = saveCurrentLookToController({}, { label: 'Same', targets });
+ const first = c.activeLookId;
+ c = saveCurrentLookToController(c, { label: 'Same', targets });
+ assert.notEqual(first,c.activeLookId);
+ const order=c.looks.map(x=>x.id);
+ c=addProjectStacksToPlaylist(c,order);
+ c.playlist.push({...c.playlist[0],id:'repeat'});
+ c=saveCurrentLookToController(c,{lookId:first,label:'Updated',targets});
+ assert.deepEqual(c.looks.map(x=>x.id),order);
+ assert.equal(c.playlist.filter(x=>x.label==='Updated').length,2);
+ c=renameProjectStack(c,first,'Renamed');
+ assert.equal(c.playlist.filter(x=>x.label==='Renamed').length,2);
+ const d=duplicateProjectStack(c,first);
+ d.looks.at(-1).sectionLooks.s0.speed=2;
+ assert.equal(c.looks[0].sectionLooks.s0.speed,1.2);
+ assert.equal(deleteSavedLookFromController(c,first).playlist.length,1);
+});
+test('review follows stable identities; explicit repair inherits new sections and removes deleted sections',()=>{
+ const look=saveCurrentLookToController({}, {targets}).looks[0];
+ assert.equal(getProjectStackReview(look,[...targets].reverse().map(t=>({...t,label:'Rename'}))).needsReview,false);
+ const next=[...targets.slice(1),{id:'new',kind:'section',label:'New'}];
+ assert.deepEqual(getProjectStackReview(look,next),{needsReview:true,missingSectionIds:['new'],removedSectionIds:['s0']});
+ const repaired=repairProjectStack(look,next);
+ assert.equal(getProjectStackReview(repaired,next).needsReview,false);
+ assert.equal(summarizeProjectStack(repaired,next).sectionCount,4);
+ assert.ok(look.sectionLooks.s0);
+});
+test('capacity and unsupported patterns refuse without silently losing data',()=>{
+ assert.equal(normalizeSavedLooks(Array.from({length:13},(_,i)=>({id:`look-${i}`}))).length,13);
+ assert.throws(()=>saveCurrentLookToController({}, {targets:[{...targets[0],look:{patternId:'unknown-custom'}}]}),/unsupported|supported/i);
+ const c=saveCurrentLookToController({}, {targets});
+ c.playlist=Array.from({length:16},(_,i)=>({id:`p${i}`,type:'pattern',patternId:'fire'}));
+ assert.throws(()=>addProjectStacksToPlaylist(c,[c.activeLookId]),/16/);
+ assert.equal(c.playlist.length,16);
+});
+test('ten four-section stacks round-trip and export exact complete zone appearances',()=>{
+ const strips=createDefaultCircleLayout({totalPixels:80,sectionCount:4});
+ const patchBoard=createDefaultPatchBoard(strips);
+ const sections=deriveSectionTargets({strips,patchBoard}).filter(t=>t.kind==='section');
+ let c=defaultStandaloneController({playlist:[]}); c.playlist=[];
+ for(let i=0;i<10;i++) c=saveCurrentLookToController(c,{label:`Stack ${i}`,targets:sections.map((t,j)=>({...t,look:{patternId:['fire','ocean','scanner','blackout'][j],speed:0.5+i/10,brightness:j===3?0:0.8}}))});
+ c=addProjectStacksToPlaylist(c,c.looks.map(x=>x.id));
+ c.controls.playlist={enabled:true};
+ const p=createDefaultProject(); p.layout.strips=strips;p.layout.patchBoard=patchBoard;p.layout.wiring=makeDefaultWiring(strips);p.layout.starterPending=false;p.devices.standaloneController=c;
+ const loaded=migrateProject(JSON.parse(JSON.stringify(p)));
+ assert.deepEqual(loaded.devices.standaloneController.looks,c.looks);
+ const config=buildCardRuntimePackageFromProject({strips,patchBoard,standaloneController:loaded.devices.standaloneController}).config;
+ const compiledConfig=buildCardRuntimePackageFromProject({strips:loaded.layout.strips,patchBoard:loaded.layout.patchBoard,wiring:loaded.layout.wiring,standaloneController:loaded.devices.standaloneController}).config;
+ assert.equal(compiledConfig.looks.length,10);
+ assert.deepEqual(compiledConfig.looks[0].zones.map(z=>z.patternId),['fire','ocean','scanner','blackout']);
+ assert.equal(config.looks.length,10);
+ config.looks.forEach((look,i)=>{assert.equal(look.zones.length,4);assert.deepEqual(look.zones.map(z=>z.patternId),['fire','ocean','scanner','blackout']);assert.equal(look.zones[0].speed,0.5+i/10);});
+ assert.equal(config.playlist.entries.length,10);
+ const bytes=new TextEncoder().encode(JSON.stringify(compactCardStorageConfig(config))).byteLength;
+ assert.throws(()=>prepareCardStoragePayload(config),error=>error.reason==='config-too-large' && error.bytes===bytes && error.maxBytes===CARD_CONFIG_STORAGE_LIMIT_BYTES);
+ assert.equal(c.looks.length,10); assert.equal(c.playlist.length,10);
+ const values=new Map(); const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+ saveProjectLibraryRecord(createProjectLibraryRecord(p,{id:'ten'}),{storage});
+ const reopened=listProjectLibraryRecords({storage})[0].project;
+ assert.deepEqual(reopened.devices.standaloneController.looks,c.looks);
+ const copied=duplicateProjectLibraryRecord('ten',{storage});
+ copied.project.devices.standaloneController.looks[0].label='Independent';
+ assert.equal(listProjectLibraryRecords({storage}).find(r=>r.id==='ten').project.devices.standaloneController.looks[0].label,'Stack 0');
+ console.log(`Ten-stack four-section config: ${bytes}/${CARD_CONFIG_STORAGE_LIMIT_BYTES} bytes; correctly refused only at installation`);
+ assert.throws(()=>buildCardRuntimePackageFromProject({strips:strips.slice(1),patchBoard:createDefaultPatchBoard(strips.slice(1)),standaloneController:c}),/review sections/i);
+});
+
+test('legacy zone aliases retain appearances when summarized and explicitly upgraded',()=>{
+ const legacy={id:'legacy',defaultLook:{patternId:'aurora'},sectionLooks:{'old-zone':{patternId:'fire'}}};
+ const rows=[{id:'patch-one',zoneId:'old-zone',kind:'section',label:'One'},{id:'patch-two',zoneId:'second',kind:'section',label:'Two'}];
+ assert.equal(getProjectStackReview(legacy,rows).needsReview,false);
+ assert.equal(summarizeProjectStack(legacy,rows).sections[0].patternId,'fire');
+ const repaired=repairProjectStack(legacy,rows);
+ assert.equal(repaired.sectionLooks['patch-one'].patternId,'fire');
+ assert.equal(repaired.sectionLooks['patch-two'].patternId,'aurora');
+ assert.equal(getProjectStackReview(repaired,rows).needsReview,false);
+});
+
+test('native compatibility admits only a validated recipe identity, never arbitrary section IDs',()=>{
+ const nativeRecipe={version:1,kind:'color-journey',id:'journey',journey:{version:1,stops:[{color:'#ff0000',holdMs:1000,fadeMs:2000},{color:'#0000ff',holdMs:1000,fadeMs:2000}],easing:'smooth',loop:true,restart:'restart',motionSpeedMs:18000,depth:0.25,phase16:'1234abcd'}};
+ const look={defaultLook:{patternId:'journey'},nativeRecipe,patternLabRecipe:{base:{kind:'color-journey'}}};
+ assert.equal(getProjectStackCompatibility(look).ok,true);
+ assert.equal(getProjectStackCompatibility({...look,sectionLooks:{s:{patternId:'arbitrary-unknown'}}}).ok,false);
+ assert.equal(getProjectStackCompatibility({...look,nativeRecipe:{id:'journey'}}).ok,false);
+ assert.equal(getProjectStackCompatibility({...look,patternLabRecipe:null}).ok,false);
+});

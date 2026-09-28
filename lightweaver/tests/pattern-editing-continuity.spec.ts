@@ -24,22 +24,33 @@ async function openProject(page, { full = false } = {}) {
   await expect(page.locator('.pm')).toBeVisible();
 }
 
+async function openStackEditor(page) {
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').first().getByRole('button', { name: /^Edit / }).click();
+  await expect(page.getByTestId('stack-save-bar')).toBeVisible();
+}
+
 const savedLooks = page => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').devices?.standaloneController?.looks || []);
 
 test('renaming and updating a look keep its identity instead of making duplicates', async ({ page }) => {
   await openProject(page);
+  await openStackEditor(page);
   await page.getByTestId('look-name').fill('Violet evening');
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-rename').click();
   await expect.poll(async () => (await savedLooks(page)).find(look => look.id === 'owned-look-0')?.label).toBe('Violet evening');
   expect(await savedLooks(page)).toHaveLength(1);
   const cues = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').devices.standaloneController.playlist);
   expect(cues).toEqual([expect.objectContaining({ id: 'evening-cue', lookId: 'owned-look-0', label: 'Violet evening', dwellSeconds: 120 })]);
   await page.reload();
+  await openStackEditor(page);
   await expect(page.getByTestId('look-name')).toHaveValue('Violet evening');
 });
 
 test('delete and Undo restore the look and its playlist cue', async ({ page }) => {
   await openProject(page);
+  await openStackEditor(page);
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   await expect.poll(async () => (await savedLooks(page)).length).toBe(0);
   await page.getByTestId('look-delete-undo').click();
@@ -50,8 +61,10 @@ test('delete and Undo restore the look and its playlist cue', async ({ page }) =
 
 test('saving a new look at capacity leaves all twelve existing looks intact', async ({ page }) => {
   await openProject(page, { full: true });
+  await openStackEditor(page);
   await expect.poll(async () => (await savedLooks(page)).length).toBe(12);
   const before = await savedLooks(page);
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-save-as-new').click();
   await expect(page.getByTestId('look-save-status')).toContainText(/12|full|maximum|capacity/i);
   expect(await savedLooks(page)).toEqual(before);

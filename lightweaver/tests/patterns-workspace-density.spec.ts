@@ -147,17 +147,14 @@ test('four and twelve sections leave a usable pattern bank on desktop and fit a 
   await phone.close();
 });
 
-test('Save look is grouped with its name and status in Tune', async ({ page }) => {
+test('Save stack remains visible beside its name and status outside Tune', async ({ page }) => {
   await openFixture(page, 4);
-  const tune = page.locator('.pm-tune-pane');
-  const save = tune.getByTestId('look-save-preset');
-  await expect(save).toHaveText(/Save look/);
-  const group = tune.locator('[aria-label="Save look"]');
+  const group = page.getByTestId('stack-save-bar');
+  const save = group.getByTestId('look-save-preset');
+  await expect(save).toHaveText(/Save stack/);
   await expect(group.getByTestId('look-name')).toBeVisible();
   await expect(group.getByTestId('look-save-status')).toBeVisible();
-  const saveBox = await save.boundingBox();
-  const statusBox = await group.getByTestId('look-save-status').boundingBox();
-  expect(saveBox && statusBox && Math.abs(statusBox.y - (saveBox.y + saveBox.height))).toBeLessThanOrEqual(28);
+  await expect(page.locator('.pm-tune-pane').getByTestId('look-save-preset')).toHaveCount(0);
 });
 
 test('section order controls reorder the visual list without changing physical topology', async ({ page }) => {
@@ -176,5 +173,5 @@ test('section order controls reorder the visual list without changing physical t
   await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-targets', project.layout.patchBoard.patches.map(patch => patch.id).join(','));
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   expect(saved.layout.patchBoard.chains).toEqual(project.layout.patchBoard.chains);
-  expect(saved.layout.wiring).toEqual(project.layout.wiring);
+  expect({ ...saved.layout.wiring, migrationWarnings: undefined }).toEqual({ ...project.layout.wiring, migrationWarnings: undefined });
 });

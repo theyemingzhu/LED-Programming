@@ -240,9 +240,11 @@ for (const viewport of VIEWPORTS) {
       const project = makeTimedPlaylistProject({ count: 17 });
       await mockConnectedTimedCard(page, project, `lw-playlist-timed-overflow-${viewport.label}`);
       await gotoPlaylist(page, project);
+      await expect(page.getByTestId('playlist-overflow-notice')).toHaveCount(0);
+      await page.getByTestId('playlist-enabled-toggle').click();
 
       await expect(page.getByTestId('playlist-overflow-notice')).toContainText(
-        `Only the first ${CARD_PLAYLIST_ENTRY_LIMIT} looks reach the card. 1 more is in the order but will not play there.`,
+        `Timed playback cannot be installed with 17 active entries. The limit is ${CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable 1 entry first.`,
       );
     });
 
