@@ -134,6 +134,7 @@ test('Layout pattern gallery previews and applies successive choices until the s
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.strips?.length)).toBe(4);
   await page.goto('/#screen=pattern');
   await expect(page.getByTestId(`section-target-${targetId}`)).toBeVisible();
+  await page.getByTestId('stack-new').click();
   await page.getByTestId('look-name').fill('Before Layout edit');
   await page.getByTestId('look-save-preset').click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').devices?.standaloneController?.looks?.some((look: any) => look.label === 'Before Layout edit'))).toBe(true);
@@ -169,6 +170,7 @@ test('Layout pattern gallery previews and applies successive choices until the s
   await expect(row).toContainText('Fire');
   await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
   await expect(gallery).toBeVisible();
+  await expect(gallery.getByRole('status')).toContainText('Connect a ready card');
   await expect(audition).toHaveAttribute('aria-label', 'Plasma animated preview for Ribbon 2');
   await expect(row).toContainText('Plasma');
   await expect(page.getByTitle('Toggle ambient light preview (click). Right-click or use ▾ for glow options.')).toHaveClass(/active/);

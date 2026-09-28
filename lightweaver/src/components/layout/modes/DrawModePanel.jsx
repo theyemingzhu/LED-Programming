@@ -11,6 +11,10 @@ import {
 } from '../shared/InspectorPrimitives.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProject } from '../../../state/ProjectContext.jsx';
+import { deriveCardAccess } from '../../../lib/cardAccess.js';
+import { getCardLinkState } from '../../../lib/cardLink.js';
+import { cardConnectionOptionsFor } from '../../../lib/cardConnection.js';
+import { decideLiveControlProjectAuthority, pushLivePreviewToCard } from '../../../lib/cardLiveControl.js';
 import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planSectionsAtRunBoundaries, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
 import {
   DENSITY_OPTIONS,
@@ -138,6 +142,7 @@ export function DrawModePanel({
   onOpenConnectionCenter,
   onStarterPreviewChange,
   onChangePattern,
+  cardHost,
 }) {
   const {
     strips, layers, hidden, setHidden,
@@ -188,6 +193,7 @@ export function DrawModePanel({
   const {
     wiring, updateWiring, compiledWiring, standaloneController, setStandaloneController,
     patchBoard, setPatchBoard, portRoles, sectionTargets, expressionScenes, layoutHistoryError,
+    projectId, projectLifecycle,
   } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
@@ -239,6 +245,12 @@ export function DrawModePanel({
   const [droppedStripIds, setDroppedStripIds] = useState([]);
   const [connectedError, setConnectedError] = useState('');
   const [patternPicker, setPatternPicker] = useState(null);
+  const [patternCardStatus, setPatternCardStatus] = useState('');
+  const patternIntent = useRef(0);
+  useEffect(() => {
+    patternIntent.current += 1;
+    setPatternCardStatus('');
+  }, [projectId, projectLifecycle?.generation]);
   const patternPreviewSegments = useMemo(() => patternPicker
     ? buildPatternPreviewSegments({
       strips, patchBoard, wiring, compiledWiring,
@@ -250,6 +262,8 @@ export function DrawModePanel({
   const patternTriggerRefs = useRef(new Map());
   const closePatternPicker = (restoreFocus = true) => {
     const targetId = patternPicker?.targetId;
+    patternIntent.current += 1;
+    setPatternCardStatus('');
     setPatternPicker(null);
     if (restoreFocus) window.requestAnimationFrame(() => patternTriggerRefs.current.get(targetId)?.focus());
   };
@@ -260,7 +274,41 @@ export function DrawModePanel({
       setPatchBoard(applyLookToPatchBoard({ patchBoard, strips, targetId: target.id,
         look: { ...target.look, patternId } }));
     }
-    if (target) enableLightPreview();
+    if (!target) return;
+    enableLightPreview();
+    const intent = ++patternIntent.current;
+    const link = getCardLinkState();
+    if (deriveCardAccess(link).playback !== 'ready') {
+      setPatternCardStatus('Saved in Studio. Connect a ready card to play this pattern live.');
+      return;
+    }
+    const projectAuthority = decideLiveControlProjectAuthority({
+      connected: true,
+      studioProject: { projectId },
+      cardStatus: link.readiness,
+    });
+    if (!projectAuthority.ok) {
+      setPatternCardStatus(projectAuthority.message);
+      return;
+    }
+    // The card verifies the exact paired identity and the installed zone's
+    // ranges before this section-only command can reach an LED output.
+    const look = { ...target.look, patternId, zone: target.zoneId || target.id, syncZones: false };
+    const options = {
+      ...cardConnectionOptionsFor(link, cardHost),
+      expectedCardId: link.expectedCard?.id || link.card?.id || '',
+      expectedZoneRanges: target.ranges || [],
+      revision: intent,
+      timeoutMs: 2200,
+    };
+    setPatternCardStatus('Playing on card…');
+    void pushLivePreviewToCard(look, options).then(() => {
+      if (patternIntent.current === intent) setPatternCardStatus('Playing on card');
+    }).catch(error => {
+      if (patternIntent.current === intent && error?.reason !== 'superseded') {
+        setPatternCardStatus(error?.message || 'The card could not play this pattern.');
+      }
+    });
   };
   useEffect(() => {
     if (!patternPicker) return undefined;
@@ -1612,6 +1660,8 @@ export function DrawModePanel({
                                            return;
                                          }
                                          selectStrip(s.id);
+                                         patternIntent.current += 1;
+                                         setPatternCardStatus('');
                                          setPatternPicker({ targetId: target.id, stripId: s.id });
                                        }}>
                           {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
@@ -1623,7 +1673,8 @@ export function DrawModePanel({
                       return <LayoutPatternGallery stripName={partName}
                         currentPatternId={target?.look?.patternId || 'aurora'}
                         previewSegment={patternPreviewSegments[0]}
-                        onChoose={choosePattern} onClose={closePatternPicker}/>;
+                        onChoose={choosePattern} onClose={closePatternPicker}
+                        cardStatus={patternCardStatus}/>;
                     })()}
                     {isOpen && (
                       <div className={`la-strip-detail la-strip-inspector${connectedFamily ? ' lw-connected-editor-shell' : ''}`}

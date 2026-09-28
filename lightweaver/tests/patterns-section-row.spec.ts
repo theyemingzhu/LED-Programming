@@ -231,3 +231,66 @@ test('a reused section ID with stale ranges cannot change the whole installed st
   await expect.poll(() => controlPosts.filter(post => post.patternId === 'fire').length).toBe(1);
   expect(controlPosts.at(-1)).toMatchObject({ zone: zones[0].id, syncZones: false });
 });
+
+test('Layout pattern picks immediately play only their mapped card section, including reselect', async ({ page }, testInfo) => {
+  const project = sectionProject('layout-live-pattern-pick');
+  project.layout.starterPending = false;
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
+    { id: 'out2', name: 'Inner output', pin: 17, runIds: ['run-default-inner-circle'] },
+  ];
+  const zones = compiledZones(project);
+  await mockReadyCard(page, project, zones.map(zone => ({ ...zone, brightness: 1 })));
+  await page.goto('/#screen=layout');
+  const target = page.getByTestId('layout-section-pattern-action')
+    .filter({ hasText: 'Ocean' });
+  await target.click();
+  const gallery = page.getByRole('dialog', { name: /Choose pattern for/ });
+  await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
+  const inner = zones.find(zone => zone.label === 'Inner circle') || zones[1];
+  await expect.poll(() => controlPosts.filter(post => post.patternId === 'plasma').length).toBe(1);
+  expect(controlPosts.at(-1)).toMatchObject({ zone: inner.id, syncZones: false });
+  expect(controlPosts.every(post => post.zone !== zones[0].id && post.syncZones !== true)).toBe(true);
+  await expect(gallery.getByRole('status')).toHaveText('Playing on card');
+  await gallery.screenshot({ path: testInfo.outputPath('layout-pattern-playing-on-card.png') });
+  await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
+  await expect.poll(() => controlPosts.filter(post => post.patternId === 'plasma').length).toBe(2);
+  expect(controlPosts.at(-1)).toMatchObject({ zone: inner.id, syncZones: false });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}')
+    .layout?.patchBoard?.patches?.map((patch: any) => patch.playback?.patternId))).toEqual(['fire', 'plasma']);
+});
+
+test('Layout refuses a live pattern when the installed section ranges differ', async ({ page }) => {
+  const project = sectionProject('layout-stale-section');
+  project.layout.starterPending = false;
+  const zones = compiledZones(project);
+  const staleZones = zones.map((zone, index) => index === 1
+    ? { ...zone, ranges: [{ start: 0, count: 1 }] }
+    : zone);
+  await mockReadyCard(page, project, staleZones);
+  await page.goto('/#screen=layout');
+  await page.getByTestId('layout-section-pattern-action').filter({ hasText: 'Ocean' }).click();
+  const gallery = page.getByRole('dialog', { name: /Choose pattern for/ });
+  await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
+  await expect(gallery.getByRole('status')).toContainText('different section layout');
+  expect(controlPosts).toEqual([]);
+});
+
+test('Layout does not play on a ready card holding another project with matching sections', async ({ page }) => {
+  const installed = sectionProject('installed-section-project');
+  installed.layout.starterPending = false;
+  const open = sectionProject('open-section-project');
+  open.layout.starterPending = false;
+  const zones = compiledZones(installed);
+  await mockReadyCard(page, installed, zones);
+  await page.addInitScript(project => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  }, open);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=layout');
+  await page.getByTestId('layout-section-pattern-action').filter({ hasText: 'Ocean' }).click();
+  const gallery = page.getByRole('dialog', { name: /Choose pattern for/ });
+  await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
+  await expect(gallery.getByRole('status')).toContainText('Install this exact Studio project');
+  expect(controlPosts).toEqual([]);
+});
