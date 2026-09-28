@@ -1,7 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isTransientCardFailure, retryWhileTransient } from './cardTransientFailure.js';
+import { isTransientCardFailure, isUncertainCardWriteFailure, retryWhileTransient } from './cardTransientFailure.js';
+
+test('pre-send bridge refusal is transient but cannot be mistaken for a lost accepted write', () => {
+  const refusedBeforeSend = Object.assign(new Error('The verified card is not runtime-ready.'), {
+    reason: 'runtime-not-ready', delivery: 'not-sent',
+  });
+  const normalized = Object.assign(new Error(refusedBeforeSend.message), {
+    reason: refusedBeforeSend.reason, cause: refusedBeforeSend,
+  });
+  assert.equal(isTransientCardFailure(normalized), true);
+  assert.equal(isUncertainCardWriteFailure(normalized), false);
+  const wiringWrapped = Object.assign(new Error(normalized.message), {
+    reason: 'runtime-not-ready', cause: normalized,
+  });
+  assert.equal(isUncertainCardWriteFailure(wiringWrapped), false);
+  assert.equal(isUncertainCardWriteFailure({ reason: 'bridge-timeout' }), true);
+  assert.equal(isUncertainCardWriteFailure({ reason: 'http', status: 423 }), true);
+});
 
 test('a card that is still starting up is a moment, not a failure', () => {
   // 423 is the firmware's own "not ready for runtime control". It was the

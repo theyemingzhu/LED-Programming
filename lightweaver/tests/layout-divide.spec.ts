@@ -24,7 +24,7 @@ async function createOneStrip(page: any) {
 }
 
 async function setStripLedCount(page: any, count: number) {
-  const input = page.locator('.la-strip-row .la-row-count input').first();
+  const input = page.locator('.la-strip-detail .la-row-count input').first();
   await input.fill(String(count));
   await input.blur();
 }
@@ -35,8 +35,14 @@ async function expectSectionCounts(page: any, counts: number[]) {
     .toEqual(counts);
 }
 
-function rowCounts(page: any) {
-  return page.locator('.la-strip-row .la-row-count input').evaluateAll((inputs: HTMLInputElement[]) => inputs.map(input => Number(input.value)));
+async function rowCounts(page: any) {
+  const counts: number[] = [];
+  const rows = page.locator('.la-strip-row');
+  for (let index = 0; index < await rows.count(); index++) {
+    await rows.nth(index).locator('.layer-name').click();
+    counts.push(Number(await page.locator('.la-strip-detail .la-row-count input').inputValue()));
+  }
+  return counts;
 }
 
 test('dividing a 41-LED strip into 4 makes four strips of 11, 10, 10, 10', async ({ page }) => {
@@ -155,14 +161,15 @@ test('an invalid section count stays visible and cannot divide', async ({ page }
   await expect(commit).toBeEnabled();
 });
 
-test('independent Split into two remains available in More actions', async ({ page }) => {
+test('Split into two shortcut creates two parts under the physical strip', async ({ page }) => {
   await gotoFreshLayout(page);
   await createOneStrip(page);
 
   const firstName = await page.locator('.la-strip-row .layer-name').first().innerText();
   await page.getByLabel('More strip actions').click();
   await page.locator('[data-testid^="split-strip-"]').first().click();
-  await expect(page.locator('.la-strip-row .layer-name')).toHaveText([firstName, `${firstName} 2`]);
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Part 1', 'Part 2']);
+  await expect(page.getByTestId('connected-parent')).toContainText(firstName);
   await expect(page.locator('.la-gpio-group')).toHaveCount(1);
 });
 

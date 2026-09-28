@@ -90,7 +90,7 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
 
   const strip = page.locator('[data-strip-id]').first();
   if (!await strip.locator('.la-strip-detail').isVisible()) await strip.locator('.la-strip-row').click();
-  const countInput = page.getByLabel('Strip LED count', { exact: true });
+  const countInput = strip.getByRole('spinbutton', { name: /LED count$/ });
   await expect(countInput).toHaveValue(String(STARTING_PIXELS));
   await countInput.fill(String(NEXT_PIXELS));
   await countInput.blur();
@@ -114,9 +114,11 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
   await page.getByTestId('layout-check-and-install').click();
   await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project/);
 
-  const install = page.getByTestId('layout-send-to-card');
-  await expect(install, 'a card already holding this exact (pre-edit) project must authorize an install unaided').toBeEnabled({ timeout: CONNECT_BUDGET_MS });
-  await install.click();
+  // Layout opens the guarded install task with `next=patterns`; that task
+  // starts the send itself. Clicking its still-rendered button as well would
+  // create a second request, which is a test interaction rather than a card
+  // retry after the lost reply.
+  await expect(page).toHaveURL(/next=patterns/);
 
   // The card is restarting: Studio must show that, not silence and not a
   // failure. `card-install-restarting` is the one stable test id for it.
@@ -130,11 +132,12 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByText('Push failed', { exact: false })).toHaveCount(0);
 
-  // Once the card answers again, Studio must land on the ordinary success
-  // banner — never a "Retry" state — reading back the exact new revision.
-  const banner = page.locator('.la-card-push-banner');
-  await expect(banner, 'the install must settle to the ordinary success banner once the card answers again')
-    .toContainText(/Installed revision \d+ on card/, { timeout: CONNECT_BUDGET_MS });
+  // The install task hands off to Patterns after verified readback, which
+  // unmounts its short-lived success banner. The card and screen must both
+  // show the new count when that handoff finishes.
+  await expect(page, 'verified install must hand off to Patterns').toHaveURL(/#screen=pattern$/, { timeout: CONNECT_BUDGET_MS });
+  await expect(page.getByText('Installed on card', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /All sections 42 LEDs/ })).toBeVisible();
   await expect(page.getByTestId('card-install-restarting')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
   await expect(page.getByText('Push failed', { exact: false })).toHaveCount(0);

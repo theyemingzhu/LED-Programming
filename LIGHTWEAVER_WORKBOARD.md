@@ -9,6 +9,116 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+RELEASE CANDIDATE VERIFIED: branch codex/browser-gate-latency throughb3f09b72.
+Source9ceec06f fixes exact probation confirm/rollback, pre-send causechain and
+same-component duplicate install; source review constraints passed,2857 integrated
+unit tests pass. Browser90smoke allcovered (53journey/discovery +37UI/playlist),
+preserving51 allcovered, windowless2 earlierpass; focused duplicate red2→green1.
+Workflow55contracts pass. b2162e2b aligns current UI tests and candidate status;
+b3f09b72 timedplaylist8/8 matching true physicalfixture. No hardware changes.
+Source productionartifact2218 built successfully and fresh browser +serviceworker
+reload independently renderStudio2218 without pageerror. ExistingIAB4173 turned
+blank afteratomicartifactswap, persisted afterrestoring2213; investigateorigin/
+session withoutclearinguserdata. Preserve45LEDownerbrowserdraft. Currentserved
+preview reverted2213; candidate preserved/tmp/lightweaver-launch-2218. Root owns
+normalPR/merge next, exactmainCI thenrealpublish andstrictgraphproof. Notshipped.
+Sourceappstable; onlydocs/tests since9ceec06f. Allworkersdone; no duplicateaudits.
+
+
+CURRENT HANDOFF: release_classifier_fix finished exact active-candidate HTTPS
+confirm/rollback proof, not-sent cause-chain classification and synchronous
+same-component duplicate install guard. Focused60 +cause-chain9 pass; preserving
+browser51 allcovered(first32 +hardenedcase33 +remaining18); duplicate red2→green1.
+Worker reviewing/committing app source now; parent running one integratedunit
+checkpoint /tmp/lightweaver-launch-final-unit.log. Worker then exclusively owns
+playlist-timed.spec.ts remaining8 (firstawaitconfigtimeout; no app edits without
+actualruntimeproof). playlist_release_fixture owns finaldragcase in
+layout-section-order and parenttestcorrections layout-divide/patterns-section-row;
+37UI total includes24passed andpatternsremaining4passed, drag+playlist8pending.
+53 journey/discovery cases allgreen, af2b0627; activecandidate status wiringdigest
+harness addition pendingcommit. Native dragtrace revealed wrongrow hit, no source
+reordering restriction found; instrumentgeometry beforeanynewgesturechange.
+Parent failednoticecase passedinexistingisolatedclone; concurrentHMRaffected
+primarytestserver, no noticecodechange. Keep testsisolated during sourceedits.
+Main2213 stillnotshipped; newbatchcodex/browser-gate-latency notpushed. Both
+publishersACTIVE. Full launch remainsauthorized. Usage91%weeklyordinaryallowed.
+
+
+CORRECTED ROOT CAUSE supersedes preliminary staging diagnosis: firmware canonical
+saved bench reports knownGoodProject=true while provisionalSetup=true. Simulator
+incorrectly forced knownGood=false, an impossible command-ready envelope. Do NOT
+expand bench staging authority to satisfy that fixture. Playlist worker owns
+simulator canonical/probation truth and full candidate identity persistence;
+release worker owns only real exact-candidate confirm/rollback defect if honest
+probation fixture reproduces it, plus independently valid pre-send error handling.
+Strong agent resolving contract read-only. Usage89%weekly, ordinary use allowed;
+continue focused critical-path work, no duplicate broad suites.
+
+
+PRELIMINARY SETUP DIAGNOSIS (corrected above): strong read-only setup_contract_diagnosis found
+HTTPS bridge denies wiring-candidate after temporary bench discovery because
+bench knownGoodProject=false. Exact bench replacement permits config only, but
+real project structural IDs require candidate. CardPushControl mistakes rejected
+runtime-not-ready for post-write reconnect/readback. release_classifier_fix now
+owns bounded app bridge/push fix + focused library safety tests + preserving
+spec under strong plan. playlist_release_fixture owns journey specs and simulator
+fidelity as needed after coordinated file boundary. Do not bypass signed firmware,
+exact identity, candidate authorization or visible confirmation to green tests.
+Strong model justified by consequential authority ambiguity, implementation Sol.
+Parent integrates and verifies actual screen after source change, then launch.
+
+
+CURRENT RELEASE REPAIR04:40UTC: main2213 Tests36376291673 confirmed CANCELLED,
+not deployed. Logs show first35 browser cases passed, 90-case smoke group then
+ran20min without progress. Browser jobs now parallel1e468c8c with per-case
+progressa6d8c58c, same coverage/retries and whole-workflow deployment authority.
+Root playlist_release_fixture owns journey-continuity (804d4435 exact valid
+installed-project fixtures; J16/J30 green, intentional drift J22/J22b unchanged),
+journey-count-save scoped selector, journey-j01 staged setup diagnosis, and
+remaining failed/unrun smoke cases on9385. Root release_classifier_fix owns
+preserving-firmware-update case33 (temporary discovery project remains after
+old test clicks); first32 passed, remaining18 pending on9253. Workers coordinate
+same setup symptom, no overlapping source edits. Parent windowless2/2 passed on
+exact main2213. No app source change since50d1da18. Primary integrates branch
+codex/browser-gate-latency, then normal PR/merge, all-main Tests, real deployment
+and exact staged/live graph proof. Full launch explicitly authorized; both
+publishers ACTIVE. Preserve preview2213, owner45LEDdraft, physicalcard2160.
+
+
+RELEASE GATE REPAIR04:30UTC: owner explicitly demands fix recurringdelay and
+finishlaunch. Currentmain2213 browserrun36376291673 cancellationrequested after
+local fifthsmokegroup reproduced journey-continuity J16 blackout expectedConnected
+butactualSave-to-card/project-mismatch. Root playlist_release_fixture owns that
+fixture diagnosis and failed/unrun90cases on9385. Never weakenblackout/recovery or
+driftprecedence. Fresh-install23allpass across focusedruns, one transientVite reset.
+Newbranch codex/browser-gate-latency frommain2213 contains1e468c8c: threebrowser
+suites nowparallel, allrequired, same2retries, failfastafterexhaustedfailure and
+traceartifactretention.55workflow/classifier/releasecontracts pass; patchreviewed.
+No push/mergeyet, no productionpublish; source/runtimeappunchanged. Primary gets
+cancelledCIlogs toidentifyadditionalcauses andintegratesnextPR. Proof2213ready,
+localpreview2213/current45LEDdraft/card2160preserved. No obsoleteworkerrestarts.
+
+LAUNCH GATE LATENCY04:22UTC: main2213 Tests36376291673 source/cloud/production/
+firmware PASS; browser still in its single shell step since04:07:28. Diagnosis:
+178 serial scenarios (125smoke+2windowless+51firmware-update), CI2retries,
+60s test/15s assertion timeouts. Live joblogsAPI404; public UI requires sign-in,
+not bypassed. No proof yet of stuck specific test. Primary retains currentrun.
+Root playlist_release_fixture now runs ONLY previously-uncovered fresh-install-
+usb-wifi23 cases locally9385 with maxfail1/retries0 to expose hidden timeout;
+stop redundant remainder if exact-main browser passes. No source edits authorized
+for this diagnostic yet. Release remains not shipped. Main proof artifact2213
+built/staged/verified; local4173 upgraded to exact2213, owner45LEDdraft preserved.
+After this shipment, improve named CI stage visibility/profile before parallelism;
+never drop scenarios or bypass safeguards simply to make gate green.
+
+MERGED LAUNCH2213: PR354 merged8fee1a0568d2dad48f916716b6e9aa607e39e9df.
+Both publisher workflows restoredACTIVE under explicit full-launch authorization.
+Exact main Tests36376291673 running; primary follows result then automatic deploy.
+Clean managed launch-live-proof at exactmain2213 builds/stages for independent
+strict PROD_CHECK_REQUIRED live proof after publication. All workers finished,
+no duplicate audits/tests. Local4173 still tested2209 app-equivalent candidate,
+45LED draft/current four patterns preserved, card2160 untouched. Not yet shipped.
+
 LAUNCH READY04:05UTC: remaining Layout release cases all green:49/49 count/
 kaleidoscope/selection/card-send (207d383b, sourcefix50d1da18),24/24 Wiring
 (eeeeee89). Full release UI remainder now covered with retained prior passed

@@ -462,6 +462,29 @@ test('a successful push is pending until acknowledgement and records the exact i
   expect(card.savedConfig).not.toBeNull();
 });
 
+test('two install actions in one turn send only one card config', async ({ page }) => {
+  const project = createDefaultProject();
+  const card = await mockLocalCard(page, {
+    delayConfig: 350,
+    currentOutputs: compileWiring({
+      wiring: project.layout.wiring,
+      strips: project.layout.strips,
+      groups: project.layout.layerGroups,
+    }).outputs,
+  });
+  await gotoWire(page, { verified: true });
+
+  // Two user actions can arrive before React renders the pending state. The
+  // card lease is reentrant within this tab, so the component must coalesce
+  // the two attempts before either one reaches /api/config.
+  await page.getByTestId('layout-send-to-card').evaluate(button => {
+    button.click();
+    button.click();
+  });
+  await expect(page.locator('.la-card-push-banner')).toHaveClass(/is-ok/);
+  expect(card.operations.filter(operation => operation === 'config')).toEqual(['config']);
+});
+
 test('Card Install sends all three saved section arrangements and reads them back after confirmation', async ({ page }) => {
   const card = await mockLocalCard(page, { currentOutputs: [{ id: 'out1', pin: 18, pixels: 41,
     segments: [{ id: 'out1-full', count: 41, direction: 'forward' }] }] });

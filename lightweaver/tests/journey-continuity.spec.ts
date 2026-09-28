@@ -25,6 +25,9 @@ import {
 import { installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
 import { testBaseURL } from './testPort.mjs';
 import { CARD_LINK_DIRECT_PING_INTERVAL_MS } from '../src/lib/cardLink.js';
+import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { createDefaultProject, migrateProject } from '../src/lib/projectModel.js';
+import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 
 // ---------------------------------------------------------------------------
 // Shared boot/read helpers — same conventions as card-state-matrix.spec.ts,
@@ -221,35 +224,34 @@ test('[J02] a card holding a different project never silently replaces open work
 // ladder inside Card Home (see [T6] in card-state-matrix.spec.ts — Card Home
 // is one page whose content follows the journey, not the URL section).
 // ---------------------------------------------------------------------------
-async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardStateSpec) {
-  await page.addInitScript(({ id, firmwareVersion, buildId, project }) => {
+async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardStateSpec, projectOverride?: Record<string, any>) {
+  const savedProject = projectOverride || {
+    version: 3,
+    id: spec.projectId,
+    name: 'Matrix piece',
+    layout: {
+      starterPending: false,
+      strips: [{ id: 'strip-1', pixels: [], pixelCount: spec.pixels, pin: spec.pin }],
+      wiring: {
+        verified: true,
+        runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
+      },
+    },
+    portRoles: [{ port: 'out1', role: 'strip', pin: spec.pin, pixelCount: spec.pixels }],
+    devices: {
+      standaloneController: {
+        led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' },
+      },
+    },
+  };
+  const studioFingerprint = projectOverride
+    ? cardProjectFingerprint(migrateProject(savedProject))
+    : spec.projectFingerprint;
+  await page.addInitScript(({ id, firmwareVersion, buildId, project, savedProject, studioFingerprint }) => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id, firmwareVersion, buildId }));
     localStorage.setItem('lw_card_host', 'lightweaver.local');
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
-    localStorage.setItem('lw_autosave_v3', JSON.stringify({
-      version: 3,
-      id: project.projectId,
-      name: 'Matrix piece',
-      layout: {
-        starterPending: false,
-        // pixelCount (a number), not pixels: a plain scalar there crashes
-        // PatternScreen's preview strip builder (previewVisuals.js expects
-        // strip.pixels to be the ARRAY of {x,y,index} positions, same shape
-        // createDefaultProject() emits) — the array is empty here because no
-        // test in this file inspects rendered pixel positions.
-        strips: [{ id: 'strip-1', pixels: [], pixelCount: project.pixels, pin: project.pin }],
-        wiring: {
-          verified: true,
-          runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }],
-        },
-      },
-      portRoles: [{ port: 'out1', role: 'strip', pin: project.pin, pixelCount: project.pixels }],
-      devices: {
-        standaloneController: {
-          led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' },
-        },
-      },
-    }));
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
     // The exact record a real install writes (projectLifecycle.js
     // `lifecycleRecordFromState`): this card, this revision, this fingerprint.
     localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
@@ -260,7 +262,7 @@ async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardState
         cardId: id,
         projectRevision: project.projectRevision,
         projectFingerprint: project.projectFingerprint,
-        studioFingerprint: project.projectFingerprint,
+        studioFingerprint,
       },
     }));
   }, {
@@ -271,9 +273,9 @@ async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardState
       projectId: spec.projectId,
       projectRevision: spec.projectRevision,
       projectFingerprint: spec.projectFingerprint,
-      pixels: spec.pixels,
-      pin: spec.pin,
     },
+    savedProject,
+    studioFingerprint,
   });
 }
 
@@ -498,9 +500,37 @@ test('[J08] a card holding a different project never rewrites open work that has
 // visible on Card Home and Patterns from the same evidence, with one action
 // (the existing data-testid="recover-lights" control) that clears it.
 // ---------------------------------------------------------------------------
+function exactInstalledProjectCard(spec: CardStateSpec) {
+  // These chip scenarios need an actually installed, structurally valid
+  // project. The compact legacy seed has no compilable wiring fingerprint,
+  // so the footer truthfully prioritizes Save to card over the blackout fact.
+  const project = createDefaultProject();
+  project.id = spec.projectId;
+  project.name = spec.projectName;
+  project.layout.starterPending = false;
+  const prepared = prepareCardDeployment({
+    projectId: project.id,
+    projectName: project.name,
+    projectRevision: 0,
+    strips: project.layout.strips,
+    patchBoard: project.layout.patchBoard,
+    wiring: project.layout.wiring,
+    standaloneController: project.devices.standaloneController,
+  });
+  spec.projectFingerprint = prepared.config.projectFingerprint;
+  spec.pin = prepared.config.led.outputs[0].pin;
+  spec.pixels = prepared.config.led.pixels;
+  expect(cardProjectFingerprint(migrateProject(project))).toBe(spec.projectFingerprint);
+  return { project, card: createCardSimulator(spec, { initialOutputs: prepared.config.led.outputs }) };
+}
+
 test('[J16-blackout] a card-side blackout is surfaced on Card Home and Patterns, and Recover lights clears it', async ({ page }) => {
   const spec = cardState('blackout');
-  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  const exact = exactInstalledProjectCard(spec);
+  const card = await boot(
+    page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec, exact.project),
+    exact.card,
+  );
   await waitConnectedUnaided(page, 'J16 card home connect');
 
   await expect(
@@ -714,7 +744,8 @@ test('[J22b-patterns-recover] Recover lights on Patterns clears a drifted-wiring
 // ---------------------------------------------------------------------------
 test('[J30-blackout-out-of-band] a blackout switched on the card\'s own page reaches Studio within one status poll', async ({ page }) => {
   const spec = cardState('installed-match');
-  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  const exact = exactInstalledProjectCard(spec);
+  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec, exact.project), exact.card);
   await waitConnectedUnaided(page, 'J30 card home connect');
 
   await expect(

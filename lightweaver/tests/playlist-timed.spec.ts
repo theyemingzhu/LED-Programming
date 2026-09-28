@@ -19,6 +19,10 @@ function makeTimedPlaylistProject({ count = 2 } = {}) {
   const project = createDefaultProject();
   project.id = `timed-playlist-project-${count}`;
   project.name = 'Timed playlist project';
+  // The shared card simulator reports this installed LED protocol and power
+  // ceiling; keep this playlist fixture on that exact physical setup.
+  project.devices.standaloneController.led.type = 'WS2812B';
+  project.devices.standaloneController.led.maxMilliamps = 2000;
   const patterns = CARD_PATTERN_BANK.slice(0, count);
   project.devices.standaloneController.playlist = patterns.map((pattern, order) => ({
     id: pattern.id,
@@ -89,7 +93,21 @@ async function mockConnectedTimedCard(
   await page.addInitScript((identity) => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: identity }));
   }, cardId);
-  const card = createCardSimulator(stateFromProject(project), { cardId });
+  const config = prepareCardDeployment({
+    projectId: project.id,
+    projectName: project.name,
+    projectRevision: 0,
+    strips: project.layout.strips,
+    patchBoard: project.layout.patchBoard,
+    wiring: project.layout.wiring,
+    standaloneController: project.devices.standaloneController,
+  }).runtimePackage.config;
+  const card = createCardSimulator(stateFromProject(project), {
+    cardId,
+    // Keep each installed output and run boundary, not just the same total
+    // pixel count, so a playlist edit is not mistaken for a wiring change.
+    initialOutputs: config.led.outputs,
+  });
   if (typeof configure === 'function') configure(card);
   await card.install(page);
   return card;

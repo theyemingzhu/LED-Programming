@@ -1,9 +1,7 @@
-// [J01-partial] blank card to saved playback — docs/plans/2026-09-06-unified-card-journey-execution.md ticket A1.
+// [J01] blank card to saved playback — docs/plans/2026-09-06-unified-card-journey-execution.md ticket A1.
 //
-// This is a NEW file (journey-continuity.spec.ts is left untouched per the
-// ticket). It reuses that file's boot/connect conventions — see the comment
-// on each helper below for what was copied verbatim vs. adapted for a card
-// that starts with NO project at all.
+// It reuses journey-continuity.spec.ts's boot/connect conventions, adapted
+// for a fresh browser and a card that starts with no project.
 //
 // What this proves, continuously, on ONE simulated card: a factory-blank card
 // can be found (with no prior identity — a genuinely fresh browser), its one
@@ -20,9 +18,6 @@
 // reads either field (a real discovery walk supplies `map`; this file's own
 // hand-built fixtures still supply `channelMap`), so colorOrderConfirmed
 // lands and the Setup ladder can leave discover-lights after a real walk.
-// See "STOPS HERE" below for where this test genuinely still stops — a
-// missing test id, not a product defect — and the return packet for the full
-// writeup.
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator, type CardSimulator } from './harness/cardSimulator';
@@ -82,10 +77,11 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
   // setup-connect-card (explicit pair), setup-lights-action, discovery-probe-18, discovery-start,
   // discovery-color-red, discovery-color-green, discovery-counts-done,
   // discovery-end-yes, discovery-record-save, discovery-continue-layout,
-  // setup-verify-action ("Open Patterns"), wiring-test-confirm, the
+  // setup-verify-action, replace-card-project, wiring-test-start,
+  // wiring-test-confirm, the
   // 'aurora' pattern tile. `.fill()` is a keyboard action, not a click, and
   // is not counted.
-  annotation: { type: 'clicks', description: '13 deliberate clicks' },
+  annotation: { type: 'clicks', description: '15 deliberate clicks' },
 }, async ({ page }) => {
   const spec = cardState('factory-blank');
   const card = createCardSimulator(spec);
@@ -234,58 +230,39 @@ test('[J01] blank card: connect, discover one strip, install it, confirm the wir
     + 'not layout placement — there is no strip left to place',
   ).toHaveAttribute('data-journey-task', 'test-and-save', { timeout: CONNECT_BUDGET_MS });
 
-  // ── "Open Patterns" — phase 4's real button (setup-verify-action, inside
-  // setup-install-slot's phase). It navigates to
-  // '…&task=install-project&next=patterns', which is exactly what makes
-  // CardInstallAction render CardPushControl with autoStart=true
-  // (continueToPatterns): the install push runs with no further click
-  // (CardPushControl.jsx's autoStartedRef effect). Going from the 256-pixel
-  // bench sentinel to this project's real 41-pixel/pin-18 strip changes ONLY
-  // the pixel count — the pin stays 18, the exact port the beacon probed —
-  // which per the firmware rule (F14, LightweaverStorage.cpp's
-  // runtimeConfigJsonChangesWiring) is NOT a rewire: the card applies it and
-  // reboots at once, no staged candidate, no light test. (This test used to
-  // assert the opposite here — `wiringTestActive: true` plus a
-  // wiring-test-confirm click — on the mistaken belief that any pixel change
-  // stages a candidate; that was the simulator's own prior bug, corrected
-  // alongside F14 to match cardDeployment.js's classifyCardChanges, which
-  // never counted pixel count as a hardware fact in the first place.)
-  // Discovery's own bench-sentinel write already posted one /api/config
-  // before this point (installBenchConfig, above) — count only what "Open
-  // Patterns" itself sends, not the whole walk's total.
-  const configPostsBeforeOpenPatterns = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length;
+  // ── Phase 4 opens the install task. The discovery bench sentinel still
+  // names a different project, so Studio first asks the owner to explicitly
+  // replace it on this card. The real discovered project has 41 pixels on
+  // GPIO 18, but its output identity, LED type, and current limit differ
+  // from the temporary bench setup. Firmware stages that structural change
+  // for a physical light test even though the pin is unchanged.
+  const configPostsBeforeInstall = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length;
   await page.getByTestId('setup-verify-action').click();
   await expect(page).toHaveURL(/next=patterns/);
+  await expect(page.getByTestId('replace-card-project')).toBeVisible();
+  expect(card.state.projectId, 'opening the install task must not silently replace the bench project').toBe('lightweaver-bench-discovery-v1');
+  await page.getByTestId('replace-card-project').click();
+  await expect(page).toHaveURL(/replace=project/);
 
-  await expect.poll(
-    () => ({ wiringTestActive: card.state.wiringTestActive, pixels: card.state.pixels, projectId: card.state.projectId }),
-    {
-      timeout: CONNECT_BUDGET_MS,
-      message: 'Open Patterns must auto-push the real project — a pixel-count-only change on the same pin '
-        + 'applies and reboots at once, with no wiring candidate to activate or confirm',
-    },
-  ).toEqual({ wiringTestActive: false, pixels: COUNTED_PIXELS, projectId: realProjectId });
+  await expect(page.getByTestId('wiring-test-start'), 'the structural change must stage a physical light test').toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  expect(card.state.projectId, 'staging must preserve the bench project until activation').toBe('lightweaver-bench-discovery-v1');
+  expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length - configPostsBeforeInstall,
+    'the structural install must not overwrite the known-good project through /api/config').toBe(0);
+  expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/candidate').length,
+    'the exact real project must be staged once').toBe(1);
 
-  // The card's first /api/config reply is lost to its own immediate reboot
-  // (F14) — Studio must recover by reading the card back, never by resending
-  // the write. Exactly one /api/config POST from "Open Patterns" itself, and
-  // never a wiring candidate: this really was a length change, not a rewire.
-  const configPostsAfterOpenPatterns = card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/config').length
-    - configPostsBeforeOpenPatterns;
-  expect(
-    configPostsAfterOpenPatterns,
-    'the auto-push must send exactly one /api/config — Studio must recover from the lost reply by reading '
-    + 'the card back, not by resending the write',
-  ).toBe(1);
-  expect(
-    card.requests.some(entry => entry.method === 'POST' && entry.path === '/api/wiring/candidate'),
-    'a pixel-count-only change on the same pin must never open a wiring candidate',
-  ).toBe(false);
+  await page.getByTestId('wiring-test-start').click();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  expect(card.state.wiringTestActive, 'activation must enter probation before confirmation').toBe(true);
+  expect(card.state.pixels, 'the physical light test must run the counted 41 pixels').toBe(COUNTED_PIXELS);
+  expect(card.state.projectId, 'probation must boot the real discovered project').toBe(realProjectId);
+  await page.getByTestId('wiring-test-confirm').click();
+  await expect.poll(() => card.state.wiringTestActive, { timeout: CONNECT_BUDGET_MS }).toBe(false);
+  expect(card.requests.filter(entry => entry.method === 'POST' && entry.path === '/api/wiring/confirm').length,
+    'the owner must confirm the exact tested candidate once').toBe(1);
 
-  // CardPushControl's own onInstalled (continueToPatterns) sends the owner
-  // straight to Patterns the moment verification lands — waiting for that
-  // natural navigation proves the restart-recovery chain (F14) actually
-  // finished settling, not just that the card-side facts already had.
+  // CardPushControl hands the owner to Patterns only after confirmation and
+  // exact readback of the discovered project.
   await expect(page, 'a confirmed install must hand the owner on to Patterns on its own').toHaveURL(/#screen=pattern$/, { timeout: CONNECT_BUDGET_MS });
 
   // ── Prove the ladder's own verdict on Card Home, on its own terms, before
