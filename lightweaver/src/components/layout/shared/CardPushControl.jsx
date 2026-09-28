@@ -32,7 +32,7 @@ import {
   rollbackCardWiringCandidate,
 } from '../../../lib/cardWiringSafety.js';
 import { openLocalCardPage } from '../../../lib/cardBridge.js';
-import { isTransientCardFailure } from '../../../lib/cardTransientFailure.js';
+import { isUncertainCardWriteFailure } from '../../../lib/cardTransientFailure.js';
 import { readPersistedCardIdentity } from '../../../lib/cardIdentity.js';
 import { currentInstallation } from '../../../lib/projectLifecycle.js';
 import { prepareCardStoragePayload } from '../../../lib/cardStoragePayload.js';
@@ -180,6 +180,7 @@ export function CardPushControl({
   // applies to card-restarted /api/control failures).
   const [installRestarting, setInstallRestarting] = useState(false);
   const failedAttemptRef = useRef(null);
+  const installInFlightRef = useRef(false);
   const assertCurrentAttempt = attempt => validateCardPushAttempt(attempt, readProjectLifecycle());
 
   // One write owner per card, ACROSS tabs. withStudioHardwareOperation below
@@ -210,8 +211,14 @@ export function CardPushControl({
   // Direct push is only for local HTTP/file Studio sessions; hosted HTTPS
   // flows use the copy-paste fallback shown by the error state.
   const pushToCard = async (retryAttempt = null, { readOnlyCandidate = false } = {}) => {
+    // Auto-start and a click can land before React paints `pushing`. The
+    // cross-tab lease deliberately permits nesting in this tab, so block a
+    // second install synchronously at this component's entry point.
+    if (installInFlightRef.current) return;
+    installInFlightRef.current = true;
+    try {
     const cleanHost = retryAttempt?.host || pushHost.trim().toLowerCase() || 'lightweaver.local';
-    return withCardWriteOwnership('install-project', cleanHost, () => withStudioHardwareOperation('install-project', async () => {
+    return await withCardWriteOwnership('install-project', cleanHost, () => withStudioHardwareOperation('install-project', async () => {
     setCardHostname(cleanHost);
     setPushHost(getCardHostname());
     let attempt = retryAttempt;
@@ -392,7 +399,7 @@ export function CardPushControl({
         // already landed: treat it as verification pending, not write
         // failed, and fall into the exact same "wait, read back, decide"
         // path the success case takes below.
-        if (!configPushAttempted || !isTransientCardFailure(configError)) throw configError;
+        if (!configPushAttempted || !isUncertainCardWriteFailure(configError)) throw configError;
         deploymentStart = { action: 'stage-new', status: null, response: { requiresReboot: true, rebooting: true } };
       }
       attempt = { ...attempt, wiringStatus: deploymentStart.status, resumeAction: deploymentStart.action };
@@ -512,6 +519,9 @@ export function CardPushControl({
       }
     }
     }));
+    } finally {
+      installInFlightRef.current = false;
+    }
   };
 
   // Retry after a restart-recovery failure (see the `awaitingRestartConfirmation`
