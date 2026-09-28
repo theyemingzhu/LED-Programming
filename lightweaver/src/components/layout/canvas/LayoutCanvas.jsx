@@ -91,6 +91,12 @@ export function LayoutCanvas({
     return () => observer.disconnect();
   }, [svgRef]);
   const annotationScale = Math.max(renderedBounds.w / viewportSize.width, renderedBounds.h / viewportSize.height);
+  // The path is the drag/select target behind the LED dots. Keep its corridor
+  // usable in screen pixels when the camera is zoomed far out; artwork geometry
+  // and the LED positions themselves remain unchanged.
+  const stripHitStrokeWidth = !drawMode && !firstLedPicker && !kaleidoscopeEditor && wireOverlayMode !== 'chop'
+    ? Math.max(18, annotationScale * 22)
+    : 18;
   const labelBounds = {
     x: renderedBounds.x - (viewportSize.width * annotationScale - renderedBounds.w) / 2,
     y: renderedBounds.y - (viewportSize.height * annotationScale - renderedBounds.h) / 2,
@@ -348,7 +354,10 @@ export function LayoutCanvas({
                   if (!stripDragSuppressClickRef.current) selectStrip(selectedClosedStrip.id);
                 }}/>
             )}
-            {strips.map(s => {
+            {/* Give the selected strip the topmost path target when nearby
+                screen-sized hit corridors overlap. Its visual rail also stays
+                above neighbouring strips while it is being dragged. */}
+            {[...strips].sort((a, b) => Number(a.id === selStripId) - Number(b.id === selStripId)).map(s => {
               const isSel = s.id === selStripId;
               const isHid = !!hidden[s.id];
               const isMoving = movingStripIds.includes(s.id);
@@ -377,7 +386,7 @@ export function LayoutCanvas({
                         fill="none"
                         stroke="white"
                         strokeOpacity="0.001"
-                        strokeWidth="18"
+                        strokeWidth={stripHitStrokeWidth}
                         strokeLinecap="round"
                         pointerEvents="visibleStroke"
                         style={{ cursor: isMoving ? 'grabbing' : isSel && mode === 'draw' ? 'grab' : 'pointer' }}
@@ -553,13 +562,13 @@ export function LayoutCanvas({
                          else onKaleidoscopeLedPick(s.id, i);
                        }}>
                       <circle cx={px.x} cy={px.y}
-                              r={annotationScale * (selected ? 4.6 : 3.5)}
+                              r={annotationScale * (selected ? 5.8 : 5)}
                               fill={ledColor} opacity={shellOpacity}
                               stroke="oklch(22% 0.03 235 / 0.9)"
-                              strokeWidth={annotationScale * (selected ? 1.3 : 0.9)}/>
+                              strokeWidth={annotationScale * (selected ? 1.3 : 1)}/>
                       {coreOpacity > 0 && (
                         <circle cx={px.x} cy={px.y}
-                                r={annotationScale * (selected ? 2.9 : 2.25)}
+                                r={annotationScale * (selected ? 3.2 : 2.7)}
                                 fill={ledColor} opacity={coreOpacity}/>
                       )}
                       {(firstLedPicker?.stripId === s.id || (kaleidoscopeEditor?.stripId === s.id && kaleidoscopeEditor.mode === 'pick')) && <circle cx={px.x} cy={px.y} r={vbScale * 20}
@@ -588,7 +597,8 @@ export function LayoutCanvas({
                          else onKaleidoscopeLedPick(s.id, i);
                        }}>
                       <circle cx={px.x} cy={px.y}
-                              r={selected ? vbScale * 3.1 : vbScale * 2.2}
+                              r={Math.max(selected ? vbScale * 3.1 : vbScale * 2.2,
+                                annotationScale * (selected ? 4.5 : 4))}
                               fill={ledColor}
                               opacity={Math.max(coreOpacity * (effectiveGlowMode === 'outward' ? 0.58 : 0.74), restOpacity)}/>
                       {(firstLedPicker?.stripId === s.id || (kaleidoscopeEditor?.stripId === s.id && kaleidoscopeEditor.mode === 'pick')) && <circle cx={px.x} cy={px.y} r={vbScale * 20}

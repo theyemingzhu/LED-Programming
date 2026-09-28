@@ -7,7 +7,7 @@ async function createTwoLineStrips(page: any) {
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   await page.getByTestId('layout-add-strip').click();
   await page.getByTestId('layout-add-strip-chooser').getByRole('button', { name: 'Line', exact: true }).click();
-  await page.locator('.la-strip-row').first().click();
+  await page.locator('.la-strip-row').first().click({ position: { x: 8, y: 8 } });
 }
 
 async function screenSize(locator: any, property: string) {
@@ -19,8 +19,8 @@ async function screenSize(locator: any, property: string) {
 
 test('selected identity stays compact and its overlays leave the strip grabbable at fit and zoomed out', async ({ page }) => {
   await createTwoLineStrips(page);
-  const hit = page.locator('[data-strip-path]').first();
-  const id = await hit.getAttribute('data-strip-path');
+  const id = await page.locator('.la-strip-item').first().getAttribute('data-strip-id');
+  const hit = page.locator(`[data-strip-path="${id}"]`);
   const halo = page.getByTestId('selected-strip-halo');
   const core = page.getByTestId('selected-strip-core');
   const label = page.getByTestId(`strip-callout-${id}`);
@@ -50,7 +50,7 @@ test('selected identity stays compact and its overlays leave the strip grabbable
 test('a long custom strip name has one bounded label with its full accessible identity', async ({ page }) => {
   await createTwoLineStrips(page);
   const firstRow = page.locator('.la-strip-row').first();
-  const id = await page.locator('[data-strip-path]').first().getAttribute('data-strip-path');
+  const id = await page.locator('.la-strip-item').first().getAttribute('data-strip-id');
   const name = 'Atrium north wall illuminated contour installation segment alpha';
   await firstRow.locator('.layer-name').dblclick();
   await firstRow.locator('input').first().fill(name);
