@@ -38,6 +38,7 @@ import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/conn
 import { connectedPartDisplayName, displayStripName } from '../../../lib/stripLabels.js';
 import { applyLookToPatchBoard } from '../../../lib/sectionLookModel.js';
 import { REAL_PATTERNS } from '../../../v3/v3-data.js';
+import { I as StudioIcons } from '../../../v3/lw-shared.jsx';
 import { LayoutPatternGallery } from '../LayoutPatternGallery.jsx';
 import { StripCountControl } from '../StripCountControl.jsx';
 import '../../../styles/lw-draw.css';
@@ -119,6 +120,20 @@ const SHAPE_ICONS = {
     <path d="M8 8 v3.5 M6.5 10 L8 11.5 L9.5 10"/>
   </>),
 };
+
+const PART_ACTION_ICONS = {
+  direction: <svg viewBox="0 0 24 24"><path d="M3 12h15m-4-4 4 4-4 4"/><circle cx="21" cy="12" r="1" fill="currentColor"/></svg>,
+  first: StudioIcons.toStart,
+  split: StudioIcons.scissors,
+  merge: <svg viewBox="0 0 24 24"><path d="M3 7h7l4 5h7M3 17h7l4-5"/></svg>,
+  flip: StudioIcons.refresh,
+  reflect: StudioIcons.mirror,
+  duplicate: StudioIcons.copy,
+  remove: StudioIcons.trash,
+};
+function PartActionIcon({ name }) {
+  return <span className="la-part-action-icon" aria-hidden="true">{PART_ACTION_ICONS[name]}</span>;
+}
 
 // ── Draw-mode side panel ─────────────────────────────────────────────────────
 // Verbatim lift of LayoutScreen's Draw branch: error banner, draw-mode hint,
@@ -573,7 +588,7 @@ export function DrawModePanel({
         draft.runs.push(run);
         primary.runIds.push(run.id);
       }
-    }, { changeKind: 'geometry' });
+    }, { changeKind: 'geometry', recordHistory: false });
   }, [strips, updateWiring, wiring.locked, wiring.runs, wiring.outputs]);
 
   const ensureRunsForAllStrips = draft => {
@@ -1402,6 +1417,9 @@ export function DrawModePanel({
                 const connectedMembers = connectedFamily
                   ? connectedFamily.memberIds.map(id => stripById.get(id)).filter(Boolean)
                   : [];
+                const nextConnectedMember = connectedFamily
+                  ? connectedMembers[connectedFamily.memberIds.indexOf(s.id) + 1]
+                  : null;
                 const partName = connectedPartDisplayName(s, connectedFamily);
                 const connectedStatus = connectedFamily
                   ? familyGeometryStatus(connectedFamily, strips)
@@ -1639,11 +1657,7 @@ export function DrawModePanel({
                            onClick={e => e.stopPropagation()}>
                         {!connectedFamily && <div className="la-strip-settings-label">Layout · {s.name}</div>}
                         {connectedFamily && (() => {
-                          const memberIndex = connectedFamily.memberIds.indexOf(s.id);
-                          const nextMember = connectedMembers[memberIndex + 1];
-                          const nextPartName = connectedPartDisplayName(nextMember, connectedFamily);
                           const memberPin = outputForStrip(s.id)?.pin ?? 16;
-                          const nextPin = nextMember ? outputForStrip(nextMember.id)?.pin : memberPin;
                           return <section className="lw-connected-editor-frame">
                             <div className="la-strip-settings-label">{partName} settings</div>
                             {!connectedStatus.ok && <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
@@ -1679,30 +1693,6 @@ export function DrawModePanel({
                                   <GpioOptions choices={gpioChoicesForStrip(s.id)} />
                                 </select>
                               </label>
-                              {run && <button type="button" className="btn" aria-label={`Reverse data direction of ${partName}`}
-                                      aria-pressed={run.physicalDirection === 'source-reverse'}
-                                      disabled={wiring.locked || isSplit || run.directionPolicy === 'fixed'}
-                                      onClick={() => toggleRunDirection(run)}>Reverse data</button>}
-                              {run && <button type="button" className="btn"
-                                      aria-label={firstLedPicker?.stripId === s.id ? 'Cancel first LED selection' : `Set first LED of ${partName}`}
-                                      onClick={() => firstLedPicker?.stripId === s.id ? onCancelFirstLedPicker() : onBeginFirstLedPicker(s.id)}>
-                                {firstLedPicker?.stripId === s.id ? 'Cancel first light' : 'Set first light'}
-                              </button>}
-                              <button type="button" className="btn" data-testid="connected-add-split"
-                                      aria-label={`Add split inside ${partName}`}
-                                      disabled={wiring.locked || s.pixelCount < 2}
-                                      onClick={() => {
-                                        const result = addConnectedSplit(s.id);
-                                        setConnectedError(result.ok ? '' : result.error);
-                                      }}>Add split</button>
-                              {nextMember && <button type="button" className="btn" data-testid="connected-merge"
-                                      aria-label={`Merge ${partName} with ${nextPartName}`}
-                                      title={memberPin !== nextPin ? 'Put both parts on the same GPIO to merge' : `Keeps ${partName}'s pattern and name`}
-                                      disabled={wiring.locked || memberPin !== nextPin}
-                                      onClick={() => {
-                                        const result = mergeConnectedSection(s.id);
-                                        setConnectedError(result.ok ? '' : result.error);
-                                      }}>Merge next</button>}
                             </div>}
                             {connectedError && <div className="lw-connected-error" role="alert">{connectedError}</div>}
                           </section>;
@@ -1900,9 +1890,33 @@ export function DrawModePanel({
                         </div>
                         </>}
                         {connectedFamily && <div className="la-part-actions" role="group" aria-label={`${partName} actions`}>
+                          {run && <button type="button" className="btn" aria-label={`Reverse data direction of ${partName}`}
+                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : isSplit ? 'Set direction per run in Advanced wiring' : run.directionPolicy === 'fixed' ? 'This run has a fixed data direction' : 'Reverse which end receives data'}
+                                  aria-pressed={run.physicalDirection === 'source-reverse'}
+                                  disabled={wiring.locked || isSplit || run.directionPolicy === 'fixed'}
+                                  onClick={() => toggleRunDirection(run)}><PartActionIcon name="direction"/></button>}
+                          {run && <button type="button" className="btn" aria-label={firstLedPicker?.stripId === s.id ? 'Cancel first LED selection' : `Set first LED of ${partName}`}
+                                  title={firstLedPicker?.stripId === s.id ? 'Cancel first light' : 'Set first light'}
+                                  onClick={() => firstLedPicker?.stripId === s.id ? onCancelFirstLedPicker() : onBeginFirstLedPicker(s.id)}><PartActionIcon name="first"/></button>}
+                          <button type="button" className="btn" data-testid="connected-add-split"
+                                  aria-label={`Add split inside ${partName}`}
+                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : s.pixelCount < 2 ? 'At least 2 LEDs are needed' : 'Add split inside this part'}
+                                  disabled={wiring.locked || s.pixelCount < 2}
+                                  onClick={() => {
+                                    const result = addConnectedSplit(s.id);
+                                    setConnectedError(result.ok ? '' : result.error);
+                                  }}><PartActionIcon name="split"/></button>
+                          {nextConnectedMember && <button type="button" className="btn" data-testid="connected-merge"
+                                  aria-label={`Merge ${partName} with ${connectedPartDisplayName(nextConnectedMember, connectedFamily)}`}
+                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : (outputForStrip(nextConnectedMember.id)?.pin !== (outputForStrip(s.id)?.pin ?? 16)) ? 'Put both parts on the same GPIO to merge' : `Keep ${partName}'s pattern and name`}
+                                  disabled={wiring.locked || (outputForStrip(nextConnectedMember.id)?.pin !== (outputForStrip(s.id)?.pin ?? 16))}
+                                  onClick={() => {
+                                    const result = mergeConnectedSection(s.id);
+                                    setConnectedError(result.ok ? '' : result.error);
+                                  }}><PartActionIcon name="merge"/></button>}
                           <button type="button" className="btn" aria-label={`Flip path direction of ${partName}`}
-                                  title="The whole physical strip owns this path; merge parts before flipping"
-                                  disabled onClick={() => reverseStrip(s.id)}>Flip path</button>
+                                  title="Merge parts before flipping the whole path"
+                                  disabled onClick={() => reverseStrip(s.id)}><PartActionIcon name="flip"/></button>
                           <button type="button" className="btn" aria-label={`Edit reflection points of ${partName}`}
                                   ref={element => {
                                     if (element) kaleidoscopeTriggerRefs.current.set(s.id, element);
@@ -1910,20 +1924,13 @@ export function DrawModePanel({
                                   }}
                                   disabled={s.pixelCount < 2}
                                   title={s.pixelCount < 2 ? 'At least 2 LEDs are needed' : 'Edit Kaleidoscope reflection points'}
-                                  onClick={() => onToggleKaleidoscope(s.id)}>Reflections</button>
-                          <button type="button" className="btn" aria-label={`Move ${partName} up the wire`}
-                                  disabled={!stripMoveTarget(wiring, strips, s.id, 'up') || wiring.locked}
-                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : 'Move up the data wire'}
-                                  onClick={() => moveStripStep(s.id, 'up')}>Move up</button>
-                          <button type="button" className="btn" aria-label={`Move ${partName} down the wire`}
-                                  disabled={!stripMoveTarget(wiring, strips, s.id, 'down') || wiring.locked}
-                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : 'Move down the data wire'}
-                                  onClick={() => moveStripStep(s.id, 'down')}>Move down</button>
+                                  onClick={() => onToggleKaleidoscope(s.id)}><PartActionIcon name="reflect"/></button>
                           <button type="button" className="btn" aria-label={`Duplicate ${partName} as a separate strip`}
-                                  onClick={() => duplicateStrip(s.id)}>Duplicate</button>
+                                  title="Duplicate as a separate strip"
+                                  onClick={() => duplicateStrip(s.id)}><PartActionIcon name="duplicate"/></button>
                           <button type="button" className="btn danger" aria-label={`Remove ${partName}`}
                                   title="Merge this connected part first" disabled
-                                  onClick={() => removeStrip(s.id)}>Remove</button>
+                                  onClick={() => removeStrip(s.id)}><PartActionIcon name="remove"/></button>
                         </div>}
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>

@@ -469,9 +469,10 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     dispatchLayout({ type: 'layout/updatePatchBoard', mutate });
   }, []);
   const updateWiring = useCallback((mutate, options = {}) => {
-    const result = mutateWiring(wiring, mutate, { strips, ...options });
+    const { recordHistory = true, ...mutationOptions } = options;
+    const result = mutateWiring(wiring, mutate, { strips, ...mutationOptions });
     if (!result.ok) return result;
-    dispatchLayout({ type: 'layout/pushHistory' });
+    if (recordHistory) dispatchLayout({ type: 'layout/pushHistory' });
     dispatchLayout({ type: 'layout/setWiring', wiring: result.wiring });
     return result;
   }, [wiring, strips]);

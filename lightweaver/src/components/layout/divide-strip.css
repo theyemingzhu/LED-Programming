@@ -493,7 +493,10 @@
 .lw-connected-editor-frame > .la-strip-settings-label { padding: 0 0 5px; color: var(--text-hi); font-size: 12px; font-weight: 650; }
 .lw-connected-child, .lw-connected-child.selected { border: 0; border-radius: 0; background: transparent; padding: 0; }
 .lw-connected-physical { padding: 0; }
-.la-part-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding-top: 6px; border-top: 1px solid var(--border-soft); }
-.la-part-actions .btn { min-width: 0; min-height: 30px; padding-inline: 5px; font-size: 11px; }
+.la-part-actions { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; padding-top: 7px; border-top: 1px solid var(--border-soft); }
+.la-part-actions .btn { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 34px; padding: 5px; }
+.la-part-action-icon { display: flex; align-items: center; justify-content: center; }
+.la-part-actions .btn svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .la-part-actions .btn:disabled { opacity: .45; }
+@media (max-width: 420px) { .la-part-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (pointer: coarse), (max-width: 600px) { .lw-family-controls select, .la-part-actions .btn { min-height: 44px; } }
