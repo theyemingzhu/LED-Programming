@@ -9,6 +9,51 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+LAUNCH READY04:05UTC: remaining Layout release cases all green:49/49 count/
+kaleidoscope/selection/card-send (207d383b, sourcefix50d1da18),24/24 Wiring
+(eeeeee89). Full release UI remainder now covered with retained prior passed
+cases; no unresolved test failure. Final2855unit/build/stage/verify and real
+screen2209 count/Undo proof passed; only test/docs commits followed. Both isolated
+runtime source trees byte-matched primary after countfix. Proof checkout9253
+released, tracked copies preserved as stash7ce95529 and
+/tmp/lightweaver-proof-9253-verified-layout.patch; clean for terminal-main proof.
+Primary owns PR354 ready/push/normal merge, restore publisher workflows, successful
+main CI/deploy and independent live proof. Not shipped yet. No hardware writes.
+
+LAUNCH REMAINDER SPLIT04:00UTC: after root40/73 passed, release_classifier_fix
+relinquished Wiring and keeps only final card-send cases/three owned test files
+on9253. Reused playlist_release_fixture Sol/medium now owns wiring-workspace
+24cases and existing two selector edits on9385. No overlapping files/tests.
+Primary reviewed staged-install test corrections: explicit start/confirmation,
+retry candidates and matching-card topology remain guarded. No new source edit.
+
+LAUNCH CANDIDATE2209/50d1da18: narrow direct-count regression fixed, focused
+red→green proves256→41, wiring verification invalidation, reconciled run and Undo.
+Primary final checkpoint2855unit tests and production build pass. Actual4173
+screen verified Strip1 13→14/project45→46 then singleUndo restored13/45; saved
+original draft and four original current patterns. Screenshot
+/tmp/lightweaver-2209-release-count-verified.png. Card unchanged; no writes.
+Workflow fixturecb33921a all9 green, exact output topology/readback plus missing
+section no-write refusal. Root release_classifier_fix finishing73 Layout cases,
+sole remaining release work before PR354 ready/merge/publish/strict live proof.
+Publisher workflows still held pending verified candidate; launch authorized.
+Usage03:50UTC85%weekly, ordinary use allowed. Do not restart stopped old chats.
+
+LAUNCH FINAL OWNERSHIP03:45UTC: cross-chat app/consolidator workers told STOP
+and hand back; no further edits/tests. Root release_classifier_fix Sol/medium now
+owns narrow direct-count regression (DrawModePanel compact control disabled on
+locked discovery strip), necessary setters only if needed, and remaining73 Layout
+specs in managed launch-live-proof9253: primitives/kaleidoscope/selection-visibility/
+send-to-card/wiring-workspace. Existing count setter/history must preserve safe
+verification invalidation; never disable card guards. Root playlist_release_fixture
+Sol/medium owns final4 workflow.spec cases in tempclone9385, after its20/20 Playlist
+fixture fix547f7d3e. Root screen_release_selector Luna/low fixed obsolete section
+selector, focused green6fa11ba9. Studio-hardening31/31 green8466aec4. Parent
+release remainder91passed then Playlistfailure resolved20/20; next36 screen cases
+passed plus fixedfinalselector; navigation14passed then workflowplaylist fixture
+failure handedoff,3unrun. Wirebuildsheet4 and studio-route6 green. First appbatch61
+installation/recovery tests green. No livepreview/cardwrites/deployment yet.
+
 LAUNCH PARALLEL CHECKPOINT03:32UTC: app-owner01a0e50f initial four releaseUI
 specs61/61 GREEN without edits. Now owns second disjoint73cases:layout-primitives,
 layout-kaleidoscope,layout-selection-visibility,layout-send-to-card,wiring-workspace,
