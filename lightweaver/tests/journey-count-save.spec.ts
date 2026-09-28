@@ -73,7 +73,7 @@ function journeyLocator(page: Page) {
 // ---------------------------------------------------------------------------
 // [F14] — a length-only save on an already-installed card.
 // ---------------------------------------------------------------------------
-test('[F14] a length-only Layout save survives the card losing its own reboot reply, with no resend and no Push failed', async ({ page }) => {
+test('[F14] a length-only Layout save survives the card losing its own reboot reply, with no resend and no Push failed', async ({ page }, testInfo) => {
   const spec = cardState('installed-match'); // pin 18, 41 pixels — matches the project Studio adopts on first sight.
   const card = await boot(page, spec, '/', seedKnownCard);
   await waitConnectedUnaided(page, 'F14 connect');
@@ -120,12 +120,17 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
   // retry after the lost reply.
   await expect(page).toHaveURL(/next=patterns/);
 
-  // The card is restarting: Studio must show that, not silence and not a
-  // failure. `card-install-restarting` is the one stable test id for it.
+  // The simulator knows it restarted, but Studio lost that acknowledgement.
+  // Show verification pending without claiming a restart or a successful save.
+  const verifying = page.getByText('Verifying the exact project on the card…', { exact: true });
   await expect(
-    page.getByTestId('card-install-restarting'),
-    'Studio must show the card is restarting, not go quiet or report a failure, while the reply is lost',
+    verifying,
+    'a lost reply must show pending readback until the exact installed project answers',
   ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
+  await expect(page.getByTestId('card-install-restarting')).toHaveCount(0);
+  await expect(page.locator('.la-card-push-banner.is-ok')).toHaveCount(0);
+  await expect(page).not.toHaveURL(/#screen=pattern$/);
+  await page.screenshot({ path: testInfo.outputPath('lost-reply-verification-pending.png'), fullPage: true });
 
   // No alert, and never the generic failure copy — a lost reply after a real
   // write is verification pending, never automatically "write failed".
