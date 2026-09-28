@@ -1988,19 +1988,20 @@ function writeSectionDisplayOrder(projectId, ids) {
       setExpandedStackId('');
       setLibraryTab('stacks');
     };
-    const openSavedStack = (saved, needsReview) => {
-      if (expandedStackId === saved.id) {
-        if (failedLookSave || scratchError || copyUndo || deletedLook?.projectId === projectId) return;
-        setExpandedStackId(null);
+    const selectSavedStack = (saved, needsReview, action = 'select') => {
+      if (action === 'edit' && expandedStackId === saved.id) return;
+      if (action === 'preview' && activeLookId === saved.id) {
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
         return;
       }
       if (activeLookId !== saved.id && !keepCurrentStackDraft()) return;
       if (activeLookId !== saved.id) {
         if (needsReview) setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
-        else selectCard(adaptSavedLook(saved));
+        else selectCard(adaptSavedLook(saved), { preview: false });
       }
+      if (action === 'preview') setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
       setNewStackResumeMessage('');
-      setExpandedStackId(saved.id);
+      setExpandedStackId(action === 'edit' ? saved.id : null);
       setLibraryTab('stacks');
     };
 
@@ -2428,7 +2429,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
 
     // Select a browse card: pattern -> preview; saved mix -> apply look.
-    const selectCard = (p) => {
+    const selectCard = (p, { preview = true } = {}) => {
       if (handoffInvalid) return;
       if (p.mix) {
         const realLook = findSavedLook(p.id);
@@ -2458,7 +2459,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           setMixName(realLook.label);
           setLookSaveState('');
           setSelectedTargetId(ALL_SECTIONS_TARGET_ID);
-          scheduleBrowseLivePreview(normalizeSectionVisualLook(realLook.defaultLook), sectionTargets[0]);
+          if (preview) scheduleBrowseLivePreview(normalizeSectionVisualLook(realLook.defaultLook), sectionTargets[0]);
         }
         return;
       }
@@ -3251,13 +3252,21 @@ function writeSectionDisplayOrder(projectId, ids) {
                         const compatibility = getProjectStackCompatibility(saved);
                         const useCount = playlist.filter(item => item.lookId === saved.id).length;
                         return <article key={saved.id} className={`project-stack-card${saved.id === activeLookId ? ' is-active' : ''}`} data-testid="project-stack-card">
-                          <button type="button" className="project-stack-name-button project-stack-card-head" aria-label={`Edit ${saved.label}`} aria-expanded={expandedStackId === saved.id} aria-controls="stack-editor" onClick={() => openSavedStack(saved, summary.review.needsReview)}>
+                          <button type="button" className="project-stack-name-button project-stack-card-head" aria-label={`Select ${saved.label}`} aria-pressed={saved.id === activeLookId} onClick={() => selectSavedStack(saved, summary.review.needsReview)}>
                             <strong>{saved.label}</strong>
-                            <span className="project-stack-swatch" aria-hidden="true">{summary.sections.map(section => {
-                              const off = ['off', 'blackout'].includes(section.patternId) || section.look?.brightness === 0;
-                              return <span key={section.id} className={off ? 'is-off' : ''} style={{ '--stack-color': REAL_PATTERN_BY_ID.get(section.patternId)?.pal?.[2] || '#8398aa' }} />;
-                            })}</span>
                           </button>
+                          <div className="project-stack-thumbnails" aria-label={`${saved.label} section colors`}>{summary.sections.map(section => {
+                            const off = ['off', 'blackout'].includes(section.patternId) || Number(section.look?.brightness) === 0;
+                            const palette = REAL_PATTERN_BY_ID.get(section.patternId)?.pal || adaptPattern(section.patternId)?.pal || ['#8398aa'];
+                            const colors = Array.isArray(palette) && palette.length ? palette : ['#8398aa'];
+                            const gradient = off ? '#252b30' : `linear-gradient(135deg, ${colors.join(', ')})`;
+                            return <span key={section.id} role="img" className={`project-stack-thumbnail${off ? ' is-off' : ''}`} style={{ '--stack-gradient': gradient }} title={`${section.label}: ${off ? 'Off' : patternNameFor(section.patternId)}`} aria-label={`${section.label}: ${off ? 'Off' : patternNameFor(section.patternId)}`} />;
+                          })}</div>
+                          <div className="project-stack-card-actions">
+                            <button type="button" className="btn" disabled={!compatibility.ok || summary.review.needsReview} aria-label={`Preview ${saved.label}`} onClick={() => selectSavedStack(saved, summary.review.needsReview, 'preview')}>Preview</button>
+                            <button type="button" className="btn" aria-label={`Edit ${saved.label}`} aria-expanded={expandedStackId === saved.id} aria-controls="stack-editor" onClick={() => selectSavedStack(saved, summary.review.needsReview, 'edit')}>Edit</button>
+                            {useCount ? <span className="project-stack-in-playlist">In playlist</span> : <button type="button" className="btn" disabled={!compatibility.ok || summary.review.needsReview} aria-label={`Add ${saved.label} to playlist`} onClick={() => setSavedLookInPlaylist(saved, true)}>Add to playlist</button>}
+                          </div>
                           {(!compatibility.ok || summary.review.needsReview) && <div className="project-stack-card-warning">{!compatibility.ok ? compatibility.reason : 'Review sections'}</div>}
                         </article>;
                       })}

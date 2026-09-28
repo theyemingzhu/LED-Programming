@@ -52,6 +52,41 @@ const namedLook = (id: string, label: string) => ({
   },
 });
 
+test('chip selection stays local while Preview, Edit, and Add remain explicit', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'project-stack-chip-actions';
+  const saved = namedLook('calm-stack', 'Calm stack');
+  delete saved.sectionLooks['patch-default-ring-3'];
+  project.devices.standaloneController.looks = [saved];
+  project.devices.standaloneController.activeLookId = '';
+  await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', JSON.stringify(value)), project);
+  let previewRequests = 0;
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => { previewRequests += 1; return route.abort(); });
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  const chip = page.getByTestId('project-stack-card').filter({ hasText: 'Calm stack' });
+  await expect(chip.locator('.project-stack-thumbnail')).toHaveCount(2);
+  await expect(chip.getByRole('img', { name: 'Inner circle: Ocean' })).toBeVisible();
+  const before = await page.evaluate(() => window.scrollY);
+  const requestsBeforeSelect = previewRequests;
+  await chip.getByRole('button', { name: 'Select Calm stack' }).click();
+  await expect(chip.getByRole('button', { name: 'Select Calm stack' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  expect(previewRequests).toBe(requestsBeforeSelect);
+  await chip.getByRole('button', { name: 'Preview Calm stack' }).click();
+  await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
+  expect(previewRequests).toBe(requestsBeforeSelect);
+  await chip.getByRole('button', { name: 'Add Calm stack to playlist' }).click();
+  await expect(chip).toContainText('In playlist');
+  await expect.poll(async () => {
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+    return stored.devices.standaloneController.playlist.filter((item: any) => item.lookId === saved.id).length;
+  }).toBe(1);
+  await chip.getByRole('button', { name: 'Edit Calm stack' }).click();
+  await expect(page.getByTestId('stack-save-bar')).toBeVisible();
+});
+
 test('section choices save as a named project stack outside built-in patterns', async ({ page }) => {
   const project = createDefaultProject();
   project.id = 'project-stack-patterns-test';
@@ -272,8 +307,8 @@ test('ten saved stack chips wrap into rows and the editor stays below them', asy
   const first = await chips.nth(0).boundingBox();
   const second = await chips.nth(1).boundingBox();
   expect(first && second && Math.abs(first.y - second.y) < 3 && second.x > first.x).toBe(true);
-  expect(first!.width).toBeLessThanOrEqual(200);
-  expect((await chips.first().locator('.project-stack-swatch span').first().boundingBox())?.height).toBeGreaterThanOrEqual(4);
+  expect(first!.width).toBeLessThanOrEqual(220);
+  expect((await chips.first().locator('.project-stack-thumbnail').first().boundingBox())?.height).toBeGreaterThanOrEqual(26);
   await chips.first().getByRole('button', { name: /^Edit / }).click();
   const editor = page.getByTestId('stack-save-bar');
   await expect(editor).toBeVisible();
@@ -337,10 +372,10 @@ test('saved stack chips sit side by side and toggle one inline editor', async ({
   const first = await chips.nth(0).boundingBox();
   const second = await chips.nth(1).boundingBox();
   expect(first && second && Math.abs(first.y - second.y) < 3 && second.x > first.x).toBe(true);
-  await chips.nth(1).getByRole('button', { name: /Edit Two/ }).click();
+  await chips.nth(1).getByRole('button', { name: 'Edit Two' }).click();
   await expect(page.getByTestId('stack-save-bar')).toBeVisible();
   await expect(page.getByTestId('look-name')).toHaveValue('Two');
-  await chips.nth(1).getByRole('button', { name: /Edit Two/ }).click();
+  await chips.nth(1).getByRole('button', { name: 'Select Two' }).click();
   await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
 });
 

@@ -9,6 +9,22 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Stack selection, explicit actions and gradient tiles — verified local build
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local cebfa3d0.
+Working: selecting a stack switches locally without opening its editor, scrolling,
+or sending a card command. Explicit Preview shows the whole stack in Studio;
+Edit opens controls; Add to playlist adds once and then shows In playlist.
+Smooth square palette thumbnails identify each section; Off remains dark.
+Phone controls and four-thumbnail rows fit at 390px. Draft/save guards preserved.
+Evidence: 17/17 focused Patterns browser tests; integrated checkpoint 2869/2869
+unit tests and build PASS; final spacing build PASS. Actual desktop and phone
+reviewed. Logs: /tmp/stacks-actions-checkpoint.log and
+/tmp/stacks-actions-build-final.log. Screenshots: stack-actions-desktop.png and
+stack-actions-phone.png in this chat's visualizations directory.
+No deployment, firmware, storage schema or card changes.
+Next: owner review in existing 9220 preview; release requires authorization.
+
 ### Stack chips and explicit creation — verified local build
 Owner: this manager; Sprint. State: done at the authorized local-build boundary.
 Artifact: codex/project-pattern-stacks, refinement on local 74067ccf.
