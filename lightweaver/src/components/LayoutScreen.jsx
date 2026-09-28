@@ -25,8 +25,9 @@ import { stripPitchMm } from '../lib/wireBuildSheet.js';
 import { normalizeCardLedType } from '../lib/cardHardwareContract.js';
 import { DEFAULT_STANDALONE_LED } from '../lib/standaloneController.js';
 import { isLayoutSpecsRoute } from '../lib/studioRoute.js';
+import { displayStripName } from '../lib/stripLabels.js';
 
-function SelectedStripSpecs({ strip, wiring, pxPerMm, ledType }) {
+function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }) {
   if (!strip) return (
     <section className="la-selected-specs" aria-label="Selected strip specs">
       <p className="la-selected-specs-empty">Select a strip to see its measurements.</p>
@@ -55,9 +56,9 @@ function SelectedStripSpecs({ strip, wiring, pxPerMm, ledType }) {
   };
 
   return (
-    <section className="la-selected-specs" aria-label={`Selected strip specs for ${strip.name}`}>
+    <section className="la-selected-specs" aria-label={`Selected strip specs for ${displayStripName(strip, sectionFamilies)}`}>
       <header>
-        <strong>{strip.name}</strong>
+        <strong>{displayStripName(strip, sectionFamilies)}</strong>
         <span>Selected strip</span>
       </header>
       <dl>
@@ -360,6 +361,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   const canvasProps = {
     refs: { svgRef, artworkRef, vpRef, spaceRef, stripDragSuppressClickRef },
     strips: state.starterLayoutActive && mode === 'draw' ? [] : strips, layers, hidden,
+    sectionFamilies: state.sectionFamilies,
     // The canvas labels each strip with its pitch, which is its drawn length
     // divided by the gaps between its lights — so it needs the drawing scale.
     pxPerMm: state.pxPerMm,
@@ -649,6 +651,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
             </header>
             <div className="la-specs-body">
               <SelectedStripSpecs
+                sectionFamilies={state.sectionFamilies}
                 strip={selectedSpecsStrip}
                 wiring={wiring}
                 pxPerMm={state.pxPerMm}

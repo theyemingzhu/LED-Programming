@@ -50,3 +50,11 @@ length, shared reel density, GPIO, data direction, first light, split/merge, and
 family GPIO. The separate boundary field and repeated section navigation are
 gone. A row's pattern action opens a visual gallery inside Layout; selecting a
 pattern updates that section target only and returns focus to its trigger.
+
+Hierarchy follow-up: one physical strip heading owns the shared reel density
+and shared GPIO. Generated connected section labels appear as Part 1, Part 2,
+and so on in the list, selected editor, canvas labels, and accessibility text;
+saved strip IDs and names remain intact. Explicit custom part names stay visible.
+The data-wire group is a separate wiring fact and its header is omitted only
+when it duplicates a complete single physical family. Selected part actions
+remain visible in a compact grid, with capability limits explained in titles.

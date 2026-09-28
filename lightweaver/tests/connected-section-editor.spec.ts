@@ -81,11 +81,10 @@ test('selected section owns its look and GPIO; merging requires a shared GPIO', 
   await page.getByRole('dialog', { name: /Choose pattern for/ }).getByRole('button', { name: 'Plasma', exact: true }).click();
   await expect(secondRow).toContainText('Plasma');
   await expect(page.locator('.la-strip-row').first()).toContainText('Aurora');
-  await page.getByRole('combobox', { name: 'Section 2 GPIO override' }).selectOption('17');
+  await page.getByRole('combobox', { name: 'Inner halo 2 GPIO override' }).selectOption('17');
   await page.locator('.la-strip-row').first().click({ position: { x: 8, y: 8 } });
   const merge = page.getByTestId('connected-merge');
   await expect(merge).toBeDisabled();
-  await page.getByText('Set GPIO for all 2 sections').click();
   await page.getByRole('combobox', { name: /shared GPIO output/ }).selectOption('16');
   await expect(merge).toBeEnabled();
   await merge.click();

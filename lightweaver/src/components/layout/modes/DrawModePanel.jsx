@@ -35,6 +35,7 @@ import { DEFAULT_STANDALONE_LED } from '../../../lib/standaloneController.js';
 import { activeBoardGpios } from '../../../lib/gpioAssignments.js';
 import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../../lib/kaleidoscope.js';
 import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/connectedSections.js';
+import { connectedPartDisplayName, displayStripName } from '../../../lib/stripLabels.js';
 import { applyLookToPatchBoard } from '../../../lib/sectionLookModel.js';
 import { REAL_PATTERNS } from '../../../v3/v3-data.js';
 import { LayoutPatternGallery } from '../LayoutPatternGallery.jsx';
@@ -422,6 +423,15 @@ export function DrawModePanel({
     if (unassigned.length && groups[0]) groups[0] = { ...groups[0], strips: [...groups[0].strips, ...unassigned], sectionCount: groups[0].sectionCount + unassigned.length };
     return groups.filter(group => group.sectionCount);
   }, [orderedStrips, stripById, wiring]);
+  const familyLeadIds = useMemo(() => {
+    const leads = new Set();
+    const seen = new Set();
+    for (const group of gpioGroups) for (const strip of group.strips) {
+      const family = connectedFamilyForStrip(sectionFamilies, strip.id);
+      if (family && !seen.has(family.id)) { seen.add(family.id); leads.add(strip.id); }
+    }
+    return leads;
+  }, [gpioGroups, sectionFamilies]);
   const sectionTargetsByStrip = useMemo(() => {
     const byStrip = new Map();
     for (const target of sectionTargets || []) {
@@ -455,6 +465,14 @@ export function DrawModePanel({
       .reduce((sum, run) => sum + run.count, 0);
     return `${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'} · ${ledCount} LEDs`;
   };
+  const singleFamilyOutput = (groupedStrips, linkedStrips) => {
+    if (linkedStrips.length || !groupedStrips.length) return false;
+    const family = connectedFamilyForStrip(sectionFamilies, groupedStrips[0].id);
+    return Boolean(family && groupedStrips.length === family.memberIds.length
+      && groupedStrips.every(strip => family.memberIds.includes(strip.id)));
+  };
+  const physicalStripCount = strips.length - sectionFamilies.reduce(
+    (sum, family) => sum + Math.max(0, family.memberIds.length - 1), 0);
 
   const makeRunForStrip = strip => ({
     id: `run-${strip.id}`,
@@ -1281,7 +1299,9 @@ export function DrawModePanel({
               <span className="ttl">LED strips</span>
               <span className="meta">
                 {selectedStrips.length > 1 ? `${selectedStrips.length} sel · ` : ''}
-                {strips.length} · {totalLeds.toLocaleString()} LEDs
+                {physicalStripCount} {physicalStripCount === 1 ? 'strip' : 'strips'}
+                {sectionFamilies.length > 0 ? ` · ${sectionFamilies.reduce((sum, family) => sum + family.memberIds.length, 0)} parts` : ''}
+                {' · '}{totalLeds.toLocaleString()} LEDs
               </span>
             </div>
             {patchBoard?.dataWireCountNeedsReview && (
@@ -1343,11 +1363,11 @@ export function DrawModePanel({
               {/* GPIO groups are physical data chains, ordered from the card outward. */}
               {gpioGroups.map(({ output, strips: groupedStrips, linkedStrips, sectionCount }) => (
                 <section key={output.id} className="la-gpio-group" data-testid={`gpio-group-${output.pin}`}>
-                  <div className="la-gpio-group-head">
+                  {!singleFamilyOutput(groupedStrips, linkedStrips) && <div className="la-gpio-group-head">
                     <span>Data wire · GPIO {output.pin}</span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
-                  </div>
-                  {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => strip.name).join(', ')}</div>}
+                  </div>}
+                  {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => displayStripName(strip, sectionFamilies)).join(', ')}</div>}
                   {groupedStrips.map((s, i) => {
                 const isSel = s.id === (selStripId || existingStrip?.id);
                 const isBatchSel = selectedStripIds.includes(s.id);
@@ -1382,6 +1402,7 @@ export function DrawModePanel({
                 const connectedMembers = connectedFamily
                   ? connectedFamily.memberIds.map(id => stripById.get(id)).filter(Boolean)
                   : [];
+                const partName = connectedPartDisplayName(s, connectedFamily);
                 const connectedStatus = connectedFamily
                   ? familyGeometryStatus(connectedFamily, strips)
                   : { ok: true };
@@ -1478,8 +1499,38 @@ export function DrawModePanel({
                 return (
                   <div key={s.id} data-strip-id={s.id}
                        className={`la-strip-item${isOpen ? ' is-editing' : ''}`}>
+                  {connectedFamily && familyLeadIds.has(s.id) && <div className="lw-family-header" data-testid="connected-parent"
+                      aria-label={`Physical strip ${connectedFamily.parentName}`}>
+                    <div className="lw-family-title">
+                      <span>Physical strip</span><strong>{connectedFamily.parentName}</strong>
+                      <span>{connectedMembers.length} parts · {connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs</span>
+                    </div>
+                    <div className="lw-family-controls">
+                      <label><span>Reel density</span>
+                        <select aria-label={`${connectedFamily.parentName} shared reel density`}
+                            value={connectedMembers.every(member => stripDensity(member.id) === selectedDensity) ? selectedDensity : ''}
+                            disabled={wiring.locked}
+                            onChange={event => {
+                              const result = setConnectedFamilyDensity(connectedFamily.id, Number(event.target.value));
+                              setConnectedError(result.ok ? '' : result.error);
+                            }}>
+                          <option value="" disabled>Mixed</option>
+                          {densityChoices.map(value => <option key={value} value={value}>{value} LEDs/m</option>)}
+                        </select>
+                      </label>
+                      <label><span>All parts GPIO</span>
+                        <select aria-label={`${connectedFamily.parentName} shared GPIO output`}
+                            value={connectedMembers.every(member => (outputForStrip(member.id)?.pin ?? 16) === (outputForStrip(s.id)?.pin ?? 16)) ? (outputForStrip(s.id)?.pin ?? 16) : ''}
+                            disabled={wiring.locked}
+                            onChange={event => assignFamilyGpio(connectedFamily, Number(event.target.value))}>
+                          <option value="" disabled>Mixed outputs</option>
+                          <GpioOptions choices={gpioChoicesForStrip(s.id)} />
+                        </select>
+                      </label>
+                    </div>
+                  </div>}
                   <div
-                       className={`la-strip-row${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
+                       className={`la-strip-row${connectedFamily ? ' la-part-row' : ''}${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
                        draggable
                        onDragStart={e => {
                          const ids = selectedStripIds.includes(s.id) ? selectedStripIds : [s.id];
@@ -1512,7 +1563,7 @@ export function DrawModePanel({
                          e.currentTarget.classList.remove('is-dragging');
                          setStripGroupDragOver(null);
                        }}
-                       style={{ opacity: hidden[s.id] ? 0.4 : 1,
+                       style={{ '--part-tint': s.color, opacity: hidden[s.id] ? 0.4 : 1,
                                 outline: stripGroupDragOver === `strip:${s.id}` ? '1px solid var(--accent)' : undefined,
                                 outlineOffset: -1 }}
                        onClick={e => {
@@ -1526,8 +1577,8 @@ export function DrawModePanel({
                       <span className="la-wire-n" title="Drag to change physical wire order" style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
                         <DragHandleIcon/>
                       </span>
-                      <StripMiniature strip={s}/>
-                      <InlineRename value={s.name} onCommit={n => renameStrip(s.id, n)}
+                      {!connectedFamily && <StripMiniature strip={s}/>}
+                      <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
                                     className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}
                       {/* Visibility belongs on the row, like any layers list —
@@ -1541,7 +1592,7 @@ export function DrawModePanel({
                               }}>
                         {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
                       </button>
-                      <StripCountControl key={s.id} strip={s} disabled={wiring.locked}
+                      <StripCountControl key={s.id} strip={connectedFamily ? { ...s, name: partName } : s} disabled={wiring.locked}
                           max={LED_COUNT_MAX} onCommit={count => {
                             if (connectedFamily) {
                               const result = correctConnectedSectionCount(s.id, count);
@@ -1555,9 +1606,9 @@ export function DrawModePanel({
                         const patternId = target.look?.patternId || 'aurora';
                         const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
                         return <button key={target.id} type="button" className="la-section-pattern-action"
-                                       title={`Change ${target.label || s.name} pattern: ${patternName}`}
+                                       title={`Change ${partName} pattern: ${patternName}`}
                                        data-testid="layout-section-pattern-action" data-target-id={target.id}
-                                       aria-label={`Change pattern for ${target.label || s.name}`}
+                                       aria-label={`Change pattern for ${partName}`}
                                        ref={element => {
                                          if (element) patternTriggerRefs.current.set(target.id, element);
                                          else patternTriggerRefs.current.delete(target.id);
@@ -1572,13 +1623,10 @@ export function DrawModePanel({
                           {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
-                      {connectedFamily && <span className="la-strip-family-label">
-                        {connectedFamily.parentName} · section {connectedFamily.memberIds.indexOf(s.id) + 1} of {connectedMembers.length}
-                      </span>}
                     </div>
                     {patternPicker?.stripId === s.id && (() => {
                       const target = sectionTargets.find(item => item.id === patternPicker.targetId);
-                      return <LayoutPatternGallery stripName={s.name}
+                      return <LayoutPatternGallery stripName={partName}
                         currentPatternId={target?.look?.patternId || 'aurora'}
                         onChoose={choosePattern} onClose={closePatternPicker}/>;
                     })()}
@@ -1587,30 +1635,28 @@ export function DrawModePanel({
                            data-testid={connectedFamily ? 'connected-section-editor' : undefined}
                            data-family-id={connectedFamily?.id}
                            role="region"
-                           aria-label={connectedFamily ? `${connectedFamily.parentName} connected sections` : `${s.name} layout settings`}
+                           aria-label={connectedFamily ? `${partName} settings` : `${s.name} layout settings`}
                            onClick={e => e.stopPropagation()}>
                         {!connectedFamily && <div className="la-strip-settings-label">Layout · {s.name}</div>}
                         {connectedFamily && (() => {
                           const memberIndex = connectedFamily.memberIds.indexOf(s.id);
                           const nextMember = connectedMembers[memberIndex + 1];
+                          const nextPartName = connectedPartDisplayName(nextMember, connectedFamily);
                           const memberPin = outputForStrip(s.id)?.pin ?? 16;
                           const nextPin = nextMember ? outputForStrip(nextMember.id)?.pin : memberPin;
-                          return <section className="lw-connected-editor-frame" aria-label={`${s.name} section settings`}>
-                            <div className="lw-connected-summary" data-testid="connected-parent">
-                              <strong>{connectedFamily.parentName}</strong>
-                              <span>{connectedMembers.length} connected sections · {connectedMembers.reduce((sum, member) => sum + member.pixelCount, 0)} LEDs</span>
-                            </div>
+                          return <section className="lw-connected-editor-frame">
+                            <div className="la-strip-settings-label">{partName} settings</div>
                             {!connectedStatus.ok && <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
                               <span>{connectedStatus.error}</span>
                               <button type="button" className="btn" onClick={() => detachSectionFamily(connectedFamily.id)}>Detach sections</button>
                             </div>}
                             {connectedStatus.ok && <div className="lw-connected-child selected" data-testid="connected-child" data-section-id={s.id}>
-                              <div className="lw-connected-physical" aria-label={`${s.name} physical size`}>
-                                <label><span>Section length · m</span>
+                              <div className="lw-connected-physical" aria-label={`${partName} physical size`}>
+                                <label><span>Part length · m</span>
                                   <input type="number" min="0.001" step="0.001" inputMode="decimal"
                                          key={`${s.id}:${s.pixelCount}:${selectedDensity}`}
                                          defaultValue={formatMetersValue(s.pixelCount / selectedDensity)}
-                                         aria-label={`${s.name} section length in metres`}
+                                         aria-label={`${partName} length in metres`}
                                          disabled={wiring.locked}
                                          onBlur={event => {
                                            const metres = Number(event.target.value);
@@ -1621,64 +1667,42 @@ export function DrawModePanel({
                                          }}
                                          onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}/>
                                 </label>
-                                <label><span>Reel density · LEDs/m</span>
-                                  <select aria-label={`${connectedFamily.parentName} shared reel density`}
-                                          value={selectedDensity} disabled={wiring.locked}
-                                          onChange={event => {
-                                            const result = setConnectedFamilyDensity(connectedFamily.id, Number(event.target.value));
-                                            setConnectedError(result.ok ? '' : result.error);
-                                          }}>
-                                    {densityChoices.map(value => <option key={value} value={value}>{value}</option>)}
-                                  </select>
-                                </label>
                               </div>
                               <label><span>Name</span>
-                                <input type="text" value={s.name} aria-label={`Section ${memberIndex + 1} name`}
+                                <input type="text" value={partName} aria-label={`${partName} name`}
                                        onChange={event => renameStrip(s.id, event.target.value)}/>
                               </label>
-                              <label><span>GPIO output</span>
-                                <select aria-label={`Section ${memberIndex + 1} GPIO override`} value={memberPin}
+                              <label><span>This part GPIO</span>
+                                <select aria-label={`${partName} GPIO override`} value={memberPin}
                                         disabled={wiring.locked}
                                         onChange={event => assignStripGpio(s.id, Number(event.target.value))}>
                                   <GpioOptions choices={gpioChoicesForStrip(s.id)} />
                                 </select>
                               </label>
-                              {run && <button type="button" className="btn" aria-label={`Reverse data direction of ${s.name}`}
+                              {run && <button type="button" className="btn" aria-label={`Reverse data direction of ${partName}`}
                                       aria-pressed={run.physicalDirection === 'source-reverse'}
                                       disabled={wiring.locked || isSplit || run.directionPolicy === 'fixed'}
                                       onClick={() => toggleRunDirection(run)}>Reverse data</button>}
                               {run && <button type="button" className="btn"
-                                      aria-label={firstLedPicker?.stripId === s.id ? 'Cancel first LED selection' : `Set first LED of ${s.name}`}
+                                      aria-label={firstLedPicker?.stripId === s.id ? 'Cancel first LED selection' : `Set first LED of ${partName}`}
                                       onClick={() => firstLedPicker?.stripId === s.id ? onCancelFirstLedPicker() : onBeginFirstLedPicker(s.id)}>
                                 {firstLedPicker?.stripId === s.id ? 'Cancel first light' : 'Set first light'}
                               </button>}
                               <button type="button" className="btn" data-testid="connected-add-split"
-                                      aria-label={`Add split inside ${s.name}`}
+                                      aria-label={`Add split inside ${partName}`}
                                       disabled={wiring.locked || s.pixelCount < 2}
                                       onClick={() => {
                                         const result = addConnectedSplit(s.id);
                                         setConnectedError(result.ok ? '' : result.error);
                                       }}>Add split</button>
                               {nextMember && <button type="button" className="btn" data-testid="connected-merge"
-                                      aria-label={`Merge ${s.name} with ${nextMember.name}`}
-                                      title={memberPin !== nextPin ? 'Put both sections on the same GPIO to merge' : `Keeps ${s.name}'s pattern and name`}
+                                      aria-label={`Merge ${partName} with ${nextPartName}`}
+                                      title={memberPin !== nextPin ? 'Put both parts on the same GPIO to merge' : `Keeps ${partName}'s pattern and name`}
                                       disabled={wiring.locked || memberPin !== nextPin}
                                       onClick={() => {
                                         const result = mergeConnectedSection(s.id);
                                         setConnectedError(result.ok ? '' : result.error);
                                       }}>Merge next</button>}
-                              <details className="lw-section-boundary-details">
-                                <summary>Set GPIO for all {connectedMembers.length} sections</summary>
-                                <label><span>Shared GPIO output</span>
-                                  <select aria-label={`${connectedFamily.parentName} shared GPIO output`}
-                                          value={connectedMembers.every(member => (outputForStrip(member.id)?.pin ?? 16) === memberPin) ? memberPin : ''}
-                                          disabled={wiring.locked}
-                                          onChange={event => assignFamilyGpio(connectedFamily, Number(event.target.value))}>
-                                    <option value="" disabled>Mixed outputs</option>
-                                    <GpioOptions choices={gpioChoicesForStrip(s.id)} />
-                                  </select>
-                                </label>
-                              </details>
                             </div>}
                             {connectedError && <div className="lw-connected-error" role="alert">{connectedError}</div>}
                           </section>;
@@ -1875,7 +1899,32 @@ export function DrawModePanel({
                           </div>}
                         </div>
                         </>}
-                        {connectedFamily && stripMenu}
+                        {connectedFamily && <div className="la-part-actions" role="group" aria-label={`${partName} actions`}>
+                          <button type="button" className="btn" aria-label={`Flip path direction of ${partName}`}
+                                  title="The whole physical strip owns this path; merge parts before flipping"
+                                  disabled onClick={() => reverseStrip(s.id)}>Flip path</button>
+                          <button type="button" className="btn" aria-label={`Edit reflection points of ${partName}`}
+                                  ref={element => {
+                                    if (element) kaleidoscopeTriggerRefs.current.set(s.id, element);
+                                    else kaleidoscopeTriggerRefs.current.delete(s.id);
+                                  }}
+                                  disabled={s.pixelCount < 2}
+                                  title={s.pixelCount < 2 ? 'At least 2 LEDs are needed' : 'Edit Kaleidoscope reflection points'}
+                                  onClick={() => onToggleKaleidoscope(s.id)}>Reflections</button>
+                          <button type="button" className="btn" aria-label={`Move ${partName} up the wire`}
+                                  disabled={!stripMoveTarget(wiring, strips, s.id, 'up') || wiring.locked}
+                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : 'Move up the data wire'}
+                                  onClick={() => moveStripStep(s.id, 'up')}>Move up</button>
+                          <button type="button" className="btn" aria-label={`Move ${partName} down the wire`}
+                                  disabled={!stripMoveTarget(wiring, strips, s.id, 'down') || wiring.locked}
+                                  title={wiring.locked ? 'Unlock wiring in Test & Install' : 'Move down the data wire'}
+                                  onClick={() => moveStripStep(s.id, 'down')}>Move down</button>
+                          <button type="button" className="btn" aria-label={`Duplicate ${partName} as a separate strip`}
+                                  onClick={() => duplicateStrip(s.id)}>Duplicate</button>
+                          <button type="button" className="btn danger" aria-label={`Remove ${partName}`}
+                                  title="Merge this connected part first" disabled
+                                  onClick={() => removeStrip(s.id)}>Remove</button>
+                        </div>}
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}

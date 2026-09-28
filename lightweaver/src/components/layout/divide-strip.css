@@ -474,3 +474,26 @@
 .lw-section-boundary-details label { display: grid; grid-template-columns: 1fr 64px; gap: 5px; }
 .lw-section-boundary-details label span { grid-column: 1 / -1; }
 .lw-section-boundary-details p { margin: 4px 0; line-height: 1.4; }
+
+/* A physical family is named once. Data-wire headers remain separate wiring facts. */
+.lw-family-header { display: grid; gap: 8px; padding: 9px 10px; border-bottom: 1px solid var(--border-soft); background: var(--bg-panel); }
+.lw-family-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 7px; }
+.lw-family-title > span:first-child { flex-basis: 100%; color: var(--text-mid); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.lw-family-title strong { color: var(--text-hi); font-size: 13px; }
+.lw-family-title > span:last-child { color: var(--text-mid); font-size: 11px; }
+.lw-family-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.lw-family-controls label { display: grid; gap: 4px; min-width: 0; color: var(--text-mid); font-size: 10px; }
+.lw-family-controls select { width: 100%; min-width: 0; min-height: 30px; border: 1px solid var(--border-soft); border-radius: 4px; background: var(--bg-app); color: var(--text-hi); }
+.la .la-gpio-group .la-strip-row.la-part-row { position: relative; min-height: 38px; background: color-mix(in oklab, var(--part-tint) 5%, transparent); }
+.la .la-gpio-group .la-strip-row.la-part-row::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--part-tint); opacity: .65; }
+.la .la-gpio-group .la-part-row .layer-name { min-width: 70px !important; font-weight: 600; }
+.la .la-gpio-group .la-part-row .la-row-unit { display: none; }
+.la .la-strip-detail.lw-connected-editor-shell { border-top: 0; padding-top: 4px; }
+.lw-connected-editor-frame { border: 0; border-radius: 0; background: transparent; padding: 0; gap: 5px; }
+.lw-connected-editor-frame > .la-strip-settings-label { padding: 0 0 5px; color: var(--text-hi); font-size: 12px; font-weight: 650; }
+.lw-connected-child, .lw-connected-child.selected { border: 0; border-radius: 0; background: transparent; padding: 0; }
+.lw-connected-physical { padding: 0; }
+.la-part-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding-top: 6px; border-top: 1px solid var(--border-soft); }
+.la-part-actions .btn { min-width: 0; min-height: 30px; padding-inline: 5px; font-size: 11px; }
+.la-part-actions .btn:disabled { opacity: .45; }
+@media (pointer: coarse), (max-width: 600px) { .lw-family-controls select, .la-part-actions .btn { min-height: 44px; } }

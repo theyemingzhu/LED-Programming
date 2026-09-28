@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react';
-import { placeStripLabels } from '../../../lib/stripLabels.js';
+import { displayStripName, placeStripLabels } from '../../../lib/stripLabels.js';
 import {
   rgbCss,
   pointsAttr,
@@ -27,7 +27,7 @@ import { WiringCordOverlay } from '../wire/WiringCordOverlay.jsx';
 
 export function LayoutCanvas({
   refs,
-  strips, layers, hidden, pxPerMm,
+  strips, layers, hidden, pxPerMm, sectionFamilies = [],
   starterGhost = null,
   viewBox, computedViewBox, vbScale, svgText, artworkHTML, totalLeds,
   selection,
@@ -673,8 +673,9 @@ export function LayoutCanvas({
               const pitch = s.svgLength > 0 && s.pixelCount > 1
                 ? s.svgLength / physicalScale / (s.pixelCount - 1) : null;
               const detail = `${s.pixelCount} px${pitch === null ? '' : ` · ${pitch.toFixed(1)} mm pitch`}`;
-              const label = `${s.name} · ${s.pixelCount} LEDs`;
-              const displayName = s.name.length > 20 ? `${s.name.slice(0, 19).trimEnd()}…` : s.name;
+              const partName = displayStripName(s, sectionFamilies);
+              const label = `${partName} · ${s.pixelCount} LEDs`;
+              const displayName = partName.length > 20 ? `${partName.slice(0, 19).trimEnd()}…` : partName;
               return (
                 <g key={s.id + '-callout'} className="lw-strip-callout"
                    data-testid={`strip-callout-${s.id}`}
