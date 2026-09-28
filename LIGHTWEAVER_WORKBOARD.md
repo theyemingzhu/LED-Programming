@@ -9,6 +9,24 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+MERGE READY:332ba91a corrects four stale browser assertions; all five focused
+cases pass, including preserved mix save/reopen and namespaced playlist references.
+Primary reviewed, no application defect or weakened behavior check. User asks main
+first, shipment later: finish merge and main-only Tests now; remaining launch steps
+4–13 are UNPERFORMED and required before later shipment, not a full launch pass.
+Consolidator idle. Both automatic publication workflows remain held.
+
+MERGE VALIDATION BLOCKERS under repair: broader frozen4719ec9c check passed
+core/cloud73/mapper/scene39/show11/recovery3 and two resumed browser groups.
+Next group117 passed, four failed: color-journey button text, Layout Target sections
+locator, Lab whole-look add-layer action, reconstructed look IDs. One wire-capacity
+test interrupted and one unrun. Consolidator01a0e503 Sol/medium owns diagnosis and
+these four test files only; preserve behavioral assertions, no source change without
+app-owner handoff. No merge or publication until failures resolved. Earlier isolated
+archive issues (deps/Git metadata) repaired; continuing clone
+/tmp/lightweaver-release-gate-4719ec9c, log continue-release.log. Do not rerun
+passed broad suites; retain evidence and resume affected/unperformed stages.
+
 FINAL LAYOUT CORRECTION VERIFIED locally: Studio2190/2966b0cf. Counts now
 beside Layout; row names use strip colors, no leading miniature. Five focused
 browser tests and exact frozen build pass. Primary verified actual screen, saved
@@ -16,7 +34,9 @@ and reloaded latest45LED draft13/10/12/10 with Fire/Lava Lamp/Snowfield/Stained 
 Screenshot /tmp/lightweaver-2190-layout-count-position.png. Artifact
 /tmp/lightweaver-source-2966b0cf/lightweaver/dist. PR353 pushed, mergeable with no
 conflicts. Main-only CI runs after merge; local broader gate remains in progress.
-Deploy workflow289066915 verified disabled_manually; no publication authorized.
+Deploy workflow289066915 and Build firmware binary289045102 verified
+disabled_manually (both previously active); no publication authorized. Restore
+both only when owner authorizes shipping again.
 
 LATEST OWNER BOUNDARY: integrate and merge all current work into main FIRST;
 production shipping is a later step, requiring new go-ahead. Automatic Deploy site
