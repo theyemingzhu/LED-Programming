@@ -62,7 +62,7 @@ export function isUncertainCardWriteFailure(error) {
   const seen = new Set();
   let cause = error;
   for (let depth = 0; cause && typeof cause === 'object' && depth < 8 && !seen.has(cause); depth += 1) {
-    if (cause.delivery === 'not-sent') return false;
+    if (cause.delivery === 'not-sent' || cause.delivery === 'rejected') return false;
     seen.add(cause);
     cause = cause.cause;
   }

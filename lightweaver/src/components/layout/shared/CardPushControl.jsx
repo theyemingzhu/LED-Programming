@@ -400,7 +400,7 @@ export function CardPushControl({
         // failed, and fall into the exact same "wait, read back, decide"
         // path the success case takes below.
         if (!configPushAttempted || !isUncertainCardWriteFailure(configError)) throw configError;
-        deploymentStart = { action: 'stage-new', status: null, response: { requiresReboot: true, rebooting: true } };
+        deploymentStart = { action: 'stage-new', status: null, response: { pendingVerification: true } };
       }
       attempt = { ...attempt, wiringStatus: deploymentStart.status, resumeAction: deploymentStart.action };
       if (attempt.resumeAction === 'candidate-conflict') {
@@ -455,11 +455,8 @@ export function CardPushControl({
         setPushStatus('New wiring is ready to test. Your current working setup is still safe.');
         return;
       }
-      // A response that names the reboot explicitly (a reply that survived)
-      // or the synthesized fallback above (a reply that did not) both mean
-      // the same thing: the card is restarting on its own, unattended, and
-      // Studio's job now is to wait it out and read back — never to treat
-      // silence as a refusal.
+      // Only an explicit reply establishes that a restart was requested.
+      // A lost reply still requires read-back, but cannot prove a restart.
       const cardIsRestarting = response?.requiresReboot === true || response?.rebooting === true;
       setPushStatus(cardIsRestarting ? 'Card restarted — verifying…' : 'Verifying the exact project on the card…');
       if (cardIsRestarting) setInstallRestarting(true);

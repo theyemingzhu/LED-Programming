@@ -416,6 +416,23 @@ test('probation authorizes only the fresh exact candidate verdict and denies dri
   const verdict = (candidateFlow = flow, candidateStatus = status, candidateWiring = wiring, bootId = 'boot-fresh') =>
     preflightCardCommissioningWiringVerdict(candidateFlow, candidateStatus, candidateWiring, bootId).ok;
   assert.equal(verdict(), true);
+  const legacy = { ...flow, project: { ...flow.project,
+    pendingWiring: null, wiringEvidenceState: 'legacy-inconclusive' } };
+  const rollback = (candidateStatus = status, candidateWiring = wiring) =>
+    preflightCardCommissioningWiringVerdict(legacy, candidateStatus, candidateWiring,
+      'boot-fresh', { mutation: 'wiring-rollback' }).ok;
+  assert.equal(verdict(legacy), false, 'missing saved wiring can never authorize confirmation');
+  assert.equal(rollback(), true, 'fresh exact candidate may be discarded without missing saved wiring proof');
+  for (const drift of [
+    { cardId: 'lw-other' }, { buildId: 'other-build' }, { firmwareVersion: 'other-version' },
+    { bootId: 'other-boot' }, { projectId: 'other-project' }, { projectRevision: 8 },
+    { projectFingerprint: 'f'.repeat(16) }, { wiringDigest: 'e'.repeat(64) },
+  ]) assert.equal(rollback({ ...status, ...drift }), false);
+  for (const drift of [
+    { activationId: 'other-activation' }, { cardId: 'lw-other' }, { hasCandidate: false },
+    { remainingMs: 0 }, { wiringRevision: 0 }, { wiringDigest: '' },
+  ]) assert.equal(rollback(status, { ...wiring, ...drift }), false);
+
   assert.equal(preflightCardCommissioningMutation(flow, status).ok, false,
     'probation does not grant normal command authority');
   assert.equal(verdict(flow, { ...status, cardId: 'lw-other-card' }), false);

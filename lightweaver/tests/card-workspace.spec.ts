@@ -345,6 +345,46 @@ async function connectCommissioningCard(page) {
   }]);
 }
 
+// A staged candidate is not runtime-ready while the owner judges its lights.
+// The verdict controls require independent, correlated status + wiring reads;
+// activation/confirmation stubs alone do not establish that authority.
+async function mockCommissioningCandidateReadback(page, liveWiring = null) {
+  const flow = await page.evaluate(async () =>
+    (await import('/src/lib/cardCommissioningFlow.js')).readCardCommissioning());
+  const expected = liveWiring || flow.project.pendingWiring;
+  const status = readyStatus(flow.expectedCard.id, {
+    firmwareVersion: flow.expectedCard.firmwareVersion, buildId: flow.expectedCard.buildId,
+    runtimePhase: 'recovering', configValid: true, knownGoodProject: false,
+    commandReady: false, playbackReady: false, outputReady: true,
+    projectId: flow.project.snapshot.id, projectRevision: flow.project.revision,
+    projectFingerprint: flow.project.fingerprint,
+    wiringRevision: expected.wiringRevision, wiringDigest: expected.wiringDigest,
+  });
+  const wiring = {
+    ...status, ok: true, state: 'testing', candidateState: 'awaiting-confirmation',
+    hasCandidate: true, bootedCandidate: true, activationId: flow.project.pendingActivationId,
+    remainingMs: 90000, ledType: expected.ledType, colorOrder: expected.colorOrder,
+    maxMilliamps: expected.maxMilliamps, candidateOutputs: expected.outputs,
+  };
+  await page.route('**/api/status', async route => {
+    const testing = await page.evaluate(() => Boolean((window as any).__commissioningCandidateTesting));
+    await route.fulfill({ json: testing ? status : readyStatus(flow.expectedCard.id, {
+      firmwareVersion: flow.expectedCard.firmwareVersion, buildId: flow.expectedCard.buildId,
+    }) });
+  });
+  await page.route('**/api/wiring/status', route => route.fulfill({ json: wiring }));
+  await page.evaluate(() => {
+    (window as any).__commissioningCandidateTesting = false;
+    const activate = (window as any).__LW_ACTIVATE_COMMISSIONING_WIRING_FOR_TEST__;
+    (window as any).__LW_ACTIVATE_COMMISSIONING_WIRING_FOR_TEST__ = async (activationId: string) => {
+      const result = activate ? await activate(activationId) : { state: 'testing', activationId };
+      (window as any).__commissioningCandidateTesting = true;
+      return result;
+    };
+    (window as any).__LW_ROLLBACK_COMMISSIONING_WIRING_FOR_TEST__ ||= async (activationId: string) => ({ state: 'known-good', activationId });
+  });
+}
+
 test('wide desktop footer keeps card, firmware, Studio, and test controls in order', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -960,6 +1000,7 @@ test('Card overview delegates resumable install and test work to exact Setup tas
       outputs: expected.outputs,
     });
   });
+  await mockCommissioningCandidateReadback(page);
   await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await expect(page).toHaveURL(/#screen=card&section=install$/);
@@ -975,6 +1016,7 @@ test('Card overview delegates resumable install and test work to exact Setup tas
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await seedCommissioningFlow(page, 'test');
   await connectCommissioningCard(page);
+  await mockCommissioningCandidateReadback(page);
   await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await page.getByRole('button', { name: 'Start 90-second light test', exact: true }).click();
@@ -1042,6 +1084,7 @@ test('commissioning requires an independent exact final wiring GET before cleari
     };
   });
 
+  await mockCommissioningCandidateReadback(page);
   await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await page.getByRole('button', { name: 'Start 90-second light test', exact: true }).click();
@@ -1053,7 +1096,7 @@ test('commissioning requires an independent exact final wiring GET before cleari
   await expect(page.getByRole('button', { name: 'Yes, every output is correct', exact: true })).toBeVisible();
 });
 
-test('legacy staged wiring without authoritative identity cannot confirm and remains recoverable', async ({ page }) => {
+test('legacy staged wiring without authoritative identity cannot confirm and remains recoverable', async ({ page }, testInfo) => {
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await seedCommissioningFlow(page, 'test-legacy');
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -1068,6 +1111,14 @@ test('legacy staged wiring without authoritative identity cannot confirm and rem
     (window as any).__LW_ROLLBACK_COMMISSIONING_WIRING_FOR_TEST__ = async (activationId: string) => ({ state: 'known-good', activationId });
   });
 
+  // Older browser storage has no wiring snapshot; the real card still reports
+  // its live candidate. That permits discarding it, never confirming it.
+  await mockCommissioningCandidateReadback(page, {
+    wiringRevision: 9, wiringDigest: 'd'.repeat(64), ledType: 'WS2815',
+    colorOrder: 'RGB', maxMilliamps: 2400,
+    outputs: [{ id: 'out1', pin: 16, pixels: 44,
+      segments: [{ id: 'strip-1', count: 44, direction: 'forward' }] }],
+  });
   await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await page.getByRole('button', { name: 'Start 90-second light test', exact: true }).click();
@@ -1076,7 +1127,11 @@ test('legacy staged wiring without authoritative identity cannot confirm and rem
   await expect(page.getByRole('alert')).toContainText(/older setup|exact wiring evidence|restore/i);
   await expect.poll(() => page.evaluate(() => (window as any).__legacyConfirmCalls)).toBe(0);
 
-  await page.getByRole('button', { name: 'No, restore working setup', exact: true }).click();
+  const rollback = page.getByRole('button', { name: 'No, restore working setup', exact: true });
+  await expect(rollback).toBeEnabled();
+  await expect(confirm).toBeDisabled();
+  await page.screenshot({ path: testInfo.outputPath('legacy-safe-rollback.png'), fullPage: true });
+  await rollback.click();
   await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__legacyConfirmCalls)).toBe(0);
 });
@@ -1177,6 +1232,7 @@ test('an exact nonzero commissioning flow resumed after reload marks the restore
     };
   });
 
+  await mockCommissioningCandidateReadback(page);
   await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
   await expect(page).toHaveURL(/#screen=card&section=install$/);
   await page.getByRole('button', { name: 'Start 90-second light test', exact: true }).click();
