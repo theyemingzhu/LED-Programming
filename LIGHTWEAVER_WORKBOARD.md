@@ -9,6 +9,26 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Stack chips and explicit creation — verified local build
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 74067ccf.
+Working: compact side-by-side chips with one expanded editor; visible New stack,
+Stack name, Save stack and Save changes. Creation/expansion scrolls to the editor
+and focuses its name. Full section assignments are visible; Patterns has a clear
+Return to save action. Existing unfinished new stacks can be resumed.
+Persistence: New captures current default and every displayed section without
+changing the source record. Draft writes are verified before switching; unfinished
+new drafts preserve untouched sections across chip changes/reload. Errors remain
+visible. Existing layout-review and Lab guards remain enforced.
+Evidence: focused New/save/Resume/lifecycle/browser checks passed; integrated
+checkpoint 2869/2869 unit tests; final production build PASS. Actual 1280x800 and
+390x844 reviewed. /tmp/stacks-chips-checkpoint.log and
+/tmp/stacks-chips-build-final.log; screenshots stack-chips-desktop.png and
+stack-chips-phone.png in this chat's visualizations directory.
+No deployment, firmware changes, card mutation, or storage schema change.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+
 ### Compact stack workflow — verified local refinement
 Owner: this manager; Sprint. State: done at the authorized local-build boundary.
 Artifact: codex/project-pattern-stacks, refinement on local 0d492d27.

@@ -474,7 +474,7 @@ test('fresh whole-piece preview and design target stay synchronized without comm
   await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await expect(previewHeading).toContainText('Lava Lamp');
   await expect(stage).toHaveAttribute('data-preview-patterns', 'lava,lava');
-  await expect(page.getByTestId('look-save-status')).toHaveText('Draft in this browser');
+  await expect(page.getByTestId('stack-new')).toBeVisible();
 
   await outerTarget.click();
   await expect(outerTarget).toHaveClass(/\bon\b/);
@@ -482,7 +482,7 @@ test('fresh whole-piece preview and design target stay synchronized without comm
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await expect(previewHeading).toContainText('Plasma');
   await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma,lava');
-  await expect(page.getByTestId('look-save-status')).toHaveText('Unsaved stack changes');
+  await expect(page.getByTestId('stack-new')).toBeVisible();
 
   await targetSelect.selectOption('patch-default-outer-circle');
   await expect(stage).toHaveAttribute('data-preview-mode', 'strip');
@@ -801,6 +801,7 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
+  await page.getByTestId('stack-new').click();
   await page.getByTestId('look-name').fill('Two GPIO look');
   await page.getByTestId('look-save-preset').click();
   await expect.poll(() => page.evaluate(() => {
@@ -809,12 +810,10 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   })).toBe(true);
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const stackCard = page.getByTestId('project-stack-card').filter({ hasText: 'Two GPIO look' });
-  await stackCard.getByTestId('stack-card-more').click();
-  await stackCard.locator('.project-stack-assignments summary').click();
-  await expect(stackCard.getByText('Outer circle')).toBeVisible();
-  await expect(stackCard.getByText('Fire')).toBeVisible();
-  await expect(stackCard.getByText('Inner circle')).toBeVisible();
-  await expect(stackCard.getByText('Ocean')).toBeVisible();
+  await expect(page.getByTestId('stack-save-bar')).toContainText('Outer circle');
+  await expect(page.getByTestId('stack-save-bar')).toContainText('Fire');
+  await expect(page.getByTestId('stack-save-bar')).toContainText('Inner circle');
+  await expect(page.getByTestId('stack-save-bar')).toContainText('Ocean');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
@@ -910,6 +909,7 @@ test('a saved edit of the installed project can be installed on the same card', 
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]').click();
   await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
+  await page.getByTestId('stack-new').click();
   await page.getByTestId('look-name').fill('Aurora — steady 30%');
   await expect(page.getByTestId('look-save-preset')).toHaveText('Save stack');
   await page.getByTestId('look-save-preset').click();
@@ -1005,7 +1005,8 @@ test('a saved mix sharing a built-in pattern ID remains a distinct playlist entr
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const savedMix = page.getByTestId('project-stack-card').filter({ hasText: 'Aurora saved mix' });
   await expect(savedMix).toBeVisible();
-  await savedMix.getByRole('button', { name: /Add Aurora saved mix to playlist/ }).click();
+  await savedMix.getByRole('button', { name: /Edit Aurora saved mix/ }).click();
+  await page.getByTestId('stack-save-add').click();
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.playlist?.find(item => item.lookId === 'aurora')?.type;
@@ -1036,12 +1037,14 @@ test('updating an imported mix with orphaned section IDs exports its new all-sec
   if (await hardwareNotice.isVisible()) await hardwareNotice.getByRole('button', { name: 'Dismiss notice' }).click();
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   await page.getByTestId('project-stack-card').filter({ hasText: otherMix.label }).getByRole('button', { name: /^Edit / }).click();
+  for (const notice of await page.getByTestId('notice-layer').getByRole('button', { name: 'Dismiss notice' }).all()) await notice.click();
   await page.getByTestId('stack-review').getByRole('button').click();
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.looks?.find(look => look.id === 'three-colors')?.defaultLook?.brightness;
   })).toBe(0.7);
   await page.getByTestId('project-stack-card').filter({ hasText: oldMix.label }).getByRole('button', { name: /^Edit / }).click();
+  for (const notice of await page.getByTestId('notice-layer').getByRole('button', { name: 'Dismiss notice' }).all()) await notice.click();
   await page.getByTestId('stack-review').getByRole('button').click();
   await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
@@ -1194,6 +1197,7 @@ test('Advanced exposes a gentle bounded breathing envelope', async ({ page }) =>
   await sectionTarget.click();
   await expect(page.getByTestId('breathe-summary')).toHaveText('Breathe · 76–94% · 12s');
 
+  await page.getByTestId('stack-new').click();
   await page.getByTestId('look-save-preset').click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3') || '')).toContain('"breatheLowerPct":92');
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -2408,15 +2412,16 @@ test('saving a named mix keeps its name in Tune and Color after reload and selec
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   const before = await page.locator('.pm-cards .pmcard').count();
 
+  await page.getByTestId('stack-new').click();
   await page.getByTestId('look-name').fill('Named section mix');
   await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
 
   // The saved arrangement lives in Project stacks; the generic catalog keeps
   // its own visible cards and is not replaced by the stack.
   await expect(page.getByTestId('project-stack-card').filter({ hasText: 'Named section mix' })).toBeVisible();
   await page.getByRole('tab', { name: 'Patterns', exact: true }).click();
   expect(await page.locator('.pm-cards .pmcard').count()).toBeGreaterThanOrEqual(before);
-  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const savedMix = page.getByTestId('project-stack-card').filter({ hasText: 'Named section mix' });

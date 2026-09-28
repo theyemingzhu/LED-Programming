@@ -508,15 +508,17 @@ function writeSectionDisplayOrder(projectId, ids) {
     const [q, setQ] = useState("");
     const [cat, setCat] = useState("all");
     const [libraryTab, setLibraryTab] = useState('patterns');
-    const [desktopStackPanel, setDesktopStackPanel] = useState(() =>
-      typeof window !== 'undefined' && window.matchMedia('(min-width: 901px)').matches,
-    );
+    const [expandedStackId, setExpandedStackId] = useState(null);
+    const [newStackResumeMessage, setNewStackResumeMessage] = useState('');
+    const stackEditorRef = useRef(null);
     useEffect(() => {
-      const media = window.matchMedia('(min-width: 901px)');
-      const update = () => setDesktopStackPanel(media.matches);
-      media.addEventListener('change', update);
-      return () => media.removeEventListener('change', update);
-    }, []);
+      if (expandedStackId === null || libraryTab !== 'stacks') return;
+      const frame = requestAnimationFrame(() => {
+        stackEditorRef.current?.scrollIntoView({ block: 'start' });
+        stackEditorRef.current?.querySelector('[data-testid="look-name"]')?.focus({ preventScroll: true });
+      });
+      return () => cancelAnimationFrame(frame);
+    }, [expandedStackId, libraryTab]);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const menuRef = useRef(null);
@@ -1923,6 +1925,85 @@ function writeSectionDisplayOrder(projectId, ids) {
       return { nextLook, nextBoard, nextController, nextTargets };
     };
 
+    const completeCurrentStackDraft = () => {
+      const { nextController, nextTargets } = buildCurrentHardwareState();
+      return {
+        [ALL_SECTIONS_TARGET_ID]: nextController.defaultLook,
+        ...Object.fromEntries(nextTargets.filter(target => target.kind === 'section').map(target => [
+          target.id,
+          target.look,
+        ])),
+      };
+    };
+    const keepCurrentStackDraft = () => {
+      if (pendingLookSave || scratchScope !== `${projectId}:${activeLookId}`) {
+        setLookSaveState('Wait for the current stack to finish saving before switching.');
+        setExpandedStackId(activeLookId);
+        setLibraryTab('stacks');
+        return false;
+      }
+      const value = activeLookId === '' && (Object.keys(draftLooks).length || mixName.trim())
+        ? { draftLooks: completeCurrentStackDraft(), mixName, selectedTargetId }
+        : { draftLooks, mixName, selectedTargetId };
+      const result = writeProjectStackDraft(projectId, activeLookId, value);
+      if (result.ok) return true;
+      setScratchError(result.error);
+      setLookSaveState(result.error);
+      setExpandedStackId(activeLookId);
+      setLibraryTab('stacks');
+      return false;
+    };
+    const startNewStack = () => {
+      if (editingLabAuthored) { openLookInLab(); return; }
+      if (activeLookId === '') {
+        if (!keepCurrentStackDraft()) return;
+        if (!Object.keys(draftLooks).length && !mixName.trim()) {
+          const fullDraft = completeCurrentStackDraft();
+          const written = writeProjectStackDraft(projectId, '', { draftLooks: fullDraft, mixName: '', selectedTargetId: ALL_SECTIONS_TARGET_ID });
+          if (!written.ok) { setScratchError(written.error); setLookSaveState(written.error); setExpandedStackId(''); setLibraryTab('stacks'); return; }
+          setDraftLooks(fullDraft);
+        }
+        setExpandedStackId(''); setLibraryTab('stacks');
+        return;
+      }
+      if (!keepCurrentStackDraft()) return;
+      const existing = readProjectStackDraft(projectId, '');
+      if (!existing || (!existing.mixName?.trim() && !Object.keys(existing.draftLooks || {}).length)) {
+        const snapshot = {
+          draftLooks: completeCurrentStackDraft(),
+          mixName: '',
+          selectedTargetId: ALL_SECTIONS_TARGET_ID,
+        };
+        const written = writeProjectStackDraft(projectId, '', snapshot);
+        if (!written.ok) {
+          setScratchError(written.error);
+          setLookSaveState(written.error);
+          setExpandedStackId(activeLookId);
+          setLibraryTab('stacks');
+          return;
+        }
+      }
+      setNewStackResumeMessage(existing && (existing.mixName?.trim() || Object.keys(existing.draftLooks || {}).length) ? 'Resumed your unfinished new stack.' : '');
+      setStandaloneController(previous => ({ ...previous, activeLookId: '' }));
+      setExpandedStackId('');
+      setLibraryTab('stacks');
+    };
+    const openSavedStack = (saved, needsReview) => {
+      if (expandedStackId === saved.id) {
+        if (failedLookSave || scratchError || copyUndo || deletedLook?.projectId === projectId) return;
+        setExpandedStackId(null);
+        return;
+      }
+      if (activeLookId !== saved.id && !keepCurrentStackDraft()) return;
+      if (activeLookId !== saved.id) {
+        if (needsReview) setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
+        else selectCard(adaptSavedLook(saved));
+      }
+      setNewStackResumeMessage('');
+      setExpandedStackId(saved.id);
+      setLibraryTab('stacks');
+    };
+
     // ── handlers ────────────────────────────────────────────────────────
     const promotePatternFirst = (controller, patternId) => {
       const controllerLooks = normalizeSavedLooks(controller?.looks);
@@ -2201,6 +2282,8 @@ function writeSectionDisplayOrder(projectId, ids) {
         setLookSaveState('Saving…');
         setPendingLookSave(saveReceipt(nextController, additionError ? `Saved in project: ${projectName || 'this project'}. ${additionError}` : addToPlaylist ? `Saved in project: ${projectName || 'this project'} and added to playlist.` : `Saved in project: ${projectName || 'this project'}.`));
         setLibraryTab('stacks');
+        setExpandedStackId(savedId);
+        setNewStackResumeMessage('');
         setDeletedLook(null);
         setStatusKind('');
         setStatus('');
@@ -2247,6 +2330,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       try {
         const next = duplicateProjectStack(standaloneController, savedLook.id);
         setStandaloneController(next);
+        setExpandedStackId(next.activeLookId);
         setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: next.looks.find(item => item.id === next.activeLookId) }));
         setLookSaveState('Saving…');
         setPendingLookSave(saveReceipt(next, `Duplicated in ${projectName || 'this project'}.`, { clearDraftIds: [next.activeLookId], resetActiveDraft: false }));
@@ -2825,12 +2909,17 @@ function writeSectionDisplayOrder(projectId, ids) {
     // is gone.
 
     const activeStackPlaylistUseCount = editingSavedLook ? playlist.filter(item => item.lookId === editingSavedLook.id).length : 0;
+    const unfinishedNewDraft = activeLookId !== '' ? readProjectStackDraft(projectId, '') : null;
+    const canResumeNewDraft = Boolean(unfinishedNewDraft?.mixName?.trim() || Object.keys(unfinishedNewDraft?.draftLooks || {}).length);
     const stackSavePanel = (
                 <div className="project-stack-save" data-testid="stack-save-bar" aria-label="Save project stack">
-                  <div className="sec-h"><span className="t">Project stack</span><span className="m">{sectionCount} sections</span></div>
+                  <div className="sec-h"><span className="t">{editingSavedLook ? `Edit ${editingSavedLook.label}` : 'New stack'}</span><span className="m">{sectionCount} sections together</span></div>
+                  <p className="project-stack-save-intro">Choose a pattern for each section, then save them together.</p>
+                  {newStackResumeMessage && !editingSavedLook && <p className="project-stack-resume-note">{newStackResumeMessage}</p>}
+                  <label className="project-stack-name-label" htmlFor="project-stack-name">Stack name</label>
                   <div className="project-stack-save-controls">
-                    <input className="pm-input" data-testid="look-name" aria-label="Stack name" placeholder={suggestProjectStackName(savedLooks)} value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingLabAuthored ? 'Open in Lab' : editingSavedLook ? 'Update stack' : 'Save stack'}</button>
+                    <input id="project-stack-name" className="pm-input" data-testid="look-name" aria-label="Stack name" placeholder="Name your stack" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
+                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingLabAuthored ? 'Open in Lab' : editingSavedLook ? 'Save changes' : 'Save stack'}</button>
                   </div>
                   <span role="status" data-testid="look-save-status" className={`project-stack-save-status${/could not|error|full|review sections/i.test(lookSaveState || scratchError) ? ' is-error' : ''}`}>{scratchError || (lookSaveState && !/^Saved in /.test(lookSaveState) ? lookSaveState : hasUnsavedLookChanges && !pendingLookSave ? 'Unsaved stack changes' : lookSaveState || (editingSavedLook ? `Saved in project: ${projectName || 'this project'}` : 'Draft in this browser'))}</span>
                   {failedLookSave?.projectId === projectId && <button type="button" className="btn" data-testid="stack-save-retry" onClick={() => { setLookSaveState('Retrying…'); setPendingLookSave(failedLookSave); }}>Retry project save</button>}
@@ -2843,16 +2932,15 @@ function writeSectionDisplayOrder(projectId, ids) {
                       : <button type="button" className="wordlink" data-testid="stack-save-add" onClick={() => saveLook(false, true)}>Save &amp; add to playlist</button>)}
                     {editingSavedLook && <StackMoreActions label="More actions" testId="stack-more-actions">
                       <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new stack'}</button>
+                      <button type="button" className="btn" onClick={() => duplicateStack(editingSavedLook)}>Duplicate stack</button>
                       <button type="button" className="btn" data-testid="stack-revert" disabled={!hasUnsavedLookChanges} onClick={revertStackChanges}>Revert changes</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={() => renameLook()}>Rename stack</button>
                       <button type="button" className="btn" data-testid="look-delete" onClick={() => deleteLook()}>Delete stack{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` and remove ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist ${playlist.filter(item => item.lookId === editingSavedLook.id).length === 1 ? 'entry' : 'entries'}` : ''}</button>
                     </StackMoreActions>}
-                    <details className="project-stack-details" data-testid="stack-details"><summary>Stack details</summary>
-                      <p>Every section&apos;s pattern and settings save together in this project.</p>
-                      <p>{savedLooks.length} of {MAX_SAVED_LOOKS} stacks saved in {projectName || 'this project'}.</p>
-                      {activeStackPlaylistUseCount > 0 && <p>This stack appears in {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again after an update to refresh the card.</p>}
-                      <ProjectStackSummary sections={effectiveSectionTargets.filter(target => target.kind === 'section').map(target => ({ id: target.id, label: targetLabel(target), look: target.look }))} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} compact />
-                    </details>
+                  </div>
+                  <div className="project-stack-composition" data-testid="stack-details">
+                    <ProjectStackSummary sections={effectiveSectionTargets.filter(target => target.kind === 'section').map(target => ({ id: target.id, label: targetLabel(target), look: target.look }))} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} compact />
+                    {activeStackPlaylistUseCount > 0 && <p>This stack is in {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again after an update to refresh the card.</p>}
                   </div>
                   {copyUndo && <button type="button" className="btn" data-testid="stack-copy-undo" onClick={() => { setDraftLooks(copyUndo); setCopyUndo(null); }}>Undo copy</button>}
                   {deletedLook?.projectId === projectId && <button type="button" className="btn" data-testid="look-delete-undo" onClick={undoDeleteLook}>Undo delete {deletedLook.label}</button>}
@@ -3144,14 +3232,17 @@ function writeSectionDisplayOrder(projectId, ids) {
                   </div>}
                 </div>
 
-                {!desktopStackPanel && stackSavePanel}
-
                 {/* browse */}
                  <div className={`pm-browse ${libraryTab === 'patterns' ? 'is-pattern-library' : 'is-stack-library'}`} data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
-                  <div className="project-stack-tabs" role="tablist" aria-label="Lighting library">
-                    <button type="button" role="tab" aria-selected={libraryTab === 'patterns'} onClick={() => setLibraryTab('patterns')}>Patterns</button>
-                    <button type="button" role="tab" aria-selected={libraryTab === 'stacks'} onClick={() => setLibraryTab('stacks')}>Project stacks ({savedLooks.length})</button>
+                  <div className="project-stack-library-head">
+                    <div className="project-stack-tabs" role="tablist" aria-label="Lighting library">
+                      <button type="button" role="tab" aria-selected={libraryTab === 'patterns'} onClick={() => setLibraryTab('patterns')}>Patterns</button>
+                      <button type="button" role="tab" aria-selected={libraryTab === 'stacks'} onClick={() => setLibraryTab('stacks')}>Project stacks ({savedLooks.length})</button>
+                    </div>
+                    <button type="button" className="btn project-stack-new" data-testid="stack-new" onClick={startNewStack}>{canResumeNewDraft ? 'Resume new draft' : '+ New stack'}</button>
                   </div>
+                  {expandedStackId === null && (scratchError || /could not|wait for|error/i.test(lookSaveState)) && <p className="project-stack-launch-error" role="alert">{scratchError || lookSaveState}</p>}
+                  {libraryTab === 'patterns' && <div className="project-stack-howto">Choose a pattern for each section, then save them together.{expandedStackId !== null && <button type="button" className="wordlink" data-testid="stack-return-save" onClick={() => setLibraryTab('stacks')}>Return to save stack</button>}</div>}
                   {libraryTab === 'stacks' ? <div className="project-stack-library" role="tabpanel" aria-label="Project stacks">
                     <label className="search"><span className="sr-only">Search project stacks</span>{I.search}<input value={stackSearch} onChange={event => setStackSearch(event.target.value)} placeholder={`Search stacks in ${projectName || 'this project'}`} /></label>
                     <div className="project-stack-shelf">
@@ -3160,36 +3251,19 @@ function writeSectionDisplayOrder(projectId, ids) {
                         const compatibility = getProjectStackCompatibility(saved);
                         const useCount = playlist.filter(item => item.lookId === saved.id).length;
                         return <article key={saved.id} className={`project-stack-card${saved.id === activeLookId ? ' is-active' : ''}`} data-testid="project-stack-card">
-                          <div className="project-stack-card-main">
-                            <button type="button" className="project-stack-name-button project-stack-card-head" aria-label={`Edit ${saved.label}`} onClick={() => {
-                              if (summary.review.needsReview) {
-                                setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
-                                setLibraryTab('stacks');
-                              } else selectCard(adaptSavedLook(saved));
-                            }}><strong>{saved.label}</strong><small>{summary.sectionCount} sections · {useCount ? `${useCount} playlist ${useCount === 1 ? 'use' : 'uses'}` : 'Not in playlist'}</small></button>
-                            <div className="project-stack-swatch" aria-hidden="true">{summary.sections.map(section => {
+                          <button type="button" className="project-stack-name-button project-stack-card-head" aria-label={`Edit ${saved.label}`} aria-expanded={expandedStackId === saved.id} aria-controls="stack-editor" onClick={() => openSavedStack(saved, summary.review.needsReview)}>
+                            <strong>{saved.label}</strong>
+                            <span className="project-stack-swatch" aria-hidden="true">{summary.sections.map(section => {
                               const off = ['off', 'blackout'].includes(section.patternId) || section.look?.brightness === 0;
                               return <span key={section.id} className={off ? 'is-off' : ''} style={{ '--stack-color': REAL_PATTERN_BY_ID.get(section.patternId)?.pal?.[2] || '#8398aa' }} />;
-                            })}</div>
-                            {compatibility.ok && !summary.review.needsReview && !useCount && <button type="button" className="btn project-stack-add" aria-label={`Add ${saved.label} to playlist`} onClick={() => setSavedLookInPlaylist(saved, true)}>Add</button>}
-                            <StackMoreActions label="More" ariaLabel={`More actions for ${saved.label}`} testId="stack-card-more">
-                              <details className="project-stack-assignments"><summary>Section assignments</summary><ProjectStackSummary sections={summary.sections} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} /></details>
-                              {!compatibility.ok && <button type="button" className="btn" onClick={() => {
-                                const result = writePatternLabEditHandoff(projectId, saved);
-                                if (!result.ok) { setLookSaveState(result.error); return; }
-                                window.location.hash = '#screen=pattern-lab';
-                              }}>Open in Lab</button>}
-                              <button type="button" className="btn" onClick={() => duplicateStack(saved)}>Duplicate</button>
-                              <button type="button" className="btn" onClick={() => { setRenamingStackId(saved.id); setRenameDraft(saved.label); }}>Rename</button>
-                              <button type="button" className="btn" onClick={() => deleteLook(saved)}>Delete{useCount ? ` · ${useCount} playlist ${useCount === 1 ? 'use' : 'uses'}` : ''}</button>
-                            </StackMoreActions>
-                          </div>
-                          {(!compatibility.ok || summary.review.needsReview) && <div className="project-stack-card-warning">{!compatibility.ok ? compatibility.reason : 'Review sections before adding to playlist'}</div>}
-                          {renamingStackId === saved.id && <div className="project-stack-rename"><input className="pm-input" aria-label={`New name for ${saved.label}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)} /><button type="button" className="btn" onClick={() => renameLook(saved, renameDraft)}>Save name</button><button type="button" className="btn" onClick={() => setRenamingStackId('')}>Cancel</button></div>}
+                            })}</span>
+                          </button>
+                          {(!compatibility.ok || summary.review.needsReview) && <div className="project-stack-card-warning">{!compatibility.ok ? compatibility.reason : 'Review sections'}</div>}
                         </article>;
                       })}
                       {!savedLooks.length && <p className="project-stack-empty">No project stacks yet. Choose a pattern for each section, then save the whole arrangement above.</p>}
                     </div>
+                    {expandedStackId !== null && <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef} style={{ scrollMarginTop: 84 }}>{stackSavePanel}</div>}
                   </div> : <>
                   {/* One header bar for the whole module: the light, the name,
                       and the counts pushed right. The counts are read with a
@@ -3335,7 +3409,6 @@ function writeSectionDisplayOrder(projectId, ids) {
 
               {/* ASIDE */}
               <aside className="pm-aside">
-                {desktopStackPanel && stackSavePanel}
                  <div className="pm-instrument" data-testid="pattern-instrument" inert={handoffInvalid ? '' : undefined}>
                 <div className="card pm-pane pm-tune-pane">
                   {/* Every panel in this vocabulary opens with a header bar and
