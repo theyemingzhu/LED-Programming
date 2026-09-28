@@ -10,7 +10,7 @@ import { applyPatternLabHandoff, createPatternLabHandoff } from './patternLabHan
 import { classifyPatternLabCompatibility } from './patternLabCompatibility.js';
 import { recipeFromLook } from './patternLabFromLook.js';
 import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
-import { applySavedLookToPatchBoard } from './sectionLookModel.js';
+import { applySavedLookToPatchBoard, deriveSectionTargets } from './sectionLookModel.js';
 
 const CARD_ID = 'lw-adoption-test-card';
 const FIRMWARE_VERSION = '1.0.0';
@@ -385,9 +385,9 @@ test('card reconstruction preserves saved section appearances and pattern ids th
   const zones = { startupPatternId: 'combo-three-colors', zones: patterns.patterns[0].zones };
   const first = reconstructInstalledCardState({ skeleton, patterns, zones });
   const controller = first.devices.standaloneController;
-  assert.deepEqual(Object.keys(controller.looks[0].sectionLooks), ['patch-first', 'patch-middle', 'patch-last']);
+  assert.deepEqual(Object.keys(controller.looks[0].sectionLooks), ['patch-strip-1', 'patch-strip-2', 'patch-strip-3']);
   assert.deepEqual(Object.values(controller.looks[0].sectionLooks).map(look => look.brightness), [0.4, 0.6, 0.8]);
-  assert.deepEqual(Object.keys(controller.looks[1].sectionLooks), ['patch-first', 'patch-middle', 'patch-last']);
+  assert.deepEqual(Object.keys(controller.looks[1].sectionLooks), ['patch-strip-1', 'patch-strip-2', 'patch-strip-3']);
   assert.deepEqual(Object.values(controller.looks[1].sectionLooks).map(look => look.brightness), [0.3, 0.3, 0.3]);
   const applied = applySavedLookToPatchBoard({ patchBoard: first.patchBoard, strips: first.strips, savedLook: controller.looks[0] });
   assert.deepEqual(applied.patches.map(patch => patch.playback.patternId), ['fire', 'ocean', 'plasma']);
@@ -415,6 +415,78 @@ test('card reconstruction preserves saved section appearances and pattern ids th
     });
     exported = exportProject(next);
   }
+});
+
+test('card reconstruction hydrates current section playback from live zones without changing saved looks', () => {
+  const counts = [11, 5, 10, 10, 5];
+  const output = {
+    id: 'one-output', pin: 18, pixels: 41,
+    segments: counts.map((count, index) => ({ id: `run-strip-${index + 1}`, count, direction: 'forward' })),
+  };
+  const skeleton = projectSkeletonFromCardStatus(statusEnvelope({ outputs: [output] }));
+  const ids = counts.map((_, index) => `strip-${index + 1}`);
+  const ranges = counts.map((count, index) => ({ start: counts.slice(0, index).reduce((sum, next) => sum + next, 0), count }));
+  const livePatterns = ['aurora', 'ripple', 'sparkle', 'lava', 'sparkle'];
+  const savedAllSparkle = ids.map((id, index) => ({
+    id, label: `Strip ${index + 1}`, patternId: 'sparkle', ranges: [ranges[index]],
+  }));
+  const installedZones = ids.map((id, index) => ({
+    ...savedAllSparkle[index], patternId: livePatterns[index], brightness: 0.5 + index / 10,
+  }));
+  const adopted = reconstructInstalledCardState({
+    skeleton,
+    patterns: { currentId: 'lightweaver-section-layout', patterns: [
+      { id: 'lightweaver-section-layout', label: 'Current sections', zones: savedAllSparkle },
+      { id: 'saved-inactive', label: 'Saved inactive look', zones: savedAllSparkle },
+    ] },
+    zones: { startupPatternId: 'lightweaver-section-layout', zones: installedZones },
+  });
+  const controller = adopted.devices.standaloneController;
+  const active = controller.looks.find(look => look.id === controller.activeLookId);
+  const inactive = controller.looks.find(look => look.id === 'card-saved-inactive');
+  assert.equal(controller.activeLookId, 'card-lightweaver-section-layout');
+  const currentSections = deriveSectionTargets({ strips: adopted.strips, patchBoard: adopted.patchBoard, wiring: adopted.wiring })
+    .filter(target => target.kind === 'section');
+  assert.deepEqual(currentSections.map(target => target.look.patternId), livePatterns);
+  assert.deepEqual(currentSections.map(target => target.look.brightness), [0.5, 0.6, 0.7, 0.8, 0.9]);
+  assert.deepEqual(ids.map(id => active.sectionLooks[`patch-${id}`].patternId), ids.map(() => 'sparkle'));
+  assert.deepEqual(ids.map(id => inactive.sectionLooks[`patch-${id}`].patternId), ids.map(() => 'sparkle'));
+});
+
+test('reconstructed sections keep the card zone identities when a segment has a different id', () => {
+  const counts = [11, 5, 10, 10, 5];
+  const output = {
+    id: 'out1', pin: 18, pixels: 41,
+    segments: counts.map((count, index) => ({
+      id: index === 0 ? 'bench-18-full' : `run-strip-${index + 1}`,
+      count, direction: 'forward',
+    })),
+  };
+  const installedZones = counts.map((count, index) => ({
+    id: `strip-${index + 1}`, patternId: 'aurora',
+    ranges: [{ start: counts.slice(0, index).reduce((total, next) => total + next, 0), count }],
+  }));
+  const skeleton = projectSkeletonFromCardStatus(statusEnvelope({ outputs: [output] }));
+  const adopted = reconstructInstalledCardState({
+    skeleton,
+    patterns: { currentId: 'aurora', patterns: [{ id: 'aurora', label: 'Aurora', zones: installedZones }] },
+    zones: { startupPatternId: 'aurora', zones: installedZones },
+  });
+  assert.deepEqual(adopted.strips.map(strip => strip.id), installedZones.map(zone => zone.id));
+  assert.deepEqual(adopted.wiring.runs.map(run => run.id), output.segments.map(segment => segment.id));
+  assert.deepEqual(adopted.patchBoard.patches.map(patch => patch.id), installedZones.map(zone => `patch-${zone.id}`));
+  const exported = buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: adopted.strips,
+    patchBoard: adopted.patchBoard, wiring: adopted.wiring,
+    standaloneController: adopted.devices.standaloneController,
+  });
+  assert.deepEqual(exported.config.zones.map(zone => zone.id), installedZones.map(zone => zone.id));
+  assert.deepEqual(exported.config.zones.map(zone => zone.ranges), installedZones.map(zone => zone.ranges));
+
+  const mismatchedZones = installedZones.map((zone, index) => index === 0
+    ? { ...zone, ranges: [{ start: 0, count: 10 }] } : zone);
+  const unaligned = reconstructInstalledCardState({ skeleton, zones: { zones: mismatchedZones } });
+  assert.equal(unaligned.strips[0].id, 'bench-18-full', 'a different physical range must not be relabelled as the card zone');
 });
 
 test('native journey card readback preserves exact phase through Lab handoff, edits, preview, and resave', async () => {

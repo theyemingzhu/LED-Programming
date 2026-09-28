@@ -1216,6 +1216,34 @@ test('[F34-one-door] a connected, capable card opens straight on the preserving 
   expect(crashes, 'the screen crashed').toEqual([]);
 });
 
+test('[same-build-door] a connected configured card stays safe when the signed release resolves to its installed build', async ({ page }) => {
+  const spec = { ...realCardOlderBuildSpec(), buildId: TARGET_BUILD, buildNumber: 2160, firmwareVersion: '1.2.0' };
+  const card = createCardSimulator(spec, { cardId: CARD_ID });
+  await card.install(page);
+  await installHttpsStudio(page, testBaseURL);
+  await seedKnownRealCard(page);
+  await page.addInitScript(({ targetBuild }) => {
+    (window as any).__LW_LOAD_UPDATE_RELEASE_FOR_TEST__ = async () => {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      return { manifest: { target: 'esp32-s3-n16r8', firmwareVersion: '1.2.0', buildId: targetBuild, buildNumber: 2160 } };
+    };
+  }, { targetBuild: TARGET_BUILD });
+
+  await page.goto(`${STUDIO_ORIGIN}/#screen=card&section=install`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('preserving-release-status')).toContainText('Verified official update');
+  await expect(page.getByText('This card is up to date')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Update over Wi-Fi' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Install Lightweaver' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Find connected card' })).toHaveCount(0);
+  await expect(page.getByText('Erase card and install Lightweaver')).toHaveCount(0);
+  await page.getByText('Need another way?').click();
+  await page.getByRole('button', { name: 'Reinstall this build over USB while keeping card data' }).click();
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Update Lightweaver' })).toBeVisible();
+  await expect(page.getByText('Erase card and install Lightweaver')).toHaveCount(0);
+});
+
 test('[F35-reach] a card the footer calls Connected is never reported unreachable on the install screen', async ({ page }) => {
   const spec = realCardOlderBuildSpec();
   const card = createCardSimulator(spec, { cardId: CARD_ID });

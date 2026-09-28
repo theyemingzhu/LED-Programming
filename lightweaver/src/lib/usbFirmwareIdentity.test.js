@@ -202,6 +202,49 @@ test('an exact signed candidate can finish past the ordinary scan deadline, with
   assert.ok(clock > 25_000 && clock <= 60_000);
 });
 
+test('the verified current release is identified after a slow first-chunk match without scanning the whole slot', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../../public/firmware/release-manifest.json', import.meta.url)));
+  const factory = new Uint8Array(await readFile(new URL(`../../public${manifest.image.url}`, import.meta.url)));
+  const imageBytes = new Uint8Array(await readFile(new URL(`../../public${manifest.update.image.url}`, import.meta.url)));
+  const ticket = JSON.parse(await readFile(new URL(`../../public${manifest.update.ticket.url}`, import.meta.url)));
+  let clock = 0;
+  const reads = [];
+  const identity = await readLightweaverFirmwareIdentity({
+    async readFlash(address, size) {
+      reads.push([address, size]);
+      clock += 2_500;
+      return flashReader(factory).readFlash(address, size);
+    },
+  }, { verifiedRelease: { manifest, ticket, imageBytes }, now: () => clock });
+  assert.equal(identity?.buildId, manifest.buildId);
+  assert.equal(identity?.buildNumber, manifest.buildNumber);
+  assert.equal(identity?.source, 'usb-flash');
+  assert.ok(clock > 25_000 && clock < 130_000);
+  assert.ok(reads.length < LIGHTWEAVER_APP_PARTITION_SIZE / USB_FIRMWARE_READ_CHUNK_SIZE);
+});
+
+test('a matching current-release prefix cannot identify altered later app bytes', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../../public/firmware/release-manifest.json', import.meta.url)));
+  const factory = new Uint8Array(await readFile(new URL(`../../public${manifest.image.url}`, import.meta.url)));
+  const imageBytes = new Uint8Array(await readFile(new URL(`../../public${manifest.update.image.url}`, import.meta.url)));
+  const ticket = JSON.parse(await readFile(new URL(`../../public${manifest.update.ticket.url}`, import.meta.url)));
+  factory[LIGHTWEAVER_APP_PARTITION_OFFSET + 0x180000] ^= 1;
+  assert.equal(await readLightweaverFirmwareIdentity(flashReader(factory), {
+    verifiedRelease: { manifest, ticket, imageBytes },
+  }), null);
+});
+
+test('a current signed release candidate does not hide an older signed image on the card', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../../public/firmware/release-manifest.json', import.meta.url)));
+  const imageBytes = new Uint8Array(await readFile(new URL(`../../public${manifest.update.image.url}`, import.meta.url)));
+  const ticket = JSON.parse(await readFile(new URL(`../../public${manifest.update.ticket.url}`, import.meta.url)));
+  const identity = await readLightweaverFirmwareIdentity(flashReader(await signed2070Flash()), {
+    verifiedRelease: { manifest, ticket, imageBytes },
+  });
+  assert.equal(identity?.buildNumber, signed2070.buildNumber);
+  assert.equal(identity?.source, 'usb-flash');
+});
+
 test('signed build 2070 is not accepted when the final flash read exceeds its deadline', async () => {
   const flash = await signed2070Flash();
   let clock = 0;

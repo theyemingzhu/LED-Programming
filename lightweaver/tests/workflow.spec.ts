@@ -57,6 +57,7 @@ async function mockLocalCard(page: any, options: any = {}) {
     zones: options.zones || compiledZones,
     savedConfig: null as any,
     operations: [] as string[],
+    zoneReadsAfterConfig: [] as string[][],
     controls: [] as any[],
   };
 
@@ -95,6 +96,9 @@ async function mockLocalCard(page: any, options: any = {}) {
     }
     if (pathname === '/api/zones') {
       card.operations.push('zones');
+      if (card.savedConfig) {
+        card.zoneReadsAfterConfig.push(card.zones.map((zone: any) => zone.id));
+      }
       await route.fulfill({ json: { ok: true, syncZones: false, zones: card.zones } });
       return;
     }
@@ -403,9 +407,13 @@ test('complete playlist sync writes and verifies all card sections', async ({ pa
   await page.getByRole('button', { name: 'Preview on a short strip' }).click();
 
   card.operations.length = 0;
+  card.zoneReadsAfterConfig.length = 0;
   await page.getByRole('button', { name: 'Install playlist on card' }).click();
   await expect.poll(() => card.savedConfig).not.toBeNull();
-  await expect.poll(() => card.operations).toEqual(['config', 'zones']);
+  await expect.poll(() => card.zoneReadsAfterConfig).toContainEqual([
+    'default-outer-circle',
+    'default-inner-circle',
+  ]);
 
   expect(card.savedConfig.zones.map((zone: any) => zone.id)).toEqual([
     'default-outer-circle',

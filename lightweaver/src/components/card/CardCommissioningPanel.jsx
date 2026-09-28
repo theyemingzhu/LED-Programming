@@ -1147,6 +1147,7 @@ export function CardCommissioningPanel({
   const postFlashInconclusive = flow.stage === 'set-up-card'
     && flow.postFlashDetection === 'inconclusive'
     && ['setup-required', 'setup-joined'].includes(flow.networkState);
+  const inspectedCardNetworkUnconfirmed = flow.operation === 'inspect-card' && postFlashInconclusive;
 
   // Whether anything is actually watching for the card to come back. The
   // auto-advance poll below is a direct http fetch, which a page served over
@@ -1474,7 +1475,15 @@ export function CardCommissioningPanel({
               <button type="button" className="btn" onClick={useSetupNetworkPathInstead}>{setupSsid ? `No — the card is showing ${setupSsid}` : 'No — the card is showing its setup hotspot'}</button>
             </div>
           )}
-          {!flow.cardAcknowledgedAt && !['found', 'return-to-gallery'].includes(detection.state) && postFlashInconclusive && flow.networkState === 'setup-required' && (
+          {!flow.cardAcknowledgedAt && !['found', 'return-to-gallery'].includes(detection.state) && inspectedCardNetworkUnconfirmed && flow.networkState === 'setup-required' && (
+            <div className="card-commissioning-network" data-post-flash="inspect-inconclusive">
+              <p role="status"><strong>Checking this card’s Wi-Fi connection.</strong> USB confirmed the exact card and firmware, but its network address was not ready yet. Reconnect this card when it finishes joining Wi-Fi.</p>
+              <button type="button" className="btn primary" onClick={reconnectInstalledCard} disabled={reconnecting}>
+                {reconnecting ? 'Checking this card…' : 'Reconnect installed card'}
+              </button>
+            </div>
+          )}
+          {!flow.cardAcknowledgedAt && !['found', 'return-to-gallery'].includes(detection.state) && postFlashInconclusive && !inspectedCardNetworkUnconfirmed && flow.networkState === 'setup-required' && (
             <div className="card-commissioning-network" data-post-flash="inconclusive">
               <p role="status"><strong>Join the card&rsquo;s Wi-Fi.</strong> Open this device&rsquo;s Wi-Fi settings and join <strong>{setupNetworkLabel}</strong>. Return to this Studio tab when it is connected.</p>
               <div className="card-connection-actions">

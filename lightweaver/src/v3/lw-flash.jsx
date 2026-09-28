@@ -526,6 +526,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     onFirmwareSession,
     canWebSerialInstall = false,
     onSwitchToUsb,
+    alreadyOnPublishedFirmware = false,
+    usbInspectionReady = false,
+    usbInspectionError = '',
   }) {
     const [confirming, setConfirming] = useState(false);
     const [usbConfirmed, setUsbConfirmed] = useState(false);
@@ -766,6 +769,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     }, [card.id, phase, readiness?.host, reconnectHost, target, recoveryAttemptVersion]);
 
     const start = async () => {
+      if (mode === 'wifi' && alreadyOnPublishedFirmware) return;
+      if (mode === 'usb' && !usbInspectionReady) return;
       if (!release || (mode === 'wifi' ? !softwareGrantReady : !usbConfirmed)) return;
       if (mode === 'usb' && ['sending', 'verification-unknown'].includes(readFirmwareUpdateSession()?.phase)) {
         setConfirming(false);
@@ -992,12 +997,20 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         </div>
         {!usbResultUnknown && !confirming && phase === 'idle' && (
           <div className="preserving-update-choice">
-            {cardCannotTakeWifiUpdate ? (
+            {mode === 'usb' && !usbInspectionReady ? (
+              <p className="preserving-update-notice" role={usbInspectionError ? 'alert' : 'status'} data-testid="preserving-usb-inspection-required">
+                {usbInspectionError || 'Select and verify this exact USB card before starting the preserving update.'}
+              </p>
+            ) : mode === 'wifi' && alreadyOnPublishedFirmware ? (
+              <p className="preserving-update-notice" role="status" data-testid="preserving-update-current-build">
+                This card is up to date. Its Wi-Fi, project, patterns, wiring, and settings are safe.
+              </p>
+            ) : cardCannotTakeWifiUpdate ? (
               <p className="preserving-update-notice" role="status" data-testid="preserving-update-usb-required-notice">
                 This card needs USB for this update. Future updates can use Wi-Fi.
               </p>
             ) : mode === 'usb' ? <p>Keep the USB cable connected during the update.</p> : null}
-            {cardCannotTakeWifiUpdate && canWebSerialInstall ? (
+            {(mode === 'usb' && !usbInspectionReady) || (mode === 'wifi' && alreadyOnPublishedFirmware) ? null : cardCannotTakeWifiUpdate && canWebSerialInstall ? (
               <button
                 className="btn-lg"
                 type="button"
@@ -1019,9 +1032,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
                 {actionLabel}
               </button>
             )}
-            {mode === 'wifi' && !cardCannotTakeWifiUpdate && canWebSerialInstall && <details className="preserving-update-details preserving-update-alternative">
+            {mode === 'wifi' && (alreadyOnPublishedFirmware || !cardCannotTakeWifiUpdate) && canWebSerialInstall && <details className="preserving-update-details preserving-update-alternative">
               <summary>Need another way?</summary>
-              <button className="btn" type="button" data-testid="preserving-update-secondary-action" onClick={onSwitchToUsb}>Use USB instead</button>
+              <button className="btn" type="button" data-testid="preserving-update-secondary-action" onClick={onSwitchToUsb}>{alreadyOnPublishedFirmware ? 'Reinstall this build over USB while keeping card data' : 'Use USB instead'}</button>
             </details>}
           </div>
         )}
@@ -1165,6 +1178,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // preserving panel wins over the wifi/usb resolution below, for as long
     // as this screen stays mounted. See `preservingMode` further down.
     const [preferUsbUpdate, setPreferUsbUpdate] = useState(false);
+    const [selectedUsbUpdateCard, setSelectedUsbUpdateCard] = useState(null);
     const [commissioning, setCommissioning] = useState(readCardCommissioning);
     // Only a flow present at mount represents an interrupted install. A new
     // flow written by this mounted installer must retain its active USB UI.
@@ -1243,10 +1257,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const updateReadiness = preservingFixture?.readiness || cardLink?.readiness || null;
     const connectedCardCandidate = preservingFixture?.card || cardLink?.card || null;
     // A card already running the published release has nothing to update TO.
-    // Offering "Update this card over Wi-Fi" with the identical version and
-    // build printed on both the Installed and Update rows is the same false
-    // alarm the connect panel used to raise — and here it is the first thing an
-    // owner sees on the Install screen.
+    // Keep it on the preserving card-software panel and hide the Wi-Fi update
+    // action; dropping this card from connectedUpdateCard below exposes the
+    // destructive factory installer as soon as the signed manifest resolves.
     const publishedManifest = updateReleaseState.state === 'ready' ? updateReleaseState.release.manifest : null;
     const alreadyOnPublishedFirmware = Boolean(
       publishedManifest?.buildId
@@ -1295,7 +1308,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       bridge,
     });
     const connectedUpdateCard = cardAdvertisesNetworkUpdate && (cardLinkIsConnected || factoryUpdateReady)
-      && connectedCardCandidate && !alreadyOnPublishedFirmware
+      && connectedCardCandidate
       ? { ...connectedCardCandidate, bootId: updateReadiness.bootId, projectHead: updateReadiness.projectHead }
       : null;
     const usbUpdateCard = (cardState.state === 'ready' || cardState.state === 'reconnecting')
@@ -1326,11 +1339,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       && ['sending', 'verification-unknown'].includes(recoverySession.phase);
     const preservingMode = preservingFixture?.mode
       || (uncertainUsbRecovery ? 'usb'
-        : preferUsbUpdate && (connectedUpdateCard || usbUpdateCard) ? 'usb'
+        : preferUsbUpdate && (connectedUpdateCard || usbUpdateCard || selectedUsbUpdateCard) ? 'usb'
         : connectedUpdateCard ? 'wifi'
           : usbUpdateCard && updateReleaseState.state === 'ready' ? 'usb'
             : recoveryCard ? (recoverySession.mode === 'usb' ? 'usb' : 'wifi') : '');
-    const preservingCard = (recoverySession?.mode === 'usb' ? recoveryCard : null) || connectedUpdateCard || usbUpdateCard
+    const preservingCard = (recoverySession?.mode === 'usb' ? recoveryCard : null) || connectedUpdateCard || usbUpdateCard || selectedUsbUpdateCard
       || (preservingFixture?.mode === 'usb' ? preservingFixture.card : null)
       || recoveryCard;
     // A browser that remembers a configured card it has actually reached
@@ -1385,6 +1398,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const inspectionInvalidRef = useRef(false);
     const inspectionReleaseRef = useRef(null);
     const browserAssociationRef = useRef(null);
+    const usbInspectionReady = cardState.state === 'ready'
+      && cardState.hardware?.source === 'usb-flash'
+      && cardState.hardware.cardId === preservingCard?.id
+      && Boolean(loaderRef.current && transportRef.current)
+      && !inspectionInvalidRef.current;
     const InstallHeading = embedded ? 'h2' : 'h1';
 
     useEffect(() => {
@@ -1434,6 +1452,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       };
       setUsbFirmwareRead({ state: 'reading', progress: 0, bytesRead: 0, totalBytes: 0 });
       firmwareReadRef.current.done = readConnectedEspFirmwareIdentity(loader, hardware, {
+        verifiedRelease: updateReleaseState.state === 'ready' ? updateReleaseState.release : null,
         shouldStop: () => !live() || installingRef.current,
         onReadFailure: invalidate,
         onProgress: ({ bytesRead, totalBytes }) => {
@@ -1632,7 +1651,11 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         // which app actually booted. Ask the running app for its exact signed
         // identity before starting that scan. A failed/mismatched hello never
         // authorizes Wi-Fi mutation or a current-firmware claim.
-        if ((!testFindCard || found.probeCurrentRuntime === true)
+        // An explicit preserving USB choice must retain the inspected loader
+        // and let the owner start that update. The current-build runtime hello
+        // below is an install-only shortcut: it starts commissioning and
+        // redirects a configured card to Wi-Fi setup without writing firmware.
+        if (preservingMode !== 'usb' && (!testFindCard || found.probeCurrentRuntime === true)
           && connection.transport?.device && releaseState.state === 'ready') {
           const port = connection.transport.device;
           if (!await releaseInspectedConnection(connection.loader, connection.transport)) {
@@ -2379,7 +2402,13 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               transportRef={transportRef}
               usbInspectionInvalidRef={inspectionInvalidRef}
               canWebSerialInstall={capabilities.canWebSerialInstall}
-              onSwitchToUsb={() => setPreferUsbUpdate(true)}
+              onSwitchToUsb={() => {
+                setSelectedUsbUpdateCard(connectedUpdateCard || usbUpdateCard || preservingCard);
+                setPreferUsbUpdate(true);
+              }}
+              alreadyOnPublishedFirmware={alreadyOnPublishedFirmware}
+              usbInspectionReady={usbInspectionReady}
+              usbInspectionError={cardState.state === 'error' ? cardState.error : ''}
               onUsbReleased={() => {
                 if (inspectionRef.current) clearActiveUsbInspection(inspectionRef.current);
                 inspectionRef.current = null;
