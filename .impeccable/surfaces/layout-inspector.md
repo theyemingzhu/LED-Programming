@@ -40,3 +40,13 @@ Unmapped artwork has a named Create strip action; mapped artwork uses its strip'
 single editor. Identify project-wide LED totals, data-wire groupings, the strip
 whose settings are open, and each connected section's parent. No detached Update,
 Flip, or Remove rows above the strip inventory.
+
+First-pass interaction refinement: the list has one row per physical strip or
+connected section, without numeric row prefixes. Each row edits its LED count
+directly; Enter and blur commit, Escape discards, and plus/minus change one LED.
+Changing a connected count re-slices its parent path and updates the project
+total. The selected section alone opens its details, including count-derived
+length, shared reel density, GPIO, data direction, first light, split/merge, and
+family GPIO. The separate boundary field and repeated section navigation are
+gone. A row's pattern action opens a visual gallery inside Layout; selecting a
+pattern updates that section target only and returns focus to its trigger.

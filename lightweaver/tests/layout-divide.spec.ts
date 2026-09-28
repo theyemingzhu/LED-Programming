@@ -24,7 +24,7 @@ async function createOneStrip(page: any) {
 }
 
 async function setStripLedCount(page: any, count: number) {
-  const input = page.locator('.la-strip-detail input[type="number"]').first();
+  const input = page.locator('.la-strip-row .la-row-count input').first();
   await input.fill(String(count));
   await input.blur();
 }
@@ -36,8 +36,7 @@ async function expectSectionCounts(page: any, counts: number[]) {
 }
 
 function rowCounts(page: any) {
-  return page.locator('.la-strip-row .layer-len').allTextContents()
-    .then((texts: string[]) => texts.map(text => Number.parseInt(text, 10)));
+  return page.locator('.la-strip-row .la-row-count input').evaluateAll((inputs: HTMLInputElement[]) => inputs.map(input => Number(input.value)));
 }
 
 test('dividing a 41-LED strip into 4 makes four strips of 11, 10, 10, 10', async ({ page }) => {
@@ -64,8 +63,8 @@ test('dividing into 3 spreads the remainder from the first section, and survives
   await createOneStrip(page);
   // A custom name keeps this persistence check independent of generated naming.
   await page.locator('.la-strip-row .layer-name').dblclick();
-  await page.locator('.la-strip-row input').fill('Ribbon');
-  await page.locator('.la-strip-row input').press('Enter');
+  await page.locator('.la-strip-row input[type="text"]').fill('Ribbon');
+  await page.locator('.la-strip-row input[type="text"]').press('Enter');
   await setStripLedCount(page, 41);
 
   await page.locator('[data-testid^="divide-sections-"]').fill('3');
