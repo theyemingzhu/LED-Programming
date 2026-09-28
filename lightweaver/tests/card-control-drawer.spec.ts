@@ -177,6 +177,7 @@ test('a connected footer opens customer card controls without a popup', async ({
   await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('combo-moon-look');
   await drawer.getByRole('button', { name: 'Advanced editing' }).click();
   await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 20_000 });
-  await expect(page.getByRole('button', { name: /Moon look mix/i })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await expect(page.getByTestId('project-stack-card').getByRole('button', { name: 'Select Moon look' })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).searchParams.has('editLook')).toBe(false);
 });

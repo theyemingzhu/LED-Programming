@@ -44,6 +44,8 @@ test('a complete layer stack survives Patterns, Lab, reload and update without c
   const promoted = page.getByTestId('pattern-lab-use-in-project-promoted');
   await promoted.getByRole('button', { name: 'Add to Patterns', exact: true }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').getByRole('button', { name: `Edit ${recipe.name}` }).click();
   await expect(page.getByTestId('look-name')).toHaveValue(recipe.name);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   const controller = saved.devices.standaloneController;
@@ -65,6 +67,8 @@ test('a complete layer stack survives Patterns, Lab, reload and update without c
     localStorage.setItem('lw_autosave_v3', JSON.stringify(value));
   }, playlist);
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').getByRole('button', { name: `Edit ${recipe.name}` }).click();
   await expect(page.getByTestId('look-name')).toHaveValue(recipe.name);
   await page.getByTestId('open-pattern-lab').click();
   await openControls(page);
