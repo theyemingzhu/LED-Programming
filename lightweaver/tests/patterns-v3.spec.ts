@@ -30,17 +30,17 @@ async function setRangeValue(locator, value: string) {
 // cannot drift into modelling a card that could not exist: a zone list in the
 // wrong namespace makes every targeted preview silently fall back to the whole
 // strip, which is a pass that proves nothing.
-const DEFAULT_CARD_ZONE_IDS = (({ layout }) => compileWiring({
+const DEFAULT_CARD_ZONES = (({ layout }) => compileWiring({
   wiring: layout.wiring,
   strips: layout.strips,
   groups: layout.layerGroups,
-}).zones.map(zone => zone.id))(createDefaultProject());
+}).zones.map(zone => ({ id: zone.id, ranges: zone.ranges })))(createDefaultProject());
 
 async function mockDefaultCardZones(page) {
   await page.route('**/api/zones', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ zones: DEFAULT_CARD_ZONE_IDS.map(id => ({ id })) }),
+    body: JSON.stringify({ zones: DEFAULT_CARD_ZONES }),
   }));
 }
 
@@ -2314,6 +2314,7 @@ test('a slider changes its readout and sends a tuned color modifier', async ({ p
   });
 
   await gotoFreshPatterns(page);
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
 
   // Brightness slider readout follows the input value.

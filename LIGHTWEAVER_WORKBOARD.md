@@ -9,6 +9,33 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+LAUNCH PARALLEL CHECKPOINT03:32UTC: app-owner01a0e50f initial four releaseUI
+specs61/61 GREEN without edits. Now owns second disjoint73cases:layout-primitives,
+layout-kaleidoscope,layout-selection-visibility,layout-send-to-card,wiring-workspace,
+using managed launch-live-proof checkout. Root release_classifier_fix Sol/medium
+now exclusively owns studio-hardening.spec.ts pagination/show-more race diagnosis
+(expected48 cards actual72); primary9423 testport. Consolidator01a0e503 retains
+compiled-zone fixture commit in patterns-v3 plus wire-build-sheet and deduplicated
+card-edit-handoff/card-workspace/playlist-storage/screen-smoke/studio-route/workflow.
+Parent directly resumed45group4 after worker execution stalled; final10Patterns
+cases passed, leaving Studio hardening+wire-build-sheet. Log
+/tmp/lightweaver-primary-group4-remaining.log. Do not duplicate assigned files.
+Current PR354 pushed through61c6b91c; no app/firmware changes for launch repairs.
+
+LAUNCH REMAINDER OWNERSHIP03:25UTC: consolidator01a0e503 owns Patterns/group4
+and deduplicated releaseUI except FOUR independent specs now app-owner01a0e50f:
+universal-install, project-recovery-fixtures, connection-center-quality,
+layout-hardening. App owner temporarily uses managed launch-live-proof checkout
+for isolated browser checks; parent waits for release before terminal-main proof.
+Do not duplicate these tests/edits. Current test-only fixes:733c0afb LED count
+accessible name, cda9a453 preview/edit scope,61c6b91c status/always-on preview.
+Compiler-derived zone-range fixture under focused repair; targeted slider and
+seven impacted safety checks passed; no application source change. Mobile42,
+factory freshness and previous exact-main CI source/cloud/production remain valid.
+PR354 draft; publisher holds not restored yet. Current source guards are working,
+obsolete tests must be corrected without weakening exact identity/range checks.
+Progress/usage03:22UTC84%weekly, ordinary usage allowed. Parent owns merge/deploy.
+
 LAUNCH PR354 ACTIVE: classifier correction7ebf95c9 now proves exact repair diff
 validation=true/signing=false;32 classifier and30 release/installer tests pass.
 Primary reviewed minimal fixture3b32dbf7 and drag-order435bce73 changes; focused
