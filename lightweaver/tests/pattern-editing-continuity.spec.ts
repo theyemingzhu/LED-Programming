@@ -54,6 +54,7 @@ test('saving a new look at capacity leaves all twelve existing looks intact', as
   await openProject(page, { full: true });
   await expect.poll(async () => (await savedLooks(page)).length).toBe(12);
   const before = await savedLooks(page);
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-save-as-new').click();
   await expect(page.getByTestId('look-save-status')).toContainText(/12|full|maximum|capacity/i);
   expect(await savedLooks(page)).toEqual(before);

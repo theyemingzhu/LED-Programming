@@ -807,11 +807,14 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.looks?.some(look => look.label === 'Two GPIO look');
   })).toBe(true);
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
   const stackCard = page.getByTestId('project-stack-card').filter({ hasText: 'Two GPIO look' });
-  await expect(stackCard).toContainText('Outer circle');
-  await expect(stackCard).toContainText('Fire');
-  await expect(stackCard).toContainText('Inner circle');
-  await expect(stackCard).toContainText('Ocean');
+  await stackCard.getByTestId('stack-card-more').click();
+  await stackCard.locator('.project-stack-assignments summary').click();
+  await expect(stackCard.getByText('Outer circle')).toBeVisible();
+  await expect(stackCard.getByText('Fire')).toBeVisible();
+  await expect(stackCard.getByText('Inner circle')).toBeVisible();
+  await expect(stackCard.getByText('Ocean')).toBeVisible();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Ocean');
@@ -1002,7 +1005,7 @@ test('a saved mix sharing a built-in pattern ID remains a distinct playlist entr
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const savedMix = page.getByTestId('project-stack-card').filter({ hasText: 'Aurora saved mix' });
   await expect(savedMix).toBeVisible();
-  await savedMix.getByRole('button', { name: 'Add to playlist' }).click();
+  await savedMix.getByRole('button', { name: /Add Aurora saved mix to playlist/ }).click();
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.playlist?.find(item => item.lookId === 'aurora')?.type;
@@ -1032,13 +1035,13 @@ test('updating an imported mix with orphaned section IDs exports its new all-sec
   const hardwareNotice = page.getByTestId('hardware-configuration-warning');
   if (await hardwareNotice.isVisible()) await hardwareNotice.getByRole('button', { name: 'Dismiss notice' }).click();
   await page.getByRole('tab', { name: /Project stacks/ }).click();
-  await page.getByTestId('project-stack-card').filter({ hasText: otherMix.label }).getByRole('button', { name: 'Edit' }).click();
+  await page.getByTestId('project-stack-card').filter({ hasText: otherMix.label }).getByRole('button', { name: /^Edit / }).click();
   await page.getByTestId('stack-review').getByRole('button').click();
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
     return saved.devices?.standaloneController?.looks?.find(look => look.id === 'three-colors')?.defaultLook?.brightness;
   })).toBe(0.7);
-  await page.getByTestId('project-stack-card').filter({ hasText: oldMix.label }).getByRole('button', { name: 'Edit' }).click();
+  await page.getByTestId('project-stack-card').filter({ hasText: oldMix.label }).getByRole('button', { name: /^Edit / }).click();
   await page.getByTestId('stack-review').getByRole('button').click();
   await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
@@ -2418,7 +2421,7 @@ test('saving a named mix keeps its name in Tune and Color after reload and selec
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const savedMix = page.getByTestId('project-stack-card').filter({ hasText: 'Named section mix' });
   await expect(savedMix).toBeVisible();
-  await savedMix.getByRole('button', { name: 'Edit' }).click();
+  await savedMix.getByRole('button', { name: /^Edit / }).click();
   await expect(page.locator('.pm-tune-pane > .sec-h .m')).toHaveText('Named section mix');
   await expect(page.locator('.pm-palette .pm-palmeta strong')).toHaveText('Named section mix');
 });

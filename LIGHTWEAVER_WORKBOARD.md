@@ -9,6 +9,22 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Compact stack workflow — verified local refinement
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 0d492d27.
+Working: compact single-row stack library, clickable names, color segments, direct
+Add for unused stacks, section assignments and lifecycle actions under More.
+Save uses one name/action row; secondary playlist/details actions remain accessible.
+Errors/review warnings stay visible; linked-update notice appears when dirty.
+Actual 1280x800: saved row 222→61px; save panel 249→150px. Phone rows 73px;
+44px controls retained, metadata wraps, no decorative grid behind stack library.
+Evidence: 24 relevant browser checks passed, final swatch sizing regression passed,
+production build PASS; actual desktop/phone checked. Screenshots: stack-minimal-
+desktop.png and stack-minimal-phone.png in this chat's visualizations directory.
+No deployment, firmware, persistence schema or card mutation. Capacity unchanged.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+
 ### Stack finesse and functional ordering — verified local refinement
 Owner: this manager; Sprint. State: done at approved local-build boundary.
 Artifact: codex/project-pattern-stacks, refinement on91de724b in samecheckout.

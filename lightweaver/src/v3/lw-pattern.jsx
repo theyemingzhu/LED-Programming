@@ -2827,28 +2827,30 @@ function writeSectionDisplayOrder(projectId, ids) {
     const activeStackPlaylistUseCount = editingSavedLook ? playlist.filter(item => item.lookId === editingSavedLook.id).length : 0;
     const stackSavePanel = (
                 <div className="project-stack-save" data-testid="stack-save-bar" aria-label="Save project stack">
-                  <div className="sec-h"><span className="t">Project stack</span><span className="m">{sectionCount} sections together · {savedLooks.length}/{MAX_SAVED_LOOKS} saved</span></div>
+                  <div className="sec-h"><span className="t">Project stack</span><span className="m">{sectionCount} sections</span></div>
                   <div className="project-stack-save-controls">
                     <input className="pm-input" data-testid="look-name" aria-label="Stack name" placeholder={suggestProjectStackName(savedLooks)} value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
                     <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingLabAuthored ? 'Open in Lab' : editingSavedLook ? 'Update stack' : 'Save stack'}</button>
-                    {!editingLabAuthored && (activeStackPlaylistUseCount
-                      ? <button type="button" className="btn" data-testid="stack-arrange-playlist" onClick={() => { window.location.hash = '#screen=playlist'; }}>Arrange playlist</button>
-                      : <button type="button" className="btn" data-testid="stack-save-add" onClick={() => saveLook(false, true)}>Save &amp; add to playlist</button>)}
                   </div>
                   <span role="status" data-testid="look-save-status" className={`project-stack-save-status${/could not|error|full|review sections/i.test(lookSaveState || scratchError) ? ' is-error' : ''}`}>{scratchError || (lookSaveState && !/^Saved in /.test(lookSaveState) ? lookSaveState : hasUnsavedLookChanges && !pendingLookSave ? 'Unsaved stack changes' : lookSaveState || (editingSavedLook ? `Saved in project: ${projectName || 'this project'}` : 'Draft in this browser'))}</span>
                   {failedLookSave?.projectId === projectId && <button type="button" className="btn" data-testid="stack-save-retry" onClick={() => { setLookSaveState('Retrying…'); setPendingLookSave(failedLookSave); }}>Retry project save</button>}
-                  {activeStackPlaylistUseCount > 0 && <div className="project-stack-use-note">
+                  {activeStackPlaylistUseCount > 0 && hasUnsavedLookChanges && <div className="project-stack-use-note">
                     Updating changes {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again to update the card.
                   </div>}
                   <div className="project-stack-save-footer">
-                    {editingSavedLook && <button type="button" className="wordlink" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new stack'}</button>}
+                    {!editingLabAuthored && (activeStackPlaylistUseCount
+                      ? <button type="button" className="wordlink" data-testid="stack-arrange-playlist" onClick={() => { window.location.hash = '#screen=playlist'; }}>Arrange playlist</button>
+                      : <button type="button" className="wordlink" data-testid="stack-save-add" onClick={() => saveLook(false, true)}>Save &amp; add to playlist</button>)}
                     {editingSavedLook && <StackMoreActions label="More actions" testId="stack-more-actions">
+                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new stack'}</button>
                       <button type="button" className="btn" data-testid="stack-revert" disabled={!hasUnsavedLookChanges} onClick={revertStackChanges}>Revert changes</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={() => renameLook()}>Rename stack</button>
                       <button type="button" className="btn" data-testid="look-delete" onClick={() => deleteLook()}>Delete stack{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` and remove ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist ${playlist.filter(item => item.lookId === editingSavedLook.id).length === 1 ? 'entry' : 'entries'}` : ''}</button>
                     </StackMoreActions>}
                     <details className="project-stack-details" data-testid="stack-details"><summary>Stack details</summary>
                       <p>Every section&apos;s pattern and settings save together in this project.</p>
+                      <p>{savedLooks.length} of {MAX_SAVED_LOOKS} stacks saved in {projectName || 'this project'}.</p>
+                      {activeStackPlaylistUseCount > 0 && <p>This stack appears in {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again after an update to refresh the card.</p>}
                       <ProjectStackSummary sections={effectiveSectionTargets.filter(target => target.kind === 'section').map(target => ({ id: target.id, label: targetLabel(target), look: target.look }))} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} compact />
                     </details>
                   </div>
@@ -3151,37 +3153,39 @@ function writeSectionDisplayOrder(projectId, ids) {
                     <button type="button" role="tab" aria-selected={libraryTab === 'stacks'} onClick={() => setLibraryTab('stacks')}>Project stacks ({savedLooks.length})</button>
                   </div>
                   {libraryTab === 'stacks' ? <div className="project-stack-library" role="tabpanel" aria-label="Project stacks">
-                    <div className="sec-h"><span className="t">Project stacks</span><span className="m">{savedLooks.length} saved in {projectName || 'this project'}</span></div>
-                    <label className="search"><span className="sr-only">Search project stacks</span>{I.search}<input value={stackSearch} onChange={event => setStackSearch(event.target.value)} placeholder="Search project stacks" /></label>
+                    <label className="search"><span className="sr-only">Search project stacks</span>{I.search}<input value={stackSearch} onChange={event => setStackSearch(event.target.value)} placeholder={`Search stacks in ${projectName || 'this project'}`} /></label>
                     <div className="project-stack-shelf">
                       {savedLooks.filter(saved => saved.label.toLowerCase().includes(stackSearch.toLowerCase())).map(saved => {
                         const summary = summarizeProjectStack(saved, sectionTargets);
                         const compatibility = getProjectStackCompatibility(saved);
                         const useCount = playlist.filter(item => item.lookId === saved.id).length;
                         return <article key={saved.id} className={`project-stack-card${saved.id === activeLookId ? ' is-active' : ''}`} data-testid="project-stack-card">
-                          <div className="project-stack-card-head"><strong>{saved.label}</strong><small>{summary.sectionCount} sections</small></div>
-                          <ProjectStackSummary sections={summary.sections} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} />
-                          <div className="project-stack-card-meta">{useCount ? `In playlist · ${useCount} ${useCount === 1 ? 'use' : 'uses'}` : 'Not in playlist'}{!compatibility.ok ? ` · ${compatibility.reason}` : ''}{summary.review.needsReview ? ' · Review sections' : ''}</div>
-                          {renamingStackId === saved.id && <div className="project-stack-rename"><input className="pm-input" aria-label={`New name for ${saved.label}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)} /><button type="button" className="btn" onClick={() => renameLook(saved, renameDraft)}>Save name</button><button type="button" className="btn" onClick={() => setRenamingStackId('')}>Cancel</button></div>}
-                          <div className="project-stack-actions">
-                            <button type="button" className="btn" onClick={() => {
+                          <div className="project-stack-card-main">
+                            <button type="button" className="project-stack-name-button project-stack-card-head" aria-label={`Edit ${saved.label}`} onClick={() => {
                               if (summary.review.needsReview) {
                                 setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
                                 setLibraryTab('stacks');
                               } else selectCard(adaptSavedLook(saved));
-                            }}>Edit</button>
-                            {compatibility.ok && !summary.review.needsReview && <button type="button" className="btn" disabled={useCount > 0} onClick={() => setSavedLookInPlaylist(saved, true)}>{useCount ? 'In playlist' : 'Add to playlist'}</button>}
-                            {!compatibility.ok && <button type="button" className="btn" onClick={() => {
-                              const result = writePatternLabEditHandoff(projectId, saved);
-                              if (!result.ok) { setLookSaveState(result.error); return; }
-                              window.location.hash = '#screen=pattern-lab';
-                            }}>Open in Lab</button>}
+                            }}><strong>{saved.label}</strong><small>{summary.sectionCount} sections · {useCount ? `${useCount} playlist ${useCount === 1 ? 'use' : 'uses'}` : 'Not in playlist'}</small></button>
+                            <div className="project-stack-swatch" aria-hidden="true">{summary.sections.map(section => {
+                              const off = ['off', 'blackout'].includes(section.patternId) || section.look?.brightness === 0;
+                              return <span key={section.id} className={off ? 'is-off' : ''} style={{ '--stack-color': REAL_PATTERN_BY_ID.get(section.patternId)?.pal?.[2] || '#8398aa' }} />;
+                            })}</div>
+                            {compatibility.ok && !summary.review.needsReview && !useCount && <button type="button" className="btn project-stack-add" aria-label={`Add ${saved.label} to playlist`} onClick={() => setSavedLookInPlaylist(saved, true)}>Add</button>}
                             <StackMoreActions label="More" ariaLabel={`More actions for ${saved.label}`} testId="stack-card-more">
+                              <details className="project-stack-assignments"><summary>Section assignments</summary><ProjectStackSummary sections={summary.sections} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} /></details>
+                              {!compatibility.ok && <button type="button" className="btn" onClick={() => {
+                                const result = writePatternLabEditHandoff(projectId, saved);
+                                if (!result.ok) { setLookSaveState(result.error); return; }
+                                window.location.hash = '#screen=pattern-lab';
+                              }}>Open in Lab</button>}
                               <button type="button" className="btn" onClick={() => duplicateStack(saved)}>Duplicate</button>
                               <button type="button" className="btn" onClick={() => { setRenamingStackId(saved.id); setRenameDraft(saved.label); }}>Rename</button>
                               <button type="button" className="btn" onClick={() => deleteLook(saved)}>Delete{useCount ? ` · ${useCount} playlist ${useCount === 1 ? 'use' : 'uses'}` : ''}</button>
                             </StackMoreActions>
                           </div>
+                          {(!compatibility.ok || summary.review.needsReview) && <div className="project-stack-card-warning">{!compatibility.ok ? compatibility.reason : 'Review sections before adding to playlist'}</div>}
+                          {renamingStackId === saved.id && <div className="project-stack-rename"><input className="pm-input" aria-label={`New name for ${saved.label}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)} /><button type="button" className="btn" onClick={() => renameLook(saved, renameDraft)}>Save name</button><button type="button" className="btn" onClick={() => setRenamingStackId('')}>Cancel</button></div>}
                         </article>;
                       })}
                       {!savedLooks.length && <p className="project-stack-empty">No project stacks yet. Choose a pattern for each section, then save the whole arrangement above.</p>}

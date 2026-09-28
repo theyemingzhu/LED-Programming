@@ -42,10 +42,12 @@ test('section choices save as a named project stack outside built-in patterns', 
   await expect(page.getByTestId('look-save-status')).toContainText('Saved');
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const stack = page.getByTestId('project-stack-card').filter({ hasText: 'Ember garden' });
-  await expect(stack).toContainText('Outer circle');
-  await expect(stack).toContainText('Fire');
-  await expect(stack).toContainText('Inner circle');
-  await expect(stack).toContainText('Ocean');
+  await stack.getByTestId('stack-card-more').click();
+  await stack.locator('.project-stack-assignments summary').click();
+  await expect(stack.getByText('Outer circle')).toBeVisible();
+  await expect(stack.getByText('Fire')).toBeVisible();
+  await expect(stack.getByText('Inner circle')).toBeVisible();
+  await expect(stack.getByText('Ocean')).toBeVisible();
   await page.getByRole('tab', { name: 'Patterns', exact: true }).click();
   await expect(page.locator('.pm-cards .pmcard[data-pattern-id="fire"]')).toBeVisible();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(0);
@@ -87,9 +89,9 @@ test('drafts stay attached to their stack when switching and reloading', async (
   await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
   await page.getByRole('tab', { name: /Project stacks/ }).click();
-  await page.getByTestId('project-stack-card').filter({ hasText: 'Two' }).getByRole('button', { name: 'Edit' }).click();
+  await page.getByTestId('project-stack-card').filter({ hasText: 'Two' }).getByRole('button', { name: /^Edit / }).click();
   await expect(page.getByTestId('look-name')).toHaveValue('Two');
-  await page.getByTestId('project-stack-card').filter({ has: page.locator('.project-stack-card-head strong').filter({ hasText: /^One$/ }) }).getByRole('button', { name: 'Edit' }).click();
+  await page.getByTestId('project-stack-card').filter({ has: page.locator('.project-stack-card-head strong').filter({ hasText: /^One$/ }) }).getByRole('button', { name: /^Edit / }).click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
   await expect(page.getByTestId('look-save-status')).toContainText('Unsaved');
   await page.reload();
@@ -108,8 +110,9 @@ test('stack editor keeps tuning visible and reveals secondary actions on demand'
   await details.locator('summary').click();
   await expect(details).toHaveAttribute('open', '');
   await expect(details).toContainText('Outer circle');
-  await expect(page.getByTestId('look-save-as-new')).toBeVisible();
+  await expect(page.getByTestId('look-save-as-new')).not.toBeVisible();
   await page.getByTestId('stack-more-actions').click();
+  await expect(page.getByTestId('look-save-as-new')).toBeVisible();
   await expect(page.getByTestId('stack-revert')).toBeVisible();
   await expect(page.getByTestId('look-delete')).toBeVisible();
 });
@@ -217,10 +220,28 @@ test('ten project stacks fit desktop and phone without horizontal overflow', asy
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId('project-stack-card').first().scrollIntoViewIfNeeded();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(2);
-  await expect(page.getByTestId('project-stack-card').first().getByRole('button', { name: 'Edit' })).toBeVisible();
+  await expect(page.getByTestId('project-stack-card').first().getByRole('button', { name: /^Edit / })).toBeVisible();
   const saveBox = await page.getByTestId('stack-save-bar').boundingBox();
   await page.getByTestId('stack-more-actions').click();
   const deleteBox = await page.getByTestId('look-delete').boundingBox();
   expect(saveBox && deleteBox && deleteBox.x >= saveBox.x - 1 && deleteBox.x + deleteBox.width <= saveBox.x + saveBox.width + 1).toBe(true);
   await page.screenshot({ path: '/tmp/lightweaver-stacks-patterns-phone.png' });
+});
+
+test('stack editor and ten saved rows stay compact across desktop and phone', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openStackProject(page, 'stack-compact-density', Array.from({ length: 10 }, (_, index) => {
+    const look = namedLook(`compact-${index}`, `Garden ${index + 1}`);
+    delete look.sectionLooks['patch-default-ring-3'];
+    return look;
+  }), true);
+  const editor = page.getByTestId('stack-save-bar');
+  expect((await editor.boundingBox())?.height).toBeLessThanOrEqual(150);
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  const rows = page.getByTestId('project-stack-card');
+  await expect(rows).toHaveCount(10);
+  expect((await rows.first().locator('.project-stack-swatch span').first().boundingBox())?.height).toBeGreaterThanOrEqual(4);
+  for (const row of await rows.all()) expect((await row.boundingBox())?.height).toBeLessThanOrEqual(76);
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const row of await rows.all()) expect((await row.boundingBox())?.height).toBeLessThanOrEqual(96);
 });
