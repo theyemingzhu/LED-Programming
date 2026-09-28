@@ -65,8 +65,11 @@ Integration note: <contract, migration, ordering, or conflict concern>
 ```
 
 “Done” means the owned outcome works under focused verification and the return
-packet is complete. A sub-agent does not deploy, sign, flash, start Prove, run
-the integrated checkpoint, or claim the whole Sprint complete.
+packet is complete. The primary may designate one consolidator to assemble the
+batch and run its integrated checkpoint; other workers run focused checks only.
+The primary retains acceptance of the exact combined artifact and the real screen.
+A sub-agent does not deploy, sign, flash, start Prove, or claim the whole Sprint
+complete without the applicable authorization and assigned ownership.
 
 ## Timing and escalation
 

@@ -87,6 +87,12 @@ for Prove from urgency, a release request, a checkpoint, or available time.
 Use `LIGHTWEAVER_WORKBOARD.md` as the cross-session state. Only the primary agent
 edits it. Sub-agents return evidence to the primary instead of editing the board.
 
+Manager accountability is defined in `docs/workflows/manager.md`. Keep the current
+delivery view at the top of `LIGHTWEAVER_WORKBOARD.md`: owner, state, dependencies,
+exact artifact/evidence and next action. The primary owns integration, visible
+feedback and completion through the authorized delivery boundary, even when a
+worker assembles the combined build. Worker completion alone is not completion.
+
 - **Sprint:** the primary may use at most three useful sub-agents on independent,
   non-overlapping ownership boundaries and remains the sole integrator. Use a
   balanced/default model for bounded work and reserve frontier/deeper reasoning
