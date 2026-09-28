@@ -3,7 +3,7 @@ import { REAL_PATTERNS, REAL_PATTERN_BY_ID } from '../../v3/v3-data.js';
 import { PatternPreview } from '../../v3/PatternPreview.jsx';
 import { resolvePreviewPatternId } from '../../lib/patternPiecePreview.js';
 
-export function LayoutPatternGallery({ stripName, currentPatternId, previewSegment, onChoose, onClose }) {
+export function LayoutPatternGallery({ stripName, currentPatternId, previewSegment, onChoose, onClose, cardStatus = '' }) {
   const firstRef = useRef(null);
   const [auditionId, setAuditionId] = useState(currentPatternId);
   useEffect(() => { firstRef.current?.focus(); }, []);
@@ -36,6 +36,7 @@ export function LayoutPatternGallery({ stripName, currentPatternId, previewSegme
           testId="layout-pattern-audition-canvas"/>}
       </div>
       <span>{audition?.label || auditionId} · {stripName}</span>
+      {cardStatus && <p className="la-pattern-card-status" role="status" style={{ margin: 0 }}>{cardStatus}</p>}
     </div>
     <div className="la-pattern-gallery-list" onPointerLeave={() => setAuditionId(currentPatternId)}>
       {REAL_PATTERNS.map((pattern, index) => <button type="button" key={pattern.id}
