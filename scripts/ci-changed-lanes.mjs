@@ -24,6 +24,14 @@ const isAnyPath = (path, prefixes) => prefixes.some(prefix => isPath(path, prefi
 const isReleaseNeutralCiControlPath = path => path === '.github/workflows/test.yml'
   || path === 'scripts/ci-changed-lanes.mjs'
   || path === 'scripts/ci-changed-lanes.test.mjs';
+// Browser updater code is exercised by card/production validation, but these
+// files do not feed the signed firmware binary or release metadata. Keep this
+// list exact: new installer-core files remain hard release inputs by default.
+const BROWSER_INSTALLER_PATHS = new Set([
+  'packages/installer-core/src/flash-connection.js',
+  'packages/installer-core/src/flash-workflow.js',
+  'packages/installer-core/test/installer-core.test.js',
+]);
 
 export function isGeneratedReleaseChange(paths) {
   return paths.length > 0
@@ -41,7 +49,7 @@ function emptyLanes() {
 // so Studio paths normally select the firmware lane; when the embedded bundle
 // provably did not change, that selection is dropped and the change ships as
 // a site-only deploy. Hard firmware paths (firmware/, release machinery,
-// installer-core) are never dropped, and the conservative everything-runs
+// most installer-core) are never dropped, and the conservative everything-runs
 // answer is never weakened.
 export function classifyChangedPaths(paths, {
   conservative = false,
@@ -100,6 +108,14 @@ export function classifyChangedPaths(paths, {
       'firmware/lightweaver-controller/VERSION',
       'firmware/lightweaver-controller/platformio.ini',
     ].includes(path)) {
+      lanes.firmware = true;
+      lanes.production = true;
+      continue;
+    }
+
+    if (BROWSER_INSTALLER_PATHS.has(path)) {
+      lanes.source = true;
+      lanes.browser = true;
       lanes.firmware = true;
       lanes.production = true;
       continue;
@@ -236,8 +252,8 @@ function parseArguments(argv) {
   return parsed;
 }
 
-// Does the firmware lane fire ONLY because Studio source is embedded in the
-// card bundle — with no hard firmware path touched at all?
+// Does firmware validation fire only for Studio bundle inputs or the exact
+// browser installer files above, with no hard signed-release input touched?
 //
 // This is the difference between "the card's behaviour changed" and "the
 // card's built-in copy of the browser interface drifted". The first must
@@ -251,7 +267,8 @@ function parseArguments(argv) {
 // the card, so a bundle that no longer fits is caught by the exact main gate
 // rather than twenty minutes into a release. CI controls also select that
 // conservative test lane, but do not by themselves turn an otherwise
-// bundle-only diff into a signed release.
+// browser-only diff into a signed release. The historical output name is kept
+// because all three workflows consume it.
 export function firmwareBundleOnly(paths, {
   conservative = false,
   generatedRelease = false,
@@ -263,7 +280,11 @@ export function firmwareBundleOnly(paths, {
     .filter(path => path && !isReleaseNeutralCiControlPath(path));
   const withBundle = classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: false });
   if (!withBundle.firmware) return false;
-  return classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: true }).firmware === false;
+  // Establish that firmware validation is required before removing the exact
+  // browser files from the hard-release calculation. Otherwise an updater-only
+  // diff would have no remaining firmware lane and appear unrelated to it.
+  const hardReleasePaths = releasePaths.filter(path => !BROWSER_INSTALLER_PATHS.has(path));
+  return classifyChangedPaths(hardReleasePaths, { ...options, cardBundleUnchanged: true }).firmware === false;
 }
 
 function writeOutputs(lanes, paths, outputPath, signedRelease = false, bundleOnly = false) {
