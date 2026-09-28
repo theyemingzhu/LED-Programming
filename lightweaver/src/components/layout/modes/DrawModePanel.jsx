@@ -37,6 +37,7 @@ import { createDefaultKaleidoscope, deriveReflectionPointIndices } from '../../.
 import { connectedFamilyForStrip, familyGeometryStatus } from '../../../lib/connectedSections.js';
 import { connectedPartDisplayName, displayStripName } from '../../../lib/stripLabels.js';
 import { applyLookToPatchBoard } from '../../../lib/sectionLookModel.js';
+import { buildPatternPreviewSegments, resolvePreviewPatternId } from '../../../lib/patternPiecePreview.js';
 import { REAL_PATTERNS } from '../../../v3/v3-data.js';
 import { I as StudioIcons } from '../../../v3/lw-shared.jsx';
 import { LayoutPatternGallery } from '../LayoutPatternGallery.jsx';
@@ -214,7 +215,7 @@ export function DrawModePanel({
     deleteLayer, createLayerGroup, deleteLayerGroup,
     toggleGroupExpanded, toggleGroupHidden, reorderLayerOrder, setLayerGroups,
     // canvas + preview
-    setDrawMode, setWaypoints, setGhostPt,
+    setDrawMode, setWaypoints, setGhostPt, enableLightPreview,
     drawMode, waypoints,
     pendingDraw, pendingDrawName, setPendingDrawName,
     pendingDrawCount, setPendingDrawCount, pendingDrawNameRef,
@@ -280,6 +281,14 @@ export function DrawModePanel({
   const [droppedStripIds, setDroppedStripIds] = useState([]);
   const [connectedError, setConnectedError] = useState('');
   const [patternPicker, setPatternPicker] = useState(null);
+  const patternPreviewSegments = useMemo(() => patternPicker
+    ? buildPatternPreviewSegments({
+      strips, patchBoard, wiring, compiledWiring,
+      targets: sectionTargets.filter(target => target.id === patternPicker.targetId),
+      resolvePatternId: resolvePreviewPatternId,
+      paletteForPattern: patternId => REAL_PATTERNS.find(pattern => pattern.id === patternId)?.pal,
+    })
+    : [], [patternPicker, strips, patchBoard, wiring, compiledWiring, sectionTargets]);
   const patternTriggerRefs = useRef(new Map());
   const closePatternPicker = () => {
     const targetId = patternPicker?.targetId;
@@ -293,6 +302,7 @@ export function DrawModePanel({
       setPatchBoard(applyLookToPatchBoard({ patchBoard, strips, targetId: target.id,
         look: { ...target.look, patternId } }));
     }
+    if (target) enableLightPreview();
     closePatternPicker();
   };
 
@@ -1646,6 +1656,7 @@ export function DrawModePanel({
                       const target = sectionTargets.find(item => item.id === patternPicker.targetId);
                       return <LayoutPatternGallery stripName={partName}
                         currentPatternId={target?.look?.patternId || 'aurora'}
+                        previewSegment={patternPreviewSegments[0]}
                         onChoose={choosePattern} onClose={closePatternPicker}/>;
                     })()}
                     {isOpen && (

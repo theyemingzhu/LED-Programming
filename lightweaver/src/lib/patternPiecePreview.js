@@ -2,6 +2,15 @@ import { PALETTE_DEFAULT } from '../data.js';
 import { expandPatchBoard, normalizePatchBoard } from './patchBoard.js';
 import { applyLookColorModifiers } from './previewColorModifiers.js';
 import { compileWiring } from './wiringCompiler.js';
+import { getCardPatternById } from './cardPatternBank.js';
+import { getPatternById } from './patternRegistry.js';
+
+export function resolvePreviewPatternId(patternId) {
+  if (getPatternById(patternId)) return patternId;
+  const card = getCardPatternById(patternId);
+  const candidate = card?.previewPatternId || card?.preset;
+  return candidate && getPatternById(candidate) ? candidate : null;
+}
 
 // v1 stored strip focus on every visit because strip was the former default.
 // A new key lets the piece open as a whole without mistaking that old default

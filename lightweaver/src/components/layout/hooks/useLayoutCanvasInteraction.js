@@ -29,6 +29,9 @@ import {
 import { isClosedPathData } from '../../../lib/pathClosure.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { normalizeProjectRenderStrips } from '../../../lib/renderGeometry.js';
+import { buildPatternPreviewSegments, resolvePreviewPatternId } from '../../../lib/patternPiecePreview.js';
+import { applyLookColorModifiers } from '../../../lib/previewColorModifiers.js';
+import { REAL_PATTERN_BY_ID } from '../../../v3/v3-data.js';
 
 // Wire drawing — deep-linked via `#screen=layout&mode=draw`.
 // Old `mode=wire` is a Card install entrance, not a Layout mode.
@@ -67,7 +70,7 @@ function measureSelectedPathDecoration(pathData) {
 // visualisation memo the <svg> tree renders. Cross-hook mutators arrive via
 // `deps` from the composer (no hook reaches into another's internals).
 export function useLayoutCanvasInteraction(ctx, deps) {
-  const { wiring, compiledWiring } = useProject();
+  const { wiring, compiledWiring, patchBoard, sectionTargets } = useProject();
   const {
     strips, setStrips,
     hidden, setHidden,
@@ -107,6 +110,21 @@ export function useLayoutCanvasInteraction(ctx, deps) {
   const [directedGlow, setDirectedGlow] = useState(false);
   const [showHeat, setShowHeat]     = useState(false);
   const [lightMenuOpen, setLightMenuOpen] = useState(false);   // Light disclosure popover
+  const [previewTime, setPreviewTime] = useState(0);
+  useEffect(() => {
+    if (!showLight) return undefined;
+    let frame = 0;
+    let previous = 0;
+    const tick = now => {
+      if (now - previous >= 33) {
+        setPreviewTime(now / 1000);
+        previous = now;
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [showLight]);
 
   // ── Draw tool state ────────────────────────────────────────────────────────
   const [drawMode, setDrawMode]     = useState(false);
@@ -631,52 +649,95 @@ export function useLayoutCanvasInteraction(ctx, deps) {
 
   // ── Memoised visualisation data ────────────────────────────────────────────
   const isEditingGesture = movingStripIds.length > 0 || !!rubberBand;
-
-  const layoutPatternFrame = useMemo(() => {
-    if (!strips.length) return new Map();
-    const frameStrips = normalizeProjectRenderStrips(strips, { hidden });
-    if (!frameStrips.length) return new Map();
-
-    const perStripFns = new Map();
-    for (const s of frameStrips) {
-      if (s.patternId && !perStripFns.has(s.patternId)) {
-        const fn = compilePattern(s.patternId);
-        if (fn) perStripFns.set(s.patternId, fn);
+  const previewSegments = useMemo(() => {
+    if (!strips.length) return [];
+    return buildPatternPreviewSegments({
+      strips,
+      patchBoard,
+      wiring,
+      compiledWiring,
+      targets: sectionTargets,
+      resolvePatternId: resolvePreviewPatternId,
+      paletteForPattern: patternId => REAL_PATTERN_BY_ID.get(patternId)?.pal,
+    }).filter(segment => segment.pixels.some(pixel => !hidden[pixel.stripId]));
+  }, [strips, patchBoard, wiring, compiledWiring, sectionTargets, hidden]);
+  const frameStrips = useMemo(() => normalizeProjectRenderStrips(
+    previewSegments.length ? previewSegments : strips, { hidden }),
+  [previewSegments, strips, hidden]);
+  const segmentById = useMemo(() => new Map(previewSegments.map(segment => [segment.id, segment])), [previewSegments]);
+  const perStripFns = useMemo(() => {
+    const fns = new Map();
+    for (const strip of frameStrips) {
+      if (strip.patternId && !fns.has(strip.patternId)) {
+        const fn = compilePattern(strip.patternId);
+        if (fn) fns.set(strip.patternId, fn);
       }
     }
+    return fns;
+  }, [frameStrips]);
+  const perStripPalettes = useMemo(() => new Map(frameStrips.filter(strip => strip.palette)
+    .map(strip => [strip.id, normalizePalette(strip.palette)])), [frameStrips]);
+  const activeFn = useMemo(() => compilePattern(activePatternId), [activePatternId]);
+  const paletteNorm = useMemo(() => normalizePalette(palette), [palette]);
+  const gammaLUT = useMemo(() => buildGammaLut(gammaEnabled, gammaValue), [gammaEnabled, gammaValue]);
 
+  const layoutPatternFrame = useMemo(() => {
+    if (!frameStrips.length) return new Map();
     const frame = renderPixelFrame({
-      t: 8.75,
+      t: showLight ? previewTime : 8.75,
       strips: frameStrips,
       patternId: activePatternId,
-      activeFn: compilePattern(activePatternId),
+      activeFn,
       params: patternParams?.[activePatternId] || {},
       patternParamsById: patternParams,
-      paletteNorm: normalizePalette(palette),
+      paletteNorm,
       bpm,
       masterSpeed,
       masterBrightness,
       masterSaturation,
       masterHueShift,
-      gammaLUT: buildGammaLut(gammaEnabled, gammaValue),
+      gammaLUT,
       symSettings,
       audioBands: null,
       perStripFns,
+      perStripPalettes,
     });
-    return new Map(frame.stripFrames.map(stripFrame => [stripFrame.id, stripFrame]));
+    if (!previewSegments.length) return new Map(frame.stripFrames.map(stripFrame => [stripFrame.id, stripFrame]));
+    const byStrip = new Map(strips.map(strip => [strip.id, {
+      id: strip.id,
+      // A newly duplicated strip can appear before its derived wiring zone.
+      // Leave unrepresented LEDs undefined so the canvas uses its identity
+      // color until reconciliation supplies the actual pattern frame.
+      leds: Array(strip.pixels?.length || strip.pixelCount || 0),
+      avgR: 0, avgG: 0, avgB: 0,
+    }]));
+    frame.stripFrames.forEach(stripFrame => {
+      const segment = segmentById.get(stripFrame.id);
+      if (!segment) return;
+      applyLookColorModifiers(stripFrame.leds, previewTime * 1000, segment.visualLook || {});
+      segment.pixels.forEach((pixel, ledIndex) => {
+        const target = byStrip.get(pixel.stripId);
+        if (target && Number.isInteger(pixel.sourceLed)) target.leds[pixel.sourceLed] = stripFrame.leds[ledIndex];
+      });
+    });
+    for (const stripFrame of byStrip.values()) {
+      const active = stripFrame.leds.filter(Boolean);
+      if (!active.length) continue;
+      stripFrame.avgR = Math.round(active.reduce((sum, led) => sum + led.r, 0) / active.length);
+      stripFrame.avgG = Math.round(active.reduce((sum, led) => sum + led.g, 0) / active.length);
+      stripFrame.avgB = Math.round(active.reduce((sum, led) => sum + led.b, 0) / active.length);
+    }
+    return byStrip;
   }, [
-    strips,
-    hidden,
+    strips, frameStrips, previewSegments, segmentById, perStripFns, perStripPalettes, activeFn, paletteNorm, gammaLUT,
+    showLight, previewTime,
     activePatternId,
     patternParams,
-    palette,
     bpm,
     masterSpeed,
     masterBrightness,
     masterSaturation,
     masterHueShift,
-    gammaEnabled,
-    gammaValue,
     symSettings,
   ]);
 
