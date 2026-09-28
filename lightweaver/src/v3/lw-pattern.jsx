@@ -2873,6 +2873,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       ) : visiblePatternPreviewSegments.length ? (
                         <PatternPreview
                           strips={visiblePatternPreviewSegments}
+                          compactRibbon
                           hidden={{}}
                           viewBox={patternPreviewViewBox}
                           patternId={visiblePatternPreviewSegments[0].patternId}

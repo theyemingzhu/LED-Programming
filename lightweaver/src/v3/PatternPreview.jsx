@@ -109,7 +109,7 @@ function renderFrame(canvas, t, p) {
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, symOverlay, audioBands, blendAmount, blendType,
     perStripFns, perStripPalettes, vb, heat, motionSmoothing, previousPixels, frameDt,
-    stripPhases, dimmedStripIds,
+    stripPhases, dimmedStripIds, compactRibbon,
   } = p;
 
   // ViewBox → canvas pixel mapping (letterbox, maintain aspect ratio)
@@ -131,6 +131,21 @@ function renderFrame(canvas, t, p) {
     mode: motionSmoothing,
     dt: frameDt,
   });
+  if (compactRibbon) {
+    // A short stage cannot legibly show the piece's spatial layout. Keep every
+    // target's LED order and animated colors visible across the full width.
+    const count = framePixels.length;
+    if (count) {
+      const columnWidth = W / count;
+      for (let i = 0; i < count; i++) {
+        const led = framePixels[i];
+        ctx.fillStyle = `rgb(${led.r || 0},${led.g || 0},${led.b || 0})`;
+        const x = Math.floor(i * columnWidth);
+        ctx.fillRect(x, 0, Math.ceil((i + 1) * columnWidth) - x, H);
+      }
+    }
+    return framePixels;
+  }
   const stripMetaById = new Map(visibleStrips.map(s => [s.id, s]));
   let pixelOffset = 0;
   const stripData = frame.stripFrames.map(s => {
@@ -392,6 +407,7 @@ export function PatternPreview({
   palette: paletteProp = null,
   motionSmoothing = 'soft',
   targetFps = 60,
+  compactRibbon = false,
   heat = false,
   controlledTime = null,
   ariaLabel = 'LED pattern preview',
@@ -524,7 +540,7 @@ export function PatternPreview({
 
   // Refresh propsRef every render — RAF closure always reads fresh values
   propsRef.current = {
-    patternId, playing, speed, glow, dotSize, dotCeiling, bpm, resolvedParams, patternParamsById, paletteNorm,
+    patternId, playing, speed, glow, dotSize, dotCeiling, bpm, resolvedParams, patternParamsById, paletteNorm, compactRibbon,
     activeFn, blendFn, blendAmount, blendType,
     perStripFns, perStripPalettes, visibleStrips, normBounds, medianSpacing, pixelCount,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
