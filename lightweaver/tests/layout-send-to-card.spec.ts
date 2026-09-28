@@ -96,7 +96,7 @@ async function mockLocalCard(page: any, options: any = {}) {
       card.attemptedConfigs.push(incoming);
       if (options.delayConfig) await new Promise(resolve => setTimeout(resolve, options.delayConfig));
       if (options.failConfig) {
-        await route.fulfill({ status: 500, json: { ok: false, error: 'boom' } });
+        await route.fulfill({ status: options.failConfigStatus || 500, json: { ok: false, error: options.failConfigMessage || 'boom' } });
         return;
       }
       if (options.forceStagedConfig) {
@@ -738,4 +738,30 @@ test('reload during probation resumes the exact candidate read-only and notices 
   await expect(fresh.getByTestId('discard-candidate-and-retry')).toHaveCount(0);
   expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
   expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(0);
+});
+
+
+test('an explicit install refusal remains actionable instead of a phantom restart mismatch', async ({ page }, testInfo) => {
+  const project = createDefaultProject();
+  const options = {
+    failConfig: true,
+    failConfigStatus: 400,
+    failConfigMessage: 'network settings not ready',
+    currentOutputs: compileWiring({ wiring: project.layout.wiring,
+      strips: project.layout.strips, groups: project.layout.layerGroups }).outputs,
+  };
+  const card = await mockLocalCard(page, options);
+  await gotoWire(page, { verified: true });
+  await page.getByTestId('layout-send-to-card').click();
+  const banner = page.locator('.la-card-push-banner');
+  await expect(banner).toContainText('network settings not ready');
+  await expect(banner).not.toContainText('restarted');
+  await expect(banner).not.toContainText('read-back-mismatch');
+  expect(card.attemptedConfigs).toHaveLength(1);
+  await page.screenshot({ path: testInfo.outputPath('install-refusal-preserved.png'), fullPage: true });
+  options.failConfig = false;
+  await banner.getByRole('button', { name: 'Retry' }).click();
+  await expect(banner).toContainText('Installed revision');
+  expect(card.attemptedConfigs).toHaveLength(2);
+  await page.screenshot({ path: testInfo.outputPath('install-retry-verified.png'), fullPage: true });
 });

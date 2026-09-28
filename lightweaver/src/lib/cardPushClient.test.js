@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { webcrypto } from 'node:crypto';
+import { isUncertainCardWriteFailure } from './cardTransientFailure.js';
 import { classifyCardDeploymentResume, orchestrateCardDeploymentStart } from './cardDeployment.js';
 import {
   assertCardColorJourneySupport,
@@ -898,4 +899,61 @@ test('bounded affine journeys require the exact v3 error capability before write
     { recipeCapabilities: { colorJourneyV3: { ...v3, maxPhaseErrorTicks: 195 } } },
     { recipeCapabilities: { colorJourneyV3: { ...v3, phaseEncoding: 'q0.16-affine' } } },
   ]) assert.throws(() => assertCardColorJourneySupport(runtime, evidence), /firmware/);
+});
+
+
+test('failed install preflight cannot masquerade as an accepted write or a card restart', { concurrency: false }, async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  let posts = 0;
+  try {
+    await assert.rejects(pushConfigToCard(runtimePackage, {
+      host: 'lightweaver.local', transport: 'direct', autoDiscover: false,
+      fetchImpl: async (_url, init = {}) => {
+        if (init.method === 'POST') posts += 1;
+        throw new TypeError('Failed to fetch');
+      },
+    }), error => {
+      assert.equal(error.delivery, 'not-sent');
+      assert.equal(isUncertainCardWriteFailure(error), false);
+      return true;
+    });
+    assert.equal(posts, 0);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test('explicit config refusal stays a refusal while a lost accepted-write reboot remains uncertain', { concurrency: false }, async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = browserWithIdentity('http:');
+  try {
+    for (const accepted of [false, true]) {
+      let posts = 0;
+      await assert.rejects(pushConfigToCard(runtimePackage, {
+        host: 'lightweaver.local', transport: 'direct', autoDiscover: false,
+        fetchImpl: async (url, init = {}) => {
+          if (init.method === 'POST') posts += 1;
+          if (String(url).endsWith('/api/firmware-info')) return response({
+            app: 'Lightweaver', cardId: 'lw-aabbccddeeff', firmwareVersion: '1.1.47', buildId: 'build-2160',
+            provisionalSetup: true, piece: { id: 'lightweaver-bench-discovery-v1' }, outputs: [{ pin: 16, pixels: 8 }],
+          });
+          if (String(url).endsWith('/api/config')) return accepted
+            ? response({ ok: true, requiresReboot: true })
+            : { ...response({ ok: false, error: 'network settings not ready' }, false), status: 400 };
+          if (String(url).endsWith('/api/reboot')) throw new TypeError('Failed to fetch');
+          throw new Error('unexpected request');
+        },
+      }), error => {
+        assert.equal(isUncertainCardWriteFailure(error), accepted);
+        if (!accepted) assert.match(error.message, /network settings not ready/);
+        return true;
+      });
+      assert.equal(posts, accepted ? 2 : 1);
+    }
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });
