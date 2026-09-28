@@ -31,6 +31,61 @@ test('Studio-only changes are firmware-sensitive for tests but produce no signed
   assert.equal(classifyChangedPaths(['lightweaver/src/v3/lw-pattern.jsx']).firmware, true);
 });
 
+test('browser installer helpers retain validation without requiring a signed release', () => {
+  for (const path of [
+    'packages/installer-core/src/flash-connection.js',
+    'packages/installer-core/src/flash-workflow.js',
+    'packages/installer-core/test/installer-core.test.js',
+  ]) {
+    assert.deepEqual(classifyChangedPaths([path]), {
+      source: true,
+      browser: true,
+      cloud: false,
+      production: true,
+      firmware: true,
+      artifact: false,
+    }, path);
+    assert.equal(firmwareBundleOnly([path]), true, path);
+    assert.equal(firmwareBundleOnly([path, 'lightweaver/src/v3/lw-pattern.jsx']), true, path);
+    assert.equal(firmwareBundleOnly([path, '.github/workflows/test.yml']), true, path);
+  }
+});
+
+test('browser installer helpers cannot mask a real signing input', () => {
+  const browserHelper = 'packages/installer-core/src/flash-workflow.js';
+  for (const hardPath of [
+    'firmware/lightweaver-controller/src/main.cpp',
+    'firmware/lightweaver-controller/VERSION',
+    'firmware/lightweaver-controller/platformio.ini',
+    'packages/installer-core/src/constants.js',
+    'packages/installer-core/src/firmware-release.js',
+    'packages/installer-core/src/new-release-helper.js',
+    'packages/installer-core/package.json',
+    'scripts/sign-release-artifacts.mjs',
+    'release/firmware-manifest.schema.json',
+    'release/keys/firmware-public.pem',
+    '.github/workflows/build-firmware.yml',
+    '.github/workflows/deploy-site.yml',
+  ]) {
+    assert.equal(firmwareBundleOnly([browserHelper, hardPath]), false, hardPath);
+  }
+  assert.equal(firmwareBundleOnly([browserHelper], { conservative: true }), false);
+});
+
+test('classifier repair diff validates firmware without requiring a signed release', () => {
+  const paths = [
+    'docs/CAPABILITIES.md',
+    'lightweaver/tests/three-gpio-playlist-workflow.spec.ts',
+    'scripts/ci-changed-lanes.mjs',
+    'scripts/ci-changed-lanes.test.mjs',
+  ];
+  assert.equal(classifyChangedPaths(paths).firmware, true);
+  assert.equal(firmwareBundleOnly(paths), true);
+  assert.equal(firmwareBundleOnly(['scripts/ci-changed-lanes.mjs']), true);
+  assert.equal(firmwareBundleOnly(paths, { conservative: true }), false);
+  assert.equal(firmwareBundleOnly([...paths, 'firmware/lightweaver-controller/VERSION']), false);
+});
+
 test('real firmware changes still produce a signed release automatically', () => {
   assert.equal(firmwareBundleOnly(['firmware/lightweaver-controller/src/main.cpp']), false);
   assert.equal(firmwareBundleOnly(['firmware/lightweaver-controller/platformio.ini']), false);

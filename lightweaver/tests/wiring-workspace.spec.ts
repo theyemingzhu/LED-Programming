@@ -458,7 +458,7 @@ test('closing wire discovery stops the persistent card test before hiding it', a
 test('Test & Install does not reprint the Wire GPIO list', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   await expect(page.getByTestId('gpio-group-16')).toContainText('Outer circle');
-  await expect(page.getByTestId('gpio-group-16')).toContainText('27 LEDs');
+  await expect(page.getByTestId('gpio-group-16')).toContainText('2 sections · 44 LEDs');
   await switchMode(page, 'wire');
   await expect(page.getByTestId('test-install-plan-summary')).toHaveCount(0);
   await expect(page.getByTestId('layout-send-to-card')).toBeVisible();
@@ -518,8 +518,8 @@ test('assigning a second GPIO in Wire updates hardware pin conflicts', async ({ 
 test('changing logical sections never changes the derived physical data-wire count', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   const outer = await expandDrawStrip(page, 'Outer circle');
-  await outer.getByRole('spinbutton', { name: 'Strip LED count', exact: true }).fill('26');
-  await outer.getByRole('spinbutton', { name: 'Strip LED count', exact: true }).blur();
+  await outer.getByRole('spinbutton', { name: /LED count$/ }).fill('26');
+  await outer.getByRole('spinbutton', { name: /LED count$/ }).blur();
   await outer.getByRole('button', { name: 'Reverse data direction of Outer circle' }).click();
   await switchMode(page, 'wire');
   expect(await gpioGroupsOnWire(page)).toBe(1);
@@ -692,6 +692,7 @@ test('Wire owns physical data direction alongside the drawn path direction', asy
   expect(project.layout.wiring.runs.find((run: any) => run.source?.stripId === 'default-outer-circle').physicalDirection).toBe('source-forward');
 
   // The wiring toggle is distinct from the drawn-path flip.
+  await outer.locator('summary[aria-label="More strip actions"]').click();
   await expect(outer.getByRole('button', { name: 'Flip path direction' })).toHaveAttribute('title', 'Flip the drawing path so pixel 0 swaps ends');
 });
 

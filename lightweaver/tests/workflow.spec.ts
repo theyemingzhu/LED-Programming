@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
+import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 // The save-picker stub this file used to carry inline now arrives with the
@@ -21,6 +22,15 @@ async function mockLocalCard(page: any, options: any = {}) {
   // so make that fixture an explicitly placed layout before fingerprinting it.
   project.layout.starterPending = false;
   const projectFingerprint = cardProjectFingerprint(project);
+  const installed = prepareCardDeployment({
+    projectId: project.id,
+    projectName: project.name,
+    projectRevision: 0,
+    strips: project.layout.strips,
+    patchBoard: project.layout.patchBoard,
+    wiring: project.layout.wiring,
+    standaloneController: project.devices.standaloneController,
+  }).config;
   // A real card reports the zone ids it was actually flashed with, which come
   // from the COMPILED wiring (`default-outer-circle`), never Studio's own
   // patch ids (`patch-default-outer-circle`). Derive them the same way
@@ -78,7 +88,7 @@ async function mockLocalCard(page: any, options: any = {}) {
         knownGoodProject: true, commandReady: true, outputReady: true, playbackReady: true,
         projectId: installedProjectId, projectRevision: installedProjectRevision,
         piece: { id: installedProjectId }, projectFingerprint: installedProjectFingerprint,
-        led: { pixels: 44 }, wifi: { ip: 'lightweaver.local' },
+        led: card.savedConfig?.led ?? installed.led, wifi: { ip: 'lightweaver.local' },
         source: 'internal-flash', wiringRevision: 4, wiringDigest: 'deadbeef',
       } });
       return;
@@ -101,10 +111,10 @@ async function mockLocalCard(page: any, options: any = {}) {
           projectId: card.savedConfig?.projectId ?? project.id,
           projectRevision: card.savedConfig?.projectRevision ?? 0,
           projectFingerprint: card.savedConfig?.projectFingerprint ?? projectFingerprint,
-          pixels: 44,
-          outputs: [
-            { id: 'out1', pin: 16, pixels: 44 },
-          ],
+          pixels: card.savedConfig?.led?.pixels ?? installed.led.pixels,
+          ledType: card.savedConfig?.led?.type ?? installed.led.type,
+          maxMilliamps: card.savedConfig?.led?.maxMilliamps ?? installed.led.maxMilliamps,
+          outputs: card.savedConfig?.led?.outputs ?? installed.led.outputs,
         },
       });
       return;
@@ -407,41 +417,38 @@ test('complete playlist sync writes and verifies all card sections', async ({ pa
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
 });
 
-// Was: 'latest section preview installs dependencies once and wins rapid taps',
-// which asserted that selecting a section pushed one /api/config to give the
-// card the zone it was missing. Writing the card's storage to preview a
-// pattern is an install wearing a preview's name, and it put a ~1s config
-// write in front of a tap that is supposed to be instant. A preview now falls
-// back to the whole strip and says so. The rapid-tap half of this test is the
-// part worth keeping: the last tap still wins.
+// A live preview must leave storage untouched, and the last of two valid
+// section intents must be what the card applies.
 test('the latest section preview wins rapid taps and never writes the card config', async ({ page }) => {
+  const card = await mockLocalCard(page);
+  await gotoAuthorizedPatterns(page, card);
+
+  card.operations.length = 0;
+  card.controls.length = 0;
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
+  await page.locator('[data-pattern-id="aurora"]').click();
+  await expect.poll(() => card.controls.at(-1)?.zone).toBe('default-outer-circle');
+  await page.getByTestId('section-target-patch-default-inner-circle').click();
+  await expect.poll(() => card.controls.at(-1)?.zone).toBe('default-inner-circle');
+  expect(card.operations.filter(item => item === 'config')).toHaveLength(0);
+  const patternWrites = card.controls.filter(control => control.patternId);
+  expect(patternWrites[0].zone).toBe('default-outer-circle');
+  expect(patternWrites.at(-1).zone).toBe('default-inner-circle');
+  expect(patternWrites.length).toBeGreaterThanOrEqual(2);
+  await expect(page.getByTestId('pattern-card-status')).toHaveCount(0);
+});
+
+test('a missing card section blocks live preview without changing any lights or config', async ({ page }) => {
   const card = await mockLocalCard(page, {
     zones: [{ id: 'full-piece', label: 'Full piece', ranges: [{ start: 0, count: 44 }] }],
-    configDelayMs: 1000,
   });
   await gotoAuthorizedPatterns(page, card);
 
   card.operations.length = 0;
   await page.getByTestId('section-target-patch-default-outer-circle').click();
-  await expect.poll(() => card.controls.length).toBeGreaterThan(0);
-  await page.getByTestId('section-target-patch-default-inner-circle').click();
-
-  await page.waitForTimeout(1500);
+  await expect(page.getByTestId('pattern-card-status')).toContainText('The lights were not changed.');
+  expect(card.controls).toHaveLength(0);
   expect(card.operations.filter(item => item === 'config')).toHaveLength(0);
-  // Both taps reach the card now, and that is the point: each one is a single
-  // fast control POST, so neither has to be thrown away. Superseding only ever
-  // mattered while a ~1s config write sat in front of the send. What must still
-  // hold is that the card ends on the LAST tap.
-  expect(card.controls.length).toBeGreaterThanOrEqual(1);
-  const revisions = card.controls.map(control => control.revision);
-  expect(revisions.at(-1)).toBe(Math.max(...revisions));
-  // The card has only `full-piece`, so the targeted zone cannot be honoured.
-  // The pattern still reaches the strip, whole-piece, and the screen says which
-  // of the two happened rather than letting a section tab imply otherwise.
-  expect(card.controls.every(control => control.zone === undefined)).toBe(true);
-  // Migrated to the notice layer; same message, now under the
-  // 'pattern-card-status' testid instead of the old `.pmx-status` class.
-  await expect(page.getByTestId('pattern-card-status')).toContainText('played on the whole piece');
 });
 
 // Regression for the fixture bug this file used to carry: mockLocalCard's
@@ -454,7 +461,7 @@ test('the latest section preview wins rapid taps and never writes the card confi
 // when the card genuinely lacks the section (proved by the override just
 // above, with a deliberately mismatched `full-piece` zone); this proves the
 // opposite case — a card that DOES hold the section — is not swallowed by
-// the same fixture into the same fallback.
+// the same fixture into the same no-write refusal.
 test('a section preview targets the real zone once the card actually reports it', async ({ page }) => {
   const card = await mockLocalCard(page); // default zones: the compiled ids a real card reports
   await gotoAuthorizedPatterns(page, card);

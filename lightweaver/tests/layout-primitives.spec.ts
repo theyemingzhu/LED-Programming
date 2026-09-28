@@ -275,7 +275,7 @@ test('physical strip values can be typed and density is chosen before creating a
     return strip ? [strip.pixelCount, strip.svgLength / layout.pxPerMm / 1000] : null;
   }).toEqual([48, 0.5]);
 
-  const ledCount = page.getByRole('spinbutton', { name: 'Strip LED count', exact: true });
+  const ledCount = page.getByRole('spinbutton', { name: /LED count$/ });
   await ledCount.fill('60');
   await ledCount.press('Enter');
   await expect.poll(async () => {
@@ -388,7 +388,7 @@ test('size, density, and LED count stay linked', async ({ page }) => {
   }).toEqual([Math.round(starting.pixelCount / 0.9), true]);
 
   const linked = (await readAutosaveStrips(page))?.[0];
-  await page.getByRole('button', { name: 'One LED more' }).click();
+  await page.getByRole('button', { name: /^One more LED in / }).click();
   await expect.poll(async () => {
     const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || 'null'));
     const strip = saved?.layout?.strips?.[0];
@@ -401,7 +401,7 @@ test('size, density, and LED count stay linked', async ({ page }) => {
   await expect(page.locator('[data-testid^="strip-led-"]')).toHaveCount(linked.pixelCount + 1);
 
   await expect(page.locator('.la-strip-caption')).toHaveCount(0);
-  await expect(page.getByLabel('Strip LED count', { exact: true }))
+  await expect(page.getByRole('spinbutton', { name: /LED count$/ }))
     .not.toHaveAttribute('title');
   await expect(page.getByLabel('Strip length in metres', { exact: true }))
     .not.toHaveAttribute('title');
@@ -466,14 +466,24 @@ test('a locked 256-LED Find-my-strips count can be typed to the real length', as
   await page.reload({ waitUntil: 'domcontentloaded' });
   const row = page.locator('.la-strip-row').first();
   await expect(row).toBeVisible();
-  await expect(row).toContainText('256 LEDs');
+  await expect(page.getByTestId('layout-total-led-count')).toHaveValue('256');
   await row.click();
-  const count = page.getByLabel('Strip LED count', { exact: true });
+  const count = page.getByRole('spinbutton', { name: 'Untitled Project LED count' });
   await expect(count).toHaveValue('256');
   await count.fill('41');
   await count.blur();
   await expect(count).toHaveValue('41');
-  await expect(row).toContainText('41 LEDs');
+  await expect(page.getByTestId('layout-total-led-count')).toHaveValue('41');
+  await expect.poll(() => page.evaluate(() => {
+    const wiring = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.layout?.wiring;
+    return [wiring?.locked, wiring?.verified, wiring?.runs?.[0]?.verified, wiring?.runs?.[0]?.source?.to];
+  })).toEqual([false, false, false, 40]);
+  await page.getByTitle(/^Undo \(/).click();
+  await expect(page.getByTestId('layout-total-led-count')).toHaveValue('256');
+  await expect.poll(() => page.evaluate(() => {
+    const wiring = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.layout?.wiring;
+    return [wiring?.locked, wiring?.verified, wiring?.runs?.[0]?.verified, wiring?.runs?.[0]?.source?.to];
+  })).toEqual([true, true, true, 255]);
 });
 
 test('GPIO picker groups strips by output and assigns the selected strip to that wire', async ({ page }) => {
@@ -529,7 +539,7 @@ test('GPIO picker reconciles a run after the strip LED count is reduced', async 
   const strip = page.locator('[data-strip-id]').first();
   if (!await strip.locator('.la-strip-detail').isVisible()) await strip.locator('.la-strip-row').click();
 
-  const ledCount = page.getByRole('spinbutton', { name: 'Strip LED count', exact: true });
+  const ledCount = page.getByRole('spinbutton', { name: /LED count$/ });
   await ledCount.fill('12');
   await ledCount.press('Tab');
   await page.getByLabel('GPIO output').selectOption('17');
@@ -660,7 +670,7 @@ test('the Size + control grows a strip ~23% about a fixed center', async ({ page
 
   // A hand-pinned count survives resize: pin it via the LEDs fine-tune input,
   // grow again, and the count must not recount.
-  const count = page.getByRole('spinbutton', { name: 'Strip LED count', exact: true });
+  const count = page.getByRole('spinbutton', { name: /LED count$/ });
   await count.fill('60');
   await count.blur();
   await grow.click();

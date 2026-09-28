@@ -42,7 +42,10 @@ function expectOceanInStartup(config: any) {
 async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', options: any = {}) {
   const firmwareVersion = options.firmwareVersion || HARDENING_FIRMWARE_VERSION;
   const buildId = options.buildId || HARDENING_BUILD_ID;
-  const initialOutputs = options.matchingStudioWiring
+  // The fixture represents an already wired card by default. A synthetic
+  // full-strip output changes physical wiring and correctly enters the staged
+  // light test, which is unrelated to the look-only install cases below.
+  const initialOutputs = options.matchingStudioWiring !== false
     ? compileWiring({
       wiring: DEFAULT_PROJECT.layout.wiring,
       strips: DEFAULT_PROJECT.layout.strips,
@@ -167,8 +170,8 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
       candidateState: hasCandidate ? (wiringState === 'testing' ? 'awaiting-confirmation' : 'staged') : 'none',
       hasCandidate,
       cardId,
-      firmwareVersion: HARDENING_FIRMWARE_VERSION,
-      buildId: HARDENING_BUILD_ID,
+      firmwareVersion,
+      buildId,
       ...(hasCandidate ? { activationId } : {}),
       projectRevision: identity?.projectRevision ?? 0,
       projectFingerprint: identity?.projectFingerprint ?? '',
@@ -372,6 +375,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('pattern cards are native selected buttons and load in exact batches of 24', async ({ page }) => {
+  // This case measures the button's increment. Playwright scrolls it into view
+  // before clicking, which also crosses the separate 600px sentinel and adds
+  // another 24. The next test covers that observer path with its exact count.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'IntersectionObserver', { value: undefined, configurable: true });
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
   const cards = page.locator('.pm-cards .pmcard');
   await expect(cards).toHaveCount(24);
   await expect(cards.first()).toHaveJSProperty('tagName', 'BUTTON');

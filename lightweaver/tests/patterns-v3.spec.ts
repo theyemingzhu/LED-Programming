@@ -30,17 +30,17 @@ async function setRangeValue(locator, value: string) {
 // cannot drift into modelling a card that could not exist: a zone list in the
 // wrong namespace makes every targeted preview silently fall back to the whole
 // strip, which is a pass that proves nothing.
-const DEFAULT_CARD_ZONE_IDS = (({ layout }) => compileWiring({
+const DEFAULT_CARD_ZONES = (({ layout }) => compileWiring({
   wiring: layout.wiring,
   strips: layout.strips,
   groups: layout.layerGroups,
-}).zones.map(zone => zone.id))(createDefaultProject());
+}).zones.map(zone => ({ id: zone.id, ranges: zone.ranges })))(createDefaultProject());
 
 async function mockDefaultCardZones(page) {
   await page.route('**/api/zones', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ zones: DEFAULT_CARD_ZONE_IDS.map(id => ({ id })) }),
+    body: JSON.stringify({ zones: DEFAULT_CARD_ZONES }),
   }));
 }
 
@@ -646,7 +646,10 @@ test('On my piece returns to the last strip and restores preview state per proje
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('button', { name: 'On my piece' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Preview target')).toHaveValue('piece');
-  await expect(page.getByTestId('section-target-patch-default-inner-circle')).toHaveClass(/\bon\b/);
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
+  await page.getByRole('button', { name: 'On my piece' }).click();
+  await expect(page.getByLabel('Preview target')).toHaveValue('patch-default-inner-circle');
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
 
   const anotherProject = createPiecePreviewProject('piece-preview-other');
   const otherContext = await browser.newContext();
@@ -697,7 +700,7 @@ test('whole-piece preview composites saved assignments plus the unsaved selected
   expect(JSON.stringify(saved.layout.patchBoard)).toBe(savedBefore);
 });
 
-test('leaving whole-piece preview restores the remembered strip as the edit target', async ({ page }) => {
+test('leaving whole-piece preview recalls the strip without changing the edit target', async ({ page }) => {
   const project = createPiecePreviewProject('piece-preview-all-toggle');
   await gotoSavedProjectPatterns(page, project);
 
@@ -712,6 +715,10 @@ test('leaving whole-piece preview restores the remembered strip as the edit targ
 
   await toggle.click();
   await expect(stage).toHaveAttribute('data-preview-target', 'patch-default-inner-circle');
+  await expect(allTarget).toHaveClass(/\bon\b/);
+  await expect(innerTarget).not.toHaveClass(/\bon\b/);
+
+  await innerTarget.click();
   await expect(innerTarget).toHaveClass(/\bon\b/);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
@@ -839,6 +846,7 @@ test('a section spanning two GPIOs exposes one pattern scope and opens its strip
   await gotoSavedProjectPatterns(page, project);
 
   await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16 · GPIO 17');
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
   await expect(page.getByTestId('section-spans-gpios')).toContainText("these GPIOs share this section's pattern");
   await page.getByTestId('open-spanning-section-in-layout').click();
   await expect(page).toHaveURL(/#screen=layout&mode=draw/);
@@ -1415,7 +1423,7 @@ test('an exact paired ready card still applies Ocean immediately', async ({ page
 
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Ocean');
   await expect.poll(() => controlRequests.some(request => request.patternId === 'ocean')).toBe(true);
-  await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
+  await expect(page.getByTestId('physical-preview-status')).toHaveText('Preview sent to card');
 });
 
 test('a paired installed card that is not ready enters recovery verification, never blank setup', async ({ page }) => {
@@ -1529,8 +1537,8 @@ test('Studio preview changes immediately while runtime application waits for the
   await expect(cardReadout).toContainText('Sending to Lightweaver');
   await expect.poll(() => Boolean(releaseControl)).toBe(true);
   releaseControl?.();
-  await expect(page.getByTestId('physical-preview-status')).toHaveText('Applied by Lightweaver runtime');
-  await expect(cardReadout).toContainText('Applied by Lightweaver runtime');
+  await expect(page.getByTestId('physical-preview-status')).toHaveText('Preview sent to card');
+  await expect(cardReadout).toContainText('Preview sent to card');
 });
 
 test('an old card keeps the Studio selection and offers a card software update', async ({ page }) => {
@@ -1829,7 +1837,7 @@ test('a Ready pattern tap is never replayed when card readiness is lost before t
   await expect(page.getByTestId('pattern-preview-meta')).toContainText('Fire');
 });
 
-test('disabling live preview invalidates a pending bridge selection', async ({ page }) => {
+test('an always-on pattern tap sends once after bridge readiness without replaying through the bridge', async ({ page }) => {
   const controlRequests: Record<string, unknown>[] = [];
   await pairReadyPatternCard(page, 'lw-disable-preview');
   await page.route('**/api/control', async route => {
@@ -1863,8 +1871,8 @@ test('disabling live preview invalidates a pending bridge selection', async ({ p
     }));
   });
 
-  await page.waitForTimeout(200);
-  expect(controlRequests).toHaveLength(0);
+  await expect.poll(() => controlRequests.length).toBe(1);
+  expect(controlRequests[0].patternId).toBe('ocean');
   expect((await page.evaluate(() => (window as any).__bridgeMessages)).filter((entry: any) => entry.message.type === 'control')).toHaveLength(0);
 });
 
@@ -2306,6 +2314,7 @@ test('a slider changes its readout and sends a tuned color modifier', async ({ p
   });
 
   await gotoFreshPatterns(page);
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
 
   // Brightness slider readout follows the input value.

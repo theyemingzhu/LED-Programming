@@ -291,6 +291,6 @@ test('Draw resize reports reflection points reset by count reprojection', async 
   await page.getByLabel('More strip actions').click();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();
   await page.getByRole('button', { name: 'Make strip smaller' }).click();
-  await expect(row).toContainText('11 LEDs');
+  await expect(page.getByRole('spinbutton', { name: 'Line LED count' })).toHaveValue('11');
   await expect(page.getByText('Count changed; reset point 3.')).toBeVisible();
 });
