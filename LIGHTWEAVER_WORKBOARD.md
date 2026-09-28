@@ -9,6 +9,25 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Project pattern stacks — verified local build (chat 01a0e6bf)
+Owner: this manager; Sprint. State: done at the approved local-build boundary.
+Artifact: branch `codex/project-pattern-stacks`, managed checkout
+`/Users/adrianrasmussen/.codex/worktrees/project-pattern-stacks/led`, base6dbffe67.
+Working: full-section snapshots, separate project shelf and playlist picker,
+Save & add, multi-add, Update/Duplicate/Rename/Revert/Delete/Undo, selective copy,
+per-stack draft recovery, truthful storage errors/retry and section-change review.
+Evidence: 2869/2869 unit tests; 97 distinct relevant browser checks covered and
+passing after focused repairs; final production build PASS. Final8check log:
+`/tmp/lightweaver-stacks-last-checks.log`; checkpoint:
+`/tmp/lightweaver-stacks-checkpoint-final.log`. Desktop/phone inspected; image
+`/tmp/lightweaver-project-stacks-review.png`; isolated preview127.0.0.1:9220.
+Limit: ten4-section stacks save/reopen/export correctly; representative card
+payload7243bytes exceeds existing3968. No silent loss; oversized install refused.
+Dependency: firmware capacity expansion remains a separate pending scope decision.
+No release, firmware/card writes or physical appearance proof. Owner4173 preserved.
+Next: authorized integration/release; expanded card capacity needs its own approval.
+Plan/evidence: `docs/plans/2026-09-28-project-pattern-stacks-build.md`.
+
 RELEASE CANDIDATE VERIFIED: branch codex/browser-gate-latency throughb3f09b72.
 Source9ceec06f fixes exact probation confirm/rollback, pre-send causechain and
 same-component duplicate install; source review constraints passed,2857 integrated

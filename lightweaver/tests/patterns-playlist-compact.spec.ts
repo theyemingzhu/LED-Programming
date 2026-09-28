@@ -180,16 +180,16 @@ test('Playlist Playing stat uses the shared send-status vocabulary, never its ow
 
 // ── Item 2: Playlist stays first on a phone ─────────────────────────────────
 
-test('at 390px Playlist keeps the playlist above the Saved looks / Pattern pool add-ons', async ({ page }) => {
+test('at 390px Playlist keeps the order above the Project stacks / Patterns source picker', async ({ page }) => {
   const project = makePlaylistProject({ count: 2 });
   await gotoPlaylist(page, project);
   await page.setViewportSize({ width: 390, height: 844 });
 
   const mainFirstChild = page.locator('.pm-main > *').first();
-  const savedLooksPanel = page.locator('.pm-aside .card.pm-pane').first();
+  const savedLooksPanel = page.getByTestId('playlist-source-picker');
   await expect(mainFirstChild).toBeVisible();
   await expect(savedLooksPanel).toBeVisible();
-  await expect(savedLooksPanel).toContainText('Saved looks');
+  await expect(savedLooksPanel).toContainText('Project stacks (0)');
 
   const mainBox = await mainFirstChild.boundingBox();
   const savedBox = await savedLooksPanel.boundingBox();
@@ -299,7 +299,7 @@ test('Patterns no longer reuses "On the card now" as a per-tap confirmed label',
   await page.locator('.pm-cards .pmcard').first().click();
   await expect
     .poll(async () => page.getByTestId('physical-preview-status').textContent())
-    .toEqual('Applied by Lightweaver runtime');
+    .toEqual('Preview sent to card');
   await expect(page.locator('.pm-target')).not.toContainText('On the card now');
   await expect(page.locator('.pm-target')).not.toContainText('Confirmed on card');
 });

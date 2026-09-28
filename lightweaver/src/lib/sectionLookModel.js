@@ -141,6 +141,7 @@ export function applyLookToPatchBoard({
 
 export function normalizeSavedLooks(looks = []) {
   if (!Array.isArray(looks)) return [];
+
   const seen = new Set();
   const normalized = [];
 
@@ -155,7 +156,7 @@ export function normalizeSavedLooks(looks = []) {
       id,
       type: COMPOUND_PATTERN_TYPE,
       label: String(look.label || titleFromId(id)),
-      defaultLook: normalizeSectionVisualLook(look.defaultLook || look.look || {}),
+      defaultLook: normalizeStoredAppearance(look.defaultLook || look.look || {}),
       sectionLooks: normalizeSectionLooks(look.sectionLooks || look.zones || {}),
       ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
       ...(look.projectOnly === true ? {
@@ -166,9 +167,10 @@ export function normalizeSavedLooks(looks = []) {
       } : {}),
       ...(nativeRecipe ? { nativeRecipe } : {}),
       ...(nativeRecipe && typeof look.nativeRecipeLayoutKey === 'string' ? { nativeRecipeLayoutKey: look.nativeRecipeLayoutKey } : {}),
+      ...(look.sectionSnapshotVersion === 1 ? { sectionSnapshotVersion: 1 } : {}),
       updatedAt: Number.isFinite(Number(look.updatedAt)) ? Number(look.updatedAt) : 0,
     });
-    if (normalized.length >= MAX_SAVED_LOOKS) break;
+
   }
 
   return normalized;
@@ -181,8 +183,12 @@ export function saveCurrentLookToController(controller = {}, {
   targets = [],
   patternLabRecipe = null,
 } = {}) {
-  const id = sanitizeId(lookId || label || `look-${Date.now()}`) || `look-${Date.now()}`;
   const existing = normalizeSavedLooks(controller.looks);
+  const baseId = sanitizeId(lookId || label || `look-${Date.now()}`) || `look-${Date.now()}`;
+  let id = baseId;
+  if (!lookId) for (let suffix = 2; existing.some(look => look.id === id); suffix += 1) id = `${baseId}-${suffix}`;
+  assertSupportedStackAppearance(defaultLook);
+  for (const target of targets) assertSupportedStackAppearance(target.look);
   const previous = existing.find(look => look.id === id);
   if (!previous && existing.length >= MAX_SAVED_LOOKS) {
     throw new RangeError(`This project already has ${MAX_SAVED_LOOKS} saved looks. Update a look or delete one before saving as new.`);
@@ -194,13 +200,11 @@ export function saveCurrentLookToController(controller = {}, {
     label: String(label || titleFromId(id)),
     defaultLook: normalizeSectionVisualLook(defaultLook),
     sectionLooks: sectionLooksFromTargets(targets),
+    sectionSnapshotVersion: 1,
     ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
     updatedAt: Date.now(),
   };
-  const looks = [
-    saved,
-    ...existing.filter(look => look.id !== saved.id),
-  ];
+  const looks = previous ? existing.map(look => look.id === saved.id ? saved : look) : [...existing, saved];
 
   return {
     ...(controller || {}),
@@ -239,6 +243,7 @@ export function applySavedLookToPatchBoard({
 } = {}) {
   const look = normalizeSavedLooks([{ id: 'applied-look', ...savedLook }])[0];
   if (!look) return normalizePatchBoard(patchBoard, strips);
+  for (const value of [look.defaultLook, ...Object.values(look.sectionLooks || {})]) assertSupportedStackAppearance(value);
 
   let board = applyLookToPatchBoard({
     patchBoard,
@@ -309,7 +314,7 @@ function normalizeSectionLooks(sectionLooks = {}) {
   if (!sectionLooks || typeof sectionLooks !== 'object') return {};
   return Object.fromEntries(
     Object.entries(sectionLooks)
-      .map(([id, look]) => [sanitizeId(id), normalizeSectionVisualLook(look)])
+      .map(([id, look]) => [sanitizeId(id), normalizeStoredAppearance(look)])
       .filter(([id]) => Boolean(id)),
   );
 }
@@ -356,4 +361,13 @@ export function copyLookToAllSections(draftLooks = {}, look = {}, targets = []) 
     if (target?.kind === 'section' && target.id) next[target.id] = { ...shared };
   }
   return next;
+}
+
+function assertSupportedStackAppearance(value) {
+  if (value?.patternId && normalizeSectionVisualLook(value).patternId !== value.patternId) throw new Error(`Unsupported section pattern: ${value.patternId}. Choose a supported card pattern before saving this stack.`);
+}
+
+function normalizeStoredAppearance(value = {}) {
+  const normalized = normalizeSectionVisualLook(value);
+  return value?.patternId ? { ...normalized, patternId: String(value.patternId) } : normalized;
 }

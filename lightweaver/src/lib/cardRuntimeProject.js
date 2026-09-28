@@ -1,3 +1,4 @@
+import { getProjectStackReview, getProjectStackCompatibility } from './projectStacks.js';
 import { DEFAULT_CARD_CONTROLS, DEFAULT_CARD_LED, DEFAULT_CARD_PATTERN_BANK, makeCardRuntimePackage, patchBoardToZones } from './cardRuntimeContract.js';
 import { DEFAULT_STANDALONE_OUTPUTS, deriveStandaloneOutputsFromStrips, normalizeStandaloneOutputs, totalStandalonePixels } from './standaloneController.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
@@ -112,6 +113,15 @@ export function buildCardRuntimePackageFromProject({
   // auto-plays it) live at controls.playlist — see cardPlaylist.js's
   // normalizePlaylistTiming doc comment for why they are stored there rather
   // than as a bare standaloneController field.
+  const stackTargets = deriveSectionTargets({ strips, patchBoard, compiledWiring: compiled, defaultLook: visualLook });
+  for (const item of playlist.filter(item => item.type === 'combo' && item.enabled !== false)) {
+    const look = savedLooks.find(look => look.id === item.lookId);
+    const compatibility = getProjectStackCompatibility(look);
+    if (!compatibility.ok) throw new Error(compatibility.reason);
+    if (getProjectStackReview(look, stackTargets).needsReview) {
+      throw new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
+    }
+  }
   const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
   const playlistConfig = buildCardPlaylistConfig(playlist, savedLooks, playlistTiming, sequenceAssets);
   const looks = buildRuntimeLooksFromPlaylist({
@@ -124,7 +134,6 @@ export function buildCardRuntimePackageFromProject({
     visualLook,
     compiled: Boolean(compiled),
     compiledWiring: compiled,
-    strips,
     wiring,
     symSettings,
   });

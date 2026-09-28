@@ -1,0 +1,69 @@
+.pl-source-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+.pl-source-tab {
+  flex: 1;
+  min-height: 44px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-mid);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pl-source-tab[aria-selected="true"] {
+  background: var(--bg-elev);
+  color: var(--text-hi);
+  font-weight: 700;
+}
+
+.pl-stack-list { display: grid; gap: 9px; }
+.pl-stack-card {
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+}
+.pl-stack-head { display: flex; align-items: center; gap: 9px; }
+.pl-stack-head strong { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.pl-stack-head input { width: 18px; height: 18px; flex: none; }
+.pl-stack-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 5px; color: var(--text-mid); font-size: 12px; }
+.pl-stack-ineligible { color: var(--danger, #c85a50); }
+.pl-stack-mini { display: grid; gap: 3px; margin-top: 9px; }
+.pl-stack-mini > div { display: flex; justify-content: space-between; gap: 12px; padding-left: 7px; border-left: 2px solid var(--border-soft); font-size: 11px; }
+.pl-stack-mini span { color: var(--text-mid); }
+.pl-stack-mini strong { font-weight: 600; text-align: right; }
+.pl-stack-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.pl-stack-actions button, .pl-stack-actions a, .pl-stack-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--accent, currentColor);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 0;
+}
+.pl-stack-assignment-list { margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid var(--border-soft); list-style: none; display: grid; gap: 5px; }
+.pl-stack-assignment-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.pl-stack-assignment-list li span:first-child { color: var(--text-mid); }
+.pl-stack-assignment-list li span:last-child { text-align: right; }
+.pl-stack-add-selected { width: 100%; min-height: 44px; margin: 8px 0 12px; }
+.pl-stack-feedback { margin: 9px 0 0; color: var(--danger, #c85a50); font-size: 12px; }
+.pl-project-save-status { margin: -2px 0 12px; color: var(--text-mid); font-size: 12px; }
+.pm .pl-art.pl-art-combo { display: flex; align-items: stretch; justify-content: stretch; gap: 1px; }
+.pm .pl-art.pl-art-combo .pl-art-slice { display: block; flex: 1 1 0; min-width: 5px; height: 100%; }
+.pl-row-stack-details { grid-column: 3 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: -2px 0 8px; }
+.pl-row-stack-details .pl-stack-assignment-list { flex: 0 0 100%; margin-top: 2px; }
+
+@media (max-width: 700px) {
+  .pl-row-stack-details { grid-column: 1 / -1; padding: 0 10px 8px; }
+}
