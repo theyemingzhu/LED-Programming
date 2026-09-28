@@ -9,6 +9,22 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Background publishing — implemented, installed, release handoff next
+Owner: this manager. State: active until candidate merged and observer verified.
+Artifact: codex/stack-release-checks; installed per-user LaunchAgent
+com.mandalacodes.lightweaver.release.94a4c1e2c02e and pinned runtime under Git common
+lightweaver-releases/runtime. Global coding policy and ship skill updated.
+Working: model-free detached observer; exact revision/signing child, skipped-run
+rejection, staged deployment receipt, independent live Studio/firmware byte proof,
+bounded retry, one terminal event/desktop notification, interrupted-login resume.
+Evidence: 88 integrated Node tests pass; detached startup and interrupted resume
+pass with isolated fake CI; workflow YAML and diff check pass. Installed service
+loaded. Existing product release evidence and actual stack screen review retained;
+no duplicate launch run for this CI-only batch. No firmware/code/card mutation.
+Next: merge this coherent batch, start observer on exact main, verify live process
+and persisted checking state, then return the build conversation. Production proof
+runs in background; until it passes the stack release remains NOT SHIPPED.
+
 ### Stack chip width and packing — verified local build
 Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
 Artifact: codex/project-pattern-stacks, refinement on local d8c3f0df.

@@ -48,3 +48,14 @@ Adrian can keep reporting issues here; he must not chase workers or relay messag
 
 Default milestone update: **working now → evidence/build → remaining dependency →
 next owned action**. Keep it brief; report product outcomes, not task counts.
+
+## Default asynchronous release boundary
+
+Use [background publishing](background-publishing.md) for every authorized ship.
+The manager owns delivery but does not need to occupy the build conversation
+while machines wait. Required handoff evidence is the exact merged revision,
+running non-LLM observer, persisted state and resumption path. Return the turn
+after that handoff and accept the next build. Do not call the handoff shipped.
+The observer records and notifies the terminal result; a subsequent relevant
+turn reads that result once. Model reasoning is for implementation or a concrete
+failure, never repetitive status sampling. No recurring AI heartbeat is needed.

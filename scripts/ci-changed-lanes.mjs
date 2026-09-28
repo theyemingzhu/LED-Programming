@@ -21,7 +21,10 @@ const GENERATED_RELEASE_PATHS = Object.freeze([
 
 const isPath = (path, prefix) => path === prefix || path.startsWith(`${prefix}/`);
 const isAnyPath = (path, prefixes) => prefixes.some(prefix => isPath(path, prefix));
+// Site workflow changes keep every validation lane but do not alter signed
+// firmware inputs. The protected signer workflow itself remains a hard input.
 const isReleaseNeutralCiControlPath = path => path === '.github/workflows/test.yml'
+  || path === '.github/workflows/deploy-site.yml'
   || path === 'scripts/ci-changed-lanes.mjs'
   || path === 'scripts/ci-changed-lanes.test.mjs';
 // Browser updater code is exercised by card/production validation, but these

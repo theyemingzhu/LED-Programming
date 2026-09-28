@@ -8,6 +8,13 @@ const SSID = 'Gallery USB privacy sentinel';
 const PASSWORD = 'Only-USB-secret-2819';
 type Outcome = 'connected' | 'ssid-not-found' | 'authentication-failed' | 'unknown' | 'wrong-card' | 'wrong-status-card' | 'wrong-bridge-card' | 'lost-response' | 'already-configured';
 
+test.afterEach(async ({ page }) => {
+  // A navigation can still be loading a Studio module when the test's final
+  // assertion completes. Drain the HTTPS proxy routes before Playwright closes
+  // the page; `wait` keeps real route errors visible instead of ignoring them.
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
 // Exercise the production HTTPS app and real newline USB transport. Only the
 // physical ESP loader/port is replaced; signed firmware verification and
 // commissioning/project persistence stay real.

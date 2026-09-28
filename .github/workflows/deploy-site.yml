@@ -447,3 +447,32 @@ jobs:
             echo "Signed firmware in this release is **Build $FIRMWARE_BUILD_NUMBER** — that is the number a card reports after flashing it." >> "$GITHUB_STEP_SUMMARY"
             echo "The migration, Pages upload, and live freshness check all succeeded." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # Keep a byte-for-byte, machine-readable record of the staged release
+      # even when credentials, upload, or live proof fail. Only a credentialed
+      # publish with passing proof at the still-current main can say shipped.
+      - name: Record exact release proof
+        if: always()
+        env:
+          CREDENTIALS_ENABLED: ${{ steps.creds.outputs.enabled }}
+          MIGRATION_OUTCOME: ${{ steps.migrate.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          FRESHNESS_OUTCOME: ${{ steps.freshness.outcome }}
+          EXPECTED_STUDIO_BUILD_NUMBER: ${{ steps.buildnumber.outputs.value }}
+          STAGED_ROOT: ${{ github.workspace }}/lightweaver/.pages/lightweaver
+          RECEIPT_OUTPUT_DIR: ${{ runner.temp }}/lightweaver-release-proof
+        run: |
+          # Recheck main after live proof; a successful upload of an older
+          # revision is not shipment of the terminal main revision.
+          CURRENT_MAIN_REVISION="$(git ls-remote origin refs/heads/main | awk '{print $1}' || true)"
+          export CURRENT_MAIN_REVISION
+          node scripts/release-receipt.mjs
+
+      - name: Retain release proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lightweaver-release-proof/
+          if-no-files-found: error
+          retention-days: 30

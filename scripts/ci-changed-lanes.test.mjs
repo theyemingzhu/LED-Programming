@@ -65,7 +65,6 @@ test('browser installer helpers cannot mask a real signing input', () => {
     'release/firmware-manifest.schema.json',
     'release/keys/firmware-public.pem',
     '.github/workflows/build-firmware.yml',
-    '.github/workflows/deploy-site.yml',
   ]) {
     assert.equal(firmwareBundleOnly([browserHelper, hardPath]), false, hardPath);
   }
@@ -378,4 +377,14 @@ test('a proven-unchanged card bundle drops the firmware lane for Studio paths on
   ).firmware, true);
   // The conservative everything-runs answer is never weakened.
   assert.equal(classifyChangedPaths([], { conservative: true, cardBundleUnchanged: true }).firmware, true);
+});
+
+// Deployment orchestration is tested conservatively but does not change the
+// firmware binary or authorize a fresh signed card release by itself.
+test('site publishing control changes retain all validation without minting firmware', () => {
+  const paths = ['.github/workflows/deploy-site.yml', 'scripts/release-receipt.mjs'];
+  assert.deepEqual(classifyChangedPaths(paths), allLanes);
+  assert.equal(firmwareBundleOnly(paths), true);
+  assert.equal(firmwareBundleOnly([...paths, 'firmware/lightweaver-controller/VERSION']), false);
+  assert.equal(firmwareBundleOnly([...paths, '.github/workflows/build-firmware.yml']), false);
 });

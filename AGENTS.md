@@ -66,6 +66,28 @@ verification. Default to the glitch loop for an individual browser or UI defect.
   when shipping. The exhaustive workflow is release evidence, not an editing
   loop.
 
+## Background release handoff — mandatory default
+
+Adrian's standing decision (2026-09-28): keep building while authorized publishing
+runs independently. Follow `docs/workflows/background-publishing.md`.
+
+- Prepare the candidate and run required checks once; preserve exact evidence.
+  After the authorized merge, start `scripts/background-release.mjs` for its full
+  SHA. Verify its persisted state and live process, then return the conversation
+  with the truthful status **publishing in background**. This handoff is not
+  shipment; only independent live proof can mark it shipped.
+- Do not occupy a model/sub-agent polling CI or waiting on unchanged logs. The
+  non-LLM observer handles routine waiting, bounded network retries, exact staged
+  artifact proof, and one terminal notification. Never substitute an AI heartbeat.
+- Keep the preview available and accept the next build request immediately. The
+  observer reads Actions artifacts, not local `dist` or a moving preview server.
+- A failed release gets a bounded focused repair and remains visibly not shipped;
+  it does not block unrelated editing. Preserve all checks, credentials, signer
+  authority and firmware safety. Background release is not automatic permission
+  to publish work the owner has not authorized.
+- The macOS per-user service resumes interrupted observation after login. Read
+  persisted status once when relevant; never re-run passed suites just to wait.
+
 ## Three inferred operating modes — mandatory
 
 Do not require Adrian to remember mode names or special commands. Infer the mode
