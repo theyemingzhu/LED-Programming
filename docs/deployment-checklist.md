@@ -47,14 +47,21 @@ These release states are deliberately non-interchangeable:
 - **Shipped**: tested, merged, deployed, and independently verified on the live production origin, including the marker and exact files described below.
 
 “Ship it to main” authorizes the complete route through **Shipped**. It never
-means stop after commit, push, PR, merge, or green CI. When blocked, say **not shipped**
+means claim completion after commit, push, PR, merge, or green CI. A verified
+[background handoff](workflows/background-publishing.md) returns the build
+conversation while delivery remains in progress; the persisted observer owns
+waiting and independently records the eventual result. When blocked, say **not shipped**
 and identify the exact boundary: for example merged but deploy skipped,
 or deployed but live bytes do not match.
 
 The mandatory final live proof runs only after `origin/main` has stopped moving,
-including any protected firmware signer cascade. From a clean checkout of that
-terminal revision, run `PROD_CHECK_REQUIRED=1 npm run check:prod` in
-`lightweaver/`. The checker must rebuild and stage deterministically, require
+including any protected firmware signer cascade. The deployment still runs `PROD_CHECK_REQUIRED=1 npm run check:prod`.
+The independent background observer downloads the exact deploy run's retained
+`release-proof-<runId>-<runAttempt>` artifact and verifies its staged Studio and
+firmware graphs against production, checking terminal main before and after.
+This avoids rebuilding from a developer checkout that can change during the next
+build. A clean terminal-revision checkout with the existing strict checker
+remains the manual recovery route. The checker must rebuild and stage deterministically, require
 `https://led.mandalacodes.com/studio-release.json` to be HTTP 200 with
 `Cache-Control: no-store`, match its full source revision, short build ID, and
 build number to the running bundle, and verify every file and digest in the
@@ -79,10 +86,10 @@ Adrian's 2026-09-26 decision that flashing has no owner-login or button gate.
 The release is deliberately split so feature branches never receive signing
 keys:
 
-1. A reviewed branch must pass the repository-owned changed-path lanes and the
-   single required `Tests / gate` check. Merge queue is enabled, so the same
-   gate runs on the proposed merge group instead of trusting an out-of-date
-   branch result.
+1. A reviewed branch carries focused/local release evidence. Respect configured
+   branch protections and PR checks; the current `Tests` workflow is triggered
+   by main pushes and merge groups, not every PR update. Do not wait for a
+   nonexistent PR check or assume a merge queue is enabled.
 2. The successful `Tests` run on protected `main` is the source of deployment
    authority. Its classifier selects bounded source/build, browser, cloud,
    production, firmware-sensitive, and artifact lanes; selected lanes run in

@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test';
+import {
+  CARD_LINK_DIRECT_PING_INTERVAL_MS,
+  CARD_LINK_PING_INTERVAL_MS,
+  CARD_LINK_PING_TIMEOUT_MS,
+} from '../src/lib/cardLink.js';
 
 // Strip discovery is the only flow that works on a card with nothing on it, and
 // the two routing fixes it depends on are what stop a blank card being sent into
@@ -348,16 +353,36 @@ async function recordTwoGpioWalk(page: any, onFirstCount?: () => Promise<void>) 
   await page.getByTestId('discovery-end-yes').click();
   await page.getByTestId('discovery-record-save').click();
   await expect(page.getByTestId('discovery-done')).toBeVisible();
-  // The Bench config reboot changes bootId. Pattern audition pins an exact
-  // transport authority, so wait for the shared link's natural status poll to
-  // validate that same boot before making any pattern request.
-  await expect.poll(() => page.evaluate(async () => {
-    const status = await fetch('http://lightweaver.local/api/status', { cache: 'no-store' }).then(response => response.json());
-    const { getCardLinkState } = await import('/src/lib/cardLink.js');
-    const link = getCardLinkState();
-    return Boolean(status.bootId && link.validatedBootId === status.bootId
-      && link.card?.id === status.cardId);
-  }), { timeout: 15000, message: 'shared card link must validate the post-Bench boot before pattern audition' }).toBe(true);
+  // The Bench config reboot changes bootId. Direct keepalive can take a full
+  // 20-second interval to notice it, then requires a second matching envelope
+  // before the new boot becomes authority. Allow two bounded, one-retry reads,
+  // the faster revalidation tick, and scheduling margin. The previous 15s
+  // expired before even one ordinary direct keepalive was due.
+  const postBenchBootWaitMs = CARD_LINK_DIRECT_PING_INTERVAL_MS
+    + 4 * CARD_LINK_PING_TIMEOUT_MS
+    + Math.min(500, CARD_LINK_PING_INTERVAL_MS)
+    + 5000;
+  let lastBootEvidence: any = null;
+  try {
+    await expect.poll(async () => {
+      const evidence = await page.evaluate(async () => {
+        const status = await fetch('http://lightweaver.local/api/status', { cache: 'no-store' }).then(response => response.json());
+        const { getCardLinkState } = await import('/src/lib/cardLink.js');
+        const link = getCardLinkState();
+        return {
+          statusBootId: status.bootId, statusCardId: status.cardId,
+          linkBootId: link.validatedBootId, linkCardId: link.card?.id,
+          candidateBootId: link.candidateBootId, linkState: link.state,
+          linkReason: link.reason, linkTransport: link.transport, linkHost: link.host,
+        };
+      });
+      lastBootEvidence = evidence;
+      return Boolean(evidence.statusBootId && evidence.linkBootId === evidence.statusBootId
+        && evidence.linkCardId === evidence.statusCardId);
+    }, { timeout: postBenchBootWaitMs, message: 'shared card link must validate the post-Bench boot before pattern audition' }).toBe(true);
+  } catch (error) {
+    throw new Error(`${String(error)}; last boot evidence: ${JSON.stringify(lastBootEvidence)}`);
+  }
 }
 
 test('a card without a numeric power limit gets an honest discovery notice', async ({ page }) => {

@@ -89,13 +89,29 @@ explicitly being prepared.
 node scripts/lightweaver-dev.mjs release
 ```
 
-Then use the existing production chain:
+Required local verification runs once for the coherent batch, not again while
+waiting for hosted CI. A test-only repair reuses unchanged product evidence and
+runs its affected tests; it does not repeat every already-passing browser suite.
 
-1. Push one coherent branch and obtain a green `Tests / gate`.
-2. Merge the exact reviewed revision.
+Then use the existing production chain with the
+[background publishing handoff](workflows/background-publishing.md). The manager
+starts and verifies the observer after merge, returns the build conversation,
+and reports **publishing in background** until independent proof completes.
+There is no model polling loop and no recurring AI heartbeat.
+
+The legacy `Tests / gate` wording below means the repository's selected Tests
+workflow lanes; do not invent a missing named check or wait for PR checks that
+the repository does not configure.
+
+Production chain:
+
+1. Push one coherent, locally verified branch; respect any required PR checks.
+2. Merge the exact reviewed revision. The main `Tests` workflow runs its selected
+   lanes and only a successful exact-revision run authorizes deployment.
 3. For firmware-sensitive changes, wait for the protected signer and its new
    signed-artifact commit.
-4. Wait for the real Cloudflare deploy, not the short deferred run.
+4. Let the non-LLM observer follow the real Cloudflare deploy, not the short
+   deferred run. Continue product work while it runs.
 5. Prove `/studio-release.json`, the Studio build graph, the firmware release
    graph, and the signed factory/update manifest against terminal `origin/main`.
 6. Report both the Studio build and firmware build.
