@@ -8,6 +8,12 @@ import { createCardSimulator, type CardSimulator } from './harness/cardSimulator
 
 function makePlaylistProject({ count = 19, oversized = false } = {}) {
   const project = createDefaultProject();
+  // The simulator reports WS2812B / GRB / 2000 mA. Keep the project's
+  // electrical settings aligned so an install exercises the intended card
+  // response rather than stopping at the layout-change safety gate.
+  Object.assign(project.devices.standaloneController.led, {
+    type: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 2000,
+  });
   project.id = oversized ? 'oversized-playlist-export' : 'nineteen-look-playlist-export';
   project.name = oversized ? 'Oversized playlist export' : 'Nineteen look playlist export';
   const patterns = CARD_PATTERN_BANK.slice(0, count);
@@ -126,7 +132,14 @@ async function mockConnectedPlaylistCard(
   await page.addInitScript((identity) => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: identity }));
   }, cardId);
-  const card = createCardSimulator(stateFromProject(project), { cardId });
+  const config = preparedForProject(project).config;
+  const card = createCardSimulator(stateFromProject(project), {
+    cardId,
+    // Preserve every output and run boundary from the installed project.
+    // A one-run simulator default changes the physical topology even when
+    // the GPIO and total pixel count happen to match.
+    initialOutputs: config.led.outputs,
+  });
   if (typeof configure === 'function') configure(card);
   await card.install(page);
   return card;
