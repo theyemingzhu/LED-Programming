@@ -1636,7 +1636,10 @@ export function DrawModePanel({
                           {!connectedFamily && <div className="la-strip-settings-label">Layout · {s.name}</div>}
                           <div className="la-strip-count-detail">
                             <span>LEDs</span>
-                            <StripCountControl key={s.id} strip={connectedFamily ? { ...s, name: partName } : s} disabled={wiring.locked}
+                            {/* A direct count correction is a physical edit: the layout reducer
+                                reopens locked wiring, clears verification, and reconciles its run.
+                                Connected sections still use their separate locked-family guard. */}
+                            <StripCountControl key={s.id} strip={connectedFamily ? { ...s, name: partName } : s} disabled={Boolean(connectedFamily) && wiring.locked}
                               max={LED_COUNT_MAX} onCommit={count => {
                                 if (connectedFamily) {
                                   const result = correctConnectedSectionCount(s.id, count);
