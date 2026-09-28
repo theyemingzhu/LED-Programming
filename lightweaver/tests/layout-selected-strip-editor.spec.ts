@@ -20,6 +20,26 @@ async function fourSections(page: any) {
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
 }
 
+test('independent strip keeps its row compact and edits LEDs beside Layout', async ({ page }) => {
+  await page.goto('/#screen=layout');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
+  const row = page.locator('.la-strip-row').first();
+  await row.click({ position: { x: 8, y: 8 } });
+  const editor = page.locator('.la-strip-detail').first();
+  await expect(row.locator('.la-section-miniature, .la-row-count')).toHaveCount(0);
+  await expect(row.locator('.layer-name')).not.toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(row.locator('.la-strip-row-eye')).toBeVisible();
+  await expect(row.getByTestId('layout-section-pattern-action')).toBeVisible();
+  await expect(editor.locator('.la-strip-settings-head')).toContainText('Layout ·');
+  await expect(editor.getByRole('spinbutton', { name: /LED count/ })).toBeVisible();
+  await editor.getByRole('spinbutton', { name: /LED count/ }).fill('13');
+  await editor.getByRole('spinbutton', { name: /LED count/ }).blur();
+  await expect(editor.getByRole('spinbutton', { name: /LED count/ })).toHaveValue('13');
+  await page.screenshot({ path: '/tmp/lightweaver-compact-independent-strip.png', fullPage: true });
+});
+
 test('one selected editor, direct counts, and no numbered or repeated section navigation', async ({ page }) => {
   await fourSections(page);
   await page.locator('.la-strip-row').nth(1).click({ position: { x: 8, y: 8 } });
@@ -148,7 +168,7 @@ test('generated connected sections read as Parts under one physical strip', asyn
   await page.reload();
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   const parentName = (await page.locator('.la-strip-row .layer-name').innerText()).trim();
-  const count = page.locator('.la-strip-row .la-row-count input');
+  const count = page.locator('.la-strip-detail .la-row-count input');
   await count.fill('41');
   await count.blur();
   await page.locator('[data-testid^="divide-toggle-"]').click();
@@ -201,7 +221,7 @@ test('duplicating a connected Part is one undoable local edit', async ({ page })
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
-  const count = page.locator('.la-strip-row .la-row-count input');
+  const count = page.locator('.la-strip-detail .la-row-count input');
   await count.fill('41');
   await count.blur();
   await page.locator('[data-testid^="divide-toggle-"]').click();

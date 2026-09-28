@@ -427,6 +427,9 @@
   padding: 0 0 6px;
   overflow-wrap: anywhere;
 }
+.la-strip-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding-bottom: 6px; }
+.la-strip-settings-head .la-strip-settings-label { padding: 0; }
+.la-strip-count-detail { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-mid); font-size: 11px; white-space: nowrap; }
 .la-strip-family-label {
   flex-basis: 100%;
   padding-left: 26px;
@@ -486,7 +489,6 @@
 .la .la-gpio-group .la-strip-row.la-part-row { position: relative; min-height: 38px; background: color-mix(in oklab, var(--part-tint) 5%, transparent); }
 .la .la-gpio-group .la-strip-row.la-part-row::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--part-tint); opacity: .65; }
 .la .la-gpio-group .la-part-row .layer-name { min-width: 70px !important; font-weight: 600; }
-.la .la-gpio-group .la-part-row .la-row-unit { display: none; }
 .la .la-strip-detail.lw-connected-editor-shell { border-top: 0; padding-top: 4px; }
 .lw-connected-editor-frame { border: 0; border-radius: 0; background: transparent; padding: 0; gap: 5px; }
 .lw-connected-child, .lw-connected-child.selected { border: 0; border-radius: 0; background: transparent; padding: 0; }

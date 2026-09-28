@@ -60,48 +60,6 @@ function stripMeters(svgLength, pxPerMm) {
   return svgLength / scale / 1000;
 }
 
-// Bound the miniature with sampled LEDs, then draw the actual path. Keeping
-// the path's separate moves intact avoids joining disjoint artwork by mistake.
-function StripMiniature({ strip }) {
-  const geometry = useMemo(() => {
-    const points = [];
-    if (strip.pathData) {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', strip.pathData);
-      try {
-        const length = path.getTotalLength();
-        if (length > 0) for (let index = 0; index <= 64; index += 1) points.push(path.getPointAtLength(length * index / 64));
-      } catch { /* A malformed path can still show its sampled LED points. */ }
-    }
-    if (!points.length) {
-      for (const point of strip.pixels || []) {
-        if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) {
-          points.push({ x: point.x - (strip.x || 0), y: point.y - (strip.y || 0) });
-        }
-      }
-    }
-    if (!points.length) return null;
-    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
-    for (const point of points) {
-      minX = Math.min(minX, point.x); minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y);
-    }
-    const width = Math.max(1, maxX - minX);
-    const height = Math.max(1, maxY - minY);
-    const pad = Math.max(width, height) * 0.08;
-    return { viewBox: `${minX - pad} ${minY - pad} ${width + 2 * pad} ${height + 2 * pad}`, points };
-  }, [strip.pathData, strip.pixels]);
-  if (!geometry) return null;
-  return <svg className="la-section-miniature" viewBox={geometry.viewBox}
-              preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-    {strip.pathData ? <path d={strip.pathData} fill="none"
-          stroke={strip.color || 'currentColor'} strokeWidth="2"
-          strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-      : <polyline points={geometry.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none"
-                  stroke={strip.color || 'currentColor'} strokeWidth="2" vectorEffect="non-scaling-stroke"/>}
-  </svg>;
-}
-
 // Compact glyphs for the "+ Add strip" shape tiles (icon leads, small label
 // under it). Stroke inherits the button's text color.
 const shapeGlyph = (children) => (
@@ -1618,9 +1576,8 @@ export function DrawModePanel({
                       <span className="la-wire-n" title="Drag to change physical wire order" style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
                         <DragHandleIcon/>
                       </span>
-                      {!connectedFamily && <StripMiniature strip={s}/>}
                       <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
-                                    className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0 }}/>
+                                    className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0, color: s.color }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}
                       {/* Visibility belongs on the row, like any layers list —
                           hide a strip without opening it first. */}
@@ -1633,14 +1590,6 @@ export function DrawModePanel({
                               }}>
                         {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
                       </button>
-                      <StripCountControl key={s.id} strip={connectedFamily ? { ...s, name: partName } : s} disabled={wiring.locked}
-                          max={LED_COUNT_MAX} onCommit={count => {
-                            if (connectedFamily) {
-                              const result = correctConnectedSectionCount(s.id, count);
-                              setConnectedError(result.ok ? '' : result.error);
-                            } else setStripLedCount(s.id, count);
-                          }}/>
-                      <span className="layer-len la-row-unit">LEDs</span>
                       {routePins.length > 1 && <span className="la-strip-routes">GPIO {routePins.join(' + ')}</span>}
                       {stripTargets.length === 0 && <span className="la-section-pattern-unavailable">Pattern target unavailable</span>}
                       {stripTargets.map(target => {
@@ -1683,7 +1632,19 @@ export function DrawModePanel({
                            role="region"
                            aria-label={connectedFamily ? `${partName} settings` : `${s.name} layout settings`}
                            onClick={e => e.stopPropagation()}>
-                        {!connectedFamily && <div className="la-strip-settings-label">Layout · {s.name}</div>}
+                        <div className="la-strip-settings-head">
+                          {!connectedFamily && <div className="la-strip-settings-label">Layout · {s.name}</div>}
+                          <div className="la-strip-count-detail">
+                            <span>LEDs</span>
+                            <StripCountControl key={s.id} strip={connectedFamily ? { ...s, name: partName } : s} disabled={wiring.locked}
+                              max={LED_COUNT_MAX} onCommit={count => {
+                                if (connectedFamily) {
+                                  const result = correctConnectedSectionCount(s.id, count);
+                                  setConnectedError(result.ok ? '' : result.error);
+                                } else setStripLedCount(s.id, count);
+                              }}/>
+                          </div>
+                        </div>
                         {connectedFamily && (() => {
                           const memberPin = outputForStrip(s.id)?.pin ?? 16;
                           return <section className="lw-connected-editor-frame">
