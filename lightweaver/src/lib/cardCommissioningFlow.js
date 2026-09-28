@@ -447,14 +447,13 @@ export function preflightCardCommissioningMutation(flow, status = null, { allowI
 
 // Candidate verdicts are the only mutations allowed while the newly booted
 // wiring is in probation. Playback readiness is deliberately false then.
-export function preflightCardCommissioningWiringVerdict(flow, status, wiring, bootId) {
+export function preflightCardCommissioningWiringVerdict(flow, status, wiring, bootId, { mutation = 'wiring-confirm' } = {}) {
   requireFlow(flow);
   const activationId = text(flow.project?.pendingActivationId, 128);
   const expected = flow.project?.pendingWiring;
   if (flow.stage !== 'check-lights' || !flow.cardAcknowledgedAt || !activationId
-    || !expected || flow.project.wiringEvidenceState === 'legacy-inconclusive'
     || !bootId || status?.bootId !== bootId
-    || !isExactProbationWiringMutation('wiring-confirm', { activationId }, status, wiring, {
+    || !isExactProbationWiringMutation(mutation, { activationId }, status, wiring, {
       cardId: flow.expectedCard?.id,
       buildId: flow.expectedCard?.buildId,
     })
@@ -463,13 +462,19 @@ export function preflightCardCommissioningWiringVerdict(flow, status, wiring, bo
     || status.projectId !== flow.project.snapshot?.id
     || status.projectRevision !== flow.project.revision
     || status.projectFingerprint !== flow.project.fingerprint
+    || !Number.isFinite(wiring.remainingMs) || wiring.remainingMs <= 0) {
+    return { ok: false, reason: 'candidate-not-verified' };
+  }
+  // Discarding this exact live candidate does not require the older Studio
+  // flow to remember its geometry. Making it permanent still does.
+  if (mutation !== 'wiring-rollback' && (!expected
+    || flow.project.wiringEvidenceState === 'legacy-inconclusive'
     || wiring.wiringRevision !== expected.wiringRevision
     || wiring.wiringDigest !== expected.wiringDigest
     || wiring.ledType !== expected.ledType
     || wiring.colorOrder !== expected.colorOrder
     || wiring.maxMilliamps !== expected.maxMilliamps
-    || !sameCandidateOutputs(wiring.candidateOutputs, expected.outputs)
-    || !Number.isFinite(wiring.remainingMs) || wiring.remainingMs <= 0) {
+    || !sameCandidateOutputs(wiring.candidateOutputs, expected.outputs))) {
     return { ok: false, reason: 'candidate-not-verified' };
   }
   return { ok: true, authority: 'exact-wiring-verdict' };
