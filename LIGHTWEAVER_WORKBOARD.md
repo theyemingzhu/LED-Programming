@@ -9,6 +9,15 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+FINAL LAYOUT CORRECTION VERIFIED locally: Studio2190/2966b0cf. Counts now
+beside Layout; row names use strip colors, no leading miniature. Five focused
+browser tests and exact frozen build pass. Primary verified actual screen, saved
+and reloaded latest45LED draft13/10/12/10 with Fire/Lava Lamp/Snowfield/Stained Glass.
+Screenshot /tmp/lightweaver-2190-layout-count-position.png. Artifact
+/tmp/lightweaver-source-2966b0cf/lightweaver/dist. PR353 pushed, mergeable with no
+conflicts. Main-only CI runs after merge; local broader gate remains in progress.
+Deploy workflow289066915 verified disabled_manually; no publication authorized.
+
 LATEST OWNER BOUNDARY: integrate and merge all current work into main FIRST;
 production shipping is a later step, requiring new go-ahead. Automatic Deploy site
 workflow (289066915) temporarily disabled to enforce that boundary; restore only

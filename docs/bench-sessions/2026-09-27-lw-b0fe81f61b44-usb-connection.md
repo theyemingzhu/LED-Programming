@@ -388,4 +388,3 @@ boot4e8b06f1,commandReadytrue/nativeRenderingtrue/error0. Exact snapshots:
 /tmp/lightweaver-2178-{preinstall,trial,restored}.json. Four-section draft remains
 saved; firmware/Wi-Fi untouched. Physical acceptance and permanent4zone operation
 remain pending. Do not repeat this trial without new actionable evidence.
-
