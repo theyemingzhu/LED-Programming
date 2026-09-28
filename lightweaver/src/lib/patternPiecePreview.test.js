@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deriveSectionTargets } from './sectionLookModel.js';
 import {
+  PATTERN_PREVIEW_UI_STORAGE_PREFIX,
   applyPatternPreviewSegmentLooks,
   buildPatternPreviewSegments,
   fitPreviewViewBox,
@@ -11,6 +12,7 @@ import {
 import { compilePattern, normalizePalette, renderPixelFrame } from './frameEngine.js';
 import { makeDefaultWiring } from './wiringModel.js';
 import { compileWiring } from './wiringCompiler.js';
+import { normalizeProjectRenderStrips } from './renderGeometry.js';
 
 const strips = [{
   id: 'petal-strip',
@@ -175,6 +177,83 @@ test('preview UI state is isolated per project and falls back when a target was 
   assert.deepEqual(readPatternPreviewUiState({
     projectId: 'piece-b', targetIds: ['center', 'petal-tail'], storage,
   }), { mode: 'strip', lastTargetId: 'center', restored: true });
+});
+
+test('fresh and legacy previews show the whole piece while explicit strip focus persists', () => {
+  const values = new Map();
+  const storage = {
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const args = { projectId: 'four-section-piece', targetIds: ['a', 'b', 'c', 'd'], storage };
+  assert.equal(readPatternPreviewUiState(args).mode, 'piece');
+
+  // v1 wrote strip focus on every visit, even when the visitor never selected it.
+  values.set('lw_pattern_piece_preview_v1:four-section-piece', JSON.stringify({ mode: 'strip', lastTargetId: 'b' }));
+  assert.equal(readPatternPreviewUiState(args).mode, 'piece');
+
+  writePatternPreviewUiState({ projectId: args.projectId, state: { mode: 'strip', lastTargetId: 'c' }, storage });
+  assert.notEqual(PATTERN_PREVIEW_UI_STORAGE_PREFIX, 'lw_pattern_piece_preview_v1:');
+  assert.deepEqual(readPatternPreviewUiState(args), { mode: 'strip', lastTargetId: 'c', restored: true });
+});
+
+test('four real sections keep their separate pattern, palette, and LED counts in one frame', () => {
+  const counts = [12, 13, 14, 15];
+  const patterns = ['fire', 'ocean', 'plasma', 'sparkle'];
+  const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00'];
+  const sectionStrips = counts.map((count, section) => ({
+    id: `strip-${section}`,
+    pixels: Array.from({ length: count }, (_, index) => ({
+      x: section * 100 + index * 2,
+      y: section * 20,
+      index,
+    })),
+  }));
+  const patches = counts.map((count, section) => ({
+    id: `section-${section}`,
+    name: `Section ${section + 1}`,
+    source: { type: 'strip', stripId: `strip-${section}`, startLed: 0, endLed: count - 1 },
+    output: { mode: 'normal' },
+    playback: { patternId: patterns[section], brightness: 1, speed: 1 },
+  }));
+  const board = {
+    physicalLocked: false,
+    dataWireCount: 1,
+    chains: [{ id: 'main', name: 'Main', rowIds: patches.map(patch => patch.id) }],
+    groups: [],
+    patches,
+  };
+  const targets = deriveSectionTargets({ strips: sectionStrips, patchBoard: board });
+  const segments = buildPatternPreviewSegments({
+    strips: sectionStrips,
+    patchBoard: board,
+    targets,
+    paletteForPattern: patternId => [colors[patterns.indexOf(patternId)]],
+  });
+  assert.deepEqual(segments.map(segment => segment.id), patches.map(patch => patch.id));
+  assert.deepEqual(segments.map(segment => segment.pixels.length), counts);
+  assert.deepEqual(segments.map(segment => segment.patternId), patterns);
+  assert.deepEqual(segments.map(segment => segment.palette[0]), colors);
+  assert.equal(segments.reduce((sum, segment) => sum + segment.pixels.length, 0), 54);
+  assert.equal(segments[3].pixels.at(-1).x, 328);
+
+  const renderStrips = normalizeProjectRenderStrips(segments);
+  const perStripFns = new Map(patterns.map(patternId => [patternId, (_index, _x, _y, _t, _time, _count, palette) => {
+    const color = palette[0];
+    return { r: color.r * 255, g: color.g * 255, b: color.b * 255 };
+  }]));
+  const frame = renderPixelFrame({
+    t: 0,
+    strips: renderStrips,
+    patternId: patterns[0],
+    perStripFns,
+    perStripPalettes: new Map(segments.map(segment => [segment.id, normalizePalette(segment.palette)])),
+  });
+  assert.deepEqual(frame.stripFrames.map(section => section.leds.length), counts);
+  assert.deepEqual(frame.stripFrames.map(section => {
+    const { r, g, b } = section.leds[0];
+    return [r, g, b];
+  }), [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]]);
 });
 
 test('whole-piece rendering supports a palette and firmware color look per segment', () => {

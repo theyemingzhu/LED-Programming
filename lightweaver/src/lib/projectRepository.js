@@ -133,8 +133,12 @@ export function validateProjectEnvelope(value) {
     || (value.parentHash !== null && !/^[a-f0-9]{64}$/.test(String(value.parentHash || '')))) {
     throw new ProjectRepositoryError('invalid-envelope', 'Invalid project envelope metadata.');
   }
-  if (sha256Canonical(project) !== value.contentHash) throw new ProjectRepositoryError('content-hash-mismatch', 'content-hash-mismatch: project content hash does not match.');
-  return deepFreeze(structuredClone({ ...value, project, source: normalizeSource(value.source) }));
+  // The hash authenticates the stored project, not the result of today's
+  // migration. Normalizers can add defaults (even on a second pass) or retire
+  // fields. Keep the authenticated payload intact; opening the project or
+  // creating its next envelope performs migration explicitly.
+  if (sha256Canonical(value.project) !== value.contentHash) throw new ProjectRepositoryError('content-hash-mismatch', 'content-hash-mismatch: project content hash does not match.');
+  return deepFreeze(structuredClone({ ...value, source: normalizeSource(value.source) }));
 }
 
 function sameExpectedHead(current, expectedHead) {

@@ -1,3 +1,5 @@
+import { quarantineSerialPort, releaseEspTransport, serialPortCleanupMessage } from './flash-connection.js';
+
 export const FLASH_COMPLETE_RELEASED_STATUS = '● Flash complete, USB released';
 export const FLASH_COMPLETE_RELEASED_LOG = 'Flash complete. USB released. Join the Lightweaver-XXXX WiFi network, then open http://192.168.4.1 if setup does not appear.';
 
@@ -11,12 +13,10 @@ const ESP32_S3_WDT = Object.freeze({
 });
 
 async function releaseSerialTransport(_loader, transport) {
-  try {
-    await transport?.disconnect?.();
-  } catch {}
+  return releaseEspTransport(transport, { timeoutMs: 5_000 });
 }
 
-export async function resetEspIntoApp(transport, loader) {
+async function performResetEspIntoApp(transport, loader) {
   if (loader?.chip?.CHIP_NAME === 'ESP32-S3' && loader?.writeReg) {
     // Native USB-Serial/JTAG control lines cannot be changed atomically. On
     // real S3 hardware, a serial hard-reset sequence can briefly start the app
@@ -52,6 +52,26 @@ export async function resetEspIntoApp(transport, loader) {
   }
 }
 
+export async function resetEspIntoApp(transport, loader, { timeoutMs = 10_000 } = {}) {
+  const port = transport?.device;
+  const pending = serialPortCleanupMessage(port);
+  if (pending) throw new Error(pending);
+  const resetting = performResetEspIntoApp(transport, loader);
+  let timer;
+  const outcome = await Promise.race([
+    resetting.then(() => 'complete', () => 'failed'),
+    new Promise(resolve => { timer = setTimeout(() => resolve('timed-out'), timeoutMs); }),
+  ]);
+  clearTimeout(timer);
+  if (outcome === 'timed-out') {
+    if (port) quarantineSerialPort(port,
+      resetting.catch(() => {}).then(() => transport.disconnect()),
+      'USB serial port is still resetting the card. Retry after it clears.');
+    throw new Error('USB card reset timed out; the selected port is still resetting.');
+  }
+  if (outcome === 'failed') await resetting;
+}
+
 export async function flashFirmwareAndRelease({
   loader,
   transport,
@@ -62,6 +82,7 @@ export async function flashFirmwareAndRelease({
   flashFirmware,
   resetESP = resetEspIntoApp,
   disconnectESP = releaseSerialTransport,
+  resetTimeoutMs = 10_000,
 }) {
   if (typeof flashFirmware !== 'function') {
     throw new Error('flashFirmware dependency missing');
@@ -69,10 +90,11 @@ export async function flashFirmwareAndRelease({
 
   try {
     await flashFirmware(loader, file, address, eraseAll, onProgress);
-    await resetESP(transport, loader).catch(() => {});
+    await resetESP(transport, loader, { timeoutMs: resetTimeoutMs }).catch(() => {});
   } finally {
     // Always release the serial transport, even if the write fails partway
     // through, so the port isn't left held open after an error.
-    await disconnectESP(loader, transport);
+    const released = await disconnectESP(loader, transport);
+    if (released === false) throw new Error('USB release could not be confirmed after firmware installation. Close and reopen the Studio tab, then select the exact card again.');
   }
 }

@@ -85,7 +85,7 @@ test('an existing section mix opens as the base beneath a new layer and survives
   await openControls(page);
   await openStep(page, 'sculpt');
   const stack = page.getByTestId('pattern-lab-layers');
-  await stack.getByRole('button', { name: 'Edit whole look to add layer' }).click();
+  await stack.getByRole('button', { name: 'Add layer', exact: true }).click();
   await expect(stack.locator('.plab-layer-entry')).toHaveCount(1);
   await expect(stack.locator('.plab-layer-base')).toContainText('Section mix');
   await expect(stack).toContainText('Each section keeps its pattern, color, speed, and brightness');
@@ -94,7 +94,7 @@ test('an existing section mix opens as the base beneath a new layer and survives
   await page.screenshot({ path: testInfo.outputPath('mixed-section-base.png'), fullPage: true });
   await page.getByTestId('pattern-lab-undo').click();
   await expect(stack.locator('.plab-layer-entry')).toHaveCount(0);
-  await stack.getByRole('button', { name: 'Edit whole look to add layer' }).click();
+  await stack.getByRole('button', { name: 'Add layer', exact: true }).click();
   await page.getByTestId('pattern-lab-use-in-project-promoted').getByRole('button', { name: 'Update in Patterns', exact: true }).click();
   await expect(page).toHaveURL(/screen=pattern(?:&|$)/);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));

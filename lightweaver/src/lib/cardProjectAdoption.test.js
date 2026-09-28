@@ -9,6 +9,8 @@ import { renderPatternLabRecipeFrame } from './patternLabPatternAdapter.js';
 import { applyPatternLabHandoff, createPatternLabHandoff } from './patternLabHandoff.js';
 import { classifyPatternLabCompatibility } from './patternLabCompatibility.js';
 import { recipeFromLook } from './patternLabFromLook.js';
+import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
+import { applySavedLookToPatchBoard } from './sectionLookModel.js';
 
 const CARD_ID = 'lw-adoption-test-card';
 const FIRMWARE_VERSION = '1.0.0';
@@ -342,9 +344,9 @@ test('reconstruct strategy rebuilds looks, playlist, and startup state from the 
   assert.equal(result.ok, true);
   assert.equal(calls.appliedParts.length, 1);
   const controller = calls.appliedParts[0].parts.devices.standaloneController;
-  assert.equal(controller.activeLookId, 'fire');
-  assert.deepEqual(controller.looks.map(look => look.id), ['aurora', 'fire']);
-  assert.deepEqual(controller.playlist.map(item => item.lookId), ['aurora', 'fire']);
+  assert.equal(controller.activeLookId, 'card-fire');
+  assert.deepEqual(controller.looks.map(look => look.id), ['card-aurora', 'card-fire']);
+  assert.deepEqual(controller.playlist.map(item => item.lookId), ['card-aurora', 'card-fire']);
   assert.equal(controller.defaultLook.patternId, 'aurora');
   assert.equal(controller.defaultLook.brightness, 0.72);
   assert.equal(calls.appliedParts[0].status.cardId, CARD_ID);
@@ -355,6 +357,64 @@ test('reconstruct strategy rebuilds looks, playlist, and startup state from the 
   assert.equal(origin.kind, 'card-partial');
   assert.equal(origin.cardId, CARD_ID);
   assert.equal(typeof origin.at, 'number');
+});
+
+test('card reconstruction preserves saved section appearances and pattern ids through repeated exports', () => {
+  const output = {
+    id: 'one-output', pin: 18, pixels: 41,
+    segments: [
+      { id: 'run-first', count: 14, direction: 'forward' },
+      { id: 'run-middle', count: 14, direction: 'forward' },
+      { id: 'run-last', count: 13, direction: 'forward' },
+    ],
+  };
+  const skeleton = projectSkeletonFromCardStatus(statusEnvelope({ outputs: [output] }));
+  const patterns = {
+    currentId: 'combo-three-colors',
+    patterns: [
+      { id: 'combo-three-colors', label: 'Three colors', zones: [
+        { id: 'strip-1', patternId: 'fire', brightness: 0.4, ranges: [{ start: 0, count: 14 }] },
+        { id: 'strip-2', patternId: 'ocean', brightness: 0.6, ranges: [{ start: 14, count: 14 }] },
+        { id: 'strip-3', patternId: 'plasma', brightness: 0.8, ranges: [{ start: 28, count: 13 }] },
+      ] },
+      { id: 'combo-aurora-30', label: 'Aurora — steady 30%', brightness: 1, zones: [
+        { id: 'strip-1', patternId: 'aurora', brightness: 0.3, ranges: [{ start: 0, count: 41 }] },
+      ] },
+    ],
+  };
+  const zones = { startupPatternId: 'combo-three-colors', zones: patterns.patterns[0].zones };
+  const first = reconstructInstalledCardState({ skeleton, patterns, zones });
+  const controller = first.devices.standaloneController;
+  assert.deepEqual(Object.keys(controller.looks[0].sectionLooks), ['patch-first', 'patch-middle', 'patch-last']);
+  assert.deepEqual(Object.values(controller.looks[0].sectionLooks).map(look => look.brightness), [0.4, 0.6, 0.8]);
+  assert.deepEqual(Object.keys(controller.looks[1].sectionLooks), ['patch-first', 'patch-middle', 'patch-last']);
+  assert.deepEqual(Object.values(controller.looks[1].sectionLooks).map(look => look.brightness), [0.3, 0.3, 0.3]);
+  const applied = applySavedLookToPatchBoard({ patchBoard: first.patchBoard, strips: first.strips, savedLook: controller.looks[0] });
+  assert.deepEqual(applied.patches.map(patch => patch.playback.patternId), ['fire', 'ocean', 'plasma']);
+  assert.deepEqual(applied.patches.map(patch => patch.playback.brightness), [0.4, 0.6, 0.8]);
+
+  const exportProject = adopted => buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: adopted.strips,
+    patchBoard: adopted.patchBoard, wiring: adopted.wiring,
+    standaloneController: adopted.devices.standaloneController,
+  });
+  let exported = exportProject(first);
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    assert.deepEqual(exported.config.looks.map(look => look.id), ['combo-three-colors', 'combo-aurora-30']);
+    assert.deepEqual(exported.config.looks[0].zones.map(zone => [zone.patternId, zone.brightness]), [
+      ['fire', 0.4], ['ocean', 0.6], ['plasma', 0.8],
+    ]);
+    assert.deepEqual(exported.config.looks[1].zones.map(zone => [zone.patternId, zone.brightness]), [
+      ['aurora', 0.3], ['aurora', 0.3], ['aurora', 0.3],
+    ]);
+    const nextSkeleton = projectSkeletonFromCardStatus(statusEnvelope({ outputs: exported.config.led.outputs }));
+    const next = reconstructInstalledCardState({
+      skeleton: nextSkeleton,
+      patterns: { currentId: exported.config.startupPatternId, patterns: exported.config.looks },
+      zones: { startupPatternId: exported.config.startupPatternId, zones: exported.config.zones },
+    });
+    exported = exportProject(next);
+  }
 });
 
 test('native journey card readback preserves exact phase through Lab handoff, edits, preview, and resave', async () => {

@@ -152,11 +152,24 @@ test('projectSkeletonFromCardStatus maps a real status blob into a project skele
   });
   assert.equal(skeleton.colorOrder, 'BGR');
   assert.deepEqual(skeleton.outputs, [
-    { id: 'strip-16', pin: 16, pixels: 300 },
-    { id: 'strip-17', pin: 17, pixels: 200 },
+    { id: 'bench-16', pin: 16, pixels: 300 },
+    { id: 'bench-17', pin: 17, pixels: 200 },
   ]);
   assert.equal(skeleton.portRoles.find(entry => entry.pin === 16).role, 'strip');
   assert.equal(skeleton.portRoles.find(entry => entry.pin === 16).pixelCount, 300);
+});
+
+test('a counted bench reconstruction retains the card-owned output identity', () => {
+  const skeleton = projectSkeletonFromCardStatus({
+    projectId: 'lightweaver-bench-discovery-v1',
+    provisionalSetup: true,
+    knownGoodProject: true,
+    outputReady: true,
+    outputs: [{ id: 'bench-18', pin: 18, pixels: 41,
+      segments: [{ id: 'bench-18-full', count: 41, direction: 'forward' }] }],
+  });
+  assert.equal(skeleton.outputs[0].id, 'bench-18');
+  assert.equal(skeleton.wiring.outputs[0].id, 'bench-18');
 });
 
 // F7: adoptWiringFromCard's shortcut hands this skeleton straight to

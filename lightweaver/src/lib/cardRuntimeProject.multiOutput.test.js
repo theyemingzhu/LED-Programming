@@ -5,6 +5,9 @@ import { compileWiring } from './wiringCompiler.js';
 import { makeDefaultWiring } from './wiringModel.js';
 import { prepareCardStoragePayload } from './cardStoragePayload.js';
 import { migrateRunSectionReferences } from './sectionRunConversion.js';
+import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
+import { prepareCardDeployment } from './cardDeployment.js';
+import { pushConfigToCard, assignCardWiringIdentityForChange } from './cardPushClient.js';
 
 test('legacy zone-keyed saved combo follows both sections after run separation', () => {
   const strips = [
@@ -150,4 +153,70 @@ test('three unequal compiled GPIO runs keep their section patterns through compa
   const savedStartup = namedCombo.looks.find(look => look.id === namedCombo.startupPatternId);
   assert.equal(savedStartup.mode, 'combo');
   assert.deepEqual(savedStartup.zones.map(zone => zone.patternId), patterns);
+});
+
+test('the 41-light three-section Card Install payload retains every named arrangement and zone brightness', async () => {
+  const measured = projectSkeletonFromCardStatus({ projectId: 'piece-41', provisionalSetup: false,
+    outputs: [{ id: 'out1', pin: 18, pixels: 41, segments: [
+      { id: 'run-first', count: 14, direction: 'forward' },
+      { id: 'run-middle', count: 14, direction: 'forward' },
+      { id: 'run-last', count: 13, direction: 'forward' },
+    ] }] });
+  const patchIds = measured.patchBoard.patches.map(patch => patch.id);
+  const arrangements = [
+    ['Three colors', ['fire', 'ocean', 'plasma']],
+    ['Aurora opening', ['aurora', 'ocean', 'plasma']],
+    ['Warm middle', ['aurora', 'fire', 'plasma']],
+  ];
+  measured.patchBoard.patches.forEach((patch, index) => {
+    patch.playback = { ...patch.playback, patternId: arrangements[0][1][index], brightness: index === 0 ? 0.3 : 1 };
+  });
+  const controller = {
+    outputs: measured.outputs,
+    led: { type: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 1500 },
+    defaultLook: { patternId: 'aurora' },
+    looks: arrangements.map(([label, patterns], index) => ({
+      id: `saved-${index + 1}`, label, defaultLook: { patternId: 'aurora' },
+      sectionLooks: Object.fromEntries(patchIds.map((id, sectionIndex) => [id, {
+        patternId: patterns[sectionIndex], brightness: sectionIndex === 0 ? 0.3 : 1,
+      }])),
+    })),
+    playlist: arrangements.map((_, index) => ({ type: 'combo', lookId: `saved-${index + 1}` })),
+  };
+  const project = { projectId: 'piece-41', projectName: 'GPIO 18 lights', projectRevision: 13,
+    strips: measured.strips, patchBoard: measured.patchBoard, wiring: measured.wiring,
+    compiledWiring: compileWiring({ wiring: measured.wiring, strips: measured.strips }),
+    standaloneController: controller };
+  const copied = buildCardRuntimePackageFromProject({ ...project, projectRevision: undefined }).config;
+  const prepared = prepareCardDeployment(project, { cardId: 'lw-test', buildId: 'build-test' });
+  const current = { app: 'Lightweaver', cardId: 'lw-test', firmwareVersion: '1.2.3', buildId: 'build-test',
+    piece: { id: 'piece-41' }, ledType: 'WS2812B', maxMilliamps: 1500, wiringRevision: 0,
+    outputs: [{ id: 'out1', pin: 18, pixels: 41, segments: [{ id: 'out1-full', count: 41, direction: 'forward' }] }] };
+  await assignCardWiringIdentityForChange(prepared.config, current);
+  let posted = null;
+  const result = await pushConfigToCard(prepared.runtimePackage, {
+    host: 'lightweaver.local', transport: 'bridge', allowLayoutChange: true,
+    initialConfigAuthorityImpl: () => false,
+    bridgeRequestImpl: async (type, payload) => {
+      if (type === 'firmware-info') return current;
+      if (type === 'wiring-candidate') {
+        posted = payload.candidate;
+        return { ok: true, state: 'staged', activationId: 'candidate-41' };
+      }
+      throw new Error(`Unexpected card request ${type}`);
+    },
+  });
+  assert.equal(result.state, 'staged');
+  assert.equal(posted.wiringRevision, 1);
+  assert.match(posted.wiringDigest, /^[a-f0-9]{64}$/);
+  assert.deepEqual(posted.led.outputs[0].segments.map(segment => segment.count), [14, 14, 13]);
+  const patternsFor = (config, label) => config.looks.find(look => look.label === label)?.zones.map(zone => zone.patternId);
+  for (const [label, patterns] of arrangements) {
+    assert.deepEqual(patternsFor(posted, label), patterns);
+    assert.deepEqual(patternsFor(copied, label), patterns);
+  }
+  assert.deepEqual(posted.zones.map(zone => [zone.patternId, zone.brightness ?? 1]), [
+    ['fire', 0.3], ['ocean', 1], ['plasma', 1],
+  ]);
+  assert.deepEqual(JSON.parse(prepareCardStoragePayload(posted).json).looks, posted.looks);
 });

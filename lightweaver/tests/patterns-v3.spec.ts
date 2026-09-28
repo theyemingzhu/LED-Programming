@@ -155,7 +155,9 @@ async function gotoSavedProjectPatterns(page, project) {
     }),
   }));
   await page.addInitScript((savedProject) => {
-    localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
+    if (!localStorage.getItem('lw_autosave_v3')) {
+      localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
+    }
   }, project);
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
   await issueRegisteredPatternAuthorization(page);
@@ -261,7 +263,6 @@ test('compact preview follows open artwork paths and named sections', async ({ p
   await gotoSavedProjectPatterns(page, project);
   await expect(page.getByTestId('section-target-patch-default-outer-circle')).toContainText('Crest');
   await expect(page.getByTestId('section-target-patch-default-inner-circle')).toContainText('Branch');
-  await page.getByRole('button', { name: 'On my piece' }).click();
   await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-mode', 'piece');
   await page.locator('.pm-target').evaluate(element => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: testInfo.outputPath('open-path-compact-preview.png') });
@@ -310,8 +311,17 @@ async function mockVerifiedInstallCard(page, project, cardId = 'lw-pattern-insta
       cardId, firmwareVersion: '1.0.0', buildId: 'pattern-install-build',
       bootId: `${cardId}-boot`, runtimePhase: 'ready', knownGoodProject: true,
       commandReady: true, outputReady: true,
-      piece: { id: project.id }, projectFingerprint: fixture.projectFingerprint,
+      projectId: project.id, piece: { id: project.id },
+      projectRevision: installedConfig.projectRevision,
+      projectFingerprint: installedConfig.projectFingerprint,
       led: { pixels: installedConfig.led.pixels },
+    },
+  }));
+  await page.route('**/api/wiring/status', route => route.fulfill({
+    json: {
+      app: 'Lightweaver', ok: true, state: 'known-good', hasCandidate: false,
+      cardId, firmwareVersion: '1.0.0', buildId: 'pattern-install-build',
+      outputs: installedConfig.led.outputs,
     },
   }));
   await page.route('**/api/config', async route => {
@@ -325,6 +335,10 @@ async function mockVerifiedInstallCard(page, project, cardId = 'lw-pattern-insta
     if (options.configGate) await options.configGate();
     if (options.failConfig) {
       await route.fulfill({ status: 503, json: { ok: false } });
+      return;
+    }
+    if (options.stagedConfig) {
+      await route.fulfill({ json: { ok: true, state: 'staged', activationId: 'candidate-pattern-staged' } });
       return;
     }
     installedConfig = requestedConfig;
@@ -443,7 +457,7 @@ test('a failed quick color shift keeps the last card-confirmed order', async ({ 
   });
 });
 
-test('fresh strip preview and design target stay synchronized without committing the audition', async ({ page }) => {
+test('fresh whole-piece preview and design target stay synchronized without committing the audition', async ({ page }) => {
   await gotoFreshPatterns(page);
 
   const targetSelect = page.getByLabel('Preview target');
@@ -456,16 +470,24 @@ test('fresh strip preview and design target stay synchronized without committing
     return JSON.stringify(project.layout?.patchBoard || null);
   });
 
-  await expect(targetSelect).toHaveValue('patch-default-outer-circle');
-  await expect(outerTarget).toHaveClass(/\bon\b/);
+  await expect(targetSelect).toHaveValue('piece');
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
   await expect(previewHeading).toContainText('Lava Lamp');
-  await expect(stage).toHaveAttribute('data-preview-patterns', 'lava');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'lava,lava');
+  await expect(page.getByTestId('look-save-status')).toHaveText('Draft in this browser');
 
+  await outerTarget.click();
+  await expect(outerTarget).toHaveClass(/\bon\b/);
+  await expect(targetSelect).toHaveValue('piece');
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
   await expect(previewHeading).toContainText('Plasma');
-  await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma,lava');
+  await expect(page.getByTestId('look-save-status')).toHaveText('Unsaved look');
 
-  await page.getByRole('button', { name: 'On my piece' }).click();
+  await targetSelect.selectOption('patch-default-outer-circle');
+  await expect(stage).toHaveAttribute('data-preview-mode', 'strip');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma');
+  await targetSelect.selectOption('piece');
   await expect(outerTarget).toHaveClass(/\bon\b/);
   await expect(stage).toHaveAttribute('data-preview-patterns', 'plasma,lava');
   await page.waitForTimeout(650);
@@ -476,20 +498,50 @@ test('fresh strip preview and design target stay synchronized without committing
   expect(savedAfter).toBe(savedBefore);
 });
 
-test('mapped preview lists LED-backed targets only and crops to the selected geometry', async ({ page }) => {
+test('mapped preview defaults to every LED-backed target and crops an explicit focus', async ({ page }) => {
   const project = createPiecePreviewProject();
   await gotoSavedProjectPatterns(page, project);
 
   const targetSelect = page.getByLabel('Preview target');
   await expect(targetSelect.locator('option')).toHaveText(['Whole piece', 'Outer circle', 'Inner circle']);
   await expect(targetSelect.locator('option', { hasText: 'Artwork only — no LEDs' })).toHaveCount(0);
-  await expect(targetSelect).toHaveValue('patch-default-outer-circle');
+  await expect(targetSelect).toHaveValue('piece');
 
   const stage = page.getByTestId('pattern-piece-preview');
+  await expect(stage).toHaveAttribute('data-preview-mode', 'piece');
+  await expect(stage).toHaveAttribute('data-preview-led-count', '44');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'fire,ocean');
+  await targetSelect.selectOption('patch-default-outer-circle');
   await expect(stage).toHaveAttribute('data-preview-mode', 'strip');
   await expect(stage).toHaveAttribute('data-preview-target', 'patch-default-outer-circle');
   await expect(stage).toHaveAttribute('data-preview-led-count', '27');
   await expect(stage).not.toHaveAttribute('data-preview-view-box', project.layout.viewBox);
+});
+
+test('Layout section handoff selects the edit target while previewing the whole piece', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-layout-handoff');
+  await gotoSavedProjectPatterns(page, project);
+  const generation = await page.evaluate(() => (
+    JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').generation ?? 0
+  ));
+  await page.evaluate(projectId => {
+    localStorage.setItem(`lw_pattern_piece_preview_v2:${projectId}`, JSON.stringify({
+      mode: 'strip', lastTargetId: 'patch-default-outer-circle',
+    }));
+  }, project.id);
+
+  const targetId = 'patch-default-inner-circle';
+  const returnStrip = project.layout.strips[1].id;
+  await page.goto(`/#screen=pattern&target=${encodeURIComponent(targetId)}&project=${encodeURIComponent(project.id)}&generation=${generation}&returnStrip=${encodeURIComponent(returnStrip)}`, { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId(`section-target-${targetId}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('return-to-layout-section')).toBeVisible();
+  await expect(page.getByLabel('Preview target')).toHaveValue('piece');
+  const stage = page.getByTestId('pattern-piece-preview');
+  await expect(stage).toHaveAttribute('data-preview-mode', 'piece');
+  await expect(stage).toHaveAttribute('data-preview-targets', 'patch-default-outer-circle,patch-default-inner-circle');
+  await expect(stage).toHaveAttribute('data-preview-led-count', '44');
+  await expect(stage).toHaveAttribute('data-preview-patterns', 'fire,ocean');
 });
 
 test('preview toolbar is one compact desktop row and the redundant card panel is absent', async ({ page }) => {
@@ -556,8 +608,10 @@ test('preview dropdown and chevrons move through LED targets without wrapping', 
   const next = page.getByRole('button', { name: 'Next LED target' });
   const targetSelect = page.getByLabel('Preview target');
   await expect(previous).toBeDisabled();
-  await expect(next).toBeEnabled();
+  await expect(next).toBeDisabled();
 
+  await targetSelect.selectOption('patch-default-outer-circle');
+  await expect(next).toBeEnabled();
   await next.click();
   await expect(targetSelect).toHaveValue('patch-default-inner-circle');
   await expect(previous).toBeEnabled();
@@ -599,14 +653,17 @@ test('On my piece returns to the last strip and restores preview state per proje
   const otherPage = await otherContext.newPage();
   await otherPage.addInitScript(({ savedProject, previousProjectId }) => {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
-    localStorage.setItem(`lw_pattern_piece_preview_v1:${previousProjectId}`, JSON.stringify({
-      mode: 'piece',
+    localStorage.setItem(`lw_pattern_piece_preview_v2:${previousProjectId}`, JSON.stringify({
+      mode: 'strip',
       lastTargetId: 'patch-default-inner-circle',
+    }));
+    localStorage.setItem(`lw_pattern_piece_preview_v1:${savedProject.id}`, JSON.stringify({
+      mode: 'strip', lastTargetId: 'patch-default-inner-circle',
     }));
   }, { savedProject: anotherProject, previousProjectId: project.id });
   await otherPage.goto(new URL('/#screen=patterns', page.url()).toString(), { waitUntil: 'domcontentloaded' });
-  await expect(otherPage.getByRole('button', { name: 'On my piece' })).toHaveAttribute('aria-pressed', 'false');
-  await expect(otherPage.getByLabel('Preview target')).toHaveValue('patch-default-outer-circle');
+  await expect(otherPage.getByRole('button', { name: 'On my piece' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(otherPage.getByLabel('Preview target')).toHaveValue('piece');
   await otherContext.close();
 });
 
@@ -617,7 +674,7 @@ test('deleted remembered target falls back to the first LED-backed target', asyn
     localStorage.setItem(key, JSON.stringify({ mode: 'strip', lastTargetId: 'deleted-target' }));
   }, {
     savedProject: project,
-    key: `lw_pattern_piece_preview_v1:${project.id}`,
+    key: `lw_pattern_piece_preview_v2:${project.id}`,
   });
   await page.goto('/#screen=patterns', { waitUntil: 'domcontentloaded' });
 
@@ -632,7 +689,6 @@ test('whole-piece preview composites saved assignments plus the unsaved selected
 
   await page.getByTestId('section-target-patch-default-inner-circle').click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
-  await page.getByRole('button', { name: 'On my piece' }).click();
 
   const stage = page.getByTestId('pattern-piece-preview');
   await expect(stage).toHaveAttribute('data-preview-mode', 'piece');
@@ -666,7 +722,10 @@ test('leaving whole-piece preview restores the remembered strip as the edit targ
 
 test('verified Install persists the auditioned section assignment in Studio', async ({ page }) => {
   const project = createPiecePreviewProject('piece-preview-install');
-  await mockVerifiedInstallCard(page, project);
+  const configRequests: any[] = [];
+  await mockVerifiedInstallCard(page, project, 'lw-pattern-install', {
+    onConfigRequest: config => configRequests.push(config),
+  });
   await gotoSavedProjectPatterns(page, project);
 
   await page.getByTestId('section-target-patch-default-inner-circle').click();
@@ -684,6 +743,15 @@ test('verified Install persists the auditioned section assignment in Studio', as
   expect(saved.layout.patchBoard.patches[0].playback.patternId).toBe('fire');
   expect(saved.layout.patchBoard.patches[1].playback).toMatchObject({ patternId: 'plasma', brightness: 0.42 });
   expect(saved.devices.standaloneController.playlist[0].patternId).toBe('plasma');
+  expect(configRequests).toHaveLength(1);
+  expect(cardProjectFingerprint(saved)).toBe(configRequests[0].projectFingerprint);
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(async () => (
+    (await import('/src/lib/cardLink.js')).getCardLinkState().readiness?.cardId
+  ))).toBe('lw-pattern-install');
+  await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Installed on card');
+  await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-needs-save', 'false');
 });
 
 test('GPIO pattern workflow keeps same and different section choices through Keep, reload, and Install payload', async ({ page }, testInfo) => {
@@ -801,6 +869,178 @@ test('rapid duplicate Install clicks start only one card write', async ({ page }
   await page.waitForTimeout(200);
   expect(configRequests).toHaveLength(1);
   releaseConfig?.();
+});
+
+test('a saved edit of the installed project can be installed on the same card', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-edited-install');
+  const cardId = 'lw-pattern-edited-install';
+  const fingerprint = cardProjectFingerprint(project);
+  const configRequests: any[] = [];
+  // Catch any unmocked card request before it can reach a physical device.
+  await page.route(/^http:\/\/(?:lightweaver\.local|192\.168\.\d+\.\d+)\//, route => route.abort());
+  await mockVerifiedInstallCard(page, project, cardId, {
+    onConfigRequest: config => configRequests.push(config),
+  });
+  await page.addInitScript(({ id, projectFingerprint }) => {
+    if (localStorage.getItem('lw_project_lifecycle_v1')) return;
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      version: 2, dirty: false, persistedDestination: 'browser',
+      installation: {
+        cardId: id, projectRevision: 0, projectFingerprint,
+        studioFingerprint: projectFingerprint,
+      },
+    }));
+  }, { id: cardId, projectFingerprint: fingerprint });
+  await gotoSavedProjectPatterns(page, project);
+  await expect(page.getByTitle('Install the current look on the card')).toBeEnabled();
+
+  await page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]').click();
+  await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
+  await page.getByTestId('look-name').fill('Aurora — steady 30%');
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Save look');
+  await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  await expect.poll(() => page.evaluate(() => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return project.devices?.standaloneController?.looks?.some(look => look.label === 'Aurora — steady 30%');
+  })).toBe(true);
+  await expect.poll(() => page.evaluate(async () => {
+    const project = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    return cardProjectFingerprint(project);
+  })).not.toBe(fingerprint);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(async () => (
+    (await import('/src/lib/cardLink.js')).getCardLinkState().readiness?.cardId
+  ))).toBe(cardId);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_project_lifecycle_v1') || '{}').installation)).toBeNull();
+  await expect(page.getByTitle('Install the current look on the card')).toBeEnabled();
+  await page.getByTitle('Install the current look on the card').click();
+
+  await expect.poll(() => configRequests.length).toBe(1);
+  expect(configRequests[0].piece.id).toBe(project.id);
+});
+
+test('Patterns opens and starts the wiring light test for a changed same-GPIO section layout', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-section-split');
+  project.layout.wiring.outputs = [{
+    id: 'one-output', name: 'One output', pin: 18,
+    runIds: project.layout.wiring.runs.filter(run => run.type === 'strip').map(run => run.id),
+  }];
+  const targetOutput = compileProjectWiring(project).outputs[0];
+  const configRequests: any[] = [];
+  await page.route(/^http:\/\/(?:lightweaver\.local|192\.168\.\d+\.\d+)\//, route => route.abort());
+  await mockVerifiedInstallCard(page, project, 'lw-pattern-section-split', {
+    onConfigRequest: config => configRequests.push(config),
+  });
+  await page.route('**/api/wiring/status', route => route.fulfill({ json: {
+    app: 'Lightweaver', ok: true, state: 'known-good', hasCandidate: false,
+    cardId: 'lw-pattern-section-split', firmwareVersion: '1.0.0', buildId: 'pattern-install-build',
+    outputs: [{
+      id: targetOutput.id, pin: 18, pixels: targetOutput.pixels,
+      segments: [{ id: 'one-output-full', count: targetOutput.pixels, direction: 'forward' }],
+    }],
+  } }));
+  await gotoSavedProjectPatterns(page, project);
+  await issueRegisteredPatternAuthorization(page);
+
+  await page.getByTitle('Install the current look on the card').click();
+
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project&next=patterns/);
+  await expect(page.getByRole('heading', { name: 'Check and install on this card' })).toBeVisible();
+  await expect.poll(() => configRequests.length).toBe(1);
+});
+
+test('Patterns routes an unexpected staged reply to the existing candidate without retrying config', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-staged-reply');
+  const configRequests: any[] = [];
+  await page.route(/^http:\/\/(?:lightweaver\.local|192\.168\.\d+\.\d+)\//, route => route.abort());
+  await mockVerifiedInstallCard(page, project, 'lw-pattern-staged-reply', {
+    onConfigRequest: config => configRequests.push(config), stagedConfig: true,
+  });
+  await page.route('**/api/wiring/status', route => route.fulfill({ json: {
+    app: 'Lightweaver', ok: true, state: 'known-good', hasCandidate: false,
+    cardId: 'lw-pattern-staged-reply', buildId: 'pattern-install-build',
+    outputs: compileProjectWiring(project).outputs,
+  } }));
+  await gotoSavedProjectPatterns(page, project);
+  await issueRegisteredPatternAuthorization(page);
+
+  await page.getByTitle('Install the current look on the card').click();
+
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project&next=patterns&resume=candidate/);
+  await expect(page.getByRole('heading', { name: 'Check and install on this card' })).toBeVisible();
+  await page.waitForTimeout(750);
+  expect(configRequests).toHaveLength(1);
+});
+
+test('a saved mix sharing a built-in pattern ID remains a distinct playlist entry', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-mix-pattern-id-collision');
+  project.devices.standaloneController.looks = [{
+    id: 'aurora', label: 'Aurora saved mix',
+    defaultLook: { patternId: 'aurora', brightness: 0.3 },
+  }];
+  project.devices.standaloneController.playlist = [];
+  const duplicateKeyWarnings: string[] = [];
+  page.on('console', message => {
+    if (message.type() === 'error' && message.text().includes('same key')) duplicateKeyWarnings.push(message.text());
+  });
+  await gotoSavedProjectPatterns(page, project);
+
+  await expect(page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]')).toHaveCount(2);
+  const savedMix = page.locator('.pmcard-wrap').filter({ hasText: 'Aurora saved mix' });
+  await savedMix.getByRole('button', { name: 'Add Aurora saved mix to playlist' }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.devices?.standaloneController?.playlist?.find(item => item.lookId === 'aurora')?.type;
+  })).toBe('combo');
+  expect(duplicateKeyWarnings).toHaveLength(0);
+});
+
+test('updating an imported mix with orphaned section IDs exports its new all-section brightness', async ({ page }) => {
+  const project = createPiecePreviewProject('piece-preview-orphaned-mix');
+  const oldMix = {
+    id: 'combo-aurora', label: 'Aurora — steady 30%',
+    defaultLook: { patternId: 'aurora', brightness: 1 },
+    sectionLooks: { 'old-section-one': { patternId: 'aurora', brightness: 1 } },
+  };
+  const otherMix = {
+    id: 'three-colors', label: 'Three colors',
+    defaultLook: { patternId: 'fire', brightness: 0.7 },
+    sectionLooks: { 'old-section-two': { patternId: 'ocean', brightness: 0.6 } },
+  };
+  project.devices.standaloneController.looks = [oldMix, otherMix];
+  project.devices.standaloneController.playlist = [
+    { id: 'combo-combo-aurora', type: 'combo', lookId: oldMix.id, label: oldMix.label, enabled: true },
+    { id: 'combo-three-colors', type: 'combo', lookId: otherMix.id, label: otherMix.label, enabled: true },
+  ];
+  await gotoSavedProjectPatterns(page, project);
+
+  await page.locator('.pm-cards .pmcard[data-pattern-id="combo-aurora"]').click();
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
+  await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
+  await expect(page.getByTestId('look-brightness-readout')).toContainText('30');
+  await page.getByTestId('look-save-preset').click();
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.devices?.standaloneController?.looks?.find(look => look.id === 'combo-aurora')?.defaultLook?.brightness;
+  })).toBe(0.3);
+
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  expect(saved.devices.standaloneController.looks.find(look => look.id === 'three-colors')?.defaultLook?.brightness).toBe(0.7);
+  expect(saved.devices.standaloneController.looks).toHaveLength(2);
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Card tools/ }).click();
+  await page.getByRole('menuitem', { name: /Download setup/ }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const config = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const exportedMix = config.looks.find(look => look.id === 'combo-combo-aurora');
+  expect(exportedMix?.zones).toHaveLength(2);
+  expect(exportedMix.zones.every(zone => zone.brightness === 0.3)).toBe(true);
+  expect(config.looks.some(look => look.id === 'combo-three-colors')).toBe(true);
 });
 
 test('an edit made during verification remains a draft above the installed snapshot', async ({ page }) => {
@@ -2089,7 +2329,8 @@ test('a slider changes its readout and sends a tuned color modifier', async ({ p
   // carried the patch id would name a zone the firmware does not have, and
   // collapsing the two namespaces is exactly the regression that made every
   // per-section look silently stop saving.
-  await expect(page.getByLabel('Preview target')).toHaveValue('patch-default-outer-circle');
+  await expect(page.getByTestId('section-target-patch-default-outer-circle')).toHaveClass(/\bon\b/);
+  await expect(page.getByLabel('Preview target')).toHaveValue('piece');
 
   // The tuned look is pushed to the card, addressed by its card zone id.
   await expect.poll(() => controlRequests.some(r => (
@@ -2130,7 +2371,7 @@ test('the advanced hue-shift slider exposes its testids', async ({ page }) => {
   await expect(page.getByTestId('look-hue-shift-readout')).toHaveText('-24');
 });
 
-test('saving the current look as a mix adds a mix card to the grid', async ({ page }) => {
+test('saving a named mix keeps its name in Tune and Color after reload and selection', async ({ page }) => {
   await page.route('**/api/control', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   });
@@ -2140,6 +2381,7 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
   await page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]').click();
   const before = await page.locator('.pm-cards .pmcard').count();
 
+  await page.getByTestId('look-name').fill('Named section mix');
   await page.getByTestId('look-save-preset').click();
 
   // A new mix card (tagged 'mix') appears in the grid. The catalog sentinel
@@ -2147,6 +2389,13 @@ test('saving the current look as a mix adds a mix card to the grid', async ({ pa
   // visible catalog but does not own an exact rendered-card count.
   await expect(page.locator('.pm-cards .pmcard .mixtag')).toHaveCount(1);
   expect(await page.locator('.pm-cards .pmcard').count()).toBeGreaterThanOrEqual(before);
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const savedMix = page.locator('.pm-cards .pmcard').filter({ hasText: 'Named section mix' });
+  await expect(savedMix).toBeVisible();
+  await savedMix.click();
+  await expect(page.locator('.pm-tune-pane > .sec-h .m')).toHaveText('Named section mix');
+  await expect(page.locator('.pm-palette .pm-palmeta strong')).toHaveText('Named section mix');
 });
 
 test('the mirror geometry control switches the active geometry', async ({ page }) => {

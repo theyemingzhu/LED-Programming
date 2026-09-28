@@ -590,6 +590,26 @@ input[type=range].lw::-moz-range-thumb { width: 14px; height: 14px; border-radiu
 .preserving-update-panel .card-acknowledged-facts dd {
   text-align: right; font-variant-numeric: tabular-nums;
 }
+.preserving-update-panel .card-acknowledged-facts { align-items: baseline; row-gap: 12px; }
+.preserving-update-panel .preserving-installed-recovery { text-align: left; }
+.preserving-usb-recovery { display: grid; justify-items: start; gap: 8px; }
+.preserving-usb-recovery > strong { color: var(--danger); font-weight: 600; }
+.preserving-usb-recovery > p { max-width: 60ch; margin: 0; color: var(--text-mid); line-height: 1.5; }
+.preserving-usb-recovery > .btn { max-width: 100%; height: auto; min-height: 36px; white-space: normal; text-align: left; }
+.preserving-release-fact { display: grid; justify-items: end; gap: 4px; }
+.preserving-release-status { display: grid; justify-items: end; gap: 8px; max-width: 60ch; font-size: 11px; line-height: 1.45; }
+.preserving-release-status:empty { display: none; }
+.preserving-release-status.ready { color: var(--ok); }
+.preserving-release-status.error { color: var(--danger); }
+.install-checking-card { gap: 4px; }
+.install-card-release { grid-column: 1 / -1; margin-top: 0; }
+.install-card-release > div { display: grid; justify-items: start; gap: 8px; }
+@media (max-width: 540px) {
+  .preserving-update-panel .card-acknowledged-facts { grid-template-columns: 1fr; gap: 5px; }
+  .preserving-update-panel .card-acknowledged-facts dt:not(:first-child) { margin-top: 10px; }
+  .preserving-update-panel .card-acknowledged-facts dd { text-align: left; }
+  .preserving-release-fact, .preserving-release-status { justify-items: start; }
+}
 .preserving-update-panel h2 { font-size: 18px; line-height: 1.2; letter-spacing: 0; }
 .preserving-update-choice { display: grid; justify-items: end; gap: 9px; margin-top: 12px; }
 .preserving-update-choice > p { margin: 0; color: var(--text-mid); font-size: 12px; line-height: 1.5; text-align: right; }

@@ -378,7 +378,6 @@ export function useLayoutStrips(ctx) {
   // `sections` is a count (the even plan) or an array of the owner's own
   // counts (uneven divide); both resolve to the same plan shape.
   const divideStripIntoSections = useCallback((id, sections) => {
-    if (wiring.locked) return null;
     const source = strips.find(st => st.id === id);
     if (!source) return null;
     const counts = Array.isArray(sections)
@@ -439,6 +438,13 @@ export function useLayoutStrips(ctx) {
     });
 
     const wiringResult = updateWiring(draft => {
+      // Like direct GPIO/direction edits in Draw, an intentional division
+      // reopens the installed plan in the same history transaction.
+      if (draft.locked) {
+        draft.locked = false;
+        draft.verified = false;
+        draft.runs.forEach(run => { run.verified = false; });
+      }
       const existing = draft.runs.find(run => run.type === 'strip' && run.source?.stripId === id);
       if (existing) {
         existing.source = { ...existing.source, from: 0, to: Math.max(0, counts.counts[0] - 1) };
@@ -722,6 +728,25 @@ export function useLayoutStrips(ctx) {
   }, [sectionFamilies, familyMutationContext, resliceConnectedFamily, commitConnectedGeometry,
       density, stripDensities, setPxPerMm, setStripCountOverrides]);
 
+  const setConnectedFamilyDensity = useCallback((familyId, requestedDensity) => {
+    const nextDensity = Number(requestedDensity);
+    if (!Number.isFinite(nextDensity) || nextDensity <= 0) return { ok: false, error: 'Choose a valid reel density.' };
+    const context = familyMutationContext(familyId);
+    if (!context.ok) return context;
+    const nextDensities = { ...stripDensities };
+    context.family.memberIds.forEach(id => { nextDensities[id] = nextDensity; });
+    const nextScale = derivePxPerMmFromCounts(strips, { defaultDensity: density, stripDensities: nextDensities });
+    if (!(nextScale > 0)) return { ok: false, error: 'The section paths could not be calibrated.' };
+    pushLayoutHistory();
+    setStripCountOverrides(current => ({ ...current,
+      ...Object.fromEntries(context.family.memberIds.map(id => [id, true])),
+    }));
+    setStripDensities(nextDensities);
+    setPxPerMm(nextScale);
+    return { ok: true };
+  }, [familyMutationContext, stripDensities, strips, density, pushLayoutHistory,
+      setStripCountOverrides, setStripDensities, setPxPerMm]);
+
   const detachSectionFamily = useCallback((familyId) => {
     if (!sectionFamilies.some(family => family.id === familyId)) return;
     pushLayoutHistory();
@@ -892,6 +917,7 @@ export function useLayoutStrips(ctx) {
     addConnectedSplit,
     mergeConnectedSection,
     correctConnectedSectionCount,
+    setConnectedFamilyDensity,
     detachSectionFamily,
     addPrimitiveStrip,
     scaleStrip,

@@ -100,7 +100,7 @@ test('a supported mapped journey enters the project with its authored timing int
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('look-name')).toHaveValue('Amber violet drift');
   await page.locator(`button[data-pattern-id="${savedJourney.id}"]`).click();
-  await expect(page.getByTestId('look-save-preset')).toHaveText('Open Color Journey in Lab');
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Open in Lab');
   await page.getByTestId('look-save-as-new').click();
   await expect(page).toHaveURL(/screen=pattern-lab/);
   await openControls(page);

@@ -24,6 +24,8 @@ function benchStatus() {
     provisionalSetup: true,
     projectId: 'lightweaver-bench-discovery-v1',
     projectRevision: 1,
+    projectFingerprint: 'd93ebe18ab7780b1',
+    maxMilliamps: 2000,
     piece: { id: 'lightweaver-bench-discovery-v1', name: 'Lightweaver Bench Discovery' },
     led: { pixels: 256, type: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 2000 },
     outputs: [{
@@ -39,6 +41,17 @@ function benchStatus() {
 
 test.beforeEach(async ({ page }) => {
   const status = benchStatus();
+  const firmwareInfo = {
+    ...status,
+    ledType: status.led.type,
+    outputColor: { colorOrder: status.led.colorOrder },
+    controls: {
+      encoder: { a: 4, b: 5, press: 0, configuredAlternatePress: 6,
+        rotateDirection: 'clockwise-brighter', brightnessStep: 18 },
+      previous: 7, next: 8, blackout: 9, brightnessAnalog: -1, statusLed: 2,
+    },
+    led: { brightnessLimit: 0.65 },
+  };
   countWrites = [];
   recoveryWrites = [];
   const fulfillCard = (route: Route) => {
@@ -47,8 +60,14 @@ test.beforeEach(async ({ page }) => {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(status),
+        body: JSON.stringify(pathname === '/api/status' ? status : firmwareInfo),
       });
+    }
+    if (pathname === '/api/wiring/status') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        app: 'Lightweaver', ok: true, state: 'known-good', hasCandidate: false,
+        cardId: CARD_ID, outputs: status.outputs,
+      }) });
     }
     if (pathname === '/api/recover-lights') {
       recoveryWrites.push(route.request().postDataJSON());
@@ -70,6 +89,8 @@ test.beforeEach(async ({ page }) => {
       countWrites.push(config);
       status.led = { ...status.led, ...config.led };
       status.outputs = config.led.outputs;
+      firmwareInfo.outputs = config.led.outputs;
+      firmwareInfo.projectFingerprint = config.projectFingerprint;
       return route.fulfill({
         status: 200,
         contentType: 'application/json',

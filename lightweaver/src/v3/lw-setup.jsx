@@ -22,6 +22,7 @@ import { recoverCardLights } from '../lib/cardLiveControl.js';
 import { cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
+import { readCardCommissioningVerification } from '../lib/cardInstallGate.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
@@ -109,7 +110,7 @@ function discoveryEvidence(project) {
   const color = project?.devices?.standaloneController?.led;
   return {
     outputs,
-    colorOrder: color?.colorOrderConfirmed === true ? color.colorOrder : '',
+    colorOrder: readCardCommissioningVerification({ standaloneController: project?.devices?.standaloneController }).colorConfirmed ? color?.colorOrder : '',
     count: outputs.reduce((sum, output) => sum + Number(output.pixelCount || 0), 0),
   };
 }
@@ -252,7 +253,9 @@ export function SetupScreen({
         ...(currentProject?.devices?.standaloneController?.led || {}),
         ...(installedController.led || {}),
         ...(parts?.led || {}),
-        ...(parts?.colorOrder ? { colorOrder: parts.colorOrder, colorOrderConfirmed: true } : {}),
+        // A card read reports its configured byte order, not a human color
+        // observation. Keep any earlier proof only if it still matches.
+        ...(parts?.colorOrder ? { colorOrder: parts.colorOrder } : {}),
         ...(nextOutputs ? {
           outputs: nextOutputs,
           pixels: nextOutputs.reduce((sum, output) => sum + Number(output.pixels || 0), 0),
@@ -297,7 +300,7 @@ export function SetupScreen({
         ...(nextOutputs ? { outputs: nextOutputs } : {}),
         led: {
           ...(previous?.led || {}),
-          ...(parts.colorOrder ? { colorOrder: parts.colorOrder, colorOrderConfirmed: true } : {}),
+          ...(parts.colorOrder ? { colorOrder: parts.colorOrder } : {}),
           ...(nextOutputs ? {
             outputs: nextOutputs,
             pixels: nextOutputs.reduce((sum, output) => sum + Number(output.pixels || 0), 0),
@@ -327,16 +330,12 @@ export function SetupScreen({
     // where nothing can be lost. `applyCardParts` replaces the WHOLE project,
     // id included, with no owner gate — so a real piece that simply had not
     // yet written its strip into `portRoles` was overwritten by the first
-    // card it met, whichever project that card held. Only the open project
-    // itself (same id, refreshing from its own card) or an untouched starter
-    // may be described from a card read without being asked.
-    const cardProjectId = String(status?.projectId || '').trim();
-    const openIsSameProject = Boolean(cardProjectId) && cardProjectId === String(currentProject?.id || '').trim();
-    // A starter (the default circle a fresh browser opens, `starterPending`
-    // still true) is untouched however many placeholder strips it carries; a
-    // project that has left the starter behind is the owner's work.
-    const openIsUntouched = currentProject?.layout?.starterPending !== false;
-    if (!openIsSameProject && !openIsUntouched) return;
+    // card it met, whichever project that card held. Matching project IDs do
+    // not make this safe: an older card revision can share the ID of a saved
+    // Studio layout with newer sections. Only the untouched starter may be
+    // described from card readback without an owner action.
+    const openIsUntouched = currentProject?.layout?.starterPending === true;
+    if (!openIsUntouched) return;
     adoptedCardRef.current = signature;
     if (!alreadyDescribed) {
       void applyCardParts(skeleton, status)
@@ -695,16 +694,13 @@ export function SetupScreen({
     if (cardLifecycle?.exactProject === true) return;
     // The live lifecycle has revisions, not the persisted summary's dirty flag.
     if (hasUnsavedChanges(readProjectLifecycle())) return;
-    // And never over work the owner already has open. "Adopt by default" means
-    // "do not make me choose when there is nothing to lose" — not "throw away
-    // the piece I am in the middle of". Two cases are safe:
-    //   • the open project IS this card's project, just out of step — the
-    //     common one, and refreshing it from the card is the whole point; or
-    //   • the open project is an untouched starter with no design in it.
-    const openIsSameProject = cardProjectId === String(currentProject?.id || '').trim();
-    const openIsUntouched = currentProject?.layout?.starterPending !== false
-      && !(currentProject?.layout?.strips || []).length;
-    if (!openIsSameProject && !openIsUntouched) return;
+    // A saved Studio project may share the card's ID while containing newer
+    // sections than the card. Rebuilding from that older card would silently
+    // replace the saved layout with a partial card copy, then autosave it.
+    // Automatic reconstruction is only safe over the untouched starter;
+    // "Use this card's project" remains available for an intentional switch.
+    const openIsUntouched = currentProject?.layout?.starterPending === true;
+    if (!openIsUntouched) return;
     // Keyed on the CARD and the project it holds — never on the Studio project
     // generation, which adoption itself bumps. Including it made every adoption
     // mint a new key, so the effect adopted again, forever, and hung the page.
@@ -994,6 +990,11 @@ export function SetupScreen({
                   Use this card&rsquo;s project
                 </button>
               )}
+              {!installIntentOpen && (
+                <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project&next=patterns&replace=project')}>
+                  Save this project to the card
+                </button>
+              )}
             </div>
           </div>
         );
@@ -1036,7 +1037,9 @@ export function SetupScreen({
                   journey,
                   resumableCommissioning: true,
                 })}
-              >Put your project back on the card</button>
+              >{commissioningFlow?.operation === 'inspect-card'
+                ? 'Finish checking this card'
+                : 'Put your project back on the card'}</button>
             ) : (
               <p role="status" data-testid="setup-install-inline">
                 Finish the earlier setup phases before saving this project to the card.
@@ -1192,7 +1195,7 @@ export function SetupScreen({
         const installedText = installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true);
         const pins = evidence.outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
         const led = currentProject?.devices?.standaloneController?.led || {};
-        const colorConfirmed = led.colorOrderConfirmed === true && Boolean(led.colorOrder);
+        const colorConfirmed = readCardCommissioningVerification({ standaloneController: currentProject?.devices?.standaloneController }).colorConfirmed;
         const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
         const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
         const lightsValue = evidence.count > 0
@@ -1337,7 +1340,7 @@ export function SetupScreen({
             <div className="lw-setup-banner-actions">
               <button type="button" className="btn" data-testid="setup-import-project" onClick={() => importRef.current?.click()}>Import project file</button>
               <button type="button" className="btn" data-testid="setup-start-from-card" disabled={!exactTransport} onClick={byOwner(startFromCard)}>Use this card&rsquo;s project</button>
-              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project')}>Save this project to the card</button>
+              <button type="button" className="btn" data-testid="setup-overwrite-card" onClick={() => go('#screen=card&section=setup&task=install-project&next=patterns&replace=project')}>Save this project to the card</button>
             </div>
           </section>
         )}

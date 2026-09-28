@@ -413,20 +413,29 @@ test('isBenchProjectEvidence honours the card-reported provisionalSetup claim', 
   assert.equal(isBenchProjectEvidence({ provisionalSetup: true }), true);
 });
 
-test('untouched scaffolding is recognised even when the card calls it a finished install', () => {
-  // Adrian's real card, read on 2026-08-23: the sentinel project, the bench
-  // revision, and provisionalSetup: false. Believing that false made Studio
-  // treat its own discovery config as somebody else's project and refuse to
-  // install over it.
+test('a counted regular install at revision one is not temporary scaffolding', () => {
   assert.equal(isBenchProjectEvidence({
     projectId: BENCH_PROJECT_ID,
     projectRevision: BENCH_PROJECT_REVISION,
     provisionalSetup: false,
+    projectName: 'GPIO 18 — 41 lights',
+    runtimePhase: 'ready',
+    knownGoodProject: true,
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  }), false);
+});
+
+test('untouched scaffolding is recognised from uncounted headroom even when the card calls it a finished install', () => {
+  // The older real card still held the 256-pixel probe ceiling. That output
+  // evidence distinguishes it from a counted 41-light install at revision 1.
+  assert.equal(isBenchProjectEvidence({
+    projectId: BENCH_PROJECT_ID,
+    projectRevision: BENCH_PROJECT_REVISION,
+    provisionalSetup: false,
+    outputs: [{ pin: 18, pixels: BENCH_DEFAULT_PORT_PIXELS }],
   }), true);
 
-  // The earlier fix still holds: a project derived from discovery and then
-  // properly installed keeps the id but has advanced past the bench revision,
-  // and a card that says "this is a permanent install" is believed.
+  // A later counted install also keeps the sentinel id and is permanent.
   assert.equal(isBenchProjectEvidence({
     projectId: BENCH_PROJECT_ID,
     projectRevision: BENCH_PROJECT_REVISION + 4,

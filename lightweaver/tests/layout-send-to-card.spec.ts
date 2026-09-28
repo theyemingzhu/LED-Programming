@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { testPort as port } from './testPort.mjs';
+import { projectSkeletonFromCardStatus } from '../src/lib/discoveryCommit.js';
+import { createDefaultProject } from '../src/lib/projectModel.js';
 
 const TEST_CARD_ID = 'lw-layout-tests';
 const TEST_BUILD_ID = 'a'.repeat(40);
@@ -18,7 +20,7 @@ const TEST_BUILD_ID = 'a'.repeat(40);
 
 async function mockLocalCard(page: any, options: any = {}) {
   const card = {
-    savedConfig: null as any,
+    savedConfig: options.savedConfig || null as any,
     candidateConfig: options.existingCandidate || null as any,
     attemptedConfigs: [] as any[],
     operations: [] as string[],
@@ -27,7 +29,7 @@ async function mockLocalCard(page: any, options: any = {}) {
     testing: false,
     bootId: 'initial-boot',
   };
-  await page.route('http://lightweaver.local/**', async (route: any) => {
+  await (options.routeOnContext ? page.context() : page).route('http://lightweaver.local/**', async (route: any) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (pathname === '/api/status') {
@@ -79,6 +81,8 @@ async function mockLocalCard(page: any, options: any = {}) {
           bootId: card.bootId,
           pixels: 44,
           outputs: options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }],
+          projectId: card.savedConfig?.piece?.id || '',
+          piece: card.savedConfig?.piece || undefined,
           projectRevision: card.savedConfig?.projectRevision ?? 0,
           projectFingerprint: card.savedConfig?.projectFingerprint ?? '',
         },
@@ -136,7 +140,7 @@ async function mockLocalCard(page: any, options: any = {}) {
         await route.abort('connectionrefused');
         return;
       }
-      await route.fulfill({ json: { ok: true, state: 'testing', activationId: card.activationId, remainingProbationMs: 90000 } });
+      await route.fulfill({ json: { ok: true, state: 'testing', activationId: card.activationId, remainingProbationMs: options.autoExpireProbationMs || 90000 } });
       return;
     }
     if (pathname === '/api/wiring/status') {
@@ -150,6 +154,7 @@ async function mockLocalCard(page: any, options: any = {}) {
         : 'known-good';
       const identity = hasCandidate ? card.candidateConfig : card.savedConfig;
       await route.fulfill({ json: {
+        app: 'Lightweaver',
         ok: true,
         state,
         candidateState,
@@ -171,7 +176,9 @@ async function mockLocalCard(page: any, options: any = {}) {
           ? (card.testing ? 'confirm-or-rollback' : 'activate')
           : 'stage-candidate',
         remainingProbationMs: card.testing ? (options.autoExpireProbationMs || 84000) : 0,
-        currentOutputs: (card.savedConfig?.led?.outputs || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }]),
+        currentOutputs: (options.candidateOutputsDuringTest && card.testing
+          ? card.candidateConfig?.led?.outputs
+          : card.savedConfig?.led?.outputs) || options.currentOutputs || [{ id: 'out1', pin: 16, pixels: 44 }],
         ...(hasCandidate ? { candidateOutputs: card.candidateConfig?.led?.outputs || [] } : {}),
       } });
       return;
@@ -240,6 +247,49 @@ async function gotoWire(page: any, { verified = false, transformProject = null a
     await expect(page.getByTestId('layout-send-to-card')).toBeEnabled();
   }
 }
+
+test('Layout asks before staging a different project and preserves the card known-good config', async ({ page }) => {
+  const oldProject = {
+    piece: { id: 'previous-card-project', name: 'Previous card project' },
+    projectRevision: 1,
+    projectFingerprint: 'a'.repeat(64),
+    led: { type: 'WS2812B', pixels: 41, maxMilliamps: 1500, colorOrder: 'RGB',
+      outputs: [{ id: 'old-output', pin: 18, pixels: 41, segments: [{ id: 'old-full', count: 41, direction: 'forward' }] }],
+    },
+  };
+  const card = await mockLocalCard(page, { savedConfig: oldProject });
+  const project = createDefaultProject();
+  project.id = 'new-two-output-project';
+  project.name = 'New output project';
+  project.layout.starterPending = false;
+  project.layout.wiring.verified = true;
+  project.layout.wiring.locked = true;
+  project.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
+  project.layout.wiring.outputs[0].pin = 21;
+  project.devices.standaloneController.led.colorOrderConfirmed = true;
+  project.devices.standaloneController.led.confirmedColorOrder = 'RGB';
+  await page.addInitScript(({ cardId, saved }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId }));
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(saved));
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      version: 2, dirty: false, persistedDestination: 'browser', installation: null,
+    }));
+  }, { cardId: TEST_CARD_ID, saved: project });
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+
+  await page.getByTestId('layout-check-and-install').click();
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project&next=patterns/);
+  await expect(page.getByTestId('replace-card-project')).toBeVisible();
+  expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(0);
+
+  await page.getByTestId('replace-card-project').click();
+  await expect(page).toHaveURL(/&replace=project/);
+  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible({ timeout: 10000 });
+  expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(1);
+  expect(card.savedConfig?.piece?.id).toBe('previous-card-project');
+  expect(card.candidateConfig?.piece?.id).toBe(project.id);
+  expect(card.operations).not.toContain('activate');
+});
 
 test('Open Patterns starts the guarded install and can replace an unrelated unfinished test', async ({ page }) => {
   const card = await mockLocalCard(page, {
@@ -388,6 +438,66 @@ test('a successful push is pending until acknowledgement and records the exact i
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   expect(card.operations).toContain('config');
   expect(card.savedConfig).not.toBeNull();
+});
+
+test('Card Install sends all three saved section arrangements and reads them back after confirmation', async ({ page }) => {
+  const card = await mockLocalCard(page, { currentOutputs: [{ id: 'out1', pin: 18, pixels: 41,
+    segments: [{ id: 'out1-full', count: 41, direction: 'forward' }] }] });
+  await gotoWire(page, { verified: true, transformProject(project: any) {
+    const measured = projectSkeletonFromCardStatus({ projectId: project.id, provisionalSetup: false,
+      outputs: [{ id: 'out1', pin: 18, pixels: 41, segments: [
+        { id: 'run-strip-1', count: 14, direction: 'forward' },
+        { id: 'run-strip-2', count: 14, direction: 'forward' },
+        { id: 'run-strip-3', count: 13, direction: 'forward' },
+      ] }] });
+    project.layout.strips = measured.strips;
+    project.layout.patchBoard = measured.patchBoard;
+    project.layout.wiring = measured.wiring;
+    project.layout.wiring.verified = true;
+    project.layout.wiring.locked = true;
+    project.layout.wiring.runs.forEach((run: any) => { run.verified = true; });
+    const patchIds = project.layout.patchBoard.patches.map((patch: any) => patch.id);
+    const arrangements = [
+      ['Three colors', ['fire', 'ocean', 'plasma']],
+      ['Aurora opening', ['aurora', 'ocean', 'plasma']],
+      ['Warm middle', ['aurora', 'fire', 'plasma']],
+    ] as const;
+    project.layout.patchBoard.patches.forEach((patch: any, index: number) => {
+      patch.playback = { ...patch.playback, patternId: arrangements[0][1][index], brightness: index === 0 ? 0.3 : 1 };
+    });
+    const controller = project.devices.standaloneController;
+    controller.outputs = [{ id: 'out1', pin: 18, pixels: 41 }];
+    controller.led = { ...controller.led, pixels: 41, outputs: controller.outputs,
+      colorOrderConfirmed: true, confirmedColorOrder: controller.led.colorOrder || 'RGB' };
+    controller.defaultLook = { ...controller.defaultLook, patternId: 'aurora' };
+    controller.looks = arrangements.map(([label, patterns], index) => ({
+      id: `saved-${index + 1}`, label, defaultLook: { patternId: 'aurora' },
+      sectionLooks: Object.fromEntries(patchIds.map((id: string, sectionIndex: number) => [id, {
+        patternId: patterns[sectionIndex], brightness: sectionIndex === 0 ? 0.3 : 1,
+      }])),
+    }));
+    controller.playlist = arrangements.map((_, index) => ({ type: 'combo', lookId: `saved-${index + 1}` }));
+  } });
+
+  await page.getByTestId('layout-send-to-card').click();
+  await expect(page.getByTestId('wiring-test-start')).toBeVisible();
+  const posted = card.candidateConfig;
+  expect(posted.led.outputs.map((output: any) => [output.pin, output.pixels])).toEqual([[18, 41]]);
+  expect(posted.led.outputs[0].segments.map((segment: any) => segment.count)).toEqual([14, 14, 13]);
+  const patternsFor = (config: any, label: string) => config.looks.find((look: any) => look.label === label)?.zones.map((zone: any) => zone.patternId);
+  expect(patternsFor(posted, 'Three colors')).toEqual(['fire', 'ocean', 'plasma']);
+  expect(patternsFor(posted, 'Aurora opening')).toEqual(['aurora', 'ocean', 'plasma']);
+  expect(patternsFor(posted, 'Warm middle')).toEqual(['aurora', 'fire', 'plasma']);
+  expect(posted.zones.map((zone: any) => [zone.patternId, zone.brightness ?? 1])).toEqual([
+    ['fire', 0.3], ['ocean', 1], ['plasma', 1],
+  ]);
+  await page.getByTestId('wiring-test-start').click();
+  await expect(page.getByTestId('wiring-test-confirm')).toBeVisible();
+  await page.getByTestId('wiring-test-confirm').click();
+  await expect(page.locator('.la-card-push-banner')).toContainText('Wiring confirmed.');
+  expect(card.savedConfig?.looks).toEqual(posted.looks);
+  expect(card.savedConfig?.zones).toEqual(posted.zones);
+  expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
 });
 
 test('candidate test locks conflicting saves, recovers an ambiguous activation, and rollback resolves with Retry', async ({ page }) => {
@@ -544,4 +654,34 @@ test('candidate runtime readback cannot replace an open project with no port rol
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
   expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(1);
   expect(card.operations.filter(operation => operation === 'rollback')).toHaveLength(0);
+});
+
+test('reload during probation resumes the exact candidate read-only and notices automatic rollback', async ({ page }) => {
+  const card = await mockLocalCard(page, {
+    currentOutputs: [], exposeCandidateRuntime: true,
+    candidateOutputsDuringTest: true, routeOnContext: true,
+    autoExpireProbationMs: 6000,
+  });
+  await gotoWire(page, {
+    verified: true,
+    transformProject(project: any) { project.portRoles = []; },
+  });
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; });
+  await page.getByRole('button', { name: 'Start light test', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'The lights look correct', exact: true })).toBeVisible({ timeout: 10000 });
+  expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
+
+  const fresh = await page.context().newPage();
+  await fresh.goto('/#screen=card&section=setup&task=install-project&next=patterns', { waitUntil: 'domcontentloaded' });
+  await expect(fresh.getByRole('button', { name: 'The lights look correct', exact: true })).toBeVisible({ timeout: 10000 });
+  expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'config')).toHaveLength(0);
+  expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(0);
+
+  await expect(fresh.getByText(/light test expired.*restored its working setup/i)).toBeVisible({ timeout: 12000 });
+  await expect(fresh.getByRole('button', { name: 'The lights look correct', exact: true })).toHaveCount(0);
+  await expect(fresh.getByTestId('discard-candidate-and-retry')).toHaveCount(0);
+  expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
+  expect(card.operations.filter(operation => operation === 'confirm')).toHaveLength(0);
 });

@@ -38,14 +38,14 @@ test('card reconstruction preserves installed playlist and startup look', async 
 
   expect(reconstructed.devices.standaloneController.looks).toHaveLength(3);
   expect(reconstructed.devices.standaloneController.looks).toEqual([
-    expect.objectContaining({ id: 'aurora', label: 'Aurora', defaultLook: expect.objectContaining({ patternId: 'aurora' }) }),
-    expect.objectContaining({ id: 'fire', label: 'Fire', defaultLook: expect.objectContaining({ patternId: 'fire' }) }),
-    expect.objectContaining({ id: 'ocean', label: 'Ocean', defaultLook: expect.objectContaining({ patternId: 'ocean' }) }),
+    expect.objectContaining({ id: 'card-aurora', label: 'Aurora', defaultLook: expect.objectContaining({ patternId: 'aurora' }) }),
+    expect.objectContaining({ id: 'card-fire', label: 'Fire', defaultLook: expect.objectContaining({ patternId: 'fire' }) }),
+    expect.objectContaining({ id: 'card-ocean', label: 'Ocean', defaultLook: expect.objectContaining({ patternId: 'ocean' }) }),
   ]);
   expect(reconstructed.devices.standaloneController.playlist).toEqual([
-    expect.objectContaining({ id: 'aurora', type: 'combo', lookId: 'aurora', label: 'Aurora', enabled: true }),
-    expect.objectContaining({ id: 'fire', type: 'combo', lookId: 'fire', label: 'Fire', enabled: true }),
-    expect.objectContaining({ id: 'ocean', type: 'combo', lookId: 'ocean', label: 'Ocean', enabled: true }),
+    expect.objectContaining({ id: 'aurora', type: 'combo', lookId: 'card-aurora', label: 'Aurora', enabled: true }),
+    expect.objectContaining({ id: 'fire', type: 'combo', lookId: 'card-fire', label: 'Fire', enabled: true }),
+    expect.objectContaining({ id: 'ocean', type: 'combo', lookId: 'card-ocean', label: 'Ocean', enabled: true }),
   ]);
   expect(reconstructed.devices.standaloneController.defaultLook).toEqual(expect.objectContaining({
     patternId: 'aurora', brightness: 0.72, speed: 1.15, hueShift: 12,
@@ -53,7 +53,7 @@ test('card reconstruction preserves installed playlist and startup look', async 
     breatheLowerPct: 30, breatheUpperPct: 90, breatheCycleSeconds: 6,
     customDrift: false,
   }));
-  expect(reconstructed.devices.standaloneController.activeLookId).toBe('fire');
+  expect(reconstructed.devices.standaloneController.activeLookId).toBe('card-fire');
 
   // Defect C1b: the reconstruction marks itself so it is never described as
   // a complete editable backup — see projectCopyLabel.js's projectCopyKind,

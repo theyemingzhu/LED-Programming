@@ -1,5 +1,7 @@
 import { PORT_ROLE_STRIP } from './portRoles.js';
 import { isUncountedHeadroomCount } from './discoveryCommit.js';
+import { readCardCommissioningVerification } from './cardInstallGate.js';
+import { sanitizeProjectId } from './projectIdentity.js';
 
 // Setup is expressed as four owner outcomes. Firmware and Wi-Fi are evidence
 // blockers inside connection, never durable numbered work of their own.
@@ -213,8 +215,7 @@ export function setupOffersTypedLedCount({ status, project } = {}) {
 }
 
 function confirmedColor(project) {
-  const led = project?.devices?.standaloneController?.led;
-  return led?.colorOrderConfirmed === true && Boolean(String(led?.colorOrder || '').trim());
+  return readCardCommissioningVerification({ standaloneController: project?.devices?.standaloneController }).colorConfirmed;
 }
 
 function lightProgress(project) {
@@ -371,11 +372,26 @@ export function deriveSetupJourney({
     });
   }
 
+  // A changed look or playlist makes Studio's fingerprint newer than the
+  // installed copy. The card remains fully set up and holds this same piece;
+  // Card Home's existing Save to card control is the way to sync the edit.
+  // Require the card's live command-ready verdict and the exact project id so
+  // an unpaired, provisional, staged, or different-project card cannot borrow
+  // this route.
+  const sameProjectWithLocalEdits = blockers.length === 0
+    && connectedExactCard(cardLink)
+    && cardLifecycle?.commandReady === true
+    && ['project-mismatch', 'content-mismatch', 'length-mismatch'].includes(cardLifecycle?.state)
+    && cardLink?.readiness?.provisionalSetup !== true
+    && wiringStatus?.hasCandidate !== true
+    && sanitizeProjectId(project?.id) !== ''
+    && sanitizeProjectId(project?.id) === sanitizeProjectId(cardLink?.readiness?.projectId);
   const installedMatch = blockers.length === 0
     && ((resolution?.matchesCurrentProject === true
       && resolution?.playbackAccess === 'ready'
       && resolution?.provisionalSetup !== true)
-      || cardLifecycle?.state === 'ready');
+      || cardLifecycle?.state === 'ready'
+      || sameProjectWithLocalEdits);
   if (installedMatch) {
     return withTask({
       diagnosis: { state: 'installed-match' },

@@ -63,6 +63,7 @@ test('the Check and install CTA opens Card install', async ({ page }) => {
   await gotoLayout(page);
   await page.getByTestId('layout-check-and-install').click();
   await expectFreshCardInstallEntry(page);
+  await expect(page).toHaveURL(/&next=patterns/);
 });
 
 test('#screen=layout&mode=wire opens Card install, not a Layout tab', async ({ page }) => {
@@ -107,7 +108,7 @@ test('drawing a strip stays on Layout; other screens are unaffected', async ({ p
   await expect(page.locator('.la-draw-hint')).toHaveCount(0);
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
-  const sections = page.locator('[aria-label="Target sections"]');
+  const sections = page.getByTestId('pattern-section-list');
   await expect(sections).toBeVisible();
   await expect(sections.getByRole('button').first()).toBeVisible();
   await expect(page.locator('.rail-item.active')).toContainText('Patterns');

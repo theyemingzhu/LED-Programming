@@ -5,6 +5,7 @@ import { pushLiveHardwareToCard } from '../../lib/cardLiveControl.js';
 import { readCardStatusEnvelope } from '../../lib/cardPushClient.js';
 import { cardConnectionOptionsFor, cardLoadMethodForProtocol } from '../../lib/cardConnection.js';
 import { readPowerSupplySettings, withPowerSupplySettings } from '../../lib/powerSupplySettings.js';
+import { readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
 
 // Card Home's facts: the numbers an owner changes at any moment, without
 // walking a ladder. One module, two columns, and the common edits happen
@@ -75,7 +76,7 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
   const outputs = evidence.outputs;
   const pins = outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
   const count = evidence.counted ? Number(evidence.count || 0) : 0;
-  const colorConfirmed = led.colorOrderConfirmed === true && Boolean(led.colorOrder);
+  const colorConfirmed = readCardCommissioningVerification({ standaloneController: currentProject?.devices?.standaloneController }).colorConfirmed;
   const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
   const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
   const powerLimit = Number.isFinite(Number(led.maxMilliamps)) && Number(led.maxMilliamps) > 0 ? Math.round(Number(led.maxMilliamps)) : 0;

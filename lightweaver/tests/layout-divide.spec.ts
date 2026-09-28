@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 // compiles to its own zone (wiringCompiler.js) and its own section target on
 // the Patterns screen, without any change to the wiring/card contract.
 //
-// Division opens on demand; sizing and the existing one-click Split stay visible.
+// Division opens on demand; the separate-strip shortcut lives in More actions.
 
 async function gotoFreshLayout(page: any) {
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
@@ -24,7 +24,7 @@ async function createOneStrip(page: any) {
 }
 
 async function setStripLedCount(page: any, count: number) {
-  const input = page.locator('.la-strip-detail input[type="number"]').first();
+  const input = page.locator('.la-strip-row .la-row-count input').first();
   await input.fill(String(count));
   await input.blur();
 }
@@ -36,8 +36,7 @@ async function expectSectionCounts(page: any, counts: number[]) {
 }
 
 function rowCounts(page: any) {
-  return page.locator('.la-strip-row .layer-len').allTextContents()
-    .then((texts: string[]) => texts.map(text => Number.parseInt(text, 10)));
+  return page.locator('.la-strip-row .la-row-count input').evaluateAll((inputs: HTMLInputElement[]) => inputs.map(input => Number(input.value)));
 }
 
 test('dividing a 41-LED strip into 4 makes four strips of 11, 10, 10, 10', async ({ page }) => {
@@ -64,8 +63,9 @@ test('dividing into 3 spreads the remainder from the first section, and survives
   await createOneStrip(page);
   // A custom name keeps this persistence check independent of generated naming.
   await page.locator('.la-strip-row .layer-name').dblclick();
-  await page.locator('.la-strip-row input').fill('Ribbon');
-  await page.locator('.la-strip-row input').press('Enter');
+  const nameInput = page.locator('.la-strip-row').getByRole('textbox');
+  await nameInput.fill('Ribbon');
+  await nameInput.press('Enter');
   await setStripLedCount(page, 41);
 
   await page.locator('[data-testid^="divide-sections-"]').fill('3');
@@ -155,11 +155,12 @@ test('an invalid section count stays visible and cannot divide', async ({ page }
   await expect(commit).toBeEnabled();
 });
 
-test('Split into two keeps working unchanged alongside the new Divide control', async ({ page }) => {
+test('independent Split into two remains available in More actions', async ({ page }) => {
   await gotoFreshLayout(page);
   await createOneStrip(page);
 
   const firstName = await page.locator('.la-strip-row .layer-name').first().innerText();
+  await page.getByLabel('More strip actions').click();
   await page.locator('[data-testid^="split-strip-"]').first().click();
   await expect(page.locator('.la-strip-row .layer-name')).toHaveText([firstName, `${firstName} 2`]);
   await expect(page.locator('.la-gpio-group')).toHaveCount(1);
@@ -252,4 +253,60 @@ test('Divide disclosure opens by keyboard and collapses after selection changes 
   await expect(toggle).toHaveCount(0);
   await expect(page.locator('[data-testid^="divide-sections-"]')).toBeHidden();
   await page.screenshot({ path: 'test-results/layout-divide-collapsed.png' });
+});
+
+test('an installed locked card strip divides locally, invalidates verification, and undoes in one step', async ({ page }) => {
+  const { createDefaultProject } = await import('../src/lib/projectModel.js');
+  const { projectSkeletonFromCardStatus } = await import('../src/lib/discoveryCommit.js');
+  const skeleton = projectSkeletonFromCardStatus({
+    knownGoodProject: true, outputReady: true, projectId: 'installed-division',
+    outputs: [{ id: 'out1', pin: 18, pixels: 41, segments: [{ id: 'run-strip-1', count: 41, direction: 'forward' }] }],
+  });
+  const project = createDefaultProject();
+  project.id = 'installed-division';
+  Object.assign(project.layout, { strips: skeleton.strips, patchBoard: skeleton.patchBoard, wiring: skeleton.wiring, starterPending: false });
+  project.layout.patchBoard.patches[0].playback.patternId = 'fire';
+  expect(project.layout.wiring.locked).toBe(true);
+  await page.goto('/#screen=layout');
+  await page.evaluate(saved => {
+    localStorage.clear();
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(saved));
+  }, project);
+  await page.reload();
+  await page.locator('.la-strip-row .layer-name').first().click();
+  await page.locator('[data-testid^="divide-toggle-"]').click();
+  await expect(page.locator('[data-testid^="divide-sections-"]')).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId('divide-unlock-notice')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
+  await page.getByTestId('divide-unlock-notice').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/layout-divide-locked-390.png', fullPage: true });
+  await page.locator('[data-testid^="divide-sections-"]').fill('4');
+  await expectSectionCounts(page, [11, 10, 10, 10]);
+  await page.locator('[data-testid^="divide-commit-"]').click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(4);
+  expect(await rowCounts(page)).toEqual([11, 10, 10, 10]);
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout);
+  await expect.poll(async () => (await saved())?.strips?.length).toBe(4);
+  const divided = await saved();
+  expect(divided.wiring.outputs).toHaveLength(1);
+  expect(divided.wiring.outputs[0].pin).toBe(18);
+  expect(divided.wiring.outputs[0].runIds).toEqual(divided.wiring.runs.map((run: any) => run.id));
+  expect(divided.wiring.runs).toHaveLength(4);
+  expect(divided.wiring.runs[0].id).toBe('run-strip-1');
+  expect(divided.strips[0].id).toBe('strip-1');
+  expect(divided.wiring.locked).toBe(false);
+  expect(divided.wiring.verified).toBe(false);
+  expect(divided.wiring.runs.every((run: any) => !run.verified)).toBe(true);
+  expect(divided.patchBoard.patches[0].playback.patternId).toBe('fire');
+  await page.getByTitle(/Undo/).first().click();
+  await expect(page.locator('.la-strip-row')).toHaveCount(1);
+  await expect.poll(async () => (await saved())?.wiring).toEqual({ ...project.layout.wiring, migrationWarnings: [] });
+  expect((await saved()).strips[0].pixelCount).toBe(41);
+  await page.getByTitle(/Redo/).first().click();
+  await expect.poll(async () => (await saved())?.strips?.length).toBe(4);
+  await page.reload();
+  await expect(page.locator('.la-strip-row')).toHaveCount(4);
+  expect(await rowCounts(page)).toEqual([11, 10, 10, 10]);
+  expect((await saved()).wiring).toEqual(divided.wiring);
 });

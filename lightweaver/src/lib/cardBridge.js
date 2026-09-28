@@ -14,6 +14,7 @@ import {
   requireExpectedCardIdentity,
 } from './cardIdentity.js';
 import { isDifferentCardMismatch } from './cardReadiness.js';
+import { BENCH_PROJECT_ID } from './benchConfig.js';
 import {
   acceptWifiHandoff,
   clearWifiHandoffRecovery,
@@ -205,6 +206,8 @@ let bridgeAuthorityLifecycle = -1;
 // handoff route does.
 let bridgeBlankEvidence = null;
 let bridgeDiscoveryAuthority = null;
+let bridgeBenchEvidence = null;
+let bridgeBenchConfigAttemptedKey = '';
 
 // Every page-lifecycle bump invalidates both discovery facts, so drop them at
 // the same moment the lifecycle moves. blankDiscoveryAuthorityMatches already
@@ -746,6 +749,7 @@ function applyAuthoritativeBridgeStatus(status, host = bridgeHost, { verifiedCur
   // Blankness is re-proven from every authoritative envelope, never remembered:
   // the instant a card stops reporting blank, the discovery route closes.
   bridgeBlankEvidence = null;
+  bridgeBenchEvidence = null;
 
   if (bridgeHandoffCorrelation) {
     const authority = inspectFinalStationHandoff({
@@ -855,6 +859,26 @@ function applyAuthoritativeBridgeStatus(status, host = bridgeHost, { verifiedCur
           host: normalizeCardHost(host),
           lifecycle: bridgeLifecycle,
         })
+      : null;
+    // The temporary Find-my-strips project is not an owner's known-good
+    // project. It is deliberately classified as not ready, but replacing it
+    // with the just-discovered real project is the next setup write.
+    bridgeBenchEvidence = !bridgeHandoffCorrelation
+      && readiness.contractSupported === true
+      && readiness.identityValid === true
+      && readiness.safeMode === false
+      && readiness.runtimePhase === 'ready'
+      && Boolean(readiness.bootId)
+      && status.provisionalSetup === true
+      && status.knownGoodProject === false
+      && status.projectId === BENCH_PROJECT_ID
+      && status.commandReady === true
+      && status.outputReady === true
+      && status.configValid === true
+      && status.runtimePhase === 'ready'
+      && status.safeMode !== true
+      ? Object.freeze({ cardId: identity.id, bootId: readiness.bootId,
+        host: normalizeCardHost(host), lifecycle: bridgeLifecycle })
       : null;
     bridgeIdentityError = bridgeRuntimeCommandReady ? '' : 'runtime-not-ready';
     writeStoredCardHost(host);
@@ -1975,7 +1999,7 @@ function requireDiscoveredBridgeCard(rawHost = bridgeHost) {
   return bridgeDiscoveredCard;
 }
 
-async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost) {
+async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost, { expectedCard = null } = {}) {
   const identity = requireDiscoveredBridgeCard(rawHost);
   const host = normalizeCardHost(rawHost || bridgeHost);
   const lifecycle = bridgeLifecycle;
@@ -1994,14 +2018,33 @@ async function reverifyDiscoveredBridgeCard(rawHost = bridgeHost) {
       readiness.reason === 'unexpected-card' ? 'wrong-card' : 'identity-missing',
     );
   }
+  if (expectedCard) {
+    const fresh = normalizeCardIdentity(status, host);
+    if (fresh.id !== expectedCard.id
+      || fresh.firmwareVersion !== expectedCard.firmwareVersion
+      || fresh.buildId !== expectedCard.buildId
+      || Number(fresh.buildNumber) !== Number(expectedCard.buildNumber)
+      || host !== normalizeCardHost(expectedCard.host)) {
+      throw bridgeError('The card changed since USB verification. Reopen the selected card before pairing.', 'wrong-card');
+    }
+  }
   if (bridgeLifecycle !== lifecycle || normalizeCardHost(bridgeHost) !== host || bridgeDiscoveredCard?.id !== identity.id) {
     throw bridgeError('The card page changed while Studio was pairing it.', 'stale-host');
   }
   return identity;
 }
 
-export async function adoptDiscoveredCardBridgeIdentity(rawHost = bridgeHost) {
-  const identity = await reverifyDiscoveredBridgeCard(rawHost);
+export async function adoptDiscoveredCardBridgeIdentity(rawHost = bridgeHost, { expectedCard = null } = {}) {
+  const identity = await reverifyDiscoveredBridgeCard(rawHost, { expectedCard });
+  if (expectedCard && (
+    identity.id !== expectedCard.id
+    || identity.firmwareVersion !== expectedCard.firmwareVersion
+    || identity.buildId !== expectedCard.buildId
+    || Number(identity.buildNumber) !== Number(expectedCard.buildNumber)
+    || normalizeCardHost(rawHost || bridgeHost) !== normalizeCardHost(expectedCard.host)
+  )) {
+    throw bridgeError('The card changed since USB verification. Reopen the selected card before pairing.', 'wrong-card');
+  }
   const expected = readPersistedCardIdentity();
   if (expected?.id) {
     const comparison = compareCardIdentity(expected, identity);
@@ -2452,6 +2495,7 @@ export function sendCardBridgeRequest(type, payload = {}, {
   // durable record is the only thing that stops a Studio reload mid-handoff
   // from restoring a one-shot that has already been spent.
   let consumeBlankDiscoveryAuthority = false;
+  let consumeBenchConfigAuthority = false;
 
   if (PRIVILEGED_BRIDGE_TYPES.has(type) && !isLocalCardHost(resolvedHost)) {
     return Promise.reject(bridgeError(
@@ -2524,18 +2568,33 @@ export function sendCardBridgeRequest(type, payload = {}, {
         // looks and what it deliberately does not weaken.
         const exactBlankDiscoveryConfig = type === 'config'
           && blankDiscoveryAuthorityMatches(commissioningFlowId, resolvedHost);
-        if (!exactInitialConfig && !exactBlankDiscoveryConfig) {
+        const benchAttemptKey = bridgeBenchEvidence
+          ? `${bridgeBenchEvidence.lifecycle}:${bridgeBenchEvidence.bootId}` : '';
+        const exactBenchReplacement = type === 'config'
+          && !bridgeHandoffCorrelation
+          && bridgeBenchEvidence?.cardId === bridgeCard.id
+          && bridgeBenchEvidence.host === resolvedHost
+          && bridgeBenchEvidence.lifecycle === bridgeLifecycle
+          && Boolean(bridgeBenchEvidence.bootId)
+          && bridgeBenchConfigAttemptedKey !== benchAttemptKey
+          && typeof payload?.piece?.id === 'string'
+          && payload.piece.id.length > 0
+          && payload.provisional !== true
+          && typeof payload.projectFingerprint === 'string'
+          && payload.projectFingerprint.length > 0;
+        if (!exactInitialConfig && !exactBlankDiscoveryConfig && !exactBenchReplacement) {
           throw bridgeError(
             'The verified card is not runtime-ready for this mutation.',
             'runtime-not-ready',
           );
         }
-        consumeInitialConfigAuthority = true;
+        consumeInitialConfigAuthority = exactInitialConfig || exactBlankDiscoveryConfig;
         // The handoff route is checked first because it is the one with a
         // persisted record to mark. The two are mutually exclusive by
         // construction (a discovery grant requires no handoff correlation),
         // so this only ever hardens the ordering.
         consumeBlankDiscoveryAuthority = exactBlankDiscoveryConfig && !exactInitialConfig;
+        consumeBenchConfigAuthority = exactBenchReplacement;
       }
       if (PRIVILEGED_BRIDGE_TYPES.has(type) && bridgeAuthorityLifecycle !== bridgeLifecycle) {
         throw bridgeError(
@@ -2575,7 +2634,11 @@ export function sendCardBridgeRequest(type, payload = {}, {
     bridgeHost = resolvedHost;
   }
 
-  if (consumeBlankDiscoveryAuthority) {
+  if (consumeBenchConfigAuthority) {
+    bridgeBenchConfigAttemptedKey = `${bridgeBenchEvidence.lifecycle}:${bridgeBenchEvidence.bootId}`;
+    bridgeBenchEvidence = null;
+    dispatchBridgeChange();
+  } else if (consumeBlankDiscoveryAuthority) {
     // The discovery grant has no session-storage recovery record to mark: it is
     // scoped to this page lifecycle by construction, so consuming it in memory
     // is the whole one-shot.
@@ -2601,7 +2664,7 @@ export function sendCardBridgeRequest(type, payload = {}, {
   // Named for timeouts, but it now also gates the re-adopt path for a stale or
   // closed window reference. The one-shot initial config write still opts out
   // explicitly — it must never be sent twice.
-  const shouldRetryTimeout = consumeInitialConfigAuthority
+  const shouldRetryTimeout = consumeInitialConfigAuthority || consumeBenchConfigAuthority
     ? false
     : (retryOnTimeout ?? RETRYABLE_BRIDGE_TYPES.has(type));
   const maxAttempts = shouldRetryTimeout ? 2 : 1;

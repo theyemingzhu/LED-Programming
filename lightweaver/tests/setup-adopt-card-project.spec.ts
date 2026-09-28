@@ -101,6 +101,36 @@ test('a fresh Studio adopts the legacy card project and finishes Setup by itself
   await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
 });
 
+test('an older card revision cannot automatically replace a saved same-ID Studio layout', async ({ page }) => {
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async projectId => {
+    const { createDefaultProject } = await import('/src/lib/projectModel.js');
+    const { createProjectLibraryRecord, saveProjectLibraryRecord, writeActiveProjectLibraryRecordId } =
+      await import('/src/lib/projectStorage.js');
+    const project = createDefaultProject();
+    project.id = projectId;
+    project.name = 'Saved three sections';
+    project.layout.starterPending = false;
+    project.layout.strips.push({ ...project.layout.strips[0], id: 'saved-third-section', name: 'Third section' });
+    const record = saveProjectLibraryRecord(createProjectLibraryRecord(project, {
+      id: 'saved-three-sections', now: 1000,
+    }));
+    writeActiveProjectLibraryRecordId(record.id);
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      version: 2, dirty: false, persistedDestination: 'browser', installation: null,
+    }));
+  }, PROJECT_ID);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+
+  await page.waitForTimeout(1500);
+  const openProject = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  expect(openProject.name).toBe('Saved three sections');
+  expect(openProject.layout.strips).toHaveLength(3);
+  expect(openProject.origin).toBeNull();
+});
+
 test('"Use this card’s project" visibly finishes Setup when another project is open', async ({ page }) => {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   // Open a different project with its own described wiring, so nothing
@@ -249,4 +279,3 @@ test('"Use this card’s project" is disabled while the card link is not connect
 
   await expect(page.getByTestId('setup-start-from-card')).toBeDisabled({ timeout: 10000 });
 });
-

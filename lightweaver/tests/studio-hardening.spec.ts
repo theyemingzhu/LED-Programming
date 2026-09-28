@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createDefaultProject, migrateProject } from '../src/lib/projectModel.js';
 import { buildCardRuntimePackageFromProject } from '../src/lib/cardRuntimeProject.js';
+import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 const DEFAULT_PROJECT = migrateProject(createDefaultProject());
 const DEFAULT_RUNTIME = buildCardRuntimePackageFromProject({
@@ -41,9 +42,16 @@ function expectOceanInStartup(config: any) {
 async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', options: any = {}) {
   const firmwareVersion = options.firmwareVersion || HARDENING_FIRMWARE_VERSION;
   const buildId = options.buildId || HARDENING_BUILD_ID;
+  const initialOutputs = options.matchingStudioWiring
+    ? compileWiring({
+      wiring: DEFAULT_PROJECT.layout.wiring,
+      strips: DEFAULT_PROJECT.layout.strips,
+      groups: DEFAULT_PROJECT.layout.layerGroups,
+    }).outputs
+    : CURRENT_TEST_OUTPUTS;
   let installedConfig: any = {
     ...structuredClone(DEFAULT_RUNTIME),
-    led: { ...structuredClone(DEFAULT_RUNTIME.led), outputs: structuredClone(CURRENT_TEST_OUTPUTS) },
+    led: { ...structuredClone(DEFAULT_RUNTIME.led), outputs: structuredClone(initialOutputs) },
   };
   let candidateConfig: any = null;
   let wiringState = 'known-good';
@@ -153,6 +161,7 @@ async function mockConnectedCard(page: any, cardId = 'lw-studio-hardening', opti
     const hasCandidate = Boolean(candidateConfig);
     const identity = candidateConfig || installedConfig;
     await route.fulfill({ json: {
+      app: 'Lightweaver',
       ok: true,
       state: wiringState,
       candidateState: hasCandidate ? (wiringState === 'testing' ? 'awaiting-confirmation' : 'staged') : 'none',
@@ -550,7 +559,10 @@ test('Pattern acknowledgement does not install an unrelated edit made while pend
 
 test('staged light test restores the last Studio-confirmed look after a lost activation response', async ({ page }) => {
   const cardId = 'lw-bench-hardening';
-  const options = { forceStagedConfig: false, ambiguousActivate: true, activationDropped: false };
+  // The initial Ocean-only edit must start from the same physical segments as
+  // Studio. A single full-strip segment is a structural wiring change and
+  // correctly stages a light test before this test's later wiring edit.
+  const options = { forceStagedConfig: false, ambiguousActivate: true, activationDropped: false, matchingStudioWiring: true };
   const card = await mockConnectedCard(page, cardId, options);
 
   await page.getByPlaceholder('Search chip patterns').fill('ocean');

@@ -39,7 +39,7 @@ const discoveredProject = () => ({
   id: 'lotus-gate',
   name: 'Lotus Gate',
   portRoles: [{ pin: 18, role: 'strip', pixelCount: 41 }],
-  devices: { standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true } } },
+  devices: { standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' } } },
   layout: { starterPending: true, strips: [] },
 });
 
@@ -171,6 +171,19 @@ test('light discovery keeps color ahead of count and last-light boundary work', 
   assert.equal(progress.count, 'locked');
   assert.equal(progress.boundary, 'locked');
   assert.equal(progress.direction, undefined);
+});
+
+test('a reported GRB order without observed color proof does not complete light discovery', () => {
+  const project = discoveredProject();
+  project.devices.standaloneController.led.confirmedColorOrder = '';
+  const journey = deriveSetupJourney({ cardLink: connectedCard(), project });
+  const progress = Object.fromEntries(phaseMap(journey).lights.progress.map(item => [item.id, item.status]));
+
+  assert.equal(progress.output, 'done');
+  assert.equal(progress.color, 'current');
+  assert.equal(progress.count, 'locked');
+  assert.equal(progress.boundary, 'locked');
+  assert.equal(journey.setupComplete, false);
 });
 
 // A temporary bench setup is never setup COMPLETION — that half of the old
@@ -496,6 +509,43 @@ test('an installed exact match still resolves ahead of the unmatched-project bra
 
   assert.equal(journey.diagnosis.state, 'installed-match');
   assert.equal(journey.setupComplete, true);
+});
+
+test('a healthy card holding the open project stays set up while a newer local look awaits Save', () => {
+  const journey = deriveSetupJourney({
+    cardLink: connectedCard({
+      ...READY_STATUS,
+      projectId: 'lotus-gate',
+      projectRevision: 1,
+      projectFingerprint: 'installed-version',
+      provisionalSetup: false,
+    }),
+    cardLifecycle: { state: 'content-mismatch', setupTaskId: 'save-project', commandReady: true },
+    project: { id: 'lotus-gate', name: 'Lotus Gate', ...verifiedProject() },
+  });
+
+  assert.equal(journey.setupComplete, true);
+  assert.equal(journey.taskId, 'open-patterns');
+  assert.deepEqual(journey.blockers, []);
+});
+
+test('an edited local project cannot use the installed route for a different card project or staged wiring', () => {
+  const base = {
+    cardLifecycle: { state: 'project-mismatch', setupTaskId: 'load-matching-project', commandReady: true },
+    project: verifiedProject(),
+  };
+  for (const [readiness, wiringStatus] of [
+    [{ ...READY_STATUS, projectId: 'another-piece', provisionalSetup: false }, undefined],
+    [{ ...READY_STATUS, projectId: 'lotus-gate', provisionalSetup: false }, { hasCandidate: true }],
+  ]) {
+    const journey = deriveSetupJourney({
+      ...base,
+      cardLink: connectedCard(readiness),
+      wiringStatus,
+    });
+    assert.equal(journey.setupComplete, false);
+    assert.notEqual(journey.taskId, 'open-patterns');
+  }
 });
 
 test('a disconnected card with a project-mismatch lifecycle still blocks on connection', () => {

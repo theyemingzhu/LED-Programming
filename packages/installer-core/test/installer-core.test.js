@@ -17,6 +17,7 @@ import {
   connectEspWithResetSequence,
   flashFirmwareAndRelease,
   loadProductionFirmwareRelease,
+  releaseEspTransport,
   replaceInstallConnection,
   resetEspIntoApp,
   validateProductionInstallRelease,
@@ -314,6 +315,107 @@ test('shared core preserves image, MD5, reset retry, connection, and release saf
   assert.equal(cleanupAttempts, 1);
 });
 
+test('a stalled ROM loader cannot overlap a retry on the same serial port', async () => {
+  const port = {};
+  let finishFirst;
+  let starts = 0;
+  let disconnects = 0;
+  const connect = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset', 'usb_reset'], attemptTimeoutMs: 20,
+    disconnectTimeoutMs: 20,
+    createTransport: () => ({ disconnect: async () => { disconnects += 1; } }),
+    createLoader: () => ({ main: () => {
+      starts += 1;
+      return starts === 1 ? new Promise(resolve => { finishFirst = resolve; }) : Promise.resolve('ESP32-S3');
+    } }),
+  });
+  await assert.rejects(Promise.race([
+    connect(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('ROM loader stayed pending')), 250)),
+  ]), /timed out/i);
+  await assert.rejects(connect(), /still finishing|still releasing/i);
+  assert.equal(starts, 1);
+  finishFirst('ESP32-S3');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(disconnects, 1);
+  assert.equal((await connect()).chip, 'ESP32-S3');
+});
+
+test('a stalled ROM disconnect stops reset retries and quarantines the port', async () => {
+  const port = {};
+  let finishDisconnect;
+  let starts = 0;
+  const connect = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset', 'usb_reset'], attemptTimeoutMs: 20,
+    disconnectTimeoutMs: 20,
+    createTransport: () => ({ disconnect: () => new Promise(resolve => { finishDisconnect = resolve; }) }),
+    createLoader: () => ({ main: async () => {
+      starts += 1;
+      if (starts === 1) throw new Error('ROM sync failed');
+      return 'ESP32-S3';
+    } }),
+  });
+  await assert.rejects(Promise.race([
+    connect(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('ROM release stayed pending')), 250)),
+  ]), /release timed out/i);
+  await assert.rejects(connect(), /still releasing/i);
+  assert.equal(starts, 1);
+  finishDisconnect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal((await connect()).chip, 'ESP32-S3');
+});
+
+test('a late ROM cleanup failure keeps its serial port quarantined', async () => {
+  const port = {};
+  let finishMain;
+  let starts = 0;
+  const connect = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset'], attemptTimeoutMs: 20, disconnectTimeoutMs: 20,
+    createTransport: () => ({ disconnect: async () => { throw new Error('close failed'); } }),
+    createLoader: () => ({ main: () => {
+      starts += 1;
+      return new Promise(resolve => { finishMain = resolve; });
+    } }),
+  });
+  await assert.rejects(connect(), /timed out/i);
+  finishMain('ESP32-S3');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await assert.rejects(connect(), /was not released/i);
+  assert.equal(starts, 1);
+});
+
+test('an immediate ROM release failure cannot be followed by another reset', async () => {
+  const port = {};
+  let starts = 0;
+  const connect = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset', 'usb_reset'], attemptTimeoutMs: 20, disconnectTimeoutMs: 20,
+    createTransport: () => ({ disconnect: async () => { throw new Error('close failed'); } }),
+    createLoader: () => ({ main: async () => { starts += 1; throw new Error('sync failed'); } }),
+  });
+  await assert.rejects(connect(), /release failed/i);
+  await assert.rejects(connect(), /was not released/i);
+  assert.equal(starts, 1);
+});
+
+test('a successful ROM connection with stalled release blocks the same-port retry', async () => {
+  const port = {};
+  let finishDisconnect;
+  let starts = 0;
+  const transport = { device: port, disconnect: () => new Promise(resolve => { finishDisconnect = resolve; }) };
+  assert.equal(await releaseEspTransport(transport, { timeoutMs: 20 }), false);
+  const connect = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset'],
+    createTransport: () => ({ disconnect: async () => {} }),
+    createLoader: () => ({ main: async () => { starts += 1; return 'ESP32-S3'; } }),
+  });
+  await assert.rejects(connect(), /still releasing/i);
+  assert.equal(starts, 0);
+  finishDisconnect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal((await connect()).chip, 'ESP32-S3');
+});
+
 test('ESP32-S3 app restart uses the watchdog without toggling USB boot control lines', async () => {
   const calls = [];
   await resetEspIntoApp({
@@ -331,6 +433,60 @@ test('ESP32-S3 app restart uses the watchdog without toggling USB boot control l
     [0x60008098, 0xd0000102],
     [0x600080b0, 0],
   ]);
+});
+
+test('a stalled reset handoff times out without disconnecting over its pending write', async () => {
+  const port = {};
+  let finishReset;
+  let finishDisconnect;
+  let disconnects = 0;
+  const transport = { device: port, disconnect: () => {
+    disconnects += 1;
+    return new Promise(resolve => { finishDisconnect = resolve; });
+  } };
+  const loader = {
+    flashBegin: () => new Promise(resolve => { finishReset = resolve; }),
+    flashFinish: async () => {},
+  };
+  await assert.rejects(Promise.race([
+    resetEspIntoApp(transport, loader, { timeoutMs: 20 }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('reset stayed pending')), 250)),
+  ]), /reset.*timed out/i);
+  assert.equal(await releaseEspTransport(transport, { timeoutMs: 20 }), false);
+  assert.equal(disconnects, 0);
+  const connectRom = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset'],
+    createTransport: () => ({ disconnect: async () => {} }),
+    createLoader: () => ({ main: async () => 'ESP32-S3' }),
+  });
+  await assert.rejects(connectRom(), /still resetting/i);
+  finishReset();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(disconnects, 1);
+  await assert.rejects(connectRom(), /still resetting/i);
+  finishDisconnect();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal((await connectRom()).chip, 'ESP32-S3');
+});
+
+test('firmware release reports a reset that is still holding USB', async () => {
+  const port = {};
+  let finishReset;
+  let disconnects = 0;
+  const transport = { device: port, disconnect: async () => { disconnects += 1; } };
+  const loader = {
+    flashBegin: () => new Promise(resolve => { finishReset = resolve; }),
+    flashFinish: async () => {},
+  };
+  await assert.rejects(Promise.race([
+    flashFirmwareAndRelease({ loader, transport, file: {}, address: 0, eraseAll: false,
+      flashFirmware: async () => {}, resetTimeoutMs: 20 }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('release stayed pending')), 250)),
+  ]), /USB release could not be confirmed/i);
+  assert.equal(disconnects, 0);
+  finishReset();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(disconnects, 1);
 });
 
 test('canonicalization and pinned key are exposed from the package entrypoint', async () => {

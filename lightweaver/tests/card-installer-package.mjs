@@ -7,6 +7,7 @@ import {
   pushConfigToCard,
 } from '../src/lib/cardPushClient.js';
 import { prepareCardStoragePayload } from '../src/lib/cardStoragePayload.js';
+import { productionWiringDigest } from '../src/lib/productionWiringIdentity.js';
 import {
   bootstrapCardBridgeFromOpener,
   sendCardBridgeRequest,
@@ -97,16 +98,13 @@ globalThis.fetch = async (url, options = {}) => {
       }),
     };
   }
-  if (String(url).endsWith('/api/reboot')) {
+  if (String(url).endsWith('/api/wiring/candidate')) {
     return {
       ok: true,
-      json: async () => ({ ok: true, message: 'rebooting' }),
+      json: async () => ({ ok: true, state: 'staged', activationId: 'installer-layout-candidate' }),
     };
   }
-  return {
-    ok: true,
-    json: async () => ({ ok: true, saved: true }),
-  };
+  throw new Error(`unexpected request ${url}`);
 };
 
 await assert.rejects(
@@ -121,21 +119,47 @@ const pushed = await pushConfigToCard(pkg, {
   reboot: 'if-needed',
   allowLayoutChange: true,
 });
-assert.equal(pushed.saved, true);
-assert.equal(pushed.rebooting, true);
+assert.equal(pushed.state, 'staged');
+assert.equal(pushed.activationId, 'installer-layout-candidate');
+assert.equal(pushed.saved, undefined);
+assert.equal(pushed.rebooting, undefined);
 assert.deepEqual(requests.map(request => request.url), [
   'http://lightweaver.local/api/firmware-info',
   'http://lightweaver.local/api/config',
   'http://lightweaver.local/api/status',
   'http://192.168.4.1/api/status',
   'http://192.168.4.1/api/firmware-info',
-  'http://192.168.4.1/api/config',
-  'http://192.168.4.1/api/reboot',
+  'http://192.168.4.1/api/wiring/candidate',
 ]);
-assert.equal(
-  requests.find(request => request.url === 'http://192.168.4.1/api/config')?.options?.body,
-  prepared.json,
-);
+const stagedRequest = requests.find(request => request.url === 'http://192.168.4.1/api/wiring/candidate');
+assert.equal(stagedRequest.options.method, 'POST');
+const stagedPayload = JSON.parse(stagedRequest.options.body);
+const expectedWiringDigest = await productionWiringDigest(prepared.config.led);
+assert.ok(Number.isSafeInteger(stagedPayload.candidate.wiringRevision) && stagedPayload.candidate.wiringRevision > 0);
+assert.match(stagedPayload.candidate.wiringDigest, /^[a-f0-9]{64}$/);
+assert.deepEqual(stagedPayload, {
+  candidate: { ...prepared.config, wiringRevision: 1, wiringDigest: expectedWiringDigest },
+});
+
+// Once the card is reachable, a layout change stages only: no active config
+// write, activation, or reboot is authorized by allowLayoutChange alone.
+requests.length = 0;
+const stagedDirect = await pushConfigToCard(pkg, {
+  host: '192.168.4.1',
+  timeoutMs: 1000,
+  reboot: 'if-needed',
+  allowLayoutChange: true,
+  autoDiscover: false,
+});
+assert.equal(stagedDirect.state, 'staged');
+assert.equal(stagedDirect.activationId, 'installer-layout-candidate');
+assert.equal(stagedDirect.saved, undefined);
+assert.equal(stagedDirect.rebooting, undefined);
+assert.deepEqual(requests.map(request => request.url), [
+  'http://192.168.4.1/api/firmware-info',
+  'http://192.168.4.1/api/wiring/candidate',
+]);
+assert.deepEqual(JSON.parse(requests[1].options.body), stagedPayload);
 
 requests.length = 0;
 globalThis.fetch = async (url, options = {}) => {

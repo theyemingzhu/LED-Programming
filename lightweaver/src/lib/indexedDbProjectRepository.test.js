@@ -5,7 +5,7 @@ import {
   createIndexedDbProjectRepository,
   migrateLocalStorageProjects,
 } from './indexedDbProjectRepository.js';
-import { createProjectEnvelope } from './projectRepository.js';
+import { createProjectEnvelope, sha256Canonical } from './projectRepository.js';
 import { createDefaultProject } from './projectModel.js';
 
 class MemoryBackend {
@@ -51,6 +51,39 @@ test('migration reads back before marking complete and retains autosave recovery
   assert.ok(storage.getItem('lw_autosave_v3_backup'));
   assert.equal(storage.getItem('lw_project_repository_migrated_v1'), '1');
   assert.equal((await repo.read('migrated')).project.id, 'migrated');
+});
+
+test('recovered empty layout round-trips without a migration-induced hash mismatch', async () => {
+  const backend = new MemoryBackend();
+  const repo = createIndexedDbProjectRepository({ backend });
+  const created = createProjectEnvelope({
+    version: 3, id: 'recovered-empty', name: 'Recovered project',
+    layout: { strips: [], patchBoard: null, wiring: null },
+  });
+  assert.deepEqual(await repo.save(created, null), created);
+  assert.deepEqual(await repo.read(created.projectId), created);
+  assert.deepEqual(await repo.list(), [created]);
+});
+
+test('older intact content can be read then updated without rewriting its saved head', async () => {
+  const backend = new MemoryBackend();
+  const old = structuredClone(envelope('older-project'));
+  delete old.project.expressionScenes;
+  delete old.project.layout.wiring.migrationWarnings;
+  old.contentHash = sha256Canonical(old.project);
+  await backend.put(old);
+  const repo = createIndexedDbProjectRepository({ backend });
+  const restored = await repo.read(old.projectId);
+  assert.deepEqual(restored, old);
+  assert.deepEqual(await backend.get(old.projectId), old);
+  const next = createProjectEnvelope({ ...restored.project, name: 'Saved again' }, {
+    parentHash: restored.contentHash, localRevision: restored.localRevision + 1,
+  });
+  const saved = await repo.save(next, restored.contentHash);
+  assert.equal(saved.project.name, 'Saved again');
+  assert.deepEqual(saved.project.layout.wiring.outputs, old.project.layout.wiring.outputs);
+  assert.equal(sha256Canonical(saved.project), saved.contentHash);
+  assert.deepEqual(await repo.read(old.projectId), saved);
 });
 
 test('quota/readback failures stay explicit and durable outbox replays in order', async () => {

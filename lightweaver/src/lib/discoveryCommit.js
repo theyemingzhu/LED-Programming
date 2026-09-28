@@ -210,7 +210,8 @@ export function projectSkeletonFromCardStatus(status = {}) {
   for (const [outputIndex, output] of reportedOutputs.entries()) {
     const outputPixels = Math.max(0, Math.trunc(Number(output?.pixels) || 0));
     if (!outputPixels || uncountedHeadroom) continue;
-    const outputId = /^out\d+$/i.test(String(output?.id || '')) ? String(output.id) : `out${outputIndex + 1}`;
+    const reportedId = String(output?.id || '');
+    const outputId = /^[a-z0-9][a-z0-9-]*$/.test(reportedId) ? reportedId : `out${outputIndex + 1}`;
     const reportedSegments = Array.isArray(output?.segments) && output.segments.length
       ? output.segments
       : [{ id: `run-strip-${strips.length + 1}`, count: outputPixels, direction: 'forward' }];
@@ -290,7 +291,7 @@ export function projectSkeletonFromCardStatus(status = {}) {
     outputs: uncountedHeadroom ? [] : reportedOutputs
       .filter(output => Number(output?.pixels) > 0)
       .map(output => ({
-        id: /^out\d+$/i.test(String(output?.id || '')) ? String(output.id) : `strip-${output.pin}`,
+        id: /^[a-z0-9][a-z0-9-]*$/.test(String(output?.id || '')) ? String(output.id) : `strip-${output.pin}`,
         pin: Number(output.pin),
         pixels: Math.trunc(Number(output.pixels)),
       })),

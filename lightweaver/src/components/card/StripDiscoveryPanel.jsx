@@ -900,6 +900,7 @@ export function StripDiscoveryPanel({
           ...(previous?.led || {}),
           colorOrder: parts.colorOrder,
           colorOrderConfirmed: true,
+          confirmedColorOrder: parts.colorOrder,
         },
       } : {}),
       outputs: parts.outputs,

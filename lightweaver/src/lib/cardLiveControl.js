@@ -964,12 +964,31 @@ function liveTargetsFromZones(zonesPayload = {}, fallbackLook = {}) {
 // is nothing to resolve, which is enough to let a superseding preview POST
 // first and reorder the latest-only queue.
 function needsZoneResolution(look, options = {}) {
-  return Boolean(options.fallbackMissingZoneToAll && look?.zone);
+  return Boolean(look?.zone && (options.expectedZoneRanges !== undefined || options.fallbackMissingZoneToAll));
+}
+
+export function cardZoneRangesMatch(expected, actual) {
+  const key = ranges => {
+    if (!Array.isArray(ranges) || !ranges.length) return null;
+    if (ranges.some(range => !Number.isInteger(range?.start) || range.start < 0
+      || !Number.isInteger(range?.count) || range.count < 1)) return null;
+    return JSON.stringify(ranges.map(({ start, count }) => [start, count]).sort((a, b) => a[0] - b[0]));
+  };
+  const expectedKey = key(expected);
+  return expectedKey !== null && expectedKey === key(actual);
 }
 
 async function resolveZoneForPreview(host, look, options = {}) {
   try {
-    const zonesPayload = await readCardZones(host, Math.min(options.timeoutMs || 2500, 1200));
+    const zonesPayload = await readCardZones(host, { ...options, timeoutMs: Math.min(options.timeoutMs || 2500, 1200) });
+    if (options.expectedZoneRanges !== undefined) {
+      const zone = zonesPayload?.zones?.find(item => String(item.id) === String(look.zone));
+      if (!cardZoneRangesMatch(options.expectedZoneRanges, zone?.ranges)) {
+        throw new CardPushError('section-layout-mismatch',
+          'The card still has a different section layout. Open Layout → Test & Install to send these sections, then try this pattern again. The lights were not changed.');
+      }
+      return null;
+    }
     if (!hasCardZones(zonesPayload) || zoneExists(zonesPayload, String(look.zone))) return null;
     const { zone: requestedZone, ...fallbackLook } = look;
     return {
@@ -979,7 +998,8 @@ async function resolveZoneForPreview(host, look, options = {}) {
         availableZones: zonesPayload.zones.map(zone => String(zone?.id || '')).filter(Boolean),
       },
     };
-  } catch {
+  } catch (error) {
+    if (options.expectedZoneRanges !== undefined) throw error;
     // If the zone probe fails, keep the original targeted request so the normal
     // connection error path can report the real card reachability issue.
     return null;
@@ -1276,7 +1296,7 @@ async function sendLivePreviewToCard(look, options = {}) {
   try {
     return await pushLivePreviewToHost(host, look, options);
   } catch (error) {
-    if (error?.reason === 'superseded') throw error;
+    if (error?.reason === 'superseded' || error?.reason === 'section-layout-mismatch') throw error;
     if (!isMixedContentBlocked() && options.autoDiscover !== false) {
       requireCurrentPreviewIntent(options);
       const found = await discoverCardStatus({
@@ -1404,6 +1424,7 @@ export async function readBackLivePreview(look = {}, options = {}) {
   let payload;
   try {
     payload = await readCardZones(host, {
+      ...options,
       timeoutMs: Math.min(options.timeoutMs || 1200, 1200),
       ...(options.expectedCardId ? { expectedCardId: options.expectedCardId } : {}),
     });
@@ -1417,6 +1438,8 @@ export async function readBackLivePreview(look = {}, options = {}) {
   // strip (`fallbackMissingZoneToAll`, resolved before the post went out). The
   // read-back must ask the same question the write answered, or it can never
   // confirm exactly the writes that used the fallback.
+  if (zoneId && options.expectedZoneRanges !== undefined
+    && (targets.length !== 1 || !cardZoneRangesMatch(options.expectedZoneRanges, targets[0]?.ranges))) return null;
   if (zoneId && !targets.length && options.fallbackMissingZoneToAll === true) targets = zones;
   if (!targets.length) return null;
   const confirmed = targets.every(zone => zoneConfirmsLivePreviewIntent(controlPayload, zone));

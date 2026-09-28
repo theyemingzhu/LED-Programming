@@ -17,6 +17,7 @@ import {
   readCardZonesFromCard,
 } from '../src/lib/cardLiveControl.js';
 import { prepareCardStoragePayload } from '../src/lib/cardStoragePayload.js';
+import { productionWiringDigest } from '../src/lib/productionWiringIdentity.js';
 import { requestCardReboot } from '../src/lib/cardPushClient.js';
 import {
   bootstrapCardBridgeFromOpener,
@@ -759,10 +760,12 @@ assert.deepEqual(repairRequests.map(item => item.url), [
 assert.deepEqual(JSON.parse(repairRequests[1].options.body).candidate.led.outputs, [
   { id: 'out1', name: 'Output 1 mirrored', pin: 16, pixels: 44 },
 ]);
-assert.equal(
-  JSON.stringify(JSON.parse(repairRequests[1].options.body).candidate),
-  prepareCardStoragePayload(repairPackage).json,
-);
+const expectedRepair = JSON.parse(prepareCardStoragePayload(repairPackage).json);
+assert.deepEqual(JSON.parse(repairRequests[1].options.body).candidate, {
+  ...expectedRepair,
+  wiringRevision: 1, // No previous production revision was reported by this card.
+  wiringDigest: await productionWiringDigest(expectedRepair.led),
+});
 
 const requests = [];
 globalThis.fetch = async (url, options = {}) => {

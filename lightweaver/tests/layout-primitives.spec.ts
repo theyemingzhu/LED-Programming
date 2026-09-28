@@ -406,9 +406,9 @@ test('size, density, and LED count stay linked', async ({ page }) => {
   await expect(page.getByLabel('Strip length in metres', { exact: true }))
     .not.toHaveAttribute('title');
 
-  const actions = page.getByLabel('Strip actions');
-  await expect(actions.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
+  const actions = page.locator('.la-strip-menu-popover');
   await page.getByLabel('More strip actions', { exact: true }).click();
+  await expect(actions.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Calibrate scale from LED count' })).toHaveCount(0);
@@ -718,7 +718,7 @@ test('Set first LED anchors the specifically clicked LED dot', async ({ page }) 
   await picker.getByRole('spinbutton', { name: 'Starting strip size in metres' }).fill('0.1');
   await picker.getByRole('spinbutton', { name: 'Starting strip size in metres' }).blur();
   await picker.getByRole('button', { name: 'Create circle' }).click();
-  if (await page.getByLabel('Strip actions').count() === 0) await page.locator('.la-strip-row').first().click();
+  if (await page.getByLabel('More strip actions').count() === 0) await page.locator('.la-strip-row').first().click();
 
   await page.getByRole('button', { name: 'Set first LED' }).click();
   const activeFirstLedButton = page.getByRole('button', { name: 'Cancel first LED selection' });

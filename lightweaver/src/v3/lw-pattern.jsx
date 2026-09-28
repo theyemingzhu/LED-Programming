@@ -76,11 +76,12 @@ import {
   ensureCardEditAuthorization,
   renewCardEditAuthorization,
 } from '../lib/cardEditAuthorization.js';
-import { buildCardConfigHandoffUrl, cardStorageJson, pushConfigToCard, readCardProjectEvidence } from '../lib/cardPushClient.js';
+import { buildCardConfigHandoffUrl, cardConfigStructuralWiringChangedFromInfo, cardStorageJson, pushConfigToCard, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
-import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { assertCardDeploymentPreflightIdentity, prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
+import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { runtimePackageForCardOperation } from '../lib/testStrip.js';
-import { decideLiveControlProjectAuthority, previewResponseUsedZoneFallback, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, cardZoneRangesMatch, pushLivePreviewToCard, readBackLivePreview, flashSectionOnCard } from '../lib/cardLiveControl.js';
 import { freshJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { useCardJourneyEvidence } from '../hooks/useSetupJourney.js';
 import { cardSectionSummary } from '../lib/cardSectionSync.js';
@@ -115,6 +116,20 @@ import { computeSymmetryFit } from '../lib/symmetry.js';
 import { StripColorOrderCheck } from '../components/layout/wire/StripColorOrderCheck.jsx';
 import { PatternPreview } from './PatternPreview.jsx';
 import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
+import './patterns-workspace.css';
+
+const sectionOrderKey = projectId => `lw_pattern_section_display_v1:${String(projectId || 'default')}`;
+function readSectionDisplayOrder(projectId) {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(sectionOrderKey(projectId)) || '[]');
+    return Array.isArray(value) ? value.filter(id => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+function writeSectionDisplayOrder(projectId, ids) {
+  try { window.localStorage.setItem(sectionOrderKey(projectId), JSON.stringify(ids)); } catch { /* Optional UI preference. */ }
+}
 
   // Mockup geometry id -> live symSettings.
   const GEOMETRY_SETTINGS = {
@@ -540,7 +555,6 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     // the same tile while the first is in flight is one owner intent, not two
     // commands: it joins the pending send instead of issuing another.
     const inFlightPreview = useRef(null);
-    const syncedPreviewSelectionRef = useRef('');
     const installIntentRef = useRef(null);
 
     const patternAuthorizationBinding = useMemo(() => {
@@ -690,6 +704,33 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (authority.ok) return 'ready';
       return authority.state === 'project-mismatch' ? 'project' : 'recovery';
     }, [cardLink?.readiness, hasCurrentProjectAuthorization]);
+    // A saved look changes the Studio fingerprint before it can be installed,
+    // and a reload no longer carries the old installation record. The Card
+    // status Save to card path accepts this same-project edit from fresh card
+    // evidence. Patterns uses that rule too while keeping live controls on the
+    // exact installed-fingerprint grant above. The config client still refuses
+    // project and pin-layout changes independently before writing.
+    const matchesSameProjectCardEvidence = useCallback((evidence = {}) => {
+      const readiness = cardLink?.readiness || {};
+      const expectedCardId = String(cardLink?.expectedCard?.id || cardLink?.expectedCard?.cardId || '').trim().toLowerCase();
+      return Boolean(expectedCardId && projectId)
+        && String(evidence.cardId || '').trim().toLowerCase() === expectedCardId
+        && String(readiness.cardId || '').trim().toLowerCase() === expectedCardId
+        && String(evidence.firmwareVersion || '').trim() === String(readiness.firmwareVersion || '').trim()
+        && String(evidence.buildId || '').trim() === String(readiness.buildId || '').trim()
+        && String(evidence.projectId || '').trim() === String(projectId || '').trim()
+        && installedProjectIdFromCardStatus(readiness) === String(projectId || '').trim()
+        && (!readiness.projectFingerprint || String(evidence.projectFingerprint || '').trim().toLowerCase() === String(readiness.projectFingerprint).trim().toLowerCase())
+        && (readiness.projectRevision == null || Number(evidence.projectRevision) === Number(readiness.projectRevision));
+    }, [cardLink?.expectedCard, cardLink?.readiness, projectId]);
+    const currentPatternInstallAccess = useCallback(() => {
+      if (patternAccessRef.current !== 'ready') return patternAccessRef.current;
+      if (currentPatternCardAccess() === 'ready') return 'ready';
+      return matchesSameProjectCardEvidence({
+        ...cardLink?.readiness,
+        projectId: installedProjectIdFromCardStatus(cardLink?.readiness),
+      }) ? 'ready' : 'project';
+    }, [cardLink?.readiness, currentPatternCardAccess, matchesSameProjectCardEvidence]);
     // Preview authority, deliberately weaker than install authority.
     //
     // A live preview writes nothing: the card holds it in RAM, a reboot
@@ -700,8 +741,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     // that turned the pattern grid, which exists to try patterns, into a
     // surface that refused every tap until the owner installed first.
     //
-    // `currentPatternCardAccess` above keeps the full project gate and stays
-    // the gate for installs, which do persist.
+    // `currentPatternCardAccess` above keeps the full project gate for live
+    // controls. Explicit installs can use the verified prior installation
+    // card checked by `currentPatternInstallAccess`.
     const currentPatternPreviewAccess = useCallback(() => patternAccessRef.current, []);
 
     // What the card holds, from the shared journey evidence (one /api/zones
@@ -1031,6 +1073,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       ? activeLookId
       : (customPatternById.has(activePatternId) ? activePatternId : look.patternId);
     const sel = REAL_PATTERN_BY_ID.get(selId) || customPatternById.get(selId) || adaptPattern(selId) || ALL[0];
+    const selectedDisplayLabel = editingSavedLook?.label || sel.label;
     const patternNameFor = useCallback((patternId) => {
       if (!patternId) return '';
       const entry = REAL_PATTERN_BY_ID.get(patternId) || customPatternById.get(patternId) || adaptPattern(patternId) || getCardPatternById(patternId);
@@ -1041,6 +1084,41 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       compiledWiring,
       patternNameFor,
     }), [effectiveSectionTargets, compiledWiring, patternNameFor]);
+    const [sectionDisplayOrder, setSectionDisplayOrder] = useState(() => ({ projectId, ids: readSectionDisplayOrder(projectId) }));
+    useEffect(() => {
+      setSectionDisplayOrder({ projectId, ids: readSectionDisplayOrder(projectId) });
+    }, [projectId]);
+    const displayedSectionRows = useMemo(() => {
+      const rows = presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID || previewTargetIds.includes(row.id));
+      const savedOrder = sectionDisplayOrder.projectId === projectId ? sectionDisplayOrder.ids : readSectionDisplayOrder(projectId);
+      const positions = new Map(savedOrder.map((id, index) => [id, index]));
+      const natural = new Map(rows.map((row, index) => [row.id, index]));
+      return rows.sort((a, b) => {
+        if (a.id === ALL_SECTIONS_TARGET_ID) return -1;
+        if (b.id === ALL_SECTIONS_TARGET_ID) return 1;
+        return (positions.get(a.id) ?? (savedOrder.length + natural.get(a.id)))
+          - (positions.get(b.id) ?? (savedOrder.length + natural.get(b.id)));
+      });
+    }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
+    const dragSectionId = useRef('');
+    const moveDisplayedSection = (sourceId, targetId) => {
+      if (!sourceId || !targetId || sourceId === targetId) return;
+      const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
+      const from = ids.indexOf(sourceId);
+      const to = ids.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      ids.splice(from, 1);
+      ids.splice(to, 0, sourceId);
+      setSectionDisplayOrder({ projectId, ids });
+      writeSectionDisplayOrder(projectId, ids);
+      requestAnimationFrame(() => sectionRowRefs.current.get(sourceId)?.focus());
+    };
+    const nudgeDisplayedSection = (id, direction) => {
+      const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
+      const index = ids.indexOf(id);
+      if (index < 0 || index + direction < 0 || index + direction >= ids.length) return;
+      moveDisplayedSection(id, ids[index + direction]);
+    };
     const sectionRowRefs = useRef(new Map());
     const bankRef = useRef(null);
     const bankOriginRef = useRef(null);
@@ -1052,7 +1130,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (sections.length) {
         return sections.map(t => `${targetLabel(t)} ${getCardPatternById(t.look?.patternId)?.label || t.look?.patternId}`).join(' + ');
       }
-      return `${sel.label} whole piece`;
+      return `${selectedDisplayLabel} whole piece`;
     })();
 
     const filtered = ALL.filter((p) => {
@@ -1199,19 +1277,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           return;
         }
         try {
-          // Was: a fresh `/api/firmware-info` read on every tap, whose result
-          // had to prove this Studio project was the installed one before a
-          // single light command went out. That is install authority, and it
-          // cost a full round-trip of latency ahead of every preview. A
-          // preview persists nothing, so it is gated on the card being the
-          // right card and ready — checked above — and sends immediately.
-          //
-          // Was also: `ensureCardSectionsForPreview`, which pushed a whole
-          // `/api/config` when the target zone was missing from the card.
-          // Writing the card's storage to preview a pattern is an install
-          // wearing a preview's name; ask the card to fall back to the whole
-          // strip instead, which `pushLivePreviewToCard` reports back through
-          // `previewZoneFallback` rather than doing silently.
+          // A divided draft may reuse an installed zone ID with a different
+          // extent. Verify its exact ranges before a native section command;
+          // missing or stale sections must never become a whole-piece edit.
           // A tap that lands while the card is still starting used to become a
           // failure message. The card answers 423 for a second or two after a
           // boot or a config write, and readiness is polled far less often than
@@ -1236,12 +1304,12 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           const previewOptions = {
             host: cardHost,
             timeoutMs: 2200,
-            fallbackMissingZoneToAll: true,
+            ...(target?.kind === 'section' ? { expectedZoneRanges: target.ranges || [] } : {}),
             preferBridge,
             revision: sequence,
             ...(expectedControlPatch ? { expectedControlPatch } : {}),
           };
-          const response = await retryWhileTransient(
+          await retryWhileTransient(
             () => pushLivePreviewToCard(previewLook, previewOptions),
             {
               attempts: 3,
@@ -1256,25 +1324,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
             dispatchPreviewAction({ type: 'confirm', revision: sequence });
             setPreviewFailure(null);
             markCardLookConfirmed({ ...nextLook, zone, syncZones: target?.kind === 'section' ? false : true });
-            // The pattern is on the strip either way, so this is a note, not a
-            // failure — but the owner is looking at a section tab and the whole
-            // piece just changed, so say which one actually happened.
-            const usedFallback = previewResponseUsedZoneFallback(response);
-            // Only speak if the authorization has not moved under us. Losing it
-            // raises "verify that this exact Studio project is still installed
-            // before sending lights" — and this branch used to overwrite that,
-            // with the section note or with an empty string, because a preview
-            // issued BEFORE the loss can land up to a second after it (the send
-            // retries three times, 350ms apart). Measured, the warning appeared
-            // at 22ms and was gone at 61ms, roughly one run in forty: the owner
-            // was then told nothing and would send lights believing the card
-            // still matched. A routine note is not worth a safety warning, so
-            // when the world has changed this response says nothing at all.
             if (projectAuthorizationRef.current === authorizationAtRequest) {
-              setStatusKind(usedFallback ? 'ok' : '');
-              setStatus(usedFallback
-                ? `The card has no “${targetLabel(target)}” section yet, so this played on the whole piece. Install to give the card your sections.`
-                : '');
+              setStatusKind('');
+              setStatus('');
             }
           }
         } catch (error) {
@@ -1346,17 +1398,6 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       keepScratchAfterSave.current = false;
       setLookSaveState(ok ? 'Saved in this project' : 'Could not save this project in browser storage. Free some space and try again.');
     }, [pendingLookSave, flushProjectAutosave]);
-
-    useEffect(() => {
-      if (
-        previewUiState.projectId !== projectId ||
-        !previewTargetIds.includes(lastPreviewTargetId)
-      ) return;
-      const restoreKey = `${projectId}:${lastPreviewTargetId}`;
-      if (syncedPreviewSelectionRef.current === restoreKey) return;
-      syncedPreviewSelectionRef.current = restoreKey;
-      setSelectedTargetId(lastPreviewTargetId);
-    }, [lastPreviewTargetId, previewTargetKey, previewUiState.projectId, projectId]);
 
     useEffect(() => {
       if (cardReturnConsumed.current || typeof window === 'undefined') return;
@@ -1644,7 +1685,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (target?.kind !== 'section' || !target.zoneId) return;
       if (patternAccessRef.current !== 'ready' || flashInFlightRef.current) return;
       const heldZones = Array.isArray(cardZonesPayload?.zones) ? cardZonesPayload.zones : null;
-      if (heldZones && heldZones.length < 2) return;
+      if (!heldZones || heldZones.length < 2 || sectionTargets.filter(item => item.kind === 'section')
+        .some(item => !cardZoneRangesMatch(item.ranges, heldZones.find(zone => zone.id === item.zoneId)?.ranges))) return;
       flashInFlightRef.current = true;
       const expectedCardId = cardLink?.readiness?.cardId || cardLink?.card?.id || cardLink?.card?.cardId || '';
       flashSectionOnCard({
@@ -1663,7 +1705,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       setPreviewUiState(previous => ({
         ...previous,
         projectId,
-        mode: target.kind === 'section' ? 'strip' : 'piece',
+        mode: target.kind === 'all' ? 'piece' : previous.mode,
         lastTargetId: target.kind === 'section' && previewTargetIds.includes(target.id)
           ? target.id
           : (previewTargetIds.includes(previous.lastTargetId) ? previous.lastTargetId : previewTargetIds[0] || ''),
@@ -1686,7 +1728,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       selectTarget(target);
       requestAnimationFrame(() => {
         bankRef.current?.focus({ preventScroll: true });
-        bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'start' });
+        bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'nearest' });
       });
     };
     useEffect(() => {
@@ -1706,12 +1748,12 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       if (target) {
         setHandoffInvalid(false);
         setSelectedTargetId(target.id);
-        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'strip', lastTargetId: target.id }));
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece', lastTargetId: target.id }));
         bankOriginRef.current = target.id;
         setBankOriginId(target.id);
         requestAnimationFrame(() => {
           bankRef.current?.focus({ preventScroll: true });
-          bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'start' });
+          bankRef.current?.querySelector('.sec-h')?.scrollIntoView({ block: 'nearest' });
         });
       } else {
         setHandoffInvalid(true);
@@ -1731,7 +1773,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         return;
       }
       const target = sectionTargets.find(candidate => candidate.id === value && candidate.kind === 'section');
-      if (target && previewTargetIds.includes(target.id)) selectTarget(target);
+      if (target && previewTargetIds.includes(target.id)) {
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'strip', lastTargetId: target.id }));
+      }
     };
 
     const stepPatternPreviewTarget = (direction) => {
@@ -1743,9 +1787,6 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
 
     const togglePatternPiecePreview = () => {
       const nextMode = previewMode === 'piece' ? 'strip' : 'piece';
-      if (nextMode === 'strip' && previewTargetIds.includes(lastPreviewTargetId)) {
-        setSelectedTargetId(lastPreviewTargetId);
-      }
       setPreviewUiState(previous => ({
         ...previous,
         projectId,
@@ -1834,13 +1875,13 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     };
     const openCardInstaller = async () => {
       if (!handoffUrl) return;
-      if (currentPatternCardAccess() !== 'ready') {
-        blockPatternCardEffect(currentPatternCardAccess());
+      if (currentPatternInstallAccess() !== 'ready') {
+        blockPatternCardEffect(currentPatternInstallAccess());
         return;
       }
       try {
         const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
-        if (!matchesCurrentCardProjectEvidence(evidence)) {
+        if (!matchesCurrentCardProjectEvidence(evidence) && !matchesSameProjectCardEvidence(evidence)) {
           blockPatternCardEffect('project');
           return;
         }
@@ -1876,8 +1917,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         setStatus('This Lab design stays in Studio and Patterns. It cannot be installed on the card yet.');
         return;
       }
-      if (currentPatternCardAccess() !== 'ready') {
-        blockPatternCardEffect(currentPatternCardAccess());
+      if (currentPatternInstallAccess() !== 'ready') {
+        blockPatternCardEffect(currentPatternInstallAccess());
         return;
       }
       if (installIntentRef.current) return;
@@ -1916,13 +1957,34 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         prepareCardStoragePayload(packageForCard);
         const safety = await checkCardLayoutWriteSafety(packageForCard, 'saving');
         if (!safety.ok) return;
-        if (currentPatternCardAccess() !== 'ready') {
-          blockPatternCardEffect(currentPatternCardAccess());
+        if (currentPatternInstallAccess() !== 'ready') {
+          blockPatternCardEffect(currentPatternInstallAccess());
           return;
         }
         const before = await readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport });
-        if (!matchesCurrentCardProjectEvidence(before)) {
+        if (!matchesCurrentCardProjectEvidence(before) && !matchesSameProjectCardEvidence(before)) {
           blockPatternCardEffect('project');
+          return;
+        }
+        const [cardStatus, wiringStatus] = await Promise.all([
+          readCardStatusEnvelope({ host: safety.host || cardHost, transport: cardLink?.transport }),
+          getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }),
+        ]);
+        assertCardDeploymentPreflightIdentity(before, cardStatus);
+        if ((wiringStatus.cardId && wiringStatus.cardId !== before.cardId)
+          || (wiringStatus.buildId && wiringStatus.buildId !== before.buildId)) {
+          throw new Error('The card changed during the wiring check. Nothing was sent.');
+        }
+        const structuralWiringChanged = cardConfigStructuralWiringChangedFromInfo(
+          { ...cardStatus, outputs: wiringStatus.outputs }, packageForCard,
+        );
+        if (wiringStatus.hasCandidate || structuralWiringChanged) {
+          // The Card status installer owns staging, activation, the timed real-
+          // light test, and confirmation. Patterns has no authority to confirm
+          // a changed physical section layout or re-post an existing candidate.
+          window.location.hash = wiringStatus.hasCandidate
+            ? '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate'
+            : '#screen=card&section=setup&task=install-project&next=patterns';
           return;
         }
         const exactPrepared = { ...prepared, cardId: before.cardId };
@@ -1936,7 +1998,16 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           allowProjectChange: undefined,
         });
         if (response?.state === 'staged') {
-          throw new Error(STAGED_WIRING_CONFLICT_MESSAGE);
+          window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate';
+          return;
+        }
+        const postWriteWiring = await getCardWiringStatus({ host: safety.host || cardHost, transport: cardLink?.transport }).catch(() => null);
+        if (postWriteWiring?.hasCandidate) {
+          // Some card builds acknowledge /api/config before the candidate is
+          // exposed in that reply. The Card status flow can resume the exact
+          // candidate; never re-post this installation from Patterns.
+          window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&resume=candidate';
+          return;
         }
         const verification = await waitForCardDeploymentVerification(exactPrepared, {
           readEvidence: () => readCardProjectEvidence({ host: safety.host || cardHost, transport: cardLink?.transport }),
@@ -1974,8 +2045,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
           const zone = selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '';
           if (currentPatternCardAccess() === 'ready') {
             await pushLivePreviewToCard(
-              { ...nextLook, zone, syncZones: nextLook.syncZones },
-              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200 },
+              { ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' },
+              { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [] } : {}) },
             ).catch(() => null);
           }
         }
@@ -2117,21 +2188,20 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     };
 
     // Toggle playlist membership for any browse card (pattern or saved mix).
-    const togglePl = (id, e) => {
+    const togglePl = (patternCard, e) => {
       e.stopPropagation();
-      const adapted = REAL_PATTERN_BY_ID.get(id);
-      if (adapted) {
-        setPatternInPlaylist(id, !playlistContainsPattern(playlist, id));
+      if (!patternCard.mix) {
+        setPatternInPlaylist(patternCard.id, !playlistContainsPattern(playlist, patternCard.id));
         return;
       }
       // saved mix card: id is the adapted look id; find the real saved look.
-      const realLook = findSavedLook(id);
+      const realLook = findSavedLook(patternCard.id);
       if (realLook?.projectOnly) return;
       if (realLook) setSavedLookInPlaylist(realLook, !playlistContainsCombo(playlist, realLook.id));
     };
-    const inPlaylist = (id) => {
-      if (REAL_PATTERN_BY_ID.has(id)) return playlistContainsPattern(playlist, id);
-      const realLook = findSavedLook(id);
+    const inPlaylist = (patternCard) => {
+      if (!patternCard.mix) return playlistContainsPattern(playlist, patternCard.id);
+      const realLook = findSavedLook(patternCard.id);
       return realLook ? playlistContainsCombo(playlist, realLook.id) : false;
     };
 
@@ -2342,7 +2412,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
         setDraftLooks({});
         if (!response.rebooting && currentPatternCardAccess() === 'ready') {
           const zone = selectedTarget?.kind === 'section' ? selectedTarget.zoneId || selectedTarget.id : '';
-          await pushLivePreviewToCard({ ...nextLook, zone }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200 }).catch(() => null);
+          await pushLivePreviewToCard({ ...nextLook, zone, syncZones: selectedTarget?.kind !== 'section' }, { host: safety.host || cardHost, preferBridge: cardLink?.transport === 'bridge', timeoutMs: 2200, ...(zone ? { expectedZoneRanges: selectedTarget.ranges || [] } : {}) }).catch(() => null);
         }
         setStatusKind('');
         setStatus('');
@@ -2416,7 +2486,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     // is not refused as a mismatch.
     const authorizedPatternCardAccess = deriveCardAccess(cardLink, {
       connected,
-      authorized: projectAuthorizationCurrent,
+      authorized: currentPatternInstallAccess() === 'ready',
     }).install;
     // Shared install precondition (src/lib/cardInstallGate.js). savePreviewToCard
     // only sets allowLayoutChange for the explicit bench test-strip override, and
@@ -2428,10 +2498,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
       busy: cardSave.conflictsDisabled,
       cardAccess: authorizedPatternCardAccess,
     });
-    // F22: `authorizedPatternCardAccess` (.install) is demoted to 'project'
-    // the instant Studio's project no longer matches the card's installed
-    // fingerprint EXACTLY — the right gate for an install, which persists a
-    // structural claim onto the card, but recovering the lights sends a
+    // F22: `authorizedPatternCardAccess` (.install) can be demoted to 'project'
+    // when the card holds another project. Recovering lights sends a
     // fixed warm-white frame and asserts nothing about which project is
     // installed. Gating the button on it hid the one working recovery action
     // (Card Home's identical button is not gated this way at all) behind the
@@ -2458,6 +2526,9 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     };
     const runPreviewFailureAction = () => {
       switch (previewFailure?.actionId) {
+        case 'install-sections':
+          window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns';
+          break;
         case 'update-card':
           window.location.hash = '#screen=flash';
           break;
@@ -2616,13 +2687,11 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
     return (
       <div className="screen">
         <div className="screen-scroll">
-          <div className="pm">
+          <div className="pm pm-workspace">
             {/* hero */}
             <header className="pm-hero">
               <div className="pm-title">
-                <span className="pm-kicker">Studio · Patterns</span>
                 <h1>Patterns &amp; Looks</h1>
-                <p>Choose a pattern or Lab look, tune it, then install card-ready designs when ready.</p>
                 {/* F18: while the pattern-gate notice is up, it already
                     carries this exact verdict as its own alert with the
                     actionable next step ("Verify project in Card status") —
@@ -2743,10 +2812,11 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                    <div className="sec-h"><span className="t">Sections</span><span className="m">{sectionCount} on this piece</span><span className="line" /></div>
                 <div className="card pm-pane pm-preview-pane">
                   <div className="pm-preview-controls" aria-label="Pattern preview controls">
-                    <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${sel.label}`}>
+                    <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${selectedDisplayLabel}`}>
                       <span className="t">Preview</span>
-                      <span className="m">{sel.label}</span>
+                      <span className="m">{selectedDisplayLabel}</span>
                     </div>
+                    <div className="pm-preview-nav" role="group" aria-label="Preview navigation">
                     <button
                       type="button"
                       className={`pm-piece-toggle${previewMode === 'piece' ? ' on' : ''}`}
@@ -2759,7 +2829,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       aria-label="Previous LED target"
                       disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) <= 0}
                       onClick={() => stepPatternPreviewTarget(-1)}
-                    >‹</button>
+                    ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 4-4 4 4 4" /></svg></button>
                     <label className="pm-preview-select">
                       <span className="sr-only">Preview target</span>
                       <select
@@ -2779,7 +2849,8 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       aria-label="Next LED target"
                       disabled={previewMode !== 'strip' || previewTargetIds.indexOf(lastPreviewTargetId) >= previewTargetIds.length - 1}
                       onClick={() => stepPatternPreviewTarget(1)}
-                    >›</button>
+                    ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></button>
+                    </div>
                   </div>
                   <div
                     data-testid="pattern-project-preview"
@@ -2830,13 +2901,21 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                   </div>
                 </div>
 
-                   <div className="pm-section-list" aria-label="Target sections">
-                     {presentationRows.filter(row => row.id === ALL_SECTIONS_TARGET_ID || previewTargetIds.includes(row.id)).map(row => {
+                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections">
+                     {displayedSectionRows.map((row, rowIndex) => {
                        const target = sectionTargets.find(item => item.id === row.id);
                        const selected = !handoffInvalid && row.id === selectedTarget?.id;
-                       return <button
-                         type="button"
+                       const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
+                       return <div
                          key={row.id}
+                         className={`pm-section-entry${selected ? ' on' : ''}`}
+                         draggable={canReorder}
+                         onDragStart={event => { if (!canReorder) return; dragSectionId.current = row.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.id); }}
+                         onDragOver={event => { if (canReorder && dragSectionId.current) event.preventDefault(); }}
+                         onDrop={event => { event.preventDefault(); moveDisplayedSection(dragSectionId.current, row.id); dragSectionId.current = ''; }}
+                         onDragEnd={() => { dragSectionId.current = ''; }}
+                       ><button
+                         type="button"
                          ref={node => { if (node) sectionRowRefs.current.set(row.id, node); else sectionRowRefs.current.delete(row.id); }}
                          data-testid={`section-target-${row.id}`}
                          className={`pm-section-item${selected ? ' on' : ''}`}
@@ -2846,7 +2925,11 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                          <span className="pm-section-identity"><strong>{row.label}</strong><small>{row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`}</small></span>
                          <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
-                       </button>;
+                       </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
+                         <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
+                         <button type="button" data-testid={`section-move-up-${row.id}`} aria-label={`Move ${row.label} up in display order`} disabled={rowIndex <= 1} onClick={() => nudgeDisplayedSection(row.id, -1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg></button>
+                         <button type="button" data-testid={`section-move-down-${row.id}`} aria-label={`Move ${row.label} down in display order`} disabled={rowIndex >= displayedSectionRows.length - 1} onClick={() => nudgeDisplayedSection(row.id, 1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+                       </span>}</div>;
                      })}
                    </div>
                   {selectedTarget?.kind === 'section' && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
@@ -2859,30 +2942,21 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                     </p>}
                   {/* One status line about sections: what the card holds, read from
                       the card itself. Empty until the card has been read. */}
-                  {cardHoldsLine &&
-                    <p className="pm-cardholds" data-testid="card-holds">{cardHoldsLine}</p>
-                  }
-                  {sectionCount > 1 && selectedTarget?.kind === 'section' &&
-                    <p className="pm-cardholds">
-                      <button type="button" className="wordlink" data-testid="use-on-every-section" onClick={useLookOnEverySection}>
-                        Use this look on every section
-                      </button>
-                    </p>
-                  }
-                  {sectionCount <= 1 &&
-                    <p className="pm-cardholds">
-                      One section drives the whole piece.{' '}
+                  <div className="pm-section-footer">
+                    {cardHoldsLine && <span className="pm-cardholds" data-testid="card-holds" title={cardHoldsLine}>{cardHoldsLine}</span>}
+                    {sectionCount <= 1 &&
                       <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
-                    </p>
-                  }
-                   {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
+                    }
+                    {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
                      selectStrip(layoutReturnStrip);
                      window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
                    }}>Back to Layout</button>}
+                    {sectionCount > 1 && !layoutReturnStrip && <button type="button" className="wordlink" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Edit layout</button>}
+                  </div>
                 </div>
 
                 {/* browse */}
-                 <div className="pm-browse" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }} style={{ margin: "5px 0px 0px" }}>
+                 <div className="pm-browse" data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
                   {/* One header bar for the whole module: the light, the name,
                       and the counts pushed right. The counts are read with a
                       single separator so the bar scans as one sentence rather
@@ -2905,31 +2979,32 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                               className={ledMode === 'gradient' ? 'on' : undefined}
                               onClick={() => chooseLedMode('gradient')}>Gradient</button>
                     </div><span className="line" /></div>
-                  {sectionCount > 1 && <p className="pm-bank-scope" data-testid="pattern-bank-scope">
-                    <strong>{handoffInvalid ? 'Choose a current section' : selectedTarget?.kind === 'section'
+                  <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">
+                    <strong>{handoffInvalid ? 'Choose a current section' : `Editing: ${selectedTarget?.kind === 'section'
                       ? `${targetLabel(selectedTarget)}${sectionGpioLabels.get(selectedTarget.id) ? ` · ${sectionGpioLabels.get(selectedTarget.id)}` : ''}`
-                      : 'All sections'}</strong>
-                    {handoffInvalid ? ' · Layout changed; select a section above to continue.' : selectedTarget?.kind === 'section'
-                      ? ' · A pattern choice changes only this section; the others keep their patterns.'
-                      : ' · A pattern choice gives every section the same pattern.'}
-                    {!handoffInvalid && ' Keep this look saves the design; Install on card keeps it on the card.'}
+                      : 'All sections'}`}</strong>
+                    {handoffInvalid ? ' · Layout changed; select a section above to continue.' : <span className="sr-only">{selectedTarget?.kind === 'section'
+                      ? 'A pattern choice changes only this section; the others keep their patterns.'
+                      : 'A pattern choice gives every section the same pattern.'}</span>}
                     {bankOriginId && !handoffInvalid && <button type="button" className="wordlink pm-back-sections" data-testid="back-to-sections" onClick={() => { const row = sectionRowRefs.current.get(bankOriginId); row?.scrollIntoView({ block: 'nearest' }); row?.focus(); bankOriginRef.current = null; setBankOriginId(''); }}>Done choosing</button>}
-                  </p>}
+                  </p>
+                  {sectionCount > 1 && selectedTarget?.kind === 'section' && <button type="button" className="wordlink pm-apply-all" data-testid="use-on-every-section" onClick={useLookOnEverySection}>Apply to all sections</button>}
 
                   {/* Was: a "Preview taps on the LED card" checkbox. There is no
                       moment in this screen's job where a tap should not reach the
                       card — it is the scratchpad for trying patterns on the real
                       strip — and an off checkbox only produced taps that looked
                       broken. Every tap sends. */}
-                  <div className="pm-livebar">
-                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
+                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction) === 'Applied by Lightweaver runtime' ? 'Preview sent to card' : cardActionStatusLabel(previewAction)}</span>
                   </div>
-                  <div className="search" style={{ maxWidth: "none", marginBottom: 10 }}>{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
-                  <div className="pt-tools" style={{ padding: "0px", margin: "0px 0px 10px" }}>
+                  <div className="pm-bank-filters">
+                  <div className="search">{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
+                  <div className="pt-tools">
                     <div className="chips">
                       {PATTERN_CATS.map((c) => <button key={c.id} className={"chip" + (cat === c.id ? " on" : "")} onClick={() => setCat(c.id)}>{c.label}</button>)}
                     </div>
                     <span className="pt-count">{Math.min(visibleCount, filtered.length)} of {filtered.length} shown</span>
+                  </div>
                   </div>
                   {/* This refusal now floats (see the 'pattern-gate-notice'
                       effect above) instead of living in document flow here,
@@ -2937,7 +3012,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       status is off-screen — it is always visible. */}
                   <div className="pm-cards">
                      {filtered.slice(0, visibleCount).map((p) => {
-                       const cardInPlaylist = inPlaylist(p.id);
+                       const cardInPlaylist = inPlaylist(p);
                        const savedMix = p.mix ? findSavedLook(p.id) : null;
                        const mixPairs = Object.entries(savedMix?.sectionLooks || {}).map(([id, sectionLook]) => {
                          const section = sectionTargets.find(target => target.id === id);
@@ -2953,7 +3028,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                            ? 'Lab design · open in Lab for the full design'
                            : (mixPairs.length ? mixPairs.slice(0, 2).join(' · ') : `${patternNameFor(savedMix?.defaultLook?.patternId)} on all sections`);
                        return (
-                    <div key={p.id} className="pmcard-wrap">
+                    <div key={`${p.mix ? 'mix' : 'pattern'}:${p.id}`} className="pmcard-wrap">
                       <button type="button" className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")} data-pattern-id={p.id} aria-pressed={p.id === selId} onClick={() => selectCard(p)}>
                         {/* Speed rides the LED window's top-right corner; the
                             playlist star takes the row slot it used to hold.
@@ -2984,7 +3059,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                           aria-label={cardInPlaylist ? `Remove ${p.label} from playlist` : `Add ${p.label} to playlist`}
                           title={cardInPlaylist ? "In playlist \u2014 tap to remove" : "Add to playlist"}
                           className={"pmcard-pl" + (cardInPlaylist ? " on" : "")}
-                          onClick={(e) => togglePl(p.id, e)}
+                          onClick={(e) => togglePl(p, e)}
                         >
                           <span className="pmcard-pl-pill">
                             <svg viewBox="0 0 24 24" className="plstar" aria-hidden="true"><path d="M12 3l2.6 5.6 6 .7-4.4 4.1 1.2 6L12 16.8 6.6 19.4l1.2-6L3.4 9.3l6-.7z" /></svg>
@@ -3032,17 +3107,21 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       rather than a stack of controls. The tuning pane was the
                       one panel on this screen with no head at all, so four
                       faders floated between two headed modules. */}
-                  <div className="sec-h"><span className="t">Tune</span><span className="m">{sel.label}</span><span className="line" /></div>
-                  <div aria-label="Keep your look" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px 16px', marginBottom: 8 }}>
-                    <input className="pm-input" data-testid="look-name" style={{ flex: '1 1 180px', minWidth: 0 }} aria-label="Look name" placeholder="Name this look (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                     <button type="button" className="btn" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open Studio-only design in Lab' : editingColorJourney ? 'Open Color Journey in Lab' : editingSavedLook ? `Update ${editingSavedLook.label}` : 'Keep this look'}</button>
+                  <div className="sec-h"><span className="t">Tune</span><span className="m">{selectedDisplayLabel}</span><span className="line" /></div>
+                  <div className="pm-save-look" aria-label="Save look">
+                    <div className="pm-save-primary">
+                      <input className="pm-input" data-testid="look-name" aria-label="Look name" placeholder="Look name (optional)" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
+                      <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingProjectOnly ? 'Open in Lab' : editingColorJourney ? 'Open in Lab' : editingSavedLook ? 'Update look' : 'Save look'}</button>
+                      <span role="status" data-testid="look-save-status" className="pm-save-status" title="Saved looks belong to this browser project. Install on card separately.">{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved look' : lookSaveState === 'Saved in this project' ? 'Saved in project' : lookSaveState || (editingProjectOnly ? 'Studio only · open in Lab' : editingSavedLook ? 'Saved in project' : 'Draft in this browser'))}</span>
+                    </div>
+                    {(editingSavedLook || deletedLook) && <div className="pm-save-secondary">
                     {editingSavedLook && <>
                       <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new'}</button>
                       <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={renameLook}>Rename</button>
                       <button type="button" className="btn" data-testid="look-delete" onClick={deleteLook}>Delete{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` · ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist uses` : ''}</button>
                     </>}
                     {deletedLook && <button type="button" className="btn" data-testid="look-delete-undo" onClick={undoDeleteLook}>Undo delete {deletedLook.label}</button>}
-                    <div role="status" data-testid="look-save-status" style={{ flexBasis: '100%', display: 'block', lineHeight: 1.5, minHeight: 20, paddingTop: 4 }}>{scratchError || (hasUnsavedLookChanges && (!lookSaveState || lookSaveState === 'Saved in this project') ? 'Unsaved changes · working copy kept on this browser' : lookSaveState || (editingProjectOnly ? 'Studio only · kept in Patterns and excluded from card installs' : editingSavedLook ? 'In this project' : 'Choose, play, then keep your look'))}</div>
+                    </div>}
                   </div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
@@ -3074,7 +3153,7 @@ import { deriveSectionPresentationRows } from '../lib/sectionPresentation.js';
                       const cc = px[0];
                       return <span key={i} style={{ background: `rgb(${cc.r},${cc.g},${cc.b})` }} />;
                     })}</span>
-                    <div className="pm-palmeta"><strong>{sel.label}</strong><span>{sel.sp} · {sel.cat.toUpperCase()}</span></div>
+                    <div className="pm-palmeta"><strong>{selectedDisplayLabel}</strong><span>{sel.sp} · {sel.cat.toUpperCase()}</span></div>
                   </div>
 
                   {/* Advanced: Breathe / Drift + Hue-shift, tucked in the mockup idiom */}

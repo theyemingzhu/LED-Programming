@@ -337,7 +337,7 @@ export function completeCardInstall(flow, result = {}, { now = Date.now() } = {}
 // release, boot, and the card-echoed random request identity.
 export function recordCardUsbWifiAttempt(flow, { id, bootId, generation = null } = {}, { now = Date.now() } = {}) {
   requireFlow(flow);
-  if (flow.source !== 'web-serial' || flow.operation !== 'install-current-release'
+  if (flow.source !== 'web-serial' || !['install-current-release', 'inspect-card'].includes(flow.operation)
     || flow.stage !== 'install-safely' || !flow.installTarget?.id
     || !Number.isSafeInteger(flow.installTarget.buildNumber)
     || !/^[a-f0-9-]{36}$/i.test(id || '') || !text(bootId, 96)
@@ -864,7 +864,7 @@ function requireFlow(flow) {
   }
   if (flow.usbWifiAttempt != null) {
     const attempt = flow.usbWifiAttempt;
-    if (flow.source !== 'web-serial' || flow.operation !== 'install-current-release'
+    if (flow.source !== 'web-serial' || !['install-current-release', 'inspect-card'].includes(flow.operation)
       || flow.stage !== 'install-safely' || !Number.isSafeInteger(flow.installTarget?.buildNumber)
       || !attempt || typeof attempt !== 'object' || Array.isArray(attempt)
       || Object.keys(attempt).some(key => !['id', 'bootId', 'generation'].includes(key))
@@ -1184,6 +1184,11 @@ export function verifyCardRestorationMutation(flow, leaseId, fencingToken, { sto
 export function readCardRestorationAttempt(flow, { storage = defaultStorage(), now = Date.now() } = {}) {
   requireFlow(flow);
   return clone(parseRegistry(storage, now).registry.flows[flow.flowId]?.restoreAttempt || null);
+}
+
+export function readCardRestorationLease(flow, { storage = defaultStorage(), now = Date.now() } = {}) {
+  requireFlow(flow);
+  return clone(parseRegistry(storage, now).registry.flows[flow.flowId]?.restoreLease || null);
 }
 
 export async function recordCardRestorationResponse(flow, leaseId, fencingToken, response = {}, { storage = defaultStorage(), now = Date.now, locks, indexedDB } = {}) {

@@ -2,8 +2,20 @@ import { PALETTE_DEFAULT } from '../data.js';
 import { expandPatchBoard, normalizePatchBoard } from './patchBoard.js';
 import { applyLookColorModifiers } from './previewColorModifiers.js';
 import { compileWiring } from './wiringCompiler.js';
+import { getCardPatternById } from './cardPatternBank.js';
+import { getPatternById } from './patternRegistry.js';
 
-export const PATTERN_PREVIEW_UI_STORAGE_PREFIX = 'lw_pattern_piece_preview_v1:';
+export function resolvePreviewPatternId(patternId) {
+  if (getPatternById(patternId)) return patternId;
+  const card = getCardPatternById(patternId);
+  const candidate = card?.previewPatternId || card?.preset;
+  return candidate && getPatternById(candidate) ? candidate : null;
+}
+
+// v1 stored strip focus on every visit because strip was the former default.
+// A new key lets the piece open as a whole without mistaking that old default
+// for an intentional focus; explicit focus still persists within v2.
+export const PATTERN_PREVIEW_UI_STORAGE_PREFIX = 'lw_pattern_piece_preview_v2:';
 
 function storageFor(storage) {
   if (storage) return storage;
@@ -158,7 +170,7 @@ export function readPatternPreviewUiState({ projectId, targetIds = [], storage =
   }
   const rememberedTargetId = String(parsed?.lastTargetId || '');
   return {
-    mode: parsed?.mode === 'piece' ? 'piece' : 'strip',
+    mode: parsed?.mode === 'strip' ? 'strip' : 'piece',
     lastTargetId: validTargetIds.includes(rememberedTargetId)
       ? rememberedTargetId
       : fallbackTargetId,
@@ -169,7 +181,7 @@ export function readPatternPreviewUiState({ projectId, targetIds = [], storage =
 export function writePatternPreviewUiState({ projectId, state, storage = null } = {}) {
   try {
     storageFor(storage)?.setItem(previewStorageKey(projectId), JSON.stringify({
-      mode: state?.mode === 'piece' ? 'piece' : 'strip',
+      mode: state?.mode === 'strip' ? 'strip' : 'piece',
       lastTargetId: String(state?.lastTargetId || ''),
     }));
   } catch {

@@ -7,6 +7,1071 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Manager delivery view — 2026-09-28
+
+MERGE READY:332ba91a corrects four stale browser assertions; all five focused
+cases pass, including preserved mix save/reopen and namespaced playlist references.
+Primary reviewed, no application defect or weakened behavior check. User asks main
+first, shipment later: finish merge and main-only Tests now; remaining launch steps
+4–13 are UNPERFORMED and required before later shipment, not a full launch pass.
+Consolidator idle. Both automatic publication workflows remain held.
+
+MERGE VALIDATION BLOCKERS under repair: broader frozen4719ec9c check passed
+core/cloud73/mapper/scene39/show11/recovery3 and two resumed browser groups.
+Next group117 passed, four failed: color-journey button text, Layout Target sections
+locator, Lab whole-look add-layer action, reconstructed look IDs. One wire-capacity
+test interrupted and one unrun. Consolidator01a0e503 Sol/medium owns diagnosis and
+these four test files only; preserve behavioral assertions, no source change without
+app-owner handoff. No merge or publication until failures resolved. Earlier isolated
+archive issues (deps/Git metadata) repaired; continuing clone
+/tmp/lightweaver-release-gate-4719ec9c, log continue-release.log. Do not rerun
+passed broad suites; retain evidence and resume affected/unperformed stages.
+
+FINAL LAYOUT CORRECTION VERIFIED locally: Studio2190/2966b0cf. Counts now
+beside Layout; row names use strip colors, no leading miniature. Five focused
+browser tests and exact frozen build pass. Primary verified actual screen, saved
+and reloaded latest45LED draft13/10/12/10 with Fire/Lava Lamp/Snowfield/Stained Glass.
+Screenshot /tmp/lightweaver-2190-layout-count-position.png. Artifact
+/tmp/lightweaver-source-2966b0cf/lightweaver/dist. PR353 pushed, mergeable with no
+conflicts. Main-only CI runs after merge; local broader gate remains in progress.
+Deploy workflow289066915 and Build firmware binary289045102 verified
+disabled_manually (both previously active); no publication authorized. Restore
+both only when owner authorizes shipping again.
+
+LATEST OWNER BOUNDARY: integrate and merge all current work into main FIRST;
+production shipping is a later step, requiring new go-ahead. Automatic Deploy site
+workflow (289066915) temporarily disabled to enforce that boundary; restore only
+when shipping is authorized again. No deployment is authorized now.
+Final Layout correction committed 2966b0cf, five focused browser cases passed.
+Primary verifies final preview and owns PR353 integration. Consolidator01a0e503
+continues frozen4719ec9c validation; no hardware changes.
+
+LAST OWNER UI CHANGE BEFORE SHIP active: moveLEDcountfromstriprow intoexpanded
+Layoutheader/controlrow; keepdrag/name/hide/pattern inrow, removeleadingcolorline
+and tintnamewithstripcolor. Appowner01a0e50f Sol/low boundedUI+focusedproof; retain
+no redundantPartheading. Releaseconsolidator continues4719ec9cbaselinegate; parent
+integratesfinalpatch andexactremoteCI/deploy. Do notpublisholdercandidatefirst.
+
+ACTIVE AUTHORIZED SHIPMENT — owner requests all current integrated Studio published
+to main site. Frozenapp4719ec9c (Studio2188) plus current intended workflow/Bench/
+research records. PR353 reused;19sourcecommits aheadorigin/main, nofirmwarefiles
+changed. Primary owns commit/push/merge/deploy/strict liveproof; consolidator
+01a0e503 Sol/medium runsreleasegate inisolated frozenarchive, compactowneridle.
+Preserve conflictedrecoverycopies/distbackups and currentbrowserdraft, nohardware
+writes. Nevercallpushed/mergedgreenCI shipped. Signedfw2160 remainscurrent unless
+actualreleasecontract provesnecessarychange; no gratuitousbumpforbrowserfixes.
+
+THIN PERSISTENT PICKER VERIFIED — Studio2188/4719ec9c63ac6a8689fc5d3b657aa7797c5d6d30.
+Preview stage22px (~20px requested) horizontal color-motion sample, actualgeometry
+unchanged. Patternclick commits and keepsgalleryopen; Close/Escape/sidebarstrip or
+canvasstrip dismiss, chosenpattern retained. Focusedpickerbrowser regression and
+exactbuild pass; prior2187checkpoint2855unitchangesnotinvalidated. Artifact
+/tmp/lightweaver-thin-preview-4719ec9c/source/lightweaver/dist; manifest there;
+previous .dist-2188-previous. Parent actual2188 verified Plasma click leavesdialog
+open, striptriggercloses; screenshot /tmp/lightweaver-2188-thin-pattern-picker.png.
+Pre-refresh latestowner45LEDdraft saved13/10/12/10 Fire/Plasma/ColorOrgan/StainedGlass.
+Owner actively comparedpatterns during check; lastobservedStrip2LavaLamp (do not
+restorePlasmaorolderchoices). Do not overwriteactiveediting; readfreshbeforeactions.
+No cardcommands/deployment. Latest request complete; no repeatacceptedtests.
+
+ACTIVE latest owner preview refinement supersedes oneclickclose: auditionstage~20px
+horizontal color-motion strip; clicking pattern commits to selectedstrip+canvas and
+keeps gallery open for comparison. Close/Escape/stripclick dismiss; dismissal keeps
+committedchoices, hovering alone doesnotchangeassignment. Compact owner01a0e50f
+Sol/medium owns coupled followup/focused regression; primary integrates live4173.
+Samepattern doesnotaddUndo; actual strip geometry/counts preserved. Current2187
+accepted until verifiedcandidate. No cardcommands/deployment.
+
+LAYOUT LIVE PATTERN PREVIEW VERIFIED — Studio2187/f4e2e9707ab0cead0fceb96d1d3470f7ab99cd5e.
+Pattern gallery has larger animated preview on hover/focus, using selected segment
+renderer. One click applies onlytarget, closes and enables local canvas animation,
+including reselecting same pattern. Geometry/compiled-preview data memoized outside
+tick, mapping byid. Fixed transient duplicate crash from null unrepresented LEDs;
+DuplicateUndo regression green. 4 focused browsercases +2855unitcheckpoint + exact
+build pass. Artifact /tmp/lightweaver-pattern-preview-f4e2e970/source/lightweaver/dist,
+manifest there. Previous .dist-2187-previous preserved. Parent verified live2187,
+Light active, Strip2Plasma RGB colors advancing betweenreadbacks, larger popup shown.
+Screenshot /tmp/lightweaver-2187-layout-playback.png shows Strip3popup during owner
+active interaction. Owner changed draft before update: now4independent strips45LEDs
+13/10/12/10, Fire/Ripple/Lightning/StainedGlass was saved then reloadretained. Owner
+subsequently chosePlasma forStrip2 and moved/zoomed canvas while primary verified;
+latest changes may be unsaved. Do not overwrite or restore prior connectedfamily.
+Primary card untouched; animation localonly. No deployment. This request complete;
+new userfeedback only; no repeated acceptedtests. Quota74percent weeklyused, allowed.
+
+ACTIVE immediate Layout pattern preview: owner wants selection Fire/Plasma to play
+on targeted part of canvas immediately plus larger animated preview window, without
+leaving Layout. Existing compact owner01a0e50f Sol/medium owns gallery+local preview
+integration/focused checks. Preserve quick click-choose-return, part-only assignment,
+Undo/cancel/focus/saveddata. Reuse existing renderers; no physicalcard sends. Parent
+integrates and verifies live4173; current2186 stable until candidate verified.
+
+CANVAS GRAB TARGETS VERIFIED LOCALLY — Studio2186/f2b17d7453e95b5fee7a72733185acf22e781724.
+Larger dots (5px resting/5.8px selected radius in schematic) and >=22px screen-space
+strip hit corridor; selected path on top when corridors overlap. Geometry/counts
+unchanged; wider corridor disabled for drawing, first-light, reflection picker/chop.
+Near-dot8px offset click+drag at16%zoom witnessed red then green; artboard gestures,
+selected identity/custom labels and exact first-light picking passed (6 initial
+and5 final focused cases with overlap). Extra Kaleidoscope spec stopped at stale
+More strip actions selector before picker; not claimed verified for this revision.
+Exact frozen build passed: /tmp/lightweaver-led-targets-f2b17d74/source/lightweaver/dist,
+manifest there. Primary switched4173; previous .dist-2186-previous preserved.
+Owner latest geometry edits saved before refresh; live2186 retains45LED13/10/12/10,
+owner latest patterns Fire/Plasma/Lightning/StainedGlass (Part1changed by owner).
+Screenshot /tmp/lightweaver-2186-larger-led-targets.png. Local only,
+card untouched, no deployment. This correction complete; no repeat accepted suites.
+
+ACTIVE canvas usability correction: owner asks larger LEDs and easier click/select/
+drag. Compact app owner01a0e50f Sol/medium owns bounded canvas rendering/hit-target
+fix and focused pointer regression at lowzoom. Preserve physical geometry/counts,
+first-light/reflection modes and other controls; no spatial/schema redesign.
+Primary integrates exact candidate and real screen. Current accepted2185; browser
+latest45LEDdraft distinct from unchanged41LEDcard. No hardware writes.
+
+MIDDLE ROW VERIFIED LOCALLY — Studio2185/c9f45a65f3154d24ba2d6d98b8a92277e703062e.
+Selected connected part has length+GPIO side by side above icons, no separate Name
+input or visible Part N settings heading; accessible region/inline rename remain.
+4 focused browser tests and exact frozen build pass, shared logic unchanged.
+Artifact /tmp/lightweaver-middle-row-c9f45a65/source/lightweaver/dist, manifest there;
+previous .dist-2185-previous. Actual screen screenshot /tmp/lightweaver-2185-compact-middle-row.png.
+Owner edited draft during work: added then removed60LEDcircle; latest saved and
+reload-verified state45LEDs, Parts13/10/12/10, original four patterns. Preserve45,
+NOT old41/105. Card unchanged. No deployment. Latest UI correction complete;
+no repeated accepted tests/hardware trials, await new actionable owner feedback.
+Quota73percent weekly used at01:18UTC; ordinaryusageallowed, not dollarcost.
+
+ACTIVE owner compact middle-row correction: remove selected connected-part Name
+input and visible Part N settings heading; length and GPIO side by side above
+existing icons. Keep region accessibility and inline row rename, all counts/patterns
+and parent controls. Compact owner01a0e50f Sol/low implementing bounded UI patch;
+primary exact frozen build and actual-screen integration. No shared-state changes,
+no repeat broad checkpoint, no card writes. Accepted2184 remains until verified.
+
+COMPACT ACTIONS VERIFIED LOCALLY — Studio2184 /49c1c369b19e289d6301f46d7f73e89eaa97ca8f.
+Eight established action icons replace the tall text grid; Move up/down removed,
+drag ordering preserved. Desktop one row, narrow phone two rows with44px targets;
+accessible labels/tooltips and disabled reasons retained. Automatic run repair no
+longer creates independent Undo history; genuine wiring edits still record history.
+4 focused browser cases incl Duplicate Undo/Redo +2855 library tests + exact frozen
+production build pass. Artifact /tmp/lightweaver-toolbar-49c1c369/source/lightweaver/dist;
+manifest /tmp/lightweaver-toolbar-49c1c369/manifest.json. Primary switched4173,
+previous preserved .dist-2184-previous, actual Part2 Duplicate41→51 then one Undo→41
+passed with original Aurora/Plasma/Lightning/StainedGlass restored. Saved original
+four-part draft; screenshot /tmp/lightweaver-2184-compact-actions.png. No card writes,
+no deployment. This bounded correction complete; do not repeat tests or trial on
+unchanged heartbeat. Larger spatial/display-order work remains separately unapproved.
+
+ACTIVE compact action followup: owner01a0e50f (Sol/medium) owns latest approved
+icon toolbar correction plus reproduced Duplicate-Part Undo defect. Remove
+Move up/down; drag handles remain ordering. Reuse established action icons,
+tooltips/accessible labels and disabled reasons, one compact wrapping toolbar
+instead of five-by-two text grid. Preserve Parts hierarchy, all other actions,
+counts/gallery/saved mix. Undo cause: automatic wiring reconciliation recorded
+another history step and re-created it after Undo. Worker focused regression now
+passes; icon work underway. Primary integrates one frozen candidate, checks actual
+screen and original41/4 saved mix; no card writes, no deploy, no overlapping worker.
+
+HIERARCHY FOLLOWUP VERIFIED LOCALLY — Studio2183/app815cb9d213b9e87d0d39ae7da64424e109b87c6d.
+6 affected browser cases +4 label tests + exact frozen production build pass.
+Artifact /tmp/lightweaver-hierarchy-815cb9d2/source/lightweaver/dist, manifest there;
+previous preview preserved at lightweaver/.dist-2183-previous. Actual saved41/4
+draft shows one Strip1 parent, Parts1–4 matching canvas, shared GPIO/density once,
+flat selected part with visible actions, preserved11/10/10/10 and four patterns.
+Original mix saved/reloaded; Part2 selected through keyboard gallery/close;
+screenshot /tmp/lightweaver-2183-parts-hierarchy.png. Card unchanged, no deploy.
+NEW bounded diagnostic: pointer automation on IAB mis-targeted Part2 clicks onto
+Duplicate Part1 twice. Each test copy removed explicitly; original41/4 restored
+and saved/reloaded. Verified Undo button keyboard activation appeared ineffective
+after duplication; compact owner01a0e50f reproducing independently to distinguish
+app history failure from input tool issue. No more pointer actions on real draft.
+Only this focused diagnostic remains from current check; no broad audit/rebuild.
+
+ACTIVE owner hierarchy refinement after2181: compact owner01a0e50f (Sol/medium)
+owns parent-strip/Parts1–4 naming, one parent shared GPIO+density location, removal
+of repeated parent subtitles/inner nested boxes, subtle row tint replacing leading
+line, selected PART heading and compact preserved actions. One list remains the
+navigation. Preserve custom names/IDs/counts/patterns/Undo/saved data; no GPIO-family
+conflation or drag/address schema redesign. Existing41/4draft must show coherent
+hierarchy; focused regression and actual screen required. Primary owns integration
+and4173, card untouched. Current accepted2181 remains until verified followup.
+
+FIRST LAYOUT PASS VERIFIED IN PREVIEW — Studio2181, app28a34380b4af50219a3fc67d733a0b84b19eb83c.
+Exact frozen artifact /tmp/lightweaver-checkpoint-28a34380/source/lightweaver/dist,
+index SHA256 b47954978bfbb422ec5846b9f6f47d6a91f5bd3e71d6ab59bc782fbde28edf0e.
+2,854 library tests + production build +16 unique relevant browser cases pass.
+One stale explicit-type rename selector corrected in test-only46137a44; focused
+rerun passed, unchanged production artifact correctly remains2181.
+Primary switched4173 atomically, previous saved in lightweaver/.dist-2181-previous.
+Actual owner draft:11/10/10/10 onGPIO18; row numbers removed, count10→12 produced
+43total, single Undo restored41. Gallery Fire applied onlyStrip2, Undo restored
+Plasma. Original Aurora/Plasma/Lightning/StainedGlass mix saved and reload verified.
+Selected editor has length/shared density/GPIO/reverse/first-light/split/merge;
+no duplicate section selectors/manual boundary. Pending SW refresh applied through
+normal Reload action. Screens /tmp/lightweaver-2181-layout-{controls,pattern-picker}.png.
+Automatic review initially rejected bundled Undo/Save/reload due ambiguous button1;
+DOM title established Undo, separate steps verified restored state, no blocker remains.
+Card untouched; local preview only, not deployed. First-pass delivery complete;
+owner feedback/future visual-order/spatial plans remain separate. Do not rerun this
+accepted batch merely on heartbeat; continue only genuinely pending authorized work.
+
+First Layout pass frozen28a34380 (on toolbar followup4c2240a9),00:28UTC.
+Compact owner done: focused direct count/Undo/Escape, shared density/section length,
+GPIO merge, gallery target/cancel/focus/reload and saved named-look cross-screen
+checks pass. The41→40 discrepancy was a test clicking new minus control; no
+runtime divide defect. Existing consolidator01a0e503 owns library/build+relevant
+combined browser checkpoint. Primary next: verify candidate and actual saved
+41LED/four-section screen on4173. Preview remains2179; card unchanged.
+Weekly quota69%used/31%remaining; ordinary usage allowed, not dollar budget.
+No additional workers or audits; complete bounded integration and show result.
+
+
+OWNER GO-AHEAD — first Layout pass (2026-09-28): explicit "Do your first pass now"
+revokes prior hold. Also remove left ordinal numbers01/02/03; use drag handle/bar.
+Approved scope: restore useful count/length/density/GPIO/reverse/first-light/divide/
+split/merge/flip/reflection actions for selected strips as supported; one list and
+one selected editor, no repeated sibling selectors; direct LED counts with-/+,
+project sums and physical boundaries calculated automatically perGPIO; no Boundary
+slider. Pattern button opens in-Layout gallery with small previews, selection
+applies only that section and returns to same Layout. Consistent compact controls.
+Keep visual drag vs physical order behavior unchanged for this first pass; future
+spatial mapping/unresolved larger grouping redesign excluded. Preserve existing
+working behavior and capability gates; no card writes or deployment. Compact
+Layout chat01a0e50f owns bounded source/tests, Sol/medium; consolidator01a0e503
+owns integrated candidate; primary verifies actual screen and switches4173.
+Must finish reviewable implementation and show restored controls, not stop at plan.
+
+
+HISTORICAL HOLD — superseded by explicit first-pass go-ahead above. Before implementation Adrian requested
+scope readback because prior edits removed working functions. Latest instruction
+supersedes the earlier active/approved label below. Layout owner notified to stop
+new edits/build/tests and preserve any work already made. Primary must describe
+what stays/changes; no control removal or relocation approved until owner reviews.
+Existing accepted2179 remains unchanged. Await explicit go-ahead for revised scope.
+
+
+Approved Layout interaction refinement (active Sprint,2026-09-28): reuse compact
+Layout chat01a0e50f-312c-7991-bbcb-8dfc6a9e071f, Sol/medium. One coupled UI outcome:
+one strip list and selected editor; no repeated strip/section selector buttons.
+Pattern control is a button opening an in-Layout modal/popover with visual pattern
+bank and small preview; choosing returns immediately to Layout, targeted only to
+that section. No native pattern dropdown or forced Patterns-screen navigation.
+Remove redundant proportions/section-selector controls and technical Boundary after
+wording from basic editor; retain necessary operations with clear advanced wording.
+Consistent heights/spacing/button treatments; accessible direct LED count, name,
+GPIO assignment and pattern basics; previous useful actions remain available.
+Implementation bounded to Layout UI/new picker/scoped styles+focused tests; preserve
+counts, exact target ranges, saved looks, Undo, wiring/firmware/card semantics.
+Do not fold in future spatial mapping or unresolved global drag-order redesign.
+Acceptance: actual41LED/four-section UI, one selected editor with no repeated sibling
+selectors, quick pattern choose/cancel/focus/preview, only target changes, count total,
+Undo/save/reload, phone/desktop visual proof. Consolidator receives frozen commit;
+primary owns4173. Explicit Sol/medium fits bounded interacting UI/state work;
+return cross-contract uncertainty to primary, no frontier/extra worker by default.
+
+
+Latest preview2179: exact7637ec4f artifact/checksum verified and active4173;
+2178 retained in.dist-2179-previous. Parent actual reload→Patterns confirms
+Bench four-section mix in Tune,Color,whole-piece preview; raw combo ID absent.
+Saved41LED/four-section draft retained. Screenshot /tmp/lightweaver-2179-saved-mix.png.
+Label followup DONE locally; focused worker proof + production build + actual
+screen passed. Prior2178 broader evidence reused for unchanged behavior. Card
+unchanged from restored known-good41GPIO18; physical acceptance still pending.
+
+
+Saved-mix label followup7637ec4f is ready (Patterns JSX + focused browser regression,
+15 insertions/6 deletions). Consolidator assigned exact frozen candidate build;
+reuse2178 broad evidence and focused label proof, no broad retest. Primary actual
+saved-mix name verification follows.4173 remains2178 and card known-good unchanged.
+Usage checkpoint: ordinary usage allowed; weekly quota66%used,34%remaining. This
+is account quota, not dollar spend or per-worker cost. No new workers required.
+
+
+Latest2178 acceptance: exact2824786a artifact verified and switched on4173, previous
+saved preview retained in lightweaver/.dist-2178-previous. Actual Layout/Patterns
+handoff accepted. Saved owner draft as Bench four-section mix (Aurora/Plasma/
+Lightning/Stained Glass); Layout assignments match and reload retained41LEDs.
+Screens /tmp/lightweaver-2178-{layout,patterns}.png. Cosmetic raw combo identifier
+in Tune/Color headings assigned to Patterns owner; no broad gate repeat needed.
+
+Real card trial: identitylw-b0fe81f61b44, firmware2160, precheckknown-good/no candidate.
+Normal Install→Start light test staged/booted4sections; ranges0/11,11/10,21/10,31/10,
+syncZonesfalse, matching patterns, nativeRenderingtrue/error0. commandReadyfalse
+while probation is expected; do not bypass it to claim post-confirm control proof.
+No visual confirmation supplied; primary used No,restore working setup. Verified
+known-good/candidate absent, old8571...fingerprint restored, GPIO18/41Aurora,
+boot4e8b06f1,commandReadytrue/nativeRenderingtrue/error0. Exact snapshots:
+/tmp/lightweaver-2178-{preinstall,trial,restored}.json. Four-section draft remains
+saved; firmware/Wi-Fi untouched. Physical acceptance and permanent4zone operation
+remain pending. Do not repeat this trial without new actionable evidence.
+
+Spatial research completed independently: docs/research/2026-09-28-spatial-led-mapping.md.
+Recommends later dedicated workspace within Studio sharing compiled address→XY
+projection. No implementation authorized. Visual/wire/spatial order distinction
+is proposed; final Layout drag semantics still require design agreement.
+
+
+Layout design clarification: drag/drop must allow strips/sections to be freely
+ordered, including interleaving sections on the same GPIO with other strips.
+Do not enforce GPIO-grouped visual order. Proposed design distinguishes visual
+stacking, per-GPIO physical LED addressing, and spatial coordinates; exact drag
+semantics remain under discussion, not an approved schema migration.
+Future spatial mapping research: independent research-only agent, Sol/medium,
+small source-backed comparison of existing Lightweaver geometry/pattern contracts,
+MadMapper official LED mapping approach, and integrated vs separate mapping workspace.
+Why sufficient: bounded architecture reconnaissance with verifiable sources, no
+implementation or consequential migration decision yet. Own only
+`docs/research/2026-09-28-spatial-led-mapping.md`; no app/card/preview/workboard edits.
+Acceptance: citations, reusable existing pieces, clear order/coordinate distinctions,
+options/tradeoffs, recommendation and unresolved decisions. Return consequential
+uncertainty to primary; do not spawn stronger workers or expand scope.
+
+
+New Layout counting/grouping task — design discussion, primary owner (2026-09-28).
+Owner wants project-wide LED total plus understandable strips/sections, with
+multiple pattern sections optionally sharing one GPIO. Section entry must sum
+upward automatically:150 +75+75 +100+100 =500. Support starting without a total
+and optionally planning a total first. Preserve existing functionality. Primary
+must give interaction feedback/edge cases and agree behavior before implementation;
+do not dispatch a rebuild yet. Proposed invariant: actual total=sum(section counts),
+physical strip/run=sum(its sections); splitting conserves total, adding LEDs changes
+it. Top-down planned total/allocation behavior remains a design decision. This new
+scope does not invalidate frozen cleanup d4c4c592 or block its existing batch.
+
+
+Operating contract: [Manager responsibility](docs/workflows/manager.md).
+Primary owns intake, dependencies, real-preview acceptance, exact-card operation,
+and authorized release completion. Workers report to primary and the designated
+batch consolidator; Adrian does not need to relay their results.
+
+| Outcome | Owner | Current evidence/state | Dependency and next action |
+| --- | --- | --- | --- |
+| Compact Layout and section division | Compact Layout / Divide chats below | Verified locally on Studio2176; save/reload, selection and menu checked | Preserve baseline6df82bd1 |
+| Remove duplicate Layout inspector and clarify actions | Compact Layout chat01a0e50f-312c-7991-bbcb-8dfc6a9e071f | Integrated and actual-screen verified in2178 | New counting/order design remains discussion-only |
+| Patterns workspace and consistent section assignments | Patterns manager01a0e293-6336-7323-b191-4faf5ed6256d | Integrated2178; actual saved4assignments match Layout and survive reload | Small raw saved-mix label followup assigned to Patterns owner |
+| One combined tested candidate | Section chat01a0e503-9606-7231-8b0e-6e84267464db | Verified and active on4173:2824786a/Studio2178 | 2854units +13browser +3cross-screen; exact artifact preserved |
+| Four-section real-card control | Primary | Real reversible4zone trial readback passed; previous41pixel setup restored | Physical appearance/permanent4zone confirmation and post-confirm controls remain unverified |
+| Production release | Primary | Not deployed; this batch is local only | Release workflow only under applicable shipping authorization |
+
+Combined checkpoint source is git archive2824786a45c7af1cf352e4542a4fa19796184d28
+at /tmp/lightweaver-checkpoint-2824786a/source. Includes d4c4c592 and6df82bd1;
+excludes working changes/research/conflict siblings. Consolidator owns one full
+unit/build checkpoint and relevant Layout/Patterns browser checks. Prior green
+core remains applicable to unchanged transport; no release matrix repetition.
+Preview4173 remains2176 and card untouched until validated handoff.
+
+Current delivery chain: Layout cleanup + Patterns/assignment fixes → one combined
+candidate/checkpoint → primary real-screen acceptance → exact-card section trial.
+New independent reports join this register with one owner; shared-file work queues
+behind that owner. Completion means evidence at the requested delivery boundary.
+
+## Patterns workspace design — 2026-09-28 (combined checkpoint passed, Sprint)
+
+Owner-requested preview-toolbar finesse is ready to integrate as local commit
+`4c2240a9ce443efd1c57810c69a145be76e114ee` (Patterns JSX/scoped CSS only).
+Replaced chunky filled mode button and separate controls with slim shared rail,
+subtle amber selected underline, aligned selector/SVG arrows and44px hit areas.
+Three focused checks passed: desktop toolbar, phone toolbar, workspace density;
+bank remains304px@1366×900 and300px@1440×800.730px middle-width alignment also
+verified. Root accepted desktop/tablet/phone captures and refreshed actual user
+preview9735. Existing isolated artifact rebuilt there; no4173/card/deployment.
+Before/after screenshots are `toolbar-{before,after}-{desktop-1440x800,phone-390x844}.png`
+and `toolbar-after-tablet-730x900.png` under this chat's durable lightweaver-patterns
+visualizations folder. Consolidator/primary retain main candidate integration.
+
+Saved-mix label followup is ready for integration in local commit
+`7637ec4f0dafc4412b573b7a8e17727366ead86c` (only Patterns JSX and existing
+Patterns browser test). Tune, Color and preview metadata now resolve the saved
+look's display name rather than the internal combo ID. Focused named-mix
+save/reload/select regression witnessed red then green; manager reviewed exact
+two-file commit. No build,4173 switch or card operation for this followup.
+Accepted2178 core evidence remains valid; consolidator/primary own candidate
+integration and visible acceptance of this small display correction.
+Focused command (from `lightweaver/`): `npx playwright test tests/patterns-v3.spec.ts --project=chromium --workers=1 --grep 'saving a named mix keeps its name in Tune and Color after reload and selection'`.
+Worker recorded red at test line2397 (expected `Named section mix`, got
+`combo-1790551974008-1`) and green1passed/3.5s. No persistent log file remains:
+successful Playwright rerun cleared test-results; command output is in the
+Patterns UI worker conversation. Do not treat this as a saved log artifact.
+
+Combined verification received and logs independently read: exact2824786a,
+Studio2178, includes Patterns and Layout cleanup.2854unit +16browser checks and
+production build passed. Frozen artifact:
+`/tmp/lightweaver-checkpoint-2824786a/source/lightweaver/dist`; manifest/logs in
+its checkpoint parent. Primary still owns actual-preview/card acceptance; no
+deployment or real-device proof is implied by mocked browser checks.
+
+Integration ownership update: Divide/section chat
+`01a0e503-9606-7231-8b0e-6e84267464db` owns the next coherent combined test
+checkpoint and candidate build. Patterns manager sends frozen commits and focused
+evidence there and to primary. Accepted baseline is6df82bd1/Studio2176. Avoid
+parallel broad gates or duplicate builds. Primary retains preview4173 switching,
+live browser drafts, exact-card hardware actions and owner acceptance. Consolidator
+must report exact integrated source/build/artifact and any remaining limitations.
+
+
+UI manager chat `01a0e293-6336-7323-b191-4faf5ed6256d` completed the bounded
+design pass in local commit `2824786a45c7af1cf352e4542a4fa19796184d28`, based
+on `d4c4c5921547bf5526166c479a3fe9ccf5740401`. Exactly six files: Patterns JSX,
+new scoped workspace CSS, preview helper/unit test, existing Patterns browser test,
+new density browser test. Compact bounded section selector, visual drag/keyboard
+ordering, all-section preview by default including Layout handoff, integrated
+status and Save look row, and larger scrolling bank are implemented. Ordering
+is a display preference and leaves wiring/physical ranges unchanged; preserve
+section-target safety56517347.
+
+Focused evidence: 19 Node checks and18 browser checks pass, including four/twelve
+sections,44px preview controls, phone reachability/no horizontal overflow,
+independent section previews, Layout handoff, six section-target cases, and
+two-GPIO Save→reload→install-payload smoke. Draft assignments intentionally differ
+from Layout until Save look; saved Fire/Ocean assignments survived reload. No
+actual card operation occurred. Bank visible height304px at1366×900 and300px
+at1440×800; section list bounded128px. UI manager inspected desktop/phone images
+and actual1280×720 isolated browser. Final production-mode isolated build passed
+at `/tmp/lw-patterns-density-candidate` (index SHA256
+`d28e703797c430c2c317ccafed24b6b969bb8acdfadcfdf4dfc0a9fc31095f66`).
+
+Review fixtures remain at `http://127.0.0.1:9735/fixture-4.html` and
+`http://127.0.0.1:9735/fixture-12.html`; synthetic browser data only. Screenshots:
+`/Users/adrianrasmussen/.codex/visualizations/2026/09/27/01a0e293-6336-7323-b191-4faf5ed6256d/lightweaver-patterns/`.
+Bench4173 and its frozen artifact/browser data remain untouched. Temporary9423
+source test server exited. No deployment or full combined checkpoint here;
+designated consolidator owns integrating this commit and the next single combined
+candidate, then primary owns real-preview acceptance and hardware proof.
+
+## Morning fresh-state correction — 2026-09-28
+
+New owner-requested Layout cleanup (active): compact Layout chat
+01a0e50f-312c-7991-bbcb-8dfc6a9e071f owns removing redundant Color tag/Brightness
+controls and clarifying selected-layer/strip action grouping in DrawModePanel,
+scoped CSS and focused tests. Preserve counts/wiring/section semantics. Its final
+commit joins pending Patterns fixes in section manager’s one combined build;
+primary retains4173/card operations. Earlier compact Layout acceptance remains
+valid for its completed scope; this is a new bounded refinement.
+
+
+Compact Layout DONE locally: final bounded GPIO-label fix6df82bd1 is on4173,
+Studio2176 (firmware unchanged2160). Parent verified full GPIO18 readable at
+actual1069px viewport, all4section rows preserved and only selected child expanded.
+Screenshot /tmp/lightweaver-compact-layout-live-20260928.png. Source design contract
+.impeccable/surfaces/layout-inspector.md linked from DESIGN.md. Frozen build excludes
+ongoing Patterns worker changes. No deployment or hardware write. Remaining separate
+Patterns assignment mismatch handed to Patterns manager before4section hardware trial.
+
+
+Compact Layout integration: commits3785959f (density),56517347 (section-target
+safety),8dd34350 (installer contract tests). Combined frozen candidate now on4173,
+local marker2172/base94f30916; not release proof. Parent saved current draft and
+reloaded:4sections/41 LEDs retained. All4 selected successfully; More actions
+keyboard open/Escape passed. Live screenshot
+/tmp/lightweaver-compact-layout-live-20260928.png. Final narrow parent-GPIO text
+clipping correction assigned back to density owner; keep it isolated from ongoing
+Patterns changes.2852unit tests,6Patterns browser tests and full core passed.
+No card writes for this batch. Previous preview preserved in.dist-density-previous.
+
+
+Controlled restart follow-up: exact-card before/after captured under
+/tmp/lightweaver-restart-{before,after}-20260928.json. Parent POST/api/reboot once;
+boot0cf24239→80f262e4; automatic LAN reconnection ready/rendering byuptime6273ms.
+Revision0/fingerprint8571... repeated, saved pattern list, startupAurora andGPIO18/41
+outputs unchanged; known-good/no candidate. Current stained live pattern returned
+to saved Aurora as expected. No config/firmware writes. This restart did not
+reproduce package loss; earlier replacement source remains unknown. Do not repeat
+restart without new evidence. Runtime diagnostic manager received result.
+
+Separate owner report in Divide chat: changing one section's pattern changes
+whole physical strip. Chat01a0e503-9606-7231-8b0e-6e84267464db now owns targeting
+safety (old fallbackMissingZoneToAll and id-only match against old41-pixel zone).
+Coordinate DrawModePanel boundary with density chat. Parent draft4sections exists
+only in browser until installed; card still has one41-pixel zone. Preserve that
+ distinction when explaining or verifying per-section control.
+
+New owner design issue: compact Layout strip controls, manager chat
+01a0e50f-312c-7991-bbcb-8dfc6a9e071f owns DrawModePanel/related inspector CSS,
+focused tests and persistent surface brief. Single strip must not consume half
+screen: Add strip+LED total side-by-side, compact name/count/pattern row, grouped
+GPIO/settings, one primary Divide flow, secondary Flip/Reflection/specialized
+split actions in compact accessible menu. Keep many strips/layers visible; avoid
+shrinking readability or removing functionality. Preserve recent Divide fix.
+Parent verifies real screen and switches preview only after bounded visual/test proof.
+
+Latest integration: recovery manager committed source recovery + Divide fix locally
+as94f309168c5beb725c5e4cf5cc6499933b031261.2851units,9recovery browser,
+11division plus390px regression,84root focused checks passed; backups and conflict
+siblings retained. Underlying external writer not established. Preview4173 now
+serves validated candidate (baseStudio2171 metadata, includes recovered fixes),
+previous dist preserved at lightweaver/.dist-divide-previous and
+/tmp/lightweaver-preview-before-divide-20260928. Corrected redirects copied too.
+
+Divide issue DONE in actual screen: locked installed41LED project -> four sections
+11/10/10/10, one Undo restored41, Redo restored4, Saved in browser, reload retained4.
+Browser project remains named Bench multi-output — GPIO21 unconnected; this is a
+browser-only draft name, all4sections remainGPIO18. No hardware install performed.
+Screenshot /tmp/lightweaver-divide-four-sections-20260928.png.
+
+New independent diagnostic chat01a0e50d-55bf-7342-9936-57c24e58f3c2 owns
+"Investigate card revision after restart". Fresh card runtime now boot0cf24239,
+revision0/fingerprint8571df60f89580823cf16efc4bf68b6a repeated, same projectId,
+known-good/no candidate,GPIO18/41, Aurora,ready/rendering true,errorCode0.
+Uptime775187ms/resetReason3 places restart before current browser Divide test;
+parent performed no card writes. Cause unestablished; do not claim physical card
+identity metadata unchanged or attribute restart to division. Worker must use
+source/history; parent alone supplies fresh hardware reads. Current runtime remains
+usable by software reports; visible appearance is still unverified.
+
+Heartbeat restored15-minute cadence with current manager intake/ownership guidance.
+Old only-visual-remains passages below are historical and superseded by this state.
+
+Issue intake workflow: Adrian wants to keep reporting problems to this manager chat.
+Create a separate fixing chat for each independent issue, coordinate dependencies,
+receive results, and verify/integrate fixes here. Do not require him to supervise workers.
+Active Divide fix: `01a0e503-9606-7231-8b0e-6e84267464db`
+("Fix Layout Divide into sections") owns DrawModePanel/useLayoutStrips and focused
+regression tests, coordinated with conflict recovery manager below. Actual UI shows
+locked installed41LED GPIO18 project, four-section draft11/10/10/10, disabled controls
+with lock explanation only in tooltip. Fix must make local editing actionable while
+preserving physical install verification, save/reload and coherent Undo. Parent keeps
+live screen/hardware verification; no source edits or hardware changes made here.
+
+Conflict recovery ownership: separate user-requested manager chat
+`01a0e501-4d13-7961-a489-40c282186a9f` (Lightweaver conflict recovery manager)
+now owns provenance, source reconciliation, agents, and local integration.
+This Bench chat retains hardware, browser projects, preview4173 and workboard.
+Do not duplicate that manager's source edits. Cross-chat coordination is owner-authorized.
+Initial read-only finding: canonical cardPushClient.js matches the legacy src-v3 copy
+and lacks exports still imported by current UI; its conflicted sibling preserves the
+recent recovery implementation. Manager received findings and focused acceptance checks.
+Current working saved dist must remain untouched during recovery.
+
+Fresh inspection supersedes the earlier statement that only visual evidence remains.
+The preview process was absent; primary restarted the existing saved dist without
+rebuilding (port4173, exec session55910). Actual browser now shows Setup complete,
+Connected, Installed project matches, GPIO18/41, color order not confirmed,
+Studio2171; firmware2160 signature revision matches. Fresh LAN status still has
+boot7333ccda, original revision1/fingerprint, Aurora, commandReady/nativeRendering
+true, known-good and no candidate. No card mutation was performed.
+
+Source reconciliation is now an independent blocker: current Git status contains
+368 entries (200 tracked changes,168 untracked), including143 filenames containing
+`(conflicted)`. Cause and timing are not established. The earlier2851-unit/nine-browser
+checkpoint does NOT certify this changed source tree. Preserve all variants and the
+saved dist; reconcile source against the tested work before rebuilding or committing.
+Owner is present and requested a current assessment. Do not resume passive monitoring
+under the older only-visual-remains instruction while this concrete blocker exists.
+
+## Consolidated goal — installation through reliable playback (active, Bench)
+
+Owner says physical wiring is known-good from repeated prior use. Investigate
+software regressions first; do not keep retesting wiring or asking questions.
+Working aspects may date back weeks or months and different Git branches;
+compare historical implementations per subsystem rather than assuming one old
+revision was entirely correct. Historical comparisons are complete: June direct
+reboot predates July staged safety; August reconstruction renamed physical IDs
+that the later length-only exemption correctly preserves. Those targeted fixes
+are integrated; no wholesale replacement is needed. Existing Layout Divide and
+Patterns saved looks support the later three-section workflow.
+
+Current status: machine checks are complete for the tested journeys. Physical
+playback and color observation remain pending. No workers are active and no
+reproduced software blocker remains in those journeys. Do not start new audits
+or repeat hardware trials while the only missing evidence is visual. Keep the
+single preview on4173 (session83242). The existing heartbeat is now hourly;
+unchanged checks stay compact and quiet, with no workers or repeated tests.
+
+Final exact card: lw-b0fe81f61b44, firmware1.1.47/build2160,
+boot-7333ccda-b0fe81f61b44, known-good/no candidate, GPIO18/41, revision1,
+fingerprint f2f955192b08ce67e1eef2ed9482bedff2f955192b08ce67e1eef2ed9482bedf.
+It remains on the intended Wi-Fi with commandReady/nativeRendering true and
+Aurora current. Normal Card overview shows Setup complete / Connected / Installed
+project matches. Explicit “Use this card’s project” preserved the test copy's
+browser-only name, as designed; the card title, identity, output and configuration
+are the original GPIO18/41. No card write occurred during that adoption. The saved
+three-section draft, single-strip backup, and labeled unconnected-GPIO21 test copy
+are retained in Projects.
+
+Final software proof: 2,851 unit tests, build, and nine combined intercepted
+browser journeys passed. An additional saved-look update/export regression passed
+without a production change. Real-card machine checks passed for three sections,
+two GPIOs, explicit rollback, timed rollback after browser interruption, exact
+candidate resume, Wi-Fi reconnection, named-look/control persistence, and two
+read-only import/export cycles using actual card data. No unseen physical
+confirmation was clicked. The native goal is not marked complete; there are zero
+fully owner-observed physical passes. Once observation is available, resume the
+saved three-section candidate normally and check its appearance before confirming.
+
+Credit assessment: ordinary usage is allowed. The most recent account reading
+was53% weekly quota used (47% remaining), not a dollar or per-agent estimate. Sol
+workers were reused for concrete fixes. A stronger persistence diagnosis could
+not start because of the agent-thread limit; an existing Sol worker subsequently
+pinpointed and fixed the cause. No parent model change is claimed.
+
+Latest communication instruction: Adrian is unavailable and explicitly says
+NEVER ASK QUESTIONS. Do not send further input/permission/observation questions
+for this overnight work. Continue authorized machine-verifiable actions; record
+unobserved physical gates as pending without guessing or clicking false visual
+confirmations. A real unavoidable permission restriction must be reported honestly,
+not bypassed. Owner's actual observation: "the first four lights are flashing
+white" during the GPIO18 beacon test. This proves a physical response on that
+strip, not color calibration, all41 pixels, multiple outputs or saved playback.
+
+Latest owner clarification (2026-09-27 overnight): the only physically connected
+strip is GPIO18, 41 lights. Prioritize working functionality on that strip first:
+save, run, edit controls, persistence and recovery. Multiple configured GPIOs
+should work without attached strips and can be verified by software/readback;
+do not require or claim observed light output on nonexistent strips. This
+supersedes the earlier requirement for multiple physically connected strips.
+After the primary repair loop works, attempt the later overnight loop: split the
+41-light strip into three sections (14/14/13 unless a layout requires otherwise),
+apply different patterns to each section, save/load collections through the
+layout/pattern workflow, and exercise three distinct pattern arrangements.
+Keep the primary journey first; report later-loop results separately.
+
+Manage Lightweaver through the entire real-card journey: identify the exact
+card, verify/install firmware as needed, join the intended Wi-Fi, continue
+setup on the same page, discover and configure multiple real GPIO outputs,
+save the project and patterns onto the card, observe playback, and successfully
+change patterns and controls. Prioritize one complete real-card pass before
+broadening the matrix. Verify wiring, saved patterns and settings survive a
+browser reload and a controlled software restart, including automatic return
+to the intended Wi-Fi. A brief restart/reconnection is expected; never change
+the Mac's network or discard saved card credentials. Fix every reproduced error or blocking red
+message at its cause, retain honest safety/recovery messages, and retest the
+failed step plus its downstream journey. Do not claim completion from simulated
+tests alone or promise that all possible future errors are eliminated.
+
+After the first complete pass, achieve at least three successful journey passes
+in total across relevant states: initial blank/current-firmware setup, configured
+card with saved project/patterns, and reload/reconnect or interrupted-session
+recovery. Preserve each state's intended contents. Use simulation for destructive
+or unavailable states (old firmware, failed transfers, wrong card); label that
+evidence separately. A failed pass returns to diagnosis, focused fix, regression,
+and another full pass for that state. Record each pass, card/build, starting state,
+actions, persistence/readback, real light observations, and unresolved limits.
+
+Primary owns integration and real-card operation. Delegate independent bounded
+fixes to workhorse agents; use deeper analysis for firmware, persistence,
+cross-boundary authority and unresolved failures. Continue overnight through the
+existing heartbeat. Do not ask questions while the owner is unavailable; record unobserved physical
+gates and continue independent work. Preserve signed firmware,
+exact-card targeting, Wi-Fi and project contents. Never change Mac Wi-Fi, require
+login or physical BOOT/RESET, or reflash for browser-only changes. Do not store
+credentials. This scoped Bench journey is not an exhaustive Prove or release.
+
+Completion requires no unresolved reproduced journey blockers, real GPIO18/41
+playback/control proof, multi-output software/readback proof, persistence proof, three successful state
+passes, and the coherent software checkpoint. Current completed physical passes:
+0. Native goal retains an older blocked objective/status; its available tool can
+neither edit the objective nor resume it. This section and the existing heartbeat
+are the authoritative expanded working goal; do not falsely complete the native
+goal to replace it.
+
+### Persistent model and credit policy for this goal
+
+Adrian explicitly requested cost-aware model selection. Apply this on every
+continuation and include it in worker handoffs. Use the least expensive sufficient
+model and effort; model capability must cover its tools and evidence requirements.
+Adrian also explicitly authorizes varying effort by need. Choose effort separately
+from model: low for clear bounded tasks, medium for interacting changes, high for
+specific difficult reasoning. Use x-high or above only if a recorded technical
+reason shows high is insufficient; never use maximum effort by default. Reassess
+after new evidence, not merely because a stronger option is available.
+
+- GPT-6 Luna, low effort: bounded read-only checks, extracting evidence, simple
+  mechanical edits and focused tests with directly verifiable results.
+- GPT-6 Sol, medium effort: default for fixes, debugging, integration and ordinary
+  management. Use low effort for narrow work; high only with a concrete reason.
+- GPT-6 Astra: a short diagnostic/adjudication task only when conflicting
+  cross-system evidence or consequential firmware/persistence/authority reasoning
+  is likely to defeat Sol, or after two evidence-based unsuccessful Sol fixes.
+  State the specific judgment risk before escalation. Medium is the normal
+  ceiling; high needs a recorded reason. Hand the resulting bounded fix back to
+  Sol. Do not use Astra for routine testing, polling or status reports.
+
+These are routing instructions, not a claim that the current chat's model has
+changed. Set model/effort explicitly on supported worker calls; do not replace
+this thread or create another automation merely to change its model. Do not
+restart productive workers solely to lower their model. No numeric credit/token
+budget has been supplied and this policy cannot enforce an account spending cap.
+
+Use up to three independent workers whenever useful work can proceed safely in
+parallel; there is no preference for serial work when concurrency materially
+improves completion time or quality. Dispatch only for a concrete
+non-overlapping deliverable whose value exceeds the added context cost. Reuse an
+appropriate worker with a compact evidence handoff. Parent is the sole hardware
+operator and integrator. No duplicate diagnosis, idle agent polling, speculative
+extensions or repeated broad audits. Each attempt records hypothesis, changed
+evidence and result. After two failed fixes for the same cause, stop repeating
+that approach and commission one deeper diagnosis. If that still cannot progress,
+record the exact external blocker and continue independent useful work; no
+unbounded retry cycle.
+
+Adrian explicitly authorizes stronger models, suitable effort levels and parallel
+managed worktrees for better overnight results. Cost awareness must not force an
+underpowered model or create avoidable serial delays. Choose a stronger model
+up front when its specific judgment advantage justifies the cost; two failed
+attempts are an escalation trigger, not a prerequisite for warranted expertise.
+Owner clarification: reserve stronger models for intelligence work—diagnosis,
+reasoning, planning and difficult decisions. Their deliverable is a compact
+evidence-backed plan with root cause, file boundaries, constraints and acceptance
+checks. Hand implementation and routine testing to the least expensive capable
+worker (Luna for mechanical changes, Sol for substantive fixes). Do not keep the
+strong model doing implementation or routine supervision after the handoff.
+Return to it only for a new consequential ambiguity or evidence-based failed
+approach. A high-effort implementation model is justified by the implementation's
+specific difficulty, not simply by having received a plan from a stronger model.
+
+Use isolated worktrees when independent changes need separate branches or stable
+source snapshots. First inspect attached worktrees and reuse a suitable free one;
+create another through the managed worktree tool only for a concrete independent
+deliverable. Assign one owner, explicit file boundaries, base revision, dependencies
+and verification criteria. A new worktree does not include uncommitted fixes:
+account for required dependencies before dispatch and never test a stale base as
+the integrated result. Primary integrates finished changes and runs the combined
+checkpoint. Separate workspace panels are allowed; do not create new user-owned
+chats merely for subtasks. Keep one stable hardware preview on4173 and one hardware
+operator. Parallel worktrees may run isolated non-hardware checks; additional
+preview servers must not compete with the canonical browser or real-card session.
+Do not create worktrees or workers simply to fill capacity. Preserve active work;
+retire eligible finished worktrees through the managed archive tool when appropriate.
+
+Run focused regressions while fixing. Run one full relevant checkpoint for the
+coherent batch, then repeat only checks invalidated by new changes. Reuse prior
+valid evidence. Every 20 minutes compare verified progress with elapsed work and
+available usage information; narrow/reorganize low-yield work. Do not interpret
+account quota as a dollar balance or invent per-agent costs. An unchanged blocked
+heartbeat does only a compact state check, starts no workers and reruns no tests.
+When a persisted gate lacks indispensable user input, use a slower hourly heartbeat
+while preserving the open goal; restore the normal interval when work can resume.
+
+### Morning deliverable
+
+Latest exact card state is recorded below (boot-a6132e04, fingerprint f2f955…);
+earlier restart/control checkpoints remain historical evidence. Firmware2160,
+local Studio base2171 plus uncommitted fixes. No flash or deployment. Visible
+illumination remains unobserved beyond the owner's earlier four-white beacon.
+
+Count fixes passed actual wire-shape tests and real GPIO18/41 save/readback after
+reboot. Prior candidates40e3e20e2a31ef15 and6bfcf16a0ba95239 were rolled back once;
+recovery evidence remains below/in Bench record. Old browser Untitled Project
+remains in Projects. Export attempt was not verified. A new project was created
+and adopted card wiring; manual-count form disappeared before submission.
+
+Post-install false error recovered automatically to Patterns/Installed on card
+before any Retry or reload. Exact triggering exception remains unknown; generic
+catch was demonstrably misleading. Integrated focused correction separates exact
+readback from local publication errors and makes inconclusive Retry read-only.
+29 focused unit +2 simulated browser checks pass, checkpoint2838 units/buildpass.
+Logs /tmp/lightweaver-final-checkpoint.log and /tmp/lightweaver-card-push-browser.log.
+
+Real controls: clicked Aurora in Patterns, UI Applied by Lightweaver runtime;
+brightness0.06 and0.30 accepted with independent zones readback. Project saved in
+browser library and reloaded retaining41 and0.30 working-copy value. Controlled
+software restart (fresh exact identity + no-candidate preflight) returned new boot
+d7ed8e2b automatically, same revision/fingerprint/41/Aurora/readiness/rendering.
+Transient brightness returned to installed1.0 as expected because edited look had
+not yet been installed. Browser library preserves Aurora — steady30% for install.
+
+Current card: lw-b0fe81f61b44, firmware 1.1.47/build 2160, LAN 192.168.18.70.
+Last verified boot: boot-7333ccda-b0fe81f61b44. Revision 1, fingerprint
+f2f955192b08ce67e1eef2ed9482bedff2f955192b08ce67e1eef2ed9482bedf.
+Known-good, no candidate, output GPIO18/41, rendering and readiness true. Saved
+patterns include Aurora and Aurora — steady 30%, with the latter's zone at 0.30.
+
+Completed real checks: initial regular project install, live Aurora/brightness
+controls, browser project save/reload, controlled software restart and automatic
+Wi-Fi return, edited named-look installation through the repaired Patterns button.
+The correct project and named look now survive reload. Card Home reports Setup
+complete / Installed project matches / Connected. No visual playback proof was
+invented; the owner's only positive observation remains the four-white beacon.
+
+Three-section later loop: Layout was unlocked and divided into 14/14/13 on GPIO18.
+Saved three named arrangements and added them to the playlist: Three colors
+(Fire/Ocean/Plasma), Aurora opening (Aurora/Ocean/Plasma), Warm middle
+(Aurora/Fire/Plasma). Copy setup confirms their three zones and unchanged total 41.
+Current library record holds this draft; GPIO 18 — 41 lights copy preserves the
+prior saved single-strip project. The old Untitled Project is also retained.
+
+Final later-loop and recovery evidence:
+- Corrected three-section candidate6bcc4f32d2569bc9, boot-ece19b81, ran14/14/13
+  Fire/Ocean/Plasma onGPIO18. Three colors, Aurora opening, and Warm middle all
+  read back correctly. Explicit rollback restored the original configuration.
+- Two-GPIO candidate020b363a106aa928, boot93555ff9, initializedGPIO18/28 and
+  unconnectedGPIO21/13 with native rendering,83FPS and three armed zones. Its
+  90-second expiry restored the original41. Reload exposed missing candidate
+  identity in Studio, which was then fixed.
+- The corrected repeat candidate1744ccbfdf7a08a5 used fingerprint
+  ea5275d247fe7610e17e3c26dd9d3098 repeated and wiringRevision1/digest
+  35009cc3c2fc1090824e2ddeb718ec474966f7729adfad2ab3a8e706d1bf9505.
+  A real browser reload resumed that exact test without resending. Expiry returned
+  the original known-good state, boot7333ccda, with no candidate. Studio correctly
+  reported that the test expired and the working setup was restored.
+- Two read-only import/export cycles using actual card data preserved the original
+  Aurora30 zone brightness0.3 and exact pattern IDs. The older orphaned look in
+  the saved three-section draft was updated through visible controls to30%, saved,
+  reloaded and reselected. Clipboard copy was blocked; stale clipboard contents
+  were discarded as evidence. A download regression confirmed the saved value and
+  preservation of other mixes, so no unnecessary product change was made.
+- Explicit different-project installation now requires its visible replacement
+  choice, stages once, preserves known-good, and leaves activation manual. The
+  real two-GPIO test used this path. Passive Card Home cannot replace a saved design.
+
+Final checkpoint logs: /tmp/lightweaver-probation-final-checkpoint.log and
+/tmp/lightweaver-probation-final-browser.log (2851 units/build and9 browser cases).
+Focused evidence: /tmp/lw-card-adoption-push-focused.log,
+/tmp/lw-probation-node-green.log, /tmp/lw-probation-browser.log. Firmware contracts
+passed earlier and remain unchanged. No firmware compile, flash, release or
+production deployment was performed. Local Studio is base2171 with uncommitted
+fixes; firmware is2160. This is neither shipped nor fully visually proved.
+
+Recent integrated fixes: explicit same-project install after edit/reload, read-only
+post-install Retry, same-ID edited Card Home save access, per-project repository
+head tracking, safe active-library fallback over an older recovery copy, and
+revision-one counted projects no longer misclassified as temporary discovery.
+The actual cause of the earlier unreadable autosave primary remains unproven;
+raw failures are quarantined, invalid new snapshots refused, and fallback copies
+preserved until intentional edit/save. Actual reload now keeps the correct project;
+no newer repository conflict warning appeared after the fixes.
+
+Latest coherent checkpoint: 2,845 units and build, plus four simulated browser
+journeys (edited install, Card Home save, blank J01, three-section reload) passed.
+Logs: /tmp/lightweaver-edit-recovery-checkpoint.log and
+/tmp/lightweaver-edit-recovery-browser.log. Subsequent bench-classifier fix passed
+30 units and one browser case; installation/save/reload exact-match regression
+also passed without a second POST. One final combined checkpoint remains after
+the structural-install handoff fix. Latest usage check: 50% of weekly account
+window used, ordinary usage allowed; this is not a dollar or per-agent cost.
+
+Latest count checkpoint:2837/2837 units, build and2/2 focused setup-count browser
+checks passed (/tmp/setup-flow-gaps-count-final-*). Color truth fix subsequently
+integrated: configured GRB no longer implies observed color confirmation;
+2/2 focused browser tests passed, including genuine simulated two-color proof.
+One combined checkpoint remains after post-install confirmation fix.
+Three-section browser-local regression passed: GPIO18/41 divided14/14/13 and
+three independent pattern arrangements survive reload. Log
+/tmp/one-strip-three-section-integrated. This is simulated/local evidence only;
+real card collections and multi-output readback remain outstanding.
+
+Latest verified overnight checkpoint: 7/7 changed commissioning browser cases,
+2,827/2,827 units and build passed. Logs: `/tmp/setup-flow-gaps-final-focused`,
+`/tmp/setup-flow-gaps-final-unit.log`, `/tmp/setup-flow-gaps-final-build.log`.
+Physical recovery: exact activation40e3e20e2a31ef15 rolled back once, API ok;
+same card/build2160 automatically rejoined192.168.18.70 with new boot
+boot-0c4f263d-b0fe81f61b44. Wiring state factory, candidate none/hasCandidatefalse.
+No activation or reflash. Saved browser project remains present. Current next
+blocker was the activation-bearing inspect journal surviving exact rollback.
+Fixed with fresh exact status AND wiring factory/no-candidate proof before clearing
+the inspect journal, retaining staged/wrong-card guards. Real reload now opens
+strip discovery. Ladder wording is Finish checking this card. GPIO18 beacon
+command accepted through the real UI; owner reported first four lights flashing
+white. Continued Yes, count this strip on that evidence; temporary setup is now
+being prepared. No color/count/probation confirmation has been invented. Final
+checkpoint after the rollback fix:2,827 units, build and simulated two-output
+journey pass. Logs `/tmp/setup-flow-gaps-rollback-final-unit.log`,
+`/tmp/setup-flow-gaps-rollback-final-build.log`,
+`/tmp/setup-flow-gaps-multi-output-final`. Do not repeat them without invalidation.
+
+Leave one stable preview and the card in the last verified usable configuration.
+Preserve recovery data for any incomplete operation. Provide one concise handoff:
+what works, exact Studio/firmware builds, the three pass results, real versus
+simulated proof, remaining physical observations/blockers and one resumption step.
+Success means no unresolved errors in the tested journeys and verified recovery
+from the tested interruptions; it does not mean every possible future error is
+impossible. If human observation remains unavailable overnight, finish all safe
+independent checks and label the goal incomplete rather than inventing light proof.
+Notify only for meaningful progress, completion, new failure or required input.
+
+## Installation repair loop — 2026-09-27 (active Bench continuation)
+
+Adrian requested a managed repair-and-retest goal until the installation journey
+works from start to finish. Active goal tracks this outcome; software simulation
+and physical card/light evidence remain distinct. Primary integrates and owns
+the real-card session. App work owns the continuous installer-to-playback test
+and stale Installed status; transport work owns bounded ROM connection recovery.
+Persistence work investigates the actual recovered-project content-hash save
+error without modifying or deleting browser data.
+Existing local fixes and the single preview on 4173 remain in place.
+No firmware release, repeat flash, Mac Wi-Fi change or exhaustive Prove run.
+Owner clarified completion: exercise multiple real GPIO outputs; save a pattern
+on the card and observe it running; change the pattern/controls successfully;
+resolve every reproduced error across that journey. Simulated passes alone
+cannot complete this goal. Primary handles deeper diagnosis/integration;
+bounded fixes go to workhorse agents with non-overlapping file ownership.
+
+Reproduced and locally repaired in this loop: the verified Installed label
+retained an old checking state; project-envelope verification hashed migrated
+contents instead of authenticated saved contents. The latter rejected a fresh
+empty-layout envelope and older intact saves. Focused repository checks pass
+(34); altered content still fails verification. Actual browser storage is
+untouched. ROM connection, reset and release now have deadlines with one shared
+port guard across ROM and Wi-Fi; late cleanup cannot interrupt another owner.
+Focused core (19), USB Wi-Fi (30), and flash connection checks pass.
+The continuous test reproduced and fixed two further dead ends. The installer
+now exposes explicit pairing for the USB-selected card at its verified station
+address. Fresh status and every retry must still match the target card/build.
+After strip discovery, the bridge now permits one final config replacement of
+the exact paired temporary bench project. Safe mode, recovery, unsupported or
+incomplete evidence, other cards and duplicate writes remain blocked. General
+commands are not widened; bridge refusals retain their real cause in the UI.
+
+The full simulated HTTPS journey passes in one browser/card session: preserving
+USB update, Wi-Fi join, local-page pairing, light discovery, final project
+installation and Aurora playback with UI acknowledgement. Primary inspected
+the pairing and final playback screens. Focused authority/pairing/push checks
+pass (70); final checkpoint units pass (2,822), production build passes. All 89
+combined installer/setup/playback browser checks pass. These are local,
+uncommitted changes, not deployed; no physical light proof is claimed.
+
+Integrated rerun exposed a manual-USB/passive-reconnect error race (88/89 pass):
+a wrong-card result stayed blocked but its specific explanation was replaced by
+the background timeout. Manual checks now invalidate older recovery callbacks
+and successful checks trigger a fresh recovery attempt. Final focused checks
+pass (3), followed by the complete 89-case integrated run. A stale Vite singleton mismatch in an
+earlier run cleared after restarting the same preview; affected checks passed
+unchanged. Native Codex app control is unavailable; exact USB chooser selection
+remains the next required owner step on the current local page.
+
+Final verification logs: `/tmp/install-repair-loop-verified-browser.log`,
+`/tmp/install-repair-loop-verified-units.log`, and
+`/tmp/install-repair-loop-verified-build.log`. Software batch is verified;
+the goal remains unfinished pending real USB selection, Wi-Fi/LAN
+continuation and the owner's observed light output. Three consecutive goal
+turns encountered the same native-chooser blocker; current browser inspection
+still shows Not connected and Find connected card. Goal marked blocked until
+Adrian selects the exact USB card. No additional independent software work or
+running verification remained for that batch.
+
+Owner explicitly requested autonomous continuation. The USB-selection blocker
+was overcome: Studio now reuses exactly one already-authorized USB port, and
+keyboard activation through the supported browser tool physically identified
+lw-b0fe81f61b44 (ESP32-S3, 16 MB) without a chooser. Pointer actions in the
+current in-app browser had no effect even on ordinary details controls;
+keyboard activation works. No permission was bypassed or firmware written.
+The real firmware read then stopped after 640 KB/10% with a read-error notice.
+The repaired runtime handoff physically verified signed build2160 and opened
+same-page Wi-Fi setup without flashing. Owner supplied network details directly
+for setup; password is not saved in repository, logs or memory. The card joined
+the intended network. USB address and both live LAN APIs agree on
+192.168.18.70, lw-b0fe81f61b44, source8c45aa2a2bf97acdfd73cc318d86d71fc51bb6ac,
+boot-b848da07-b0fe81f61b44. Latest checkpoint: 2,826 units/build passed; three
+current-firmware/reload browser cases and 111 related unit checks passed.
+
+Next reproduced blocker: the inspect-card flow wrongly offered Restore saved
+project on this factory-empty card. One restore action returned an inconclusive
+notice. Active status remains factory/default, same boot, no active project or
+outputs, but this DOES NOT prove no write: wiring-status shows a STAGED candidate,
+activationId40e3e20e2a31ef15, no known-good, not booted/activated. Its recovered
+browser layout is GPIO16/3000 pixels/WS2815; wiringRevision0 and empty wiringDigest
+fail candidate evidence validation. Do not activate it, clear its recovery claim,
+or assume discovery is safe. Primary is establishing exact staged rollback
+semantics; app worker guards handoff using fresh wiring status and exposes recovery.
+The separate simulated multiple-output journey passed, including two GPIOs,
+pattern save/play, brightness, named look/playlist install and readback. Read-only live
+beacon API confirms available:true, eight pixels per port, and supported pins
+15/16/17/18/21/38/40/41/42/47/48. Physical lights remain unverified. Owner confirms
+a powered visible strip and blank-card setup; number of wired outputs is asked.
+Overnight thread heartbeat `finish-lightweaver-installation` is active every
+15 minutes and reads this board. Mac AC settings already disable sleep.
+
+## Install-through-setup gap check — 2026-09-27 (done locally; hardware continuation pending, Sprint)
+
+Three additional gaps reproduced and fixed:
+- A never-settling native USB open bypassed its timeout. Setup now returns a
+  recoverable error on deadline and releases the port if it opens late.
+- A preserving USB Wi-Fi join attempted a card-page popup outside a user click.
+  Studio now shows an explicit, retryable action at the USB-verified station
+  address; new inspection/recovery clears a stale address. Exact network
+  revalidation still gates completion and controls.
+- An updated factory blank card continued to Patterns. Exact blank readiness
+  now routes “Set up lights” to Setup; configured-card return routes remain.
+
+Final proof: 62 integrated fresh/preserving installer browser cases, 23 setup,
+LED-count and journey-continuity cases, and the continuous J01 blank-card-to-
+saved-playback case passed (86 distinct browser cases). All 2,805 units and
+final production build passed. Focused regressions witnessed red/green; mobile
+card-page retry and desktop setup destination visually inspected. The new
+card-page button uses the existing legible primary styling.
+
+Actual card build2160 completed a same-boot USB scan in7.1 seconds (two networks);
+no credentials sent. Browser-only local/uncommitted changes, not deployed.
+One stable preview on4173; no firmware rebuild/flash or Mac network change.
+Real browser USB selection, Wi-Fi join and physical lights remain unproven.
+The fresh-install card-page fallback retains its existing USB form/recovery.
+Nonblocking visual follow-up: Installed can still say “Checking restarted card”
+beside a Reconnected result; the verified setup action is available.
+
+Next physical action remains in the existing Bench record: select the exact
+card through Studio's USB chooser, then continue its normal Wi-Fi form.
+
+## Installer status design — 2026-09-27 (done locally, Sprint)
+
+Installer messages now belong to the relevant UI: signed update verification
+sits in the New firmware row; uncertain USB results and the exact-card check
+button share the Installed row. Removed the redundant installer eyebrow and
+duplicate USB warning. Release errors/retries remain with release information
+or USB discovery; the remembered-card check is one contained state.
+
+Focused regression witnessed red then green. Six focused update/recovery tests
+passed, followed by three final checks covering recovery, normal Wi-Fi update,
+and the USB-first path. Desktop/mobile fixture screens and live local checking
+state inspected; no overflow. Checkpoint: all 2,803 units passed; final production
+build passed. Design detector and diff whitespace checks clean. Browser-only;
+no flash, signing, merge, or deployment. Existing preview remains on port 4173.
+Visual feedback: owner can review the integrated recovery layout; hardware
+connection proof remains with the separate Bench session below.
+
+## Physical card connection manager — 2026-09-27 (local fix verified; browser USB confirmation pending, Bench)
+
+This manager chat owns the local Mac connection follow-up. Started from clean
+main `d2d98264`; recognition fix is on `codex/usb-build-1939-recognition`.
+Existing preview PID 5310 uses root `lightweaver/` on port 4173. No second
+preview, flash, erase, or Mac network change. Public HTTPS response confirms
+internet.
+
+Fresh USB descriptor and ROM inspection agree on MAC `44:1b:f6:81:fe:b0`,
+card `lw-b0fe81f61b44`, ESP32-S3 with 8 MB PSRAM. Partition table matches the
+signed preserving layout; OTA selector now proves stable app0, sequence 1.
+Boot reports compiled defaults, no saved Wi-Fi/project and zero pixels.
+Stored image 1939 predates USB Wi-Fi provisioning; signed target remains 2160.
+Current signed manifest, update ticket and application verify successfully.
+
+Normal in-app browser Find connected card click shows no chooser or screen
+change. Native Chrome control remains outside the previously allowed boundary;
+no workaround permission grant was attempted. User chooser observation is
+pending. Full physical app0 SHA now matches signed1939 exactly. Studio lacked
+recognition for that signed image; a focused regression witnessed red, and the
+fix plus all 20 reader tests pass, including corrupted-image and app1 refusal.
+Updated reader correctly identifies the actual card dump as1939/app0. Checkpoint
+passes all2,803 units and the production build. Source commit `813092cf` is
+pushed in draft [PR353](https://github.com/theyemingzhu/LED-Programming/pull/353).
+Not shipped: manual Tests run36314178855 has passed source/cloud/production,
+but its conservative missing-base classification selects a firmware-release
+version gate and fails because1.1.47 is already signed. Actual base-to-head
+classification says `firmwareBundleOnly:true`; no firmware bump is warranted.
+Browser smoke and software launch run36314177126 are still running at handoff.
+No merge/deploy. This does not prove browser USB or LAN operation.
+See [the Bench record](docs/bench-sessions/2026-09-27-lw-b0fe81f61b44-usb-connection.md).
+
+Post-install follow-up: Adrian completed the preserving update. Fresh USB runtime
+hello independently verifies exact card `lw-b0fe81f61b44`, firmware 1.1.47/build
+2160, boot `boot-5deda35f-b0fe81f61b44`, USB Wi-Fi capability and fresh-install
+eligibility. Earlier 1939/no-write observations above are historical. Studio
+still reports an unknown transfer result and omits same-page Wi-Fi setup.
+Fixed locally: an uncertain USB result now reuses the selected device, checks
+its MAC, restarts through software, and verifies the exact target/new boot before
+opening same-page Wi-Fi setup. Configured cards instead get the card-page next
+step. Mismatch/timeout remains blocked with the underlying failure detail. No
+repeat write. Preserved the separate installer design changes.
+
+Regression witnessed red on the missing Wi-Fi form, then green. All 45 existing
+preserving-update browser cases plus the configured-card automatic recovery
+case pass; all 2,803 units, production build and flash-connection checks pass.
+Actual local screen inspected; its USB-check clicks still show no chooser or
+state change through automation. Browser USB confirmation is not claimed.
+No repeat flash, Mac network change, login or physical-button workaround.
+Changes are local/uncommitted; not deployed.
+
+Next: Adrian completes the visible “Check running firmware over USB” chooser
+for this exact card, then verify Studio opens Wi-Fi setup. LAN/light proof
+remains open.
+
 ## Session consolidation — 2026-09-27 (done; Bench follow-up open)
 
 The current **Fix Find my card detection** chat owns remaining LED/Lightweaver

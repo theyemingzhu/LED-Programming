@@ -34,8 +34,19 @@ const signed2070 = {
   path: '../../public/firmware/releases/1.1.42/64b1f5da6725d472d54e59cfa8352c8b0bf864d9/lightweaver-controller-esp32s3-factory.bin',
 };
 
+const signed1939 = {
+  version: '1.1.39',
+  buildId: '92bfd6ab1e287b2bd818c5ce79062dc4f12f2a2b',
+  buildNumber: 1939,
+  path: '../../public/firmware/releases/1.1.39/92bfd6ab1e287b2bd818c5ce79062dc4f12f2a2b/lightweaver-controller-esp32s3-factory.bin',
+};
+
 async function signed2070Flash() {
   return new Uint8Array(await readFile(new URL(signed2070.path, import.meta.url)));
+}
+
+async function signed1939Flash() {
+  return new Uint8Array(await readFile(new URL(signed1939.path, import.meta.url)));
 }
 
 function flashReader(flash, { onRead } = {}) {
@@ -92,6 +103,38 @@ test('recognizes exact signed build 2070 from its complete application bytes on 
     || (address === 0x8000 && size === 0x1000)
     || (address === 0xe000 && size === 0x2000)), 'reads stay in app0, partition table, and OTA selector');
   assert.ok(progress.length > 1, 'the full-image verification remains visible');
+});
+
+test('recognizes exact signed build 1939 from its complete application bytes on USB', async () => {
+  const flash = await signed1939Flash();
+  const expected = {
+    firmwareVersion: signed1939.version,
+    buildId: signed1939.buildId,
+    buildNumber: signed1939.buildNumber,
+    activeAppOffset: 0x10000,
+    otaSequence: 1,
+    otaState: 0xffffffff,
+    otaDataSha256: createHash('sha256').update(flash.subarray(0xe000, 0x10000)).digest('hex'),
+    source: 'usb-flash',
+  };
+  assert.equal(parseLightweaverFirmwareIdentity(flash), null, 'legacy string envelope must not guess this build');
+  assert.deepEqual(await readLightweaverFirmwareIdentity(flashReader(flash)), expected);
+});
+
+test('signed build 1939 rejects altered app bytes and keeps app1 selection informational', async () => {
+  const signedFlash = await signed1939Flash();
+  const alteredImage = signedFlash.slice();
+  alteredImage[LIGHTWEAVER_APP_PARTITION_OFFSET + 0x180000] ^= 1;
+  assert.equal(await readLightweaverFirmwareIdentity(flashReader(alteredImage)), null);
+
+  const app1Selected = signedFlash.slice();
+  app1Selected.set([2, 0, 0, 0], 0xf000);
+  app1Selected.set([2, 0, 0, 0], 0xf000 + 24);
+  app1Selected.set([0x74, 0x37, 0xf6, 0x55], 0xf000 + 28);
+  const identity = await readLightweaverFirmwareIdentity(flashReader(app1Selected));
+  assert.equal(identity?.buildNumber, signed1939.buildNumber);
+  assert.equal(identity?.source, 'usb-app0-image');
+  assert.equal(identity?.activeAppOffset, 0x650000);
 });
 
 test('signed app0 bytes with app1 selected remain informational, never installed firmware', async () => {

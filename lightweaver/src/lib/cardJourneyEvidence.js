@@ -276,6 +276,8 @@ export function zonesFromZonesEnvelope(envelope) {
     patternId: text(zone?.patternId),
     brightness: Number.isFinite(Number(zone?.brightness)) ? Number(zone.brightness) : 1,
     blackout: zone?.blackout === true,
+    ranges: Object.freeze((Array.isArray(zone?.ranges) ? zone.ranges : []).slice(0, 64)
+      .map(range => Object.freeze({ start: range?.start, count: range?.count }))),
   })).filter(zone => zone.id));
 }
 

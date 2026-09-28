@@ -1,4 +1,5 @@
 import { normalizeWifiHandoffHost } from './cardWifiHandoff.js';
+import { blockSerialPort, quarantineSerialPort, serialPortCleanupState } from './flashConnection.js';
 
 const PROTOCOL = 'lightweaver-usb-wifi';
 const MESSAGES = Object.freeze({
@@ -16,6 +17,8 @@ const MESSAGES = Object.freeze({
   unsupported: 'This firmware does not support Wi-Fi setup over USB. Use the card setup page.',
   timeout: 'The card did not answer over USB in time. Keep the cable connected and retry, or use the card setup page.',
   disconnected: 'USB disconnected. Reconnect the same card and retry, or use the card setup page.',
+  port_releasing: 'USB is finishing an earlier card operation. Wait a moment and retry. If it stays busy, close and reopen the Studio tab, then select the exact card again.',
+  port_unreleased: 'USB could not release this card. Close and reopen the Studio tab, then select the exact card again.',
 });
 const JOIN_STAGES = new Set(['association', 'ip', 'station', 'link']);
 const CARD_NOTES = new Set([
@@ -50,14 +53,35 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
   helloReadyTimeoutMs = 0 } = {}) {
   if (!port?.open || !expected?.cardId || !expected?.buildId || !expected?.firmwareVersion
     || !Number.isSafeInteger(expected?.buildNumber)) throw failure('identity_mismatch');
+  const cleanupState = serialPortCleanupState(port);
+  if (cleanupState) throw failure(cleanupState === 'failed' ? 'port_unreleased' : 'port_releasing');
   const startedAt = Date.now();
   const deadline = startedAt + openTimeoutMs;
   // Recovery may open the USB port before the restarted application's serial
   // handler reaches its main loop. Share the existing open budget with hello.
   const helloDeadline = helloReadyTimeoutMs > 0 ? startedAt + Math.min(openTimeoutMs, helloReadyTimeoutMs) : 0;
   while (true) {
-    try { await port.open({ baudRate: 115200 }); break; }
-    catch { if (Date.now() >= deadline) throw failure('disconnected'); await delay(400); }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw failure('disconnected');
+    // Native serial open can stay pending after a USB re-enumeration. Bound the
+    // promise itself, not just retries after a rejected open.
+    const opening = (async () => port.open({ baudRate: 115200 }))();
+    let timer;
+    const outcome = await Promise.race([
+      opening.then(() => 'opened', () => 'retry'),
+      new Promise(resolve => { timer = setTimeout(() => resolve('timed-out'), remainingMs); }),
+    ]);
+    clearTimeout(timer);
+    if (outcome === 'opened') break;
+    if (outcome === 'timed-out') {
+      // If the platform eventually opens the timed-out port, release it so a
+      // later software retry can select the same card again. Until then, a
+      // second session must not race this late close on the same port.
+      quarantineSerialPort(port, opening.then(() => port.close?.(), () => undefined),
+        'USB serial port is still finishing an earlier open. Retry after it clears.');
+      throw failure('disconnected');
+    }
+    await delay(Math.min(400, Math.max(0, deadline - Date.now())));
   }
   let reader, writer, closed = false, pending = null, buffer = '', identity = null, attempt = null;
   const rejectPending = code => { if (pending) { const p = pending; pending = null; clearTimeout(p.timer); p.reject(failure(code)); } };
@@ -70,7 +94,13 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
     try { void writer?.abort().catch(() => {}); } catch { /* detached */ }
     try { reader?.releaseLock(); } catch { /* detached */ }
     try { writer?.releaseLock(); } catch { /* detached */ }
-    try { await Promise.race([port.close(), delay(300)]); } catch { /* detached */ }
+    const closing = Promise.resolve().then(() => port.close());
+    const closeOutcome = await Promise.race([
+      closing.then(() => 'closed', () => 'failed'), delay(300).then(() => 'pending'),
+    ]);
+    if (closeOutcome === 'pending') quarantineSerialPort(port, closing,
+      'USB serial port is still closing a previous Wi-Fi session. Retry after it clears.');
+    else if (closeOutcome === 'failed') blockSerialPort(port);
   };
   const validate = reply => {
     if (reply.cardId !== expected.cardId || reply.firmwareVersion !== expected.firmwareVersion
@@ -170,7 +200,8 @@ export async function openUsbWifiSession({ port, expected, openTimeoutMs = 12_00
     }
     identity = Object.freeze({ cardId: reply.cardId, bootId: reply.bootId, firmwareVersion: reply.firmwareVersion,
       buildId: reply.buildId, buildNumber: reply.buildNumber,
-      freshInstallEligible: reply.freshInstallEligible === true });
+      freshInstallEligible: reply.freshInstallEligible === true,
+      stationIp: normalizeWifiHandoffHost(reply.wifi?.stationIp) });
   } catch (error) { await close(); throw error; }
   const correlate = reply => {
     if (!attempt || reply.attemptId !== attempt.id || reply.wifi?.handoffGeneration !== attempt.generation) throw failure('attempt_mismatch');

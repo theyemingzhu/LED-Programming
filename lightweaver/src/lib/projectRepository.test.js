@@ -6,6 +6,7 @@ import {
   createProjectEnvelope,
   ProjectHeadConflictError,
   validateProjectEnvelope,
+  sha256Canonical,
 } from './projectRepository.js';
 import { createDefaultProject } from './projectModel.js';
 
@@ -32,6 +33,44 @@ test('memory repository enforces compare-and-swap despite newer timestamps', asy
     () => repo.save(createProjectEnvelope(project('p1', 'Stale'), { parentHash: first.contentHash, modifiedAt: 999999 }), first.contentHash),
     error => error instanceof ProjectHeadConflictError && error.currentHead.contentHash === second.contentHash,
   );
+});
+
+test('envelope validation preserves hashed content when migration adds wiring defaults', () => {
+  const envelope = createProjectEnvelope({
+    version: 3, id: 'recovered-empty',
+    layout: { strips: [], patchBoard: null, wiring: null },
+  });
+  const verified = validateProjectEnvelope(envelope);
+  assert.deepEqual(verified, envelope);
+  assert.equal(sha256Canonical(verified.project), verified.contentHash);
+  assert.ok(Object.isFrozen(verified.project));
+});
+
+test('intact older envelopes retain their authenticated content until explicitly migrated', () => {
+  const older = structuredClone(createProjectEnvelope(project()));
+  delete older.project.expressionScenes;
+  delete older.project.layout.wiring.migrationWarnings;
+  older.project.show.clips = [{ id: 'retired-clip', patternId: 'aurora' }];
+  older.contentHash = sha256Canonical(older.project);
+  assert.deepEqual(validateProjectEnvelope(older), older);
+});
+
+test('validation rejects corruption even in content a migration would discard', () => {
+  const corrupted = structuredClone(createProjectEnvelope(project()));
+  corrupted.project.show.clips = [{ id: 'unauthenticated-content' }];
+  assert.throws(() => validateProjectEnvelope(corrupted), error => error.code === 'content-hash-mismatch');
+});
+
+test('raw content validation still rejects invalid project shape, version, and metadata', () => {
+  const valid = createProjectEnvelope(project());
+  for (const changed of [
+    { ...valid, project: null },
+    { ...valid, project: { ...valid.project, version: 99 } },
+    { ...valid, projectId: 'different-project' },
+    { ...valid, projectSchemaVersion: 99 },
+  ]) {
+    assert.throws(() => validateProjectEnvelope(changed), error => ['invalid-project', 'invalid-envelope'].includes(error.code));
+  }
 });
 
 test('watch and remove follow repository CAS semantics', async () => {

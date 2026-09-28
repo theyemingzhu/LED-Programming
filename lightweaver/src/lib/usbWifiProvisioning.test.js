@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openUsbWifiSession, usbWifiErrorMessage } from './usbWifiProvisioning.js';
+import { connectEspWithResetSequence, releaseEspTransport } from './flashConnection.js';
 const expected = { cardId: 'lw-123456789abc', firmwareVersion: '1.2.3', buildId: 'a'.repeat(40), buildNumber: 123 };
 function fakePort(reply) {
   const writes = [];
@@ -168,6 +169,128 @@ test('stalled USB writer is bounded and never sends credentials', async () => {
   await assert.rejects(openUsbWifiSession({ port, expected, requestTimeoutMs: 15 }), { code: 'timeout' });
   assert.ok(Date.now() - started < 1000);
   assert.equal(canceled, true);
+});
+test('stalled native USB open cannot hold setup past its deadline', async () => {
+  const port = { open: () => new Promise(() => {}) };
+  const outcome = Promise.race([
+    openUsbWifiSession({ port, expected, openTimeoutMs: 40 }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('native open stayed pending')), 250)),
+  ]);
+  await assert.rejects(outcome, { code: 'disconnected' });
+});
+test('a native open that completes after its deadline releases the port for retry', async () => {
+  let releaseOpen;
+  let closes = 0;
+  const port = {
+    open: () => new Promise(resolve => { releaseOpen = resolve; }),
+    close: async () => { closes += 1; },
+  };
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'disconnected' });
+  releaseOpen();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(closes, 1);
+});
+test('a late native open cannot close a newer session on the same port', async () => {
+  const working = fakePort(request => response(request));
+  let finishFirstOpen;
+  let opens = 0;
+  let closes = 0;
+  const port = {
+    async open() {
+      opens += 1;
+      if (opens === 1) return new Promise(resolve => { finishFirstOpen = resolve; });
+      await working.open();
+      this.readable = working.readable;
+      this.writable = working.writable;
+    },
+    async close() { closes += 1; },
+  };
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'disconnected' });
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'port_releasing' });
+  assert.equal(opens, 1);
+  finishFirstOpen();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(closes, 1);
+  const session = await openUsbWifiSession({ port, expected });
+  assert.equal(session.identity.cardId, expected.cardId);
+  await session.close();
+});
+test('a late native open with failed close stays unavailable to another session', async () => {
+  let finishOpen;
+  let opens = 0;
+  const port = {
+    open: () => { opens += 1; return new Promise(resolve => { finishOpen = resolve; }); },
+    close: async () => { throw new Error('native close failed'); },
+  };
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'disconnected' });
+  finishOpen();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'port_unreleased' });
+  assert.equal(opens, 1);
+});
+test('a stalled session close cannot race the next open on the same USB port', async () => {
+  const port = fakePort(request => response(request));
+  let finishClose;
+  let opens = 0;
+  const realOpen = port.open;
+  port.open = async (...args) => { opens += 1; await realOpen.apply(port, args); };
+  const realClose = port.close;
+  port.close = () => new Promise(resolve => { finishClose = async () => { await realClose(); resolve(); }; });
+  const session = await openUsbWifiSession({ port, expected });
+  await session.close();
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'port_releasing' });
+  assert.equal(opens, 1);
+  await finishClose();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const retry = await openUsbWifiSession({ port, expected });
+  assert.equal(retry.identity.cardId, expected.cardId);
+  port.close = realClose;
+  await retry.close();
+});
+test('a pending ROM release blocks Wi-Fi hello on that same card port', async () => {
+  const port = fakePort(request => response(request));
+  let finishRomRelease;
+  const transport = { device: port, disconnect: () => new Promise(resolve => { finishRomRelease = resolve; }) };
+  assert.equal(await releaseEspTransport(transport, { timeoutMs: 20 }), false);
+  await assert.rejects(openUsbWifiSession({ port, expected }), { code: 'port_releasing' });
+  assert.match(usbWifiErrorMessage('port_releasing'), /close and reopen the Studio tab/i);
+  assert.equal(port.writes.length, 0);
+  finishRomRelease();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const session = await openUsbWifiSession({ port, expected });
+  await session.close();
+});
+test('a pending Wi-Fi open blocks a ROM reset on that same card port', async () => {
+  let finishWifiOpen;
+  let romStarts = 0;
+  const port = {
+    open: () => new Promise(resolve => { finishWifiOpen = resolve; }),
+    close: async () => {},
+  };
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'disconnected' });
+  const connectRom = () => connectEspWithResetSequence({
+    port, resetModes: ['default_reset'],
+    createTransport: () => ({ disconnect: async () => {} }),
+    createLoader: () => ({ main: async () => { romStarts += 1; return 'ESP32-S3'; } }),
+  });
+  await assert.rejects(connectRom(), /still finishing/i);
+  assert.equal(romStarts, 0);
+  finishWifiOpen();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal((await connectRom()).chip, 'ESP32-S3');
+});
+test('a late rejected Wi-Fi open releases the shared port guard', async () => {
+  let rejectWifiOpen;
+  const port = { open: () => new Promise((_, reject) => { rejectWifiOpen = reject; }) };
+  await assert.rejects(openUsbWifiSession({ port, expected, openTimeoutMs: 20 }), { code: 'disconnected' });
+  rejectWifiOpen(new Error('native open failed'));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const connection = await connectEspWithResetSequence({
+    port, resetModes: ['default_reset'],
+    createTransport: () => ({ disconnect: async () => {} }),
+    createLoader: () => ({ main: async () => 'ESP32-S3' }),
+  });
+  assert.equal(connection.chip, 'ESP32-S3');
 });
 test('a timed-out credential request sends no remaining chunks or automatic retry', async () => {
   const decoder = new TextDecoder();
