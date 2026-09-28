@@ -1648,6 +1648,20 @@ export function DrawModePanel({
                               }}/>
                           </div>
                         </div>
+                        {stripTargets.map(target => {
+                          const patternId = target.look?.patternId || 'aurora';
+                          const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
+                          const targetName = stripTargets.length > 1 ? target.label : partName;
+                          return <div className="la-pattern-details" key={target.id}>
+                            <span>{targetName} · {patternName}{target.sharedGeometryCount > 1 ? ' · shared section' : ''}</span>
+                            <button type="button" className="btn" data-testid="edit-pattern-details"
+                                    data-target-id={target.id}
+                                    aria-label={`Edit pattern details for ${targetName}`}
+                                    onClick={() => onChangePattern({ targetId: target.id, stripId: s.id })}>
+                              Edit pattern details
+                            </button>
+                          </div>;
+                        })}
                         {connectedFamily && (() => {
                           const memberPin = outputForStrip(s.id)?.pin ?? 16;
                           return <section className="lw-connected-editor-frame">

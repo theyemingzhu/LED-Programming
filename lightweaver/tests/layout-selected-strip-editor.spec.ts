@@ -40,6 +40,45 @@ test('independent strip keeps its row compact and edits LEDs beside Layout', asy
   await page.screenshot({ path: '/tmp/lightweaver-compact-independent-strip.png', fullPage: true });
 });
 
+test('selected part opens its own Pattern details and saves speed without changing siblings', async ({ page }) => {
+  await fourSections(page);
+  const row = page.locator('.la-strip-row').nth(1);
+  await row.click({ position: { x: 8, y: 8 } });
+  const detail = page.getByTestId('connected-section-editor');
+  const edit = detail.getByRole('button', { name: /Edit pattern details for/ });
+  await expect(edit).toBeVisible();
+  await page.screenshot({ path: '/private/tmp/lightweaver-pattern-details-layout-desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await edit.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/private/tmp/lightweaver-pattern-details-layout-phone.png' });
+  const targetId = await edit.getAttribute('data-target-id');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.patchBoard?.patches?.length)).toBe(4);
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout.patchBoard.patches);
+  await edit.click();
+  await expect(page.getByTestId(`section-target-${targetId}`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-targets', new RegExp(targetId || 'unmatched-target'));
+  const speed = page.getByTestId('look-speed-slider');
+  await speed.focus();
+  await speed.press('End');
+  await expect(speed).toHaveValue('1000');
+  await page.locator('.pmx-advanced > summary').click();
+  const hueShift = page.getByTestId('look-hue-shift-slider');
+  await hueShift.focus();
+  await hueShift.press('End');
+  await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  const after = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout.patchBoard.patches);
+  expect(after.find((patch: any) => patch.id === targetId)?.playback.speed).toBeGreaterThan(before.find((patch: any) => patch.id === targetId)?.playback.speed);
+  expect(after.find((patch: any) => patch.id === targetId)?.playback.hueShift).toBe(128);
+  expect(after.filter((patch: any) => patch.id !== targetId)).toEqual(before.filter((patch: any) => patch.id !== targetId));
+  await page.getByTestId('return-to-layout-section').click();
+  await expect(row).toBeVisible();
+  await expect(edit).toBeFocused();
+  await page.reload();
+  await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.patchBoard?.patches?.find((patch: any) => patch.id === id)?.playback?.speed, targetId)).toBe(3);
+  await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.patchBoard?.patches?.find((patch: any) => patch.id === id)?.playback?.hueShift, targetId)).toBe(128);
+});
+
 test('one selected editor, direct counts, and no numbered or repeated section navigation', async ({ page }) => {
   await fourSections(page);
   await page.locator('.la-strip-row').nth(1).click({ position: { x: 8, y: 8 } });
@@ -151,6 +190,10 @@ test('Layout pattern gallery previews and applies successive choices until the s
   await expect(gallery).toBeVisible();
   await page.getByTestId(`strip-callout-${stripId}`).click();
   await expect(gallery).toBeHidden();
+  await page.getByTitle(/^Undo \(/).first().click();
+  await expect(page.locator('.la-strip-row').nth(1)).toContainText('Fire');
+  await page.getByTitle(/^Redo \(/).first().click();
+  await expect(page.locator('.la-strip-row').nth(1)).toContainText('Plasma');
   await expect(page.locator('.la-strip-row').first().getByTestId('layout-section-pattern-action')).toHaveText(firstPatternBefore);
   await expect(page.locator('.la-strip-row').nth(2).getByTestId('layout-section-pattern-action')).toHaveText(thirdPatternBefore);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.patchBoard?.patches?.map((p: any) => p.playback?.patternId))).toContain('plasma');

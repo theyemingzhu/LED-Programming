@@ -391,6 +391,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.la-pattern-details { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border-soft); color: var(--text-mid); font-size: 11px; }
+.la-pattern-details > span { min-width: 0; overflow-wrap: anywhere; }
+.la-pattern-details > .btn { flex: 0 0 auto; min-height: 32px; }
 .la .la-gpio-group .la-section-pattern-unavailable,
 .la .la-gpio-group .la-strip-routes { flex-basis: 100%; }
 .la .la-strip-menu-popover .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
@@ -403,6 +406,7 @@
   .la .la-strip-menu-popover .btn,
   .la .la-divide-toggle,
   .la .la-gpio-group .la-section-pattern-action { min-height: 44px; }
+  .la-pattern-details > .btn { min-height: 44px; }
 }
 
 /* Keep artwork creation, the project total, and selected-strip edits distinct. */

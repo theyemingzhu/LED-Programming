@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react';
-import { displayStripName, placeStripLabels } from '../../../lib/stripLabels.js';
+import { canvasStripLabel, placeStripLabels } from '../../../lib/stripLabels.js';
 import {
   rgbCss,
   pointsAttr,
@@ -27,7 +27,7 @@ import { WiringCordOverlay } from '../wire/WiringCordOverlay.jsx';
 
 export function LayoutCanvas({
   refs,
-  strips, layers, hidden, pxPerMm, sectionFamilies = [],
+  strips, layers, hidden, sectionFamilies = [],
   starterGhost = null,
   viewBox, computedViewBox, vbScale, svgText, artworkHTML, totalLeds,
   selection,
@@ -679,11 +679,7 @@ export function LayoutCanvas({
 
             {/* One compact, screen-sized annotation per strip; no leader lines. */}
             {(!isEditingGesture || movingStripIds.length > 0) && showLeds && labels.map(({ strip: s, x, y, width, height }) => {
-              const physicalScale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 3.7795;
-              const pitch = s.svgLength > 0 && s.pixelCount > 1
-                ? s.svgLength / physicalScale / (s.pixelCount - 1) : null;
-              const detail = `${s.pixelCount} px${pitch === null ? '' : ` · ${pitch.toFixed(1)} mm pitch`}`;
-              const partName = displayStripName(s, sectionFamilies);
+              const partName = canvasStripLabel(s, sectionFamilies);
               const label = `${partName} · ${s.pixelCount} LEDs`;
               const displayName = partName.length > 20 ? `${partName.slice(0, 19).trimEnd()}…` : partName;
               return (
@@ -700,14 +696,12 @@ export function LayoutCanvas({
                      if (event.shiftKey || event.metaKey || event.ctrlKey) toggleStripSel(s.id);
                      else selectStrip(s.id);
                    }}>
-                  <title>{label} · {detail}</title>
+                  <title>{label}</title>
                   <rect width={width / annotationScale} height={height / annotationScale} rx="4"
                         fill="oklch(0.18 0.02 220 / 0.88)" stroke={s.color}
                         strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
                   <text className="lw-strip-label-name" x="7" y="13" fontFamily="var(--font-ui, sans-serif)" fontSize="11"
                         fontWeight={s.id === selStripId ? 600 : 400} fill={s.color}>{displayName}</text>
-                  <text className="lw-strip-label-data" x="7" y="25" fontFamily="var(--font-ui, sans-serif)" fontSize="9"
-                        fill="oklch(0.72 0.009 78)">{detail}</text>
                 </g>
               );
             })}

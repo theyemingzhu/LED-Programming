@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { connectedPartDisplayName, displayStripName, isGeneratedStripName, nextStripNames, placeStripLabels } from './stripLabels.js';
+import { canvasStripLabel, connectedPartDisplayName, displayStripName, isGeneratedStripName, nextStripNames, placeStripLabels } from './stripLabels.js';
 
 test('numbered identities avoid custom names and preserve source ids', () => {
   const strips = [{ id: 'original', name: 'Untitled Project' }, { id: 'custom', name: 'Strip 2' }];
@@ -31,4 +31,8 @@ test('generated connected parts share display names across Layout without changi
   assert.deepEqual(strips.map(strip => strip.name), ['Strip 1', 'Strip 2']);
   assert.equal(connectedPartDisplayName({ id: 'two', name: 'Amber side' }, family), 'Amber side');
   assert.equal(displayStripName(strips[0], []), 'Strip 1');
+  assert.equal(canvasStripLabel(strips[0], [family]), 'Strip1/Part1');
+  assert.equal(canvasStripLabel(strips[1], [family]), 'Strip1/Part2');
+  assert.equal(canvasStripLabel(strips[0], []), 'Strip1');
+  assert.equal(canvasStripLabel({ id: 'custom', name: 'North arch' }, []), 'North arch');
 });
