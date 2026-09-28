@@ -194,15 +194,19 @@ function outputReadyOf(state: CardStateSpec) {
   return state.pixels > 0;
 }
 
-function derivedReadiness(state: CardStateSpec) {
+function derivedReadiness(state: CardStateSpec & { wiringTestActive?: boolean }) {
   const outputReady = outputReadyOf(state);
   // Explicit only where a real card genuinely varies independently of its
   // configuration; everything else stays derived so an impossible card cannot
   // be described.
-  const commandReady = state.commandReady ?? true;
+  const probation = state.wiringTestActive === true;
+  const commandReady = !probation && (state.commandReady ?? true);
   return {
-    runtimePhase: state.runtimePhase || 'ready',
-    knownGoodProject: hasProject(state) && !state.provisionalSetup,
+    runtimePhase: probation ? 'recovering' : state.runtimePhase || 'ready',
+    // A saved, booted bench project is known-good storage even while Studio
+    // still calls it provisional. Probationary candidate boot is the inverse:
+    // outputs are live for the light check, but the project is not yet good.
+    knownGoodProject: hasProject(state) && !probation,
     commandReady,
     outputReady,
     projectOutputReady: outputReady,
@@ -457,6 +461,8 @@ function patternsBody(state: CardSimulator['state']) {
  */
 function wiringStatusBody(state: CardSimulator['state']) {
   const staged = state.wiringTransactionOpen;
+  const candidate = (staged || state.wiringTestActive) ? state.stagedConfigPayload : undefined;
+  const candidateLed = (candidate?.led || {}) as Record<string, unknown>;
   // Field-for-field against runtimeWiringSafetyStatus() in
   // firmware/lightweaver-controller/src/main.cpp: state is computed from the
   // candidate's lifecycle (WIRING_CANDIDATE_STAGED → 'staged',
@@ -473,7 +479,7 @@ function wiringStatusBody(state: CardSimulator['state']) {
     state: testing ? 'testing' : staged ? 'staged' : 'known-good',
     candidateState: testing ? 'awaiting-confirmation' : staged ? 'staged' : 'none',
     activationId: (testing || staged) ? STAGED_ACTIVATION_ID : '',
-    ledType: 'WS2812B',
+    ledType: String(candidateLed.type || 'WS2812B'),
     hasKnownGood: state.pixels > 0,
     hasCandidate: testing || staged,
     bootedCandidate: testing,
@@ -487,16 +493,16 @@ function wiringStatusBody(state: CardSimulator['state']) {
     firmwareVersion: state.firmwareVersion,
     buildId: state.buildId,
     buildNumber: state.buildNumber,
-    projectRevision: state.projectRevision,
-    projectFingerprint: state.projectFingerprint,
-    productionJobId: '',
-    productionJobDigest: '',
-    wiringRevision: state.pixels ? 1 : 0,
-    wiringDigest: state.pixels ? 'd'.repeat(64) : '',
+    projectRevision: Number(candidate?.projectRevision ?? state.projectRevision),
+    projectFingerprint: String(candidate?.projectFingerprint ?? state.projectFingerprint),
+    productionJobId: String(candidate?.productionJobId || ''),
+    productionJobDigest: String(candidate?.productionJobDigest || ''),
+    wiringRevision: Number(candidate?.wiringRevision ?? (state.pixels ? 1 : 0)),
+    wiringDigest: String(candidate?.wiringDigest ?? (state.pixels ? 'd'.repeat(64) : '')),
     currentWiringRevision: state.pixels ? 1 : 0,
     currentWiringDigest: state.pixels ? 'd'.repeat(64) : '',
-    colorOrder: 'GRB',
-    maxMilliamps: 2000,
+    colorOrder: String(candidateLed.colorOrder || 'GRB'),
+    maxMilliamps: Number(candidateLed.maxMilliamps ?? 2000),
     currentMaxMilliamps: 2000,
     estimatedFullWhiteMilliamps: state.pixels * 60,
     limitedFullWhiteMilliamps: 2000,
@@ -984,9 +990,13 @@ export function createCardSimulator(
         state.stagedPin = nextPin;
         // Bare candidate requests may carry only a pin; legacy cards derive
         // the complete output from stagedPixels/stagedPin after activation.
-        state.stagedOutputs = state.explicitOutputs && outputs.length
+        state.stagedOutputs = outputs.length
           && outputs.every(output => Number.isFinite(output.pixels) && output.segments.length)
           ? copyOutputs(outputs) : undefined;
+        // Production sends the complete prepared runtime config as the
+        // candidate. A direct J07 bare-wiring probe has no project identity,
+        // so only that narrower shape leaves the active project untouched.
+        state.stagedConfigPayload = candidate.projectFingerprint ? candidate : undefined;
         return ok(wiringStatusBody(state));
       }
       case '/api/wiring/activate': {
@@ -1029,7 +1039,6 @@ export function createCardSimulator(
             currentIndex: state.currentIndex,
           };
           applyConfigProjectFields(state.stagedConfigPayload);
-          state.stagedConfigPayload = undefined;
         }
         state.wiringTransactionOpen = false;
         state.wiringTestActive = true;
@@ -1060,6 +1069,7 @@ export function createCardSimulator(
         state.stagedPixels = undefined;
         state.stagedPin = undefined;
         state.stagedOutputs = undefined;
+        state.stagedConfigPayload = undefined;
         state.preTestPixels = undefined;
         state.preTestPin = undefined;
         state.preTestOutputs = undefined;

@@ -11,6 +11,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { createCardSimulator } from './harness/cardSimulator';
+import { prepareCardDeployment } from '../src/lib/cardDeployment.js';
 import {
   cardState,
   MATRIX_CARD_ID,
@@ -106,6 +107,11 @@ async function readyInstallProject(page: Page, edit?: (project: Record<string, a
   led.colorOrder = led.colorOrder || 'GRB';
   led.colorOrderConfirmed = true;
   led.confirmedColorOrder = led.colorOrder;
+  // The simulator's installed card reports WS2812B at 2000 mA. Make this
+  // project's electrical facts match when the test is about write ownership,
+  // so a chipset/current change does not force a wiring candidate instead.
+  led.type = 'WS2812B';
+  led.maxMilliamps = 2000;
   edit?.(project);
   await page.addInitScript(value => localStorage.setItem('lw_autosave_v3', value), JSON.stringify(project));
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -113,6 +119,24 @@ async function readyInstallProject(page: Page, edit?: (project: Record<string, a
   await expect(page.getByTestId('layout-send-to-card')).toBeVisible({ timeout: CONNECT_BUDGET_MS });
   await expect(page.getByTestId('layout-send-to-card')).toBeEnabled({ timeout: CONNECT_BUDGET_MS });
   return project;
+}
+
+function matchInstalledCardTopology(card: ReturnType<typeof createCardSimulator>, project: Record<string, any>) {
+  const prepared = prepareCardDeployment({
+    projectId: project.id,
+    projectName: project.name,
+    projectRevision: 0,
+    strips: project.layout.strips,
+    patchBoard: project.layout.patchBoard,
+    wiring: project.layout.wiring,
+    standaloneController: project.devices.standaloneController,
+  });
+  const outputs = prepared.config.led.outputs;
+  card.state.explicitOutputs = outputs;
+  card.state.pin = outputs[0].pin;
+  card.state.pixels = prepared.config.led.pixels;
+  // Keep the old revision/fingerprint so tab one still has a real install to
+  // perform; only the already-installed physical topology is matched.
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +200,7 @@ test('[J08] two tabs: exactly one write reaches the card when both attempt the s
     return route.fallback();
   });
 
-  await readyInstallProject(page, project => {
+  const firstProject = await readyInstallProject(page, project => {
     // CardInstallAction's push never carries allowProjectChange, so the
     // card's OWN project id must be matched exactly or Studio refuses before
     // either tab reaches the write this test is about
@@ -185,6 +209,7 @@ test('[J08] two tabs: exactly one write reaches the card when both attempt the s
     project.id = MATRIX_PROJECT_ID;
     project.name = 'Matrix piece';
   });
+  matchInstalledCardTopology(card, firstProject);
 
   // Tab two is brought all the way to an armed Install button BEFORE tab one
   // starts writing, so the only thing left inside the held window is its
@@ -326,6 +351,7 @@ test('[J08] sequential identical install: a second tab pressing install after th
     project.id = MATRIX_PROJECT_ID;
     project.name = 'Matrix piece';
   });
+  matchInstalledCardTopology(card, installedProject);
 
   await page.getByTestId('layout-send-to-card').click();
   await expect(
