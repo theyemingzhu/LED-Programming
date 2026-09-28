@@ -1,9 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// Order and outputs in words (sections-effortless plan, change 3): every
-// section row on Layout can be moved up or down the wire with a word button,
-// so wire order is editable with a thumb, and the pin picker lists the four
-// connector pins first with the other legal pins folded under "More pins".
+// Drag ordering keeps physical wire order persistent. The GPIO picker lists
+// connector pins first and folds the other legal pins under "More pins".
 
 test.use({ viewport: { width: 390, height: 844 } });
 
@@ -18,7 +16,7 @@ function rowNames(page: any) {
     .then((texts: string[]) => texts.map(text => text.trim()));
 }
 
-test('Move up and Move down reorder sections on the wire without a drag', async ({ page }) => {
+test('section drag events reorder the wire and persist after reload', async ({ page }) => {
   await gotoFreshLayout(page);
   await page.getByTestId('layout-primitive-picker').getByRole('button', { name: 'Create line' }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
@@ -32,21 +30,35 @@ test('Move up and Move down reorder sections on the wire without a drag', async 
   const before = await rowNames(page);
   expect(before).toHaveLength(3);
 
-  // Select the last section; only Move up is available there.
-  await page.locator('.la-strip-row').nth(2).click();
-  await page.getByLabel('More strip actions', { exact: true }).click();
-  const order = page.locator('.la-strip-menu[open]');
-  await expect(order).toHaveCount(1);
-  await expect(order.getByRole('button', { name: /down the wire/ })).toBeDisabled();
-  await order.getByRole('button', { name: /up the wire/ }).click();
-  await expect.poll(() => rowNames(page)).toEqual([before[0], before[2], before[1]]);
-
-  // Once more takes it to the top, where Move up disables.
-  if (!await order.isVisible()) await page.getByLabel('More strip actions', { exact: true }).click();
-  await order.getByRole('button', { name: /up the wire/ }).click();
+  // The native pointer gesture is covered by layout-primitives; here the
+  // phone-width order regression drives the same HTML5 drag handlers and
+  // verifies their payload, wire order, and saved state.
+  const rows = page.locator('.la-strip-row');
+  await rows.nth(2).locator('.layer-name').click();
+  await expect(page.getByRole('region', { name: 'Part 3 settings', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).__sectionDragTrace = [];
+    for (const type of ['dragstart', 'drop']) document.addEventListener(type, event => {
+      const drag = event as DragEvent;
+      (window as any).__sectionDragTrace.push({ type,
+        target: (event.target as Element)?.closest('.la-strip-row')?.querySelector('.layer-name')?.textContent,
+        data: drag.dataTransfer?.getData('application/x-lightweaver-strip'),
+      });
+    }, true);
+  });
+  await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.la-strip-row'));
+    const transfer = new DataTransfer();
+    rows[2].dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    rows[0].dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    rows[0].dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer, clientY: rows[0].getBoundingClientRect().top + 5 }));
+    rows[2].dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  });
+  expect(await page.evaluate(() => (window as any).__sectionDragTrace)).toEqual([
+    expect.objectContaining({ type: 'dragstart', target: before[2] }),
+    expect.objectContaining({ type: 'drop', target: before[0], data: '["strip-3"]' }),
+  ]);
   await expect.poll(() => rowNames(page)).toEqual([before[2], before[0], before[1]]);
-  await expect(order.getByRole('button', { name: /up the wire/ })).toBeDisabled();
-  // Still one output: word moves never re-pin a strip.
   await expect(page.locator('.la-gpio-group')).toHaveCount(1);
 
   // The order survives a reload (it is the wiring, not view state). Wait for
@@ -90,11 +102,14 @@ test('one divided section can move to GPIO 17 while the other sections stay on G
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
   await page.locator('.la-strip-row').nth(1).click();
-  await page.getByLabel('Section 2 GPIO override').selectOption('17');
+  await page.getByLabel('Part 2 GPIO override').selectOption('17');
 
   await expect(page.getByTestId('gpio-group-17').locator('.la-strip-row')).toHaveCount(1);
   await expect(page.getByTestId('gpio-group-18').locator('.la-strip-row')).toHaveCount(2);
-  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['10 LEDs', '10 LEDs', '10 LEDs']);
+  for (const row of await page.locator('.la-strip-row').all()) {
+    await row.locator('.layer-name').click();
+    await expect(page.locator('.la-strip-detail .la-row-count input')).toHaveValue('10');
+  }
 
   await expect.poll(() => page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null');

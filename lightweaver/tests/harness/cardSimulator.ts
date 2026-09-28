@@ -73,6 +73,7 @@ export type CardSimulator = {
     /** Opt-in complete output topology; legacy fixtures keep the one-output model. */
     explicitOutputs: SimulatedOutput[] | null;
     stagedOutputs?: SimulatedOutput[];
+    stagedConfigPayload?: Record<string, unknown>;
     installedZones: Record<string, unknown>[] | null;
     installedLooks: Record<string, unknown>[] | null;
     installedStartupPatternId: string | null;
@@ -290,6 +291,11 @@ function zonesFor(state: CardStateSpec & { zoneIds?: string[]; zoneControls: Map
 function statusBody(state: CardSimulator['state']) {
   const project = hasProject(state);
   const blank = !project;
+  // Firmware boots the complete candidate config for the probationary light
+  // test. Its fresh /api/status wiring identity must agree with the retained
+  // /api/wiring/status candidate identity; before activation, the known-good
+  // card still reports its original wiring revision and digest.
+  const activeCandidate = state.wiringTestActive ? state.stagedConfigPayload : undefined;
   return {
     app: 'Lightweaver',
     provisioningContractVersion: 1,
@@ -380,8 +386,8 @@ function statusBody(state: CardSimulator['state']) {
       estimatedFullWhiteMilliamps: state.pixels * 60,
       limitedFullWhiteMilliamps: 2000,
     },
-    wiringRevision: state.pixels ? 1 : 0,
-    wiringDigest: state.pixels ? 'd'.repeat(64) : '',
+    wiringRevision: Number(activeCandidate?.wiringRevision ?? (state.pixels ? 1 : 0)),
+    wiringDigest: String(activeCandidate?.wiringDigest ?? (state.pixels ? 'd'.repeat(64) : '')),
     // The primary readback for "what is playing" — cardLiveControl.js reads
     // this, not /api/patterns, when confirming a blackout or a reset.
     currentPatternId: state.currentId,
