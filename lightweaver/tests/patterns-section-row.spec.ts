@@ -122,6 +122,13 @@ test('section chips carry their pattern names and the card-holds line is read fr
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Plasma');
   await expect(page.getByTestId('pattern-piece-preview')).toBeVisible();
+  const compactPreview = page.getByTestId('pattern-piece-preview');
+  expect((await compactPreview.boundingBox())!.height).toBeLessThanOrEqual(24);
+  await expect(compactPreview.locator('canvas')).toBeVisible();
+  const firstFrame = await compactPreview.locator('canvas').evaluate(canvas => canvas.toDataURL());
+  await expect.poll(() => compactPreview.locator('canvas').evaluate(canvas => canvas.toDataURL())).not.toBe(firstFrame);
+  await expect(page.getByRole('button', { name: 'On my piece' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Preview target' })).toBeVisible();
   await page.getByTestId('section-target-patch-default-outer-circle').click();
   await expect(page.getByTestId('section-target-patch-default-outer-circle')).toHaveClass(/\bon\b/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);

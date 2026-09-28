@@ -9,7 +9,7 @@
   margin: 0 0 8px;
 }
 .pm.pm-workspace .pm-target > .sec-h { grid-column: 1 / -1; margin-bottom: 6px; padding-top: 8px; padding-bottom: 8px; }
-.pm.pm-workspace .pm-target .pm-preview-pane { min-width: 0; margin: 0; }
+.pm.pm-workspace .pm-target .pm-preview-pane { min-width: 0; margin: 0; padding: 6px 8px 8px; }
 .pm.pm-workspace .pm-target .pm-preview-controls {
   display: flex;
   align-items: center;
@@ -75,8 +75,9 @@
 .pm.pm-workspace .pm-preview-nav select:hover { color: var(--text-hi); }
 .pm.pm-workspace .pm-preview-nav button:focus-visible,
 .pm.pm-workspace .pm-preview-nav select:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
-.pm.pm-workspace .pm-target .pm-piece-stage { height: 79px; }
-@media (min-height: 850px) { .pm.pm-workspace .pm-target .pm-piece-stage { height: 92px; } }
+.pm.pm-workspace .pm-target .pm-piece-stage { height: 20px; }
+.pm.pm-workspace .pm-target .pm-piece-stage:has(.pm-preview-empty) { height: auto; min-height: 32px; }
+.pm.pm-workspace .pm-target .pm-preview-empty { min-height: 32px; padding: 4px 8px; line-height: 1.2; }
 .pm.pm-workspace .pm-section-list {
   min-height: 0;
   max-height: 128px;
@@ -158,7 +159,6 @@
 }
 @media (max-width: 900px) {
   .pm.pm-workspace .pm-target { grid-template-columns: 1fr; }
-  .pm.pm-workspace .pm-target .pm-piece-stage { height: 120px; }
   .pm.pm-workspace .pm-section-list { max-height: 112px; margin-top: 7px; }
   .pm.pm-workspace .pm-instrument { position: static; }
   .pm.pm-workspace .pm-bank-filters { flex-wrap: wrap; }
