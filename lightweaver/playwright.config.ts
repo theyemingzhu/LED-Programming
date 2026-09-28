@@ -17,12 +17,14 @@ export default defineConfig({
   // of races still to fix; the two already fixed (pattern-lab geometry, the
   // top-bar import Escape) were both found this way.
   retries: process.env.CI ? 2 : 0,
+  maxFailures: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 1 : 0,
   timeout: 60_000,
   // The canonical release suite runs hundreds of browser scenarios serially.
   // Keep assertions tolerant of transient host load while individual actions
   // retain Playwright's normal timeouts and still fail closed.
   expect: { timeout: 15_000 },
   use: {
+    trace: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 'retain-on-failure' : 'off',
     baseURL: testBaseURL,
     // Keep same-origin API fixtures authoritative even if a developer has a
     // previously installed Studio service worker in a reused browser profile.

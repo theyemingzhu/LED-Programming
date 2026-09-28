@@ -102,6 +102,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     name: browser smoke
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -122,12 +124,87 @@ jobs:
         run: npm run ci:pr-lane-node-specs
       - run: npx playwright install --with-deps chromium
         working-directory: lightweaver
-      - name: Run focused critical-workflow smoke tests
+      - name: Run critical-workflow browser smoke
         working-directory: lightweaver
-        run: |
-          npm run ci:browser-smoke
-          npm run test:windowless:browser
-          npm run test:firmware-update:browser
+        run: npm run ci:browser-smoke
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser_windowless:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: windowless browser
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run windowless production preview
+        working-directory: lightweaver
+        run: npm run test:windowless:browser
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser_firmware_update:
+    needs: classify
+    if: needs.classify.outputs.browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: preserving firmware update browser
+    env:
+      LW_BROWSER_FAIL_FAST: 'true'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: lightweaver/package-lock.json
+      - run: npm ci
+        working-directory: lightweaver
+      - run: node scripts/ensure-rollup-native.mjs
+        working-directory: lightweaver
+      - run: npx playwright install --with-deps chromium
+        working-directory: lightweaver
+      - name: Run preserving firmware update
+        working-directory: lightweaver
+        run: npm run test:firmware-update:browser
+      - name: Upload failed browser traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failure-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: lightweaver/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   cloud:
     needs: classify

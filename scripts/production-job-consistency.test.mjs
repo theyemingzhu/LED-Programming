@@ -323,11 +323,23 @@ test('focused browser script covers core workflow without embedding the full rel
 
 test('Tests workflow runs only the bounded browser smoke and targeted card checks', async () => {
   const workflow = (await readFile(resolve(repoRoot, '.github/workflows/test.yml'), 'utf8')).replace(/\r\n/g, '\n');
-  const browserJob = workflow.slice(workflow.indexOf('\n  browser:\n'), workflow.indexOf('\n  cloud:\n'));
-  assert.match(browserJob, /npm run ci:browser-smoke/);
-  assert.match(browserJob, /npm run test:windowless:browser/);
-  assert.match(browserJob, /npm run test:firmware-update:browser/);
-  assert.doesNotMatch(browserJob, /ci:browser-regression/);
+  const browserJobs = [
+    ['browser', 'browser_windowless', 'ci:browser-smoke'],
+    ['browser_windowless', 'browser_firmware_update', 'test:windowless:browser'],
+    ['browser_firmware_update', 'cloud', 'test:firmware-update:browser'],
+  ];
+  const browserRegion = workflow.slice(workflow.indexOf('\n  browser:\n'), workflow.indexOf('\n  cloud:\n'));
+  for (const [job, nextJob, command] of browserJobs) {
+    const start = workflow.indexOf(`\n  ${job}:\n`);
+    const end = workflow.indexOf(`\n  ${nextJob}:\n`, start + 1);
+    assert.ok(start >= 0 && end > start, `${job} must be an independent browser job`);
+    const segment = workflow.slice(start, end);
+    assert.match(segment, /^    needs: classify$/m, `${job} must not wait for a sibling browser job`);
+    assert.match(segment, /^    if: needs\.classify\.outputs\.browser == 'true'$/m);
+    assert.equal((segment.match(new RegExp(`npm run ${command}`, 'g')) || []).length, 1);
+    assert.equal((browserRegion.match(new RegExp(`npm run ${command}`, 'g')) || []).length, 1);
+    assert.doesNotMatch(segment, /ci:browser-regression/);
+  }
 });
 
 test('deployment checklist describes the exhaustive launch check as weekly', async () => {

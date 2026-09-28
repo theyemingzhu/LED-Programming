@@ -19,10 +19,12 @@ export default defineConfig({
   // of races still to fix; the two already fixed (pattern-lab geometry, the
   // top-bar import Escape) were both found this way.
   retries: process.env.CI ? 2 : 0,
+  maxFailures: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 1 : 0,
 
   testDir: '.',
   testMatch: /windowless-.*\.spec\.ts/,
   use: {
+    trace: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 'retain-on-failure' : 'off',
     baseURL: `http://127.0.0.1:${windowlessPort}`,
     serviceWorkers: 'allow',
   },
