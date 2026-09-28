@@ -255,7 +255,7 @@ test('auto-locked verified wiring blocks physical mutations until Unlock to edit
 test('numeric strip count replaces the full value with an exact accessible selector', async ({ page }) => {
   await importLine(page);
   await page.locator('.la-strip-row').first().click();
-  const count = page.getByRole('spinbutton', { name: 'Strip LED count', exact: true });
+  const count = page.getByRole('spinbutton', { name: 'Line LED count', exact: true });
   await count.fill('12');
   await count.blur();
   await count.click();
