@@ -137,7 +137,10 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
   // show the new count when that handoff finishes.
   await expect(page, 'verified install must hand off to Patterns').toHaveURL(/#screen=pattern$/, { timeout: CONNECT_BUDGET_MS });
   await expect(page.getByText('Installed on card', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /All sections 42 LEDs/ })).toBeVisible();
+  const allSections = page.getByTestId('section-target-all');
+  await expect(allSections).toBeVisible();
+  await expect(allSections.locator('.pm-section-identity')).toContainText('All sections');
+  await expect(allSections.locator('.pm-section-identity')).toContainText(`${NEXT_PIXELS} LEDs`);
   await expect(page.getByTestId('card-install-restarting')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
   await expect(page.getByText('Push failed', { exact: false })).toHaveCount(0);

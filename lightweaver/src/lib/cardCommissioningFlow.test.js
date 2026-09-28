@@ -36,6 +36,7 @@ import {
   claimCardLightCheckMutation,
   inspectCardCommissioning,
   preflightCardCommissioningMutation,
+  preflightCardCommissioningWiringVerdict,
   verifyCardRestorationMutation,
   verifyCardLightCheckMutation,
 } from './cardCommissioningFlow.js';
@@ -382,6 +383,50 @@ test('saved commissioning acknowledgement never authorizes restore without a fre
     true,
     'fresh exact readiness also authorizes one leased light-check mutation',
   );
+});
+
+test('probation authorizes only the fresh exact candidate verdict and denies drift or expiry', () => {
+  const acknowledged = acknowledgeCommissionedCard(completeCardInstall(beginCardCommissioning({
+    source: 'web-serial', operation: installed.operation, strategy: 'clean-recovery',
+    projectRecord, projectRevision: 7, flowId: 'flow-probation-verdict', now: 10,
+  }), installed, { now: 20 }), {
+    id: installed.cardId, firmwareVersion: installed.firmwareVersion, buildId: installed.buildId,
+  }, { now: 30 }).flow;
+  const outputs = [{ id: 'out-a', pin: 16, pixels: 88,
+    segments: [{ id: 'outer', count: 88, direction: 'forward' }] }];
+  const flow = {
+    ...acknowledged,
+    stage: 'check-lights',
+    project: { ...acknowledged.project, pendingActivationId: 'activation-7',
+      pendingWiring: { wiringRevision: 2, wiringDigest: 'd'.repeat(64),
+        ledType: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 2000, outputs } },
+  };
+  const status = readyStatus({ runtimePhase: 'recovering', knownGoodProject: false,
+    commandReady: false, configValid: true, safeMode: false,
+    projectId: flow.project.snapshot.id, projectRevision: 7,
+    projectFingerprint: flow.project.fingerprint, wiringRevision: 2,
+    wiringDigest: 'd'.repeat(64) });
+  const wiring = { app: 'Lightweaver', ok: true, state: 'testing',
+    candidateState: 'awaiting-confirmation', hasCandidate: true, bootedCandidate: true,
+    activationId: 'activation-7', cardId: installed.cardId,
+    firmwareVersion: installed.firmwareVersion, buildId: installed.buildId,
+    projectRevision: 7, projectFingerprint: flow.project.fingerprint,
+    wiringRevision: 2, wiringDigest: 'd'.repeat(64), ledType: 'WS2812B',
+    colorOrder: 'GRB', maxMilliamps: 2000, candidateOutputs: outputs, remainingMs: 90000 };
+  const verdict = (candidateFlow = flow, candidateStatus = status, candidateWiring = wiring, bootId = 'boot-fresh') =>
+    preflightCardCommissioningWiringVerdict(candidateFlow, candidateStatus, candidateWiring, bootId).ok;
+  assert.equal(verdict(), true);
+  assert.equal(preflightCardCommissioningMutation(flow, status).ok, false,
+    'probation does not grant normal command authority');
+  assert.equal(verdict(flow, { ...status, cardId: 'lw-other-card' }), false);
+  assert.equal(verdict(flow, { ...status, projectId: 'other-project' }), false);
+  assert.equal(verdict(flow, { ...status, bootId: 'new-boot' }), false);
+  assert.equal(verdict(flow, status, { ...wiring, wiringDigest: 'e'.repeat(64) }), false);
+  assert.equal(verdict(flow, status, { ...wiring, candidateOutputs: [{ ...outputs[0], pin: 17 }] }), false);
+  assert.equal(verdict(flow, status, { ...wiring, remainingMs: 0 }), false);
+  assert.equal(verdict(flow, status, { ...wiring, remainingMs: undefined }), false);
+  assert.equal(verdict(flow, status, { ...wiring, activationId: 'unknown-activation' }), false);
+  assert.equal(verdict({ ...flow, project: { ...flow.project, pendingActivationId: 'unknown-activation' } }), false);
 });
 
 test('light-check hardware mutations require one fenced cross-tab lease', async () => {
