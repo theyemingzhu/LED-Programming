@@ -14,7 +14,7 @@ import { useProject } from '../../../state/ProjectContext.jsx';
 import { deriveCardAccess } from '../../../lib/cardAccess.js';
 import { getCardLinkState } from '../../../lib/cardLink.js';
 import { cardConnectionOptionsFor } from '../../../lib/cardConnection.js';
-import { pushLivePreviewToCard } from '../../../lib/cardLiveControl.js';
+import { decideLiveControlProjectAuthority, pushLivePreviewToCard } from '../../../lib/cardLiveControl.js';
 import { MAX_SPLIT_SECTIONS, applyStripSplitCount, planSectionsAtRunBoundaries, planStripSplitCounts, planStripSplitFromCounts } from '../../../lib/stripSplit.js';
 import {
   DENSITY_OPTIONS,
@@ -280,6 +280,15 @@ export function DrawModePanel({
     const link = getCardLinkState();
     if (deriveCardAccess(link).playback !== 'ready') {
       setPatternCardStatus('Saved in Studio. Connect a ready card to play this pattern live.');
+      return;
+    }
+    const projectAuthority = decideLiveControlProjectAuthority({
+      connected: true,
+      studioProject: { projectId },
+      cardStatus: link.readiness,
+    });
+    if (!projectAuthority.ok) {
+      setPatternCardStatus(projectAuthority.message);
       return;
     }
     // The card verifies the exact paired identity and the installed zone's

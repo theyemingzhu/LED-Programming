@@ -275,3 +275,22 @@ test('Layout refuses a live pattern when the installed section ranges differ', a
   await expect(gallery.getByRole('status')).toContainText('different section layout');
   expect(controlPosts).toEqual([]);
 });
+
+test('Layout does not play on a ready card holding another project with matching sections', async ({ page }) => {
+  const installed = sectionProject('installed-section-project');
+  installed.layout.starterPending = false;
+  const open = sectionProject('open-section-project');
+  open.layout.starterPending = false;
+  const zones = compiledZones(installed);
+  await mockReadyCard(page, installed, zones);
+  await page.addInitScript(project => {
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  }, open);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=layout');
+  await page.getByTestId('layout-section-pattern-action').filter({ hasText: 'Ocean' }).click();
+  const gallery = page.getByRole('dialog', { name: /Choose pattern for/ });
+  await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
+  await expect(gallery.getByRole('status')).toContainText('Install this exact Studio project');
+  expect(controlPosts).toEqual([]);
+});
