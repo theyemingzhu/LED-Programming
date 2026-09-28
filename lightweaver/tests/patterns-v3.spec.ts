@@ -646,7 +646,10 @@ test('On my piece returns to the last strip and restores preview state per proje
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('button', { name: 'On my piece' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Preview target')).toHaveValue('piece');
-  await expect(page.getByTestId('section-target-patch-default-inner-circle')).toHaveClass(/\bon\b/);
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
+  await page.getByRole('button', { name: 'On my piece' }).click();
+  await expect(page.getByLabel('Preview target')).toHaveValue('patch-default-inner-circle');
+  await expect(page.getByTestId('section-target-all')).toHaveClass(/\bon\b/);
 
   const anotherProject = createPiecePreviewProject('piece-preview-other');
   const otherContext = await browser.newContext();
@@ -697,7 +700,7 @@ test('whole-piece preview composites saved assignments plus the unsaved selected
   expect(JSON.stringify(saved.layout.patchBoard)).toBe(savedBefore);
 });
 
-test('leaving whole-piece preview restores the remembered strip as the edit target', async ({ page }) => {
+test('leaving whole-piece preview recalls the strip without changing the edit target', async ({ page }) => {
   const project = createPiecePreviewProject('piece-preview-all-toggle');
   await gotoSavedProjectPatterns(page, project);
 
@@ -712,6 +715,10 @@ test('leaving whole-piece preview restores the remembered strip as the edit targ
 
   await toggle.click();
   await expect(stage).toHaveAttribute('data-preview-target', 'patch-default-inner-circle');
+  await expect(allTarget).toHaveClass(/\bon\b/);
+  await expect(innerTarget).not.toHaveClass(/\bon\b/);
+
+  await innerTarget.click();
   await expect(innerTarget).toHaveClass(/\bon\b/);
 
   await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
