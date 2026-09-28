@@ -57,6 +57,7 @@ import {
   confirmCardSetupNetworkJoined,
   markCardProjectRestored,
   preflightCardCommissioningMutation,
+  preflightCardCommissioningWiringVerdict,
   planCommissioningReconnectAttempt,
   waitForCommissioningReconnect,
   readCardCommissioning,
@@ -283,6 +284,7 @@ export function CardCommissioningPanel({
   const [inspectionRetry, setInspectionRetry] = useState(0);
   const [detection, setDetection] = useState({ state: 'idle' });
   const [lightCheckState, setLightCheckState] = useState('idle');
+  const [candidateVerdict, setCandidateVerdict] = useState(null);
   const [lightCheckNotice, setLightCheckNotice] = useState('');
   const [bridgeHandoffStatus, setBridgeHandoffStatus] = useState(null);
   const [setupReach, setSetupReach] = useState({ state: 'idle' });
@@ -571,9 +573,60 @@ export function CardCommissioningPanel({
 
   const lightCheckPreflight = useMemo(() => {
     if (flow?.stage !== 'check-lights' || !flow.cardAcknowledgedAt) return { ok: false, reason: 'checking-card' };
+    if (flow.project.pendingActivationId && lightCheckState === 'testing') {
+      const current = getCardLinkState();
+      return {
+        ok: Boolean(candidateVerdict
+          && candidateVerdict.activationId === flow.project.pendingActivationId
+          && candidateVerdict.host === current.host
+          && candidateVerdict.bootId === current.validatedBootId
+          && candidateVerdict.generation === current.operationGeneration
+          && Date.now() - candidateVerdict.verifiedAt < 3000),
+        reason: 'candidate-not-verified',
+      };
+    }
     if (!isCardLinkConnected(link) || !link.validatedBootId) return { ok: false, reason: 'checking-card' };
     return preflightCardCommissioningMutation(flow, link.readiness);
-  }, [flow, link]);
+  }, [flow, link, lightCheckState, candidateVerdict]);
+
+  useEffect(() => {
+    if (flow?.stage !== 'check-lights' || lightCheckState !== 'testing'
+      || !flow.project.pendingActivationId || !hasAuthoritativePendingWiring) {
+      setCandidateVerdict(null);
+      return undefined;
+    }
+    let disposed = false;
+    const verify = async () => {
+      const observed = getCardLinkState();
+      if (!observed.host || !observed.validatedBootId) {
+        if (!disposed) setCandidateVerdict(null);
+        return;
+      }
+      try {
+        const [status, wiring] = await Promise.all([
+          readCardStatusEnvelope({ host: observed.host, transport: observed.transport, timeoutMs: 3000 }),
+          getCardWiringStatus({ host: observed.host, transport: observed.transport, timeoutMs: 3000 }),
+        ]);
+        const current = getCardLinkState();
+        const exact = current.host === observed.host
+          && current.validatedBootId === observed.validatedBootId
+          && current.operationGeneration === observed.operationGeneration
+          && preflightCardCommissioningWiringVerdict(flow, status, wiring, observed.validatedBootId).ok;
+        if (!disposed) setCandidateVerdict(exact ? {
+          activationId: flow.project.pendingActivationId,
+          host: observed.host,
+          bootId: observed.validatedBootId,
+          generation: observed.operationGeneration,
+          verifiedAt: Date.now(),
+        } : null);
+      } catch {
+        if (!disposed) setCandidateVerdict(null);
+      }
+    };
+    void verify();
+    const timer = window.setInterval(() => { void verify(); }, 1500);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [flow, lightCheckState, hasAuthoritativePendingWiring]);
 
   useEffect(() => {
     if (!interruptedInstallEvidence?.ok) return;
@@ -1153,9 +1206,12 @@ export function CardCommissioningPanel({
     setFailure(result.ok ? '' : 'The verified card page is still unreachable. Return to gallery WiFi and retry this same card page.');
   };
 
-  const acquireFreshLightCheckMutation = async () => {
+  const acquireFreshLightCheckMutation = async (verdictType = '') => {
+    const candidateVerdictOnly = Boolean(flow.project.pendingActivationId
+      && (verdictType === 'wiring-confirm' || verdictType === 'wiring-rollback'));
     const observed = getCardLinkState();
-    if (!isCardLinkConnected(observed) || !observed.validatedBootId) {
+    if ((!candidateVerdictOnly && !isCardLinkConnected(observed))
+      || !observed.host || !observed.validatedBootId) {
       throw new Error('Checking card. Reconnect and revalidate the exact installed card before changing the light test.');
     }
     const generation = observed.operationGeneration || 0;
@@ -1164,16 +1220,23 @@ export function CardCommissioningPanel({
       host: observed.host, transport: observed.transport, timeoutMs: 3000,
     });
     const current = getCardLinkState();
-    if (!isCardLinkConnected(current)
+    if ((!candidateVerdictOnly && !isCardLinkConnected(current))
       || current.host !== observed.host
       || (current.operationGeneration || 0) !== generation
       || current.validatedBootId !== bootId
       || status?.bootId !== bootId) {
       throw new Error('Card restarted or stopped answering. Wait for two stable checks before changing the light test.');
     }
-    const preflight = preflightCardCommissioningMutation(flow, status);
+    const wiring = candidateVerdictOnly
+      ? await getCardWiringStatus({ host: observed.host, transport: observed.transport, timeoutMs: 3000 })
+      : null;
+    const preflight = candidateVerdictOnly
+      ? preflightCardCommissioningWiringVerdict(flow, status, wiring, bootId)
+      : preflightCardCommissioningMutation(flow, status);
     if (!preflight.ok) {
-      throw new Error('Checking card. The exact installed card and firmware must be command-ready before changing the light test.');
+      throw new Error(candidateVerdictOnly
+        ? 'The exact wiring candidate is no longer awaiting this card’s physical verdict. Nothing was changed.'
+        : 'Checking card. The exact installed card and firmware must be command-ready before changing the light test.');
     }
     const claim = await claimCardLightCheckMutation(flow);
     if (!claim.ok) throw new Error('Another Studio tab is changing this light check. Wait for it to finish, then try again.');
@@ -1183,7 +1246,7 @@ export function CardCommissioningPanel({
         const latest = getCardLinkState();
         if (!mutation.ok
           || !verifyCardLightCheckMutation(flow, claim.lease.id, mutation.fencingToken)
-          || !isCardLinkConnected(latest)
+          || (!candidateVerdictOnly && !isCardLinkConnected(latest))
           || latest.host !== observed.host
           || latest.validatedBootId !== bootId
           || (latest.operationGeneration || 0) !== generation) {
@@ -1269,7 +1332,8 @@ export function CardCommissioningPanel({
     setLightCheckState(visible ? 'confirming' : 'restoring');
     let mutationAuthority = null;
     try {
-      mutationAuthority = await acquireFreshLightCheckMutation();
+      mutationAuthority = await acquireFreshLightCheckMutation(activationId
+        ? (visible ? 'wiring-confirm' : 'wiring-rollback') : '');
       if (!activationId) {
         if (markerTimeoutRef.current != null) window.clearTimeout(markerTimeoutRef.current);
         markerTimeoutRef.current = null;

@@ -1,6 +1,7 @@
 import { isCardWiringCandidateReadback } from './cardWiringSafety.js';
 import { isCardLedType } from './cardHardwareContract.js';
 import { classifyCardReadiness } from './cardReadiness.js';
+import { isExactProbationWiringMutation } from './cardBridge.js';
 import { usableCardStationIp } from './cardPostFlashNetwork.js';
 
 export const CARD_COMMISSIONING_STAGES = Object.freeze([
@@ -98,6 +99,15 @@ function candidateWiringIdentity(readback = {}) {
     maxMilliamps,
     outputs: canonicalPhysicalOutputs(readback.candidateOutputs || readback.outputs),
   };
+}
+
+function sameCandidateOutputs(actual, expected) {
+  try {
+    return JSON.stringify(canonicalPhysicalOutputs(actual))
+      === JSON.stringify(canonicalPhysicalOutputs(expected));
+  } catch {
+    return false;
+  }
 }
 
 function cardRestoreSnapshot(project = {}) {
@@ -433,6 +443,36 @@ export function preflightCardCommissioningMutation(flow, status = null, { allowI
     };
   }
   return { ok: true, readiness };
+}
+
+// Candidate verdicts are the only mutations allowed while the newly booted
+// wiring is in probation. Playback readiness is deliberately false then.
+export function preflightCardCommissioningWiringVerdict(flow, status, wiring, bootId) {
+  requireFlow(flow);
+  const activationId = text(flow.project?.pendingActivationId, 128);
+  const expected = flow.project?.pendingWiring;
+  if (flow.stage !== 'check-lights' || !flow.cardAcknowledgedAt || !activationId
+    || !expected || flow.project.wiringEvidenceState === 'legacy-inconclusive'
+    || !bootId || status?.bootId !== bootId
+    || !isExactProbationWiringMutation('wiring-confirm', { activationId }, status, wiring, {
+      cardId: flow.expectedCard?.id,
+      buildId: flow.expectedCard?.buildId,
+    })
+    || status.firmwareVersion !== flow.expectedCard.firmwareVersion
+    || wiring.firmwareVersion !== flow.expectedCard.firmwareVersion
+    || status.projectId !== flow.project.snapshot?.id
+    || status.projectRevision !== flow.project.revision
+    || status.projectFingerprint !== flow.project.fingerprint
+    || wiring.wiringRevision !== expected.wiringRevision
+    || wiring.wiringDigest !== expected.wiringDigest
+    || wiring.ledType !== expected.ledType
+    || wiring.colorOrder !== expected.colorOrder
+    || wiring.maxMilliamps !== expected.maxMilliamps
+    || !sameCandidateOutputs(wiring.candidateOutputs, expected.outputs)
+    || !Number.isFinite(wiring.remainingMs) || wiring.remainingMs <= 0) {
+    return { ok: false, reason: 'candidate-not-verified' };
+  }
+  return { ok: true, authority: 'exact-wiring-verdict' };
 }
 
 // Reality-driven auto-advance: when a background LAN poll finds the expected

@@ -17,6 +17,7 @@ import {
   MATRIX_CARD_ID,
   MATRIX_BUILD_ID,
   MATRIX_FIRMWARE_VERSION,
+  MATRIX_PROJECT_ID,
   MATRIX_PATTERNS,
   type CardStateSpec,
 } from './harness/cardStates';
@@ -251,14 +252,14 @@ test('[J07] Card Home tracks an active light test, agrees again once the card le
   // inventing a value, compute the flow's real fingerprint first and make the
   // simulated card report that same value — matching what this fixture would
   // report, not asserting a coincidence.
-  const built = await page.evaluate(async ({ cardId, firmwareVersion, buildId, host }) => {
+  const built = await page.evaluate(async ({ cardId, firmwareVersion, buildId, host, projectId }) => {
     const commissioning = await import('/src/lib/cardCommissioningFlow.js');
     const now = Date.now();
     const projectRecord = {
-      id: 'j07-confirm-project',
+      id: projectId,
       updatedAt: now,
       project: {
-        version: 3, id: 'j07-confirm-project', name: 'J07 confirm fixture',
+        version: 3, id: projectId, name: 'J07 confirm fixture',
         layout: { strips: [], wiring: null, patchBoard: null },
         devices: { standaloneController: {} },
       },
@@ -279,7 +280,7 @@ test('[J07] Card Home tracks an active light test, agrees again once the card le
     }, { now: now + 1 });
     flow = commissioning.acknowledgeCommissionedCard(flow, { id: cardId, firmwareVersion, buildId }, { now: now + 2 }).flow;
     return { flow };
-  }, { cardId: j07CardId, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID, host: cardHost });
+  }, { cardId: j07CardId, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID, host: cardHost, projectId: MATRIX_PROJECT_ID });
 
   card.state.projectFingerprint = built.flow.project.fingerprint;
 
