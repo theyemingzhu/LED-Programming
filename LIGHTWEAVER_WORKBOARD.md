@@ -9,6 +9,20 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Stack finesse and functional ordering — verified local refinement
+Owner: this manager; Sprint. State: done at approved local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on91de724b in samecheckout.
+Working: compact savepanel keeps Tune visible; More/details disclosure; separate
+Save-as-new versus Repeat; usedstack offers Arrange playlist; picker previews
+append order and playlistpositions; phone Add stacks/Back to order navigation.
+Evidence:56distinct relevantbrowser checks passing;2869/2869units; production
+build PASS. Actual1280x800/390x844 inspected. Final evidence:
+/tmp/stacks-finesse-arrange-final.log, /tmp/stacks-finesse-checkpoint.log,
+/tmp/stacks-finesse-build-final.log, /tmp/lightweaver-stack-finesse-desktop.png.
+Plan:docs/plans/2026-09-28-project-pattern-stacks-refinement.md.
+No deployment/firmware change/cardmutation. Cardcapacitylimitunchanged.
+Next: ownerreview in existing9220 preview, then authorized integration/release.
+
 ### Project pattern stacks — verified local build (chat 01a0e6bf)
 Owner: this manager; Sprint. State: done at the approved local-build boundary.
 Artifact: branch `codex/project-pattern-stacks`, managed checkout

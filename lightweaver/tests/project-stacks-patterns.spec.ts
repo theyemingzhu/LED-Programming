@@ -66,6 +66,21 @@ test('Save and add records one stack playlist reference', async ({ page }) => {
   expect(saved.devices.standaloneController.playlist.filter((item: any) => item.type === 'combo' && item.lookId === look.id)).toHaveLength(1);
 });
 
+test('a stack already in the playlist offers Arrange instead of adding again', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'stack-already-in-playlist';
+  project.devices.standaloneController.looks = [namedLook('stack-used', 'Used stack')];
+  project.devices.standaloneController.activeLookId = 'stack-used';
+  project.devices.standaloneController.playlist = [{ id: 'combo-used', type: 'combo', lookId: 'stack-used', label: 'Used stack', enabled: true }];
+  await page.addInitScript(saved => localStorage.setItem('lw_autosave_v3', JSON.stringify(saved)), project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Update stack');
+  await expect(page.getByTestId('stack-save-add')).toHaveCount(0);
+  await page.getByTestId('stack-arrange-playlist').click();
+  await expect(page).toHaveURL(/#screen=playlist/);
+});
+
 test('drafts stay attached to their stack when switching and reloading', async ({ page }) => {
   await openStackProject(page, 'stack-draft-isolation', [namedLook('stack-one', 'One'), namedLook('stack-two', 'Two')]);
   await page.getByTestId('section-target-patch-default-outer-circle').click();
@@ -81,18 +96,39 @@ test('drafts stay attached to their stack when switching and reloading', async (
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
 });
 
+test('stack editor keeps tuning visible and reveals secondary actions on demand', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openStackProject(page, 'stack-editor-focus', [namedLook('stack-one', 'One')]);
+  await expect(page.getByTestId('look-name')).toBeVisible();
+  await expect(page.getByTestId('look-save-preset')).toBeVisible();
+  await expect(page.getByTestId('stack-save-add')).toBeVisible();
+  await expect(page.getByTestId('look-brightness-slider')).toBeInViewport();
+  const details = page.getByTestId('stack-details');
+  await expect(details).not.toHaveAttribute('open', '');
+  await details.locator('summary').click();
+  await expect(details).toHaveAttribute('open', '');
+  await expect(details).toContainText('Outer circle');
+  await expect(page.getByTestId('look-save-as-new')).toBeVisible();
+  await page.getByTestId('stack-more-actions').click();
+  await expect(page.getByTestId('stack-revert')).toBeVisible();
+  await expect(page.getByTestId('look-delete')).toBeVisible();
+});
+
 test('duplicate, revert and delete undo keep separate identities', async ({ page }) => {
   await openStackProject(page, 'stack-lifecycle', [namedLook('stack-one', 'One')]);
   await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').getByTestId('stack-card-more').click();
   await page.getByTestId('project-stack-card').getByRole('button', { name: 'Duplicate' }).click();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(2);
   await expect(page.getByTestId('look-name')).toHaveValue('One 2');
   await page.getByTestId('section-target-patch-default-outer-circle').click();
   await page.getByRole('tab', { name: 'Patterns', exact: true }).click();
   await page.locator('.pm-cards .pmcard[data-pattern-id="fire"]').click();
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('stack-revert').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).not.toContainText('Fire');
   await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').filter({ hasText: 'One 2' }).getByTestId('stack-card-more').click();
   await page.getByTestId('project-stack-card').filter({ hasText: 'One 2' }).getByRole('button', { name: /Delete/ }).click();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(1);
   await page.getByTestId('look-delete-undo').click();
@@ -108,10 +144,13 @@ test('renaming and deleting another stack preserve this stack draft through Undo
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
   await page.getByRole('tab', { name: /Project stacks/ }).click();
   const b = page.getByTestId('project-stack-card').filter({ has: page.locator('.project-stack-card-head strong').filter({ hasText: /^B$/ }) });
+  await b.getByTestId('stack-card-more').click();
   await b.getByRole('button', { name: 'Rename' }).click();
+  await expect(b.getByTestId('stack-card-more')).toBeFocused();
   await b.getByRole('textbox', { name: 'New name for B' }).fill('B renamed');
   await b.getByRole('button', { name: 'Save name' }).click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
+  await page.getByTestId('project-stack-card').filter({ hasText: 'B renamed' }).getByTestId('stack-card-more').click();
   await page.getByTestId('project-stack-card').filter({ hasText: 'B renamed' }).getByRole('button', { name: /Delete/ }).click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
   await page.getByTestId('look-delete-undo').click();
@@ -180,6 +219,7 @@ test('ten project stacks fit desktop and phone without horizontal overflow', asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(2);
   await expect(page.getByTestId('project-stack-card').first().getByRole('button', { name: 'Edit' })).toBeVisible();
   const saveBox = await page.getByTestId('stack-save-bar').boundingBox();
+  await page.getByTestId('stack-more-actions').click();
   const deleteBox = await page.getByTestId('look-delete').boundingBox();
   expect(saveBox && deleteBox && deleteBox.x >= saveBox.x - 1 && deleteBox.x + deleteBox.width <= saveBox.x + saveBox.width + 1).toBe(true);
   await page.screenshot({ path: '/tmp/lightweaver-stacks-patterns-phone.png' });

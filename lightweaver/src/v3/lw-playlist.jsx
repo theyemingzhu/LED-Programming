@@ -222,6 +222,8 @@ function realPatternShape(patternId) {
     const [openRowMenuId, setOpenRowMenuId] = useState(null);
     const reorderHandleRefs = useRef(new Map());
     const rowMenuTriggerRefs = useRef(new Map());
+    const playlistOrderRef = useRef(null);
+    const sourcePickerRef = useRef(null);
     const pendingReorderFocus = useRef(null);
     const pointerDrag = useRef(null);
 
@@ -232,11 +234,13 @@ function realPatternShape(patternId) {
     const [selectedStackIds, setSelectedStackIds] = useState([]);
     const [expandedStackIds, setExpandedStackIds] = useState([]);
     const [stackFeedback, setStackFeedback] = useState('');
+    const [repeatFeedback, setRepeatFeedback] = useState('');
     React.useEffect(() => {
       setSourceChoice(readPlaylistSource(projectId, savedLooks.length > 0));
       setSelectedStackIds([]);
       setExpandedStackIds([]);
       setStackFeedback('');
+      setRepeatFeedback('');
     }, [projectId]);
     const chooseSource = (source) => {
       setSourceChoice(source);
@@ -256,6 +260,14 @@ function realPatternShape(patternId) {
       ? []
       : standaloneController?.playlist;
     const playlist = normalizeCardPlaylist(rawPlaylist, { savedLooks, sequenceAssets, allowEmpty: true });
+    const selectedStacksInLibraryOrder = savedLooks.filter(look => selectedStackIds.includes(look.id));
+    const stackPlaylistPositions = new Map();
+    playlist.forEach((item, index) => {
+      if (item.type !== 'combo') return;
+      const positions = stackPlaylistPositions.get(item.lookId) || [];
+      positions.push(index + 1);
+      stackPlaylistPositions.set(item.lookId, positions);
+    });
     // The playlist-wide "played on the card" settings — fade between looks,
     // and whether the card auto-plays it — live at controls.playlist (see
     // cardPlaylist.js's normalizePlaylistTiming doc comment for why they are
@@ -444,10 +456,18 @@ function realPatternShape(patternId) {
     const dup = (i) => {
       const item = playlist[i];
       if (!item) return;
+      if (playlist.length >= CARD_PLAYLIST_LIMIT) {
+        setRepeatFeedback(`Playlist full: ${CARD_PLAYLIST_LIMIT} manual entries is the limit. Nothing was repeated.`);
+        return;
+      }
+      if (playlistTiming.enabled && item.enabled !== false && enabledPlaylistCount >= CARD_PLAYLIST_ENTRY_LIMIT) {
+        setRepeatFeedback(`Playlist full: ${CARD_PLAYLIST_ENTRY_LIMIT} timed entries is the limit. Nothing was repeated.`);
+        return;
+      }
       const clone = { ...item, id: `${item.id}-copy-${Date.now()}`, createdAt: Date.now() };
       const next = [...playlist];
       next.splice(i + 1, 0, clone);
-      writePlaylist(next);
+      if (writePlaylist(next)) setRepeatFeedback('');
     };
 
     const remove = (i) => writePlaylist(playlist.filter((_, k) => k !== i));
@@ -845,7 +865,7 @@ function realPatternShape(patternId) {
 
     const addSelectedStacks = () => {
       if (recoveryPendingRef.current) return;
-      const orderedIds = savedLooks.map(look => look.id).filter(id => selectedStackIds.includes(id));
+      const orderedIds = selectedStacksInLibraryOrder.map(look => look.id);
       if (!orderedIds.length) return;
       try {
         if (orderedIds.some(id => stackNeedsSectionReview(savedLookById.get(id), sectionTargets))) {
@@ -1135,7 +1155,7 @@ function realPatternShape(patternId) {
                   </div>
                 }
 
-                <div className="pl-list">
+                <div className="pl-list" ref={playlistOrderRef} tabIndex={-1} data-testid="playlist-order-section">
                   {/* The list is a module, so it says what it is and how many, in
                       its own bar. The count used to float in the card-address row
                       above, where it described something two elements away. */}
@@ -1143,6 +1163,10 @@ function realPatternShape(patternId) {
                     <h2 className="t">Playlist order</h2>
                     <span className="m">{playlist.length} looks · dial press advances</span>
                     <span className="line" />
+                  </div>
+                  <div className="pl-order-help-row">
+                    <p className="pl-order-help" data-testid="playlist-order-help">Drag rows to set playback order. Each stack&apos;s sections play together.</p>
+                    <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add stacks</button>
                   </div>
                   <div className="pl-timing">
                     <label className="pl-timing-field">
@@ -1170,11 +1194,11 @@ function realPatternShape(patternId) {
                       />
                       <span>Play on the card</span>
                     </label>
-                    <p className="pl-timing-note">Each look loops for its Length, then fades to the next.</p>
+                    <p className="pl-timing-note">Each look loops for its Length, then fades to the next{playlistTiming.enabled ? '; the last returns to the first.' : '.'}</p>
                   </div>
-                  {playlistOverflow > 0 &&
+                  {playlistTiming.enabled && playlistOverflow > 0 &&
                     <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
-                      Only the first {CARD_PLAYLIST_ENTRY_LIMIT} looks reach the card. {playlistOverflow} more {playlistOverflow === 1 ? 'is' : 'are'} in the order but will not play there.
+                      Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
                     </p>
                   }
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
@@ -1183,6 +1207,7 @@ function realPatternShape(patternId) {
                   <span className="pl-reorder-status" aria-live="polite" data-testid="playlist-reorder-status">
                     {reorderAnnouncement}
                   </span>
+                  {repeatFeedback && <p className="pl-repeat-feedback" role="status" data-testid="playlist-repeat-feedback">{repeatFeedback}</p>}
                   {playlist.map((item, i) => {
                     const savedLook = item.type === 'combo' ? savedLookById.get(item.lookId) : null;
                     const displayLabel = savedLook?.label || item.label;
@@ -1280,7 +1305,7 @@ function realPatternShape(patternId) {
                               <>
                                 <button className="pl-row-menu-backdrop" aria-label="Close playlist row actions" onClick={() => closeRowMenu(true)} />
                                 <div className="pl-row-menu-pop" id={`playlist-row-menu-${id}`} role="menu" aria-label={`Actions for ${displayLabel}`}>
-                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>Duplicate {displayLabel}</span></button>
+                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>{item.type === 'combo' ? 'Repeat this stack' : `Duplicate ${displayLabel}`}</span></button>
                                   <button role="menuitem" className="pl-row-menu-item danger" onClick={() => { closeRowMenu(false); remove(i); }}>{I.trash}<span>Remove {displayLabel}</span></button>
                                 </div>
                               </>
@@ -1339,13 +1364,18 @@ function realPatternShape(patternId) {
               </section>
 
               <aside className="pm-aside">
-                <div className="card pm-pane" data-testid="playlist-source-picker">
+                <div className="card pm-pane" data-testid="playlist-source-picker" ref={sourcePickerRef} tabIndex={-1}>
+                  <button type="button" className="pl-order-jump pl-back-to-order" onClick={() => { playlistOrderRef.current?.scrollIntoView({ block: 'start' }); playlistOrderRef.current?.focus({ preventScroll: true }); }}>Back to order</button>
                   <div className="pl-source-tabs" role="tablist" aria-label="Playlist sources">
                     <button type="button" className="pl-source-tab" role="tab" aria-selected={sourceChoice === 'stacks'} onClick={() => chooseSource('stacks')}>Project stacks ({savedLooks.length})</button>
                     <button type="button" className="pl-source-tab" role="tab" aria-selected={sourceChoice === 'patterns'} onClick={() => chooseSource('patterns')}>Patterns</button>
                   </div>
                   {sourceChoice === 'stacks' ? <div role="tabpanel" aria-label="Project stacks">
                     <div className="sec-h"><h2 className="t">Project stacks</h2><span className="m">{savedLooks.length}</span></div>
+                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Selected stacks are added at the end, in library order. Arrange playback in Playlist order. Repeat a stack from its playlist row.</p>
+                    {!!selectedStacksInLibraryOrder.length && <ol className="pl-stack-selection-preview" data-testid="playlist-stack-selection-preview" aria-label="Selected stacks in add order">
+                      {selectedStacksInLibraryOrder.map((look, index) => <li key={look.id}>{index + 1}. {look.label}</li>)}
+                    </ol>}
                     {!!savedLooks.length && <button type="button" className="btn pl-stack-add-selected" disabled={!selectedStackIds.length || recoveryPending} onClick={addSelectedStacks}>Add selected{selectedStackIds.length ? ` (${selectedStackIds.length})` : ''}</button>}
                     {stackFeedback && <p className="pl-stack-feedback" role="status" data-testid="playlist-stack-feedback">{stackFeedback}</p>}
                     <div className="pl-stack-list">
@@ -1359,21 +1389,19 @@ function realPatternShape(patternId) {
                         return <div key={look.id} className="pl-stack-card" data-testid={`playlist-stack-${look.id}`}>
                           <div className="pl-stack-head">
                             <input type="checkbox" aria-label={`Select ${look.label}`} checked={selectedStackIds.includes(look.id)} disabled={!eligible || added || recoveryPending} onChange={() => toggleStackSelection(look.id)} />
+                            <StackArtwork summary={summary} />
                             <strong>{look.label}</strong><span className="mixtag">Stack</span>
                           </div>
                           <div className="pl-stack-meta">
                             <span>{summary.sectionCount} {summary.sectionCount === 1 ? 'section' : 'sections'}</span>
-                            {added && <span>In playlist</span>}
+                            {added && <span>In playlist: {(stackPlaylistPositions.get(look.id) || []).join(', ')}</span>}
                             {!eligible && <span className="pl-stack-ineligible">{needsReview ? 'Review sections' : 'Unavailable on card'}</span>}
-                          </div>
-                          <div className="pl-stack-mini" aria-label={`Section preview for ${look.label}`}>
-                            {summary.sections.map(section => <div key={section.id}><span>{section.label}</span><strong>{sectionPatternLabel(section)}</strong></div>)}
                           </div>
                           {!eligible && <p className="pl-stack-feedback">{needsReview ? 'Section layout changed. Open this stack in Patterns to review its assignments.' : compatibility.reason}</p>}
                           <div className="pl-stack-actions">
-                            <button type="button" aria-expanded={expanded} onClick={() => toggleStackDetails(look.id)}>{expanded ? 'Hide sections' : 'Show sections'}</button>
-                            {eligible && <button type="button" disabled={recoveryPending || (added && !connected)} onClick={() => addCombo(look)}>{added ? 'Preview' : 'Add stack'}</button>}
+                            {eligible && <button type="button" className={!added ? 'pl-stack-primary' : undefined} disabled={recoveryPending || (added && !connected)} onClick={() => addCombo(look)}>{added ? 'Preview' : 'Add stack'}</button>}
                             <a href={`#screen=pattern&editStack=${encodeURIComponent(look.id)}`}>Edit stack</a>
+                            <button type="button" aria-expanded={expanded} onClick={() => toggleStackDetails(look.id)}>{expanded ? 'Hide sections' : 'Show sections'}</button>
                           </div>
                           {expanded && <StackAssignments summary={summary} />}
                         </div>;

@@ -34,3 +34,41 @@
   .pm .pm-browse.is-pattern-library > .project-stack-tabs { position: absolute; top: 2px; right: 14px; z-index: 1; margin: 0; }
   .pm .pm-browse.is-pattern-library > .sec-h { box-sizing: border-box; min-height: 50px; padding-right: 255px; }
 }
+
+/* Editing stays alongside Tune; the section snapshot remains one tap away. */
+.pm .project-stack-save { padding: 9px 11px; }
+.pm .project-stack-save .sec-h { margin-bottom: 6px; }
+.pm .project-stack-save-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pm .project-stack-save-controls .pm-input { grid-column: 1 / -1; width: 100%; min-height: 36px; box-sizing: border-box; }
+.pm .project-stack-save-controls .btn { min-height: 44px; text-align: center; padding: 5px 7px; font-size: 11px; }
+.pm .project-stack-save-status { margin-top: 5px; }
+.pm .project-stack-use-note { margin-top: 5px; color: var(--text-mid); font-size: 11px; line-height: 1.35; }
+.pm .project-stack-use-note .wordlink { margin-left: 5px; }
+.pm .project-stack-save-footer { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 9px; margin-top: 3px; }
+.pm .project-stack-save-footer > .wordlink,
+.pm .project-stack-save-footer > .project-stack-more > summary,
+.pm .project-stack-save-footer > .project-stack-details > summary { min-height: 36px; display: inline-flex; align-items: center; font-size: 11px; }
+.pm .project-stack-details { min-width: 0; }
+.pm .project-stack-details[open] { flex: 1 0 100%; }
+.pm .project-stack-details > summary,
+.pm .project-stack-more > summary { cursor: pointer; color: var(--text-mid); }
+.pm .project-stack-details > summary:hover,
+.pm .project-stack-more > summary:hover { color: var(--text-hi); }
+.pm .project-stack-details p { margin: 0 0 7px; }
+.pm .project-stack-more { min-width: 0; }
+.pm .project-stack-more-menu { display: grid; gap: 5px; padding: 7px; background: var(--bg-elev); border: 1px solid var(--border-hair); border-radius: 8px; }
+.pm .project-stack-more-menu .btn { min-height: 44px; max-width: 100%; white-space: normal; text-align: left; }
+.pm .project-stack-card .project-stack-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; align-items: start; }
+.pm .project-stack-card .project-stack-actions > .project-stack-more { grid-column: 3; }
+.pm .project-stack-card .project-stack-more > summary { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 8px; border: 1px solid var(--border-hair); border-radius: 6px; }
+.pm .project-stack-card .project-stack-more[open] { grid-column: 1 / -1; }
+.pm .project-stack-card .project-stack-more[open] > summary { justify-content: flex-start; }
+.pm .project-stack-card .project-stack-more-menu { margin-top: 5px; }
+.pm .project-stack-strip { box-shadow: none; }
+@media (max-width: 700px) {
+  .pm .project-stack-save-footer > .wordlink,
+  .pm .project-stack-save-footer > .project-stack-more > summary,
+  .pm .project-stack-save-footer > .project-stack-details > summary { min-height: 44px; }
+}
+.pm .project-stack-save-footer > .project-stack-more > summary,
+.pm .project-stack-save-footer > .project-stack-details > summary { text-decoration: underline; text-underline-offset: 3px; }

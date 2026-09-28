@@ -59,11 +59,14 @@ test('project stacks have their own picker, exact details, and ordered multi-add
 
   await page.getByTestId('playlist-stack-stack-2').getByRole('checkbox').check();
   await page.getByTestId('playlist-stack-stack-1').getByRole('checkbox').check();
+  await expect(page.getByTestId('playlist-stack-selection-preview')).toContainText('1. Stack 1');
+  await expect(page.getByTestId('playlist-stack-selection-preview')).toContainText('2. Stack 2');
+  await expect(page.getByTestId('playlist-stack-order-help')).toContainText('library order');
   await page.getByRole('button', { name: 'Add selected' }).click();
   await expect(page.locator('[data-testid^="playlist-row-combo-"]')).toHaveCount(2);
   await expect(page.locator('[data-testid^="playlist-row-combo-"]').first()).toContainText('Stack 1');
   await expect(page.locator('[data-testid^="playlist-row-combo-"]').last()).toContainText('Stack 2');
-  await expect(page.getByTestId('playlist-stack-stack-1')).toContainText('In playlist');
+  await expect(page.getByTestId('playlist-stack-stack-1')).toContainText('In playlist: 1');
   await page.getByRole('tab', { name: 'Patterns' }).click();
   await expect(page.getByRole('tab', { name: 'Patterns' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: 'Project stacks (3)' }).click();
@@ -79,6 +82,58 @@ test('project stacks have their own picker, exact details, and ordered multi-add
   await expect(page).toHaveURL(/screen=pattern/);
   await expect(page.getByTestId('look-save-preset')).toHaveText('Update stack');
   await expect(page.getByTestId('look-name')).toHaveValue('Stack 1');
+});
+
+test('repeating a stack creates a separate occurrence with its own Length', async ({ page }) => {
+  const { project } = projectWithStacks(1, false);
+  project.devices.standaloneController.playlist = [
+    { id: 'combo-stack-1', type: 'combo', lookId: 'stack-1', label: 'Stack 1', dwellSeconds: 90 },
+    { id: 'fire', type: 'pattern', patternId: 'fire', label: 'Fire', dwellSeconds: 30 },
+  ];
+  await openPlaylist(page, project);
+  const original = page.getByTestId('playlist-row-combo-stack-1');
+  await original.getByRole('button', { name: 'More actions for Stack 1' }).click();
+  await original.getByRole('menuitem', { name: 'Repeat this stack' }).click();
+  const occurrences = page.locator('[data-testid^="playlist-row-combo-stack-1"]');
+  await expect(occurrences).toHaveCount(2);
+  await expect(occurrences.first().getByRole('spinbutton', { name: 'Length in minutes for Stack 1' })).toHaveValue('1.5');
+  await occurrences.last().getByRole('spinbutton', { name: 'Length in minutes for Stack 1' }).fill('2.5');
+  await occurrences.last().getByRole('spinbutton', { name: 'Length in minutes for Stack 1' }).press('Enter');
+  await expect(occurrences.first().getByRole('spinbutton', { name: 'Length in minutes for Stack 1' })).toHaveValue('1.5');
+  await expect(occurrences.last().getByRole('spinbutton', { name: 'Length in minutes for Stack 1' })).toHaveValue('2.5');
+  await expect(page.getByTestId('playlist-stack-stack-1')).toContainText('In playlist: 1, 2');
+  await occurrences.last().getByRole('button', { name: 'Reorder Stack 1' }).press('ArrowDown');
+  await expect(page.getByTestId('playlist-stack-stack-1')).toContainText('In playlist: 1, 3');
+});
+
+test('repeat refuses a full 16-entry timed playlist without changing its order', async ({ page }) => {
+  const { project } = projectWithStacks(1, false);
+  project.devices.standaloneController.playlist = [
+    { id: 'combo-stack-1', type: 'combo', lookId: 'stack-1', label: 'Stack 1', dwellSeconds: 90 },
+    ...Array.from({ length: 15 }, (_, index) => ({ id: `full-${index}`, type: 'pattern', patternId: 'fire', label: `Fire ${index}`, dwellSeconds: 30 })),
+  ];
+  project.devices.standaloneController.controls.playlist = { enabled: true, fadeMs: 1500 };
+  await openPlaylist(page, project);
+  const fullOriginal = page.getByTestId('playlist-row-combo-stack-1');
+  await fullOriginal.getByRole('button', { name: 'More actions for Stack 1' }).click();
+  await fullOriginal.getByRole('menuitem', { name: 'Repeat this stack' }).click();
+  await expect(page.locator('[data-testid^="playlist-row-combo-stack-1"]')).toHaveCount(1);
+  await expect(page.getByTestId('playlist-repeat-feedback')).toContainText('16');
+});
+
+test('repeat refuses a full 32-entry manual bank', async ({ page }) => {
+  const { project } = projectWithStacks(1, false);
+  project.devices.standaloneController.playlist = [
+    { id: 'combo-stack-1', type: 'combo', lookId: 'stack-1', label: 'Stack 1', dwellSeconds: 90 },
+    ...Array.from({ length: 31 }, (_, index) => ({ id: `manual-${index}`, type: 'pattern', patternId: 'fire', label: `Fire ${index}`, dwellSeconds: 30 })),
+  ];
+  await openPlaylist(page, project);
+  await expect(page.getByTestId('playlist-overflow-notice')).toHaveCount(0);
+  const row = page.getByTestId('playlist-row-combo-stack-1');
+  await row.getByRole('button', { name: 'More actions for Stack 1' }).click();
+  await row.getByRole('menuitem', { name: 'Repeat this stack' }).click();
+  await expect(page.locator('.pl-row')).toHaveCount(32);
+  await expect(page.getByTestId('playlist-repeat-feedback')).toContainText('32');
 });
 
 test('multi-add refuses capacity overflow without adding a subset', async ({ page }) => {
@@ -149,3 +204,17 @@ for (const [size, width, height] of [['desktop', 1280, 900], ['phone', 390, 844]
     await page.screenshot({ path: `/tmp/lightweaver-stacks-playlist-${size}.png`, fullPage: true });
   });
 }
+
+test('phone jumps between playlist order and the stack picker', async ({ page }) => {
+  const { project } = projectWithStacks(10, false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPlaylist(page, project);
+  const order = page.getByTestId('playlist-order-section');
+  const picker = page.getByTestId('playlist-source-picker');
+  await order.getByRole('button', { name: 'Add stacks' }).click();
+  await expect(picker).toBeInViewport({ ratio: 0.01 });
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('playlist-source-picker');
+  await picker.getByRole('button', { name: 'Back to order' }).click();
+  await expect(order).toBeInViewport({ ratio: 0.01 });
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('playlist-order-section');
+});

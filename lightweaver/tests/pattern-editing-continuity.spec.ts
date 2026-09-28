@@ -29,6 +29,7 @@ const savedLooks = page => page.evaluate(() => JSON.parse(localStorage.getItem('
 test('renaming and updating a look keep its identity instead of making duplicates', async ({ page }) => {
   await openProject(page);
   await page.getByTestId('look-name').fill('Violet evening');
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-rename').click();
   await expect.poll(async () => (await savedLooks(page)).find(look => look.id === 'owned-look-0')?.label).toBe('Violet evening');
   expect(await savedLooks(page)).toHaveLength(1);
@@ -40,6 +41,7 @@ test('renaming and updating a look keep its identity instead of making duplicate
 
 test('delete and Undo restore the look and its playlist cue', async ({ page }) => {
   await openProject(page);
+  await page.getByTestId('stack-more-actions').click();
   await page.getByTestId('look-delete').click();
   await expect.poll(async () => (await savedLooks(page)).length).toBe(0);
   await page.getByTestId('look-delete-undo').click();
