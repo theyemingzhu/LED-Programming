@@ -62,7 +62,7 @@ test('one selected editor, direct counts, and no numbered or repeated section na
   await expect(page.getByTestId('layout-total-led-count')).toHaveValue('41');
 });
 
-test('Layout pattern gallery previews and applies only the selected section, then returns focus', async ({ page }) => {
+test('Layout pattern gallery previews and applies successive choices until the strip closes it', async ({ page }) => {
   const writes: string[] = [];
   page.on('request', request => {
     if (request.method() === 'POST' && /\/api\/(control|config|project)(?:[/?]|$)/.test(request.url())) writes.push(request.url());
@@ -89,20 +89,28 @@ test('Layout pattern gallery previews and applies only the selected section, the
   await expect(gallery.locator('.la-pattern-preview').first()).toBeVisible();
   const audition = gallery.getByTestId('layout-pattern-audition');
   await expect(gallery.getByTestId('layout-pattern-audition-canvas')).toBeVisible();
-  expect((await gallery.getByTestId('layout-pattern-audition-canvas').boundingBox())?.height).toBeGreaterThan(100);
+  expect((await gallery.getByTestId('layout-pattern-audition-canvas').boundingBox())?.height).toBeGreaterThanOrEqual(20);
+  expect((await gallery.getByTestId('layout-pattern-audition-canvas').boundingBox())?.height).toBeLessThanOrEqual(22);
   await gallery.getByRole('button', { name: 'Fire', exact: true }).focus();
   await expect(audition).toHaveAttribute('aria-label', 'Fire animated preview for Ribbon 2');
   await gallery.getByRole('button', { name: 'Plasma', exact: true }).hover();
   await expect(audition).toHaveAttribute('aria-label', 'Plasma animated preview for Ribbon 2');
+  const auditionFrame = () => gallery.getByTestId('layout-pattern-audition-canvas')
+    .evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+  const firstAuditionFrame = await auditionFrame();
+  await expect.poll(auditionFrame).not.toEqual(firstAuditionFrame);
   await gallery.screenshot({ path: '/tmp/lightweaver-layout-pattern-audition.png' });
   await page.keyboard.press('Escape');
   await expect(gallery).toBeHidden();
   await expect(trigger).toBeFocused();
   await expect(row).not.toContainText('Plasma');
   await trigger.click();
+  await gallery.getByRole('button', { name: 'Fire', exact: true }).click();
+  await expect(gallery).toBeVisible();
+  await expect(row).toContainText('Fire');
   await gallery.getByRole('button', { name: 'Plasma', exact: true }).click();
-  await expect(gallery).toBeHidden();
-  await expect(trigger).toBeFocused();
+  await expect(gallery).toBeVisible();
+  await expect(audition).toHaveAttribute('aria-label', 'Plasma animated preview for Ribbon 2');
   await expect(row).toContainText('Plasma');
   await expect(page.getByTitle('Toggle ambient light preview (click). Right-click or use ▾ for glow options.')).toHaveClass(/active/);
   const stripId = await row.locator('xpath=..').getAttribute('data-strip-id');
@@ -112,6 +120,17 @@ test('Layout pattern gallery previews and applies only the selected section, the
   const firstFrame = await ledColors();
   await expect.poll(ledColors).not.toEqual(firstFrame);
   await page.screenshot({ path: '/tmp/lightweaver-layout-plasma-on-part.png', fullPage: true });
+  await row.locator('.layer-name').click();
+  await expect(gallery).toBeHidden();
+  await trigger.click();
+  await expect(gallery).toBeVisible();
+  await gallery.getByRole('button', { name: 'Close pattern gallery' }).click();
+  await expect(gallery).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(gallery).toBeVisible();
+  await page.getByTestId(`strip-callout-${stripId}`).click();
+  await expect(gallery).toBeHidden();
   await expect(page.locator('.la-strip-row').first().getByTestId('layout-section-pattern-action')).toHaveText(firstPatternBefore);
   await expect(page.locator('.la-strip-row').nth(2).getByTestId('layout-section-pattern-action')).toHaveText(thirdPatternBefore);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.patchBoard?.patches?.map((p: any) => p.playback?.patternId))).toContain('plasma');

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID } from '../../v3/v3-data.js';
 import { PatternPreview } from '../../v3/PatternPreview.jsx';
-import { fitPreviewViewBox, resolvePreviewPatternId } from '../../lib/patternPiecePreview.js';
+import { resolvePreviewPatternId } from '../../lib/patternPiecePreview.js';
 
 export function LayoutPatternGallery({ stripName, currentPatternId, previewSegment, onChoose, onClose }) {
   const firstRef = useRef(null);
@@ -10,6 +10,9 @@ export function LayoutPatternGallery({ stripName, currentPatternId, previewSegme
   const audition = REAL_PATTERN_BY_ID.get(auditionId);
   const auditionStrip = previewSegment && audition ? {
     ...previewSegment,
+    // The picker samples color motion in a thin rail; the canvas keeps the
+    // Part's actual path. This projection changes preview geometry only.
+    pixels: previewSegment.pixels.map((pixel, index) => ({ ...pixel, x: index * 8, y: 0 })),
     sourcePatternId: audition.id,
     patternId: resolvePreviewPatternId(audition.id) || audition.id,
     palette: audition.pal,
@@ -26,7 +29,7 @@ export function LayoutPatternGallery({ stripName, currentPatternId, previewSegme
          aria-label={`${audition?.label || auditionId} animated preview for ${stripName}`}>
       <div className="la-pattern-audition-stage">
         {auditionStrip && <PatternPreview strips={[auditionStrip]}
-          viewBox={fitPreviewViewBox([auditionStrip])}
+          viewBox={`-4 -4 ${Math.max(1, auditionStrip.pixels.length - 1) * 8 + 8} 8`}
           patternId={auditionStrip.patternId} playing={true}
           palette={auditionStrip.palette} glow={1.1} dotSize={3}
           targetFps={30} ariaLabel={`${audition?.label} animated LED preview for ${stripName}`}
@@ -34,14 +37,14 @@ export function LayoutPatternGallery({ stripName, currentPatternId, previewSegme
       </div>
       <span>{audition?.label || auditionId} · {stripName}</span>
     </div>
-    <div className="la-pattern-gallery-list">
+    <div className="la-pattern-gallery-list" onPointerLeave={() => setAuditionId(currentPatternId)}>
       {REAL_PATTERNS.map((pattern, index) => <button type="button" key={pattern.id}
           ref={pattern.id === currentPatternId || (index === 0 && !REAL_PATTERN_BY_ID.has(currentPatternId)) ? firstRef : undefined}
           className="la-pattern-choice" aria-label={pattern.label}
           aria-pressed={currentPatternId === pattern.id}
           onPointerEnter={() => setAuditionId(pattern.id)}
           onFocus={() => setAuditionId(pattern.id)}
-          onClick={() => onChoose(pattern.id)}>
+          onClick={() => { setAuditionId(pattern.id); onChoose(pattern.id); }}>
         <span className="la-pattern-preview" style={{ background: pattern.grad }} aria-hidden="true"/>
         <span>{pattern.label}</span>
       </button>)}

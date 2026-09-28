@@ -290,10 +290,10 @@ export function DrawModePanel({
     })
     : [], [patternPicker, strips, patchBoard, wiring, compiledWiring, sectionTargets]);
   const patternTriggerRefs = useRef(new Map());
-  const closePatternPicker = () => {
+  const closePatternPicker = (restoreFocus = true) => {
     const targetId = patternPicker?.targetId;
     setPatternPicker(null);
-    window.requestAnimationFrame(() => patternTriggerRefs.current.get(targetId)?.focus());
+    if (restoreFocus) window.requestAnimationFrame(() => patternTriggerRefs.current.get(targetId)?.focus());
   };
   const choosePattern = patternId => {
     const target = sectionTargets.find(item => item.id === patternPicker?.targetId);
@@ -303,8 +303,20 @@ export function DrawModePanel({
         look: { ...target.look, patternId } }));
     }
     if (target) enableLightPreview();
-    closePatternPicker();
   };
+  useEffect(() => {
+    if (!patternPicker) return undefined;
+    // Canvas strip selection lives in a sibling panel. Dismiss its picker on
+    // the same pointer gesture so selecting even the current strip closes it.
+    const onCanvasStripPointer = event => {
+      if (event.target instanceof Element && event.target.closest(
+        '[data-strip-path], [data-strip-interior], [data-testid^="strip-callout-"]')) {
+        setPatternPicker(null);
+      }
+    };
+    document.addEventListener('pointerdown', onCanvasStripPointer, true);
+    return () => document.removeEventListener('pointerdown', onCanvasStripPointer, true);
+  }, [patternPicker]);
 
   useEffect(() => setTotalLedDraft(String(totalLeds)), [totalLeds]);
 
@@ -1595,6 +1607,7 @@ export function DrawModePanel({
                                 outline: stripGroupDragOver === `strip:${s.id}` ? '1px solid var(--accent)' : undefined,
                                 outlineOffset: -1 }}
                        onClick={e => {
+                         if (patternPicker) closePatternPicker(false);
                          if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleStripSel(s.id); return; }
                          // Selecting is the whole gesture now: the panel follows
                          // the selection, so there is nothing left to toggle. It
@@ -1645,6 +1658,10 @@ export function DrawModePanel({
                                        aria-expanded={patternPicker?.targetId === target.id}
                                        onClick={event => {
                                          event.stopPropagation();
+                                         if (patternPicker?.targetId === target.id) {
+                                           closePatternPicker();
+                                           return;
+                                         }
                                          selectStrip(s.id);
                                          setPatternPicker({ targetId: target.id, stripId: s.id });
                                        }}>
