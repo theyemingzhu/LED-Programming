@@ -9,6 +9,20 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+LATEST OWNER BOUNDARY: integrate and merge all current work into main FIRST;
+production shipping is a later step, requiring new go-ahead. Automatic Deploy site
+workflow (289066915) temporarily disabled to enforce that boundary; restore only
+when shipping is authorized again. No deployment is authorized now.
+Final Layout correction committed 2966b0cf, five focused browser cases passed.
+Primary verifies final preview and owns PR353 integration. Consolidator01a0e503
+continues frozen4719ec9c validation; no hardware changes.
+
+LAST OWNER UI CHANGE BEFORE SHIP active: moveLEDcountfromstriprow intoexpanded
+Layoutheader/controlrow; keepdrag/name/hide/pattern inrow, removeleadingcolorline
+and tintnamewithstripcolor. Appowner01a0e50f Sol/low boundedUI+focusedproof; retain
+no redundantPartheading. Releaseconsolidator continues4719ec9cbaselinegate; parent
+integratesfinalpatch andexactremoteCI/deploy. Do notpublisholdercandidatefirst.
+
 ACTIVE AUTHORIZED SHIPMENT — owner requests all current integrated Studio published
 to main site. Frozenapp4719ec9c (Studio2188) plus current intended workflow/Bench/
 research records. PR353 reused;19sourcecommits aheadorigin/main, nofirmwarefiles
