@@ -5,6 +5,7 @@ import path from 'node:path';
 import { testPort as port } from './testPort.mjs';
 import { projectSkeletonFromCardStatus } from '../src/lib/discoveryCommit.js';
 import { createDefaultProject } from '../src/lib/projectModel.js';
+import { compileWiring } from '../src/lib/wiringCompiler.js';
 
 const TEST_CARD_ID = 'lw-layout-tests';
 const TEST_BUILD_ID = 'a'.repeat(40);
@@ -310,9 +311,15 @@ test('Open Patterns starts the guarded install and can replace an unrelated unfi
   expect(card.operations).not.toContain('candidate');
 
   await recover.click();
-  await expect(page).toHaveURL(/#screen=pattern/, { timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
   expect(card.operations).toContain('rollback');
-  expect(card.operations).toContain('config');
+  expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(1);
+  expect(card.candidateConfig?.piece?.id).not.toBe('old-test');
+  await page.getByRole('button', { name: 'Start light test' }).click();
+  await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
+  await page.getByRole('button', { name: 'The lights look correct' }).click();
+  await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 10000 });
+  expect(card.operations).toEqual(expect.arrayContaining(['activate', 'confirm']));
 });
 
 test('Open Patterns starts an exact staged light test and keeps confirmation in phase 4', async ({ page }) => {
@@ -341,6 +348,7 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
   });
 
   await expect(page).not.toHaveURL(/#screen=pattern$/);
+  await page.getByRole('button', { name: 'Start light test' }).click();
   const verifyPhase = page.getByTestId('setup-phase-verify');
   await expect(verifyPhase.getByRole('button', { name: 'The lights look correct' })).toBeVisible({ timeout: 10000 });
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(1);
@@ -363,7 +371,7 @@ test('Open Patterns starts an exact staged light test and keeps confirmation in 
   expect(card.operations.filter(operation => operation === 'candidate')).toHaveLength(1);
 });
 
-test('an expired Open Patterns light test retries with a fresh automatically activated candidate', async ({ page }) => {
+test('an expired Open Patterns light test retries with a fresh candidate and another light test', async ({ page }) => {
   const card = await mockLocalCard(page, { autoExpireProbationMs: 2000, forceStagedConfig: true });
   await gotoWire(page, {
     verified: true,
@@ -373,6 +381,7 @@ test('an expired Open Patterns light test retries with a fresh automatically act
     },
   });
 
+  await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
 
   await expect(page.getByRole('region', { name: 'Wiring safety check' })).toHaveCount(0, { timeout: 5000 });
@@ -380,6 +389,9 @@ test('an expired Open Patterns light test retries with a fresh automatically act
   const retry = page.getByRole('button', { name: 'Retry' });
   await expect(retry).toBeEnabled();
   await retry.click();
+  await expect(page.getByRole('button', { name: 'Start light test' })).toBeVisible();
+  expect(card.operations.filter(operation => operation === 'candidate' || operation === 'config')).toHaveLength(2);
+  await page.getByRole('button', { name: 'Start light test' }).click();
   await expect(page.getByRole('button', { name: 'The lights look correct' })).toBeVisible();
   expect(card.operations.filter(operation => operation === 'activate')).toHaveLength(2);
 });
@@ -421,7 +433,17 @@ test('valid unverified wiring enters the staged card flow without a duplicate LE
 });
 
 test('a successful push is pending until acknowledgement and records the exact installed revision', async ({ page }) => {
-  const options = { delayConfig: 350 };
+  const project = createDefaultProject();
+  const options = {
+    delayConfig: 350,
+    // This case measures a direct config acknowledgement. Match the card's
+    // physical wiring so a structural light test is not the subject instead.
+    currentOutputs: compileWiring({
+      wiring: project.layout.wiring,
+      strips: project.layout.strips,
+      groups: project.layout.layerGroups,
+    }).outputs,
+  };
   const card = await mockLocalCard(page, options);
   await gotoWire(page, { verified: true });
 
@@ -542,7 +564,15 @@ test('candidate test locks conflicting saves, recovers an ambiguous activation, 
 });
 
 test('a failed push retains the acknowledged installed revision and Retry installs successfully', async ({ page }) => {
-  const options = { failConfig: false };
+  const project = createDefaultProject();
+  const options = {
+    failConfig: false,
+    currentOutputs: compileWiring({
+      wiring: project.layout.wiring,
+      strips: project.layout.strips,
+      groups: project.layout.layerGroups,
+    }).outputs,
+  };
   const card = await mockLocalCard(page, options);
   await gotoWire(page, { verified: true });
 
@@ -636,6 +666,7 @@ test('candidate runtime readback cannot replace an open project with no port rol
     return readProjectLifecycleRecord();
   });
   await page.evaluate(() => { window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns'; });
+  await page.getByRole('button', { name: 'Start light test', exact: true }).click();
   const confirm = page.getByRole('button', { name: 'The lights look correct', exact: true });
   await expect(confirm).toBeVisible({ timeout: 10000 });
   // Activation's completion triggers Setup's background read. Its response

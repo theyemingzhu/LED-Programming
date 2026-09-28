@@ -518,8 +518,8 @@ test('assigning a second GPIO in Wire updates hardware pin conflicts', async ({ 
 test('changing logical sections never changes the derived physical data-wire count', async ({ page }) => {
   await seedDefaultCircles(page, { mode: 'draw' });
   const outer = await expandDrawStrip(page, 'Outer circle');
-  await outer.getByRole('spinbutton', { name: 'Strip LED count', exact: true }).fill('26');
-  await outer.getByRole('spinbutton', { name: 'Strip LED count', exact: true }).blur();
+  await outer.getByRole('spinbutton', { name: /LED count$/ }).fill('26');
+  await outer.getByRole('spinbutton', { name: /LED count$/ }).blur();
   await outer.getByRole('button', { name: 'Reverse data direction of Outer circle' }).click();
   await switchMode(page, 'wire');
   expect(await gpioGroupsOnWire(page)).toBe(1);
