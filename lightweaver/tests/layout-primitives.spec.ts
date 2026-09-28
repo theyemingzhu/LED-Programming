@@ -388,7 +388,7 @@ test('size, density, and LED count stay linked', async ({ page }) => {
   }).toEqual([Math.round(starting.pixelCount / 0.9), true]);
 
   const linked = (await readAutosaveStrips(page))?.[0];
-  await page.getByRole('button', { name: 'One LED more' }).click();
+  await page.getByRole('button', { name: /^One more LED in / }).click();
   await expect.poll(async () => {
     const saved = JSON.parse(await page.evaluate(() => localStorage.getItem('lw_autosave_v3') || 'null'));
     const strip = saved?.layout?.strips?.[0];
