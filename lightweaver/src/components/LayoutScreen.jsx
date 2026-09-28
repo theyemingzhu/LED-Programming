@@ -608,6 +608,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           <div className="la-inspector-main" hidden={specsOpen}>
             <DrawModePanel state={state}
                          onChangePattern={changeSectionPattern}
+                         cardHost={cardHost}
                          firstLedPicker={firstLedPicker}
                          firstLedError={firstLedError}
                          onBeginFirstLedPicker={beginFirstLedPicker}
