@@ -129,7 +129,13 @@ test('generated connected sections read as Parts under one physical strip', asyn
   await expect(page.getByRole('combobox', { name: `${parentName} shared reel density` })).toHaveCount(1);
   await expect(page.getByRole('combobox', { name: `${parentName} shared GPIO output` })).toHaveCount(1);
   await rows.nth(1).click({ position: { x: 8, y: 8 } });
-  await expect(page.getByRole('region', { name: 'Part 2 settings' })).toBeVisible();
+  const partEditor = page.getByRole('region', { name: 'Part 2 settings' });
+  await expect(partEditor).toBeVisible();
+  await expect(partEditor.getByText('Part 2 settings')).toHaveCount(0);
+  await expect(partEditor.getByRole('textbox', { name: 'Part 2 name' })).toHaveCount(0);
+  const lengthBox = await partEditor.getByRole('spinbutton', { name: 'Part 2 length in metres' }).boundingBox();
+  const gpioBox = await partEditor.getByRole('combobox', { name: 'Part 2 GPIO override' }).boundingBox();
+  expect(lengthBox && gpioBox && Math.abs(lengthBox.y - gpioBox.y) < 10 && gpioBox.x > lengthBox.x).toBeTruthy();
   await expect(page.getByTestId('connected-child')).toHaveCount(1);
   const actions = page.getByRole('group', { name: 'Part 2 actions' });
   await expect(actions).toBeVisible();

@@ -1659,32 +1659,25 @@ export function DrawModePanel({
                         {connectedFamily && (() => {
                           const memberPin = outputForStrip(s.id)?.pin ?? 16;
                           return <section className="lw-connected-editor-frame">
-                            <div className="la-strip-settings-label">{partName} settings</div>
                             {!connectedStatus.ok && <div className="lw-connected-error" role="alert" data-testid={`section-family-error-${connectedFamily.id}`}>
                               <span>{connectedStatus.error}</span>
                               <button type="button" className="btn" onClick={() => detachSectionFamily(connectedFamily.id)}>Detach sections</button>
                             </div>}
                             {connectedStatus.ok && <div className="lw-connected-child selected" data-testid="connected-child" data-section-id={s.id}>
-                              <div className="lw-connected-physical" aria-label={`${partName} physical size`}>
-                                <label><span>Part length · m</span>
-                                  <input type="number" min="0.001" step="0.001" inputMode="decimal"
-                                         key={`${s.id}:${s.pixelCount}:${selectedDensity}`}
-                                         defaultValue={formatMetersValue(s.pixelCount / selectedDensity)}
-                                         aria-label={`${partName} length in metres`}
-                                         disabled={wiring.locked}
-                                         onBlur={event => {
-                                           const metres = Number(event.target.value);
-                                           if (Number.isFinite(metres) && metres > 0) {
-                                             const result = correctConnectedSectionCount(s.id, Math.max(1, Math.round(metres * selectedDensity)));
-                                             setConnectedError(result.ok ? '' : result.error);
-                                           }
-                                         }}
-                                         onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}/>
-                                </label>
-                              </div>
-                              <label><span>Name</span>
-                                <input type="text" value={partName} aria-label={`${partName} name`}
-                                       onChange={event => renameStrip(s.id, event.target.value)}/>
+                              <label><span>Part length · m</span>
+                                <input type="number" min="0.001" step="0.001" inputMode="decimal"
+                                       key={`${s.id}:${s.pixelCount}:${selectedDensity}`}
+                                       defaultValue={formatMetersValue(s.pixelCount / selectedDensity)}
+                                       aria-label={`${partName} length in metres`}
+                                       disabled={wiring.locked}
+                                       onBlur={event => {
+                                         const metres = Number(event.target.value);
+                                         if (Number.isFinite(metres) && metres > 0) {
+                                           const result = correctConnectedSectionCount(s.id, Math.max(1, Math.round(metres * selectedDensity)));
+                                           setConnectedError(result.ok ? '' : result.error);
+                                         }
+                                       }}
+                                       onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}/>
                               </label>
                               <label><span>This part GPIO</span>
                                 <select aria-label={`${partName} GPIO override`} value={memberPin}

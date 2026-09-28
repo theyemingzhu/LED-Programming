@@ -464,11 +464,8 @@
 .lw-connected-editor-frame > .lw-connected-summary { position: static; margin: 0; padding: 0 0 6px; border: 0; background: transparent; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .lw-connected-editor-frame > .lw-connected-summary span { color: var(--text-mid); font-size: 11px; }
 .lw-connected-child > label { min-width: 0; }
-.lw-connected-physical { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 5px 0; color: var(--text-mid); font-size: 11px; }
-.lw-connected-physical label { display: grid; gap: 4px; min-width: 0; }
-.lw-connected-physical input, .lw-connected-physical select { width: 100%; min-width: 0; min-height: 30px; }
 .lw-connected-child > .btn { min-height: 30px; }
-@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > .btn, .lw-connected-physical input, .lw-connected-physical select { min-height: 44px; } }
+@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > input, .lw-connected-child > select { min-height: 44px; } }
 .lw-section-boundary-details { grid-column: 1 / -1; color: var(--text-mid); font-size: 11px; }
 .lw-section-boundary-details summary { cursor: pointer; padding: 5px 0; }
 .lw-section-boundary-details label { display: grid; grid-template-columns: 1fr 64px; gap: 5px; }
@@ -490,9 +487,10 @@
 .la .la-gpio-group .la-part-row .la-row-unit { display: none; }
 .la .la-strip-detail.lw-connected-editor-shell { border-top: 0; padding-top: 4px; }
 .lw-connected-editor-frame { border: 0; border-radius: 0; background: transparent; padding: 0; gap: 5px; }
-.lw-connected-editor-frame > .la-strip-settings-label { padding: 0 0 5px; color: var(--text-hi); font-size: 12px; font-weight: 650; }
 .lw-connected-child, .lw-connected-child.selected { border: 0; border-radius: 0; background: transparent; padding: 0; }
-.lw-connected-physical { padding: 0; }
+.lw-connected-child > label { min-width: 0; }
+.lw-connected-child > label input, .lw-connected-child > label select { min-height: 30px; }
+@media (pointer: coarse), (max-width: 600px) { .lw-connected-child > label input, .lw-connected-child > label select { min-height: 44px; } }
 .la-part-actions { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; padding-top: 7px; border-top: 1px solid var(--border-soft); }
 .la-part-actions .btn { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 34px; padding: 5px; }
 .la-part-action-icon { display: flex; align-items: center; justify-content: center; }
