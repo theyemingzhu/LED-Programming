@@ -275,14 +275,14 @@ export function firmwareBundleOnly(paths, {
 } = {}) {
   if (conservative) return false;
   const options = { conservative, generatedRelease };
-  const releasePaths = (paths || [])
+  const changedPaths = (paths || [])
     .map(path => String(path || '').trim().replace(/^\.\//, ''))
-    .filter(path => path && !isReleaseNeutralCiControlPath(path));
-  const withBundle = classifyChangedPaths(releasePaths, { ...options, cardBundleUnchanged: false });
-  if (!withBundle.firmware) return false;
-  // Establish that firmware validation is required before removing the exact
-  // browser files from the hard-release calculation. Otherwise an updater-only
-  // diff would have no remaining firmware lane and appear unrelated to it.
+    .filter(Boolean);
+  // Decide whether validation was selected before removing release-neutral
+  // paths. Classifier and test.yml edits select firmware tests themselves; an
+  // otherwise browser-only diff must not require a signer because of them.
+  if (!classifyChangedPaths(changedPaths, { ...options, cardBundleUnchanged: false }).firmware) return false;
+  const releasePaths = changedPaths.filter(path => !isReleaseNeutralCiControlPath(path));
   const hardReleasePaths = releasePaths.filter(path => !BROWSER_INSTALLER_PATHS.has(path));
   return classifyChangedPaths(hardReleasePaths, { ...options, cardBundleUnchanged: true }).firmware === false;
 }

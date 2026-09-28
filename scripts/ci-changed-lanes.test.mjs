@@ -72,6 +72,20 @@ test('browser installer helpers cannot mask a real signing input', () => {
   assert.equal(firmwareBundleOnly([browserHelper], { conservative: true }), false);
 });
 
+test('classifier repair diff validates firmware without requiring a signed release', () => {
+  const paths = [
+    'docs/CAPABILITIES.md',
+    'lightweaver/tests/three-gpio-playlist-workflow.spec.ts',
+    'scripts/ci-changed-lanes.mjs',
+    'scripts/ci-changed-lanes.test.mjs',
+  ];
+  assert.equal(classifyChangedPaths(paths).firmware, true);
+  assert.equal(firmwareBundleOnly(paths), true);
+  assert.equal(firmwareBundleOnly(['scripts/ci-changed-lanes.mjs']), true);
+  assert.equal(firmwareBundleOnly(paths, { conservative: true }), false);
+  assert.equal(firmwareBundleOnly([...paths, 'firmware/lightweaver-controller/VERSION']), false);
+});
+
 test('real firmware changes still produce a signed release automatically', () => {
   assert.equal(firmwareBundleOnly(['firmware/lightweaver-controller/src/main.cpp']), false);
   assert.equal(firmwareBundleOnly(['firmware/lightweaver-controller/platformio.ini']), false);
