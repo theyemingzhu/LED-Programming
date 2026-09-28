@@ -49,11 +49,10 @@
 .pm .project-stack-thumbnails { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: 32px; margin: 2px 0 8px; }
 .pm .project-stack-thumbnail { display: block; flex: 0 0 30px; width: 30px; height: 30px; border: 1px solid color-mix(in srgb, var(--text-mid) 35%, transparent); border-radius: 4px; background: var(--stack-gradient, var(--bg-elev)); background-size: cover; background-position: center; }
 .pm .project-stack-thumbnail.is-off { background: #252b30 !important; }
-.pm .project-stack-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: auto; }
-.pm .project-stack-card-actions > button { min-width: 0; min-height: 44px; padding: 4px 6px; border: 1px solid var(--border-hair); border-radius: 6px; background: var(--bg-elev); color: var(--text-hi); font: inherit; font-size: 11px; line-height: 1.2; text-align: center; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
+.pm .project-stack-card-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: auto; }
+.pm .project-stack-card-actions > button { min-width: 0; min-height: 30px; padding: 2px 3px; border: 1px solid var(--border-hair); border-radius: 6px; background: var(--bg-elev); color: var(--text-hi); font: inherit; font-size: 10px; line-height: 1.2; text-align: center; white-space: nowrap; cursor: pointer; }
 .pm .project-stack-card-actions > button:hover { border-color: var(--accent-line); background: var(--bg-sel); }
-.pm .project-stack-card-actions > button:last-child:nth-child(3) { grid-column: 1 / -1; }
-.pm .project-stack-card-actions > .project-stack-in-playlist { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; min-height: 44px; color: var(--text-mid); font-size: 11px; }
+.pm .project-stack-card-actions > .project-stack-in-playlist { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 30px; color: var(--text-mid); font-size: 10px; white-space: nowrap; }
 .pm .project-stack-card-actions > button:disabled { cursor: default; opacity: .55; }
 .pm .project-stack-assignments > summary { min-height: 44px; display: flex; align-items: center; }
 .pm .project-stack-assignments .project-stack-summary { margin-bottom: 5px; }
@@ -75,7 +74,8 @@
   .pm .project-stack-name-button small { white-space: normal; line-height: 1.2; }
   .pm .project-stack-thumbnails { gap: 4px; }
   .pm .project-stack-thumbnail { box-sizing: border-box; flex-basis: 22px; width: 22px; height: 22px; }
-  .pm .project-stack-card-actions > button:nth-child(-n+2) { padding-inline: 2px; font-size: 10px; white-space: nowrap; overflow-wrap: normal; }
+  .pm .project-stack-card-actions { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 2px; }
+  .pm .project-stack-card-actions > button { padding-inline: 1px; }
   .pm .project-stack-save-controls { grid-template-columns: minmax(0, 1fr); }
   .pm .project-stack-inline-editor .project-stack-save { padding: 10px; }
 }

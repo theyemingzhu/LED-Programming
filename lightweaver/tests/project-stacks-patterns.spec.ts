@@ -67,6 +67,9 @@ test('chip selection stays local while Preview, Edit, and Add remain explicit', 
   const chip = page.getByTestId('project-stack-card').filter({ hasText: 'Calm stack' });
   await expect(chip.locator('.project-stack-thumbnail')).toHaveCount(2);
   await expect(chip.getByRole('img', { name: 'Inner circle: Ocean' })).toBeVisible();
+  const actions = chip.locator('.project-stack-card-actions > button');
+  const desktopBoxes = await Promise.all([0, 1, 2].map(index => actions.nth(index).boundingBox()));
+  expect(desktopBoxes.every(box => box && Math.abs(box.y - desktopBoxes[0]!.y) < 2 && box.height <= 32)).toBe(true);
   const before = await page.evaluate(() => window.scrollY);
   const requestsBeforeSelect = previewRequests;
   await chip.getByRole('button', { name: 'Select Calm stack' }).click();
@@ -78,13 +81,24 @@ test('chip selection stays local while Preview, Edit, and Add remain explicit', 
   await expect(page.getByTestId('stack-save-bar')).toHaveCount(0);
   expect(previewRequests).toBe(requestsBeforeSelect);
   await chip.getByRole('button', { name: 'Add Calm stack to playlist' }).click();
-  await expect(chip).toContainText('In playlist');
+  await expect(chip.getByRole('status', { name: 'In playlist' })).toContainText('Playlist');
   await expect.poll(async () => {
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
     return stored.devices.standaloneController.playlist.filter((item: any) => item.lookId === saved.id).length;
   }).toBe(1);
   await chip.getByRole('button', { name: 'Edit Calm stack' }).click();
   await expect(page.getByTestId('stack-save-bar')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phoneBoxes = await Promise.all([
+    chip.getByRole('button', { name: 'Preview Calm stack' }).boundingBox(),
+    chip.getByRole('button', { name: 'Edit Calm stack' }).boundingBox(),
+    chip.getByRole('status', { name: 'In playlist' }).boundingBox(),
+  ]);
+  expect(phoneBoxes.every(box => box && Math.abs(box.y - phoneBoxes[0]!.y) < 2 && box.height <= 32)).toBe(true);
+  const cardBox = await chip.boundingBox();
+  expect(phoneBoxes.every(box => box && box.x >= cardBox!.x && box.x + box.width <= cardBox!.x + cardBox!.width)).toBe(true);
+  expect(await chip.locator('.project-stack-card-actions').evaluate(row =>
+    [...row.children].every(control => control.scrollWidth <= control.clientWidth + 1))).toBe(true);
 });
 
 test('section choices save as a named project stack outside built-in patterns', async ({ page }) => {

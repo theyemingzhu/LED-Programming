@@ -9,6 +9,16 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Compact stack action row — verified local build
+Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 62ac29d7.
+Working: Preview, Edit and Playlist share one 30px row, including used status.
+Evidence: focused desktop/390px layout and action regression PASS; actual desktop
+and phone inspected; production build PASS (/tmp/stacks-compact-actions-build.log).
+Screenshots: stack-actions-compact-desktop.png and stack-actions-compact-phone.png
+in this chat's visualizations directory. No behavior, firmware or release change.
+Next: owner review in existing 9220 preview.
+
 ### Stack selection, explicit actions and gradient tiles — verified local build
 Owner: this manager; Sprint. State: done at the authorized local-build boundary.
 Artifact: codex/project-pattern-stacks, refinement on local cebfa3d0.

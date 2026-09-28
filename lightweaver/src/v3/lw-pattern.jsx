@@ -3265,7 +3265,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                           <div className="project-stack-card-actions">
                             <button type="button" className="btn" disabled={!compatibility.ok || summary.review.needsReview} aria-label={`Preview ${saved.label}`} onClick={() => selectSavedStack(saved, summary.review.needsReview, 'preview')}>Preview</button>
                             <button type="button" className="btn" aria-label={`Edit ${saved.label}`} aria-expanded={expandedStackId === saved.id} aria-controls="stack-editor" onClick={() => selectSavedStack(saved, summary.review.needsReview, 'edit')}>Edit</button>
-                            {useCount ? <span className="project-stack-in-playlist">In playlist</span> : <button type="button" className="btn" disabled={!compatibility.ok || summary.review.needsReview} aria-label={`Add ${saved.label} to playlist`} onClick={() => setSavedLookInPlaylist(saved, true)}>Add to playlist</button>}
+                            {useCount ? <span className="project-stack-in-playlist" role="status" aria-label="In playlist">Playlist</span> : <button type="button" className="btn" disabled={!compatibility.ok || summary.review.needsReview} aria-label={`Add ${saved.label} to playlist`} onClick={() => setSavedLookInPlaylist(saved, true)}>Playlist</button>}
                           </div>
                           {(!compatibility.ok || summary.review.needsReview) && <div className="project-stack-card-warning">{!compatibility.ok ? compatibility.reason : 'Review sections'}</div>}
                         </article>;
