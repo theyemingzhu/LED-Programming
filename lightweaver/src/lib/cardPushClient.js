@@ -141,7 +141,11 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
     });
     if (!r.ok) {
       const text = await r.text().catch(() => '');
-      throw new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
+      const error = new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
+      // A received client-error response is a refusal, not a lost save reply.
+      // Server errors stay ambiguous: persistence may already have occurred.
+      if (r.status >= 400 && r.status < 500) error.delivery = 'rejected';
+      throw error;
     }
     const json = await r.json().catch(() => ({ ok: true }));
     const shouldReboot = json?.state !== 'staged' && (options.reboot === true ||
@@ -490,10 +494,19 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   }
   let exactIdentity = null;
   if (!useBridge) {
-    exactIdentity = await guardDirectCardMutation(host, {
-      fetchImpl: options.fetchImpl,
-      timeoutMs: Math.min(options.timeoutMs || 6000, 1500),
-    });
+    try {
+      exactIdentity = await guardDirectCardMutation(host, {
+        fetchImpl: options.fetchImpl,
+        timeoutMs: Math.min(options.timeoutMs || 6000, 1500),
+      });
+    } catch (cause) {
+      const error = cause?.reason
+        ? new CardPushError(cause.reason, cause.message, cause, cause.status)
+        : normalizeConfigPushError(host, cause, transport);
+      error.delivery = 'not-sent';
+      error.message = `Stopped before saving: ${error.message}. Nothing was sent. Reconnect the card and retry.`;
+      throw error;
+    }
     if (options.factoryBlank === true) {
       if (!exactIdentity?.id || !exactIdentity.firmwareVersion || !exactIdentity.buildId) {
         throw new CardPushError(
@@ -590,6 +603,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   try {
     return await postConfigToHost(host, runtimePackage, pushOptions);
   } catch (err) {
+    if (err?.delivery === 'rejected') throw err;
     if (options.autoDiscover !== false) {
       const found = await discoverCardStatus({
         preferredHost: host,

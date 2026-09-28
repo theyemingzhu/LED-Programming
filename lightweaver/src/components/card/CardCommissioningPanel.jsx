@@ -575,13 +575,15 @@ export function CardCommissioningPanel({
     if (flow?.stage !== 'check-lights' || !flow.cardAcknowledgedAt) return { ok: false, reason: 'checking-card' };
     if (flow.project.pendingActivationId && lightCheckState === 'testing') {
       const current = getCardLinkState();
+      const fresh = Boolean(candidateVerdict
+        && candidateVerdict.activationId === flow.project.pendingActivationId
+        && candidateVerdict.host === current.host
+        && candidateVerdict.bootId === current.validatedBootId
+        && candidateVerdict.generation === current.operationGeneration
+        && Date.now() - candidateVerdict.verifiedAt < 3000);
       return {
-        ok: Boolean(candidateVerdict
-          && candidateVerdict.activationId === flow.project.pendingActivationId
-          && candidateVerdict.host === current.host
-          && candidateVerdict.bootId === current.validatedBootId
-          && candidateVerdict.generation === current.operationGeneration
-          && Date.now() - candidateVerdict.verifiedAt < 3000),
+        ok: fresh && candidateVerdict.confirm,
+        rollbackOk: fresh && candidateVerdict.rollback,
         reason: 'candidate-not-verified',
       };
     }
@@ -591,7 +593,7 @@ export function CardCommissioningPanel({
 
   useEffect(() => {
     if (flow?.stage !== 'check-lights' || lightCheckState !== 'testing'
-      || !flow.project.pendingActivationId || !hasAuthoritativePendingWiring) {
+      || !flow.project.pendingActivationId) {
       setCandidateVerdict(null);
       return undefined;
     }
@@ -611,8 +613,10 @@ export function CardCommissioningPanel({
         const exact = current.host === observed.host
           && current.validatedBootId === observed.validatedBootId
           && current.operationGeneration === observed.operationGeneration
-          && preflightCardCommissioningWiringVerdict(flow, status, wiring, observed.validatedBootId).ok;
+          && preflightCardCommissioningWiringVerdict(flow, status, wiring, observed.validatedBootId, { mutation: 'wiring-rollback' }).ok;
         if (!disposed) setCandidateVerdict(exact ? {
+          confirm: preflightCardCommissioningWiringVerdict(flow, status, wiring, observed.validatedBootId).ok,
+          rollback: true,
           activationId: flow.project.pendingActivationId,
           host: observed.host,
           bootId: observed.validatedBootId,
@@ -1231,7 +1235,7 @@ export function CardCommissioningPanel({
       ? await getCardWiringStatus({ host: observed.host, transport: observed.transport, timeoutMs: 3000 })
       : null;
     const preflight = candidateVerdictOnly
-      ? preflightCardCommissioningWiringVerdict(flow, status, wiring, bootId)
+      ? preflightCardCommissioningWiringVerdict(flow, status, wiring, bootId, { mutation: verdictType })
       : preflightCardCommissioningMutation(flow, status);
     if (!preflight.ok) {
       throw new Error(candidateVerdictOnly
@@ -1562,7 +1566,7 @@ export function CardCommissioningPanel({
       {displayStage === 'check-lights' && (
         <>
           <h3>Check lights</h3>
-          {!lightCheckPreflight.ok && <p role="status">Checking card. Light-check controls stay locked until the exact card is stable and command-ready.</p>}
+          {!lightCheckPreflight.ok && !lightCheckPreflight.rollbackOk && <p role="status">Checking card. Light-check controls stay locked until the exact card is stable and command-ready.</p>}
           <p>{flow.project.pendingActivationId
             ? 'The saved Studio project revision is staged on this exact card. The bounded physical light check will test its GPIO wiring before making it permanent.'
             : 'The saved Studio project revision is installed on this exact card. Continue to the bounded physical light check.'}</p>
@@ -1576,7 +1580,7 @@ export function CardCommissioningPanel({
                   )}
                   <div className="card-connection-actions">
                     <button type="button" className="btn primary" disabled={!lightCheckPreflight.ok || !hasAuthoritativePendingWiring} onClick={() => finishLightCheck(true)}>Yes, every output is correct</button>
-                    <button type="button" className="btn" disabled={!lightCheckPreflight.ok} onClick={() => finishLightCheck(false)}>No, restore working setup</button>
+                    <button type="button" className="btn" disabled={!lightCheckPreflight.rollbackOk} onClick={() => finishLightCheck(false)}>No, restore working setup</button>
                   </div>
                 </>
               ) : (
