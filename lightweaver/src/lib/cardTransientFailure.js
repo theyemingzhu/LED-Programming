@@ -54,6 +54,21 @@ export function isTransientCardFailure(error) {
   return TRANSIENT_TEXT.test(String(error.message || ''));
 }
 
+// A bridge authority refusal happens before the POST leaves Studio. It may be
+// worth trying again later, but it cannot be a lost reply to an applied write.
+export function isUncertainCardWriteFailure(error) {
+  // Bridge refusals pass through wiring and push wrappers before reaching the
+  // install UI. Preserve their pre-send fact through that short cause chain.
+  const seen = new Set();
+  let cause = error;
+  for (let depth = 0; cause && typeof cause === 'object' && depth < 8 && !seen.has(cause); depth += 1) {
+    if (cause.delivery === 'not-sent') return false;
+    seen.add(cause);
+    cause = cause.cause;
+  }
+  return isTransientCardFailure(error);
+}
+
 /**
  * Run `attempt`, and simply try again while it fails for a reason that will
  * pass on its own.

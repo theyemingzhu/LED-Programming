@@ -15,6 +15,7 @@ import {
 } from './cardIdentity.js';
 import { isDifferentCardMismatch } from './cardReadiness.js';
 import { BENCH_PROJECT_ID } from './benchConfig.js';
+import { isCardLedType } from './cardHardwareContract.js';
 import {
   acceptWifiHandoff,
   clearWifiHandoffRecovery,
@@ -2418,6 +2419,37 @@ function bridgeError(message, reason, cause = null) {
   return error;
 }
 
+// A candidate boot is intentionally not a ready playback runtime. The card
+// still permits only the exact physical verdict for its active candidate.
+export function isExactProbationWiringMutation(type, payload, status, wiring, expected) {
+  if (type !== 'wiring-confirm' && type !== 'wiring-rollback') return false;
+  const activationId = String(payload?.activationId || '').trim();
+  if (!activationId || status?.app !== 'Lightweaver' || wiring?.app !== 'Lightweaver' || wiring?.ok !== true) return false;
+  if (!expected?.cardId || !expected?.buildId || !status?.bootId) return false;
+  if (status.cardId !== expected.cardId || wiring.cardId !== expected.cardId
+    || status.buildId !== expected.buildId || wiring.buildId !== expected.buildId) return false;
+  if (status.runtimePhase !== 'recovering' || status.configValid !== true
+    || status.knownGoodProject !== false || status.commandReady !== false
+    || status.outputReady !== true || status.safeMode === true) return false;
+  if (!String(status.projectId || '').trim()
+    || !Number.isSafeInteger(status.projectRevision) || status.projectRevision < 0
+    || !/^[a-f0-9]{16,64}$/.test(String(status.projectFingerprint || ''))) return false;
+  if (wiring.state !== 'testing' || wiring.candidateState !== 'awaiting-confirmation'
+    || wiring.hasCandidate !== true || wiring.bootedCandidate !== true
+    || wiring.activationId !== activationId
+    || wiring.projectRevision !== status.projectRevision
+    || wiring.projectFingerprint !== status.projectFingerprint) return false;
+  return Number.isSafeInteger(wiring.wiringRevision) && wiring.wiringRevision >= 1
+    && /^[a-f0-9]{64}$/.test(String(wiring.wiringDigest || ''))
+    && status.wiringRevision === wiring.wiringRevision
+    && String(status.wiringDigest || '').toLowerCase() === wiring.wiringDigest
+    && String(status.productionJobId || '') === String(wiring.productionJobId || '')
+    && String(status.productionJobDigest || '').toLowerCase() === String(wiring.productionJobDigest || '').toLowerCase()
+    && isCardLedType(wiring.ledType)
+    && Number.isSafeInteger(wiring.maxMilliamps)
+    && wiring.maxMilliamps >= 100 && wiring.maxMilliamps <= 20000;
+}
+
 function markBridgeTimeout(startedAt) {
   if (!startedAt || bridgeLastSeenAt <= startedAt) {
     bridgeConnected = false;
@@ -2496,6 +2528,11 @@ export function sendCardBridgeRequest(type, payload = {}, {
   // from restoring a one-shot that has already been spent.
   let consumeBlankDiscoveryAuthority = false;
   let consumeBenchConfigAuthority = false;
+  let verifyProbationWiring = false;
+  const requestLifecycle = bridgeLifecycle;
+  const requestWindow = bridgeWindow;
+  const requestCardId = bridgeCard?.id;
+  const requestBuildId = bridgeCard?.buildId;
 
   if (PRIVILEGED_BRIDGE_TYPES.has(type) && !isLocalCardHost(resolvedHost)) {
     return Promise.reject(bridgeError(
@@ -2582,11 +2619,20 @@ export function sendCardBridgeRequest(type, payload = {}, {
           && payload.provisional !== true
           && typeof payload.projectFingerprint === 'string'
           && payload.projectFingerprint.length > 0;
-        if (!exactInitialConfig && !exactBlankDiscoveryConfig && !exactBenchReplacement) {
-          throw bridgeError(
+        // A candidate boot deliberately reports runtime-not-ready while its
+        // physical verdict is pending. Only confirm/rollback may reach a fresh
+        // exact-candidate proof below; staging, activation and playback do not.
+        const probationVerdict = !bridgeHandoffCorrelation
+          && (type === 'wiring-confirm' || type === 'wiring-rollback')
+          && typeof payload?.activationId === 'string'
+          && payload.activationId.trim().length > 0;
+        if (!exactInitialConfig && !exactBlankDiscoveryConfig && !exactBenchReplacement && !probationVerdict) {
+          const refusal = bridgeError(
             'The verified card is not runtime-ready for this mutation.',
             'runtime-not-ready',
           );
+          refusal.delivery = 'not-sent';
+          throw refusal;
         }
         consumeInitialConfigAuthority = exactInitialConfig || exactBlankDiscoveryConfig;
         // The handoff route is checked first because it is the one with a
@@ -2595,6 +2641,7 @@ export function sendCardBridgeRequest(type, payload = {}, {
         // so this only ever hardens the ordering.
         consumeBlankDiscoveryAuthority = exactBlankDiscoveryConfig && !exactInitialConfig;
         consumeBenchConfigAuthority = exactBenchReplacement;
+        verifyProbationWiring = probationVerdict;
       }
       if (PRIVILEGED_BRIDGE_TYPES.has(type) && bridgeAuthorityLifecycle !== bridgeLifecycle) {
         throw bridgeError(
@@ -2672,6 +2719,32 @@ export function sendCardBridgeRequest(type, payload = {}, {
     let lastError = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
+        if (verifyProbationWiring) {
+          // Both reads come from this verified card tab immediately before the
+          // mutation. A stage reply, saved token, or Studio's own candidate
+          // state is never enough to authorize the probation verdict.
+          let status;
+          let wiring;
+          try {
+            status = await bridgeRequestAttempt('status', {}, { resolvedHost, targetOrigin, timeoutMs });
+            wiring = await bridgeRequestAttempt('wiring-status', {}, { resolvedHost, targetOrigin, timeoutMs });
+          } catch (error) {
+            if (error && typeof error === 'object') error.delivery = 'not-sent';
+            throw error;
+          }
+          if (bridgeLifecycle !== requestLifecycle || bridgeWindow !== requestWindow
+            || bridgeAuthorityLifecycle !== requestLifecycle
+            || !bridgeConnected || !bridgeReady || !bridgeStationIdentityVerified
+            || normalizeCardHost(bridgeHost) !== resolvedHost || bridgeOrigin !== targetOrigin
+            || !bridgeCard || bridgeCard.id !== requestCardId || bridgeCard.buildId !== requestBuildId
+            || !isExactProbationWiringMutation(type, payload, status, wiring, {
+              cardId: requestCardId, buildId: requestBuildId,
+            })) {
+            const refusal = bridgeError('The card did not verify this exact active wiring test.', 'candidate-mismatch');
+            refusal.delivery = 'not-sent';
+            throw refusal;
+          }
+        }
         return await bridgeRequestAttempt(type, payload, {
           resolvedHost,
           targetOrigin,
