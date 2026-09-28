@@ -7,6 +7,9 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Three-pass unattended verification — active
+Owner: primary manager of three-pass-card-proof chat. State: verified candidate, release handoff next. Base 2f95794c, Studio 2250/firmware 2160. Authorized three loops, repairs and shipping. Three real signed preserving USB reflashes PASS; three independent-pattern/reboot/preservation passes PASS; representative browser lifecycle cases repeated 3x PASS after recorded fixes. Repaired same-build installer fallback, USB shortcut/deadline/failure recovery, inconclusive Wi-Fi wording, exact section identity and mixed-pattern editor initialization. Evidence: docs/prove-sessions/2026-09-28-three-pass-card.md; private /tmp/lightweaver-three-pass includes failed attempts and exact readbacks. Original browser draft and saved card mix restored. Not fully PROVEN: no newer signed Wi-Fi target and no physical visual observation. Next: commit/merge this exact candidate, then durable background publication/live-byte proof. No shipped claim yet.
+
 ## Manager delivery view — 2026-09-28
 
 ### Background publishing — implemented, installed, release handoff next

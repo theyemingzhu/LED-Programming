@@ -6,7 +6,7 @@ import { testBaseURL } from './testPort.mjs';
 const CARD_ID = 'lw-aabbccddeeff';
 const SSID = 'Gallery USB privacy sentinel';
 const PASSWORD = 'Only-USB-secret-2819';
-type Outcome = 'connected' | 'ssid-not-found' | 'authentication-failed' | 'unknown' | 'wrong-card' | 'wrong-status-card' | 'wrong-bridge-card' | 'lost-response' | 'already-configured';
+type Outcome = 'connected' | 'ssid-not-found' | 'authentication-failed' | 'unknown' | 'wrong-card' | 'wrong-status-card' | 'wrong-bridge-card' | 'lost-response' | 'already-configured' | 'already-configured-early';
 
 test.afterEach(async ({ page }) => {
   // A navigation can still be loading a Studio module when the test's final
@@ -18,17 +18,27 @@ test.afterEach(async ({ page }) => {
 // Exercise the production HTTPS app and real newline USB transport. Only the
 // physical ESP loader/port is replaced; signed firmware verification and
 // commissioning/project persistence stay real.
-async function openFreshInstaller(page: Page, request: any, outcome: Outcome = 'connected', { currentInstalled = false } = {}) {
+async function openFreshInstaller(page: Page, request: any, outcome: Outcome = 'connected', { currentInstalled = false, preservingSameBuild = false, skipFind = false, inspectionReadError = false } = {}) {
   const manifest = await (await request.get('/firmware/release-manifest.json')).json();
   await installHttpsStudio(page, testBaseURL);
   await page.route(/http:\/\/(?:lightweaver\.local|192\.168\.)/, route => route.abort());
-  await page.addInitScript(({ cardId, release, selectedOutcome, currentInstalled }) => {
+  await page.addInitScript(({ cardId, release, selectedOutcome, currentInstalled, preservingSameBuild, inspectionReadError }) => {
     if (!sessionStorage.getItem('__LW_USB_WIFI_FIXTURE_READY__')) {
       localStorage.clear();
       sessionStorage.clear();
       sessionStorage.setItem('__LW_USB_WIFI_FIXTURE_READY__', '1');
     }
     (window as any).showSaveFilePicker = undefined;
+    if (preservingSameBuild) {
+      (window as any).__LW_PRESERVING_UPDATE_FIXTURE__ = {
+        card: { id: cardId, cardId, firmwareVersion: release.firmwareVersion,
+          buildId: release.buildId, buildNumber: release.buildNumber },
+        readiness: { cardId, bootId: 'usb-wifi-boot-1', firmwareVersion: release.firmwareVersion,
+          buildId: release.buildId, buildNumber: release.buildNumber,
+          capabilities: { firmwareUpdate: { version: 1, network: true, softwareGrant: true } } },
+      };
+      (window as any).__LW_LOAD_UPDATE_RELEASE_FOR_TEST__ = async () => ({ manifest: release });
+    }
     const state = { outcome: selectedOutcome, commands: [] as any[], flashWrites: [] as any[], opens: 0, closes: 0, provisionCount: 0, generation: 0, resetCount: 0 };
     (window as any).__usbWifiFixture = state;
     let controller: ReadableStreamDefaultController<Uint8Array>;
@@ -50,7 +60,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
             const message = JSON.parse(line);
             state.commands.push(message);
             if (message.command === 'provision') { provisioned = true; attemptId = message.id; sessionStorage.setItem('__LW_USB_WIFI_FIXTURE_ATTEMPT__', attemptId); state.provisionCount += 1; state.generation += 1; }
-            const connected = state.outcome === 'already-configured'
+            const connected = ['already-configured', 'already-configured-early'].includes(state.outcome)
               || (provisioned && message.command === 'status' && ['connected', 'lost-response', 'wrong-bridge-card'].includes(state.outcome));
             const failure = provisioned && message.command === 'status' && !connected ? state.outcome : '';
             const response = {
@@ -58,7 +68,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
               cardId: (state.outcome === 'wrong-card' || (state.outcome === 'wrong-status-card' && message.command === 'status')) ? 'lw-112233445566' : cardId,
               bootId: 'usb-wifi-boot-1', firmwareVersion: release.firmwareVersion, buildId: release.buildId, buildNumber: release.buildNumber,
               usbWifiProvisioning: true, freshInstallEligible: !connected, attemptId,
-              wifi: { transition: connected ? 'handoff-ready' : failure ? 'failed' : 'setup-ap', stationIp: connected ? '192.168.18.70' : '', handoffGeneration: attemptId ? Math.max(state.generation, 1) : 0,
+              wifi: { transition: connected ? 'handoff-ready' : failure ? 'failed' : 'setup-ap', stationIp: connected && state.outcome !== 'already-configured-early' ? '192.168.18.70' : '', handoffGeneration: attemptId ? Math.max(state.generation, 1) : 0,
                 joinFailed: Boolean(failure), lastError: failure, failureReason: failure === 'unknown' ? 'connection_failed' : failure.replaceAll('-', '_'), driverReason: failure === 'ssid-not-found' ? 201 : failure === 'authentication-failed' ? 202 : 0, apActive: true },
               ...(message.command === 'scan' ? { scanning: false, networks: [{ ssid: 'Gallery scanned network', rssi: -42, secure: true }] } : {}),
             };
@@ -125,6 +135,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
       probeCurrentRuntime: currentInstalled,
       connection: {
         loader: {
+          ...(inspectionReadError ? { readFlash: async () => { throw new Error('simulated USB read failure'); } } : {}),
           writeFlash: async (options: any) => {
             state.flashWrites.push({ eraseAll: options.eraseAll, addresses: options.fileArray.map((file: any) => file.address) });
             options.reportProgress(0, 1, 1);
@@ -135,8 +146,9 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
       },
       hardware: { cardId, chipName: 'ESP32-S3', chipDescription: 'ESP32-S3', flashSize: '16MB', flashBytes: 16 * 1024 * 1024 },
     });
-  }, { cardId: CARD_ID, release: manifest, selectedOutcome: outcome, currentInstalled });
+  }, { cardId: CARD_ID, release: manifest, selectedOutcome: outcome, currentInstalled, preservingSameBuild, inspectionReadError });
   await page.goto(`${STUDIO_ORIGIN}/#screen=flash&mode=install`, { waitUntil: 'domcontentloaded' });
+  if (skipFind) return;
   await page.getByRole('button', { name: 'Find connected card', exact: true }).click();
   if (currentInstalled) {
     await expect(page.getByRole('heading', { name: /Connect to Wi-Fi|Set up/i })).toBeVisible();
@@ -262,6 +274,45 @@ test('Find never offers USB credential writes to a configured current card', asy
   expect((await serialCommands(page)).map((command: any) => command.command)).toEqual(['hello']);
   expect(await page.evaluate(() => (window as any).__usbWifiFixture.provisionCount)).toBe(0);
   expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([]);
+});
+
+test('same-build preserving USB choice keeps the exact inspected card on the preserving route', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'already-configured', { currentInstalled: true, preservingSameBuild: true, skipFind: true });
+  await expect(page.getByTestId('preserving-update-current-build')).toBeVisible();
+  await page.getByText('Need another way?').click();
+  await page.getByRole('button', { name: 'Reinstall this build over USB while keeping card data' }).click();
+  await page.getByRole('button', { name: 'Find connected card', exact: true }).click();
+  await expect(page.getByTestId('preserving-update-panel')).toBeVisible();
+  await expect(page.getByTestId('preserving-usb-inspection-required')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Update once over USB' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toHaveCount(0);
+  await expect(page.getByText('I’ve joined Lightweaver-EEFF')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([]);
+});
+
+test('a failed USB firmware read keeps the explicit preserving route and requires exact-card reselection', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'already-configured', { currentInstalled: true,
+    preservingSameBuild: true, skipFind: true, inspectionReadError: true });
+  await expect(page.getByTestId('preserving-update-current-build')).toBeVisible();
+  await page.getByText('Need another way?').click();
+  await page.getByRole('button', { name: 'Reinstall this build over USB while keeping card data' }).click();
+  await page.getByRole('button', { name: 'Find connected card', exact: true }).click();
+  await expect(page.getByTestId('preserving-usb-inspection-required')).toContainText('USB firmware inspection stopped after a read error');
+  await expect(page.getByRole('heading', { name: 'Update Lightweaver' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Find connected card', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Update once over USB' })).toHaveCount(0);
+  await expect(page.getByText('Erase card and install Lightweaver')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([]);
+});
+
+test('configured card inspected before station reconnect does not claim its setup hotspot is active', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'already-configured-early', { currentInstalled: true });
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+  await expect(page.getByText('Checking this card’s Wi-Fi connection')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reconnect installed card' })).toBeVisible();
+  await expect(page.getByText('Join the card’s Wi-Fi.')).toHaveCount(0);
+  await expect(page.getByText('I’ve joined Lightweaver-EEFF')).toHaveCount(0);
+  expect((await serialCommands(page)).map((command: any) => command.command)).toEqual(['hello']);
 });
 
 test('current-card USB setup resumes a saved attempt after reload without another Wi-Fi write', async ({ page, request }) => {

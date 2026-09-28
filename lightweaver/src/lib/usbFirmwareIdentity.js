@@ -35,10 +35,13 @@ const SIGNED_HISTORICAL_IMAGES = Object.freeze([
     tableSha256: '9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60',
   }),
 ]);
-const SIGNED_IMAGE_LAST_CHUNK_OFFSET = Math.max(...SIGNED_HISTORICAL_IMAGES.map(candidate => candidate.chunkOffset));
 // At 921600 baud, reading the signed 2.28 MB app can exceed the ordinary
 // 25-second exploratory scan. Only an exact candidate gets this total bound.
 const SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS = 60_000;
+// The current signed app is about 2.3 MB. A 921600-baud card observed at
+// roughly 25 KB/s needs more than the exploratory 25 seconds to read it back.
+// This longer bound applies only after its authenticated first chunk matches.
+const CURRENT_SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS = 130_000;
 const INSPECTION_PACKET_TIMEOUT_MS = 5_000;
 
 const ENVELOPE_OVERLAP = 1024;
@@ -72,6 +75,30 @@ async function sha256Hex(bytes) {
   if (!globalThis.crypto?.subtle) return '';
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
   return [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function currentSignedImageCandidate(release) {
+  const { manifest, ticket } = release || {};
+  const imageBytes = bytesOf(release?.imageBytes);
+  if (!imageBytes || !ticket || !manifest
+    || ticket.buildId !== manifest.buildId
+    || ticket.firmwareVersion !== manifest.firmwareVersion
+    || ticket.buildNumber !== manifest.buildNumber
+    || ticket.image?.size !== imageBytes.length
+    || ticket.image?.sha256 !== manifest.update?.image?.sha256
+    || !/^[a-f0-9]{64}$/.test(String(ticket.partition?.tableSha256 || ''))
+    || await sha256Hex(imageBytes) !== ticket.image.sha256) return null;
+  return {
+    firmwareVersion: ticket.firmwareVersion,
+    buildId: ticket.buildId,
+    buildNumber: ticket.buildNumber,
+    size: imageBytes.length,
+    sha256: ticket.image.sha256,
+    chunkOffset: 0,
+    chunkSha256: await sha256Hex(imageBytes.subarray(0, USB_FIRMWARE_READ_CHUNK_SIZE)),
+    tableSha256: ticket.partition.tableSha256,
+    verificationTimeoutMs: CURRENT_SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS,
+  };
 }
 
 // Only the 16 MB ESP32-S3 card carries a Lightweaver image, so no other
@@ -109,7 +136,7 @@ export async function readLightweaverFirmwareIdentity(
 ) {
   const {
     onProgress, timeoutMs = USB_FIRMWARE_READ_TIMEOUT_MS,
-    onReadFailure, shouldStop, now = () => Date.now(),
+    onReadFailure, shouldStop, now = () => Date.now(), verifiedRelease = null,
   } = options;
   if (typeof loader?.readFlash !== 'function') return null;
   const partitionEnd = LIGHTWEAVER_APP_PARTITION_OFFSET + LIGHTWEAVER_APP_PARTITION_SIZE;
@@ -121,6 +148,10 @@ export async function readLightweaverFirmwareIdentity(
   let carry = new Uint8Array(0);
   let signedPrefix = [];
   let signedImage = null;
+  const currentCandidate = await currentSignedImageCandidate(verifiedRelease);
+  const signedCandidates = currentCandidate
+    ? [currentCandidate, ...SIGNED_HISTORICAL_IMAGES] : SIGNED_HISTORICAL_IMAGES;
+  const lastCandidateChunkOffset = Math.max(...signedCandidates.map(candidate => candidate.chunkOffset));
   // esptool-js defaults to 100 seconds of silence for EACH flash packet.
   // This loader is held exclusively for inspection; shorten only its packet
   // inactivity timeout, then restore it before any later operation.
@@ -155,12 +186,12 @@ export async function readLightweaverFirmwareIdentity(
       scan.set(chunk, carry.length);
       const identity = parseLightweaverFirmwareIdentity(scan);
       const relative = address - LIGHTWEAVER_APP_PARTITION_OFFSET;
-      if (identity) {
+      if (identity && !signedImage) {
         onProgress?.({ bytesRead: relative + size, totalBytes: LIGHTWEAVER_APP_PARTITION_SIZE });
         return identity;
       }
       if (!signedImage) {
-        const imagesAtChunk = SIGNED_HISTORICAL_IMAGES.filter(candidate => relative === candidate.chunkOffset);
+        const imagesAtChunk = signedCandidates.filter(candidate => relative === candidate.chunkOffset);
         if (imagesAtChunk.length) {
           const chunkSha256 = await sha256Hex(chunk);
           const candidate = imagesAtChunk.find(image => image.chunkSha256 === chunkSha256);
@@ -172,11 +203,13 @@ export async function readLightweaverFirmwareIdentity(
             // A caller-supplied deadline remains authoritative. Only the default
             // exploratory scan receives enough time to finish an exact candidate.
             if (!Object.hasOwn(options, 'timeoutMs')) {
-              deadline = Math.max(deadline, startedAt + SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS);
+              deadline = Math.max(deadline, startedAt
+                + (candidate.verificationTimeoutMs || SIGNED_IMAGE_VERIFICATION_TIMEOUT_MS));
             }
           }
-          signedPrefix = [];
-        } else if (relative < SIGNED_IMAGE_LAST_CHUNK_OFFSET) signedPrefix.push(chunk.slice());
+          if (candidate || relative >= lastCandidateChunkOffset) signedPrefix = [];
+          else signedPrefix.push(chunk.slice());
+        } else if (relative < lastCandidateChunkOffset) signedPrefix.push(chunk.slice());
       }
       if (signedImage) {
         const length = Math.min(chunk.length, signedImage.candidate.size - relative);

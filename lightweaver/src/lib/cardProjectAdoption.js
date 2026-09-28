@@ -62,7 +62,8 @@ import { projectSkeletonFromCardStatus } from './discoveryCommit.js';
 import { createDefaultProject } from './projectModel.js';
 import { cardPartialOrigin } from './projectCopyLabel.js';
 import { colorJourneyLayoutKey, normalizeStoredNativeColorJourney, patternLabRecipeFromNativeColorJourney } from './colorJourneyNative.js';
-import { deriveSectionTargets } from './sectionLookModel.js';
+import { applyLookToPatchBoard, deriveSectionTargets } from './sectionLookModel.js';
+import { compileWiring } from './wiringCompiler.js';
 
 export const SAVE_FAILURE_MESSAGES = Object.freeze({
   'browser-recovery-failed': 'Studio could not create a browser recovery copy. Your current project is still open; free browser storage and retry.',
@@ -154,12 +155,83 @@ function cardSectionLooks(patternZones = [], installedZones = [], targets = [], 
   return Object.fromEntries(assignments);
 }
 
+// Status reports the physical segment IDs, while /api/zones reports the IDs
+// accepted by live section commands. A segment can keep an older name (for
+// example bench-18-full) even though its installed zone is strip-1. Match the
+// full physical ranges before adopting those zone IDs as Studio strip IDs.
+function alignSkeletonToInstalledZones(skeleton, installedZones) {
+  if (!Array.isArray(skeleton?.strips) || !skeleton?.wiring || !Array.isArray(installedZones)) return skeleton;
+  const compiled = compileWiring({ wiring: skeleton.wiring, strips: skeleton.strips });
+  if (!compiled.ok || compiled.zones.length !== installedZones.length) return skeleton;
+  const rangeKey = ranges => Array.isArray(ranges) && ranges.length
+    && ranges.every(range => Number.isInteger(range?.start) && range.start >= 0
+      && Number.isInteger(range?.count) && range.count > 0)
+    ? JSON.stringify(ranges.map(range => [range.start, range.count]).sort((a, b) => a[0] - b[0])) : '';
+  const installedByRange = new Map();
+  for (const zone of installedZones) {
+    const key = rangeKey(zone?.ranges);
+    if (!key || !/^strip-\d+$/.test(String(zone?.id || '')) || installedByRange.has(key)) return skeleton;
+    installedByRange.set(key, zone.id);
+  }
+  const stripIdMap = new Map();
+  for (const zone of compiled.zones) {
+    const installedId = installedByRange.get(rangeKey(zone.ranges));
+    if (!installedId || !skeleton.strips.some(strip => strip.id === zone.id)) return skeleton;
+    stripIdMap.set(zone.id, installedId);
+  }
+  if (new Set(stripIdMap.values()).size !== stripIdMap.size
+    || skeleton.strips.some(strip => !stripIdMap.has(strip.id))) return skeleton;
+  if ([...stripIdMap].every(([before, after]) => before === after)) return skeleton;
+
+  const patchIdMap = new Map();
+  const patches = (skeleton.patchBoard?.patches || []).map(patch => {
+    const before = patch?.source?.stripId;
+    const after = stripIdMap.get(before);
+    if (!after) return patch;
+    const oldPrefix = `patch-${before}`;
+    const id = patch.id === oldPrefix || patch.id?.startsWith(`${oldPrefix}-`)
+      ? `patch-${after}${patch.id.slice(oldPrefix.length)}` : patch.id;
+    patchIdMap.set(patch.id, id);
+    return { ...patch, id, source: { ...patch.source, stripId: after } };
+  });
+  return {
+    ...skeleton,
+    strips: skeleton.strips.map(strip => ({ ...strip, id: stripIdMap.get(strip.id) })),
+    patchBoard: {
+      ...skeleton.patchBoard,
+      patches,
+      chains: (skeleton.patchBoard?.chains || []).map(chain => ({
+        ...chain, rowIds: (chain.rowIds || []).map(id => patchIdMap.get(id) || id),
+      })),
+    },
+    wiring: {
+      ...skeleton.wiring,
+      runs: skeleton.wiring.runs.map(run => run?.type === 'strip'
+        ? { ...run, source: { ...run.source, stripId: stripIdMap.get(run.source?.stripId) || run.source?.stripId } }
+        : run),
+    },
+  };
+}
+
 export function reconstructInstalledCardState({ skeleton = {}, patterns = null, zones = null, cardId = '' } = {}) {
   const installedPatterns = Array.isArray(patterns?.patterns) ? patterns.patterns : [];
   const installedZones = Array.isArray(zones?.zones) ? zones.zones : [];
+  const alignedSkeleton = alignSkeletonToInstalledZones(skeleton, installedZones);
   const startupPatternId = String(zones?.startupPatternId || installedZones[0]?.patternId || installedPatterns[0]?.id || 'aurora');
   const startupZone = installedZones.find(zone => zone?.patternId === startupPatternId) || installedZones[0] || {};
-  const sectionTargets = deriveSectionTargets({ strips: skeleton.strips, patchBoard: skeleton.patchBoard, wiring: skeleton.wiring });
+  const sectionTargets = deriveSectionTargets({ strips: alignedSkeleton.strips, patchBoard: alignedSkeleton.patchBoard, wiring: alignedSkeleton.wiring });
+  let currentPatchBoard = alignedSkeleton.patchBoard;
+  for (const target of sectionTargets) {
+    if (target.kind !== 'section') continue;
+    const zone = installedZones.find(candidate => candidate?.id === target.zoneId);
+    if (!zone) continue;
+    currentPatchBoard = applyLookToPatchBoard({
+      patchBoard: currentPatchBoard,
+      strips: alignedSkeleton.strips,
+      targetId: target.patchId || target.id,
+      look: visualLookFromZone(zone, startupPatternId),
+    });
+  }
   const lookIdByPatternId = new Map();
   const usedLookIds = new Set();
   for (const pattern of installedPatterns) {
@@ -180,12 +252,12 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
       sectionLooks: cardSectionLooks(pattern.zones, installedZones, sectionTargets, pattern.runtimePatternId || pattern.id || startupPatternId),
       ...(nativeRecipe ? {
         nativeRecipe,
-        nativeRecipeLayoutKey: colorJourneyLayoutKey(skeleton),
+        nativeRecipeLayoutKey: colorJourneyLayoutKey(alignedSkeleton),
         patternLabRecipe: patternLabRecipeFromNativeColorJourney(nativeRecipe, {
           id: `readback-${pattern.id}`,
           name: pattern.label || pattern.id,
-          strips: skeleton.strips,
-          wiring: skeleton.wiring,
+          strips: alignedSkeleton.strips,
+          wiring: alignedSkeleton.wiring,
         }),
       } : {}),
       updatedAt: 0,
@@ -200,7 +272,8 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
     createdAt: index,
   }));
   return {
-    ...skeleton,
+    ...alignedSkeleton,
+    patchBoard: currentPatchBoard,
     // Defect C1b: this reconstruction is real evidence of what the card is
     // currently playing, but it is NOT an editable copy of the artwork that
     // produced it — see projectCopyLabel.js's `projectCopyKind`, the one
