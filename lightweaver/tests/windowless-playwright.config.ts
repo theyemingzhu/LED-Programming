@@ -20,6 +20,7 @@ export default defineConfig({
   // top-bar import Escape) were both found this way.
   retries: process.env.CI ? 2 : 0,
   maxFailures: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 1 : 0,
+  reporter: process.env.LW_BROWSER_FAIL_FAST === 'true' ? 'list' : undefined,
 
   testDir: '.',
   testMatch: /windowless-.*\.spec\.ts/,
