@@ -22,6 +22,13 @@ function makeThreeOutputProject() {
   project.layout.strips = createDefaultCircleLayout({ sectionPixelCounts: [7, 11, 19] });
   project.layout.patchBoard = createDefaultPatchBoard(project.layout.strips);
   project.layout.wiring = makeDefaultWiring(project.layout.strips);
+  // The simulator reports a configured WS2812B / 2000 mA card. Keep this
+  // already-installed project's electrical profile identical so Playlist can
+  // exercise a look-only save without bypassing wiring-change protection.
+  project.devices.standaloneController.led = {
+    ...project.devices.standaloneController.led,
+    type: 'WS2812B', colorOrder: 'GRB', maxMilliamps: 2000,
+  };
   project.layout.wiring.outputs = project.layout.wiring.runs.map((run, index) => ({
     id: `out${index + 1}`,
     name: `GPIO ${16 + index}`,
