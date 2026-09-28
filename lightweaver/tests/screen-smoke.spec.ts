@@ -1116,7 +1116,7 @@ test('patterns section rows stay within the viewport and the footer stays single
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  const sections = page.locator('[aria-label="Target sections"]');
+  const sections = page.getByTestId('pattern-section-list');
   await expect(sections.getByRole('button').first()).toBeVisible();
   await sections.evaluate(el => {
     const existing = Array.from(el.querySelectorAll('button'));
