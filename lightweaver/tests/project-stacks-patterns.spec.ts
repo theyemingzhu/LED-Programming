@@ -319,10 +319,11 @@ test('ten saved stack chips wrap into rows and the editor stays below them', asy
   const chips = page.getByTestId('project-stack-card');
   await expect(chips).toHaveCount(10);
   const first = await chips.nth(0).boundingBox();
-  const second = await chips.nth(1).boundingBox();
-  expect(first && second && Math.abs(first.y - second.y) < 3 && second.x > first.x).toBe(true);
-  expect(first!.width).toBeLessThanOrEqual(220);
-  expect((await chips.first().locator('.project-stack-thumbnail').first().boundingBox())?.height).toBeGreaterThanOrEqual(26);
+  const fifth = await chips.nth(4).boundingBox();
+  expect(first && fifth && Math.abs(first.y - fifth.y) < 3 && fifth.x > first.x).toBe(true);
+  expect(first!.width).toBeLessThanOrEqual(152);
+  expect(first!.height).toBeLessThanOrEqual(112);
+  expect((await chips.first().locator('.project-stack-thumbnail').first().boundingBox())?.height).toBeGreaterThanOrEqual(22);
   await chips.first().getByRole('button', { name: /^Edit / }).click();
   const editor = page.getByTestId('stack-save-bar');
   await expect(editor).toBeVisible();
@@ -332,7 +333,11 @@ test('ten saved stack chips wrap into rows and the editor stays below them', asy
   await page.setViewportSize({ width: 390, height: 844 });
   const phoneFirst = await chips.nth(0).boundingBox();
   const phoneSecond = await chips.nth(1).boundingBox();
-  expect(phoneFirst && phoneSecond && Math.abs(phoneFirst.y - phoneSecond.y) < 3 && phoneSecond.x > phoneFirst.x).toBe(true);
+  const phoneThird = await chips.nth(2).boundingBox();
+  expect(phoneFirst && phoneSecond && phoneThird && Math.abs(phoneFirst.y - phoneSecond.y) < 3 && phoneSecond.x > phoneFirst.x && phoneThird.y > phoneFirst.y).toBe(true);
+  expect(phoneFirst!.width).toBeLessThanOrEqual(152);
+  expect(await chips.first().locator('.project-stack-card-actions').evaluate(row =>
+    [...row.children].every(control => control.scrollWidth <= control.clientWidth + 1))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(2);
 });
 

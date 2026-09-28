@@ -39,17 +39,17 @@
 .pm .project-stack-new { min-height: 44px; white-space: nowrap; }
 .pm .project-stack-howto { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 9px; padding: 0 10px 8px; color: var(--text-mid); font-size: 11px; }
 .pm .project-stack-library > .search { margin: 3px 0 7px; }
-.pm .project-stack-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 220px)); gap: 8px; align-items: stretch; padding: 0 0 8px; max-height: none; overflow: visible; }
-.pm .project-stack-card { display: flex; flex-direction: column; min-width: 0; padding: 8px; border: 1px solid var(--border-hair); border-radius: 8px; background: var(--bg-panel); }
+.pm .project-stack-shelf { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; padding: 0 0 8px; max-height: none; overflow: visible; }
+.pm .project-stack-card { box-sizing: border-box; display: flex; flex: 0 0 148px; flex-direction: column; width: 148px; max-width: 152px; min-width: 0; padding: 6px; border: 1px solid var(--border-hair); border-radius: 8px; background: var(--bg-panel); }
 .pm .project-stack-card.is-active { background: var(--bg-sel); border-color: var(--accent-line); }
-.pm .project-stack-name-button { display: flex; flex-direction: column; justify-content: center; min-width: 0; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-hi); text-align: left; cursor: pointer; }
+.pm .project-stack-name-button { display: flex; flex-direction: column; justify-content: center; min-width: 0; width: 100%; min-height: 28px; padding: 0; border: 0; background: transparent; color: var(--text-hi); text-align: left; cursor: pointer; }
 .pm .project-stack-name-button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .pm .project-stack-name-button:hover strong { text-decoration: underline; text-underline-offset: 3px; }
 .pm .project-stack-name-button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-mid); font-size: 10px; }
-.pm .project-stack-thumbnails { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: 32px; margin: 2px 0 8px; }
-.pm .project-stack-thumbnail { display: block; flex: 0 0 30px; width: 30px; height: 30px; border: 1px solid color-mix(in srgb, var(--text-mid) 35%, transparent); border-radius: 4px; background: var(--stack-gradient, var(--bg-elev)); background-size: cover; background-position: center; }
+.pm .project-stack-thumbnails { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 24px; margin: 2px 0 6px; }
+.pm .project-stack-thumbnail { display: block; box-sizing: border-box; flex: 0 0 24px; width: 24px; height: 24px; border: 1px solid color-mix(in srgb, var(--text-mid) 35%, transparent); border-radius: 4px; background: var(--stack-gradient, var(--bg-elev)); background-size: cover; background-position: center; }
 .pm .project-stack-thumbnail.is-off { background: #252b30 !important; }
-.pm .project-stack-card-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: auto; }
+.pm .project-stack-card-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 2px; margin-top: auto; }
 .pm .project-stack-card-actions > button { min-width: 0; min-height: 30px; padding: 2px 3px; border: 1px solid var(--border-hair); border-radius: 6px; background: var(--bg-elev); color: var(--text-hi); font: inherit; font-size: 10px; line-height: 1.2; text-align: center; white-space: nowrap; cursor: pointer; }
 .pm .project-stack-card-actions > button:hover { border-color: var(--accent-line); background: var(--bg-sel); }
 .pm .project-stack-card-actions > .project-stack-in-playlist { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 30px; color: var(--text-mid); font-size: 10px; white-space: nowrap; }
@@ -70,15 +70,14 @@
 }
 @media (max-width: 700px) {
   .pm .project-stack-library-head { align-items: flex-start; }
-  .pm .project-stack-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pm .project-stack-card { flex-basis: min(152px, calc((100% - 6px) / 2)); width: min(152px, calc((100% - 6px) / 2)); }
   .pm .project-stack-name-button small { white-space: normal; line-height: 1.2; }
-  .pm .project-stack-thumbnails { gap: 4px; }
-  .pm .project-stack-thumbnail { box-sizing: border-box; flex-basis: 22px; width: 22px; height: 22px; }
+  .pm .project-stack-thumbnail { flex-basis: 22px; width: 22px; height: 22px; }
   .pm .project-stack-card-actions { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 2px; }
   .pm .project-stack-card-actions > button { padding-inline: 1px; }
   .pm .project-stack-save-controls { grid-template-columns: minmax(0, 1fr); }
   .pm .project-stack-inline-editor .project-stack-save { padding: 10px; }
 }
 @media (max-width: 320px) {
-  .pm .project-stack-shelf { grid-template-columns: minmax(0, 1fr); }
+  .pm .project-stack-card { flex-basis: min(152px, 100%); width: min(152px, 100%); }
 }

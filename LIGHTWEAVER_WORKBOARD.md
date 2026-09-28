@@ -9,6 +9,18 @@ Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Manager delivery view — 2026-09-28
 
+### Stack chip width and packing — verified local build
+Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local d8c3f0df.
+Working: chips reduced from 220x134px to 148x104px on the actual desktop.
+Five fit across instead of three; ten fit in two rows. Phone retains two columns,
+unclipped single-row actions and square palettes. No selection behavior change.
+Evidence: density regression RED before CSS and GREEN after; 2/2 affected browser
+checks passed. Actual 1280x800 and 390x844 reviewed; production build PASS
+(/tmp/stacks-tight-build.log). Screenshots: stack-tight-desktop.png and
+stack-tight-phone.png in this chat's visualizations directory.
+Next: owner review in existing 9220 preview. Local only; no deployment/firmware.
+
 ### Compact stack action row — verified local build
 Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
 Artifact: codex/project-pattern-stacks, refinement on local 62ac29d7.
