@@ -63,8 +63,9 @@ test('dividing into 3 spreads the remainder from the first section, and survives
   await createOneStrip(page);
   // A custom name keeps this persistence check independent of generated naming.
   await page.locator('.la-strip-row .layer-name').dblclick();
-  await page.locator('.la-strip-row input[type="text"]').fill('Ribbon');
-  await page.locator('.la-strip-row input[type="text"]').press('Enter');
+  const nameInput = page.locator('.la-strip-row').getByRole('textbox');
+  await nameInput.fill('Ribbon');
+  await nameInput.press('Enter');
   await setStripLedCount(page, 41);
 
   await page.locator('[data-testid^="divide-sections-"]').fill('3');
