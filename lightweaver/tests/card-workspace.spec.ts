@@ -1468,7 +1468,9 @@ test('Hardware loads the verified production project that matches the paired car
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
+  // Installed controls stay connected while the browser draft differs.
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
+  await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'project-mismatch');
 
   await page.getByRole('region', { name: 'Matching card project' })
     .getByRole('button', { name: /Load .*production job bench-fixture-44, project revision/ }).click();
