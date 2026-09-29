@@ -20,6 +20,7 @@ import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPush
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
 import { cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
+import { getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { readCardCommissioningVerification } from '../lib/cardInstallGate.js';
@@ -139,11 +140,15 @@ export function SetupScreen({
 }) {
   const {
     setProjectId, setPortRoles, setStandaloneController, replaceLayoutGeometry,
-    markProjectInstalled, readProjectLifecycle, projectLifecycle,
+    markProjectInstalled, readProjectLifecycle, isProjectLifecycleMarkerCurrent, projectLifecycle,
   } = useProject();
   const cardActions = useCardActions();
   const [commissioningFlow, setCommissioningFlow] = useState(() => inspectCardCommissioning().flow);
   const [cardState, setCardState] = useState({ evidence: null, status: null, wiringStatus: null, read: false });
+  const reconstructionContextRef = useRef(null);
+  reconstructionContextRef.current = { cardLink, cardHost, currentProject, projectLifecycle };
+  const reconstructionRunTokenRef = useRef(0);
+  useEffect(() => () => { reconstructionRunTokenRef.current += 1; }, []);
   const [resolution, setResolution] = useState({ kind: 'unknown' });
   const [recheckTick, setRecheckTick] = useState(0);
   const [adoptionError, setAdoptionError] = useState('');
@@ -603,6 +608,12 @@ export function SetupScreen({
   const startFromCard = async () => {
     setAdoptionError('');
     setAdoptionNotice('');
+    const runToken = ++reconstructionRunTokenRef.current;
+    const lifecycleAtStart = readProjectLifecycle?.() || projectLifecycle;
+    const projectMarker = {
+      generation: lifecycleAtStart?.generation,
+      revision: lifecycleAtStart?.editedRevision,
+    };
     // The reconstruction orchestration is the shared 'reconstruct' strategy in
     // lib/cardProjectAdoption.js; this screen keeps ownership of applying the
     // parts and of the failure copy.
@@ -610,15 +621,38 @@ export function SetupScreen({
     // looked exactly like a successful one from this screen, so the owner
     // pressed the button, watched nothing change, and had nothing to act on.
     const result = await guardedResolutionRun({
-      context: { cardLink, cardHost },
+      context: {
+        ready: exactTransport,
+        cardLink,
+        cardHost,
+        currentProject,
+        projectGeneration: lifecycleAtStart?.generation,
+      },
+      getLatestContext: () => {
+        const latest = reconstructionContextRef.current || {};
+        const lifecycle = readProjectLifecycle?.() || latest.projectLifecycle || {};
+        return {
+          ready: CONNECTED_CARD_LINK_STATES.includes(latest.cardLink?.state),
+          cardLink: latest.cardLink,
+          cardHost: latest.cardHost,
+          currentProject: latest.currentProject,
+          projectGeneration: lifecycle.generation,
+        };
+      },
+      getSharedCardLink: getCardLinkState,
+      isCardLinkConnected,
       io: { readCardStatusEnvelope, readCardPatternsFromCard, readCardZonesFromCard },
       actions: { applyCardParts },
     }, {
       strategy: 'reconstruct',
+      isCurrent: () => reconstructionRunTokenRef.current === runToken,
+      projectMarker,
+      isProjectLifecycleMarkerCurrent,
       initialStatus: cardState.status,
       allowDirectRetry: typeof window !== 'undefined' && window.location.protocol === 'http:',
       onStatus: status => setCardState(previous => ({ ...previous, status, read: true })),
     });
+    if (reconstructionRunTokenRef.current !== runToken) return;
     if (!result.ok) reportAdoptionFailure(result.reason, result.error || null);
   };
 

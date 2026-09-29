@@ -306,18 +306,87 @@ async function runReconstructStrategy(deps, params = {}) {
   const { context, io, actions } = deps;
   const cardLink = context.cardLink;
   const readHost = cardLink?.host || context.cardHost || '';
+  const requestContext = {
+    host: normalizeCardHost(readHost),
+    cardId: String(cardLink?.card?.id || cardLink?.readiness?.cardId || '').trim(),
+    firmwareVersion: String(cardLink?.card?.firmwareVersion || '').trim(),
+    buildId: String(cardLink?.card?.buildId || '').trim(),
+    bootId: String(cardLink?.validatedBootId || cardLink?.readiness?.bootId || '').trim(),
+    operationGeneration: Number(cardLink?.operationGeneration || 0),
+    revalidationGeneration: Number(cardLink?.revalidationGeneration || 0),
+    projectGeneration: context.projectGeneration,
+    workspaceFingerprint: cardProjectFingerprint(context.currentProject),
+  };
+  const projectIdentity = value => {
+    const source = value?.readiness || value || {};
+    const revision = source.projectRevision;
+    return {
+      id: String(source.projectId || source.piece?.id || '').trim(),
+      revision: revision == null || revision === '' ? null : Number(revision),
+      fingerprint: String(source.projectFingerprint || '').trim().toLowerCase(),
+    };
+  };
+  const sameKnownProject = (expectedValue, actualValue) => {
+    const expected = projectIdentity(expectedValue);
+    const actual = projectIdentity(actualValue);
+    return !(expected.id && actual.id && expected.id !== actual.id)
+      && !(Number.isSafeInteger(expected.revision) && Number.isSafeInteger(actual.revision)
+        && expected.revision !== actual.revision)
+      && !(expected.fingerprint && actual.fingerprint && expected.fingerprint !== actual.fingerprint);
+  };
+  const contextFrom = (link, latest = {}, workspace = false) => ({
+    host: normalizeCardHost(link?.host || latest.cardHost || context.cardHost),
+    cardId: String(link?.card?.id || link?.readiness?.cardId || '').trim(),
+    firmwareVersion: String(link?.card?.firmwareVersion || '').trim(),
+    buildId: String(link?.card?.buildId || '').trim(),
+    bootId: String(link?.validatedBootId || link?.readiness?.bootId || '').trim(),
+    operationGeneration: Number(link?.operationGeneration || 0),
+    revalidationGeneration: Number(link?.revalidationGeneration || 0),
+    ...(workspace ? {
+      projectGeneration: latest.projectGeneration,
+      workspaceFingerprint: cardProjectFingerprint(latest.currentProject),
+    } : {}),
+  });
+  const contextIsCurrent = status => {
+    if (typeof params.isCurrent === 'function' && !params.isCurrent()) return false;
+    const latest = deps.getLatestContext?.();
+    if (latest) {
+      if (latest.ready === false
+        || !sameCardResolutionContext(requestContext, contextFrom(latest.cardLink, latest, true))) return false;
+    }
+    const sharedLink = deps.getSharedCardLink?.();
+    if (sharedLink && (sharedLink.state || sharedLink.card || sharedLink.readiness)) {
+      if (deps.isCardLinkConnected && !deps.isCardLinkConnected(sharedLink)) return false;
+      if (!sameCardResolutionContext(requestContext, contextFrom(sharedLink), { workspace: false })) return false;
+    }
+    if (params.projectMarker && typeof params.isProjectLifecycleMarkerCurrent === 'function'
+      && !params.isProjectLifecycleMarkerCurrent(params.projectMarker)) return false;
+    if (status?.cardId && requestContext.cardId && String(status.cardId).trim() !== requestContext.cardId) return false;
+    if (status?.bootId && requestContext.bootId && String(status.bootId).trim() !== requestContext.bootId) return false;
+    // The status snapshot names what this reconstruction is adopting. If the
+    // shared link has since observed a different installed project, do not
+    // stamp the older read as current just because the physical card is same.
+    if (status && latest?.cardLink?.readiness && !sameKnownProject(status, latest.cardLink.readiness)) return false;
+    if (status && sharedLink?.readiness && !sameKnownProject(status, sharedLink.readiness)) return false;
+    return true;
+  };
+  const cancelled = status => ({ ok: false, reason: 'cancelled', status });
   let status = params.initialStatus || null;
   try {
     status = await io.readCardStatusEnvelope({ host: readHost, transport: cardLink?.transport });
+    if (!contextIsCurrent(status)) return cancelled(status);
     if ((!Array.isArray(status?.outputs) || !status.outputs.length) && params.allowDirectRetry) {
+      if (!contextIsCurrent(status)) return cancelled(status);
       status = await io.readCardStatusEnvelope({ host: readHost, transport: 'direct' });
     }
+    if (!contextIsCurrent(status)) return cancelled(status);
     params.onStatus?.(status);
   } catch {
     // A recently completed background read is still authoritative. The
     // readiness summary is intentionally last because it may omit geometry.
     status = status || cardLink?.readiness || null;
   }
+  if (!contextIsCurrent(status)) return cancelled(status);
   // F27: `io.readCardPatternsFromCard` / `io.readCardZonesFromCard` are handed
   // to Promise.allSettled, which only catches a REJECTED promise — a
   // SYNCHRONOUS throw while building this array (before allSettled ever runs)
@@ -345,6 +414,7 @@ async function runReconstructStrategy(deps, params = {}) {
   }
   const reconstructionCardId = String(status?.cardId || cardLink?.card?.id || '').trim();
   try {
+    if (!contextIsCurrent(status)) return cancelled(status);
     const applied = await actions.applyCardParts(
       reconstructInstalledCardState({ skeleton, patterns, zones, cardId: reconstructionCardId }),
       status,
