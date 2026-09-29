@@ -106,5 +106,11 @@ assert.doesNotMatch(stageBody.slice(0, stageBody.indexOf('validateRuntimeConfigJ
 execFileSync(process.execPath, [resolve(import.meta.dirname, 'kaleidoscope-render-golden.mjs')], {
   stdio: 'inherit',
 });
+// Symmetry sides shares this renderer (continuous zones reuse the coordinate
+// context; kaleidoscope on a continuous zone is refused), so it rides the same
+// test:core entry until it has its own.
+execFileSync(process.execPath, [resolve(import.meta.dirname, 'zone-symmetry.mjs')], {
+  stdio: 'inherit',
+});
 
 console.log('kaleidoscope runtime contract tests passed');

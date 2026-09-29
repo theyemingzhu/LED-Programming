@@ -907,43 +907,87 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   await expect.poll(() => page.locator('.pm-section-item').first().evaluate(element => getComputedStyle(element).color)).not.toBe('rgb(255, 255, 255)');
 });
 
-test('a mirror set section says its strips mirror each other and does not claim the GPIO-spanning copy', async ({ page }) => {
-  // Fixture path that does not depend on the mirrorSets compile: a layer group
-  // whose id starts with "mirror-" compiles to one zone with one range per
-  // member strip, which is exactly the zone shape a mirror set compiles to.
-  const project = createPiecePreviewProject('mirror-set-section');
-  const stripIds = project.layout.strips.map((strip: { id: string }) => strip.id);
-  expect(stripIds.length).toBeGreaterThanOrEqual(2);
-  project.layout.layerGroups = [{
-    groupId: 'mirror-1',
-    type: 'strip',
-    name: 'Both wings',
-    members: stripIds.slice(0, 2).map((stripId: string) => ({ stripId })),
-  }];
-  // Put the two members on different GPIOs, as real mirrored wings usually are.
-  const outerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === stripIds[0])!;
-  const innerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === stripIds[1])!;
-  project.layout.wiring.outputs = [
-    { id: 'out1', name: 'First output', pin: 16, runIds: [outerRun.id] },
-    { id: 'out2', name: 'Second output', pin: 17, runIds: [innerRun.id] },
-  ];
+// Symmetry sides: a piece with sides chooses, per look, whether the sides mirror
+// each other or play their own. The fixture puts the model in the project
+// directly (layout.symmetry, pattern.sidesMirrored).
+function createSymmetryProject(id = 'symmetry-sides', sidesMirrored = true) {
+  const project: any = createPiecePreviewProject(id);
+  project.layout.symmetry = {
+    fold: 2,
+    orientation: 'mirror',
+    sides: [
+      { id: 'side-1', label: 'Left side', stripIds: ['default-outer-circle'] },
+      { id: 'side-2', label: 'Right side', stripIds: ['default-inner-circle'] },
+    ],
+  };
+  project.pattern = { ...(project.pattern || {}), sidesMirrored };
+  return project;
+}
+
+const sectionRows = (page: any) => page.locator('[data-testid^="section-target-"]');
+
+test('the sides choice appears only when the piece has symmetry', async ({ page }) => {
+  const project = createPiecePreviewProject('no-symmetry-no-sides');
   await gotoSavedProjectPatterns(page, project);
+  await expect(page.getByTestId('pattern-section-list')).toBeVisible();
+  await expect(page.getByTestId('pattern-sides')).toHaveCount(0);
+  await expect(page.getByTestId('sides-hint')).toHaveCount(0);
+});
 
-  const rows = page.locator('.pm-section-item');
-  await expect(rows.filter({ hasText: 'Both wings' })).toHaveCount(1);
-  // Precondition that makes the negative assertion below meaningful: this
-  // section really does span two GPIOs, so without the mirror guard it would
-  // show the GPIO-spanning copy.
-  await expect(page.locator('[data-testid^="section-gpio-"]').first()).toHaveText(/GPIO \d+ · GPIO \d+/);
-  await rows.filter({ hasText: 'Both wings' }).click();
-  const note = page.getByTestId('section-mirror-note');
-  await expect(note).toBeVisible();
-  await expect(note).toHaveText('These 2 strips mirror each other. Open in Layout to change which strips mirror.');
-  await expect(page.getByTestId('open-mirror-section-in-layout')).toBeVisible();
+test('switching the sides choice changes the section chips and the hint', async ({ page }) => {
+  await gotoSavedProjectPatterns(page, createSymmetryProject('symmetry-switch', true));
+  const control = page.getByTestId('pattern-sides');
+  await expect(control).toBeVisible();
+  await expect(page.getByText('In this look, the sides')).toBeVisible();
+  await expect(control.getByRole('button', { name: 'Mirror each other' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('sides-hint')).toHaveText('Pick a pattern for Left side. The other side plays it as a mirror image.');
+  // Mirrored: one chip for both sides (plus the whole-piece row).
+  await expect(sectionRows(page).filter({ hasText: 'Both sides, mirrored' })).toHaveCount(1);
+  await expect(sectionRows(page).filter({ hasText: 'Right side' })).toHaveCount(0);
+  await expect(sectionRows(page).filter({ hasText: 'Both sides, mirrored' })).toContainText(/2 strips · \d+ LEDs/);
+
+  await control.getByRole('button', { name: 'Play their own' }).click();
+  await expect(control.getByRole('button', { name: 'Play their own' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('sides-hint')).toHaveText('Each side gets its own pattern.');
+  await expect(sectionRows(page).filter({ hasText: 'Left side' })).toHaveCount(1);
+  await expect(sectionRows(page).filter({ hasText: 'Right side' })).toHaveCount(1);
+  await expect(sectionRows(page).filter({ hasText: 'Both sides, mirrored' })).toHaveCount(0);
+  // Sides never claim the GPIO-spanning copy, and the v1 mirror note is gone.
   await expect(page.getByTestId('section-spans-gpios')).toHaveCount(0);
+  await expect(page.getByTestId('section-mirror-note')).toHaveCount(0);
+});
 
-  await page.getByTestId('open-mirror-section-in-layout').click();
-  await expect(page).toHaveURL(/#screen=layout&mode=draw/);
+test('a saved look keeps how it plays its sides and reopening restores it', async ({ page }) => {
+  await gotoSavedProjectPatterns(page, createSymmetryProject('symmetry-save', true));
+  const control = page.getByTestId('pattern-sides');
+  const savedSides = () => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return Object.fromEntries((saved.devices?.standaloneController?.looks || []).map((look: any) => [look.label, look.sidesMirrored]));
+  });
+
+  await control.getByRole('button', { name: 'Play their own' }).click();
+  await page.locator('.pm-cards .pmcard[data-pattern-id="aurora"]').click();
+  await page.getByTestId('stack-new').click();
+  await page.getByTestId('look-name').fill('Sides own look');
+  await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+
+  await page.getByTestId('stack-new').click();
+  await control.getByRole('button', { name: 'Mirror each other' }).click();
+  await page.getByTestId('look-name').fill('Sides mirrored look');
+  await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+
+  await expect.poll(savedSides).toEqual({ 'Sides own look': false, 'Sides mirrored look': true });
+
+  // Reopening each look restores its own choice.
+  await page.getByRole('tab', { name: /Project stacks/ }).click();
+  await page.getByTestId('project-stack-card').filter({ hasText: 'Sides own look' }).getByRole('button', { name: /Edit Sides own look/ }).click();
+  await expect(control.getByRole('button', { name: 'Play their own' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionRows(page).filter({ hasText: 'Right side' })).toHaveCount(1);
+  await page.getByTestId('project-stack-card').filter({ hasText: 'Sides mirrored look' }).getByRole('button', { name: /Edit Sides mirrored look/ }).click();
+  await expect(control.getByRole('button', { name: 'Mirror each other' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sectionRows(page).filter({ hasText: 'Both sides, mirrored' })).toHaveCount(1);
 });
 
 test('an ordinary section shows no mirror note', async ({ page }) => {

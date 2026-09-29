@@ -2,7 +2,7 @@ import { PALETTE_DEFAULT } from '../data.js';
 import { expandPatchBoard, normalizePatchBoard } from './patchBoard.js';
 import { applyLookColorModifiers } from './previewColorModifiers.js';
 import { compileWiring } from './wiringCompiler.js';
-import { applyMirrorSets } from './mirrorFrame.js';
+import { applyPreviewMirrors, sideFlippedByRule } from './mirrorFrame.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { getPatternById } from './patternRegistry.js';
 
@@ -48,41 +48,35 @@ export function buildPatternPreviewSegments({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
-  mirrorSets = [],
+  symmetry = null,
   targets = [],
   resolvePatternId = patternId => patternId,
   paletteForPattern = () => PALETTE_DEFAULT,
 } = {}) {
-  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, mirrorSets }) : null);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, symmetry }) : null);
   const pixelsByTargetId = new Map();
-  // A mirror set compiles to ONE zone of several ranges, one range per member
-  // strip. The segment keeps every member's pixels in range order (so callers
-  // that map the frame back onto the wiring still see one contiguous slice), and
-  // records where each member starts so the renderer can play each range from
-  // its own LED 1 and copy the lead onto the others, as the card does.
-  const mirrorGroupsByTargetId = new Map();
+  // A side compiles to ONE continuous zone of several ranges, one per strip in
+  // the side's order. Its segment is one virtual strip holding every strip's
+  // pixels in that order, so the pattern flows through the side as the card
+  // plays it.
+  // Zone flip flags, for callers that hand over compiled zones but no symmetry.
+  const zoneFlipById = new Map();
+  // A continuous zone is one pattern run: its index and count span the zone.
+  const continuousZoneIds = new Set();
   if (compiled?.ok) {
-    const mirrorSetIds = new Set((Array.isArray(mirrorSets) ? mirrorSets : []).map(set => set?.id));
     for (const zone of compiled.zones || []) {
       const pixels = [];
-      const groups = [];
+      if (zone.continuous) continuousZoneIds.add(zone.id);
       for (const range of zone.ranges || []) {
         const start = Math.max(0, Math.trunc(Number(range.start) || 0));
         const count = Math.max(0, Math.trunc(Number(range.count) || 0));
-        let groupCount = 0;
-        let groupStripId = null;
         for (let index = 0; index < count; index += 1) {
           const pixel = compiled.pixels[start + index];
-          if (pixel && !pixel.inactive) {
-            pixels.push(pixel);
-            groupCount += 1;
-            if (groupStripId == null) groupStripId = pixel.stripId;
-          }
+          if (pixel && !pixel.inactive) pixels.push(pixel);
         }
-        if (groupCount > 0) groups.push({ stripId: groupStripId, count: groupCount });
       }
       if (pixels.length) pixelsByTargetId.set(zone.id, pixels);
-      if (groups.length > 1 && mirrorSetIds.has(zone.id)) mirrorGroupsByTargetId.set(zone.id, { setId: zone.id, groups });
+      if (zone.mirrorFlip != null) zoneFlipById.set(zone.id, Boolean(zone.mirrorFlip));
     }
   } else {
     const board = normalizePatchBoard(patchBoard, strips);
@@ -96,27 +90,25 @@ export function buildPatternPreviewSegments({
 
   return (targets || [])
     .filter(target => target?.kind === 'section' && target.id)
-    .map(target => {
+    .flatMap(target => {
       // Compiled wiring keys pixels by ZONE id; the uncompiled patch board keys
       // them by PATCH id. A target carries both, so try its Studio identity
       // first and fall back to the card identity rather than assuming one.
       const pixels = pixelsByTargetId.get(target.id)
         || (target.zoneId ? pixelsByTargetId.get(target.zoneId) : null)
         || [];
-      if (!pixels.length) return null;
-      const mirrorGroups = mirrorGroupsByTargetId.get(target.id)
-        || (target.zoneId ? mirrorGroupsByTargetId.get(target.zoneId) : null)
-        || null;
+      if (!pixels.length) return [];
       const look = { ...(target.look || {}) };
       const sourcePatternId = String(look.patternId || 'aurora');
       const patternId = resolvePatternId(sourcePatternId) || sourcePatternId;
-      return {
-        id: target.id,
+      const segmentFor = (id, segmentPixels, extra = {}, continuous = false) => ({
+        ...(continuous ? { run: { before: 0, length: segmentPixels.length } } : {}),
+        id,
         label: String(target.label || target.id),
         targetId: target.id,
         sourcePatternId,
         patternId,
-        pixels: pixels.map((pixel, index) => ({
+        pixels: segmentPixels.map((pixel, index) => ({
           x: finite(pixel.x, 0),
           y: finite(pixel.y, 0),
           index,
@@ -130,60 +122,27 @@ export function buildPatternPreviewSegments({
         hueShift: 0,
         visualLook: look,
         palette: paletteForPattern(sourcePatternId) || PALETTE_DEFAULT,
-        ...(mirrorGroups ? { mirror: mirrorGroups } : {}),
-      };
-    })
-    .filter(Boolean);
-}
-
-/**
- * Split each mirror-set segment into one virtual strip per member, so a renderer
- * plays every member from its own LED 1 and a mirror pass can copy the lead onto
- * the twins instead of running one pattern down a single long strip.
- *
- * The expanded strips keep the segment's pixels in the same order and count, so
- * the concatenated frame is index-for-index the frame of the unexpanded list.
- * Returns the strips to render and the mirror sets (over the expanded ids) to
- * pass with them; `mirrorSets` given by the caller are kept as they are.
- */
-export function expandPatternPreviewMirrorSegments(segments = [], mirrorSets = []) {
-  const carried = Array.isArray(mirrorSets) ? mirrorSets : [];
-  const derived = [];
-  const strips = [];
-  for (const segment of segments || []) {
-    const groups = segment?.mirror?.groups;
-    if (!Array.isArray(groups) || groups.length < 2) {
-      strips.push(segment);
-      continue;
-    }
-    const { mirror, ...base } = segment;
-    const idByStripId = new Map();
-    let offset = 0;
-    for (const group of groups) {
-      const id = `${segment.id}::${group.stripId}`;
-      idByStripId.set(group.stripId, id);
-      strips.push({
-        ...base,
-        id,
-        parentId: segment.id,
-        pixels: (segment.pixels || []).slice(offset, offset + group.count)
-          .map((pixel, index) => ({ ...pixel, index })),
+        ...extra,
       });
-      offset += group.count;
-    }
-    const set = carried.find(item => item?.id === mirror.setId);
-    const ordered = (Array.isArray(set?.members) ? set.members : [])
-      .filter(stripId => idByStripId.has(stripId));
-    // A member the set no longer names still has a range; append it so it
-    // follows the lead rather than free-running.
-    for (const group of groups) if (!ordered.includes(group.stripId)) ordered.push(group.stripId);
-    derived.push({
-      id: mirror.setId,
-      name: set?.name || segment.label || mirror.setId,
-      members: ordered.map(stripId => idByStripId.get(stripId)),
+      const segments = [segmentFor(target.id, pixels, {},
+        continuousZoneIds.has(target.id) || continuousZoneIds.has(target.zoneId))];
+      // "Both sides, mirrored": the target names the sides that copy it. Each
+      // becomes a virtual strip of its own (so the whole piece is lit) that the
+      // renderer fills from this segment, stretched to its length and reversed
+      // when the flip rule says so.
+      const sideOrder = Array.isArray(symmetry?.sides) ? symmetry.sides.map(side => side?.id) : [];
+      for (const [position, sideId] of (Array.isArray(target.mirroredSides) ? target.mirroredSides : []).entries()) {
+        const sidePixels = pixelsByTargetId.get(sideId);
+        if (!sidePixels?.length) continue;
+        const sideIndex = sideOrder.indexOf(sideId);
+        const mirrorFlip = sideIndex >= 0
+          ? sideFlippedByRule(symmetry, sideIndex)
+          : zoneFlipById.get(sideId) ?? sideFlippedByRule(symmetry, position + 1);
+        segments.push(segmentFor(sideId, sidePixels, { mirrorOf: target.id, mirrorFlip, mirrorSideId: sideId },
+          continuousZoneIds.has(sideId)));
+      }
+      return segments;
     });
-  }
-  return { strips, mirrorSets: [...carried, ...derived] };
 }
 
 /** Return a tight, padded SVG viewBox around the supplied preview segments. */
@@ -220,13 +179,14 @@ export function fitPreviewViewBox(segments = [], fallbackViewBox = '0 0 640 400'
 /**
  * Apply each virtual segment's firmware color post-pass to its pixel slice.
  *
- * Mirror sets are applied AFTER the looks, never before: a look is a per-strip
+ * Mirrors are applied AFTER the looks, never before: a look is a per-strip
  * recolour, so running it over a twin that already holds the lead's colours
  * (with a different look on the twin) would make the twin differ from the lead.
- * On the card the whole set is one zone with one look, so the lead's finished
- * colours are what every member shows.
+ * On the card a mirrored side copies the lead's finished colours. Segments that
+ * carry `mirrorOf` copy their source; `symmetry` + `sidesMirrored` mirror layout
+ * strips whose ids the symmetry names.
  */
-export function applyPatternPreviewSegmentLooks(pixels = [], segments = [], tMs = 0, { mirrorSets = [] } = {}) {
+export function applyPatternPreviewSegmentLooks(pixels = [], segments = [], tMs = 0, { symmetry = null, sidesMirrored = true } = {}) {
   let offset = 0;
   for (const segment of segments || []) {
     const count = segment?.pixels?.length || segment?.pts?.length || 0;
@@ -235,14 +195,17 @@ export function applyPatternPreviewSegmentLooks(pixels = [], segments = [], tMs 
     }
     offset += count;
   }
-  if (Array.isArray(mirrorSets) && mirrorSets.length) {
-    // applyMirrorSets reads a strip's length from `pts`; segments may carry
+  const mirrors = (segments || []).some(segment => segment?.mirrorOf);
+  if (symmetry || mirrors) {
+    // The mirror pass reads a strip's length from `pts`; segments may carry
     // `pixels` instead, so hand it the lengths this function already used.
     const lengths = (segments || []).map(segment => ({
       id: segment?.id,
+      mirrorOf: segment?.mirrorOf,
+      mirrorFlip: segment?.mirrorFlip,
       pts: { length: segment?.pixels?.length || segment?.pts?.length || 0 },
     }));
-    applyMirrorSets({ framePixels: pixels, strips: lengths, mirrorSets });
+    applyPreviewMirrors({ framePixels: pixels, strips: lengths, symmetry, sidesMirrored });
   }
   return pixels;
 }

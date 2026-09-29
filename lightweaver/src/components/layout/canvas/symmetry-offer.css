@@ -1,0 +1,38 @@
+/* The symmetry offer (board C): one card over the artwork, bottom centre.
+   Close-tone surface, one filled primary, "Keep as drawn" as quiet text. */
+.la .la-symmetry-offer {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: 18px;
+  width: min(520px, calc(100% - 32px));
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--bg-panel) 92%, var(--bg-elev));
+  box-shadow: 0 18px 40px -22px oklch(0.08 0.004 75 / 0.9);
+  color: var(--text-hi);
+}
+.la .la-symmetry-offer h2 { margin: 0 0 6px; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.la .la-symmetry-offer p { margin: 0 0 14px; color: var(--text-mid); font-size: 13px; line-height: 1.5; }
+.la-symmetry-offer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.la .la-symmetry-offer-actions .btn { min-height: 36px; padding: 0 14px; font-size: 13px; }
+.la .la-symmetry-offer-actions .la-symmetry-offer-keep {
+  margin-left: auto;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-mid);
+}
+.la .la-symmetry-offer-actions .la-symmetry-offer-keep:hover { color: var(--text-hi); }
+/* Phone: keep the artwork visible above the card. The two choices share a
+   row; "Keep as drawn" takes the line below. */
+@media (max-width: 600px) {
+  .la .la-symmetry-offer { bottom: 10px; width: calc(100% - 20px); padding: 12px 12px 6px; }
+  .la .la-symmetry-offer h2 { font-size: 14px; margin-bottom: 4px; }
+  .la .la-symmetry-offer p { font-size: 12px; margin-bottom: 10px; }
+  .la-symmetry-offer-actions { gap: 6px; }
+  .la .la-symmetry-offer-actions .btn { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 8px; font-size: 12px; justify-content: center; }
+  .la .la-symmetry-offer-actions .la-symmetry-offer-keep { flex: 1 0 100%; margin-left: 0; }
+}

@@ -70,7 +70,7 @@ function compiledSourceMap(project) {
   const compiled = compileWiring({
     wiring: project?.layout?.wiring,
     strips: project?.layout?.strips || [],
-    mirrorSets: project?.layout?.mirrorSets || [],
+    symmetry: project?.layout?.symmetry || null,
   });
   if (!compiled.ok) return null;
   return compiled.pixels.map(pixel => ({

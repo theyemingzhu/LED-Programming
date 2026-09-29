@@ -55,9 +55,9 @@ function geometryMetadataBytes(geometry) {
     gammaValue: geometry.gammaValue,
     symSettings: geometry.symSettings,
     audioBands: geometry.audioBands,
-    // Only present when the piece has mirror sets, so an unmirrored piece keeps
+    // Only present when the piece has symmetry, so a piece without it keeps
     // exactly the byte accounting it always had.
-    ...(geometry.mirrorSets?.length ? { mirrorSets: geometry.mirrorSets } : {}),
+    ...(geometry.symmetry ? { symmetry: geometry.symmetry, sidesMirrored: geometry.sidesMirrored } : {}),
   };
   return new TextEncoder().encode(JSON.stringify(metadata)).byteLength;
 }
@@ -151,11 +151,18 @@ export function validatePatternLabWorkerGeometry(geometry) {
   return geometry;
 }
 
-function compactMirrorSets(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter(set => set && typeof set.id === 'string' && Array.isArray(set.members) && set.members.length > 1)
-    .map(set => ({ id: set.id, members: set.members.filter(id => typeof id === 'string') }));
+// layout.symmetry reduced to what the worker's mirror pass reads: the flip rule's
+// orientation and each side's ordered strip ids. null when there is nothing to do.
+function compactSymmetry(value) {
+  if (!value || !Array.isArray(value.sides)) return null;
+  const sides = value.sides
+    .filter(side => side && Array.isArray(side.stripIds))
+    .map(side => ({
+      id: typeof side.id === 'string' ? side.id : '',
+      stripIds: side.stripIds.filter(id => typeof id === 'string'),
+    }));
+  if (sides.length < 2) return null;
+  return { orientation: value.orientation === 'mirror' ? 'mirror' : 'same', sides };
 }
 
 export function compactPatternLabWorkerGeometry(input = {}) {
@@ -256,10 +263,14 @@ export function compactPatternLabWorkerGeometry(input = {}) {
     symSettings: copyBoundedJson(input.symSettings, null),
     audioBands: copyBoundedJson(input.audioBands, null),
   };
-  // layout.mirrorSets: the worker copies each lead's finished colours onto its
-  // twins so the streamed frame matches what the card plays.
-  const mirrorSets = compactMirrorSets(input.mirrorSets);
-  if (mirrorSets.length) geometry.mirrorSets = mirrorSets;
+  // layout.symmetry: the worker plays each side as one continuous run and, when
+  // the look mirrors its sides, copies side 1's finished colours onto the others
+  // so the streamed frame matches what the card plays.
+  const symmetry = compactSymmetry(input.symmetry);
+  if (symmetry) {
+    geometry.symmetry = symmetry;
+    geometry.sidesMirrored = input.sidesMirrored !== false;
+  }
   geometry.geometryBytes = geometry.coordinates.byteLength
     + geometry.progress.byteLength
     + geometry.reflectionProgress.byteLength

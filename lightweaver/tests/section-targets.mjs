@@ -36,32 +36,46 @@ assert.deepEqual(
   fromSettings,
 );
 
-// A mirror set is one section: two mirrored strips compile to one zone with a
-// range each, and the section carries the lead strip's patch id, so looks and
-// playlists address the set exactly once.
+// Symmetry sides: two strips in two sides derive one "Both sides, mirrored"
+// section (or one per side when the look plays them on their own), and the
+// strip left on its own stays a section keyed by its patch.
 {
-  const mirrorSets = [{ id: 'mirror-1', name: 'Left and right', members: [strips[1].id, strips[0].id] }];
-  const mirroredWiring = compileWiring({ wiring, strips, mirrorSets });
-  assert.equal(mirroredWiring.ok, true, 'mirrored fixture compiles');
-  const mirrored = deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: mirroredWiring, defaultLook: { patternId: 'aurora' } })
+  const symmetry = {
+    fold: 2,
+    orientation: 'mirror',
+    sides: [
+      { id: 'side-1', label: 'Left side', stripIds: [strips[1].id] },
+      { id: 'side-2', label: 'Right side', stripIds: [strips[0].id] },
+    ],
+  };
+  const sidedWiring = compileWiring({ wiring, strips, symmetry });
+  assert.equal(sidedWiring.ok, true, 'sided fixture compiles');
+  const look = { patternId: 'aurora' };
+  const mirrored = deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: sidedWiring, symmetry, sidesMirrored: true, defaultLook: look })
     .filter(t => t.kind === 'section');
-  assert.equal(mirrored.length, strips.length - 1, 'a two-strip set replaces two sections with one');
-  const set = mirrored.find(t => t.zoneId === 'mirror-1');
-  assert.ok(set, 'the set is a section keyed by its own id');
-  assert.equal(set.ranges.length, 2, 'one range per member');
-  assert.equal(set.patchId, patchBoard.patches.find(p => p.source.stripId === strips[1].id).id, 'the lead member supplies the patch');
+  assert.equal(mirrored.length, strips.length - 1, 'two mirrored sides are one section');
+  assert.deepEqual([mirrored[0].id, mirrored[0].zoneId, mirrored[0].label, mirrored[0].mirroredSides],
+    ['side-1', 'side-1', 'Both sides, mirrored', ['side-2']]);
+  const own = deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: sidedWiring, symmetry, sidesMirrored: false, defaultLook: look })
+    .filter(t => t.kind === 'section');
+  assert.deepEqual(own.slice(0, 2).map(t => [t.id, t.label]), [['side-1', 'Left side'], ['side-2', 'Right side']]);
+  assert.equal(own.length, strips.length, 'own sides keep one section per side');
   // Same result when deriveSectionTargets compiles the wiring itself.
   assert.deepEqual(
-    deriveSectionTargets({ strips, patchBoard, wiring, mirrorSets, defaultLook: { patternId: 'aurora' } }).map(t => [t.id, t.zoneId, t.pixelCount]),
-    deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: mirroredWiring, defaultLook: { patternId: 'aurora' } }).map(t => [t.id, t.zoneId, t.pixelCount]),
+    deriveSectionTargets({ strips, patchBoard, wiring, symmetry, defaultLook: look }).map(t => [t.id, t.zoneId, t.pixelCount]),
+    deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: sidedWiring, symmetry, defaultLook: look }).map(t => [t.id, t.zoneId, t.pixelCount]),
   );
 }
 
-// The saved project writes the sets and the compiled wiring reads them.
+// The saved project writes the symmetry and the compiled wiring reads it.
 {
   const context = fs.readFileSync(new URL('../src/state/ProjectContext.jsx', import.meta.url), 'utf8');
-  assert.match(context, /mirrorSets: layoutMirrorSets,\s+sectionFamilies,\s+layerOrder: layoutLayerOrder,\s+patchBoard: normalizePatchBoard/, 'serializeProject writes layout.mirrorSets');
-  assert.match(context, /compileWiring\(\{ wiring, strips, groups: layoutLayerGroups, mirrorSets: layoutMirrorSets \}\)/, 'compiled wiring folds the mirror sets in');
+  // Through the helpers that write the fields only when set, at the old
+  // `mirrorSets` slot, so a project without symmetry keeps its content hash.
+  assert.match(context, /layerGroups: layoutLayerGroups,(\s*\/\/[^\n]*)*\s+\.\.\.symmetryLayoutFields\(layoutSymmetry, layoutSymmetryOfferDismissed\),\s+sectionFamilies,\s+layerOrder: layoutLayerOrder,\s+patchBoard: normalizePatchBoard/, 'serializeProject writes layout.symmetry');
+  assert.match(context, /motionSmoothing, \.\.\.sidesMirroredPatternFields\(sidesMirrored\),\s+\},/, 'serializeProject writes pattern.sidesMirrored');
+  assert.match(context, /compileWiring\(\{ wiring, strips, groups: layoutLayerGroups, symmetry: layoutSymmetry \}\)/, 'compiled wiring folds the symmetry in');
+  assert.equal(context.includes('mirrorSets'), false, 'ProjectContext no longer reads or writes mirrorSets');
 }
 
 // The section cap stays tied to the card contract even when the quiet Patterns

@@ -158,9 +158,26 @@ static KaleidoscopeSample patternCoordinateSample(
   return sampleKaleidoscope(context->kaleidoscope, sourceLed);
 }
 
+// A continuous zone renders each range as a slice of one run; these two place
+// the slice inside it. Every pattern reads position only through them (plus
+// the kaleidoscope sample, which continuous zones never carry), so the slices
+// stitch together exactly as one render of the whole run would.
+static inline uint16_t patternLogicalPixel(uint16_t pixel,
+                                           const PatternCoordinateContext* context) {
+  return context && context->logicalCount
+      ? static_cast<uint16_t>(context->logicalStart + pixel) : pixel;
+}
+
+static inline uint16_t patternLogicalCount(uint16_t totalPixels,
+                                           const PatternCoordinateContext* context) {
+  return context && context->logicalCount ? context->logicalCount : totalPixels;
+}
+
 static uint16_t patternSpatialIndex(uint16_t pixel,
                                     const PatternCoordinateContext* context) {
-  if (!context || !context->kaleidoscope || context->sourcePixelCount == 0) return pixel;
+  if (!context || !context->kaleidoscope || context->sourcePixelCount == 0) {
+    return patternLogicalPixel(pixel, context);
+  }
   const KaleidoscopeSample sample = patternCoordinateSample(pixel, context);
   const uint16_t maximum = context->sourcePixelCount > 1
       ? static_cast<uint16_t>(context->sourcePixelCount - 1U) : 0;
@@ -172,8 +189,9 @@ static float patternUnitCoordinate(uint16_t pixel, uint16_t totalPixels,
   if (context && context->kaleidoscope && context->sourcePixelCount > 0) {
     return patternCoordinateSample(pixel, context).kaleidoscopeProgress;
   }
-  const uint16_t denominator = totalPixels > 1 ? totalPixels - 1U : 1U;
-  return static_cast<float>(pixel) / denominator;
+  const uint16_t runPixels = patternLogicalCount(totalPixels, context);
+  const uint16_t denominator = runPixels > 1 ? runPixels - 1U : 1U;
+  return static_cast<float>(patternLogicalPixel(pixel, context)) / denominator;
 }
 
 static float recipeFract(float value) {
@@ -486,7 +504,7 @@ bool renderProceduralPattern(const String& preset, CRGB* leds, uint16_t totalPix
     const uint16_t spatial = patternSpatialIndex(i, context);
     uint16_t count = context && context->kaleidoscope
         ? max<uint16_t>(1, context->sourcePixelCount)
-        : max<uint16_t>(1, totalPixels);
+        : max<uint16_t>(1, patternLogicalCount(totalPixels, context));
     uint8_t pos = uint8_t((uint32_t(spatial) * 255u) / count);
     if (preset == "ember") {
       uint8_t flicker = inoise8(spatial * 18, t / 7);

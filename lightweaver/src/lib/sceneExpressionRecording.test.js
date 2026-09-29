@@ -110,9 +110,9 @@ test('recording rejects more than 4096 physical LEDs before rendering', async ()
   await assert.rejects(() => bakeSceneExpressionFlow(oversized), /1 to 4096 physical LEDs/);
 });
 
-// A baked sequence plays on the card 1:1 and the card plays a mirror set as one
-// zone, so the recording itself must carry the mirror: the twin's LEDs hold the
-// lead's colours in every frame, whatever the scene says about the twin.
+// A baked sequence plays on the card 1:1 and the card copies a mirrored side from
+// side 1, so the recording itself must carry the symmetry: the twin side's LEDs
+// hold side 1's colours in every frame, whatever the scene says about the twin.
 function bakedPhysicalColours(baked, wiringForMap, frame) {
   const pixelCount = wiringForMap.pixels.length;
   const byStrip = new Map();
@@ -127,33 +127,57 @@ function bakedPhysicalColours(baked, wiringForMap, frame) {
   return byStrip;
 }
 
-test('recording carries the mirror: the twin holds the lead\'s colours in every frame', async () => {
-  const mirrorSets = [{ id: 'mirror-1', name: 'Pair', members: ['b', 'a'] }];
-  const mirroredWiring = compileWiring({ wiring, strips, mirrorSets });
-  assert.equal(mirroredWiring.ok, true);
-  const mirroredContext = { ...context, compiledWiring: mirroredWiring, mirrorSets };
+const sideOf = (id, stripId) => ({ id, label: id, stripIds: [stripId] });
+const pairSymmetry = orientation => ({ fold: 2, orientation, sides: [sideOf('side-1', 'b'), sideOf('side-2', 'a')] });
 
-  const baked = await bakeSceneExpressionFlow(mirroredContext);
-  const plain = await bakeSceneExpressionFlow({ ...context, compiledWiring: mirroredWiring });
-  let plainTwinDiffers = false;
-  for (let frame = 0; frame < baked.sidecar.frameCount; frame += 1) {
-    const colours = bakedPhysicalColours(baked, mirroredWiring, frame);
-    const lead = colours.get('b');
-    const twin = colours.get('a');
-    for (let led = 0; led < twin.length; led += 1) {
-      assert.equal(twin[led], lead[mirrorSourceIndex(led, twin.length, lead.length)],
-        `frame ${frame} twin LED ${led} matches the lead`);
+for (const orientation of ['same', 'mirror']) {
+  test(`recording carries the symmetry (${orientation}): the twin side holds side 1's colours in every frame`, async () => {
+    const symmetry = pairSymmetry(orientation);
+    const symmetricContext = { ...context, symmetry, sidesMirrored: true };
+
+    const baked = await bakeSceneExpressionFlow(symmetricContext);
+    const plain = await bakeSceneExpressionFlow(context);
+    let plainTwinDiffers = false;
+    for (let frame = 0; frame < baked.sidecar.frameCount; frame += 1) {
+      const colours = bakedPhysicalColours(baked, compiledWiring, frame);
+      const lead = colours.get('b');
+      const twin = colours.get('a');
+      for (let led = 0; led < twin.length; led += 1) {
+        const logical = orientation === 'mirror' ? twin.length - 1 - led : led;
+        assert.equal(twin[led], lead[mirrorSourceIndex(logical, twin.length, lead.length)],
+          `frame ${frame} twin LED ${led} matches side 1`);
+      }
+      // Control: without symmetry the same bake lets the twin differ, so the
+      // loop above proves the copy and not a scene that happens to match.
+      const free = bakedPhysicalColours(plain, compiledWiring, frame);
+      const freeTwin = free.get('a');
+      const freeLead = free.get('b');
+      if (freeTwin.some((hex, led) => hex !== freeLead[mirrorSourceIndex(led, freeTwin.length, freeLead.length)])) {
+        plainTwinDiffers = true;
+      }
     }
-    // Control: without mirror sets the same bake lets the twin differ, so the
-    // loop above proves the mirror and not a scene that happens to match.
-    const free = bakedPhysicalColours(plain, mirroredWiring, frame);
-    const freeTwin = free.get('a');
-    const freeLead = free.get('b');
-    if (freeTwin.some((hex, led) => hex !== freeLead[mirrorSourceIndex(led, freeTwin.length, freeLead.length)])) {
-      plainTwinDiffers = true;
-    }
-  }
-  assert.equal(plainTwinDiffers, true);
-  assert.equal((await verifySceneExpressionFlowBake(baked, mirroredContext)).ok, true);
-  assert.equal((await verifySceneExpressionFlowBake(baked, { ...mirroredContext, mirrorSets: [] })).reason, 'recording-stale-layout');
+    assert.equal(plainTwinDiffers, true);
+    assert.equal((await verifySceneExpressionFlowBake(baked, symmetricContext)).ok, true);
+    assert.equal((await verifySceneExpressionFlowBake(baked, { ...symmetricContext, symmetry: null })).reason, 'recording-stale-layout');
+  });
+}
+
+test('recording hash: unchanged without symmetry, and it moves when the sides change', async () => {
+  const plain = await bakeSceneExpressionFlow(context);
+  // Golden: the recording of a piece with no symmetry keeps the identity hash it
+  // had before symmetry existed (the layout snapshot gains no key).
+  // The literal below was produced by the code BEFORE symmetry existed.
+  assert.equal(plain.sidecar.layoutPhysicalOrderSha256, '74ffc2c4cab6bbfc129d53775d91deea736c7cd2d6a79ceaf0d3e61871ce0fff');
+  const withNulls = await bakeSceneExpressionFlow({ ...context, symmetry: null, sidesMirrored: false });
+  assert.equal(withNulls.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
+
+  const sides = await bakeSceneExpressionFlow({ ...context, symmetry: pairSymmetry('same'), sidesMirrored: true });
+  assert.notEqual(sides.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
+  const swapped = await bakeSceneExpressionFlow({ ...context, symmetry: { ...pairSymmetry('same'), sides: [sideOf('side-1', 'a'), sideOf('side-2', 'b')] }, sidesMirrored: true });
+  assert.notEqual(swapped.sidecar.layoutPhysicalOrderSha256, sides.sidecar.layoutPhysicalOrderSha256);
+
+  // The recording keeps the choice it was baked with: flipping the live choice
+  // afterwards does not make it stale, but changing the sides does.
+  assert.equal((await verifySceneExpressionFlowBake(sides, { ...context, symmetry: pairSymmetry('same'), sidesMirrored: false })).ok, true);
+  assert.equal((await verifySceneExpressionFlowBake(sides, { ...context, symmetry: pairSymmetry('mirror'), sidesMirrored: true })).ok, false);
 });

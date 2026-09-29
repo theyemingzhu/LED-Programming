@@ -33,8 +33,8 @@ import {
 } from './cardPlaylist.js';
 import { normalizeKaleidoscope } from './kaleidoscope.js';
 import { createEmptyExpressionScenes, normalizeExpressionScenesForProject } from './sceneExpressionProject.js';
-import { findMirrorSetStructureErrors, normalizeMirrorSets } from './mirrorSetRules.js';
 import { remapMirrorSetStripIds } from './mirrorSets.js';
+import { migrateMirrorSetsToSymmetry, normalizeSymmetry, remapSymmetryStripIds } from './pieceSymmetry.js';
 
 export const PROJECT_VERSION = 3;
 const FOREIGN_PROJECT_FORMATS = new Set([
@@ -64,6 +64,26 @@ function normalizeProjectOrigin(value) {
 export function createProjectId() {
   const random = Math.random().toString(36).slice(2, 10);
   return `lwproj-${Date.now().toString(36)}-${random}`;
+}
+
+// A project WITHOUT symmetry must save exactly the shape it saved before
+// symmetry existed. Its canonical hash is identity: an expression-scene install
+// records the project's content hash on the card and in the installation
+// record, so a new key (`symmetry: null`, `sidesMirrored: true`) or a dropped
+// one (`mirrorSets: []`) would make every such card read as out of date. So the
+// retired v1 `mirrorSets` stays as an always-empty tombstone in its old slot,
+// and the symmetry fields are written only when they carry a choice.
+export function symmetryLayoutFields(symmetry = null, symmetryOfferDismissed = false) {
+  return {
+    mirrorSets: [],
+    ...(symmetry ? { symmetry } : {}),
+    ...(symmetryOfferDismissed === true ? { symmetryOfferDismissed: true } : {}),
+  };
+}
+
+// `pattern.sidesMirrored` defaults to true and is written only when false.
+export function sidesMirroredPatternFields(sidesMirrored = true) {
+  return sidesMirrored === false ? { sidesMirrored: false } : {};
 }
 
 function normalizeProjectId(value, fallback = createProjectId()) {
@@ -175,6 +195,9 @@ export function createDefaultProject() {
       pxPerMm: 3.7795,
       editCounts: {},
       layerGroups: [],
+      // Symmetry: absent, or two/four "sides" of strips (lib/pieceSymmetry.js),
+      // written after this key only when set. The v1 `mirrorSets` are migrated
+      // on load; the key stays as an empty tombstone (symmetryLayoutFields).
       mirrorSets: [],
       layerOrder: [],
       patchBoard: createDefaultPatchBoard(defaultStrips),
@@ -193,6 +216,9 @@ export function createDefaultProject() {
       bpm: 120,
       symSettings: DEFAULT_SYM_SETTINGS,
       motionSmoothing: 'soft',
+      // `sidesMirrored` (the live choice for the look being edited: do the
+      // sides mirror each other or play their own patterns) is absent = true,
+      // and only written when false (sidesMirroredPatternFields).
     },
     show: {
       duration: 600,
@@ -332,7 +358,11 @@ export function migrateStripIdNamespace(project) {
     }
   }
 
-  // Mirror-set members are strip ids; they move with every other strip reference.
+  // Symmetry sides (and any v1 mirror sets still awaiting migration) hold strip
+  // ids; they move with every other strip reference.
+  if (layout.symmetry && typeof layout.symmetry === 'object') {
+    layout.symmetry = remapSymmetryStripIds(layout.symmetry, oldToNew);
+  }
   if (Array.isArray(layout.mirrorSets)) {
     layout.mirrorSets = remapMirrorSetStripIds(layout.mirrorSets, oldToNew);
   }
@@ -381,14 +411,24 @@ function alignChainToStripOrder(project) {
     }
     return clean;
   });
-  // A saved mirror set that no longer holds together (a member deleted or
-  // grouped, kaleidoscope turned on) is dropped on load rather than failing the
-  // project. Wiring-dependent rules are enforced by the compiler.
-  const savedMirrorSets = normalizeMirrorSets(layout.mirrorSets, { strips: layout.strips });
-  const brokenMirrorSetIds = new Set(
-    findMirrorSetStructureErrors(savedMirrorSets, layout.strips, layout.layerGroups).map(error => error.setId),
-  );
-  layout.mirrorSets = savedMirrorSets.filter(set => !brokenMirrorSetIds.has(set.id));
+  // v1 mirror sets become symmetry once (one set of 2 or 4 members -> that many
+  // sides) and their contents are never written again. A project that already
+  // has symmetry keeps it; sets are discarded. Strips that no longer exist leave
+  // their side on load; a side left empty is kept so the owner can refill it
+  // (the compiler ignores a symmetry that does not hold together and says why).
+  // Shape: see symmetryLayoutFields. `mirrorSets` is reset in place so it keeps
+  // its old key position, and the symmetry keys exist only when they are set.
+  const legacyMirrorSets = layout.mirrorSets;
+  const symmetry = layout.symmetry
+    ? normalizeSymmetry(layout.symmetry, layout.strips)
+    : Array.isArray(legacyMirrorSets) && legacyMirrorSets.length
+      ? migrateMirrorSetsToSymmetry(legacyMirrorSets, layout.strips)
+      : null;
+  layout.mirrorSets = [];
+  if (symmetry) layout.symmetry = symmetry;
+  else delete layout.symmetry;
+  if (layout.symmetryOfferDismissed === true) layout.symmetryOfferDismissed = true;
+  else delete layout.symmetryOfferDismissed;
   const extantStripIds = new Set(layout.strips.map(strip => String(strip.id || '')));
   layout.projectWarnings = [
     ...(Array.isArray(layout.projectWarnings)
@@ -457,6 +497,8 @@ export function migrateProject(data) {
   if (data.version === PROJECT_VERSION) {
     const pattern = { ...base.pattern, ...(data.pattern || {}) };
     pattern.motionSmoothing = normalizeMotionSmoothing(pattern.motionSmoothing);
+    if (pattern.sidesMirrored === false) pattern.sidesMirrored = false;
+    else delete pattern.sidesMirrored;
     return alignChainToStripOrder({
       ...base,
       ...data,

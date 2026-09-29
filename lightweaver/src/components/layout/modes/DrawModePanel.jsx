@@ -24,16 +24,14 @@ import {
   parsedVb,
 } from '../../../lib/layoutGeometry.js';
 import {
-  MIRROR_SET_MAX_MEMBERS,
-  addMirrorMembers,
-  defaultMirrorSetName,
-  mirrorSetForStrip,
-  removeMirrorMember,
-  renameMirrorSet,
-  validateMirrorSets,
-} from '../../../lib/mirrorSets.js';
-import { rankMirrorPartners } from '../../../lib/mirrorPartners.js';
-import { setMirrorEchoFocus } from '../canvas/mirrorEcho.js';
+  moveStripToSide,
+  reorderSide,
+  setSymmetryFold,
+  validateSymmetry,
+} from '../../../lib/pieceSymmetry.js';
+import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
+import { setMirrorEchoFocus, useSymmetryRevealRequest } from '../canvas/mirrorEcho.js';
+import { sideTint } from '../shared/sideTints.js';
 import { STARTER_PRIMITIVES } from '../../../lib/layoutPrimitives.js';
 import {
   LED_COUNT_MAX,
@@ -135,112 +133,52 @@ function GpioOptions({ choices = [] }) {
   );
 }
 
-// "Mirror with…": a bounded checklist inside the selected strip's editor.
-// Ticking a row mirrors at once (the canvas preview follows); Done only closes.
-// Rows the geometry says are this strip's reflection come first, marked
-// "Likely match"; the order never ticks anything by itself.
-function MirrorChecklist({
-  strip, stripName, strips, mirrorSets, rankedPartners, blockReason, flipBlocked, nameFor,
-  error, onToggle, onRename, onStop, onFlip, onDone,
-}) {
-  const set = mirrorSetForStrip(mirrorSets, strip.id);
-  const members = new Set(set?.members || []);
-  const lead = set ? strips.find(item => item.id === set.members[0]) : strip;
-  const byId = new Map(strips.map(item => [item.id, item]));
-  const defaultName = set ? defaultMirrorSetName(set, strips.map(item => ({ ...item, name: nameFor(item) }))) : '';
-  const [nameDraft, setNameDraft] = useState(set?.name || '');
-  useEffect(() => setNameDraft(set?.name || ''), [set?.id, set?.name]);
-  const full = members.size >= MIRROR_SET_MAX_MEMBERS;
-  const panelRef = useRef(null);
-  // Opening moves focus into the checklist, so Escape and Tab work at once.
-  useEffect(() => {
-    panelRef.current?.scrollIntoView?.({ block: 'nearest' });
-    panelRef.current?.querySelector('input[type="checkbox"]:not(:disabled)')?.focus({ preventScroll: true });
-  }, []);
-  const commitName = () => {
-    const value = nameDraft.trim();
-    if (set && value !== (set.name || '')) onRename(set.id, value);
-  };
+const FOLD_CHOICES = [
+  { fold: 0, label: 'None' },
+  { fold: 2, label: '2 sides' },
+  { fold: 4, label: '4 sides' },
+];
+
+// Symmetry heads the strip list. Choosing 2 or 4 sides places every strip
+// with Studio's best guess; the list below then shows the sides.
+function SymmetryControl({ symmetry, problems, onChooseFold, onChooseOrientation }) {
+  const fold = symmetry?.fold || 0;
   return (
-    <section className="la-mirror-panel" data-testid="mirror-checklist" ref={panelRef}
-             aria-label={`Mirror ${stripName} with other strips`}
-             onKeyDown={event => {
-               if (event.key !== 'Escape') return;
-               event.preventDefault();
-               event.stopPropagation();
-               onDone();
-             }}>
-      <div className="la-mirror-head">
-        {set
-          ? <input className="la-mirror-name" type="text" value={nameDraft}
-                   placeholder={defaultName}
-                   aria-label="Mirror set name"
-                   title="Rename this mirror set"
-                   data-testid="mirror-set-name"
-                   onChange={event => setNameDraft(event.target.value)}
-                   onBlur={commitName}
-                   onKeyDown={event => {
-                     if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
-                     if (event.key === 'Escape') {
-                       event.preventDefault();
-                       event.stopPropagation();
-                       setNameDraft(set.name || '');
-                       window.requestAnimationFrame(() => event.target.blur());
-                     }
-                   }}/>
-          : <span className="la-mirror-title">Mirror {stripName} with</span>}
+    <section className="la-symmetry" data-testid="layout-symmetry" aria-label="Symmetry">
+      <span className="la-symmetry-k" id="layout-symmetry-label">Symmetry</span>
+      <div className="la-symmetry-seg" role="group" aria-labelledby="layout-symmetry-label">
+        {FOLD_CHOICES.map(choice => (
+          <button key={choice.fold} type="button" className="btn"
+                  aria-pressed={fold === choice.fold}
+                  data-testid={`layout-symmetry-${choice.fold}`}
+                  onClick={() => onChooseFold(choice.fold)}>{choice.label}</button>
+        ))}
       </div>
-      <ul className="la-mirror-options" aria-label="Strips to mirror">
-        {rankedPartners.map(partner => {
-          const candidate = byId.get(partner.id);
-          if (!candidate) return null;
-          const checked = members.has(candidate.id);
-          const reason = checked ? '' : (blockReason(candidate.id) || (full ? `${MIRROR_SET_MAX_MEMBERS} strips at most` : ''));
-          const otherSet = !checked ? mirrorSetForStrip(mirrorSets, candidate.id) : null;
-          const stretches = checked && lead && candidate.id !== lead.id && candidate.pixelCount !== lead.pixelCount;
-          const canFlip = checked && partner.needsFlip && !flipBlocked(candidate.id);
-          const name = nameFor(candidate);
-          const notes = [
-            reason && <span key="reason">{reason}</span>,
-            !reason && !checked && partner.likely && <span key="likely" className="la-mirror-likely">Likely match</span>,
-            !reason && otherSet && <span key="other">In {otherSet.name || defaultMirrorSetName(otherSet, strips.map(item => ({ ...item, name: nameFor(item) })))}</span>,
-            stretches && <span key="stretch">Stretches to fit</span>,
-            canFlip && <button key="flip" type="button" className="la-mirror-flip"
-                               data-testid={`mirror-flip-${candidate.id}`}
-                               aria-label={`Flip ${name} to match`}
-                               title={`Flip ${name}'s path so it runs as a mirror image`}
-                               onClick={() => onFlip(candidate.id)}>Flip to match</button>,
-          ].filter(Boolean);
-          return (
-            <li key={candidate.id} className={`la-mirror-option${reason ? ' is-blocked' : ''}`}
-                data-testid={`mirror-option-${candidate.id}`}
-                data-likely={partner.likely || undefined}
-                title={reason || undefined}
-                onMouseEnter={() => setMirrorEchoFocus(candidate.id)}
-                onMouseLeave={() => setMirrorEchoFocus(null)}
-                onFocus={() => setMirrorEchoFocus(candidate.id)}
-                onBlur={() => setMirrorEchoFocus(null)}>
-              <label className="la-mirror-pick">
-                <input type="checkbox" checked={checked} disabled={!!reason}
-                       aria-label={`Mirror with ${name}`}
-                       aria-describedby={notes.length ? `mirror-note-${strip.id}-${candidate.id}` : undefined}
-                       onChange={event => onToggle(candidate.id, event.target.checked)}/>
-                <span className="la-mirror-option-name" style={{ '--strip-tint': candidate.color }}>{name}</span>
-                <span className="la-mirror-count">{candidate.pixelCount} LEDs</span>
-              </label>
-              {notes.length > 0 && <div className="la-mirror-note" id={`mirror-note-${strip.id}-${candidate.id}`}>{notes}</div>}
-            </li>
-          );
-        })}
-      </ul>
-      {error && <p className="la-mirror-error" role="alert">{error}</p>}
-      <div className="la-mirror-foot">
-        {set && <button type="button" className="btn" data-testid="mirror-stop"
-                        onClick={() => onStop(set.id)}>Stop mirroring</button>}
-        <button type="button" className="btn la-mirror-done" data-testid="mirror-done" onClick={onDone}>Done</button>
-      </div>
+      {fold === 4 && <>
+        <span className="la-symmetry-k" id="layout-symmetry-runs-label">Each side runs</span>
+        <div className="la-symmetry-seg is-pair" role="group" aria-labelledby="layout-symmetry-runs-label">
+          {[['same', 'The same way round'], ['mirror', 'As a mirror image']].map(([value, label]) => (
+            <button key={value} type="button" className="btn"
+                    aria-pressed={symmetry.orientation === value}
+                    data-testid={`layout-symmetry-runs-${value}`}
+                    onClick={() => onChooseOrientation(value)}>{label}</button>
+          ))}
+        </div>
+      </>}
+      {fold > 0 && <p className="la-symmetry-note">
+        {fold === 2 ? 'Patterns can play the two sides as mirror images.' : 'Patterns can play all four sides alike.'}
+      </p>}
+      {problems.length > 0 && <ul className="la-symmetry-problems" role="alert" data-testid="layout-symmetry-problems">
+        {problems.map(problem => <li key={`${problem.code}:${problem.sideId || ''}:${problem.stripId || ''}`}>{problem.message}</li>)}
+      </ul>}
     </section>
   );
+}
+
+// "Left top, Left bottom" -> "Left top, then Left bottom".
+function flowSentence(names) {
+  if (names.length < 2) return '';
+  return `The pattern flows through ${names.slice(0, -1).join(', ')}, then ${names[names.length - 1]}.`;
 }
 
 export function DrawModePanel({
@@ -313,7 +251,8 @@ export function DrawModePanel({
   const {
     wiring, updateWiring, compiledWiring, standaloneController, setStandaloneController,
     patchBoard, setPatchBoard, portRoles, sectionTargets, expressionScenes, layoutHistoryError,
-    projectId, projectLifecycle, layoutMirrorSets, setLayoutMirrorSets,
+    projectId, projectLifecycle, layoutSymmetry, setLayoutSymmetry,
+    setLayoutSymmetryOfferDismissed,
   } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
@@ -609,6 +548,11 @@ export function DrawModePanel({
           if (stripId) members.add(stripId);
         }
       }
+      // "Both sides, mirrored": the strips of the copying sides answer to the
+      // same pattern as side 1.
+      for (const sideId of target.mirroredSides || []) {
+        for (const stripId of layoutSymmetry?.sides?.find(side => side.id === sideId)?.stripIds || []) members.add(stripId);
+      }
       for (const stripId of members) {
         const current = byStrip.get(stripId) || [];
         current.push({ ...target, sharedGeometryCount: members.size });
@@ -616,7 +560,7 @@ export function DrawModePanel({
       }
     }
     return byStrip;
-  }, [sectionTargets, compiledWiring]);
+  }, [sectionTargets, compiledWiring, layoutSymmetry]);
   const outputInventory = (output, fallbackCount) => {
     if (!compiledWiring?.ok) return `${fallbackCount} ${fallbackCount === 1 ? 'section' : 'sections'} · Wiring needs review`;
     const compiledOutput = compiledWiring.outputs.find(item => item.id === output.id);
@@ -671,69 +615,99 @@ export function DrawModePanel({
   useEffect(() => { setDivideOpen(false); setDivideError(''); }, [divideSelectionKey, panelStripId]);
   useEffect(() => setRunSeparationError(''), [divideSelectionKey, panelStripId]);
 
-  // Mirror sets. The checklist belongs to one strip's editor and closes when
-  // another strip is chosen, like the Divide editor.
-  const mirrorSets = layoutMirrorSets || [];
-  const [mirrorOpenId, setMirrorOpenId] = useState(null);
-  const [mirrorError, setMirrorError] = useState('');
-  const mirrorMenuRefs = useRef(new Map());
-  const mirrorLineRefs = useRef(new Map());
-  useEffect(() => {
-    if (selStripId && mirrorOpenId && selStripId !== mirrorOpenId) setMirrorOpenId(null);
-  }, [selStripId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    setMirrorError('');
-    if (!mirrorOpenId) setMirrorEchoFocus(null);
-  }, [mirrorOpenId]);
-  useEffect(() => () => setMirrorEchoFocus(null), []);
-  const groupedStripIds = useMemo(() => new Set(layerGroups.flatMap(group => (group.members || [])
-    .map(member => (typeof member === 'string' ? member : member?.stripId)).filter(Boolean))), [layerGroups]);
-  // Why a strip cannot join a mirror, in the owner's words. Empty means it can.
-  // Same rules validateMirrorSets enforces; checked here per row so a blocked
-  // row can say why before anything is ticked.
-  const mirrorBlockReason = stripId => {
-    const strip = stripById.get(stripId);
-    if (!strip) return '';
-    if (groupedStripIds.has(stripId)) return 'Ungroup it first';
-    if (strip.kaleidoscope?.enabled === true) return 'Uses reflection points';
-    if (splitStripIds.has(stripId)) return 'Join its wiring into one run first';
-    return '';
-  };
-  const mirrorCentre = useMemo(() => {
+  // Symmetry sides. While the piece has sides the strip list groups by side,
+  // in the order the pattern flows, instead of by data wire. Each row still
+  // names its data wire, and wire order stays under More actions, so the two
+  // orders never compete for the same drag.
+  const symmetry = layoutSymmetry || null;
+  const artworkCentre = useMemo(() => {
     if (!svgText || !viewBox) return null;
     const box = parsedVb(viewBox);
     return { x: box.x + box.w / 2, y: box.y + box.h / 2 };
   }, [svgText, viewBox]);
-  const mirrorNameFor = strip => connectedPartDisplayName(strip, connectedFamilyForStrip(sectionFamilies, strip.id));
-  const openMirrorChecklist = stripId => {
-    setDivideOpen(false);
-    setMirrorOpenId(stripId);
-  };
-  const closeMirrorChecklist = stripId => {
-    setMirrorOpenId(null);
-    window.requestAnimationFrame(() => {
-      const line = mirrorLineRefs.current.get(stripId);
-      (line || mirrorMenuRefs.current.get(stripId)?.closest('details')?.querySelector('summary'))?.focus();
-    });
-  };
-  const applyMirrorSets = (next, stripId) => {
-    const setId = mirrorSetForStrip(next, stripId)?.id;
-    const problem = setId
-      ? validateMirrorSets(next, strips, wiring, layerGroups).errors.find(item => item.setId === setId)
-      : null;
-    if (problem) {
-      setMirrorError(problem.message);
-      return false;
-    }
-    setMirrorError('');
+  const symmetryProblems = useMemo(() => {
+    if (!symmetry) return [];
+    const seen = new Set();
+    return validateSymmetry(symmetry, strips, wiring).errors
+      .filter(problem => !seen.has(problem.message) && seen.add(problem.message))
+      .slice(0, 3);
+  }, [symmetry, strips, wiring]);
+  const commitSymmetry = next => {
+    if (JSON.stringify(next ?? null) === JSON.stringify(symmetry)) return;
     pushLayoutHistory();
-    setLayoutMirrorSets(next);
-    return true;
+    setLayoutSymmetry(next);
   };
-  const toggleMirrorMember = (stripId, candidateId, checked) => applyMirrorSets(
-    checked ? addMirrorMembers(mirrorSets, stripId, [candidateId]) : removeMirrorMember(mirrorSets, candidateId),
-    stripId,
-  );
+  // Why a strip cannot join a side, in the owner's words. Empty means it can.
+  const sideBlockReason = strip => {
+    if (strip?.kaleidoscope?.enabled === true) return 'Turn off reflection points first';
+    if (splitStripIds.has(strip?.id)) return 'Join its wiring into one run first';
+    return '';
+  };
+  const chooseSymmetryFold = fold => {
+    if (!fold) {
+      // Choosing None is an answer: the canvas stops offering sides.
+      setLayoutSymmetryOfferDismissed?.(true);
+      if (symmetry) commitSymmetry(null);
+      return;
+    }
+    if (symmetry?.fold === fold) return;
+    const suggestion = suggestSymmetry(strips.filter(strip => !sideBlockReason(strip)), fold, { centre: artworkCentre });
+    commitSymmetry({ ...setSymmetryFold(symmetry, fold, strips, suggestion), orientation: suggestion.orientation });
+  };
+  const chooseSymmetryOrientation = orientation => {
+    if (symmetry && symmetry.orientation !== orientation) commitSymmetry({ ...symmetry, orientation });
+  };
+  // Move strips into a side at `index` (the end when omitted), or on their
+  // own when `sideId` is null. Several strips keep their order.
+  const moveStripsToSide = (ids, sideId, index) => {
+    if (!symmetry) return;
+    let next = symmetry;
+    let at = sideId && Number.isInteger(index) ? index : null;
+    for (const id of ids) {
+      if (at !== null) {
+        const from = next.sides.find(side => side.id === sideId)?.stripIds.indexOf(id) ?? -1;
+        if (from >= 0 && from < at) at -= 1;
+      }
+      next = moveStripToSide(next, id, sideId || null, at === null ? undefined : at);
+      if (at !== null) at += 1;
+    }
+    commitSymmetry(next);
+  };
+  const stepStripInSide = (stripId, sideId, delta) => {
+    const side = symmetry?.sides.find(item => item.id === sideId);
+    const from = side ? side.stripIds.indexOf(stripId) : -1;
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= side.stripIds.length) return;
+    const ids = side.stripIds.filter(id => id !== stripId);
+    ids.splice(to, 0, stripId);
+    commitSymmetry(reorderSide(symmetry, sideId, ids));
+  };
+  const [sideDragActive, setSideDragActive] = useState(false);
+  const symmetryRef = useRef(null);
+  // "Choose sides myself" on the canvas asks for the sides to be shown.
+  const revealRequest = useSymmetryRevealRequest();
+  useEffect(() => {
+    if (!revealRequest) return;
+    window.requestAnimationFrame(() => {
+      symmetryRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+      symmetryRef.current?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+    });
+  }, [revealRequest]);
+  useEffect(() => () => setMirrorEchoFocus(null), []);
+  // The groups the strip list shows: data wires, or sides then "On its own".
+  const listGroups = useMemo(() => {
+    if (!symmetry) return gpioGroups.map(group => ({ kind: 'wire', key: group.output.id, side: null, ...group }));
+    const wireOrder = gpioGroups.flatMap(group => group.strips);
+    const inSide = new Set(symmetry.sides.flatMap(side => side.stripIds));
+    return [
+      ...symmetry.sides.map((side, sideIndex) => ({
+        kind: 'side', key: side.id, side, sideIndex,
+        strips: side.stripIds.map(id => stripById.get(id)).filter(Boolean),
+      })),
+      { kind: 'own', key: 'on-its-own', side: null, strips: wireOrder.filter(strip => !inSide.has(strip.id)) },
+    ];
+  }, [symmetry, gpioGroups, stripById]);
+
   const [divideSections, setDivideSections] = useState({}); // stripId → editable string
   // stripId → the owner's own counts, once a field has been edited. Absent
   // means the even plan; a stored set that no longer adds up to the strip
@@ -1531,6 +1505,13 @@ export function DrawModePanel({
                 {' · '}{totalLeds.toLocaleString()} LEDs
               </span>
             </div>
+            {(strips.length >= 2 || symmetry) && (
+              <div ref={symmetryRef}>
+                <SymmetryControl symmetry={symmetry} problems={symmetryProblems}
+                                 onChooseFold={chooseSymmetryFold}
+                                 onChooseOrientation={chooseSymmetryOrientation}/>
+              </div>
+            )}
             {patchBoard?.dataWireCountNeedsReview && (
               <div className="lw-legacy-confirm" role="alert" data-testid="legacy-gpio-confirm">
                 <span>Older project — confirm each strip&apos;s GPIO looks right.</span>
@@ -1587,15 +1568,51 @@ export function DrawModePanel({
               </div>
             )}
             <div ref={stripListRef} className="layers" style={{ flex: '0 0 auto', minHeight: 0, paddingBottom: 4 }}>
-              {/* GPIO groups are physical data chains, ordered from the card outward. */}
-              {gpioGroups.map(({ output, strips: groupedStrips, linkedStrips, sectionCount }) => (
-                <section key={output.id} className="la-gpio-group" data-testid={`gpio-group-${output.pin}`}>
-                  {!singleFamilyOutput(groupedStrips, linkedStrips) && <div className="la-gpio-group-head">
+              {/* Without symmetry, GPIO groups are physical data chains ordered
+                  from the card outward. With symmetry, each side is a group in
+                  the order the pattern flows, then the strips on their own. */}
+              {listGroups.map(group => {
+                const { output, linkedStrips = [], sectionCount } = group;
+                const groupedStrips = group.strips;
+                const sideView = group.kind !== 'wire';
+                if (group.kind === 'own' && !groupedStrips.length && !sideDragActive) return null;
+                const groupLeds = groupedStrips.reduce((sum, strip) => sum + (Number(strip.pixelCount) || 0), 0);
+                const dropSideId = group.kind === 'side' ? group.side.id : null;
+                const acceptsStrips = event => Array.from(event.dataTransfer.types).includes('application/x-lightweaver-strip');
+                return (
+                <section key={group.key}
+                         className={`la-gpio-group${sideView ? ` la-side-group is-${group.kind}` : ''}${stripGroupDragOver === `side:${group.key}` ? ' is-drop-target' : ''}`}
+                         data-testid={sideView ? `side-group-${group.key}` : `gpio-group-${output.pin}`}
+                         aria-label={sideView ? (group.side?.label || 'On its own') : undefined}
+                         style={group.kind === 'side' ? { '--side-tint': sideTint(group.sideIndex) } : undefined}
+                         onDragOver={sideView ? event => {
+                           if (!acceptsStrips(event)) return;
+                           event.preventDefault();
+                           setStripGroupDragOver(`side:${group.key}`);
+                         } : undefined}
+                         onDragLeave={sideView ? event => {
+                           if (!event.currentTarget.contains(event.relatedTarget)) setStripGroupDragOver(null);
+                         } : undefined}
+                         onDrop={sideView ? event => {
+                           const draggedStripIds = readDraggedStripIds(event);
+                           if (!draggedStripIds.length) return;
+                           event.preventDefault();
+                           moveStripsToSide(draggedStripIds, dropSideId);
+                           setStripGroupDragOver(null);
+                           setSideDragActive(false);
+                         } : undefined}>
+                  {!sideView && !singleFamilyOutput(groupedStrips, linkedStrips) && <div className="la-gpio-group-head">
                     <span>Data wire · GPIO {output.pin}</span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>}
+                  {sideView && <div className="la-side-head">
+                    <span className="la-side-name">{group.side?.label || 'On its own'}</span>
+                    <span className="la-side-meta">{groupLeds} LEDs</span>
+                  </div>}
+                  {group.kind === 'side' && !groupedStrips.length && <p className="la-side-empty">No strips yet. Drag one here.</p>}
+                  {group.kind === 'own' && !groupedStrips.length && <p className="la-side-empty">Drop here to play on its own.</p>}
                   {linkedStrips.length > 0 && <div className="la-gpio-linked">Continues {linkedStrips.map(strip => displayStripName(strip, sectionFamilies)).join(', ')}</div>}
-                  {groupedStrips.map((s, i) => {
+                  {groupedStrips.map(s => {
                 const isSel = s.id === (selStripId || existingStrip?.id);
                 const isBatchSel = selectedStripIds.includes(s.id);
                 // The Selected strip module belongs to the selected strip, and
@@ -1656,14 +1673,9 @@ export function DrawModePanel({
                 const divideSectionError = `Enter a whole number from 2 to ${divideCap}.`;
                 const divideDisabledReason = divideBlockedReason(s, isSplit)
                   || (!divideSectionsValid ? divideSectionError : '');
-                const mirrorSet = mirrorSetForStrip(mirrorSets, s.id);
-                const mirrorPartnerNames = mirrorSet
-                  ? mirrorSet.members.filter(id => id !== s.id).map(id => stripById.get(id)).filter(Boolean).map(mirrorNameFor)
-                  : [];
-                const mirrorMenuReason = strips.length < 2
-                  ? 'Add another strip to mirror with'
-                  : (mirrorSet ? '' : mirrorBlockReason(s.id));
-                const mirrorOpen = isOpen && mirrorOpenId === s.id;
+                // Place in the side: flow position (1-based) when in a side.
+                const sideStripIds = group.kind === 'side' ? group.side.stripIds : [];
+                const flowPosition = sideStripIds.indexOf(s.id) + 1;
                 const stripMenu = (
                       <details className="la-strip-menu" onClick={event => event.stopPropagation()}
                                onKeyDown={event => {
@@ -1724,19 +1736,6 @@ export function DrawModePanel({
                             </>;
                           })()}
                           <button type="button" className="btn"
-                                  data-testid={`mirror-with-${s.id}`}
-                                  ref={element => {
-                                    if (element) mirrorMenuRefs.current.set(s.id, element);
-                                    else mirrorMenuRefs.current.delete(s.id);
-                                  }}
-                                  data-caption={mirrorMenuReason || 'Play this strip and others as mirror images'}
-                                  title={mirrorMenuReason || 'Play this strip and others as mirror images'}
-                                  disabled={!!mirrorMenuReason}
-                                  onClick={event => {
-                                    event.currentTarget.closest('details').open = false;
-                                    openMirrorChecklist(s.id);
-                                  }}>Mirror with…</button>
-                          <button type="button" className="btn"
                                   data-caption="Duplicate this strip"
                                   title="Duplicate strip"
                                   onClick={() => duplicateStrip(s.id)}>Duplicate strip</button>
@@ -1791,6 +1790,9 @@ export function DrawModePanel({
                          // Preserve the native drag session, so this uses a direct class
                          // rather than React state for the lift feedback.
                          e.currentTarget.classList.add('is-dragging');
+                         // An empty "On its own" group appears as a drop target,
+                         // after the drag session has started.
+                         if (sideView) window.setTimeout(() => setSideDragActive(true), 0);
                        }}
                        onDragOver={e => {
                          if (!Array.from(e.dataTransfer.types).includes('application/x-lightweaver-strip')) return;
@@ -1805,7 +1807,12 @@ export function DrawModePanel({
                          e.stopPropagation();
                          const bounds = e.currentTarget.getBoundingClientRect();
                          const placement = e.clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
-                         moveStripsInGpioOrder(draggedStripIds, s.id, placement);
+                         // Sides: the drop sets the flow order. Data wires: the wire order.
+                         if (sideView) {
+                           moveStripsToSide(draggedStripIds, dropSideId,
+                             dropSideId ? sideStripIds.indexOf(s.id) + (placement === 'after' ? 1 : 0) : undefined);
+                           setSideDragActive(false);
+                         } else moveStripsInGpioOrder(draggedStripIds, s.id, placement);
                          setDroppedStripIds(draggedStripIds);
                          window.setTimeout(() => setDroppedStripIds([]), 220);
                          setStripGroupDragOver(null);
@@ -1813,7 +1820,10 @@ export function DrawModePanel({
                        onDragEnd={e => {
                          e.currentTarget.classList.remove('is-dragging');
                          setStripGroupDragOver(null);
+                         setSideDragActive(false);
                        }}
+                       onMouseEnter={sideView ? () => setMirrorEchoFocus(s.id) : undefined}
+                       onMouseLeave={sideView ? () => setMirrorEchoFocus(null) : undefined}
                        style={{ '--part-tint': s.color, opacity: hidden[s.id] ? 0.4 : 1,
                                 outline: stripGroupDragOver === `strip:${s.id}` ? '1px solid var(--accent)' : undefined,
                                 outlineOffset: -1 }}
@@ -1826,8 +1836,12 @@ export function DrawModePanel({
                          // were working on closed its own readout.
                          selectStrip(s.id);
                        }}>
-                      <span className="la-wire-n" title="Drag to change physical wire order" style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
-                        <DragHandleIcon/>
+                      {/* In a side the handle IS the flow number the artwork shows. */}
+                      <span className={`la-wire-n${flowPosition ? ' la-flow-n' : ''}`}
+                            data-testid={flowPosition ? `flow-n-${s.id}` : undefined}
+                            title={sideView ? 'Drag to another side, or up and down to change the order the pattern flows' : 'Drag to change physical wire order'}
+                            style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
+                        {flowPosition ? flowPosition : <DragHandleIcon/>}
                       </span>
                       <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
                                     className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0, color: s.color }}/>
@@ -1843,15 +1857,19 @@ export function DrawModePanel({
                               }}>
                         {hidden[s.id] ? <EyeOffIcon/> : <EyeIcon/>}
                       </button>
-                      {routePins.length > 1 && <span className="la-strip-routes">GPIO {routePins.join(' + ')}</span>}
+                      {/* Sides replace the data-wire headings, so each row names its own wire. */}
+                      {(routePins.length > 1 || sideView) && <span className="la-strip-routes" data-testid={sideView ? `strip-wire-${s.id}` : undefined}>
+                        GPIO {routePins.length ? routePins.join(' + ') : (outputForStrip(s.id)?.pin ?? 16)}
+                      </span>}
                       {stripTargets.length === 0 && <span className="la-section-pattern-unavailable">Pattern target unavailable</span>}
                       {stripTargets.map(target => {
                         const patternId = target.look?.patternId || 'aurora';
                         const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
+                        const sideTarget = Boolean(target.mirroredSides) || Boolean(symmetry?.sides.some(side => side.id === target.id));
                         return <button key={target.id} type="button" className="la-section-pattern-action"
-                                       title={`Change ${partName} pattern: ${patternName}`}
+                                       title={sideTarget ? `Change the pattern for ${target.label}: ${patternName}` : `Change ${partName} pattern: ${patternName}`}
                                        data-testid="layout-section-pattern-action" data-target-id={target.id}
-                                       aria-label={`Change pattern for ${partName}`}
+                                       aria-label={sideTarget ? `Change pattern for ${partName}, ${target.label}` : `Change pattern for ${partName}`}
                                        ref={element => {
                                          if (element) patternTriggerRefs.current.set(target.id, element);
                                          else patternTriggerRefs.current.delete(target.id);
@@ -1869,31 +1887,12 @@ export function DrawModePanel({
                                          setPatternCardStatus('');
                                          setPatternPicker({ targetId: target.id, stripId: s.id });
                                        }}>
-                          {stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
+                          {/* A side's pattern: the side heading already says whose. */}
+                          {sideTarget ? ''
+                            : stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
                     </div>
-                    {mirrorPartnerNames.length > 0 && (
-                      <button type="button" className="la-mirror-line"
-                              data-testid={`mirror-line-${s.id}`}
-                              ref={element => {
-                                if (element) mirrorLineRefs.current.set(s.id, element);
-                                else mirrorLineRefs.current.delete(s.id);
-                              }}
-                              aria-expanded={mirrorOpen}
-                              aria-label={`${partName} mirrors ${mirrorPartnerNames.join(', ')}. Change which strips mirror.`}
-                              title="Change which strips mirror"
-                              onClick={event => {
-                                event.stopPropagation();
-                                if (patternPicker) closePatternPicker(false);
-                                if (mirrorOpen) { closeMirrorChecklist(s.id); return; }
-                                selectStrip(s.id);
-                                openMirrorChecklist(s.id);
-                              }}>
-                        <span className="la-mirror-line-key">Mirrors:</span>
-                        <span className="la-mirror-line-names">{mirrorPartnerNames.join(', ')}</span>
-                      </button>
-                    )}
                     {patternPicker?.stripId === s.id && (() => {
                       const target = sectionTargets.find(item => item.id === patternPicker.targetId);
                       return <LayoutPatternGallery stripName={partName}
@@ -1925,12 +1924,54 @@ export function DrawModePanel({
                               }}/>
                           </div>
                         </div>
+                        {/* The keyboard route for what dragging does: which side
+                            this strip plays with, and its place in that side. */}
+                        {symmetry && (() => {
+                          const currentSideId = dropSideId;
+                          const reason = sideBlockReason(s);
+                          const moveTo = sideId => {
+                            if (sideId === currentSideId) return;
+                            moveStripsToSide([s.id], sideId);
+                            window.requestAnimationFrame(() => document.querySelector(
+                              `[data-testid="side-choice-${s.id}-${sideId || 'own'}"]`)?.focus());
+                          };
+                          return <div className="la-side-choice" role="group" aria-label={`Where ${partName} plays`}
+                                      data-testid={`side-choice-${s.id}`}>
+                            <span className="la-side-choice-k">{partName} plays</span>
+                            <div className="la-side-choice-options">
+                              {symmetry.sides.map((side, index) => (
+                                <button key={side.id} type="button" className="btn"
+                                        style={{ '--side-tint': sideTint(index) }}
+                                        aria-pressed={currentSideId === side.id}
+                                        data-testid={`side-choice-${s.id}-${side.id}`}
+                                        disabled={Boolean(reason) && currentSideId !== side.id}
+                                        title={reason || undefined}
+                                        onClick={() => moveTo(side.id)}>
+                                  With {side.label.charAt(0).toLowerCase()}{side.label.slice(1)}
+                                </button>
+                              ))}
+                              <button type="button" className="btn"
+                                      aria-pressed={!currentSideId}
+                                      data-testid={`side-choice-${s.id}-own`}
+                                      onClick={() => moveTo(null)}>On its own</button>
+                            </div>
+                            {currentSideId && sideStripIds.length > 1 && <div className="la-side-order">
+                              <button type="button" className="btn" disabled={flowPosition <= 1}
+                                      aria-label={`Move ${partName} up in ${group.side.label}`}
+                                      onClick={() => stepStripInSide(s.id, currentSideId, -1)}>Move up</button>
+                              <button type="button" className="btn" disabled={flowPosition >= sideStripIds.length}
+                                      aria-label={`Move ${partName} down in ${group.side.label}`}
+                                      onClick={() => stepStripInSide(s.id, currentSideId, 1)}>Move down</button>
+                            </div>}
+                          </div>;
+                        })()}
                         {stripTargets.map(target => {
                           const patternId = target.look?.patternId || 'aurora';
                           const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
-                          const targetName = stripTargets.length > 1 ? target.label : partName;
+                          const sideTarget = Boolean(target.mirroredSides) || Boolean(symmetry?.sides.some(side => side.id === target.id));
+                          const targetName = stripTargets.length > 1 || sideTarget ? target.label : partName;
                           return <div className="la-pattern-details" key={target.id}>
-                            <span>{targetName} · {patternName}{target.sharedGeometryCount > 1 ? ' · shared section' : ''}</span>
+                            <span>{targetName} · {patternName}{target.sharedGeometryCount > 1 && !sideTarget ? ' · shared section' : ''}</span>
                             <button type="button" className="btn" data-testid="edit-pattern-details"
                                     data-target-id={target.id}
                                     aria-label={`Edit pattern details for ${targetName}`}
@@ -2085,7 +2126,7 @@ export function DrawModePanel({
                                     aria-label={`Divide ${s.name} into sections`}
                                     aria-expanded={divideOpen}
                                     aria-controls={`divide-panel-${s.id}`}
-                                    onClick={() => { setMirrorOpenId(null); setDivideOpen(open => !open); }}>
+                                    onClick={() => setDivideOpen(open => !open)}>
                               <span>Divide into sections</span>
                               {divideOpen ? <ChevronDownIcon/> : <ChevronRightIcon/>}
                             </button>
@@ -2208,41 +2249,6 @@ export function DrawModePanel({
                                   title="Merge this connected part first" disabled
                                   onClick={() => removeStrip(s.id)}><PartActionIcon name="remove"/></button>
                         </div>}
-                        {connectedFamily && !mirrorOpen && (
-                          <button type="button" className="btn la-part-mirror"
-                                  data-testid={`mirror-with-${s.id}`}
-                                  ref={element => {
-                                    if (element) mirrorMenuRefs.current.set(s.id, element);
-                                    else mirrorMenuRefs.current.delete(s.id);
-                                  }}
-                                  title={mirrorMenuReason || `Play ${partName} and others as mirror images`}
-                                  disabled={!!mirrorMenuReason}
-                                  onClick={() => openMirrorChecklist(s.id)}>Mirror with…</button>
-                        )}
-                        {mirrorOpen && (
-                          <MirrorChecklist
-                            strip={s}
-                            stripName={partName}
-                            strips={strips}
-                            mirrorSets={mirrorSets}
-                            rankedPartners={rankMirrorPartners(s, strips.filter(item => item.id !== s.id), { centre: mirrorCentre })}
-                            blockReason={mirrorBlockReason}
-                            flipBlocked={id => !!connectedFamilyForStrip(sectionFamilies, id)}
-                            nameFor={mirrorNameFor}
-                            error={mirrorError}
-                            onToggle={(candidateId, checked) => toggleMirrorMember(s.id, candidateId, checked)}
-                            onRename={(setId, name) => {
-                              pushLayoutHistory();
-                              setLayoutMirrorSets(renameMirrorSet(mirrorSets, setId, name));
-                            }}
-                            onStop={setId => {
-                              pushLayoutHistory();
-                              setLayoutMirrorSets(mirrorSets.filter(set => set.id !== setId));
-                              closeMirrorChecklist(s.id);
-                            }}
-                            onFlip={reverseStrip}
-                            onDone={() => closeMirrorChecklist(s.id)}/>
-                        )}
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}
@@ -2359,10 +2365,19 @@ export function DrawModePanel({
                   </div>
                 );
                   })}
+                  {group.kind === 'side' && groupedStrips.length > 1 && (
+                    <p className="la-side-foot">{flowSentence(groupedStrips.map(strip =>
+                      connectedPartDisplayName(strip, connectedFamilyForStrip(sectionFamilies, strip.id))))}</p>
+                  )}
                 </section>
-              ))}
+                );
+              })}
               {gpioGroups.length > 0 && <details className="la-mapping-details" data-testid="layout-mapping-details">
-                <summary>Wiring details</summary>
+                {/* With sides on, the list no longer shows data wires, so the
+                    wiring summary names them. */}
+                <summary>{symmetry
+                  ? `${physicalStripCount} ${physicalStripCount === 1 ? 'strip' : 'strips'} on ${gpioGroups.length} ${gpioGroups.length === 1 ? 'data wire' : 'data wires'}`
+                  : 'Wiring details'}</summary>
                 <div className="la-mapping-list">
                   {compiledWiring?.ok ? gpioGroups.flatMap(({ output }) => {
                     const compiledOutput = compiledWiring.outputs.find(item => item.id === output.id);

@@ -3,7 +3,7 @@ import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 import {
   MAX_PATTERN_LAB_LWSEQ_BYTES,
   canonicalPatternLabBakeJson,
-  hashPatternLabBakePhysicalOrder,
+  patternLabBakeLayoutHashCandidates,
 } from './lwseqBake.js';
 import { patternLabLayerBaseSupport, validatePatternLabLayerTargets } from './patternLabLayers.js';
 import {
@@ -416,9 +416,9 @@ async function validateBakeResult(bakeResult, normalizedRecipe, bakeContext) {
   ]);
   if (recipeSha256 !== manifest.recipeSha256) throw staleRecipeError();
   if (lwseqSha256 !== manifest.lwseqSha256) throw new TypeError('The Pattern Lab LWSEQ hash does not match its sidecar');
-  const physicalHash = await hashPatternLabBakePhysicalOrder({ ...bakeContext, recipe: normalizedRecipe,
+  const physicalHashes = await patternLabBakeLayoutHashCandidates({ ...bakeContext, recipe: normalizedRecipe,
     fps: manifest.fps });
-  if (physicalHash !== manifest.layoutPhysicalOrderSha256) {
+  if (!physicalHashes.includes(manifest.layoutPhysicalOrderSha256)) {
     const error = new Error('The artwork, wiring, or render settings changed after this sequence was baked.');
     error.code = 'bake-stale-layout';
     throw error;
@@ -508,7 +508,8 @@ export async function createPatternLabHandoff({
   projectLibraryOnly = false,
   strips = [],
   groups = [],
-  mirrorSets = [],
+  symmetry = null,
+  sidesMirrored = true,
   wiring = null,
   compiledWiring = null,
   hidden = {},
@@ -640,7 +641,7 @@ export async function createPatternLabHandoff({
     if (!bakeResult) return blocked('bake-required', 'Bake the complete sequence before adding it to the project.');
     try {
       const verified = await validateBakeResult(bakeResult, normalized, {
-        strips, groups, mirrorSets, wiring, compiledWiring, hidden, sectionTargets,
+        strips, groups, symmetry, sidesMirrored, wiring, compiledWiring, hidden, sectionTargets,
         render: render || { symSettings }, audioLanes: normalized.offlineAudio,
       });
       const id = replacing?.id || uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));
