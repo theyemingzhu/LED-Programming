@@ -61,7 +61,7 @@ async function connect(page: Page) {
   await expect(page.getByText('Lights connected', { exact: true })).toBeVisible();
 }
 
-test('installed patterns, persisted playlist and sliders work at phone and desktop sizes', async ({ page }) => {
+test('installed patterns, persisted playlist and sliders work at phone and desktop sizes', async ({ page }, testInfo) => {
   const state = await mockClientCard(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await connect(page);
@@ -97,10 +97,10 @@ test('installed patterns, persisted playlist and sliders work at phone and deskt
   expect(state.controls.at(-1)).toEqual({ hueShift: 1 });
   expect(state.playing).toBe(true);
   await page.getByRole('button', { name: /Patterns 4/ }).click();
-  await page.screenshot({ path: '/private/tmp/lightweaver-client-phone.png', fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('lightweaver-client-phone.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.screenshot({ path: '/private/tmp/lightweaver-client-desktop.png', fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('lightweaver-client-desktop.png'), fullPage: true });
   await page.getByRole('button', { name: /Amber tides/ }).click();
   await expect(page.getByRole('heading', { name: 'Amber tides' })).toBeVisible();
   expect(state.controls.at(-1)).toEqual({ patternId: 'artwork-amber', syncZones: true });
