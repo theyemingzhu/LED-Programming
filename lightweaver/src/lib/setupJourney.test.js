@@ -529,6 +529,40 @@ test('a healthy card holding the open project stays set up while a newer local l
   assert.deepEqual(journey.blockers, []);
 });
 
+test('same-project LED count edits stay installed while awaiting Save to card', () => {
+  const journey = deriveSetupJourney({
+    cardLink: connectedCard({ ...READY_STATUS, projectId: 'lotus-gate' }),
+    cardLifecycle: { state: 'length-mismatch', setupTaskId: 'save-led-count', commandReady: true },
+    project: { ...verifiedProject(), id: 'lotus-gate' },
+  });
+
+  assert.equal(journey.setupComplete, true);
+  assert.equal(journey.taskId, 'open-patterns');
+});
+
+test('same project id with an unresolved installed revision asks which copy to use', () => {
+  const readiness = {
+    ...READY_STATUS,
+    projectId: 'lotus-gate',
+    projectRevision: 3,
+    projectFingerprint: 'installed-copy',
+  };
+  const journey = deriveSetupJourney({
+    cardLink: connectedCard(readiness),
+    cardLifecycle: {
+      state: 'project-mismatch',
+      setupTaskId: 'load-matching-project',
+      commandReady: true,
+      exactProject: false,
+    },
+    project: { ...verifiedProject(), id: 'lotus-gate', revision: 4 },
+  });
+
+  assert.equal(journey.setupComplete, false);
+  assert.equal(journey.currentPhaseId, 'connect');
+  assert.equal(journey.taskId, 'load-matching-project');
+});
+
 test('an edited local project cannot use the installed route for a different card project or staged wiring', () => {
   const base = {
     cardLifecycle: { state: 'project-mismatch', setupTaskId: 'load-matching-project', commandReady: true },

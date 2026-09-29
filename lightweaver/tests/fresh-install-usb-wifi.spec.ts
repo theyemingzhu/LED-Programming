@@ -589,6 +589,45 @@ test('USB timeout reopens the exact card and reconciles the accepted attempt', a
   expect((await serialCommands(page)).filter((value: any) => value.command === 'provision')).toHaveLength(1);
 });
 
+test('interrupted USB resume serializes card selection and recovers after chooser cancellation', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'lost-response');
+  await fillWifi(page);
+  await install(page);
+  await expect.poll(async () => (await serialCommands(page)).filter((value: any) => value.command === 'provision').length).toBe(1);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const resume = page.getByTestId('interrupted-usb-recovery').getByRole('button', { name: 'Resume with USB' });
+  await expect(resume).toBeVisible();
+  await page.evaluate(async () => {
+    const serial = (navigator as any).serial;
+    const port = (await serial.getPorts())[0];
+    const state: any = { requests: 0, release: null, cancel: null };
+    serial.getPorts = async () => [];
+    serial.requestPort = () => {
+      state.requests += 1;
+      return new Promise((resolve, reject) => {
+        state.release = () => resolve(port);
+        state.cancel = () => reject(new DOMException('Selection cancelled', 'NotFoundError'));
+      });
+    };
+    (window as any).__resumeChooser = state;
+  });
+  await resume.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__resumeChooser.requests)).toBe(1);
+  await resume.evaluate(button => (button as HTMLButtonElement).click());
+  await expect.poll(() => page.evaluate(() => (window as any).__resumeChooser.requests)).toBe(1);
+  await expect(resume).toBeDisabled();
+  await page.evaluate(() => (window as any).__resumeChooser.cancel());
+  await expect(resume).toBeEnabled();
+  await expect(page.locator('[data-post-flash="station"]')).toHaveCount(0);
+  await resume.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__resumeChooser.requests)).toBe(2);
+  await expect(resume).toBeDisabled();
+  await page.evaluate(() => (window as any).__resumeChooser.release());
+  await expect(page.locator('[data-post-flash="station"]')).toContainText('192.168.18.70');
+  expect(await page.evaluate(() => (window as any).__resumeChooser.requests)).toBe(2);
+  expect((await serialCommands(page)).filter((value: any) => value.command === 'provision')).toHaveLength(0);
+});
+
 test('USB Wi-Fi form stays usable on a narrow browser viewport', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openFreshInstaller(page, request);

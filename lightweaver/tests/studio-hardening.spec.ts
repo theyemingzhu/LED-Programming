@@ -407,7 +407,7 @@ test('pattern preview uses project LED geometry and active symmetry', async ({ p
   await expect(preview).toHaveAttribute('data-preview-led-count', '44');
   await expect(preview).toHaveAttribute('data-preview-order', /default-(outer|inner)-circle/);
   await expect(preview).toHaveAttribute('data-preview-symmetry', 'none');
-  await page.locator('.geo-seg').getByRole('button', { name: 'Mirror' }).click();
+  await page.locator('.geo-seg').getByRole('button', { name: 'Fold' }).click();
   await expect(preview).toHaveAttribute('data-preview-symmetry', 'mirror-hv');
 });
 
