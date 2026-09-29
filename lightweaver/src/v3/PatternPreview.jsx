@@ -109,7 +109,7 @@ function renderFrame(canvas, t, p) {
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, symOverlay, audioBands, blendAmount, blendType,
     perStripFns, perStripPalettes, vb, heat, motionSmoothing, previousPixels, frameDt,
-    stripPhases, dimmedStripIds, compactRibbon,
+    stripPhases, dimmedStripIds, compactRibbon, mirrorSets,
   } = p;
 
   // ViewBox → canvas pixel mapping (letterbox, maintain aspect ratio)
@@ -124,7 +124,7 @@ function renderFrame(canvas, t, p) {
     blendAmount, blendType, params: resolvedParams, paletteNorm, bpm,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, audioBands, normBounds, perStripFns, perStripPalettes, patternParamsById,
-    stripPhases,
+    stripPhases, mirrorSets: mirrorSets || [],
   });
   applyPatternPreviewSegmentLooks(frame.pixels, visibleStrips, t * 1000);
   const framePixels = smoothPixelFrame(frame.pixels, previousPixels, {
@@ -414,6 +414,8 @@ export function PatternPreview({
   dimmedStripIds = null,
   onStripSelect = null,
   testId = undefined,
+  // layout.mirrorSets: twins show their lead's colours (see lib/mirrorFrame.js).
+  mirrorSets = null,
 }) {
   const canvasRef = useRef(null);
   const rafRef    = useRef(0);
@@ -547,7 +549,7 @@ export function PatternPreview({
     stripPhases: stripPhasesRef.current,
     gammaLUT, symSettings, symOverlay, audioBands, vb, heat,
     motionSmoothing, targetFps, controlledTime,
-    onFrame, onFps, onTick, dimmedStripIds,
+    onFrame, onFps, onTick, dimmedStripIds, mirrorSets,
   };
 
   // DPR-aware canvas sizing (fallback to offsetWidth for headless/zero-layout envs)

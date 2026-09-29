@@ -3,6 +3,7 @@ import { compile, evalPixel } from './patterns.js';
 import { getPatternById } from './patternRegistry.js';
 import { parseParamsFromCode } from './patternParams.js';
 import { applySymmetry } from './symmetry.js';
+import { applyMirrorSets } from './mirrorFrame.js';
 
 export function hexToNorm(hex) {
   const n = parseInt(String(hex).replace('#', ''), 16);
@@ -187,6 +188,7 @@ export function renderPixelFrame({
   perStripPalettes = new Map(),
   patternParamsById = {},
   stripPhases = null,
+  mirrorSets = [],
 }) {
   const visibleStrips = strips.filter(s => s && !s.hidden);
   const allPts = visibleStrips.flatMap(s => s.pts || []);
@@ -332,6 +334,12 @@ export function renderPixelFrame({
       avgB: n ? Math.round(bSum / n) : 0,
       spacing: s.spacing,
     });
+  }
+
+  // Mirror sets: copy each set's lead onto its twins. Skipped entirely (zero
+  // cost) when the piece has none.
+  if (mirrorSets?.length) {
+    applyMirrorSets({ framePixels, stripFrames, strips: visibleStrips, mirrorSets });
   }
 
   return { pixels: framePixels, stripFrames };
