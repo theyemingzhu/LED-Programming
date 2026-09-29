@@ -21,7 +21,19 @@ import {
   stripSourceKey,
   clampLedCount,
   svgPathLength,
+  parsedVb,
 } from '../../../lib/layoutGeometry.js';
+import {
+  MIRROR_SET_MAX_MEMBERS,
+  addMirrorMembers,
+  defaultMirrorSetName,
+  mirrorSetForStrip,
+  removeMirrorMember,
+  renameMirrorSet,
+  validateMirrorSets,
+} from '../../../lib/mirrorSets.js';
+import { rankMirrorPartners } from '../../../lib/mirrorPartners.js';
+import { setMirrorEchoFocus } from '../canvas/mirrorEcho.js';
 import { STARTER_PRIMITIVES } from '../../../lib/layoutPrimitives.js';
 import {
   LED_COUNT_MAX,
@@ -123,6 +135,114 @@ function GpioOptions({ choices = [] }) {
   );
 }
 
+// "Mirror with…": a bounded checklist inside the selected strip's editor.
+// Ticking a row mirrors at once (the canvas preview follows); Done only closes.
+// Rows the geometry says are this strip's reflection come first, marked
+// "Likely match"; the order never ticks anything by itself.
+function MirrorChecklist({
+  strip, stripName, strips, mirrorSets, rankedPartners, blockReason, flipBlocked, nameFor,
+  error, onToggle, onRename, onStop, onFlip, onDone,
+}) {
+  const set = mirrorSetForStrip(mirrorSets, strip.id);
+  const members = new Set(set?.members || []);
+  const lead = set ? strips.find(item => item.id === set.members[0]) : strip;
+  const byId = new Map(strips.map(item => [item.id, item]));
+  const defaultName = set ? defaultMirrorSetName(set, strips.map(item => ({ ...item, name: nameFor(item) }))) : '';
+  const [nameDraft, setNameDraft] = useState(set?.name || '');
+  useEffect(() => setNameDraft(set?.name || ''), [set?.id, set?.name]);
+  const full = members.size >= MIRROR_SET_MAX_MEMBERS;
+  const panelRef = useRef(null);
+  // Opening moves focus into the checklist, so Escape and Tab work at once.
+  useEffect(() => {
+    panelRef.current?.scrollIntoView?.({ block: 'nearest' });
+    panelRef.current?.querySelector('input[type="checkbox"]:not(:disabled)')?.focus({ preventScroll: true });
+  }, []);
+  const commitName = () => {
+    const value = nameDraft.trim();
+    if (set && value !== (set.name || '')) onRename(set.id, value);
+  };
+  return (
+    <section className="la-mirror-panel" data-testid="mirror-checklist" ref={panelRef}
+             aria-label={`Mirror ${stripName} with other strips`}
+             onKeyDown={event => {
+               if (event.key !== 'Escape') return;
+               event.preventDefault();
+               event.stopPropagation();
+               onDone();
+             }}>
+      <div className="la-mirror-head">
+        {set
+          ? <input className="la-mirror-name" type="text" value={nameDraft}
+                   placeholder={defaultName}
+                   aria-label="Mirror set name"
+                   title="Rename this mirror set"
+                   data-testid="mirror-set-name"
+                   onChange={event => setNameDraft(event.target.value)}
+                   onBlur={commitName}
+                   onKeyDown={event => {
+                     if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+                     if (event.key === 'Escape') {
+                       event.preventDefault();
+                       event.stopPropagation();
+                       setNameDraft(set.name || '');
+                       window.requestAnimationFrame(() => event.target.blur());
+                     }
+                   }}/>
+          : <span className="la-mirror-title">Mirror {stripName} with</span>}
+      </div>
+      <ul className="la-mirror-options" aria-label="Strips to mirror">
+        {rankedPartners.map(partner => {
+          const candidate = byId.get(partner.id);
+          if (!candidate) return null;
+          const checked = members.has(candidate.id);
+          const reason = checked ? '' : (blockReason(candidate.id) || (full ? `${MIRROR_SET_MAX_MEMBERS} strips at most` : ''));
+          const otherSet = !checked ? mirrorSetForStrip(mirrorSets, candidate.id) : null;
+          const stretches = checked && lead && candidate.id !== lead.id && candidate.pixelCount !== lead.pixelCount;
+          const canFlip = checked && partner.needsFlip && !flipBlocked(candidate.id);
+          const name = nameFor(candidate);
+          const notes = [
+            reason && <span key="reason">{reason}</span>,
+            !reason && !checked && partner.likely && <span key="likely" className="la-mirror-likely">Likely match</span>,
+            !reason && otherSet && <span key="other">In {otherSet.name || defaultMirrorSetName(otherSet, strips.map(item => ({ ...item, name: nameFor(item) })))}</span>,
+            stretches && <span key="stretch">Stretches to fit</span>,
+            canFlip && <button key="flip" type="button" className="la-mirror-flip"
+                               data-testid={`mirror-flip-${candidate.id}`}
+                               aria-label={`Flip ${name} to match`}
+                               title={`Flip ${name}'s path so it runs as a mirror image`}
+                               onClick={() => onFlip(candidate.id)}>Flip to match</button>,
+          ].filter(Boolean);
+          return (
+            <li key={candidate.id} className={`la-mirror-option${reason ? ' is-blocked' : ''}`}
+                data-testid={`mirror-option-${candidate.id}`}
+                data-likely={partner.likely || undefined}
+                title={reason || undefined}
+                onMouseEnter={() => setMirrorEchoFocus(candidate.id)}
+                onMouseLeave={() => setMirrorEchoFocus(null)}
+                onFocus={() => setMirrorEchoFocus(candidate.id)}
+                onBlur={() => setMirrorEchoFocus(null)}>
+              <label className="la-mirror-pick">
+                <input type="checkbox" checked={checked} disabled={!!reason}
+                       aria-label={`Mirror with ${name}`}
+                       aria-describedby={notes.length ? `mirror-note-${strip.id}-${candidate.id}` : undefined}
+                       onChange={event => onToggle(candidate.id, event.target.checked)}/>
+                <span className="la-mirror-option-name" style={{ '--strip-tint': candidate.color }}>{name}</span>
+                <span className="la-mirror-count">{candidate.pixelCount} LEDs</span>
+              </label>
+              {notes.length > 0 && <div className="la-mirror-note" id={`mirror-note-${strip.id}-${candidate.id}`}>{notes}</div>}
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="la-mirror-error" role="alert">{error}</p>}
+      <div className="la-mirror-foot">
+        {set && <button type="button" className="btn" data-testid="mirror-stop"
+                        onClick={() => onStop(set.id)}>Stop mirroring</button>}
+        <button type="button" className="btn la-mirror-done" data-testid="mirror-done" onClick={onDone}>Done</button>
+      </div>
+    </section>
+  );
+}
+
 export function DrawModePanel({
   state,
   firstLedPicker,
@@ -146,7 +266,7 @@ export function DrawModePanel({
 }) {
   const {
     strips, layers, hidden, setHidden,
-    svgText, pxPerMm, density,
+    svgText, pxPerMm, density, viewBox,
     editCounts, setEditCounts, layerGroups, layerOrder,
     selectStrip, selectLayer, selectPaths, toggleStripSel,
     clearLayoutSelection, renameLayoutSelection,
@@ -193,7 +313,7 @@ export function DrawModePanel({
   const {
     wiring, updateWiring, compiledWiring, standaloneController, setStandaloneController,
     patchBoard, setPatchBoard, portRoles, sectionTargets, expressionScenes, layoutHistoryError,
-    projectId, projectLifecycle,
+    projectId, projectLifecycle, layoutMirrorSets, setLayoutMirrorSets,
   } = useProject();
 
   // The card runs one chipset for every output, so this is a project-level
@@ -550,6 +670,70 @@ export function DrawModePanel({
   const divideSelectionKey = JSON.stringify([selStripId, selLayerId, selectedStripIds]);
   useEffect(() => { setDivideOpen(false); setDivideError(''); }, [divideSelectionKey, panelStripId]);
   useEffect(() => setRunSeparationError(''), [divideSelectionKey, panelStripId]);
+
+  // Mirror sets. The checklist belongs to one strip's editor and closes when
+  // another strip is chosen, like the Divide editor.
+  const mirrorSets = layoutMirrorSets || [];
+  const [mirrorOpenId, setMirrorOpenId] = useState(null);
+  const [mirrorError, setMirrorError] = useState('');
+  const mirrorMenuRefs = useRef(new Map());
+  const mirrorLineRefs = useRef(new Map());
+  useEffect(() => {
+    if (selStripId && mirrorOpenId && selStripId !== mirrorOpenId) setMirrorOpenId(null);
+  }, [selStripId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setMirrorError('');
+    if (!mirrorOpenId) setMirrorEchoFocus(null);
+  }, [mirrorOpenId]);
+  useEffect(() => () => setMirrorEchoFocus(null), []);
+  const groupedStripIds = useMemo(() => new Set(layerGroups.flatMap(group => (group.members || [])
+    .map(member => (typeof member === 'string' ? member : member?.stripId)).filter(Boolean))), [layerGroups]);
+  // Why a strip cannot join a mirror, in the owner's words. Empty means it can.
+  // Same rules validateMirrorSets enforces; checked here per row so a blocked
+  // row can say why before anything is ticked.
+  const mirrorBlockReason = stripId => {
+    const strip = stripById.get(stripId);
+    if (!strip) return '';
+    if (groupedStripIds.has(stripId)) return 'Ungroup it first';
+    if (strip.kaleidoscope?.enabled === true) return 'Uses reflection points';
+    if (splitStripIds.has(stripId)) return 'Join its wiring into one run first';
+    return '';
+  };
+  const mirrorCentre = useMemo(() => {
+    if (!svgText || !viewBox) return null;
+    const box = parsedVb(viewBox);
+    return { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+  }, [svgText, viewBox]);
+  const mirrorNameFor = strip => connectedPartDisplayName(strip, connectedFamilyForStrip(sectionFamilies, strip.id));
+  const openMirrorChecklist = stripId => {
+    setDivideOpen(false);
+    setMirrorOpenId(stripId);
+  };
+  const closeMirrorChecklist = stripId => {
+    setMirrorOpenId(null);
+    window.requestAnimationFrame(() => {
+      const line = mirrorLineRefs.current.get(stripId);
+      (line || mirrorMenuRefs.current.get(stripId)?.closest('details')?.querySelector('summary'))?.focus();
+    });
+  };
+  const applyMirrorSets = (next, stripId) => {
+    const setId = mirrorSetForStrip(next, stripId)?.id;
+    const problem = setId
+      ? validateMirrorSets(next, strips, wiring, layerGroups).errors.find(item => item.setId === setId)
+      : null;
+    if (problem) {
+      setMirrorError(problem.message);
+      return false;
+    }
+    setMirrorError('');
+    pushLayoutHistory();
+    setLayoutMirrorSets(next);
+    return true;
+  };
+  const toggleMirrorMember = (stripId, candidateId, checked) => applyMirrorSets(
+    checked ? addMirrorMembers(mirrorSets, stripId, [candidateId]) : removeMirrorMember(mirrorSets, candidateId),
+    stripId,
+  );
   const [divideSections, setDivideSections] = useState({}); // stripId → editable string
   // stripId → the owner's own counts, once a field has been edited. Absent
   // means the even plan; a stored set that no longer adds up to the strip
@@ -1472,6 +1656,14 @@ export function DrawModePanel({
                 const divideSectionError = `Enter a whole number from 2 to ${divideCap}.`;
                 const divideDisabledReason = divideBlockedReason(s, isSplit)
                   || (!divideSectionsValid ? divideSectionError : '');
+                const mirrorSet = mirrorSetForStrip(mirrorSets, s.id);
+                const mirrorPartnerNames = mirrorSet
+                  ? mirrorSet.members.filter(id => id !== s.id).map(id => stripById.get(id)).filter(Boolean).map(mirrorNameFor)
+                  : [];
+                const mirrorMenuReason = strips.length < 2
+                  ? 'Add another strip to mirror with'
+                  : (mirrorSet ? '' : mirrorBlockReason(s.id));
+                const mirrorOpen = isOpen && mirrorOpenId === s.id;
                 const stripMenu = (
                       <details className="la-strip-menu" onClick={event => event.stopPropagation()}
                                onKeyDown={event => {
@@ -1531,6 +1723,19 @@ export function DrawModePanel({
                                       onClick={() => moveStripStep(s.id, 'down')}>Move down the wire</button>
                             </>;
                           })()}
+                          <button type="button" className="btn"
+                                  data-testid={`mirror-with-${s.id}`}
+                                  ref={element => {
+                                    if (element) mirrorMenuRefs.current.set(s.id, element);
+                                    else mirrorMenuRefs.current.delete(s.id);
+                                  }}
+                                  data-caption={mirrorMenuReason || 'Play this strip and others as mirror images'}
+                                  title={mirrorMenuReason || 'Play this strip and others as mirror images'}
+                                  disabled={!!mirrorMenuReason}
+                                  onClick={event => {
+                                    event.currentTarget.closest('details').open = false;
+                                    openMirrorChecklist(s.id);
+                                  }}>Mirror with…</button>
                           <button type="button" className="btn"
                                   data-caption="Duplicate this strip"
                                   title="Duplicate strip"
@@ -1668,6 +1873,27 @@ export function DrawModePanel({
                         </button>;
                       })}
                     </div>
+                    {mirrorPartnerNames.length > 0 && (
+                      <button type="button" className="la-mirror-line"
+                              data-testid={`mirror-line-${s.id}`}
+                              ref={element => {
+                                if (element) mirrorLineRefs.current.set(s.id, element);
+                                else mirrorLineRefs.current.delete(s.id);
+                              }}
+                              aria-expanded={mirrorOpen}
+                              aria-label={`${partName} mirrors ${mirrorPartnerNames.join(', ')}. Change which strips mirror.`}
+                              title="Change which strips mirror"
+                              onClick={event => {
+                                event.stopPropagation();
+                                if (patternPicker) closePatternPicker(false);
+                                if (mirrorOpen) { closeMirrorChecklist(s.id); return; }
+                                selectStrip(s.id);
+                                openMirrorChecklist(s.id);
+                              }}>
+                        <span className="la-mirror-line-key">Mirrors:</span>
+                        <span className="la-mirror-line-names">{mirrorPartnerNames.join(', ')}</span>
+                      </button>
+                    )}
                     {patternPicker?.stripId === s.id && (() => {
                       const target = sectionTargets.find(item => item.id === patternPicker.targetId);
                       return <LayoutPatternGallery stripName={partName}
@@ -1859,7 +2085,7 @@ export function DrawModePanel({
                                     aria-label={`Divide ${s.name} into sections`}
                                     aria-expanded={divideOpen}
                                     aria-controls={`divide-panel-${s.id}`}
-                                    onClick={() => setDivideOpen(open => !open)}>
+                                    onClick={() => { setMirrorOpenId(null); setDivideOpen(open => !open); }}>
                               <span>Divide into sections</span>
                               {divideOpen ? <ChevronDownIcon/> : <ChevronRightIcon/>}
                             </button>
@@ -1982,6 +2208,41 @@ export function DrawModePanel({
                                   title="Merge this connected part first" disabled
                                   onClick={() => removeStrip(s.id)}><PartActionIcon name="remove"/></button>
                         </div>}
+                        {connectedFamily && !mirrorOpen && (
+                          <button type="button" className="btn la-part-mirror"
+                                  data-testid={`mirror-with-${s.id}`}
+                                  ref={element => {
+                                    if (element) mirrorMenuRefs.current.set(s.id, element);
+                                    else mirrorMenuRefs.current.delete(s.id);
+                                  }}
+                                  title={mirrorMenuReason || `Play ${partName} and others as mirror images`}
+                                  disabled={!!mirrorMenuReason}
+                                  onClick={() => openMirrorChecklist(s.id)}>Mirror with…</button>
+                        )}
+                        {mirrorOpen && (
+                          <MirrorChecklist
+                            strip={s}
+                            stripName={partName}
+                            strips={strips}
+                            mirrorSets={mirrorSets}
+                            rankedPartners={rankMirrorPartners(s, strips.filter(item => item.id !== s.id), { centre: mirrorCentre })}
+                            blockReason={mirrorBlockReason}
+                            flipBlocked={id => !!connectedFamilyForStrip(sectionFamilies, id)}
+                            nameFor={mirrorNameFor}
+                            error={mirrorError}
+                            onToggle={(candidateId, checked) => toggleMirrorMember(s.id, candidateId, checked)}
+                            onRename={(setId, name) => {
+                              pushLayoutHistory();
+                              setLayoutMirrorSets(renameMirrorSet(mirrorSets, setId, name));
+                            }}
+                            onStop={setId => {
+                              pushLayoutHistory();
+                              setLayoutMirrorSets(mirrorSets.filter(set => set.id !== setId));
+                              closeMirrorChecklist(s.id);
+                            }}
+                            onFlip={reverseStrip}
+                            onDone={() => closeMirrorChecklist(s.id)}/>
+                        )}
                         {firstLedError?.stripId === s.id && (
                           <div className="la-gpio-error" role="alert">{firstLedError.message}</div>
                         )}
