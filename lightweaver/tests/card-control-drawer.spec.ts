@@ -3,8 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 const CARD_ID = 'lw-drawer-card';
 const PROJECT_ID = 'drawer-gallery-project';
 
-async function verifyCard(page: Page, projectFingerprint: string) {
-  await page.evaluate(async ({ projectFingerprint }) => {
+async function verifyCard(page: Page, projectFingerprint: string, bootId = 'drawer-boot', projectRevision = 0) {
+  await page.evaluate(async ({ projectFingerprint, bootId, projectRevision }) => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     const event = {
       type: 'card-verified', via: 'direct', host: 'lightweaver.local',
@@ -12,16 +12,141 @@ async function verifyCard(page: Page, projectFingerprint: string) {
       expectedCard: { id: 'lw-drawer-card', firmwareVersion: '1.1.1', buildId: 'a'.repeat(40) },
       readiness: {
         app: 'Lightweaver', provisioningContractVersion: 1, cardId: 'lw-drawer-card',
-        firmwareVersion: '1.1.1', buildId: 'a'.repeat(40), bootId: 'drawer-boot',
+        firmwareVersion: '1.1.1', buildId: 'a'.repeat(40), bootId,
         runtimePhase: 'ready', knownGoodProject: true, commandReady: true, outputReady: true, playbackReady: true,
-        projectId: 'drawer-gallery-project', projectRevision: 0, projectFingerprint,
+        projectId: 'drawer-gallery-project', projectRevision, projectFingerprint,
       },
     };
     const link = getSharedCardLink();
     link.dispatch(event);
     link.dispatch(event);
-  }, { projectFingerprint });
+  }, { projectFingerprint, bootId, projectRevision });
 }
+
+test('same-card readiness changes discard delayed drawer reads and reload the current card state', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let projectFingerprint = '';
+  let bootId = 'drawer-boot';
+  let projectRevision = 0;
+  let readVersion: 'old' | 'boot-current' | 'project-current' = 'old';
+  let releaseOldReads: (() => void) | null = null;
+  let releaseReadback: (() => void) | null = null;
+  let announceReadback: (() => void) | null = null;
+  const readbackStarted = new Promise<void>(resolve => { announceReadback = resolve; });
+  const readbackGate = new Promise<void>(resolve => { releaseReadback = resolve; });
+  let holdReadback = false;
+  let controlRequestCount = 0;
+  const readCounts = { old: 0, 'boot-current': 0, 'project-current': 0 };
+  const oldReadGate = new Promise<void>(resolve => { releaseOldReads = resolve; });
+  await page.route('http://lightweaver.local/api/zones', async route => {
+    if (readVersion === 'old') {
+      readCounts.old += 1;
+      await oldReadGate;
+      return route.fulfill({ json: { zones: [{ id: 'old-zone', label: 'Old zone', patternId: 'old-pattern', brightness: 0.2 }] } });
+    }
+    if (holdReadback) {
+      holdReadback = false;
+      announceReadback?.();
+      await readbackGate;
+    }
+    readCounts[readVersion] += 1;
+    const installed = readVersion === 'project-current';
+    return route.fulfill({ json: { zones: [{ id: installed ? 'installed-zone' : 'new-zone', label: installed ? 'Installed zone' : 'Current zone', patternId: installed ? 'installed-pattern' : 'new-pattern', brightness: 0.8 }] } });
+  });
+  await page.route('http://lightweaver.local/api/patterns', async route => {
+    if (readVersion === 'old') {
+      readCounts.old += 1;
+      await oldReadGate;
+      return route.fulfill({ json: { currentId: 'old-pattern', currentIndex: 0, patterns: [
+        { id: 'old-pattern', label: 'Old pattern', mode: 'preset', zones: [], controls: {} },
+      ] } });
+    }
+    readCounts[readVersion] += 1;
+    const installed = readVersion === 'project-current';
+    return route.fulfill({ json: {
+      currentId: installed ? 'installed-pattern' : 'new-pattern', currentIndex: 0,
+      patterns: installed
+        ? [{ id: 'installed-pattern', label: 'Installed pattern', mode: 'preset', zones: [], controls: {} }]
+        : [
+          { id: 'new-pattern', label: 'Current pattern', mode: 'preset', zones: [], controls: {} },
+          { id: 'other-pattern', label: 'Other pattern', mode: 'preset', zones: [], controls: {} },
+        ],
+    } });
+  });
+  await page.route('http://lightweaver.local/api/firmware-info', route => route.fulfill({ json: {
+    app: 'Lightweaver', provisioningContractVersion: 1, cardId: CARD_ID, firmwareVersion: '1.1.1', buildId: 'a'.repeat(40),
+    bootId, runtimePhase: 'ready', knownGoodProject: true, commandReady: true, outputReady: true, playbackReady: true,
+    projectId: PROJECT_ID, projectFingerprint, projectRevision, piece: { id: PROJECT_ID, name: 'Gallery Lightweaver' },
+  } }));
+  await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: {
+    app: 'Lightweaver', provisioningContractVersion: 1, cardId: CARD_ID, firmwareVersion: '1.1.1', buildId: 'a'.repeat(40),
+    bootId, runtimePhase: 'ready', knownGoodProject: true, commandReady: true, outputReady: true, playbackReady: true,
+    projectId: PROJECT_ID, projectFingerprint, projectRevision, piece: { id: PROJECT_ID, name: 'Gallery Lightweaver' },
+  } }));
+  await page.route('http://lightweaver.local/api/control', async route => {
+    controlRequestCount += 1;
+    holdReadback = true;
+    await route.fulfill({ status: 503, json: { ok: false, error: 'busy' } });
+  });
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  projectFingerprint = await page.evaluate(async (projectId) => {
+    const { createDefaultProject, migrateProject } = await import('/src/lib/projectModel.js');
+    const { cardProjectFingerprint } = await import('/src/lib/cardProjectResolver.js');
+    const project = createDefaultProject();
+    project.id = projectId;
+    project.name = 'Drawer gallery project';
+    project.layout.starterPending = false;
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: 'lw-drawer-card' }));
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    localStorage.setItem('lw_autosave_v3_backup', JSON.stringify(project));
+    return cardProjectFingerprint(migrateProject(project));
+  }, PROJECT_ID);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await verifyCard(page, projectFingerprint);
+  const footer = page.getByTestId('card-link-status');
+  await expect(footer).toHaveAccessibleName(/Gallery Lightweaver.*Connected/);
+  await footer.click();
+  const drawer = page.getByRole('dialog', { name: 'Gallery Lightweaver controls' });
+  await expect.poll(() => readCounts.old).toBeGreaterThanOrEqual(2);
+
+  // The boot changes first while the browser's saved project remains the same.
+  readVersion = 'boot-current';
+  bootId = 'drawer-boot-2';
+  await verifyCard(page, projectFingerprint, bootId, projectRevision);
+  await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('new-pattern');
+  expect(readCounts['boot-current']).toBeGreaterThanOrEqual(2);
+  releaseOldReads?.();
+  await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('new-pattern');
+  await expect(drawer.getByText('Old pattern')).toHaveCount(0);
+
+  // A transient write refusal starts a readback before it may retry. If the
+  // card session changes during that read, no retry may target the new session.
+  await drawer.locator('select[aria-label="Pattern"]').selectOption('other-pattern');
+  await expect.poll(() => controlRequestCount).toBe(1);
+  await readbackStarted;
+
+  // Repeated readiness for the exact same context is ordinary polling and
+  // must not start another read.
+  const countBeforeStableUpdate = readCounts['boot-current'];
+  await verifyCard(page, projectFingerprint, bootId, projectRevision);
+  await page.waitForTimeout(250);
+  expect(readCounts['boot-current']).toBe(countBeforeStableUpdate);
+
+  // A same-boot installation can still replace project contents; its new
+  // fingerprint/revision must refresh the view without waiting for a reboot.
+  readVersion = 'project-current';
+  projectFingerprint = 'd'.repeat(64);
+  projectRevision = 1;
+  await verifyCard(page, projectFingerprint, bootId, projectRevision);
+  await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('installed-pattern');
+  expect(readCounts['project-current']).toBeGreaterThanOrEqual(2);
+  await expect(drawer.getByRole('slider', { name: 'Brightness' })).toHaveValue('80');
+  releaseReadback?.();
+  await page.waitForTimeout(500);
+  expect(controlRequestCount).toBe(1, 'the old-session retry must not send a second control');
+  await page.screenshot({ path: '/tmp/lightweaver-extra-hour/card-controls-refresh.png' });
+});
 
 test('a connected footer opens customer card controls without a popup', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

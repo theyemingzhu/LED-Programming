@@ -16,13 +16,26 @@ function percent(value) {
 export function CardControlDrawer({ open, link, lifecycle = null, host, onClose, onAdvanced, onReconnect }) {
   const panelRef = useRef(null);
   const restoreFocusRef = useRef(null);
+  const cardContextGeneration = useRef(0);
+  const renderedReadContextKey = useRef('');
   const [controls, setControls] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const readContextKey = JSON.stringify([
+    host || '', link?.transport || '', link?.card?.id || '', link?.expectedCard?.id || '',
+    link?.card?.firmwareVersion || '', link?.card?.buildId || '',
+    link?.readiness?.cardId || '', link?.readiness?.bootId || link?.validatedBootId || '',
+    link?.readiness?.projectId || '', link?.readiness?.projectRevision ?? '',
+    link?.readiness?.projectFingerprint || '', link?.readiness?.operationGeneration ?? link?.operationGeneration ?? '',
+  ]);
+  renderedReadContextKey.current = readContextKey;
 
   useEffect(() => {
     if (!open) return undefined;
     let active = true;
+    const contextGeneration = ++cardContextGeneration.current;
+    const contextIsCurrent = () => active && cardContextGeneration.current === contextGeneration
+      && renderedReadContextKey.current === readContextKey;
     restoreFocusRef.current = document.activeElement;
     window.setTimeout(() => panelRef.current?.focus(), 0);
     setControls(null);
@@ -32,14 +45,17 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
     // did exactly this — but only when the owner pressed it, which meant the
     // first thing they saw on opening the controls was a failure about a
     // moment that had already passed.
-    retryWhileTransient(() => Promise.all([
-      readCardZonesFromCard({ host, transport: link.transport, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
-      readCardPatternsFromCard({ host, transport: link.transport, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
-    ]), { attempts: 3, delayMs: 400 }).then(([zones, patterns]) => {
-      if (!active) return;
-      setControls(createCardCustomerControls(normalizeCardCustomerControls(zones, patterns)));
+    retryWhileTransient(() => {
+      if (!contextIsCurrent()) throw Object.assign(new Error('Card session changed during control read.'), { reason: 'superseded' });
+      return Promise.all([
+        readCardZonesFromCard({ host, transport: link.transport, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
+        readCardPatternsFromCard({ host, transport: link.transport, expectedCardId: link.card?.id || '', timeoutMs: 1800 }),
+      ]);
+    }, { attempts: 3, delayMs: 400 }).then(([zones, patterns]) => {
+      if (!contextIsCurrent()) return;
+      setControls({ ...createCardCustomerControls(normalizeCardCustomerControls(zones, patterns)), readContextKey });
     }).catch(error => {
-      if (active) setLoadError(error?.message || 'Studio could not read the card controls.');
+      if (contextIsCurrent()) setLoadError(error?.message || 'Studio could not read the card controls.');
     });
     const onKeyDown = event => {
       if (event.key === 'Escape') {
@@ -66,10 +82,11 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
     document.addEventListener('keydown', onKeyDown);
     return () => {
       active = false;
+      if (cardContextGeneration.current === contextGeneration) cardContextGeneration.current += 1;
       document.removeEventListener('keydown', onKeyDown);
       restoreFocusRef.current?.focus?.();
     };
-  }, [host, link.card?.id, onClose, open, reloadKey]);
+  }, [host, link.card?.id, link.transport, onClose, open, readContextKey, reloadKey]);
 
   if (!open) return null;
   const view = controls?.view;
@@ -84,13 +101,18 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
   const connectionStatus = cardLifecycle.connectionLabel || cardLifecycle.label;
   const connected = connectionStatus === 'Connected';
   const safeControlsReady = lifecycle?.safeControlAccess === 'ready';
-  const mutationDisabled = !safeControlsReady || Boolean(controls?.pending);
+  const mutationDisabled = !safeControlsReady || Boolean(controls?.pending) || !controls?.view
+    || controls.readContextKey !== readContextKey;
   const activePattern = view?.patterns.find(pattern => pattern.id === view.activePatternId);
   const customControls = activePattern?.controls && Object.values(activePattern.controls).some(Boolean)
     ? activePattern.controls
     : null;
   const runControl = patch => {
     if (!controls?.view || mutationDisabled) return;
+    const commandGeneration = cardContextGeneration.current;
+    const commandContextKey = readContextKey;
+    const commandIsCurrent = () => cardContextGeneration.current === commandGeneration
+      && renderedReadContextKey.current === commandContextKey;
     const optimistic = beginCustomerControl(controls, patch);
     setControls(optimistic);
     const look = {
@@ -118,14 +140,17 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
       exactCardPatternId: look.patternId,
       expectedControlPatch: patch,
     };
-    retryWhileTransient(() => pushLivePreviewToCard(look, controlOptions), {
+    retryWhileTransient(() => {
+      if (!commandIsCurrent()) throw Object.assign(new Error('Card session changed during control.'), { reason: 'superseded' });
+      return pushLivePreviewToCard(look, controlOptions);
+    }, {
       attempts: 3,
       delayMs: 350,
-      readBack: () => readBackLivePreview(look, { ...controlOptions, timeoutMs: 1200 }),
+      readBack: () => commandIsCurrent() ? readBackLivePreview(look, { ...controlOptions, timeoutMs: 1200 }) : null,
     }).then(response => {
-      setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, response) : current);
+      if (commandIsCurrent()) setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, response) : current);
     }).catch(error => {
-      setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, error) : current);
+      if (commandIsCurrent()) setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, error) : current);
     });
   };
   const cyclePattern = direction => {

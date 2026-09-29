@@ -1172,6 +1172,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     const wifiSessionRef = useRef(null);
     const wifiInstallRef = useRef(null);
     const wifiBusyRef = useRef(false);
+    const pendingSetupSaveRef = useRef(null);
+    const savingSetupRef = useRef(false);
     const preservingUsbRuntimeVerifiedRef = useRef(false);
     const [preservingUsbRuntimeVerified, setPreservingUsbRuntimeVerified] = useState(false);
     // F40: an explicit "Update once over USB instead" choice from the
@@ -1765,17 +1767,46 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         setInstallState('complete');
         return;
       }
+      // USB has already proved that this exact card joined Wi-Fi. If browser
+      // storage fails now, retain only that verified result on this screen so
+      // retry saves progress without sending credentials or flashing again.
+      pendingSetupSaveRef.current = { context, postFlashNetwork };
       const authoritative = readCardCommissioning({ flowId: context.flow.flowId }) || context.flow;
       const completed = completeCardInstall(authoritative, {
         operation: context.flow.operation, cardId: context.expected.cardId,
         firmwareVersion: context.expected.firmwareVersion, buildId: context.expected.buildId,
         postFlashNetwork,
       });
-      await writeCardCommissioning(completed);
+      try {
+        if (!await writeCardCommissioning(completed)) throw new Error('browser storage unavailable');
+      } catch {
+        if (mountedRef.current && wifiInstallRef.current === context) {
+          setWifiStatus({ state: 'save-pending', message: `This exact card joined Wi-Fi at ${postFlashNetwork.stationIp}, but Studio could not save setup progress in this browser. Make browser storage available, then retry saving progress. Do not reinstall or resend Wi-Fi details.` });
+        }
+        return false;
+      }
+      if (wifiInstallRef.current !== context) return false;
+      pendingSetupSaveRef.current = null;
       if (!mountedRef.current) return;
       setCommissioning(completed);
       setSelectedStage('set-up-card');
       setInstallState('complete');
+      return true;
+    };
+
+    const retrySavingSetupProgress = async () => {
+      const pending = pendingSetupSaveRef.current;
+      if (!pending || pending.context !== wifiInstallRef.current || savingSetupRef.current) return;
+      savingSetupRef.current = true;
+      setWifiStatus({ state: 'saving-progress', message: 'Saving the verified card setup progress in this browser…' });
+      try { await completeWifiSetup(pending.postFlashNetwork); }
+      catch {
+        if (mountedRef.current && pendingSetupSaveRef.current?.context === pending.context
+          && wifiInstallRef.current === pending.context) {
+          setWifiStatus({ state: 'save-pending', message: 'This exact card joined Wi-Fi, but Studio could not confirm and save its setup progress. Keep the card connected and retry saving progress. If another tab changed setup, reload and verify this card before continuing.' });
+        }
+      }
+      finally { savingSetupRef.current = false; }
     };
 
     const connectWifiUsb = async () => {
@@ -2047,7 +2078,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       } finally { wifiBusyRef.current = false; }
     };
 
-    const wifiBusy = ['connecting', 'joining', 'scanning'].includes(wifiStatus.state);
+    const wifiBusy = ['connecting', 'joining', 'scanning', 'saving-progress'].includes(wifiStatus.state);
+    const pendingSetupSave = Boolean(pendingSetupSaveRef.current
+      && pendingSetupSaveRef.current.context === wifiInstallRef.current);
     const hasSavedWifiAttempt = Boolean(wifiInstallRef.current?.kind === 'preserving-update'
       ? readFirmwareUpdateSession()?.usbWifiAttempt || wifiInstallRef.current.attempt
       : wifiInstallRef.current?.flow?.usbWifiAttempt);
@@ -2056,7 +2089,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       <section className="card install-action-card usb-wifi-form" data-testid="usb-wifi-setup">
         <div className="install-action-copy">
           {installState !== 'wifi-setup' && <h2>Wi-Fi after installation</h2>}
-          <p>Choose your home or gallery 2.4 GHz Wi-Fi. Keep USB connected.</p>
+          <p>{pendingSetupSave ? 'The card joined Wi-Fi. Save the verified setup result to continue.' : 'Choose your home or gallery 2.4 GHz Wi-Fi. Keep USB connected.'}</p>
           <details className="usb-wifi-help">
             <summary>Wi-Fi setup details</summary>
             <div>
@@ -2069,7 +2102,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             </div>
           </details>
         </div>
-        <fieldset disabled={wifiBusy || installState === 'installing' || (preservingUsbWifi && !preservingUsbRuntimeVerified)}>
+        <fieldset disabled={wifiBusy || pendingSetupSave || installState === 'installing' || (preservingUsbWifi && !preservingUsbRuntimeVerified)}>
           <label htmlFor="usb-wifi-ssid">Wi-Fi network name</label>
           <input id="usb-wifi-ssid" data-testid="usb-wifi-ssid" value={wifiSsid} onChange={event => setWifiSsid(event.target.value)} autoComplete="off" spellCheck={false} maxLength={32} placeholder="2.4 GHz network name" />
           {wifiNetworks.length > 0 && <select aria-label="Nearby Wi-Fi networks" value="" onChange={event => {
@@ -2084,7 +2117,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           <label className="usb-wifi-open-network"><input type="checkbox" checked={wifiOpenNetwork} onChange={event => { setWifiOpenNetwork(event.target.checked); setWifiPassword(''); setWifiPasswordVisible(false); }} /> This is an open network (no password)</label>
         </fieldset>
         {installState === 'wifi-setup' && <>
-          <p role="status" data-testid="usb-wifi-status">{wifiStatus.message}</p>
+          <p role={wifiStatus.state === 'save-pending' ? 'alert' : 'status'} data-testid="usb-wifi-status">{wifiStatus.message}</p>
           {wifiStatus.state === 'failed' && wifiStatus.diagnostics && <details className="usb-wifi-help" data-testid="usb-wifi-failure-details">
             <summary>Connection details</summary>
             <p>Stage: {wifiStatus.diagnostics.stage || 'not reported'}</p>
@@ -2093,7 +2126,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           </details>}
           {wifiStatus.state === 'failed' && !wifiOpenNetwork && !wifiPassword && <p role="status" data-testid="usb-wifi-retry-guidance">Keep USB connected. Check or choose the gallery network, re-enter its password, then select “Join Wi-Fi over USB” again. You do not need to reinstall firmware.</p>}
           <div className="install-confirm-action">
-            {wifiSessionRef.current ? <>
+            {pendingSetupSave ? <button type="button" className="btn primary" disabled={wifiBusy} onClick={retrySavingSetupProgress}>Retry saving setup progress</button>
+              : wifiSessionRef.current ? <>
               <button type="button" className="btn" disabled={wifiBusy} onClick={checkCurrentWifiUsbAttempt}>{hasSavedWifiAttempt ? 'Check current attempt' : 'Reconnect USB setup'}</button>
               <button type="button" className="btn" disabled={wifiBusy} onClick={scanWifiUsb}>Scan nearby networks</button>
               {wifiStatus.state === 'pending' && <button type="button" className="btn" onClick={() => { void (async () => {
@@ -2106,10 +2140,10 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
               })(); }}>Check current attempt</button>}
               <button type="button" className="btn primary" disabled={wifiBusy || !wifiSsid || (!wifiOpenNetwork && !wifiPassword)} onClick={() => { void joinWifiUsb(); }}>Join Wi-Fi over USB</button>
             </> : <button type="button" className="btn" disabled={wifiBusy} onClick={connectWifiUsb}>Retry USB setup</button>}
-            <button type="button" className="btn" disabled={wifiBusy} onClick={() => {
+            {!pendingSetupSave && <button type="button" className="btn" disabled={wifiBusy} onClick={() => {
               const result = openLocalCardPage('192.168.4.1', { path: '/?wifiSetup=1', reason: 'usb-wifi-fallback' });
               setWifiPageError(result.ok ? '' : 'The card setup page could not open. Allow the popup, then try again. USB setup remains available here.');
-            }}>Use card setup page instead</button>
+            }}>Use card setup page instead</button>}
           </div>
           {wifiPageError && <p role="alert">{wifiPageError}</p>}
           <p>USB verifies this exact card and its Wi-Fi result. Studio checks its local page before enabling controls.</p>
@@ -2358,7 +2392,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 
     if (installState === 'wifi-setup') return (
       <div className={`install-flow${embedded ? ' embedded' : ''}`}><div className="install-task">
-        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>Connect to Wi-Fi</InstallHeading></header>
+        <header className="install-intro"><div className="eyebrow">{preservingUsbWifi && !preservingUsbRuntimeVerified ? 'Checking firmware' : `Firmware ${preservingUsbWifi ? 'updated' : 'installed'}`}</div><InstallHeading>{pendingSetupSave ? 'Save card setup progress' : 'Connect to Wi-Fi'}</InstallHeading></header>
         {wifiForm}
       </div></div>
     );
