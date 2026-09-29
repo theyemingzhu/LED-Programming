@@ -36,6 +36,34 @@ assert.deepEqual(
   fromSettings,
 );
 
+// A mirror set is one section: two mirrored strips compile to one zone with a
+// range each, and the section carries the lead strip's patch id, so looks and
+// playlists address the set exactly once.
+{
+  const mirrorSets = [{ id: 'mirror-1', name: 'Left and right', members: [strips[1].id, strips[0].id] }];
+  const mirroredWiring = compileWiring({ wiring, strips, mirrorSets });
+  assert.equal(mirroredWiring.ok, true, 'mirrored fixture compiles');
+  const mirrored = deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: mirroredWiring, defaultLook: { patternId: 'aurora' } })
+    .filter(t => t.kind === 'section');
+  assert.equal(mirrored.length, strips.length - 1, 'a two-strip set replaces two sections with one');
+  const set = mirrored.find(t => t.zoneId === 'mirror-1');
+  assert.ok(set, 'the set is a section keyed by its own id');
+  assert.equal(set.ranges.length, 2, 'one range per member');
+  assert.equal(set.patchId, patchBoard.patches.find(p => p.source.stripId === strips[1].id).id, 'the lead member supplies the patch');
+  // Same result when deriveSectionTargets compiles the wiring itself.
+  assert.deepEqual(
+    deriveSectionTargets({ strips, patchBoard, wiring, mirrorSets, defaultLook: { patternId: 'aurora' } }).map(t => [t.id, t.zoneId, t.pixelCount]),
+    deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring: mirroredWiring, defaultLook: { patternId: 'aurora' } }).map(t => [t.id, t.zoneId, t.pixelCount]),
+  );
+}
+
+// The saved project writes the sets and the compiled wiring reads them.
+{
+  const context = fs.readFileSync(new URL('../src/state/ProjectContext.jsx', import.meta.url), 'utf8');
+  assert.match(context, /mirrorSets: layoutMirrorSets,\s+sectionFamilies,\s+layerOrder: layoutLayerOrder,\s+patchBoard: normalizePatchBoard/, 'serializeProject writes layout.mirrorSets');
+  assert.match(context, /compileWiring\(\{ wiring, strips, groups: layoutLayerGroups, mirrorSets: layoutMirrorSets \}\)/, 'compiled wiring folds the mirror sets in');
+}
+
 // The section cap stays tied to the card contract even when the quiet Patterns
 // overview leaves the limit out of its default header.
 assert.equal(MAX_SPLIT_SECTIONS, CARD_HARDWARE_CONTRACT.maxZones);

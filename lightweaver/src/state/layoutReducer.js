@@ -16,6 +16,8 @@ import { createDefaultPatchBoard, normalizePatchBoard } from '../lib/patchBoard.
 import { stripSourceKey } from '../lib/layoutGeometry.js';
 import { reverseKaleidoscope } from '../lib/kaleidoscope.js';
 import { normalizeSectionFamilies } from '../lib/connectedSections.js';
+import { normalizeMirrorSets } from '../lib/mirrorSetRules.js';
+import { removeMirrorMember } from '../lib/mirrorSets.js';
 
 // The layout state slice. `selection` is the single selection model that replaces
 // the scattered selLayerId / selStripId / selectedStripIds / pathSel booleans.
@@ -50,6 +52,7 @@ export function createLayoutState(init = {}) {
     starterPending: init.starterPending === true,
     layers: init.layers || [],
     layerGroups: init.layerGroups || [],
+    mirrorSets: normalizeMirrorSets(init.mirrorSets),
     sectionFamilies: normalizeSectionFamilies(init.sectionFamilies, strips),
     layerOrder: init.layerOrder || [],
     editCounts: init.editCounts || {},
@@ -97,6 +100,8 @@ export const LayoutActions = Object.freeze({
   CALIBRATE: 'layout/calibrate',
   // Patch board
   SET_PATCH_BOARD: 'layout/setPatchBoard',
+  // Mirror sets (whole normalized array, like the patch board)
+  SET_MIRROR_SETS: 'layout/setMirrorSets',
   // Selection
   SELECT_STRIP: 'layout/selectStrip',
   SELECT_STRIPS: 'layout/selectStrips',
@@ -149,6 +154,7 @@ export const layoutActions = {
   setScale: (pxPerMm, strips) => ({ type: LayoutActions.SET_SCALE, pxPerMm, strips }),
   calibrate: (pxPerMm, strips) => ({ type: LayoutActions.CALIBRATE, pxPerMm, strips }),
   setPatchBoard: patchBoard => ({ type: LayoutActions.SET_PATCH_BOARD, patchBoard }),
+  setMirrorSets: mirrorSets => ({ type: LayoutActions.SET_MIRROR_SETS, mirrorSets }),
   selectStrip: id => ({ type: LayoutActions.SELECT_STRIP, id }),
   selectStrips: ids => ({ type: LayoutActions.SELECT_STRIPS, ids }),
   toggleStrip: id => ({ type: LayoutActions.TOGGLE_STRIP, id }),
@@ -185,6 +191,8 @@ function pruneRemovedStrips(state, removedIds, extra = {}) {
   const layerGroups = state.layerGroups
     .map(g => ({ ...g, members: g.members.filter(m => !removed.has(m.stripId)) }))
     .filter(g => g.members.length > 0);
+  // A removed strip leaves its mirror set; a set left with one member dissolves.
+  const mirrorSets = [...removed].reduce(removeMirrorMember, state.mirrorSets || []);
   const liveGroupIds = new Set(layerGroups.map(g => g.groupId));
   const layerOrder = state.layerOrder.filter(item =>
     item.type === 'group' ? liveGroupIds.has(item.id) : true);
@@ -202,6 +210,7 @@ function pruneRemovedStrips(state, removedIds, extra = {}) {
     stripCountOverrides,
     stripDensities,
     layerGroups,
+    mirrorSets,
     layerOrder,
     patchBoard: resyncBoard(state.patchBoard, strips),
     selection,
@@ -448,6 +457,15 @@ export function layoutReducer(state, action) {
       return { ...state, layerOrder };
     }
 
+    case LayoutActions.SET_MIRROR_SETS: {
+      const mirrorSets = normalizeMirrorSets(action.mirrorSets, { strips: state.strips });
+      return JSON.stringify(mirrorSets) === JSON.stringify(state.mirrorSets || []) ? state : { ...state, mirrorSets };
+    }
+
+    // Contract alias: { type: 'SET_MIRROR_SETS', mirrorSets }.
+    case 'SET_MIRROR_SETS':
+      return layoutReducer(state, { ...action, type: LayoutActions.SET_MIRROR_SETS });
+
     case LayoutActions.DELETE_LAYER_GROUP: {
       const layerGroups = state.layerGroups.filter(g => g.groupId !== action.groupId);
       const layerOrder = state.layerOrder.filter(x => x.id !== action.groupId);
@@ -554,6 +572,7 @@ export function makeLayoutSnapshot(state) {
     starterPending: state.starterPending === true,
     layers: state.layers,
     layerGroups: state.layerGroups,
+    mirrorSets: state.mirrorSets || [],
     sectionFamilies: state.sectionFamilies,
     layerOrder: state.layerOrder,
     editCounts: state.editCounts,
@@ -583,6 +602,7 @@ export function applyLayoutSnapshot(state, snap, rebuild = identityRebuild) {
     starterPending: snap.starterPending === true,
     layers: snap.layers,
     layerGroups: snap.layerGroups,
+    mirrorSets: snap.mirrorSets || [],
     sectionFamilies: snap.sectionFamilies || [],
     layerOrder: snap.layerOrder,
     editCounts: snap.editCounts,

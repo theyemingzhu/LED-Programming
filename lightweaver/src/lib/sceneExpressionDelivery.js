@@ -102,6 +102,7 @@ function prepare(project, {
     wiring: layout.wiring,
     strips: layout.strips || [],
     groups: layout.layerGroups || [],
+    mirrorSets: layout.mirrorSets || [],
   });
 
   let kind = 'controller';

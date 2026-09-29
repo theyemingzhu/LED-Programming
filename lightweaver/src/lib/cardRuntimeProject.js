@@ -38,6 +38,7 @@ export function buildCardRuntimePackageFromProject({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
+  mirrorSets = [],
   symSettings = null,
   standaloneController = {},
 } = {}) {
@@ -45,7 +46,7 @@ export function buildCardRuntimePackageFromProject({
   if (usesKaleidoscope && !compiledWiring && !wiring) {
     throw new Error('Kaleidoscope card setup requires current project wiring so its standalone mapping can be compiled safely.');
   }
-  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips }) : null);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, mirrorSets }) : null);
   if (compiled && !compiled.ok) throw new Error(compiled.errors.map(error => error.message).join(' '));
   const totalPixels = compiled?.totalPixels ?? totalPhysicalAddresses(patchBoard, strips);
   const configuredOutputs = standaloneController?.outputs || [];

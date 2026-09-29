@@ -47,11 +47,12 @@ export function buildPatternPreviewSegments({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
+  mirrorSets = [],
   targets = [],
   resolvePatternId = patternId => patternId,
   paletteForPattern = () => PALETTE_DEFAULT,
 } = {}) {
-  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips }) : null);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, mirrorSets }) : null);
   const pixelsByTargetId = new Map();
   if (compiled?.ok) {
     for (const zone of compiled.zones || []) {
