@@ -1528,7 +1528,15 @@ test('direct Patterns navigation cannot consume a card edit intent without exact
 
   await page.goto('/?editPattern=ocean#screen=patterns', { waitUntil: 'domcontentloaded' });
 
-  await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.slice(1)).get('screen')).toBe('card');
+  // Refusing a card edit keeps browsing available without consuming the intent
+  // or silently selecting its pattern. Only the card command is gated.
+  await expect(page.locator('.pm')).toBeVisible();
+  await expect(page.locator('.rail-item[aria-label="Patterns"]')).toHaveAttribute('aria-current', 'page');
+  await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.slice(1)).get('screen')).toBe('pattern');
+  await expect(page.getByTestId('pattern-gate-notice')).toContainText('That tap was not sent to the card.');
+  await expect(page.getByRole('button', { name: 'Verify project in Card status', exact: true })).toBeVisible();
+  await expect(page.locator('.pm-cards .pmcard[data-pattern-id="ocean"]')).not.toHaveClass(/\bon\b/);
+  await expect(page.getByTestId('pattern-preview-meta')).not.toContainText('Ocean');
   expect(new URL(page.url()).searchParams.get('editPattern')).toBe('ocean');
   await page.waitForTimeout(350);
   expect(controlRequests).toHaveLength(0);
