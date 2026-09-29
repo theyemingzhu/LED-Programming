@@ -7,6 +7,22 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current delivery — release reliability — 2026-09-29
+Owner: primary manager. State: tooling verified; installing pinned local runtime.
+Checkout /Users/adrianrasmussen/.codex/worktrees/release-reliability/led;
+branch codex/release-reliability, based on card-first candidate54e5a931.
+Versioned candidate controller pins exact revision/base/tree, persists check
+receipts, distinguishes interruption/failure, and joins only the matching live
+observer. New failure events expose owner/cause/log/next action and truthful
+notification submission status. A one-shot event repair worker has a20minute
+limit and no routine AI polling. Existing production gates remain unchanged.
+Independent PR379 publication remains on its own immutable candidate/runner.
+Evidence:98/98 release-tooling tests pass, including real fake-executable repair
+launch, exact merge guards, dependency invalidation, interruption, overdue orphan
+checks, missed events and failed notifications. Full required command plan preserved.
+Next: pinned local runtime installation and status proof;
+no new production deployment authorized by this tooling build alone.
+
 ## Current delivery — card-first Studio resume — 2026-09-29
 Owner: primary manager. State: authorized release; repaired failed gate, resuming.
 PR379: https://github.com/theyemingzhu/LED-Programming/pull/379.
