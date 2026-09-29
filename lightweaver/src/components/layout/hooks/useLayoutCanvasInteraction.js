@@ -31,9 +31,7 @@ import { useProject } from '../../../state/ProjectContext.jsx';
 import { normalizeProjectRenderStrips } from '../../../lib/renderGeometry.js';
 import { buildPatternPreviewSegments, resolvePreviewPatternId } from '../../../lib/patternPiecePreview.js';
 import { applyLookColorModifiers } from '../../../lib/previewColorModifiers.js';
-import { mirrorSourceIndex } from '../../../lib/mirrorFrame.js';
-
-const EMPTY_MIRROR_SETS = [];
+import { sideFlipped } from '../../../lib/pieceSymmetry.js';
 import { REAL_PATTERN_BY_ID } from '../../../v3/v3-data.js';
 
 // Wire drawing — deep-linked via `#screen=layout&mode=draw`.
@@ -73,8 +71,10 @@ function measureSelectedPathDecoration(pathData) {
 // visualisation memo the <svg> tree renders. Cross-hook mutators arrive via
 // `deps` from the composer (no hook reaches into another's internals).
 export function useLayoutCanvasInteraction(ctx, deps) {
-  const { wiring, compiledWiring, patchBoard, sectionTargets, layoutMirrorSets } = useProject();
-  const mirrorSets = layoutMirrorSets || EMPTY_MIRROR_SETS;
+  const { wiring, compiledWiring, patchBoard, sectionTargets, layoutSymmetry, sidesMirrored } = useProject();
+  const symmetry = layoutSymmetry || null;
+  // The look being edited decides whether the sides mirror (default: yes).
+  const mirrorSides = Boolean(symmetry) && sidesMirrored !== false;
   const {
     strips, setStrips,
     hidden, setHidden,
@@ -665,26 +665,10 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       paletteForPattern: patternId => REAL_PATTERN_BY_ID.get(patternId)?.pal,
     }).filter(segment => segment.pixels.some(pixel => !hidden[pixel.stripId]));
   }, [strips, patchBoard, wiring, compiledWiring, sectionTargets, hidden]);
-  // A mirror set compiles to one card zone whose ranges each play the pattern
-  // from their own LED 1. The Layout preview does the same: it renders only
-  // the set's first visible member and copies those colours onto the others.
-  const mirrorRenderLeads = useMemo(() => new Map(mirrorSets.map(set => [
-    set.id,
-    set.members.find(id => !hidden[id] && strips.some(strip => strip.id === id)) || null,
-  ])), [mirrorSets, hidden, strips]);
-  const renderSegments = useMemo(() => {
-    if (!mirrorSets.length) return previewSegments;
-    const setByStrip = new Map(mirrorSets.flatMap(set => set.members.map(id => [id, set])));
-    return previewSegments.map(segment => {
-      const ids = new Set(segment.pixels.map(pixel => pixel.stripId));
-      const set = setByStrip.get(segment.pixels[0]?.stripId);
-      if (!set || ids.size < 2 || [...ids].some(id => setByStrip.get(id) !== set)) return segment;
-      const leadId = mirrorRenderLeads.get(set.id);
-      const pixels = segment.pixels.filter(pixel => pixel.stripId === leadId)
-        .map((pixel, index) => ({ ...pixel, index }));
-      return pixels.length ? { ...segment, pixels } : segment;
-    });
-  }, [previewSegments, mirrorSets, mirrorRenderLeads]);
+  // A side compiles to one card zone that runs through its strips in order,
+  // so its preview segment already spans them. When the sides mirror, only
+  // side 1 has a segment; its colours are copied onto the other sides below.
+  const renderSegments = previewSegments;
   const frameStrips = useMemo(() => normalizeProjectRenderStrips(
     renderSegments.length ? renderSegments : strips, { hidden }),
   [renderSegments, strips, hidden]);
@@ -726,8 +710,8 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       perStripFns,
       perStripPalettes,
       // Without section segments the frame strips ARE the project strips, so
-      // the frame engine mirrors them itself; segment frames are copied below.
-      mirrorSets: renderSegments.length ? [] : mirrorSets,
+      // the frame engine plays the sides itself; segment frames are copied below.
+      ...(renderSegments.length ? {} : { symmetry, sidesMirrored: mirrorSides }),
     });
     if (!renderSegments.length) return new Map(frame.stripFrames.map(stripFrame => [stripFrame.id, stripFrame]));
     const byStrip = new Map(strips.map(strip => [strip.id, {
@@ -747,15 +731,25 @@ export function useLayoutCanvasInteraction(ctx, deps) {
         if (target && Number.isInteger(pixel.sourceLed)) target.leds[pixel.sourceLed] = stripFrame.leds[ledIndex];
       });
     });
-    for (const set of mirrorSets) {
-      const lead = byStrip.get(mirrorRenderLeads.get(set.id));
-      if (!lead?.leds.length) continue;
-      for (const memberId of set.members) {
-        const twin = byStrip.get(memberId);
-        if (!twin || twin === lead) continue;
-        for (let index = 0; index < twin.leds.length; index += 1) {
-          twin.leds[index] = lead.leds[mirrorSourceIndex(index, twin.leds.length, lead.leds.length)];
-        }
+    // Mirrored sides: sides 2..n copy side 1's run stretched to their own
+    // length, reversed where the flip rule says (same rule as the card).
+    if (mirrorSides) {
+      const runOf = side => (side?.stripIds || [])
+        .filter(id => !hidden[id] && byStrip.has(id))
+        // Array.from, not .map: an unrendered strip's LEDs are holes, and
+        // .map skips holes.
+        .flatMap(id => Array.from(byStrip.get(id).leds, (_, index) => ({ frame: byStrip.get(id), index })));
+      const source = runOf(symmetry.sides[0]).map(({ frame, index }) => frame.leds[index]);
+      if (source.length) {
+        symmetry.sides.slice(1).forEach((side, offset) => {
+          const flipped = sideFlipped(symmetry, offset + 1);
+          const run = runOf(side);
+          run.forEach(({ frame, index }, position) => {
+            const at = flipped ? run.length - 1 - position : position;
+            frame.leds[index] = source[run.length <= 1 || source.length <= 1
+              ? 0 : Math.round(at * (source.length - 1) / (run.length - 1))];
+          });
+        });
       }
     }
     for (const stripFrame of byStrip.values()) {
@@ -768,7 +762,7 @@ export function useLayoutCanvasInteraction(ctx, deps) {
     return byStrip;
   }, [
     strips, frameStrips, renderSegments, segmentById, perStripFns, perStripPalettes, activeFn, paletteNorm, gammaLUT,
-    mirrorSets, mirrorRenderLeads,
+    symmetry, mirrorSides, hidden,
     showLight, previewTime,
     activePatternId,
     patternParams,
