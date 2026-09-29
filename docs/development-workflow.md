@@ -89,6 +89,11 @@ explicitly being prepared.
 node scripts/lightweaver-dev.mjs release
 ```
 
+The local release gate includes every browser spec in the hosted critical smoke
+lane. A coverage regression in `scripts/development-workflow.test.mjs` prevents
+new smoke specs from being omitted locally. Add missing specs to the existing
+release suite rather than rerunning the entire smoke lane as a duplicate.
+
 Required local verification runs once for the coherent batch, not again while
 waiting for hosted CI. A test-only repair reuses unchanged product evidence and
 runs its affected tests; it does not repeat every already-passing browser suite.

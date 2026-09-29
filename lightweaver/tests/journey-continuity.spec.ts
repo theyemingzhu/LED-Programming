@@ -281,7 +281,10 @@ async function seedReturningOwnerWithCompleteProject(page: Page, spec: CardState
 
 test('[J02] a bare URL for a returning owner with a complete saved project lands on Card Home overview', async ({ page }) => {
   const spec = cardState('installed-match');
-  const card = await boot(page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec));
+  const exact = exactInstalledProjectCard(spec);
+  const card = await boot(
+    page, spec, '/', p => seedReturningOwnerWithCompleteProject(p, spec, exact.project), exact.card,
+  );
 
   // Decided before the card is ever probed — a saved project already
   // installed on the exact card Studio remembers must not be routed back
@@ -511,7 +514,7 @@ function exactInstalledProjectCard(spec: CardStateSpec) {
   const prepared = prepareCardDeployment({
     projectId: project.id,
     projectName: project.name,
-    projectRevision: 0,
+    projectRevision: spec.projectRevision,
     strips: project.layout.strips,
     patchBoard: project.layout.patchBoard,
     wiring: project.layout.wiring,
