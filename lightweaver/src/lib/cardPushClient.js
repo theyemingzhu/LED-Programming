@@ -27,6 +27,7 @@ import {
 import { classifyCardReadiness } from './cardReadiness.js';
 import { stageCardWiringCandidate } from './cardWiringSafety.js';
 import { runtimeConfigUsesKaleidoscope } from './cardKaleidoscope.js';
+import { runtimeConfigUsesSymmetry } from './cardRuntimeContract.js';
 import { BENCH_DEFAULT_PORT_PIXELS, BENCH_PROJECT_ID } from './benchConfig.js';
 import { hasColorJourneyRecipeCapability, runtimeConfigUsesColorJourney } from './colorJourneyNative.js';
 import { assignProductionWiringIdentity, productionWiringDigest } from './productionWiringIdentity.js';
@@ -96,6 +97,17 @@ export function assertCardKaleidoscopeSupport(runtimePackage, evidence) {
       'kaleidoscope-unsupported',
       'This card can preview streamed calibration frames, but its firmware cannot install standalone Kaleidoscope reflection points. Update the card firmware, then retry.',
     );
+  }
+  return true;
+}
+
+// Sides ride on two card config features: continuous zones and mirrored zones.
+// A card whose firmware does not report `capabilities.symmetrySides` would
+// ignore both silently and play each strip separately, so refuse to install.
+export function assertCardSymmetrySupport(runtimePackage, evidence) {
+  if (!runtimeConfigUsesSymmetry(runtimePackage?.config || runtimePackage)) return true;
+  if (!(Number(evidence?.capabilities?.symmetrySides) >= 1)) {
+    throw new CardPushError('symmetry-unsupported', 'Update this card to play mirrored sides.');
   }
   return true;
 }
@@ -481,6 +493,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   if (initialBridgeConfig) {
     assertCardKaleidoscopeSupport(runtimePackage, options.cardEvidence);
     assertCardColorJourneySupport(runtimePackage, options.cardEvidence);
+    assertCardSymmetrySupport(runtimePackage, options.cardEvidence);
     try {
       return await bridgeRequest('config', preparedPayload.config, {
         host,
@@ -514,7 +527,8 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           'Stopped before saving: Studio could not prove the exact paired card and firmware for this blank-card write.',
         );
       }
-      if (runtimeConfigUsesKaleidoscope(runtimePackage) || runtimeConfigUsesColorJourney(runtimePackage)) {
+      if (runtimeConfigUsesKaleidoscope(runtimePackage) || runtimeConfigUsesColorJourney(runtimePackage)
+          || runtimeConfigUsesSymmetry(runtimePackage)) {
         const capabilityEvidence = options.cardEvidence || await readCardProjectEvidence({
           host,
           transport: 'direct',
@@ -526,6 +540,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
         }
         assertCardKaleidoscopeSupport(runtimePackage, capabilityEvidence);
         assertCardColorJourneySupport(runtimePackage, capabilityEvidence);
+        assertCardSymmetrySupport(runtimePackage, capabilityEvidence);
       }
       const status = await readCardStatusEnvelope({
         host,
@@ -554,6 +569,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
   const rebootPlan = await resolveConfigRebootForCard(host, runtimePackage, options);
   assertFreshKaleidoscopeEvidence(runtimePackage, rebootPlan.current, exactIdentity);
   assertCardColorJourneySupport(runtimePackage, rebootPlan.current);
+  assertCardSymmetrySupport(runtimePackage, rebootPlan.current);
   if (rebootPlan.projectChanged && options.allowProjectChange !== true
       && !isPromotableDiscoveryBench(rebootPlan.current)) {
     throw projectMismatchError(rebootPlan.current, runtimePackage);
@@ -615,6 +631,7 @@ export async function pushConfigToCard(runtimePackage, options = {}) {
           const retryRebootPlan = await resolveConfigRebootForCard(found.host, runtimePackage, options);
           assertFreshKaleidoscopeEvidence(runtimePackage, retryRebootPlan.current);
           assertCardColorJourneySupport(runtimePackage, retryRebootPlan.current);
+          assertCardSymmetrySupport(runtimePackage, retryRebootPlan.current);
           if (retryRebootPlan.projectChanged && options.allowProjectChange !== true
               && !isPromotableDiscoveryBench(retryRebootPlan.current)) {
             throw projectMismatchError(retryRebootPlan.current, runtimePackage);
