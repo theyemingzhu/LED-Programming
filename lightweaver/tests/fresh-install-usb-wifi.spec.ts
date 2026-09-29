@@ -196,6 +196,65 @@ test('factory install stops before erase when its setup recovery step cannot be 
   await expect.poll(() => page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([{ eraseAll: true, addresses: [0] }]);
 });
 
+for (const failureMode of ['unavailable', 'quota'] as const) test(`a joined card waits for durable setup progress after ${failureMode} storage failure and retries without resending Wi-Fi`, async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'connected');
+  await fillWifi(page);
+  await page.evaluate((failureMode) => {
+    const original = Object.getOwnPropertyDescriptor(window, 'localStorage')!;
+    const storage = window.localStorage;
+    (window as any).__blockCompletedSetupSave = true;
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key) {
+      if ((window as any).__throwOnRecoveryRead && key === 'lw_card_commissioning_registry_v2'
+        && new Error().stack?.includes('completeWifiSetup')) throw new DOMException('Read failed', 'UnknownError');
+      return originalGetItem.call(this, key);
+    };
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (failureMode === 'quota' && (window as any).__blockCompletedSetupSave
+        && (window as any).__usbWifiFixture.provisionCount > 0
+        && key === 'lw_card_commissioning_registry_v2') throw new DOMException('Storage full', 'QuotaExceededError');
+      return originalSetItem.call(this, key, value);
+    };
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        if (failureMode === 'unavailable' && (window as any).__blockCompletedSetupSave
+          && (window as any).__usbWifiFixture.provisionCount > 0
+          && new Error().stack?.includes('writeCardCommissioning')) return null;
+        return original.get?.call(window) || storage;
+      },
+    });
+  }, failureMode);
+  await install(page);
+  await expect(page.getByTestId('usb-wifi-status')).toContainText('joined');
+  await expect(page.getByRole('heading', { name: 'Save card setup progress' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry saving setup progress' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Join Wi-Fi over USB' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Use card setup page instead' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toHaveCount(0);
+  if (failureMode === 'unavailable') await page.screenshot({ path: '/tmp/lightweaver-poststation-save-blocker.png', fullPage: true });
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([{ eraseAll: true, addresses: [0] }]);
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.provisionCount)).toBe(1);
+  if (failureMode === 'unavailable') {
+    await page.evaluate(() => { (window as any).__throwOnRecoveryRead = true; });
+    await page.getByRole('button', { name: 'Retry saving setup progress' }).click();
+    await expect(page.getByTestId('usb-wifi-status')).toContainText('could not confirm and save');
+    await expect(page.getByRole('button', { name: 'Retry saving setup progress' })).toBeEnabled();
+    await page.evaluate(() => { (window as any).__throwOnRecoveryRead = false; });
+  }
+  await page.evaluate(() => { (window as any).__blockCompletedSetupSave = false; });
+  await page.getByRole('button', { name: 'Retry saving setup progress' }).click();
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([{ eraseAll: true, addresses: [0] }]);
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.provisionCount)).toBe(1);
+  const saved = await page.evaluate(() => localStorage.getItem('lw_card_commissioning_registry_v2') || '');
+  expect(saved).toContain('station-detected');
+  expect(saved).not.toContain(PASSWORD);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Set up card' })).toBeVisible();
+});
+
 test('Find confirms a current blank card by runtime hello and opens USB Wi-Fi without reinstalling', async ({ page, request }) => {
   await openFreshInstaller(page, request, 'connected', { currentInstalled: true });
   await expect(page.getByTestId('usb-wifi-setup')).toBeVisible();
