@@ -430,7 +430,10 @@ void setup() {
       runtimeConfig, firmwareBootProbation
           ? RuntimeStorageAccessMode::ReadOnlyProbation
           : RuntimeStorageAccessMode::Normal);
-  if (loadResult.ok && !loadResult.bootedCandidate) loadClientPlaylist(runtimeConfig);
+  if (loadResult.ok && !loadResult.bootedCandidate) {
+    loadClientPlaylist(runtimeConfig);
+    loadClientPatterns(runtimeConfig);
+  }
   runtimeSafeMode = loadResult.safeMode;
   if (Serial) {
     Serial.print("Runtime source: ");
@@ -1638,6 +1641,7 @@ void resolveActiveZoneMirrors(const RuntimeConfig& config, const LookConfig* loo
 }
 
 void applyLookToRuntimeZones(const LookConfig& look) {
+  removeActiveClientPatternOverrides(runtimeConfig);
   resolveActiveZoneMirrors(runtimeConfig, &look);
   if (runtimeConfig.zoneCount == 0) return;
 
@@ -1651,6 +1655,7 @@ void applyLookToRuntimeZones(const LookConfig& look) {
       applyLookZoneToRuntimeZone(runtimeConfig.zones[target], lookZone);
       touched[target] = true;
     }
+    applyClientPatternOverrides(runtimeConfig, look.id);
     return;
   }
 
@@ -1659,6 +1664,7 @@ void applyLookToRuntimeZones(const LookConfig& look) {
     runtimeConfig.zones[i].patternId = patternId;
     runtimeConfig.zones[i].blackout = false;
   }
+  applyClientPatternOverrides(runtimeConfig, look.id);
 }
 
 // Find a look by id or preset in the loaded playlist. Missing ids fall back
@@ -3373,6 +3379,7 @@ bool captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
   outRecord.playlistPlaying = playlistPlaying;
   outRecord.playlistEntryIndex = playlistEntryIndex;
   outRecord.playlistGeneration = currentClientPlaylistGeneration();
+  outRecord.clientPatternGeneration = currentClientPatternGeneration();
   outRecord.zoneCount = 0;
   for (uint8_t i = 0; i < runtimeConfig.zoneCount && outRecord.zoneCount < LW_LIVE_LOOK_MAX_ZONES; i++) {
     const ZoneConfig& z = runtimeConfig.zones[i];
@@ -3474,6 +3481,13 @@ bool restoreLiveLookIfMatching() {
       break;
     }
   }
+  // Startup selection stays unchanged: another look's resume snapshot cannot
+  // overwrite its saved controls, even when both share the saved generation.
+  // Same-look unsaved tweaks and all unedited zone controls still resume.
+  if (lookCount && clientPatternNeedsSavedRestore(record.clientPatternGeneration,
+          currentClientPatternGeneration(), record.currentLookId,
+          looks[currentLookIndex].id.c_str()))
+    applyClientPatternOverrides(runtimeConfig, looks[currentLookIndex].id, false);
   runtimeConfig.syncZones = record.syncZones;
   // Symmetry sides: whether the sides mirror each other is saved per look, not
   // per zone, so it follows the look the owner was on rather than the startup

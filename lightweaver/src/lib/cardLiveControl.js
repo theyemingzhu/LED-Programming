@@ -1,3 +1,4 @@
+import { savedPatternMetadata } from './cardSavedControls.js';
 import {
   canPushDirectlyToCard,
   cardHostToUrl,
@@ -840,6 +841,7 @@ function normalizeCardPatternsPayload(payload) {
       throw new CardPushError('invalid-patterns', 'The card returned an invalid pattern list.');
     }
     return {
+      ...savedPatternMetadata(pattern),
       id, label, mode, ...(runtimePatternId ? { runtimePatternId } : {}), zones,
       ...(controls ? { controls: {
         customColor: controls.customColor === true,

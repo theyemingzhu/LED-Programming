@@ -1,3 +1,4 @@
+import { savedPatternMetadata } from './cardSavedControls.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { CUSTOMER_CONTROL_WIRE_FIELDS } from './cardCustomerControlContract.js';
 
@@ -38,6 +39,7 @@ function normalizedPatterns(payload = {}) {
       label,
       mode,
       runtimePatternId,
+      ...savedPatternMetadata(pattern),
       zones: (pattern.zones || []).map(zone => ({ id: boundedText(zone?.id), label: boundedText(zone?.label), patternId: boundedText(zone?.patternId) })),
       controls: {
         customColor: explicit.customColor === true,

@@ -221,7 +221,7 @@ void sendCors() {
   String origin = server.header("Origin");
   const bool clientRoute = server.uri() == "/api/status" || server.uri() == "/api/patterns" ||
       server.uri() == "/api/zones" || server.uri() == "/api/control" ||
-      server.uri() == "/api/client-playlist" || server.uri() == "/api/firmware-info";
+      server.uri() == "/api/client-playlist" || server.uri() == "/api/client-pattern" || server.uri() == "/api/firmware-info";
   if (corsOriginAllowed(origin) || (origin == "https://light.mandalacodes.com" && clientRoute)) {
     server.sendHeader("Access-Control-Allow-Origin", origin);
     server.sendHeader("Vary", "Origin");
@@ -510,10 +510,11 @@ String studioBridgeScript() {
                 "try{let response=null;"
                   "if(ev.origin==='https://light.mandalacodes.com'){"
                     "if(ev.source!==window.opener||ev.origin!==lwReadyOrigin)throw lwBridgeError('forbidden','client opener mismatch');"
-                    "if(!['status','ping','patterns','zones','control','client-playlist','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
+                    "if(!['status','ping','patterns','zones','control','client-playlist','client-pattern','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
                     "if(m.type==='control'){const p=m.payload||{};const allowed=['on','blackout','syncZones','brightness','patternId','playlist','zone','speed','hueShift','hue','saturation','expectedCardId','expectedRevision'];if(Object.keys(p).some(k=>!allowed.includes(k)))throw lwBridgeError('forbidden','client control unavailable')}"
                   "}"
-                  "if(m.type==='client-playlist'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-playlist');else if(p.method==='POST')response=await post('/api/client-playlist',p.body||{});else throw lwBridgeError('invalid-payload','playlist method required')}"
+                  "if(m.type==='client-pattern'){const p=m.payload||{};if(p.method==='GET'&&typeof p.patternId==='string')response=await get('/api/client-pattern?patternId='+encodeURIComponent(p.patternId));else if(p.method==='POST')response=await post('/api/client-pattern',p.body||{});else throw lwBridgeError('invalid-payload','pattern method and id required')}"
+                  "else if(m.type==='client-playlist'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-playlist');else if(p.method==='POST')response=await post('/api/client-playlist',p.body||{});else throw lwBridgeError('invalid-payload','playlist method required')}"
                   "else "
                   "if(m.type==='status'||m.type==='ping'){response=await get('/api/status')}"
                   "else if(m.type==='zones'){response=await get('/api/zones')}"
@@ -1913,6 +1914,7 @@ void handleReboot() {
 
 void handleControlPost();
 void handleClientPlaylistPost();
+void handleClientPatternPost();
 
 // WiFi mutation bodies are tiny and security-sensitive. Use WebServer's raw
 // path so an attacker cannot make the framework allocate a Content-Length-
@@ -2123,7 +2125,7 @@ void handleControlRaw(HTTPRaw& raw) {
 class BoundedControlRequestHandler final : public RequestHandler {
  public:
   bool canHandle(HTTPMethod method, String uri) override {
-    return method == HTTP_POST && (uri == "/api/control" || uri == "/api/client-playlist");
+    return method == HTTP_POST && (uri == "/api/control" || uri == "/api/client-playlist" || uri == "/api/client-pattern");
   }
 
   bool canUpload(String uri) override {
@@ -2132,13 +2134,14 @@ class BoundedControlRequestHandler final : public RequestHandler {
   }
 
   bool canRaw(String uri) override {
-    return uri == "/api/control" || uri == "/api/client-playlist";
+    return uri == "/api/control" || uri == "/api/client-playlist" || uri == "/api/client-pattern";
   }
 
   bool handle(WebServer& webServer, HTTPMethod method, String uri) override {
     (void)webServer;
     if (!canHandle(method, uri)) return false;
-    if (uri == "/api/client-playlist") handleClientPlaylistPost();
+    if (uri == "/api/client-pattern") handleClientPatternPost();
+    else if (uri == "/api/client-playlist") handleClientPlaylistPost();
     else handleControlPost();
     return true;
   }
@@ -2900,6 +2903,57 @@ void handleClientPlaylistPost() {
   handleClientPlaylistGet();
 }
 
+void sendClientPattern(const String& patternId) {
+  JsonDocument doc;
+  const int index = installedClientPatternIndex(*runtimeConfigPtr, patternId);
+  if (index < 0) {
+    server.send(422, "application/json", "{\"ok\":false,\"error\":\"unknown installed pattern\"}"); return;
+  }
+  doc["ok"] = true;
+  doc["cardId"] = runtimeCardId();
+  doc["patternId"] = patternId;
+  doc["revision"] = clientPatternRevision(*runtimeConfigPtr, patternId);
+  doc["lookBrightness"] = runtimeConfigPtr->looks[index].brightness;
+  writeClientPatternOverrides(*runtimeConfigPtr, patternId, doc["overrides"].to<JsonObject>());
+  String body; serializeJson(doc, body); server.send(200, "application/json", body);
+}
+void handleClientPatternGet() {
+  sendCors();
+  if (server.args() != 1 || !server.hasArg("patternId")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"pattern id required\"}"); return;
+  }
+  sendClientPattern(server.arg("patternId"));
+}
+void handleClientPatternPost() {
+  sendCors();
+  JsonDocument doc;
+  const bool parsed = controlRequestBodyReady && !controlRequestBodyRejected &&
+      !deserializeJson(doc, controlRequestBody, controlRequestBodyLength);
+  controlRequestBodyReady = false; controlRequestBodyLength = 0;
+  if (!parsed || !doc.is<JsonObject>() || doc.size() != 4 || server.args() != 0 ||
+      !doc["expectedCardId"].is<const char*>() || !doc["expectedRevision"].is<const char*>() ||
+      !doc["patternId"].is<const char*>()) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid pattern envelope\"}"); return;
+  }
+  if (!runtimeCommandReady() || !runtimePlaybackReady() || lightweaverFirmwareBootProbationActive()) {
+    server.send(423, "application/json", "{\"ok\":false,\"error\":\"card not ready\"}"); return;
+  }
+  const String patternId = doc["patternId"].as<String>();
+  if (doc["expectedCardId"].as<String>() != runtimeCardId() ||
+      doc["expectedRevision"].as<String>() != clientPatternRevision(*runtimeConfigPtr, patternId) ||
+      runtimeCurrentPatternId() != patternId) {
+    server.send(409, "application/json", "{\"ok\":false,\"error\":\"card, pattern or saved revision changed\"}"); return;
+  }
+  String message;
+  if (!saveClientPattern(*runtimeConfigPtr, patternId, doc["changes"], message)) {
+    JsonDocument error; error["ok"] = false; error["error"] = message;
+    String body; serializeJson(error, body); server.send(422, "application/json", body); return;
+  }
+  runtimeMarkLiveLookDirty();
+  runtimeAdvanceStateRevision();
+  sendClientPattern(patternId);
+}
+
 void handlePatterns() {
   sendCors();
   RuntimeConfig& cfg = *runtimeConfigPtr;
@@ -2933,6 +2987,8 @@ void handlePatterns() {
     p["runtimePatternId"] = cfg.looks[i].preset.length() ? cfg.looks[i].preset : cfg.looks[i].id;
     p["preset"] = cfg.looks[i].preset;
     p["brightness"] = cfg.looks[i].brightness;
+    writeClientPatternOverrides(cfg, cfg.looks[i].id, p["savedControls"].to<JsonObject>());
+    p["savedControlsRevision"] = clientPatternRevision(cfg, cfg.looks[i].id);
     p["fadeOutMs"] = cfg.looks[i].fadeOutMs;
     p["fadeInMs"] = cfg.looks[i].fadeInMs;
     p["file"] = cfg.looks[i].file;
@@ -3787,6 +3843,8 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   server.on("/api/rename", HTTP_POST, handleRenamePost);
   server.on("/api/firmware-info", HTTP_OPTIONS, handleOptions);
   server.on("/api/firmware-info", HTTP_GET, handleFirmwareInfo);
+  server.on("/api/client-pattern", HTTP_OPTIONS, handleOptions);
+  server.on("/api/client-pattern", HTTP_GET, handleClientPatternGet);
   server.on("/api/client-playlist", HTTP_OPTIONS, handleOptions);
   server.on("/api/client-playlist", HTTP_GET, handleClientPlaylistGet);
   server.on("/api/patterns", HTTP_OPTIONS, handleOptions);

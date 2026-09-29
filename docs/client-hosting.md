@@ -77,3 +77,17 @@ This is the approved owner-entry boundary, **not** a password wall around the
 existing public Studio root or its static assets. Existing Studio, firmware,
 update, installer and account-free recovery URLs remain unchanged. No account,
 password, secret, database schema or cross-subdomain cookie sharing was added.
+
+## Limited pattern edits
+
+The player can update brightness, speed and hue for the selected installed
+pattern through the bounded client-pattern API. Saved settings belong to that
+card and pattern; the original Studio project, recipe and wiring stay intact.
+The player checks the card, pattern and saved revision, then verifies a fresh
+readback before reporting success. Selecting another pattern discards the
+previous unsaved editing state. Studio card controls expose the same saved
+settings and a Refresh saved settings action.
+
+This requires the card's clientPattern capability. Ordinary live adjustments
+remain separate from explicitly updating a named pattern. Real-card restart and
+physical light behavior are not established by browser fixtures.

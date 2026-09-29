@@ -34,6 +34,7 @@ import {
 const PRIVILEGED_BRIDGE_TYPES = new Set([
   'config',
   'client-playlist',
+  'client-pattern',
   'control',
   'reboot',
   'recover-lights',

@@ -71,7 +71,7 @@
     "test:client-release": "node --test scripts/client-release.test.mjs tests/owner-studio.test.mjs",
     "deploy:client": "npm run build:client && npm run verify:client && node scripts/deploy-client-pages.mjs",
     "test:client": "node --test src/client/*.test.js",
-    "test:client:browser": "playwright test tests/client-player.spec.ts tests/owner-studio.spec.ts --project=chromium --workers=1"
+    "test:client:browser": "playwright test tests/client-player.spec.ts tests/client-pattern-save.spec.ts tests/owner-studio.spec.ts --project=chromium --workers=1"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

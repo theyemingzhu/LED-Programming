@@ -40,6 +40,21 @@ no account. This protects the phone owner entry; it does not change the existing
 public Studio root or firmware recovery access. The user did not request remote
 internet control; the existing local Wi-Fi/card bridge remains the command path.
 
+## Confirmed limited pattern edits — follow-up
+
+Adrian confirmed “Save on the lights; Studio reads it back.” Add an explicit
+Update pattern action for brightness, speed and hue on the exact selected
+installed pattern. Save only edited appearance fields; preserve each pattern's
+recipe, layout, sections and wiring. Reselecting the pattern, playlist playback
+and card restart must apply its saved appearance. Studio card controls read the
+same authoritative settings; the original Studio project is not overwritten.
+Reject stale revisions, changed pattern targets and wrong-card acknowledgements.
+
+Adrian also explicitly confirmed “Only gate the player's Owner tools link.” The
+existing Studio root remains available by choice; this is not global Studio or
+LAN access control. Physical-card verification and production publication remain
+unperformed until their separate authorized steps.
+
 ## Reuse and verified gaps
 
 - `lightweaver/src/components/card/CardControlDrawer.jsx` and

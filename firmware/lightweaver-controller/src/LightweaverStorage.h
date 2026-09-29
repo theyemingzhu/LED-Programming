@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ArduinoJson.h>
+#include "LightweaverClientPattern.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -105,6 +106,7 @@ struct LiveLookRecord {
   bool playlistPlaying = false;
   uint8_t playlistEntryIndex = 0;
   uint32_t playlistGeneration = 0;
+  uint32_t clientPatternGeneration = 0;
 };
 
 namespace lightweaver_live_look_detail {
@@ -143,6 +145,7 @@ inline size_t encodeLiveLookRecord(const LiveLookRecord& record, char* outBuffer
   doc["playlistPlaying"] = record.playlistPlaying;
   doc["playlistEntryIndex"] = record.playlistEntryIndex;
   doc["playlistGeneration"] = record.playlistGeneration;
+  doc["clientPatternGeneration"] = record.clientPatternGeneration;
   JsonArray zones = doc["zones"].to<JsonArray>();
   uint8_t count = record.zoneCount < LW_LIVE_LOOK_MAX_ZONES ? record.zoneCount : LW_LIVE_LOOK_MAX_ZONES;
   for (uint8_t i = 0; i < count; i++) {
@@ -198,6 +201,7 @@ inline bool decodeLiveLookRecord(const char* json, size_t jsonLength, LiveLookRe
   parsed.playlistPlaying = doc["playlistPlaying"] | false;
   parsed.playlistEntryIndex = doc["playlistEntryIndex"] | 0U;
   parsed.playlistGeneration = doc["playlistGeneration"] | 0U;
+  parsed.clientPatternGeneration = doc["clientPatternGeneration"] | 0U;
   for (JsonVariantConst zoneValue : zones) {
     if (parsed.zoneCount >= LW_LIVE_LOOK_MAX_ZONES) break;
     JsonObjectConst zo = zoneValue.as<JsonObjectConst>();
@@ -430,6 +434,14 @@ void ensureDefaultZone(RuntimeConfig& config);
 RuntimeLoadResult loadRuntimeConfig(
     RuntimeConfig& config,
     RuntimeStorageAccessMode accessMode = RuntimeStorageAccessMode::Normal);
+uint32_t currentClientPatternGeneration();
+int installedClientPatternIndex(const RuntimeConfig& config, const String& patternId);
+String clientPatternRevision(const RuntimeConfig& config, const String& patternId);
+void writeClientPatternOverrides(const RuntimeConfig& config, const String& patternId, JsonObject out);
+bool loadClientPatterns(const RuntimeConfig& config);
+bool saveClientPattern(RuntimeConfig& config, const String& patternId, JsonVariantConst changes, String& message);
+void removeActiveClientPatternOverrides(RuntimeConfig& config);
+void applyClientPatternOverrides(RuntimeConfig& config, const String& patternId, bool captureBase = true);
 uint32_t currentClientPlaylistGeneration();
 String clientPlaylistRevision(const RuntimeConfig& config);
 String clientPlaylistJson(const RuntimeConfig& config);

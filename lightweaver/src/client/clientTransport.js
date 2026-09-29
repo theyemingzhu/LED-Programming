@@ -1,3 +1,4 @@
+import { normalizeClientPattern } from './clientPattern.js';
 import { connectCardTransport } from '../lib/cardTransport.js';
 import { acquireCardBridgeFromGesture, adoptDiscoveredCardBridgeIdentity, getCardBridgeState, sendCardBridgeRequest, cardBridgeFeatureGap } from '../lib/cardBridge.js';
 import { normalizeCardCustomerControls } from '../lib/cardCustomerControls.js';
@@ -15,6 +16,10 @@ export async function connectClient(host, { bridge = false, expectedCardId = '' 
     if (expectedCardId && discoveredId !== expectedCardId) throw new Error('A different card answered. Your paired lights have not been changed.');
     if (!discovered.identityVerified) await adoptDiscoveredCardBridgeIdentity(host);
     request = (path, options = {}) => {
+      if (path.startsWith('/api/client-pattern')) {
+        const patternId = new URL(path, 'http://lightweaver.local').searchParams.get('patternId');
+        return sendCardBridgeRequest('client-pattern', { method: options.method || 'GET', ...(options.body ? { body: options.body } : { patternId }) }, { host });
+      }
       if (path === '/api/client-playlist') {
         const gap = cardBridgeFeatureGap('client-playlist');
         if (gap) throw new Error('Your lights need an update before playlists can be edited here.');
@@ -44,6 +49,7 @@ export async function connectClient(host, { bridge = false, expectedCardId = '' 
     controls.activePatternId = reportedId;
     return { status: nextStatus, controls };
   };
+  session.readPattern = async patternId => normalizeClientPattern(await request(`/api/client-pattern?patternId=${encodeURIComponent(patternId)}`), identity.cardId, patternId);
   session.readPlaylist = async patterns => normalizeClientPlaylist(await request('/api/client-playlist'), patterns, identity.cardId);
   session.write = async (path, body) => {
     // Every mutation is bound to this exact live card and boot, including bridge requests.

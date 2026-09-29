@@ -221,6 +221,7 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
           </section> : null}
 
           {controls.failure ? <div className="card-control-error" role="alert"><p>{controls.failure.message}</p><button type="button" className="btn" disabled={mutationDisabled} onClick={() => runControl(controls.retry)}>Retry</button></div> : null}
+          {activePattern?.savedControlsRevision && <section aria-label="Saved pattern settings"><h3>Saved pattern settings</h3><p>{Object.entries(activePattern.savedControls || {}).map(([key, value]) => key === 'brightness' ? `Brightness ${Math.round(value * 100)}%` : key === 'speed' ? `Speed ${value}×` : `Hue shift ${value}`).join(' · ') || 'Original pattern settings'}</p><button type="button" className="btn" disabled={mutationDisabled} onClick={() => setReloadKey(key => key + 1)}>Refresh saved settings</button></section>}
           {safeControlsReady && <ClientPlayerLink disabled={mutationDisabled} host={host} cardId={link.card?.id} name={link.card?.name} />}
           <footer className="card-control-actions">
             <button type="button" className="btn" disabled={mutationDisabled} onClick={() => onAdvanced(activePattern)}>Advanced editing</button>
