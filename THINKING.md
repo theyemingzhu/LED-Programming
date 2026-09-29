@@ -616,3 +616,21 @@ writes remain enforced. Readiness proves the configured signing key matches the
 card's pin. The production gate verifies anonymous GET and a synthetic POST
 signature, without contacting a real card. A missing signing configuration is
 an incomplete rollout, not an owner-sign-in task.
+
+## 2026-09-29 — Mirror sets play as one zone, not a copy step on the card
+
+**Topic:** Adrian asked to mirror two strips, or two groups of strips, so a symmetrical piece plays the same thing on each side, 2-way or 4-way, whatever pins they use. Four surveys, one Fable synthesis, five builders.
+
+**Convergent answer:** A mirror set is a named group of strips stored once at piece level (`layout.mirrorSets`). It compiles to ONE card zone with one range per member. The card already renders every range of a zone from LED 1 on one shared clock (`renderZone` → `renderZoneSlice`, main.cpp:1732, re-read before dispatch), so every card in the field plays a mirror set today. No firmware change, no capability flag, no signed release. The Studio preview copies the lead's colours onto the other members (`lib/mirrorFrame.js`), and baked recordings carry that copy, because they play on the card 1:1.
+
+**Rejected paths, with reasons:**
+- **A copy step at the card's logical-to-physical choke point.** It would re-implement what zones already do. It would silently overwrite Art-Net, WLED and HTTP-stream pixels on the twins. And it needs a config key, a capability flag and a signed release.
+- **Stretching per-strip reflection points across strips.** Already rejected in `docs/music-reactive-plan.md:144`.
+- **Putting a strip in wiring twice.** Breaks the duplicate-source checks in scene expression.
+- **A flip switch on the set.** Direction comes from each strip's own LED 1, and the inspector offers "Flip to match" when a partner runs backwards. A per-range reverse in firmware stays a v2 option only if owners ask for it.
+
+**Also decided:** The Patterns geometry chip "Mirror" is renamed "Fold" (Adrian: "keep Fold"), so "Mirror" means one thing in the product.
+
+**Open tensions:**
+- Colour-journey recipes read `globalStart`, so a twin can drift in phase on the card. Measure on the bench card.
+- Strips with reflection points, or split across runs, cannot join a set in v1.
