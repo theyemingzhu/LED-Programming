@@ -11,6 +11,7 @@
 #include "LightweaverConnectivityPolicy.h"
 #include "LightweaverWifiJoinDiagnostics.h"
 #include "LightweaverKaleidoscope.h"
+#include "LightweaverZoneSymmetry.h"
 
 // Pure VALIDATION bound, not an allocation size. Every pixel-scaled buffer is
 // heap-allocated once at boot from the saved config's own totalPixels (see
@@ -188,6 +189,12 @@ struct LookZoneConfig {
   uint8_t breatheCycleSeconds = 9;
   bool customDrift = false;
   bool blackout = false;
+  // Symmetry sides (LightweaverZoneSymmetry.h): index into RuntimeConfig.zones
+  // this look zone copies, or LW_ZONE_NO_MIRROR; flags carry
+  // LW_ZONE_FLAG_MIRROR_FLIP. Both bytes sit in the struct's existing tail
+  // padding, so the 32x12 look-zone grid costs nothing extra per config copy.
+  uint8_t mirrorSource = LW_ZONE_NO_MIRROR;
+  uint8_t symmetryFlags = 0;
 };
 
 struct LookConfig {
@@ -290,6 +297,14 @@ struct ZoneConfig {
   String label;
   PixelRange ranges[LW_MAX_RANGES_PER_ZONE];
   uint8_t rangeCount = 0;
+  // Symmetry sides (LightweaverZoneSymmetry.h), as configured by the project:
+  // the zone index this zone mirrors (LW_ZONE_NO_MIRROR = plays its own
+  // pattern) and LW_ZONE_FLAG_CONTINUOUS / LW_ZONE_FLAG_MIRROR_FLIP bits.
+  // Declared after the one-byte rangeCount so both bytes land in the padding
+  // before patternId and ZoneConfig stays 96 bytes. Looks never write these;
+  // the renderer's active mirror state lives in main.cpp.
+  uint8_t mirrorSource = LW_ZONE_NO_MIRROR;
+  uint8_t symmetryFlags = 0;
   String patternId = "aurora";
   float brightness = 1.0f;
   float speed = 1.0f;
