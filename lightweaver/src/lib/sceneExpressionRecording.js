@@ -58,9 +58,9 @@ function sourceSnapshot(input) {
     wiring: input.wiring, compiledWiring: input.compiledWiring,
     sectionFamilies: input.sectionFamilies ?? [], layoutLayerGroups: input.layoutLayerGroups ?? [],
     palette: input.palette ?? null, hidden: input.hidden ?? {},
-    // Only present when the piece has mirror sets, so a recording of an
-    // unmirrored piece keeps the identity hash it always had.
-    ...(Array.isArray(input.mirrorSets) && input.mirrorSets.length ? { mirrorSets: input.mirrorSets } : {}),
+    // Only present when the piece has symmetry, so a recording of a piece
+    // without it keeps the identity hash it always had.
+    ...(input.symmetry ? { symmetry: input.symmetry, sidesMirrored: input.sidesMirrored !== false } : {}),
     render: { motionSmoothing: 'off', bpm: 120, gammaEnabled: false, gammaValue: 2.2 },
   });
   if (!Array.isArray(layout.strips) || !layout.strips.length || !Array.isArray(layout.wiring?.outputs)) {
@@ -163,14 +163,15 @@ function renderAt(prepared, frameIndex, stepContexts, clock) {
   clock.time = time;
   const playback = scenePlaybackAt(prepared.scene, time * 1000);
   const context = stepContexts.get(playback.stepId);
-  // A baked sequence plays on the card 1:1, and the card plays a mirror set as
-  // one zone, so the recording must carry the mirror: twins hold the lead's
-  // finished colours (mirror applied after the per-strip looks).
-  const mirrorSets = prepared.layout.mirrorSets || [];
+  // A baked sequence plays on the card 1:1, and the card plays a side as one
+  // continuous zone, so the recording must carry the symmetry: mirrored sides
+  // hold side 1's finished colours (mirror applied after the per-strip looks).
+  const symmetry = prepared.layout.symmetry || null;
+  const sidesMirrored = prepared.layout.sidesMirrored !== false;
   const frame = renderPixelFrame({ t: time, strips: context.strips, patternId: 'aurora',
     activeFn: context.renderer?.compiledFn || null, perStripPalettes: context.perStripPalettes,
-    perStripFns: context.renderer?.ok ? new Map() : context.perStripFns, mirrorSets });
-  applyPatternPreviewSegmentLooks(frame.pixels, context.segments, time * 1000, { mirrorSets });
+    perStripFns: context.renderer?.ok ? new Map() : context.perStripFns, symmetry, sidesMirrored });
+  applyPatternPreviewSegmentLooks(frame.pixels, context.segments, time * 1000, { symmetry, sidesMirrored });
   const mapped = mapSceneExpressionPreviewFrame({ framePixels: frame.pixels, segments: context.segments,
     compiledWiring: prepared.layout.compiledWiring });
   if (!mapped.ok) throw new TypeError(mapped.errors[0]?.message || 'Physical Flow frame mapping failed');
@@ -227,8 +228,16 @@ export async function verifySceneExpressionFlowBake(bakeResult, input = {}) {
       || bakeResult.sidecarJson !== canonical(sidecar)) return { ok: false, reason: 'recording-invalid' };
     if (sidecar.sceneSha256 !== await sha256(canonical(prepared.scene), input.signal)
       || canonical(sidecar.scene) !== canonical(prepared.scene)) return { ok: false, reason: 'recording-stale-scene' };
+    // A recording keeps the mirrored-or-own choice it was baked with, so a later
+    // flip of the live choice must not make it look stale. Symmetry itself (the
+    // sides and their strip order) is still compared exactly.
+    const layoutHashes = [await sha256(canonical(prepared.layout), input.signal)];
+    if (input.symmetry) {
+      const other = prepare({ ...input, fps: bakeResult?.sidecar?.fps, sidesMirrored: input.sidesMirrored === false });
+      layoutHashes.push(await sha256(canonical(other.layout), input.signal));
+    }
     if (canonical(sidecar.outputs) !== canonical(prepared.outputs)
-      || sidecar.layoutPhysicalOrderSha256 !== await sha256(canonical(prepared.layout), input.signal)) {
+      || !layoutHashes.includes(sidecar.layoutPhysicalOrderSha256)) {
       return { ok: false, reason: 'recording-stale-layout' };
     }
     return { ok: true };

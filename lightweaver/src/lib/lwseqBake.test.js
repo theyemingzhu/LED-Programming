@@ -479,3 +479,76 @@ test('color journey recording fails with its explicit Studio dependency before r
   assert.throws(() => estimatePatternLabBake(input), /Studio streaming/);
   await assert.rejects(bakePatternLabRecipe(input), /Studio streaming/);
 });
+
+// ── symmetry sides ────────────────────────────────────────────────────────
+// The card plays a side as one continuous zone and copies a mirrored side from
+// side 1, so a baked sequence has to carry that or it plays differently from
+// what the owner saw.
+
+const sideOf = (id, stripId) => ({ id, label: id, stripIds: [stripId] });
+const pairSymmetry = orientation => ({ fold: 2, orientation, sides: [sideOf('side-1', 'outer'), sideOf('side-2', 'inner')] });
+
+// physical order in the fixture, read off the bytes: physical 0..2 hold the
+// outer strip's source LEDs 0..2, physical 3 is the spacer, inner is 4..5.
+function physicalColours(baked, frame) {
+  const at = physical => [...baked.bytes.subarray(
+    LWSEQ_HEADER_BYTES + (frame * 6 + physical) * 3,
+    LWSEQ_HEADER_BYTES + (frame * 6 + physical) * 3 + 3,
+  )];
+  return { outer: [at(0), at(1), at(2)], inner: [at(4), at(5)] };
+}
+
+test('a baked sequence carries symmetry: the twin side holds side 1, stretched, reversed by the rule', async () => {
+  const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
+  for (const orientation of ['same', 'mirror']) {
+    const baked = await bakePatternLabRecipe({ ...fixture(), symmetry: pairSymmetry(orientation), sidesMirrored: true, fps: 1 });
+    assert.notDeepEqual(baked.bytes, plain.bytes, 'the bake really changed');
+    let differsWithoutCopy = false;
+    for (const frame of [0, 1, 37, 150, 299]) {
+      const { outer, inner } = physicalColours(baked, frame);
+      // 3 -> 2 stretch: the twin's ends land on the lead's ends
+      const expected = orientation === 'same' ? [outer[0], outer[2]] : [outer[2], outer[0]];
+      assert.deepEqual(inner, expected, `${orientation} frame ${frame}`);
+      const free = physicalColours(plain, frame);
+      if (JSON.stringify(free.inner) !== JSON.stringify(expected)) differsWithoutCopy = true;
+    }
+    assert.equal(differsWithoutCopy, true, 'control: without symmetry the twin does not already match');
+  }
+});
+
+test('own mode bakes each side independently and still hashes the choice', async () => {
+  const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
+  const own = await bakePatternLabRecipe({ ...fixture(), symmetry: pairSymmetry('mirror'), sidesMirrored: false, fps: 1 });
+  const mirrored = await bakePatternLabRecipe({ ...fixture(), symmetry: pairSymmetry('mirror'), sidesMirrored: true, fps: 1 });
+  assert.notEqual(own.sidecar.layoutPhysicalOrderSha256, mirrored.sidecar.layoutPhysicalOrderSha256);
+  assert.notEqual(own.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
+  // side 1 is the lead either way; only the twin differs between the two choices
+  assert.deepEqual(physicalColours(own, 5).outer, physicalColours(mirrored, 5).outer);
+  assert.notDeepEqual(physicalColours(own, 5).inner, physicalColours(mirrored, 5).inner);
+});
+
+test('a bake without symmetry keeps its bytes and its layout hash', async () => {
+  const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
+  const withNull = await bakePatternLabRecipe({ ...fixture(), symmetry: null, sidesMirrored: false, fps: 1 });
+  assert.deepEqual(withNull.bytes, plain.bytes);
+  assert.equal(withNull.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
+  assert.equal(withNull.sidecarJson, plain.sidecarJson);
+});
+
+test('layout hash candidates: one without symmetry, both choices with it', async () => {
+  const { patternLabBakeLayoutHashCandidates } = await import('./lwseqBake.js');
+  const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
+  const mirrored = await bakePatternLabRecipe({ ...fixture(), symmetry: pairSymmetry('mirror'), sidesMirrored: true, fps: 1 });
+  const none = await patternLabBakeLayoutHashCandidates({ ...fixture(), fps: 1 });
+  assert.deepEqual(none, [plain.sidecar.layoutPhysicalOrderSha256]);
+  // a project whose live choice has since flipped to "own" still recognises the recording
+  const later = await patternLabBakeLayoutHashCandidates({ ...fixture(), symmetry: pairSymmetry('mirror'), sidesMirrored: false, fps: 1 });
+  assert.equal(later.length, 2);
+  assert.ok(later.includes(mirrored.sidecar.layoutPhysicalOrderSha256));
+  // but a different set of sides is not recognised
+  const swapped = await patternLabBakeLayoutHashCandidates({
+    ...fixture(), fps: 1, sidesMirrored: false,
+    symmetry: { fold: 2, orientation: 'mirror', sides: [sideOf('side-1', 'inner'), sideOf('side-2', 'outer')] },
+  });
+  assert.ok(!swapped.includes(mirrored.sidecar.layoutPhysicalOrderSha256));
+});
