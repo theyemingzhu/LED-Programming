@@ -39,7 +39,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
       };
       (window as any).__LW_LOAD_UPDATE_RELEASE_FOR_TEST__ = async () => ({ manifest: release });
     }
-    const state = { outcome: selectedOutcome, commands: [] as any[], flashWrites: [] as any[], opens: 0, closes: 0, provisionCount: 0, generation: 0, resetCount: 0 };
+    const state = { outcome: selectedOutcome, commands: [] as any[], flashWrites: [] as any[], opens: 0, closes: 0, disconnects: 0, provisionCount: 0, generation: 0, resetCount: 0 };
     (window as any).__usbWifiFixture = state;
     let controller: ReadableStreamDefaultController<Uint8Array>;
     let pending = '';
@@ -142,7 +142,7 @@ async function openFreshInstaller(page: Page, request: any, outcome: Outcome = '
           },
           after: async () => { state.resetCount += 1; },
         },
-        transport: { device: port, disconnect: async () => true },
+        transport: { device: port, disconnect: async () => { state.disconnects += 1; return true; } },
       },
       hardware: { cardId, chipName: 'ESP32-S3', chipDescription: 'ESP32-S3', flashSize: '16MB', flashBytes: 16 * 1024 * 1024 },
     });
@@ -163,6 +163,38 @@ async function install(page: Page) {
   await page.getByRole('button', { name: 'Erase card and install Lightweaver', exact: true }).click();
 }
 async function serialCommands(page: Page) { return page.evaluate(() => (window as any).__usbWifiFixture.commands); }
+
+test('factory install stops before erase when its setup recovery step cannot be saved, then retries', async ({ page, request }) => {
+  await openFreshInstaller(page, request, 'connected');
+  await page.evaluate(() => {
+    const original = Object.getOwnPropertyDescriptor(window, 'localStorage')!;
+    const storage = window.localStorage;
+    (window as any).__blockCommissioningStorage = true;
+    (window as any).__commissioningStorageReads = 0;
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        if ((window as any).__blockCommissioningStorage && new Error().stack?.includes('writeCardCommissioning')) {
+          (window as any).__commissioningStorageReads += 1;
+          return null;
+        }
+        return original.get?.call(window) || storage;
+      },
+    });
+  });
+  await install(page);
+  await expect(page.getByRole('alert')).toContainText('could not save the card setup recovery step');
+  expect(await page.evaluate(() => (window as any).__commissioningStorageReads)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([]);
+  expect(await page.evaluate(() => (window as any).__usbWifiFixture.disconnects)).toBeGreaterThan(0);
+  await page.screenshot({ path: '/tmp/lightweaver-install-recovery-storage-blocker.png', fullPage: true });
+
+  await page.evaluate(() => { (window as any).__blockCommissioningStorage = false; });
+  await page.getByRole('button', { name: 'Find connected card', exact: true }).click();
+  await expect(page.getByTestId('install-card-identity')).toContainText(CARD_ID);
+  await install(page);
+  await expect.poll(() => page.evaluate(() => (window as any).__usbWifiFixture.flashWrites)).toEqual([{ eraseAll: true, addresses: [0] }]);
+});
 
 test('Find confirms a current blank card by runtime hello and opens USB Wi-Fi without reinstalling', async ({ page, request }) => {
   await openFreshInstaller(page, request, 'connected', { currentInstalled: true });

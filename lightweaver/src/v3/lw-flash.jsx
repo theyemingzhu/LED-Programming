@@ -2152,7 +2152,9 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             previousBootId: cardLink?.card?.id === cardState.hardware.cardId ? cardLink?.readiness?.bootId : '',
           },
         });
-        await writeCardCommissioning(started);
+        if (!await writeCardCommissioning(started)) {
+          throw new Error('Studio could not save the card setup recovery step. Make browser storage available, then find this exact card and retry. Nothing was written');
+        }
         setCommissioning(started);
         // Keep the granted Web Serial port: flashFirmwareAndRelease closes the
         // esptool transport, but the permission survives, so the same port can

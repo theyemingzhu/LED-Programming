@@ -166,6 +166,91 @@ test('a card project reconstructed via "Use this card\'s project" shows the part
   await expect(page.getByTestId('projects-association')).toHaveText('Card copy (partial — no artwork)');
 });
 
+test('delayed reconstruction keeps a newer project edit and remains retryable', async ({ page }) => {
+  const status = legacyReconstructStatus();
+  let delayReadbacks = true;
+  let pendingReadbackCount = 0;
+  let releaseReadbacks;
+  const heldReadbacks = new Promise(resolve => { releaseReadbacks = resolve; });
+  let signalReadbacksStarted;
+  const readbacksStarted = new Promise(resolve => { signalReadbacksStarted = resolve; });
+  await page.route('http://lightweaver.local/**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/status' || url.pathname === '/api/firmware-info') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(status) });
+    }
+    if (url.pathname === '/api/wiring/status') {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, state: 'known-good', hasCandidate: false, outputs: status.outputs }) });
+    }
+    if (['/api/patterns', '/api/zones'].includes(url.pathname)) {
+      if (delayReadbacks) {
+        pendingReadbackCount += 1;
+        if (pendingReadbackCount === 2) signalReadbacksStarted();
+        await heldReadbacks;
+      }
+      if (url.pathname === '/api/patterns') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+          currentId: 'aurora', currentIndex: 0,
+          patterns: [{ id: 'aurora', label: 'Aurora', mode: 'procedural', zones: [
+            { id: 'strip-1', label: 'Output 1', patternId: 'aurora' },
+          ] }],
+        }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        startupPatternId: 'aurora', zones: [{ id: 'strip-1', label: 'Output 1', patternId: 'aurora', brightness: 1 }],
+      }) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' });
+  });
+  await page.addInitScript(({ cardId, firmwareVersion, buildId }) => {
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({ version: 1, id: cardId, firmwareVersion, buildId }));
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+  }, status);
+
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(async () => {
+    const { createDefaultProject } = await import('/src/lib/projectModel.js');
+    const project = createDefaultProject();
+    project.id = 'my-other-piece';
+    project.name = 'My other piece';
+    project.layout.starterPending = false;
+    project.portRoles = [{ pin: 5, role: 'strip', pixelCount: 30, controlKind: '' }];
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await dispatchCardLink(page, [{
+    type: 'direct-status', connected: true, host: 'lightweaver.local',
+    card: { id: CARD_ID, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
+    expectedCard: { id: CARD_ID, firmwareVersion: status.firmwareVersion, buildId: status.buildId },
+    readiness: status,
+  }]);
+
+  const adopt = page.getByTestId('setup-start-from-card');
+  await expect(adopt).toBeVisible({ timeout: 10000 });
+  await adopt.click();
+  await readbacksStarted;
+  await page.getByTestId('setup-project-name-edit').click();
+  const nameInput = page.getByTestId('setup-project-name-input');
+  await nameInput.fill('Work edited during readback');
+  await nameInput.press('Enter');
+  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Work edited during readback');
+
+  releaseReadbacks();
+  await expect(page.getByTestId('setup-adoption-error'))
+    .toHaveText('Studio kept the open project, so nothing was adopted from the card.');
+  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Work edited during readback');
+  await page.screenshot({ path: '/tmp/lightweaver-extra-hour/adoption-stale-edit-preserved.png', fullPage: true });
+
+  // A fresh explicit retry captures the edited workspace's current lifecycle
+  // marker. Starting dirty is still an intentional adoption choice.
+  delayReadbacks = false;
+  await adopt.click();
+  await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id))
+    .toBe(PROJECT_ID);
+});
+
 test('an autosaved project carrying a card-partial origin still shows the partial label after reload', async ({ page }) => {
   const seeded = JSON.stringify({
     version: 3,

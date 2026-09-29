@@ -109,7 +109,7 @@ function makeDeps({
   const deps = {
     context,
     getLatestContext: () => latest,
-    getSharedCardLink: () => ({}),
+    getSharedCardLink: () => latest.cardLink,
     isCardLinkConnected: () => true,
     io: {
       readCardProjectEvidence: async () => projectEvidence(),
@@ -357,6 +357,143 @@ test('reconstruct strategy rebuilds looks, playlist, and startup state from the 
   assert.equal(origin.kind, 'card-partial');
   assert.equal(origin.cardId, CARD_ID);
   assert.equal(typeof origin.at, 'number');
+});
+
+function deferredReply() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('reconstruct ignores a delayed status after card, boot, or new-project context changes', async () => {
+  const changes = [
+    ['card switch', latest => {
+      latest.cardLink = cardLinkState({
+        host: 'other-card.local',
+        card: { id: 'other-card', firmwareVersion: FIRMWARE_VERSION, buildId: BUILD_ID },
+        validatedBootId: 'other-boot',
+        readiness: statusEnvelope({ cardId: 'other-card', bootId: 'other-boot' }),
+      });
+    }],
+    ['card reboot', latest => {
+      latest.cardLink = cardLinkState({
+        validatedBootId: 'boot-after-restart',
+        readiness: statusEnvelope({ bootId: 'boot-after-restart' }),
+      });
+    }],
+    ['new project', latest => {
+      latest.currentProject = project('new-work', 'New work');
+      latest.projectGeneration += 1;
+    }],
+  ];
+  for (const [label, changeContext] of changes) {
+    const { deps, calls, latest } = makeDeps();
+    const statusReply = deferredReply();
+    let statusPublished = 0;
+    deps.io.readCardStatusEnvelope = () => statusReply.promise;
+    const run = guardedResolutionRun(deps, {
+      strategy: 'reconstruct',
+      isCurrent: () => true,
+      projectMarker: { generation: 7, revision: 4 },
+      isProjectLifecycleMarkerCurrent: () => true,
+      onStatus: () => { statusPublished += 1; },
+    });
+
+    changeContext(latest);
+    statusReply.resolve(statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] }));
+
+    const result = await run;
+    assert.equal(result.ok, false, label);
+    assert.equal(result.reason, 'cancelled', label);
+    assert.equal(statusPublished, 0, label);
+    assert.equal(calls.appliedParts.length, 0, label);
+  }
+});
+
+test('reconstruct does not apply delayed patterns and zones after an edit to the open project', async () => {
+  const { deps, calls } = makeDeps();
+  const patternsReply = deferredReply();
+  const zonesReply = deferredReply();
+  let lifecycleMarkerCurrent = true;
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+  deps.io.readCardPatternsFromCard = () => patternsReply.promise;
+  deps.io.readCardZonesFromCard = () => zonesReply.promise;
+  const run = guardedResolutionRun(deps, {
+    strategy: 'reconstruct',
+    isCurrent: () => true,
+    projectMarker: { generation: 7, revision: 4 },
+    isProjectLifecycleMarkerCurrent: () => lifecycleMarkerCurrent,
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  lifecycleMarkerCurrent = false; // e.g. a name/look edit after the owner started adoption
+  patternsReply.resolve({ patterns: [] });
+  zonesReply.resolve({ zones: [] });
+
+  const result = await run;
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'cancelled');
+  assert.equal(calls.appliedParts.length, 0);
+});
+
+test('reconstruct drops readback when the same card reports a different installed project', async () => {
+  const { deps, calls, latest } = makeDeps();
+  const patternsReply = deferredReply();
+  const zonesReply = deferredReply();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+  deps.io.readCardPatternsFromCard = () => patternsReply.promise;
+  deps.io.readCardZonesFromCard = () => zonesReply.promise;
+  const run = guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  await new Promise(resolve => setImmediate(resolve));
+  latest.cardLink = cardLinkState({
+    readiness: statusEnvelope({ projectId: 'newly-installed-project', projectRevision: 4 }),
+  });
+  patternsReply.resolve({ patterns: [] });
+  zonesReply.resolve({ zones: [] });
+
+  const result = await run;
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'cancelled');
+  assert.equal(calls.appliedParts.length, 0);
+});
+
+test('reconstruct rejects a disconnected shared link after its card identity is cleared', async () => {
+  const { deps, calls } = makeDeps();
+  deps.getSharedCardLink = () => ({ state: 'disconnected', card: null, readiness: null });
+  deps.isCardLinkConnected = link => link.state === 'connected-direct' || link.state === 'connected-bridge';
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'cancelled');
+  assert.equal(calls.appliedParts.length, 0);
+});
+
+test('reconstruct drops readback after its owning Setup surface unmounts', async () => {
+  const { deps, calls } = makeDeps();
+  const patternsReply = deferredReply();
+  const zonesReply = deferredReply();
+  let active = true;
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({
+    outputs: [{ id: 'out1', pin: 18, pixels: 41 }],
+  });
+  deps.io.readCardPatternsFromCard = () => patternsReply.promise;
+  deps.io.readCardZonesFromCard = () => zonesReply.promise;
+  const run = guardedResolutionRun(deps, { strategy: 'reconstruct', isCurrent: () => active });
+  await new Promise(resolve => setImmediate(resolve));
+  active = false;
+  patternsReply.resolve({ patterns: [] });
+  zonesReply.resolve({ zones: [] });
+
+  const result = await run;
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'cancelled');
+  assert.equal(calls.appliedParts.length, 0);
 });
 
 test('card reconstruction preserves saved section appearances and pattern ids through repeated exports', () => {
