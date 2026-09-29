@@ -86,6 +86,15 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
       if (outcome === 'usb-verifying') await new Promise(() => {});
       return { ok: true };
     };
+    if (mode === 'usb') {
+      // These update tests still use the real Find connected card transition:
+      // the fake card must be explicitly inspected before the write CTA exists.
+      (window as any).__LW_FIND_INSTALL_CARD_FOR_TEST__ = async () => ({
+        connection: { loader: {}, transport: { device: {}, disconnect: async () => true } },
+        hardware: { cardId, chipName: 'ESP32-S3', flashSize: '16MB', flashBytes: 16 * 1024 * 1024,
+          source: 'usb-flash', firmwareVersion: '1.1.1', buildId: oldBuild, buildNumber: 1198 },
+      });
+    }
     (window as any).__LW_UPDATER_ARGUMENTS__ = [];
     (window as any).__LW_CREATE_FIRMWARE_UPDATER_FOR_TEST__ = ({ onProgress, softwareGrant, physicalConfirmation }: any) => {
       (window as any).__LW_UPDATER_ARGUMENTS__.push({ softwareGrant, physicalConfirmation });
@@ -994,6 +1003,9 @@ test('preserving update: an already healthy exact card clears stale restart evid
 test('preserving update: older card offers one USB bootstrap and separates factory reset', async ({ page }) => {
   await openPreservingFixture(page, 'usb');
   const panel = page.getByTestId('preserving-update-panel');
+  await expect(panel.getByTestId('preserving-usb-inspection-required')).toContainText('Select and verify this exact USB card');
+  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Find connected card' }).click();
   await expect(panel.getByRole('button', { name: 'Update once over USB' })).toBeVisible();
   await expect(panel).toContainText('Future updates use Wi-Fi');
   await expect(panel).not.toContainText(/erase all|flash address|choose.*file/i);
@@ -1006,6 +1018,7 @@ test('preserving update: older card offers one USB bootstrap and separates facto
 test('preserving update: completed USB send visibly acknowledges readback verification', async ({ page }) => {
   await openPreservingFixture(page, 'usb', 'usb-verifying');
   const panel = page.getByTestId('preserving-update-panel');
+  await page.getByRole('button', { name: 'Find connected card' }).click();
   await panel.getByRole('button', { name: 'Update once over USB' }).click();
   await expect(panel).not.toContainText('Briefly press BOOT');
   await panel.getByRole('checkbox', { name: /selected USB card.*lw-b0fe81f61b44/i }).check();
@@ -1018,6 +1031,7 @@ test('preserving update: completed USB send visibly acknowledges readback verifi
 test('preserving update: USB reset ends with an actionable bounded reconnect failure', async ({ page }) => {
   await openPreservingFixture(page, 'usb', 'usb-timeout');
   const panel = page.getByTestId('preserving-update-panel');
+  await page.getByRole('button', { name: 'Find connected card' }).click();
   await panel.getByRole('button', { name: 'Update once over USB' }).click();
   await panel.getByRole('checkbox', { name: /selected USB card.*lw-b0fe81f61b44/i }).check();
   await panel.getByRole('button', { name: 'Start preserving update' }).click();
@@ -1183,7 +1197,9 @@ test('[factory-ota-direct-unavailable] a bridge-proven factory card keeps the pr
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await panel.getByTestId('preserving-update-usb-after-error').scrollIntoViewIfNeeded();
   await panel.getByTestId('preserving-update-usb-after-error').click();
-  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toBeVisible();
+  await expect(panel.getByTestId('preserving-usb-inspection-required')).toContainText('Select and verify this exact USB card');
+  await expect(page.getByRole('button', { name: 'Find connected card' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toHaveCount(0);
 });
 
 test('[F34-one-door] a connected, capable card opens straight on the preserving Wi-Fi update panel, never the USB eraser', async ({ page }) => {
@@ -1326,7 +1342,9 @@ test('[F40-usb-door] a card that cannot take a Wi-Fi update yet leads with the o
 
   await primary.click();
   await expect(panel.getByRole('heading', { name: 'On this card' })).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toBeVisible();
+  await expect(panel.getByTestId('preserving-usb-inspection-required')).toContainText('Select and verify this exact USB card');
+  await expect(page.getByRole('button', { name: 'Find connected card' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Update once over USB' })).toHaveCount(0);
 });
 
 test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and still offers the USB door', async ({ page }) => {
