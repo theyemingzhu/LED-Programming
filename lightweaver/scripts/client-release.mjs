@@ -48,7 +48,18 @@ export async function verifyClientOrigin(origin, root, { fetchImpl = fetch } = {
   const base = new URL(origin);
   if (base.protocol !== 'https:') throw new Error('Client live proof requires HTTPS');
   async function get(path, noStore = false) {
-    const response = await fetchImpl(new URL(`/${path}`, base), { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(20000) });
+    const options = () => ({ cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(20000) });
+    let response = await fetchImpl(new URL(`/${path}`, base), options());
+    // Cloudflare Pages canonicalizes /index.html to /. Permit only that exact
+    // permanent redirect; never follow redirects for markers or build assets.
+    if (path === 'index.html' && [301, 308].includes(response.status)) {
+      const location = response.headers.get('location');
+      const canonical = new URL('/', base);
+      if (!location || new URL(location, new URL('/index.html', base)).href !== canonical.href) {
+        throw new Error('Client live index.html: unexpected redirect');
+      }
+      response = await fetchImpl(canonical, options());
+    }
     if (response.status !== 200) throw new Error(`Client live ${path}: HTTP ${response.status}`);
     if (noStore && !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(response.headers.get('cache-control') || '')) {
       throw new Error(`Client live ${path} must have Cache-Control: no-store`);

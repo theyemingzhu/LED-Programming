@@ -8,28 +8,26 @@ Prove records belong in their session folders.
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Current delivery — card-first Studio resume — 2026-09-29
-Owner: primary manager in card-first resume chat. State: committed locally; verified; not pushed or deployed.
-Artifact: docs/superpowers/plans/2026-09-29-card-first-resume.md;
-evidence: docs/bench-sessions/2026-09-29-card-first-resume.md.
-Checkout: /Users/adrianrasmussen/.codex/worktrees/card-first-resume/led;
-branch codex/card-first-resume, base96703c09.
-Working: installed controls independent of draft; card facts and retained last-seen
-facts; explicit adoption; brightness patch-only; uncertain control readback without
-replay; safe per-card navigation; pixel/GPIO save comparison; scoped physical checks.
-Evidence: integrated checkpoint3019/3019 unit + production build PASS; final
-bounded session/readiness tests35 and new session regression6/6 PASS; final build
-PASS after phone order and disconnected fixes. Browser21 distinct cases PASS
-(6 new,4 handoff,7 adoption,4 workspace), plus strengthened last-seen41 regression.
-Desktop/phone screenshots inspected; installed-control action above phone fold.
-Screens: /Users/adrianrasmussen/.codex/visualizations/2026/09/29/01a0ed2d-0a91-75b3-bc00-d4ce014bd0ea/card-first-resume-phone.png
-Logs: /private/tmp/lightweaver-card-first-checkpoint.log and
-/private/tmp/lightweaver-card-first-final-build.log.
-Limits: browser fixtures, not hardware visual proof. Real card baseline read-only:
-lw-b0fe81f61b44 build2160,41GPIO18, provisionalSetup:false. No firmware/card write.
-Portable per-domain physical confirmation absent on current firmware; represented
-honestly as unknown. No deployment requested; no merge/push/flash performed.
-Next: preserve local candidate; release only on owner ship request. At real-device
-acceptance, re-correlate card/boot and verify navigation leaves playback unchanged.
+Owner: primary manager. State: release authorized; integrated candidate preparing.
+PR379: https://github.com/theyemingzhu/LED-Programming/pull/379.
+Branch codex/card-first-resume; checkout /Users/adrianrasmussen/.codex/worktrees/card-first-resume/led.
+App commit415368a9 integrated signed-main9f920a04. Working behavior and proof:
+installed controls independent of draft, explicit adoption, exact/last-seen card
+facts, per-card navigation, patch-only brightness, unknown-write reconciliation,
+known-output save comparison and scoped checks.3019unit checkpoint,21browser
+cases, final focused regressions and production build passed; screen inspected.
+Release preflight found prior main deploy failed on client/index.html308→/.
+Bounded fix accepts only permanent exact same-origin root canonicalisation;
+byte/length proof remains mandatory.12 affected tests red then green.
+Durable runner planned at .git/lightweaver-releases/candidates/pr379/publish.py;
+state.json records immutable head/base/tree, each required launch gate stage,
+then exact PR merge and existing independent live-proof observer. No AI polling.
+The full release gate must pass before merge; changed head/main or failed check
+blocks publication. Existing production observer serializes live delivery.
+Physical card baseline read-only:lw-b0fe81f61b44, firmware2160,41GPIO18,
+provisionalSetup:false. No real card write/flash or physical playback claim.
+Next: verify persisted runner starts, hand off publishing in background; report
+shipped only after exact live artifacts and Studio/firmware build numbers prove it.
 
 ## Current delivery — client player — 2026-09-29
 Owner: this manager. State: limited-save follow-up verified; commit/push to PR375 next.
