@@ -43,31 +43,14 @@ test('live proof rejects cached marker, altered assets, root routing and missing
   const fetchImpl = fetcher(root);
   await assert.rejects(verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: url => url.pathname === '/' ? new Response('Studio') : fetchImpl(url) }), /root differs/);
 });
-
-test('live proof accepts only permanent index canonicalization and still proves exact bytes', async t => {
+test('live proof reads index.html through the root, as Cloudflare Pages serves it', async t => {
+  // Pages answers /index.html with a 308 to /, and the proof fetches with
+  // redirect: 'error', so asking for /index.html directly can never pass.
   const root = await fixture(t);
   const serve = fetcher(root);
-  for (const [status, location] of [[308, '/'], [301, '/'], [308, 'https://light.mandalacodes.com/']]) {
-    await verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: (url, options) => {
-      assert.equal(options.redirect, 'manual');
-      return url.pathname === '/index.html'
-        ? new Response(null, { status, headers: { location } }) : serve(url);
-    } });
-  }
-  for (const [status, location] of [[302, '/'], [308, 'https://other.example/'], [308, '/login'], [308, '/?old=1'], [308, '/#old'], [308, 'https://user:pass@light.mandalacodes.com/']]) {
-    await assert.rejects(verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: url =>
-      url.pathname === '/index.html' ? new Response(null, { status, headers: { location } }) : serve(url)
-    }), /HTTP|redirect/);
-  }
-  await assert.rejects(verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: url => {
-    if (url.pathname === '/index.html') return new Response(null, { status: 308, headers: { location: '/' } });
-    if (url.pathname === '/') return new Response('old client');
+  const pages = async url => {
+    if (url.pathname === '/index.html') throw new TypeError('fetch failed: unexpected redirect');
     return serve(url);
-  } }), /bytes differ/);
-  for (const path of ['/', '/assets/client.js', '/client-release.json', '/client-build-graph.json']) {
-    await assert.rejects(verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: url => {
-      if (url.pathname === '/index.html' || url.pathname === path) return new Response(null, { status: 308, headers: { location: '/' } });
-      return serve(url);
-    } }), /HTTP|redirect/);
-  }
+  };
+  await verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: pages });
 });
