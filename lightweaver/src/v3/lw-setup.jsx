@@ -1291,7 +1291,7 @@ export function SetupScreen({
         {/* The temporary bench setup is named by the status row's Project cell
             ("Temporary setup — not installed") and by the still-to-do list;
             a banner saying it a third time was cut with the rest. */}
-        {savedMatchLoadOffer && !installedHome && (
+        {savedMatchLoadOffer && !installedHome && !sceneDraftReview && (
           <section className="card-support-panel lw-setup-banner">
             <h2>A saved project matches this exact card</h2>
             <p>Load the matching project instead of replaying blank-card setup.</p>
@@ -1303,7 +1303,7 @@ export function SetupScreen({
         {/* The connect phase renders these same two actions when its active
             task IS the unresolved card project, so the banner stands down
             rather than showing a second copy of them. */}
-        {!installedHome && resolution.kind === 'none' && !installationMatch && cardState.read && cardState.status?.projectId && journey.taskId !== 'load-matching-project' && (
+        {!installedHome && !sceneDraftReview && resolution.kind === 'none' && !installationMatch && cardState.read && cardState.status?.projectId && journey.taskId !== 'load-matching-project' && (
           <section className="card-support-panel lw-setup-banner">
             <h2>Resolve this card&rsquo;s project</h2>
             <div className="lw-setup-banner-actions">

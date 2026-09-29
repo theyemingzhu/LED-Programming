@@ -457,6 +457,7 @@ test('global Save to card preserves scene playback after a later edit', async ({
   await page.getByRole('button', { name: 'Card', exact: true }).click();
   await page.getByTestId('installed-draft-review').click();
   await expect(page.getByTestId('card-save-summary')).toBeVisible();
+  await expect(page.getByTestId('setup-overwrite-card')).toHaveCount(0);
   expect(card.configWrites).toBe(1);
   await page.getByRole('button', { name: 'Save to card', exact: true }).click();
   await expect.poll(() => card.configWrites).toBe(2);
