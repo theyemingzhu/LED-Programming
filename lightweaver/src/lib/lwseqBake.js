@@ -286,7 +286,7 @@ function validateOfflineAudio(audioLanes, recipe, durationSeconds, lastBakeTime)
   return audioLanes;
 }
 
-function physicalHashProjection({ strips, wiring, physicalPixels, outputs, groups, hidden, render }) {
+function physicalHashProjection({ strips, wiring, physicalPixels, outputs, groups, hidden, render, mirrorSets }) {
   return {
     version: 1,
     strips,
@@ -305,6 +305,8 @@ function physicalHashProjection({ strips, wiring, physicalPixels, outputs, group
     },
     groups: Array.isArray(groups) ? groups : [],
     hidden: hidden && typeof hidden === 'object' ? hidden : {},
+    // Only present for a mirrored piece, so an unmirrored bake keeps its hash.
+    ...(mirrorSets?.length ? { mirrorSets } : {}),
     render,
   };
 }
@@ -317,6 +319,7 @@ function prepareBake(input = {}) {
   assertPlainDataTree(input.strips, 'Pattern Lab bake strips');
   assertPlainDataTree(input.wiring, 'Pattern Lab bake wiring');
   if (input.groups !== undefined) assertPlainDataTree(input.groups, 'Pattern Lab bake groups');
+  if (input.mirrorSets !== undefined) assertPlainDataTree(input.mirrorSets, 'Pattern Lab bake mirror sets');
   if (input.hidden !== undefined) assertPlainDataTree(input.hidden, 'Pattern Lab bake hidden map');
   if (input.render !== undefined) assertPlainDataTree(input.render, 'Pattern Lab bake render settings');
   if (input.audioLanes !== undefined) assertPlainDataTree(input.audioLanes, 'Pattern Lab bake audio lanes');
@@ -389,7 +392,11 @@ function prepareBake(input = {}) {
     symSettings: input.render?.symSettings == null ? null : clonePlainData(input.render.symSettings),
   };
   assertPatternLabJsonSafe(render);
+  // A baked sequence plays on the card 1:1 and the card plays a mirror set as one
+  // zone, so the bake must carry the mirror (twins hold their lead's colours).
+  const mirrorSets = Array.isArray(input.mirrorSets) ? clonePlainData(input.mirrorSets) : [];
   const layoutProjection = physicalHashProjection({
+    mirrorSets,
     strips,
     wiring: input.wiring,
     physicalPixels,
@@ -414,6 +421,7 @@ function prepareBake(input = {}) {
     storage,
     audioLanes,
     render,
+    mirrorSets,
     layoutProjection,
   };
 }
@@ -487,6 +495,7 @@ function renderDirectFrame(prepared, time) {
     gammaLUT: buildGammaLut(prepared.render.gammaEnabled, prepared.render.gammaValue),
     symSettings: prepared.render.symSettings,
     audioBands: audioBandsAt(prepared.audioLanes, time),
+    mirrorSets: prepared.mirrorSets,
   }).pixels;
 }
 
@@ -554,6 +563,7 @@ function createWorkerRenderer(prepared, signal) {
         gammaValue: prepared.render.gammaValue,
         symSettings: prepared.render.symSettings,
         audioBands: null,
+        mirrorSets: prepared.mirrorSets,
       });
       const snapshot = clonePatternLabWorkerGeometryForTransfer(compact);
       const reply = await send('initialize', { geometry: snapshot.geometry, generation }, snapshot.transfer);

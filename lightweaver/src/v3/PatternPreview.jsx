@@ -7,7 +7,7 @@ import {
   resolvePatternParams,
 } from '../lib/frameEngine.js';
 import { smoothPixelFrame } from '../lib/motionSmoothing.js';
-import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
+import { applyPatternPreviewSegmentLooks, expandPatternPreviewMirrorSegments } from '../lib/patternPiecePreview.js';
 import {
   activeLedCoreAlpha,
   activeLedCoronaAlpha,
@@ -109,7 +109,7 @@ function renderFrame(canvas, t, p) {
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, symOverlay, audioBands, blendAmount, blendType,
     perStripFns, perStripPalettes, vb, heat, motionSmoothing, previousPixels, frameDt,
-    stripPhases, dimmedStripIds, compactRibbon,
+    stripPhases, dimmedStripIds, compactRibbon, mirrorSets,
   } = p;
 
   // ViewBox → canvas pixel mapping (letterbox, maintain aspect ratio)
@@ -124,9 +124,11 @@ function renderFrame(canvas, t, p) {
     blendAmount, blendType, params: resolvedParams, paletteNorm, bpm,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, audioBands, normBounds, perStripFns, perStripPalettes, patternParamsById,
-    stripPhases,
+    stripPhases, mirrorSets: mirrorSets || [],
   });
-  applyPatternPreviewSegmentLooks(frame.pixels, visibleStrips, t * 1000);
+  // The mirror pass runs again inside this call, after the looks: a per-strip
+  // look would otherwise recolour a twin that already holds its lead's colours.
+  applyPatternPreviewSegmentLooks(frame.pixels, visibleStrips, t * 1000, { mirrorSets: mirrorSets || [] });
   const framePixels = smoothPixelFrame(frame.pixels, previousPixels, {
     mode: motionSmoothing,
     dt: frameDt,
@@ -414,6 +416,8 @@ export function PatternPreview({
   dimmedStripIds = null,
   onStripSelect = null,
   testId = undefined,
+  // layout.mirrorSets: twins show their lead's colours (see lib/mirrorFrame.js).
+  mirrorSets = null,
 }) {
   const canvasRef = useRef(null);
   const rafRef    = useRef(0);
@@ -455,30 +459,42 @@ export function PatternPreview({
 
   const useRealStrips = Array.isArray(propStrips);
 
+  // A mirror-set segment arrives as one strip holding every member's pixels.
+  // Split it into one strip per member so each plays from its own LED 1 and the
+  // twins can copy the lead (same ids the mirror sets below refer to).
+  const mirrorExpanded = useMemo(
+    () => useRealStrips
+      ? expandPatternPreviewMirrorSegments(propStrips, mirrorSets)
+      : { strips: [], mirrorSets: mirrorSets || [] },
+    [propStrips, useRealStrips, mirrorSets],
+  );
+  const stripSource = mirrorExpanded.strips;
+  const effectiveMirrorSets = mirrorExpanded.mirrorSets;
+
   const perStripFns = useMemo(() => {
     if (!useRealStrips) return new Map();
     const map = new Map();
-    for (const s of (propStrips || [])) {
+    for (const s of (stripSource || [])) {
       if (s.patternId && !map.has(s.patternId)) {
         const fn = compilePattern(s.patternId);
         if (fn) map.set(s.patternId, fn);
       }
     }
     return map;
-  }, [propStrips, useRealStrips]);
+  }, [stripSource, useRealStrips]);
 
   const perStripPalettes = useMemo(() => {
     if (!useRealStrips) return new Map();
-    return new Map((propStrips || [])
+    return new Map((stripSource || [])
       .filter(strip => Array.isArray(strip.palette) && strip.palette.length)
       .map(strip => [strip.id, normalizePalette(strip.palette)]));
-  }, [propStrips, useRealStrips]);
+  }, [stripSource, useRealStrips]);
 
   const realStripData = useMemo(() => {
     if (!useRealStrips) return [];
-    return normalizeProjectRenderStrips(propStrips, { includeHidden: true })
+    return normalizeProjectRenderStrips(stripSource, { includeHidden: true })
       .map(strip => ({ ...strip, spacing: calcSpacing(strip.pts) }));
-  }, [propStrips, useRealStrips]);
+  }, [stripSource, useRealStrips]);
 
   const demoStripData = useMemo(() => {
     if (useRealStrips) return [];
@@ -547,7 +563,7 @@ export function PatternPreview({
     stripPhases: stripPhasesRef.current,
     gammaLUT, symSettings, symOverlay, audioBands, vb, heat,
     motionSmoothing, targetFps, controlledTime,
-    onFrame, onFps, onTick, dimmedStripIds,
+    onFrame, onFps, onTick, dimmedStripIds, mirrorSets: effectiveMirrorSets,
   };
 
   // DPR-aware canvas sizing (fallback to offsetWidth for headless/zero-layout envs)

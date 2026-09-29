@@ -16,6 +16,7 @@ export function cardProjectFingerprint(project) {
         ? normalizePatchBoard(project.layout.patchBoard, strips)
         : null,
       wiring: project?.layout?.wiring || null,
+      mirrorSets: project?.layout?.mirrorSets || [],
       standaloneController: project?.devices?.standaloneController || {},
     }).config.projectFingerprint;
   } catch {

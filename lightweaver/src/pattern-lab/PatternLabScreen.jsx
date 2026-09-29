@@ -852,7 +852,9 @@ export default function PatternLabScreen({
     audioBands: project.audioBands,
     motionSmoothing: project.motionSmoothing,
     sectionTargets: project.sectionTargets,
+    mirrorSets: project.layoutMirrorSets,
   }), [
+    project.layoutMirrorSets,
     project.strips,
     project.viewBox,
     project.svgText,
@@ -1801,6 +1803,7 @@ export default function PatternLabScreen({
       recipe: draft,
       strips: project.strips,
       groups: project.layoutLayerGroups,
+      mirrorSets: project.layoutMirrorSets,
       wiring: project.wiring,
       compiledWiring: project.compiledWiring,
       sectionTargets: project.sectionTargets,
@@ -1834,6 +1837,7 @@ export default function PatternLabScreen({
       controller: project.standaloneController,
       strips: project.strips,
       groups: project.layoutLayerGroups,
+      mirrorSets: project.layoutMirrorSets,
       wiring: project.wiring,
       compiledWiring: project.compiledWiring,
       sectionTargets: project.sectionTargets,
@@ -1905,6 +1909,7 @@ export default function PatternLabScreen({
       compiledWiring: current.compiledWiring,
       sectionFamilies: current.sectionFamilies,
       layoutLayerGroups: current.layoutLayerGroups,
+      mirrorSets: current.layoutMirrorSets,
       palette: current.palette,
       hidden: current.hidden,
     };

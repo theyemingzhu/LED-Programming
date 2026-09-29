@@ -15,6 +15,15 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Check mirror sets on the real gallery card: a 2-way set plays as one mirror image on the wall _(band: you-required)_ _(effort: quick)_ → Plan: [mirror-sets.md](lightweaver/todo/plans/mirror-sets.md)
+  Also watch colour-journey looks on a mirrored set: the card feeds those patterns each strip's position, so the partner may run slightly out of phase.
+
+- [ ] Get the 14 long-red Layout browser specs green, or decide each is stale _(band: agent-runnable)_ _(effort: deep)_
+  Measured 2026-09-29: the same 14 fail on main b4b90ad5 and on the mirror-sets branch (connected-section-editor x3, layout-inspector-density x3, layout-multi-gpio x2, layout-section-overview, layout-selected-strip-editor, layout-strip-identity x2, layout-strip-split x2). None are in the PR lanes.
+
+- [ ] Let a mirrored strip use reflection points, and add a way to remove reflection points _(band: agent-runnable)_ _(effort: moderate)_
+  Mirror sets v1 exclude strips with reflection points, and the Layout inspector has no control to remove them once added.
+
 - [ ] Decide whether the two unmerged round-2 branches still earn a place on the rebuilt Card Home _(band: you-required)_ _(effort: quick)_
   `archive/round2-f41-one-primary` (fold the finished ladder to one line, one primary at a time) and `archive/round2-night-batch-5` (that branch plus its test edits) were built before Card Home rounds 6 and 7 landed on main and no longer merge; main now has one install control and one Open Patterns. `round2/f39b-tab-lock` (only one Studio tab may connect) is parked on your call. Delete all three if the live Card Home already reads as one primary.
 

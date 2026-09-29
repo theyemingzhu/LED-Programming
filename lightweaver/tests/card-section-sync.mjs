@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { buildCardRuntimePackageFromProject } from '../src/lib/cardRuntimeProject.js';
+import { createDefaultPatchBoard } from '../src/lib/patchBoard.js';
+import { makeDefaultWiring } from '../src/lib/wiringModel.js';
 import {
   ensureCardSectionsForPreview,
   missingCardZoneIds,
@@ -17,6 +20,24 @@ const runtimePackage = {
 };
 
 assert.deepEqual(runtimeZoneIds(runtimePackage), ['outer', 'inner']);
+
+// A mirror set reaches the card as ONE zone named by the set, so the sections
+// Studio asks the card for are the set's id, never its members'.
+{
+  const strips = [
+    { id: 'left', name: 'Left', pixelCount: 4 },
+    { id: 'right', name: 'Right', pixelCount: 4 },
+  ];
+  const mirrored = buildCardRuntimePackageFromProject({
+    strips,
+    wiring: makeDefaultWiring(strips),
+    patchBoard: createDefaultPatchBoard(strips),
+    mirrorSets: [{ id: 'mirror-1', name: 'Wings', members: ['left', 'right'] }],
+  });
+  assert.deepEqual(runtimeZoneIds(mirrored), ['mirror-1']);
+  assert.deepEqual(mirrored.config.zones[0].ranges, [{ start: 0, count: 4 }, { start: 4, count: 4 }]);
+  assert.deepEqual(missingCardZoneIds({ zones: [{ id: 'left' }, { id: 'right' }] }, ['mirror-1']), ['mirror-1']);
+}
 assert.deepEqual(
   missingCardZoneIds({ zones: [{ id: 'outer' }] }, ['outer', 'inner', 'inner']),
   ['inner'],

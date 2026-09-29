@@ -51,6 +51,7 @@ export async function assertRecordedMediaCurrentLayout(asset, project, bytes) {
       scene: sidecar.scene, strips: project.strips, patchBoard: project.patchBoard,
       wiring: project.wiring, compiledWiring: project.compiledWiring,
       sectionFamilies: project.sectionFamilies, layoutLayerGroups: project.layoutLayerGroups,
+      mirrorSets: project.mirrorSets,
       palette: project.palette, hidden: project.hidden, fps: sidecar.fps,
     });
     if (!result.ok) throw new Error(`Recording “${asset.label}” no longer matches this project's artwork or wiring (${result.reason}). Record it again.`);
@@ -59,7 +60,7 @@ export async function assertRecordedMediaCurrentLayout(asset, project, bytes) {
   if (asset.manifest?.format === 'lightweaver-lwseq-sidecar') {
     const physicalHash = await hashPatternLabBakePhysicalOrder({
       recipe: asset.manifest.recipe, strips: project.strips,
-      groups: project.layoutLayerGroups, wiring: project.wiring,
+      groups: project.layoutLayerGroups, mirrorSets: project.mirrorSets, wiring: project.wiring,
       compiledWiring: project.compiledWiring, sectionTargets: project.sectionTargets,
       hidden: project.hidden, fps: asset.manifest.fps,
       render: Object.fromEntries([

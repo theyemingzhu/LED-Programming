@@ -70,6 +70,8 @@ Lift shared math from `mandalaEngine.js` into `mandalaMath.js`. Range-refactor t
 
 **Critically: symmetry is stored at piece level, never on the group.** Four motifs share one six-fold. Storing fold on the group would force migrating every saved project later.
 
+**Mirror sets already exist (2026-09-29).** Owners pair strips explicitly in the Layout inspector (More actions, Mirror with…), stored at piece level as `layout.mirrorSets` (`lightweaver/src/lib/mirrorSets.js`). When the Symmetry mode confirms a fold, it should write the matching strips into `layout.mirrorSets` rather than keep a second record. Plan: `lightweaver/todo/plans/mirror-sets.md`.
+
 ### Phase E — The kaleidoscope screen · ~18h
 Draw gains a **Symmetry** mode. Artwork and strips recede to 40%; three controls appear: a **centre handle** (on phone riding 60px above the fingertip on a stem, so the finger never hides it), a **fold stepper** (1·2·3·4·5·6·8·12), and a **rotation ring**.
 

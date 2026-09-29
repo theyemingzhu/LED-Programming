@@ -11,6 +11,7 @@ import { createSceneExpressionPreviewRenderer } from './sceneExpressionFlow.js';
 import { renderPixelFrame, normalizePalette } from './frameEngine.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 import { mapSceneExpressionPreviewFrame } from './sceneExpressionFrame.js';
+import { mirrorSourceIndex } from './mirrorFrame.js';
 
 const strips = [
   { id: 'a', pixelCount: 2, pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
@@ -107,4 +108,52 @@ test('recording rejects more than 4096 physical LEDs before rendering', async ()
   } };
   assert.throws(() => estimateSceneExpressionFlowRecording(oversized), /1 to 4096 physical LEDs/);
   await assert.rejects(() => bakeSceneExpressionFlow(oversized), /1 to 4096 physical LEDs/);
+});
+
+// A baked sequence plays on the card 1:1 and the card plays a mirror set as one
+// zone, so the recording itself must carry the mirror: the twin's LEDs hold the
+// lead's colours in every frame, whatever the scene says about the twin.
+function bakedPhysicalColours(baked, wiringForMap, frame) {
+  const pixelCount = wiringForMap.pixels.length;
+  const byStrip = new Map();
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const offset = 64 + (frame * pixelCount + pixel) * 3;
+    const hex = [...baked.bytes.slice(offset, offset + 3)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const { stripId, sourceLed } = wiringForMap.pixels[pixel];
+    if (stripId == null) continue;
+    if (!byStrip.has(stripId)) byStrip.set(stripId, []);
+    byStrip.get(stripId)[sourceLed] = hex;
+  }
+  return byStrip;
+}
+
+test('recording carries the mirror: the twin holds the lead\'s colours in every frame', async () => {
+  const mirrorSets = [{ id: 'mirror-1', name: 'Pair', members: ['b', 'a'] }];
+  const mirroredWiring = compileWiring({ wiring, strips, mirrorSets });
+  assert.equal(mirroredWiring.ok, true);
+  const mirroredContext = { ...context, compiledWiring: mirroredWiring, mirrorSets };
+
+  const baked = await bakeSceneExpressionFlow(mirroredContext);
+  const plain = await bakeSceneExpressionFlow({ ...context, compiledWiring: mirroredWiring });
+  let plainTwinDiffers = false;
+  for (let frame = 0; frame < baked.sidecar.frameCount; frame += 1) {
+    const colours = bakedPhysicalColours(baked, mirroredWiring, frame);
+    const lead = colours.get('b');
+    const twin = colours.get('a');
+    for (let led = 0; led < twin.length; led += 1) {
+      assert.equal(twin[led], lead[mirrorSourceIndex(led, twin.length, lead.length)],
+        `frame ${frame} twin LED ${led} matches the lead`);
+    }
+    // Control: without mirror sets the same bake lets the twin differ, so the
+    // loop above proves the mirror and not a scene that happens to match.
+    const free = bakedPhysicalColours(plain, mirroredWiring, frame);
+    const freeTwin = free.get('a');
+    const freeLead = free.get('b');
+    if (freeTwin.some((hex, led) => hex !== freeLead[mirrorSourceIndex(led, freeTwin.length, freeLead.length)])) {
+      plainTwinDiffers = true;
+    }
+  }
+  assert.equal(plainTwinDiffers, true);
+  assert.equal((await verifySceneExpressionFlowBake(baked, mirroredContext)).ok, true);
+  assert.equal((await verifySceneExpressionFlowBake(baked, { ...mirroredContext, mirrorSets: [] })).reason, 'recording-stale-layout');
 });

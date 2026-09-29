@@ -19,9 +19,10 @@ export function deriveSectionTargets({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
+  mirrorSets = [],
   defaultLook = {},
 } = {}) {
-  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips }) : null);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, mirrorSets }) : null);
   if (compiled?.ok) {
     const fallbackLook = normalizeSectionVisualLook(defaultLook);
     // A target carries TWO identities and they are not interchangeable:

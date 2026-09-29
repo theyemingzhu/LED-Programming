@@ -508,6 +508,7 @@ export async function createPatternLabHandoff({
   projectLibraryOnly = false,
   strips = [],
   groups = [],
+  mirrorSets = [],
   wiring = null,
   compiledWiring = null,
   hidden = {},
@@ -639,7 +640,7 @@ export async function createPatternLabHandoff({
     if (!bakeResult) return blocked('bake-required', 'Bake the complete sequence before adding it to the project.');
     try {
       const verified = await validateBakeResult(bakeResult, normalized, {
-        strips, groups, wiring, compiledWiring, hidden, sectionTargets,
+        strips, groups, mirrorSets, wiring, compiledWiring, hidden, sectionTargets,
         render: render || { symSettings }, audioLanes: normalized.offlineAudio,
       });
       const id = replacing?.id || uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));

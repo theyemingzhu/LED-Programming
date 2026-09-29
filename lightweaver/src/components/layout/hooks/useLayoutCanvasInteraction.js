@@ -31,6 +31,9 @@ import { useProject } from '../../../state/ProjectContext.jsx';
 import { normalizeProjectRenderStrips } from '../../../lib/renderGeometry.js';
 import { buildPatternPreviewSegments, resolvePreviewPatternId } from '../../../lib/patternPiecePreview.js';
 import { applyLookColorModifiers } from '../../../lib/previewColorModifiers.js';
+import { mirrorSourceIndex } from '../../../lib/mirrorFrame.js';
+
+const EMPTY_MIRROR_SETS = [];
 import { REAL_PATTERN_BY_ID } from '../../../v3/v3-data.js';
 
 // Wire drawing — deep-linked via `#screen=layout&mode=draw`.
@@ -70,7 +73,8 @@ function measureSelectedPathDecoration(pathData) {
 // visualisation memo the <svg> tree renders. Cross-hook mutators arrive via
 // `deps` from the composer (no hook reaches into another's internals).
 export function useLayoutCanvasInteraction(ctx, deps) {
-  const { wiring, compiledWiring, patchBoard, sectionTargets } = useProject();
+  const { wiring, compiledWiring, patchBoard, sectionTargets, layoutMirrorSets } = useProject();
+  const mirrorSets = layoutMirrorSets || EMPTY_MIRROR_SETS;
   const {
     strips, setStrips,
     hidden, setHidden,
@@ -661,10 +665,30 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       paletteForPattern: patternId => REAL_PATTERN_BY_ID.get(patternId)?.pal,
     }).filter(segment => segment.pixels.some(pixel => !hidden[pixel.stripId]));
   }, [strips, patchBoard, wiring, compiledWiring, sectionTargets, hidden]);
+  // A mirror set compiles to one card zone whose ranges each play the pattern
+  // from their own LED 1. The Layout preview does the same: it renders only
+  // the set's first visible member and copies those colours onto the others.
+  const mirrorRenderLeads = useMemo(() => new Map(mirrorSets.map(set => [
+    set.id,
+    set.members.find(id => !hidden[id] && strips.some(strip => strip.id === id)) || null,
+  ])), [mirrorSets, hidden, strips]);
+  const renderSegments = useMemo(() => {
+    if (!mirrorSets.length) return previewSegments;
+    const setByStrip = new Map(mirrorSets.flatMap(set => set.members.map(id => [id, set])));
+    return previewSegments.map(segment => {
+      const ids = new Set(segment.pixels.map(pixel => pixel.stripId));
+      const set = setByStrip.get(segment.pixels[0]?.stripId);
+      if (!set || ids.size < 2 || [...ids].some(id => setByStrip.get(id) !== set)) return segment;
+      const leadId = mirrorRenderLeads.get(set.id);
+      const pixels = segment.pixels.filter(pixel => pixel.stripId === leadId)
+        .map((pixel, index) => ({ ...pixel, index }));
+      return pixels.length ? { ...segment, pixels } : segment;
+    });
+  }, [previewSegments, mirrorSets, mirrorRenderLeads]);
   const frameStrips = useMemo(() => normalizeProjectRenderStrips(
-    previewSegments.length ? previewSegments : strips, { hidden }),
-  [previewSegments, strips, hidden]);
-  const segmentById = useMemo(() => new Map(previewSegments.map(segment => [segment.id, segment])), [previewSegments]);
+    renderSegments.length ? renderSegments : strips, { hidden }),
+  [renderSegments, strips, hidden]);
+  const segmentById = useMemo(() => new Map(renderSegments.map(segment => [segment.id, segment])), [renderSegments]);
   const perStripFns = useMemo(() => {
     const fns = new Map();
     for (const strip of frameStrips) {
@@ -701,8 +725,11 @@ export function useLayoutCanvasInteraction(ctx, deps) {
       audioBands: null,
       perStripFns,
       perStripPalettes,
+      // Without section segments the frame strips ARE the project strips, so
+      // the frame engine mirrors them itself; segment frames are copied below.
+      mirrorSets: renderSegments.length ? [] : mirrorSets,
     });
-    if (!previewSegments.length) return new Map(frame.stripFrames.map(stripFrame => [stripFrame.id, stripFrame]));
+    if (!renderSegments.length) return new Map(frame.stripFrames.map(stripFrame => [stripFrame.id, stripFrame]));
     const byStrip = new Map(strips.map(strip => [strip.id, {
       id: strip.id,
       // A newly duplicated strip can appear before its derived wiring zone.
@@ -720,6 +747,17 @@ export function useLayoutCanvasInteraction(ctx, deps) {
         if (target && Number.isInteger(pixel.sourceLed)) target.leds[pixel.sourceLed] = stripFrame.leds[ledIndex];
       });
     });
+    for (const set of mirrorSets) {
+      const lead = byStrip.get(mirrorRenderLeads.get(set.id));
+      if (!lead?.leds.length) continue;
+      for (const memberId of set.members) {
+        const twin = byStrip.get(memberId);
+        if (!twin || twin === lead) continue;
+        for (let index = 0; index < twin.leds.length; index += 1) {
+          twin.leds[index] = lead.leds[mirrorSourceIndex(index, twin.leds.length, lead.leds.length)];
+        }
+      }
+    }
     for (const stripFrame of byStrip.values()) {
       const active = stripFrame.leds.filter(Boolean);
       if (!active.length) continue;
@@ -729,7 +767,8 @@ export function useLayoutCanvasInteraction(ctx, deps) {
     }
     return byStrip;
   }, [
-    strips, frameStrips, previewSegments, segmentById, perStripFns, perStripPalettes, activeFn, paletteNorm, gammaLUT,
+    strips, frameStrips, renderSegments, segmentById, perStripFns, perStripPalettes, activeFn, paletteNorm, gammaLUT,
+    mirrorSets, mirrorRenderLeads,
     showLight, previewTime,
     activePatternId,
     patternParams,

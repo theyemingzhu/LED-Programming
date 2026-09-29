@@ -1,6 +1,7 @@
 import { CARD_HARDWARE_CAPABILITIES } from './cardRuntimeContract.js';
 import { compileCardKaleidoscopeMappings } from './cardKaleidoscope.js';
 import { validateWiring } from './wiringModel.js';
+import { defaultMirrorSetName, findMirrorSetStructureErrors, normalizeMirrorSets } from './mirrorSetRules.js';
 
 const stripCount = strip => Math.max(0, Math.trunc(Number(strip?.pixelCount ?? strip?.pixels?.length ?? strip?.leds ?? 0)));
 
@@ -63,7 +64,13 @@ function coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById) {
   return { ...zone, ranges };
 }
 
-export function compileWiring({ wiring, strips = [], groups = [], capabilities = CARD_HARDWARE_CAPABILITIES } = {}) {
+// A mirror set compiles to ONE zone whose ranges are the members' ranges in
+// member order. The card already renders every range of a zone from index 0 on
+// one clock, so several ranges in one zone play as identical, synchronized
+// copies. Sets that break a rule are left out (each member then keeps its own
+// zone) and reported as a `mirror-set-ignored` warning rather than blocking the
+// whole project.
+export function compileWiring({ wiring, strips = [], groups = [], mirrorSets = [], capabilities = CARD_HARDWARE_CAPABILITIES } = {}) {
   const validation = validateWiring(wiring, strips, capabilities);
   const model = validation.wiring;
   const errors = [...validation.errors];
@@ -79,6 +86,13 @@ export function compileWiring({ wiring, strips = [], groups = [], capabilities =
   }
   const stripsById = new Map(strips.map(strip => [strip.id, strip]));
   const zoneByStripId = new Map();
+  const requestedMirrorSets = normalizeMirrorSets(mirrorSets);
+  const rejectedMirrorSets = new Map();
+  for (const error of findMirrorSetStructureErrors(requestedMirrorSets, strips, groups)) {
+    if (!rejectedMirrorSets.has(error.setId)) rejectedMirrorSets.set(error.setId, error.message);
+  }
+  const appliedMirrorSets = requestedMirrorSets.filter(set => !rejectedMirrorSets.has(set.id));
+  const mirrorOrderByStripId = new Map();
   for (const group of groups || []) {
     const id = String(group.groupId || group.id || '');
     if (!id) continue;
@@ -86,6 +100,15 @@ export function compileWiring({ wiring, strips = [], groups = [], capabilities =
       const stripId = typeof member === 'string' ? member : member?.stripId;
       if (stripId) zoneByStripId.set(stripId, { id, label: String(group.name || group.label || id) });
     }
+  }
+  // Mirror sets claim their members after layer groups; validation already
+  // refused any member that is also in a group.
+  for (const set of appliedMirrorSets) {
+    const identity = { id: set.id, label: set.name || defaultMirrorSetName(set, strips) };
+    set.members.forEach((stripId, index) => {
+      zoneByStripId.set(stripId, identity);
+      mirrorOrderByStripId.set(stripId, index);
+    });
   }
   const outputs = [];
   const runs = [];
@@ -147,14 +170,55 @@ export function compileWiring({ wiring, strips = [], groups = [], capabilities =
   }
 
   if (pixels.length > capabilities.maxPixels) errors.push({ code: 'pixel-limit', message: `Compiled wiring uses ${pixels.length} pixels; hardware supports ${capabilities.maxPixels}.` });
+  // Mirror zones list their ranges in member order (the lead first), whatever
+  // order the wiring visits the strips in. Coalescing only ever joins ranges of
+  // the same strip, so two neighbouring mirrored strips stay two ranges.
+  const mirrorSetIds = new Set(appliedMirrorSets.map(set => set.id));
+  for (const zone of zoneMap.values()) {
+    if (!mirrorSetIds.has(zone.id)) continue;
+    const orderOf = range => mirrorOrderByStripId.get(pixels[range.start]?.stripId) ?? Number.MAX_SAFE_INTEGER;
+    zone.ranges = zone.ranges
+      .map((range, index) => ({ range, index }))
+      .sort((a, b) => orderOf(a.range) - orderOf(b.range) || a.index - b.index)
+      .map(entry => entry.range);
+  }
   const zones = [...zoneMap.values()].map(zone => (
     coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById)
   ));
+  const brokenMirrorSets = new Map();
+  for (const set of appliedMirrorSets) {
+    const zone = zones.find(candidate => candidate.id === set.id);
+    const rangesByMember = new Map(set.members.map(stripId => [stripId, 0]));
+    for (const range of zone?.ranges || []) {
+      const stripId = pixels[range.start]?.stripId;
+      if (rangesByMember.has(stripId)) rangesByMember.set(stripId, rangesByMember.get(stripId) + 1);
+    }
+    const split = [...rangesByMember.entries()].find(([, count]) => count !== 1);
+    if (split) {
+      const name = stripsById.get(split[0])?.name || split[0];
+      brokenMirrorSets.set(set.id, `Join ${name}'s wiring into one run first.`);
+    } else if ((zone?.ranges || []).length > capabilities.maxRangesPerZone) {
+      brokenMirrorSets.set(set.id, 'The mirrored strips need too many wiring runs for one card section.');
+    }
+  }
+  if (brokenMirrorSets.size) {
+    const retry = compileWiring({
+      wiring, strips, groups, capabilities,
+      mirrorSets: appliedMirrorSets.filter(set => !brokenMirrorSets.has(set.id)),
+    });
+    for (const [setId, message] of [...rejectedMirrorSets, ...brokenMirrorSets]) {
+      retry.warnings.push({ code: 'mirror-set-ignored', setId, message });
+    }
+    return retry;
+  }
+  for (const [setId, message] of rejectedMirrorSets) {
+    warnings.push({ code: 'mirror-set-ignored', setId, message });
+  }
   if (zones.length > capabilities.maxZones) errors.push({ code: 'zone-limit', message: `Compiled wiring uses ${zones.length} zones.` });
   for (const zone of zones) if (zone.ranges.length > capabilities.maxRangesPerZone) errors.push({ code: 'zone-range-limit', zoneId: zone.id, message: `Zone ${zone.id} has too many ranges.` });
   const kaleidoscope = compileCardKaleidoscopeMappings({ strips, pixels, zones });
   errors.push(...kaleidoscope.errors);
   const ok = errors.length === 0;
   const sendReady = ok && model.locked && model.verified && model.runs.every(run => run.verified) && model.migrationWarnings.length === 0;
-  return { ok, sendReady, errors, warnings, totalPixels: pixels.length, physicalOutputCount: outputs.length, outputs, runs, pixels, zones, groups, kaleidoscopeMappings: kaleidoscope.mappings };
+  return { ok, sendReady, errors, warnings, totalPixels: pixels.length, physicalOutputCount: outputs.length, outputs, runs, pixels, zones, groups, mirrorSets: appliedMirrorSets, kaleidoscopeMappings: kaleidoscope.mappings };
 }
