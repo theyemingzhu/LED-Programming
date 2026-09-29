@@ -27,6 +27,8 @@ import {
   moveStripToSide,
   reorderSide,
   setSymmetryFold,
+  setSymmetryOrientation,
+  sideFlipped,
   validateSymmetry,
 } from '../../../lib/pieceSymmetry.js';
 import { suggestSymmetry } from '../../../lib/symmetrySuggest.js';
@@ -141,7 +143,7 @@ const FOLD_CHOICES = [
 
 // Symmetry heads the strip list. Choosing 2 or 4 sides places every strip
 // with Studio's best guess; the list below then shows the sides.
-function SymmetryControl({ symmetry, problems, onChooseFold, onChooseOrientation }) {
+function SymmetryControl({ symmetry, problems, onChooseFold }) {
   const fold = symmetry?.fold || 0;
   return (
     <section className="la-symmetry" data-testid="layout-symmetry" aria-label="Symmetry">
@@ -154,17 +156,6 @@ function SymmetryControl({ symmetry, problems, onChooseFold, onChooseOrientation
                   onClick={() => onChooseFold(choice.fold)}>{choice.label}</button>
         ))}
       </div>
-      {fold === 4 && <>
-        <span className="la-symmetry-k" id="layout-symmetry-runs-label">Each side runs</span>
-        <div className="la-symmetry-seg is-pair" role="group" aria-labelledby="layout-symmetry-runs-label">
-          {[['same', 'The same way round'], ['mirror', 'As a mirror image']].map(([value, label]) => (
-            <button key={value} type="button" className="btn"
-                    aria-pressed={symmetry.orientation === value}
-                    data-testid={`layout-symmetry-runs-${value}`}
-                    onClick={() => onChooseOrientation(value)}>{label}</button>
-          ))}
-        </div>
-      </>}
       {fold > 0 && <p className="la-symmetry-note">
         {fold === 2 ? 'Patterns can play the two sides as mirror images.' : 'Patterns can play all four sides alike.'}
       </p>}
@@ -654,8 +645,11 @@ export function DrawModePanel({
     const suggestion = suggestSymmetry(strips.filter(strip => !sideBlockReason(strip)), fold, { centre: artworkCentre });
     commitSymmetry({ ...setSymmetryFold(symmetry, fold, strips, suggestion), orientation: suggestion.orientation });
   };
-  const chooseSymmetryOrientation = orientation => {
-    if (symmetry && symmetry.orientation !== orientation) commitSymmetry({ ...symmetry, orientation });
+  // Every other side (2, and 4 on four sides) either mirrors side 1 or runs
+  // the same way round; one Flip on any of them turns them over together.
+  const flipSymmetry = () => {
+    if (!symmetry) return;
+    commitSymmetry(setSymmetryOrientation(symmetry, symmetry.orientation === 'mirror' ? 'same' : 'mirror'));
   };
   // Move strips into a side at `index` (the end when omitted), or on their
   // own when `sideId` is null. Several strips keep their order.
@@ -1508,8 +1502,7 @@ export function DrawModePanel({
             {(strips.length >= 2 || symmetry) && (
               <div ref={symmetryRef}>
                 <SymmetryControl symmetry={symmetry} problems={symmetryProblems}
-                                 onChooseFold={chooseSymmetryFold}
-                                 onChooseOrientation={chooseSymmetryOrientation}/>
+                                 onChooseFold={chooseSymmetryFold}/>
               </div>
             )}
             {patchBoard?.dataWireCountNeedsReview && (
@@ -1607,6 +1600,22 @@ export function DrawModePanel({
                   </div>}
                   {sideView && <div className="la-side-head">
                     <span className="la-side-name">{group.side?.label || 'On its own'}</span>
+                    {group.kind === 'side' && group.sideIndex % 2 === 1 && (() => {
+                      const flipped = sideFlipped(symmetry, group.sideIndex);
+                      const turning = symmetry.sides.filter((_, index) => index % 2 === 1).map(side => side.label);
+                      const names = turning.join(' and ');
+                      const source = symmetry.sides[0]?.label || 'Side 1';
+                      return <>
+                        <span className="la-side-runs" data-testid={`side-runs-${group.side.id}`}>
+                          {flipped ? 'Mirror image' : 'Same direction'}
+                        </span>
+                        <button type="button" className="btn la-side-flip"
+                                data-testid={`side-flip-${group.side.id}`}
+                                aria-label={`Flip ${names}`}
+                                title={`${names} ${turning.length > 1 ? 'play' : 'plays'} ${flipped ? 'as a mirror image of' : 'the same way round as'} ${source}. Flip turns ${turning.length > 1 ? 'them' : 'it'} over.`}
+                                onClick={flipSymmetry}>Flip</button>
+                      </>;
+                    })()}
                     <span className="la-side-meta">{groupLeds} LEDs</span>
                   </div>}
                   {group.kind === 'side' && !groupedStrips.length && <p className="la-side-empty">No strips yet. Drag one here.</p>}
