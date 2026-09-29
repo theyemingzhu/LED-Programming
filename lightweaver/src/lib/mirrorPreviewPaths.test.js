@@ -10,6 +10,9 @@ import { applyPatternPreviewSegmentLooks, buildPatternPreviewSegments } from './
 import { renderPixelFrame } from './frameEngine.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 import { mirrorSourceIndex } from './mirrorFrame.js';
+import { compileWiring } from './wiringCompiler.js';
+import { makeDefaultWiring } from './wiringModel.js';
+import { deriveSectionTargets } from './sectionLookModel.js';
 import { compactPatternLabWorkerGeometry } from './patternLabWorkerProtocol.js';
 
 const strip = (id, count, x0, y) => ({
@@ -151,6 +154,37 @@ test('an unequal twin is stretched from side 1, ends to ends', () => {
   }
   assert.deepEqual(pixels[6], pixels[0]);
   assert.deepEqual(pixels[10], pixels[5]);
+});
+
+test('with the real compiler and targets: a mirrored piece previews as side 1 plus its reversed copy', () => {
+  const { strips } = compiledFixture();
+  const sym = symmetry('mirror');
+  const wiring = makeDefaultWiring(strips);
+  const compiledWiring = compileWiring({ wiring, strips, symmetry: sym });
+  assert.equal(compiledWiring.ok, true);
+  assert.equal(compiledWiring.zones.find(zone => zone.id === 'side-1')?.continuous, true);
+
+  const build = sidesMirrored => {
+    const targets = deriveSectionTargets({ strips, wiring, compiledWiring, symmetry: sym, sidesMirrored })
+      .filter(target => target.kind === 'section')
+      .map(target => ({ ...target, look: { ...target.look, patternId: 'rainbow' } }));
+    return buildPatternPreviewSegments({
+      strips, wiring, compiledWiring, symmetry: sym, targets,
+      resolvePatternId: id => id, paletteForPattern: () => undefined,
+    });
+  };
+
+  const mirrored = build(true);
+  assert.deepEqual(mirrored.map(segment => segment.id), ['side-1', 'side-2']);
+  assert.equal(mirrored[1].mirrorOf, 'side-1');
+  assert.equal(mirrored[1].mirrorFlip, true);
+  const pixels = render(mirrored);
+  assert.deepEqual(pixels.slice(8), pixels.slice(0, 8).reverse());
+
+  const own = build(false);
+  assert.deepEqual(own.map(segment => segment.id), ['side-1', 'side-2']);
+  assert.ok(own.every(segment => segment.mirrorOf === undefined));
+  assert.ok(own.every(segment => segment.run?.length === 8), 'each side is its own run');
 });
 
 // ── PatternPreview: segment looks must not make twins differ ──────────────
