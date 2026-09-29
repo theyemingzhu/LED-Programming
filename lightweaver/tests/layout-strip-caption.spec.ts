@@ -50,13 +50,6 @@ test('hide sits on the strip row and does not close the open strip', async ({ pa
   await expect(page.locator('.la-strip-detail')).toHaveCount(1);
 });
 
-test('split joins duplicate and remove — the row with width to spare', async ({ page }) => {
-  await oneStrip(page);
-  await expect(page.locator('.la-strip-menu-popover').locator('[data-testid^="split-strip-"]')).toHaveCount(1);
-  // The count row had 10px spare and the button needs 36 — putting it there
-  // pushed the size control past the panel edge.
-  await expect(page.locator('.la-strip-physical-row [data-testid^="split-strip-"]')).toHaveCount(0);
-});
 
 // Every control added to this panel competes for one fixed width. This is the
 // assertion that catches the next one that does not fit.

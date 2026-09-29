@@ -5,7 +5,6 @@ import {
   ChevronDownIcon,
   DragHandleIcon,
   GroupIcon,
-  SplitIcon,
   TbIcon,
   InlineRename,
 } from '../shared/InspectorPrimitives.jsx';
@@ -209,7 +208,7 @@ export function DrawModePanel({
     getLedCount, stripDensity, setStripPhysical, setStripCount,
     setTotalLedCount, setStripCountAndCalibrate,
     // strips
-    removeStrip, reverseStrip, renameStrip, duplicateStrip, splitStripInTwo,
+    removeStrip, reverseStrip, renameStrip, duplicateStrip,
     divideStripIntoSections, separateExistingRuns, addConnectedSplit,
     mergeConnectedSection, correctConnectedSectionCount, setConnectedFamilyDensity, detachSectionFamily,
     addPrimitiveStrip, scaleStrip,
@@ -581,20 +580,6 @@ export function DrawModePanel({
     seamLed: null,
     verified: false,
   });
-
-  // Why Split is unavailable, said the way the owner would say it. Empty
-  // string means the control is live.
-  const splitBlockedReason = (strip, alreadySplit) => {
-    if (wiring.locked) return 'Wiring is locked — unlock it in Test & Install.';
-    if (alreadySplit) return 'Already divided into runs in Advanced wiring.';
-    if (!planStripSplitCounts(strip?.pixelCount)) return 'Needs at least 2 LEDs to split.';
-    return '';
-  };
-  // "21 LEDs + 20 LEDs" — the answer to "what will I get?" before clicking.
-  const splitPreview = strip => {
-    const counts = planStripSplitCounts(strip?.pixelCount);
-    return counts ? `${counts.head} LEDs + ${counts.tail} LEDs` : '';
-  };
 
   // Division is an occasional action; retain each strip's draft while the
   // disclosure is closed, but never carry an open editor into a new selection.
@@ -1721,17 +1706,6 @@ export function DrawModePanel({
                                       });
                                     }}>
                               Reflection points
-                            </button>
-                            <button className="btn" data-testid={`split-strip-${s.id}`}
-                                    aria-label={`Split ${s.name} into two strips`}
-                                    data-caption={splitBlockedReason(s, isSplit)
-                                      || `Split into two strips — ${splitPreview(s)}`}
-                                    title={splitBlockedReason(s, isSplit)
-                                      || `Split into two strips — ${splitPreview(s)}`}
-                                    disabled={!!connectedFamily || !!splitBlockedReason(s, isSplit)}
-                                    onClick={() => splitStripInTwo(s.id)}>
-                              <SplitIcon/>
-                              Split into separate strips
                             </button>
 
                           {(() => {
