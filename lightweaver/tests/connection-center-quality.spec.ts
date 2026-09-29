@@ -691,6 +691,51 @@ test('desktop Bridge launch persists the project and commissioning flow without 
   await peer.close();
 });
 
+test('Bridge launch stops when the commissioning recovery record cannot be saved', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: undefined });
+    (window as any).__lwBridgeUrls = [];
+    (window as any).__denyCommissioningStorage = false;
+    (window as any).__armCommissioningStorageFailure = false;
+    const realStorage = window.localStorage;
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get: () => {
+        if (!(window as any).__denyCommissioningStorage) return realStorage;
+        // Fail only the commissioning write. Bridge launch storage recovers
+        // immediately after this single lookup so the RED test distinguishes
+        // the ignored false result from a general storage outage.
+        (window as any).__denyCommissioningStorage = false;
+        return { getItem: (key: string) => realStorage.getItem(key), removeItem: (key: string) => realStorage.removeItem(key) };
+      },
+    });
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      originalSetItem.call(this, key, value);
+      if ((window as any).__armCommissioningStorageFailure && key === 'lw_project_active_record_v1') {
+        (window as any).__denyCommissioningStorage = true;
+        (window as any).__armCommissioningStorageFailure = false;
+      }
+    };
+    (window as any).__LW_BRIDGE_NAVIGATE_FOR_TEST__ = (url: string) => (window as any).__lwBridgeUrls.push(url);
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await seedRememberedCard(page);
+  await openInstallationDoor(page);
+  await page.evaluate(() => { (window as any).__armCommissioningStorageFailure = true; });
+  await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
+
+  await expect.poll(() => page.evaluate(() => (window as any).__lwBridgeUrls.length)).toBe(0);
+  await expect(page.getByRole('alert')).toContainText('card recovery state');
+  await expect(page.getByRole('alert')).toContainText('Bridge was not opened');
+  expect(await page.evaluate(() => (window as any).__lwBridgeUrls)).toHaveLength(0);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('lw_autosave_v3'))).not.toBeNull();
+  await page.screenshot({ path: '/tmp/lightweaver-extra-hour/bridge-commissioning-save-blocked.png' });
+  await page.getByRole('button', { name: 'Open Lightweaver Bridge' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__lwBridgeUrls.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => Boolean(sessionStorage.getItem('lw_card_commissioning_active_v2')))).toBe(true);
+});
+
 test('mobile handoff stays passive', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'serial', { configurable: true, value: undefined });

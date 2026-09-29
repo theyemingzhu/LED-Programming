@@ -958,6 +958,19 @@ export function CardCommissioningPanel({
   // is a card→Studio read (rebuild the open project from the card's own
   // readback), while this restore is a Studio→card WRITE with its own durable
   // claim registry — the opposite direction, sharing nothing worth deduping.
+  const saveVerifiedRestoration = async next => {
+    let reason = 'Browser storage is unavailable.';
+    try {
+      if (await writeCardCommissioning(next)) return;
+    } catch (error) {
+      reason = error?.message || reason;
+      // The card result is still authoritative, but this browser cannot yet
+      // resume it safely. Keep the prior-attempt record for readback retry.
+    }
+    const error = new Error(`The card answered with exact project evidence, but Studio could not save setup progress in this browser. ${reason} Resolve that issue, then retry Restore saved project. Studio will check the card again without sending the project twice.`);
+    error.code = 'commissioning-save-failed';
+    throw error;
+  };
   const restore = async () => {
     const requestedGeneration = projectLifecycle.generation;
     if (restoreState === 'working' || !flow.cardAcknowledgedAt) return;
@@ -1001,7 +1014,7 @@ export function CardCommissioningPanel({
           const evidence = adaptCardRestorationReadback({ method: 'GET', endpoint: '/api/firmware-info', response: responseReadback });
           const next = markCardProjectRestored(flow, evidence);
           adoptCommissionedCardBridgeIdentity(flow.flowId);
-          await writeCardCommissioning(next);
+          await saveVerifiedRestoration(next);
           markCommissioningProjectInstalled(flow, {
             cardId: flow.expectedCard.id,
             projectRevision: flow.project.revision,
@@ -1010,17 +1023,21 @@ export function CardCommissioningPanel({
           setFlow(next);
           setRestoreState('complete');
           return;
-        } catch {}
+        } catch (error) {
+          if (error?.code === 'commissioning-save-failed') throw error;
+        }
         if (priorAttempt.activationId) {
           try {
             const candidate = await readCandidateEvidence(priorAttempt.activationId, { host: link.host, timeoutMs: 8000 });
             const next = stageCardProjectForPhysicalCheck(flow, bindCardWiringActivationEvidence(candidate, candidate));
             adoptCommissionedCardBridgeIdentity(flow.flowId);
-            await writeCardCommissioning(next);
+            await saveVerifiedRestoration(next);
             setFlow(next);
             setRestoreState('complete');
             return;
-          } catch {}
+          } catch (error) {
+            if (error?.code === 'commissioning-save-failed') throw error;
+          }
         }
         throw new Error('A previous restore may already have reached this card, but exact independent evidence is inconclusive. Inspect or recover this setup; Studio will not send the project again automatically.');
       }
@@ -1067,7 +1084,7 @@ export function CardCommissioningPanel({
         const activationEvidence = bindCardWiringActivationEvidence(response, candidateReadback);
         const next = stageCardProjectForPhysicalCheck(flow, activationEvidence);
         adoptCommissionedCardBridgeIdentity(flow.flowId);
-        await writeCardCommissioning(next);
+        await saveVerifiedRestoration(next);
         setFlow(next);
         setRestoreState('complete');
         return;
@@ -1085,7 +1102,7 @@ export function CardCommissioningPanel({
       });
       const next = markCardProjectRestored(flow, evidence);
       adoptCommissionedCardBridgeIdentity(flow.flowId);
-      await writeCardCommissioning(next);
+      await saveVerifiedRestoration(next);
       markCommissioningProjectInstalled(flow, {
         cardId: flow.expectedCard.id,
         projectRevision: flow.project.revision,

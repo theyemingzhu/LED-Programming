@@ -1136,6 +1136,105 @@ test('legacy staged wiring without authoritative identity cannot confirm and rem
   await expect.poll(() => page.evaluate(() => (window as any).__legacyConfirmCalls)).toBe(0);
 });
 
+for (const resultKind of ['installed', 'staged'] as const) for (const failureMode of ['unavailable', 'quota'] as const) test(`verified prior ${resultKind} restore readback waits for durable progress after ${failureMode} storage failure and retries without another card write`, async ({ page }, testInfo) => {
+  await page.goto('/#screen=card&section=install', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'load-project');
+  await page.evaluate(async (resultKind) => {
+    const api = await import('/src/lib/cardCommissioningFlow.js');
+    const key = api.CARD_COMMISSIONING_STORAGE_KEY;
+    const registry = JSON.parse(localStorage.getItem(key)!);
+    const entry = Object.values(registry.flows)[0] as any;
+    const flow = entry.flow;
+    entry.restoreAttempt = {
+      id: 'prior-restore-123456789', fencingToken: 'prior-fence-123456789',
+      phase: 'post-started', flowId: flow.flowId, flowGeneration: flow.registryGeneration,
+      cardId: flow.expectedCard.id, projectFingerprint: flow.project.fingerprint,
+      startedAt: Date.now(), activationId: resultKind === 'staged' ? 'prior-activation-123456789' : '',
+    };
+    registry.revision += 1;
+    localStorage.setItem(key, JSON.stringify(registry));
+  }, resultKind);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  if (resultKind === 'staged') await page.route('**/api/wiring/status', async route => {
+    const candidate = await page.evaluate(() => {
+      const registry = JSON.parse(localStorage.getItem('lw_card_commissioning_registry_v2')!);
+      const flow = (Object.values(registry.flows)[0] as any).flow;
+      return {
+        app: 'Lightweaver', ok: true, state: 'staged', hasCandidate: true,
+        activationId: 'prior-activation-123456789',
+        cardId: flow.expectedCard.id, firmwareVersion: flow.expectedCard.firmwareVersion,
+        buildId: flow.expectedCard.buildId, projectRevision: flow.project.revision,
+        projectFingerprint: flow.project.fingerprint,
+        wiringRevision: 9, wiringDigest: 'd'.repeat(64), ledType: 'WS2815',
+        colorOrder: 'RGB', maxMilliamps: 2400,
+        candidateOutputs: [{ id: 'out1', pin: 16, pixels: 44,
+          segments: [{ id: 'strip-1', count: 44, direction: 'forward' }] }],
+      };
+    });
+    await route.fulfill({ json: candidate });
+  });
+  await page.evaluate(({ failureMode, resultKind }) => {
+    (window as any).__commissioningPushes = 0;
+    (window as any).__blockedCommissioningWrites = 0;
+    (window as any).__restorationReadbacks = 0;
+    (window as any).__LW_PUSH_COMMISSIONING_PROJECT_FOR_TEST__ = async () => {
+      (window as any).__commissioningPushes += 1;
+      throw new Error('prior restore must not be sent again');
+    };
+    (window as any).__LW_READ_COMMISSIONING_EVIDENCE_FOR_TEST__ = async () => {
+      (window as any).__restorationReadbacks += 1;
+      const registry = JSON.parse(localStorage.getItem('lw_card_commissioning_registry_v2')!);
+      const flow = (Object.values(registry.flows)[0] as any).flow;
+      return {
+        app: 'Lightweaver', cardId: flow.expectedCard.id,
+        firmwareVersion: flow.expectedCard.firmwareVersion, buildId: flow.expectedCard.buildId,
+        projectRevision: flow.project.revision,
+        projectFingerprint: resultKind === 'staged' ? '0'.repeat(16) : flow.project.fingerprint,
+      };
+    };
+    const original = Object.getOwnPropertyDescriptor(window, 'localStorage')!;
+    const storage = window.localStorage;
+    (window as any).__blockReadbackSave = true;
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (failureMode === 'quota' && (window as any).__blockReadbackSave
+        && key === 'lw_card_commissioning_registry_v2'
+        && Object.values(JSON.parse(value).flows || {}).some((entry: any) => entry.flow?.stage === 'check-lights')) {
+        (window as any).__blockedCommissioningWrites += 1;
+        throw new DOMException('Storage full', 'QuotaExceededError');
+      }
+      return originalSetItem.call(this, key, value);
+    };
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        if (failureMode === 'unavailable' && (window as any).__blockReadbackSave
+          && new Error().stack?.includes('writeCardCommissioning')) {
+          (window as any).__blockedCommissioningWrites += 1;
+          return { getItem: storage.getItem.bind(storage), setItem: undefined };
+        }
+        return original.get?.call(window) || storage;
+      },
+    });
+  }, { failureMode, resultKind });
+  await connectCommissioningCard(page);
+  await expect.poll(() => page.evaluate(() => (window as any).__blockedCommissioningWrites)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).__restorationReadbacks)).toBeGreaterThan(0);
+  await expect(page.getByRole('alert')).toContainText('save');
+  await expect(page.getByRole('button', { name: 'Restore saved project', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__commissioningPushes)).toBe(0);
+  if (resultKind === 'installed' && failureMode === 'unavailable') await page.screenshot({ path: testInfo.outputPath('readback-save-blocked.png'), fullPage: true });
+  await page.evaluate(() => { (window as any).__blockReadbackSave = false; });
+  await page.getByRole('button', { name: 'Restore saved project', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Check lights', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__commissioningPushes)).toBe(0);
+  expect(await page.evaluate(() => {
+    const registry = JSON.parse(localStorage.getItem('lw_card_commissioning_registry_v2')!);
+    return (Object.values(registry.flows)[0] as any).flow.stage;
+  })).toBe('check-lights');
+});
+
 test('an exact nonzero commissioning flow resumed after reload marks the restored local revision installed', async ({ page }) => {
   await page.goto('/#screen=card&section=preferences', { waitUntil: 'domcontentloaded' });
   const projectName = page.locator('.set-row', { hasText: 'Project name' }).locator('input');

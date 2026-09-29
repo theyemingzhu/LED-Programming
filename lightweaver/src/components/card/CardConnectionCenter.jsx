@@ -399,9 +399,11 @@ export function CardConnectionCenter({
     try {
       await onLaunchBridge?.(operation);
       setBridgeLaunchState('waiting-for-bridge');
-    } catch {
+    } catch (error) {
       setBridgeLaunchState('idle');
-      setFailure('Studio could not save the project and open Bridge. Save the project, then try again.');
+      setFailure(error?.reason === 'commissioning-save-failed'
+        ? error.message
+        : 'Studio could not save the project and open Bridge. Save the project, then try again.');
     }
   };
 
