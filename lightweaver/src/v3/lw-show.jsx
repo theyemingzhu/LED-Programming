@@ -251,6 +251,7 @@ function ShowScreen({
       compiledWiring: project.compiledWiring,
       sectionFamilies: project.sectionFamilies,
       layoutLayerGroups: project.layoutLayerGroups,
+      mirrorSets: project.layoutMirrorSets,
       palette: project.palette,
       hidden: project.hidden,
     };

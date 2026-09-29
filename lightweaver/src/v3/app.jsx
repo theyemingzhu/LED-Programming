@@ -1511,6 +1511,7 @@ function Shell({ offlineUpdateController = null }) {
               wiring: snapshot.layout?.wiring,
               compiledWiring,
               layoutLayerGroups: snapshot.layout?.layerGroups || [],
+              mirrorSets: snapshot.layout?.mirrorSets || [],
               sectionFamilies: snapshot.layout?.sectionFamilies || [],
               palette: snapshot.pattern?.palette || [],
               hidden: snapshot.layout?.hidden || {},

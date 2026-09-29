@@ -183,6 +183,7 @@ function realPatternShape(patternId) {
       wiring,
       compiledWiring,
       layoutLayerGroups,
+      layoutMirrorSets,
       sectionFamilies,
       palette,
       hidden,
@@ -730,7 +731,7 @@ function realPatternShape(patternId) {
           allowLayoutChange,
           allowProjectChange,
           mediaInstall: {
-            project: { strips, patchBoard, wiring, compiledWiring, layoutLayerGroups,
+            project: { strips, patchBoard, wiring, compiledWiring, layoutLayerGroups, mirrorSets: layoutMirrorSets,
               sectionFamilies, palette, hidden, bpm, gammaEnabled, gammaValue, symSettings, sectionTargets },
             confirmPairing: () => window.confirm('Touch a physical control on the Lightweaver card, then choose Continue to save recorded media to this exact card.'),
           },

@@ -58,6 +58,9 @@ function sourceSnapshot(input) {
     wiring: input.wiring, compiledWiring: input.compiledWiring,
     sectionFamilies: input.sectionFamilies ?? [], layoutLayerGroups: input.layoutLayerGroups ?? [],
     palette: input.palette ?? null, hidden: input.hidden ?? {},
+    // Only present when the piece has mirror sets, so a recording of an
+    // unmirrored piece keeps the identity hash it always had.
+    ...(Array.isArray(input.mirrorSets) && input.mirrorSets.length ? { mirrorSets: input.mirrorSets } : {}),
     render: { motionSmoothing: 'off', bpm: 120, gammaEnabled: false, gammaValue: 2.2 },
   });
   if (!Array.isArray(layout.strips) || !layout.strips.length || !Array.isArray(layout.wiring?.outputs)) {
@@ -160,10 +163,14 @@ function renderAt(prepared, frameIndex, stepContexts, clock) {
   clock.time = time;
   const playback = scenePlaybackAt(prepared.scene, time * 1000);
   const context = stepContexts.get(playback.stepId);
+  // A baked sequence plays on the card 1:1, and the card plays a mirror set as
+  // one zone, so the recording must carry the mirror: twins hold the lead's
+  // finished colours (mirror applied after the per-strip looks).
+  const mirrorSets = prepared.layout.mirrorSets || [];
   const frame = renderPixelFrame({ t: time, strips: context.strips, patternId: 'aurora',
     activeFn: context.renderer?.compiledFn || null, perStripPalettes: context.perStripPalettes,
-    perStripFns: context.renderer?.ok ? new Map() : context.perStripFns });
-  applyPatternPreviewSegmentLooks(frame.pixels, context.segments, time * 1000);
+    perStripFns: context.renderer?.ok ? new Map() : context.perStripFns, mirrorSets });
+  applyPatternPreviewSegmentLooks(frame.pixels, context.segments, time * 1000, { mirrorSets });
   const mapped = mapSceneExpressionPreviewFrame({ framePixels: frame.pixels, segments: context.segments,
     compiledWiring: prepared.layout.compiledWiring });
   if (!mapped.ok) throw new TypeError(mapped.errors[0]?.message || 'Physical Flow frame mapping failed');

@@ -521,6 +521,7 @@ export default function PatternLabPreview({
           viewBox={displayGeometry.viewBox}
           svgText={displayGeometry.svgText}
           hidden={displayGeometry.hidden}
+          mirrorSets={displayGeometry.mirrorSets}
           bpm={displayGeometry.bpm}
           masterSpeed={1}
           masterBrightness={1}

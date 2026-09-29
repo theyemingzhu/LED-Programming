@@ -55,6 +55,9 @@ function geometryMetadataBytes(geometry) {
     gammaValue: geometry.gammaValue,
     symSettings: geometry.symSettings,
     audioBands: geometry.audioBands,
+    // Only present when the piece has mirror sets, so an unmirrored piece keeps
+    // exactly the byte accounting it always had.
+    ...(geometry.mirrorSets?.length ? { mirrorSets: geometry.mirrorSets } : {}),
   };
   return new TextEncoder().encode(JSON.stringify(metadata)).byteLength;
 }
@@ -146,6 +149,13 @@ export function validatePatternLabWorkerGeometry(geometry) {
     throw new RangeError('Pattern Lab worker geometry byte accounting is invalid');
   }
   return geometry;
+}
+
+function compactMirrorSets(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(set => set && typeof set.id === 'string' && Array.isArray(set.members) && set.members.length > 1)
+    .map(set => ({ id: set.id, members: set.members.filter(id => typeof id === 'string') }));
 }
 
 export function compactPatternLabWorkerGeometry(input = {}) {
@@ -246,6 +256,10 @@ export function compactPatternLabWorkerGeometry(input = {}) {
     symSettings: copyBoundedJson(input.symSettings, null),
     audioBands: copyBoundedJson(input.audioBands, null),
   };
+  // layout.mirrorSets: the worker copies each lead's finished colours onto its
+  // twins so the streamed frame matches what the card plays.
+  const mirrorSets = compactMirrorSets(input.mirrorSets);
+  if (mirrorSets.length) geometry.mirrorSets = mirrorSets;
   geometry.geometryBytes = geometry.coordinates.byteLength
     + geometry.progress.byteLength
     + geometry.reflectionProgress.byteLength

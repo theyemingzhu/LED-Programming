@@ -480,6 +480,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       patchBoard,
       wiring,
       compiledWiring,
+      layoutMirrorSets,
       sectionTargets: projectSectionTargets,
       deriveProjectSectionTargets,
       setPatchBoard,
@@ -1033,13 +1034,14 @@ function writeSectionDisplayOrder(projectId, ids) {
         patchBoard: board,
         wiring,
         compiledWiring,
+        mirrorSets: layoutMirrorSets,
         targets: effectiveSectionTargets,
         resolvePatternId: resolveCodePatternId,
         paletteForPattern: patternId => (
           REAL_PATTERN_BY_ID.get(patternId)?.pal || adaptPattern(patternId)?.pal
         ),
       }),
-      [board, compiledWiring, effectiveSectionTargets, strips, wiring],
+      [board, compiledWiring, effectiveSectionTargets, layoutMirrorSets, strips, wiring],
     );
     const previewTargetIds = useMemo(
       () => patternPreviewSegments.map(segment => segment.id),
@@ -1242,13 +1244,13 @@ function writeSectionDisplayOrder(projectId, ids) {
     const runtimeBuild = useMemo(() => {
       try {
         return {
-          runtimePackage: buildCardRuntimePackageFromProject({ projectId, projectName, strips, patchBoard: board, wiring, compiledWiring, symSettings, standaloneController }),
+          runtimePackage: buildCardRuntimePackageFromProject({ projectId, projectName, strips, patchBoard: board, wiring, compiledWiring, mirrorSets: layoutMirrorSets, symSettings, standaloneController }),
           error: null,
         };
       } catch (error) {
         return { runtimePackage: null, error };
       }
-    }, [projectId, projectName, strips, board, compiledWiring, standaloneController]);
+    }, [projectId, projectName, strips, board, compiledWiring, layoutMirrorSets, standaloneController]);
     const runtimePackage = runtimeBuild.runtimePackage;
     const hardwareConfigurationIssue = runtimeBuild.error
       ? String(runtimeBuild.error.message || runtimeBuild.error).replace('is already owned by an LED output or another control', 'is already used by an LED output or another control')
@@ -1912,7 +1914,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         if (target.kind !== 'section' || !normalizedDraftLooks[target.id]) continue;
         nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, look: normalizedDraftLooks[target.id] });
       }
-      const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, defaultLook: nextDefaultLook });
+      const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, mirrorSets: layoutMirrorSets, defaultLook: nextDefaultLook });
       let nextController = { ...(standaloneController || {}), defaultLook: nextDefaultLook };
       if (!saveNamedLook) return { nextLook, nextBoard, nextController, nextTargets };
       const resolvedLabel = label || mixName.trim() || currentComboLabel;
@@ -3144,6 +3146,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                           strips={visiblePatternPreviewSegments}
                           compactRibbon
                           hidden={{}}
+                          mirrorSets={layoutMirrorSets}
                           viewBox={patternPreviewViewBox}
                           patternId={visiblePatternPreviewSegments[0].patternId}
                           playing={true}
@@ -3497,6 +3500,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                         <PatternPreview
                           strips={strips}
                           hidden={hidden}
+                          mirrorSets={layoutMirrorSets}
                           viewBox={viewBox}
                           svgText={svgText}
                           patternId={selId}

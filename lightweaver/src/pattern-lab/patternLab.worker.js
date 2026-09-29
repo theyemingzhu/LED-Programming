@@ -25,6 +25,7 @@ import {
   finalizePatternLabColors,
 } from '../lib/patternLabCompositor.js';
 import { applyPatternLabMotionToStrips } from '../lib/patternLabMotion.js';
+import { applyMirrorSets } from '../lib/mirrorFrame.js';
 import { applyPatternLabTransform, samplePatternLabMask } from '../lib/patternLabTransforms.js';
 
 let initialized = false;
@@ -305,6 +306,16 @@ async function renderRequest(requestId, payload) {
         layer.blendMode || 'normal',
         (layer.opacity ?? 1) * mask,
       );
+    });
+  }
+  // Mirror sets are applied once, after every layer has composited and before
+  // the look colour, so a twin ends up with exactly its lead's colours (same
+  // order as the main-thread renderer in patternLabPatternAdapter).
+  if (geometry.mirrorSets?.length) {
+    applyMirrorSets({
+      framePixels: renderedPixels,
+      strips: baseStrips.filter(strip => strip && !strip.hidden),
+      mirrorSets: geometry.mirrorSets,
     });
   }
   applyPatternLabLookColor(renderedPixels, recipe, payload.time);
