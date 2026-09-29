@@ -1179,6 +1179,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
     // as this screen stays mounted. See `preservingMode` further down.
     const [preferUsbUpdate, setPreferUsbUpdate] = useState(false);
     const [selectedUsbUpdateCard, setSelectedUsbUpdateCard] = useState(null);
+    const [resumeUsbBusy, setResumeUsbBusy] = useState(false);
+    const resumeUsbBusyRef = useRef(false);
     const [commissioning, setCommissioning] = useState(readCardCommissioning);
     // Only a flow present at mount represents an interrupted install. A new
     // flow written by this mounted installer must retain its active USB UI.
@@ -2283,25 +2285,32 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
           || cardLink.card.firmwareVersion !== interruptedUsbFlow.installTarget.firmwareVersion
           || cardLink.card.buildId !== interruptedUsbFlow.installTarget.buildId));
       const resumeUsb = async () => {
-        if (!interruptedUsbFlow || observedDifferentInstall || releaseState.state !== 'ready') return;
-        const target = interruptedUsbFlow.installTarget;
-        const manifest = releaseState.release.manifest;
-        if (target.id === '' || target.buildId !== manifest.buildId
-          || target.firmwareVersion !== manifest.firmwareVersion || target.buildNumber !== manifest.buildNumber) {
-          setWifiStatus({ state: 'error', message: 'The signed release has changed since this card was installed. Use its local setup page to finish Wi-Fi.' });
-          return;
+        if (resumeUsbBusyRef.current || !interruptedUsbFlow || observedDifferentInstall || releaseState.state !== 'ready') return;
+        resumeUsbBusyRef.current = true;
+        setResumeUsbBusy(true);
+        try {
+          const target = interruptedUsbFlow.installTarget;
+          const manifest = releaseState.release.manifest;
+          if (target.id === '' || target.buildId !== manifest.buildId
+            || target.firmwareVersion !== manifest.firmwareVersion || target.buildNumber !== manifest.buildNumber) {
+            setWifiStatus({ state: 'error', message: 'The signed release has changed since this card was installed. Use its local setup page to finish Wi-Fi.' });
+            return;
+          }
+          let port;
+          try { port = await selectEspSerialPort(); }
+          catch (error) { if (error?.name !== 'NotFoundError') setWifiStatus({ state: 'error', message: 'Could not select the installed USB card. Retry or use its local setup page.' }); return; }
+          wifiInstallRef.current = {
+            flow: interruptedUsbFlow, port,
+            expected: { cardId: target.id, firmwareVersion: target.firmwareVersion,
+              buildId: target.buildId, buildNumber: target.buildNumber,
+              previousBootId: target.previousBootId || '' },
+          };
+          setInstallState('wifi-setup');
+          await connectWifiUsb();
+        } finally {
+          resumeUsbBusyRef.current = false;
+          if (mountedRef.current) setResumeUsbBusy(false);
         }
-        let port;
-        try { port = await selectEspSerialPort(); }
-        catch (error) { if (error?.name !== 'NotFoundError') setWifiStatus({ state: 'error', message: 'Could not select the installed USB card. Retry or use its local setup page.' }); return; }
-        wifiInstallRef.current = {
-          flow: interruptedUsbFlow, port,
-          expected: { cardId: target.id, firmwareVersion: target.firmwareVersion,
-            buildId: target.buildId, buildNumber: target.buildNumber,
-            previousBootId: target.previousBootId || '' },
-        };
-        setInstallState('wifi-setup');
-        await connectWifiUsb();
       };
       return (
         <div className={`install-flow${embedded ? ' embedded' : ''}`} aria-live="polite">
@@ -2314,7 +2323,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
             viewStage={selectedStage}
             interruptedUsbRecovery={interruptedUsbFlow ? {
               onResume: () => { void resumeUsb(); },
-              disabled: releaseState.state !== 'ready',
+              disabled: releaseState.state !== 'ready' || resumeUsbBusy,
               mismatch: observedDifferentInstall,
               error: wifiStatus.state === 'error' ? wifiStatus.message : '',
             } : null}

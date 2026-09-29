@@ -372,16 +372,19 @@ export function deriveSetupJourney({
     });
   }
 
-  // A changed look or playlist makes Studio's fingerprint newer than the
+  // A changed look or playlist makes Studio's live content newer than the
   // installed copy. The card remains fully set up and holds this same piece;
   // Card Home's existing Save to card control is the way to sync the edit.
-  // Require the card's live command-ready verdict and the exact project id so
-  // an unpaired, provisional, staged, or different-project card cannot borrow
-  // this route.
+  // A project-mismatch is different: the installed copy has not been resolved
+  // against this browser draft, even if both report the same project id. Keep
+  // Setup's explicit Use this card / Save this project choice visible rather
+  // than calling the unresolved copies complete. Require the card's live
+  // command-ready verdict and exact project id so another/different card
+  // cannot borrow the local-edit route.
   const sameProjectWithLocalEdits = blockers.length === 0
     && connectedExactCard(cardLink)
     && cardLifecycle?.commandReady === true
-    && ['project-mismatch', 'content-mismatch', 'length-mismatch'].includes(cardLifecycle?.state)
+    && ['content-mismatch', 'length-mismatch'].includes(cardLifecycle?.state)
     && cardLink?.readiness?.provisionalSetup !== true
     && wiringStatus?.hasCandidate !== true
     && sanitizeProjectId(project?.id) !== ''

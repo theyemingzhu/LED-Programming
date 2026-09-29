@@ -262,7 +262,7 @@ test('[U1c] recovery is told once, by the badge, not the toast', async ({ page }
 // ---------------------------------------------------------------------------
 // (d) Identity-row values wrap on narrow screens.
 // ---------------------------------------------------------------------------
-test('[U1d] the Installed identity value wraps instead of truncating on a phone', async ({ page }) => {
+test('[U1d] unresolved same-id copies keep Setup resolution visible and the Installed identity wraps on a phone', async ({ page }, testInfo) => {
   const spec = await seedWiringDivergedProject(page);
   const card = createCardSimulator(spec);
   await card.install(page);
@@ -273,11 +273,17 @@ test('[U1d] the Installed identity value wraps instead of truncating on a phone'
 
   const installedValue = page.getByTestId('setup-identity-installed');
   await expect(installedValue).toHaveText('Same project, not yet verified');
+  await expect(journeyLocator(page), 'same-id copies without a verified revision must remain unresolved').toHaveAttribute('data-journey-complete', 'false');
+  await expect(page.getByTestId('setup-progress')).not.toHaveText('Setup complete');
+  await expect(page.getByTestId('setup-active-task')).toBeVisible();
+  await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
+  await expect(page.getByTestId('setup-overwrite-card')).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(150);
 
   await expect(installedValue).toHaveText('Same project, not yet verified');
+  await expect(page.getByTestId('setup-progress')).not.toHaveText('Setup complete');
   const box = await installedValue.evaluate(node => ({
     scrollWidth: node.scrollWidth,
     clientWidth: node.clientWidth,
@@ -287,6 +293,8 @@ test('[U1d] the Installed identity value wraps instead of truncating on a phone'
   expect(box.scrollWidth, 'a wrapped value must not overflow its own box').toBeLessThanOrEqual(box.clientWidth);
   expect(box.textOverflow, 'a wrapped value must not still be styled to ellipsis').not.toBe('ellipsis');
   expect(box.whiteSpace, 'a wrapped value must be allowed to break to a second line').not.toBe('nowrap');
+
+  await page.screenshot({ path: testInfo.outputPath('project-readiness-after.png'), fullPage: true });
 
   await captureAfter(page, 'wiring-diverged', 1440, 900);
   await captureAfter(page, 'wiring-diverged', 390, 844);
