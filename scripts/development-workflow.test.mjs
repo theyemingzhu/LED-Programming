@@ -56,3 +56,21 @@ test('workflow explains exact gates, escalation, and destructive firmware bounda
     assert.match(workflow, new RegExp(required, 'i'), `missing workflow requirement: ${required}`);
   }
 });
+
+test('local release covers every browser spec selected by the hosted critical smoke lane', async () => {
+  const { scripts } = JSON.parse(await readFile(new URL('lightweaver/package.json', repoRoot), 'utf8'));
+  const visited = new Set();
+  function specsFor(scriptName) {
+    if (visited.has(scriptName)) return [];
+    visited.add(scriptName);
+    const command = scripts[scriptName];
+    assert.equal(typeof command, 'string', `missing npm script: ${scriptName}`);
+    const direct = [...command.matchAll(/tests\/[\w/-]+\.spec\.ts/g)].map(match => match[0]);
+    const nested = [...command.matchAll(/npm run ([\w:-]+)/g)].flatMap(match => specsFor(match[1]));
+    return [...direct, ...nested];
+  }
+  const releaseSpecs = new Set(specsFor('launch:check'));
+  visited.clear();
+  const missing = [...new Set(specsFor('ci:browser-smoke'))].filter(spec => !releaseSpecs.has(spec));
+  assert.deepEqual(missing, [], `critical smoke specs missing from local release: ${missing.join(', ')}`);
+});

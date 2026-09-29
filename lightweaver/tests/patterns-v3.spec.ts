@@ -761,6 +761,78 @@ test('verified Install persists the auditioned section assignment in Studio', as
   await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-needs-save', 'false');
 });
 
+test('project breadcrumb does not claim installation on a connected card holding another project', async ({ page }, testInfo) => {
+  const project = createPiecePreviewProject('breadcrumb-project-identity');
+  await mockVerifiedInstallCard(page, project, 'lw-breadcrumb-project');
+  await gotoSavedProjectPatterns(page, project);
+  await page.getByTestId('section-target-patch-default-inner-circle').click();
+  await page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]').click();
+  await page.getByTitle('Install the current look on the card').click();
+  const badge = page.getByTestId('project-lifecycle-label');
+  await expect(badge).toHaveText('Installed on card');
+
+  await page.route('**/api/status', route => route.abort());
+  const matching = await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const link = getSharedCardLink();
+    const current = link.getState();
+    link.dispatch({ type: 'direct-ping-missed', host: current.host });
+    return { host: current.host, card: current.card, expectedCard: current.expectedCard, readiness: current.readiness };
+  });
+  await expect.poll(() => page.evaluate(async () => (await import('/src/lib/cardLink.js')).getCardLinkState().state)).toBe('reconnecting');
+  await expect(badge).toHaveText('Installed on card'); // Keep the saved installation history while offline.
+
+  // A different physical card answering this exact host is positive contrary
+  // evidence, unlike the missed ping above. The link deliberately discards
+  // live card authority and marks wrong-card, so the header must not keep its
+  // positive installation claim merely because connected becomes false.
+  await page.evaluate(snapshot => import('/src/lib/cardLink.js').then(({ getSharedCardLink }) => {
+    getSharedCardLink().dispatch({
+      type: 'card-verified', via: 'direct', host: snapshot.host,
+      card: { ...snapshot.card, id: 'lw-112233445566' }, expectedCard: snapshot.card,
+      readiness: { ...snapshot.readiness, cardId: 'lw-112233445566' },
+    });
+  }), matching);
+  await expect.poll(() => page.evaluate(async () => (await import('/src/lib/cardLink.js')).getCardLinkState().reason)).toBe('wrong-card');
+  await expect(badge).toHaveText('Not verified on this card');
+
+  await page.route('**/api/status', route => route.fulfill({ json: matching.readiness }));
+  await page.evaluate(snapshot => {
+    const event = { type: 'card-verified', via: 'direct', ...snapshot };
+    // Two agreeing status envelopes are the card link's fresh direct proof.
+    return import('/src/lib/cardLink.js').then(({ getSharedCardLink }) => {
+      getSharedCardLink().dispatch(event);
+      getSharedCardLink().dispatch(event);
+    });
+  }, matching);
+  await expect(badge).toHaveText('Installed on card');
+
+  const different = { ...matching.readiness, projectId: 'another-installed-project',
+    piece: { id: 'another-installed-project' }, projectFingerprint: 'f'.repeat(64) };
+  await page.route('**/api/status', route => route.fulfill({ json: different }));
+  await page.evaluate(({ snapshot, readiness }) => import('/src/lib/cardLink.js').then(({ getSharedCardLink }) => {
+    const event = { type: 'card-verified', via: 'direct', host: snapshot.host,
+      card: snapshot.card, expectedCard: snapshot.expectedCard, readiness };
+    getSharedCardLink().dispatch(event);
+    getSharedCardLink().dispatch(event);
+  }), { snapshot: matching, readiness: different });
+  await expect(badge).toHaveText('Not verified on this card');
+  await expect(page.getByTestId('project-name-edit')).toHaveText(project.name);
+  await page.evaluate(({ snapshot, readiness }) => import('/src/lib/cardLink.js').then(({ getSharedCardLink }) => {
+    const event = { type: 'card-verified', via: 'bridge', host: snapshot.host,
+      card: snapshot.card, expectedCard: snapshot.expectedCard, readiness,
+      bridgeLifecycle: 'breadcrumb-bridge-check' };
+    getSharedCardLink().dispatch(event);
+    getSharedCardLink().dispatch(event);
+  }), { snapshot: matching, readiness: different });
+  await expect.poll(() => page.evaluate(async () => (await import('/src/lib/cardLink.js')).getCardLinkState().state)).toBe('connected-bridge');
+  await expect(badge).toHaveText('Not verified on this card');
+  await page.evaluate(() => { window.location.hash = '#screen=card&section=install'; });
+  await expect(page.getByRole('heading', { name: /Update Lightweaver|Install Lightweaver/ })).toBeVisible();
+  await expect(page.getByTestId('project-lifecycle-label')).toHaveText('Not verified on this card');
+  await page.screenshot({ path: testInfo.outputPath('different-card-project-software.png'), fullPage: true });
+});
+
 test('GPIO pattern workflow keeps same and different section choices through Keep, reload, and Install payload', async ({ page }, testInfo) => {
   const project = createPiecePreviewProject('two-gpio-pattern-workflow');
   project.layout.wiring.outputs = [

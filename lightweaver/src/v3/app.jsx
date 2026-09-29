@@ -1291,6 +1291,12 @@ function Shell({ offlineUpdateController = null }) {
     cardStatus.allowAdopt,
   ]);
   const connected = isCardLinkConnected(cardLink);
+  // The project lifecycle remembers a verified installation, including while
+  // the card is offline. A different card's fresh status can contradict that
+  // history even when the link rejects it as wrong-card and disconnects.
+  const projectHeaderLifecycleLabel = projectLifecycleLabel === 'Installed on card'
+    && (cardLink.reason === 'wrong-card' || (connected && cardLifecycle.exactProject !== true))
+    ? 'Not verified on this card' : projectLifecycleLabel;
   const expressionInstallationReceipt = useMemo(() => {
     const project = serializeProject();
     const installation = currentInstallation(projectLifecycle);
@@ -2361,7 +2367,7 @@ function Shell({ offlineUpdateController = null }) {
         // project in its own status row. Preferences, install and workshop are
         // takeovers with no such row, so the crumb stays there.
         showProject={!(underlyingView === 'card' && ['setup', 'overview', 'settings', 'support'].includes(underlyingCardRoute?.section))}
-        lifecycleLabel={projectLifecycleLabel}
+        lifecycleLabel={projectHeaderLifecycleLabel}
         hasUnsavedChanges={projectHasUnsavedChanges}
         onRenameProject={setProjectName}
         onNew={onNew} onLoad={onLoad} onDownload={onDownload} onSave={onSave}
