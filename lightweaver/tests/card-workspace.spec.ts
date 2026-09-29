@@ -405,7 +405,7 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
       buildId: 'gallery-release-build-with-a-long-identity',
     }),
   }]);
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
   await expect(page.locator('.card-status-summary')).toHaveCount(0);
 
   const regions = await page.locator('.status-bar').evaluate(node => {
@@ -1836,7 +1836,7 @@ test('direct discovery never auto-adopts; explicit pairing persists identity but
   await page.getByTestId('card-link-status').click();
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-explicit-pair');
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
 });
 
 test('Card Home and Support recovery both surface a working connect action for a disconnected card', async ({ page }) => {
