@@ -53,9 +53,15 @@ function sourceSnapshot(input) {
     throw new TypeError('Known compiled physical wiring is required for Flow recording');
   }
   const scene = normalizeSceneExpression(input.scene);
+  // The compiler used to report `mirrorSets: []` on every result and now reports
+  // `symmetry: null`. A recording made before the change must keep its identity
+  // hash, so a compile with no symmetry is snapshotted in its old shape (a real
+  // symmetry is part of the snapshot and changes the hash on purpose).
+  const { symmetry: appliedSymmetry, ...compiledWithoutSymmetry } = input.compiledWiring;
   const layout = structuredClone({
     strips: input.strips, patchBoard: input.patchBoard ?? null,
-    wiring: input.wiring, compiledWiring: input.compiledWiring,
+    wiring: input.wiring,
+    compiledWiring: appliedSymmetry == null ? { ...compiledWithoutSymmetry, mirrorSets: [] } : input.compiledWiring,
     sectionFamilies: input.sectionFamilies ?? [], layoutLayerGroups: input.layoutLayerGroups ?? [],
     palette: input.palette ?? null, hidden: input.hidden ?? {},
     // Only present when the piece has symmetry, so a recording of a piece

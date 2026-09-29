@@ -175,6 +175,14 @@ test('null symmetry is byte-identical to a render that never heard of it', () =>
   assert.equal(JSON.stringify(renderPixelFrame(ctx(strips, { symmetry: null }))), base);
   assert.equal(JSON.stringify(renderPixelFrame(ctx(strips, { symmetry: undefined, sidesMirrored: true }))), base);
   assert.equal(JSON.stringify(renderPixelFrame(ctx(strips, { symmetry: null, sidesMirrored: false }))), base);
+  // what the pattern is asked, not just what it returns: global index, piece-wide count
+  const asked = extra => {
+    const log = [];
+    renderPixelFrame(ctx(strips, { activeFn: probe(log), ...extra }));
+    return JSON.stringify(log);
+  };
+  assert.equal(asked({ symmetry: null }), asked({}));
+  assert.ok(JSON.parse(asked({})).every(entry => entry.count === 31));
   // a symmetry naming strips that are not there changes nothing either
   assert.equal(JSON.stringify(renderPixelFrame(ctx(strips, { symmetry: sym([side('side-1', ['nope']), side('side-2', ['nada'])]) }))), base);
 });

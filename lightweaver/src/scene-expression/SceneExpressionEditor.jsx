@@ -281,7 +281,7 @@ export default function SceneExpressionEditor({
   useEffect(() => {
     if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort();
   }, [project.strips, project.patchBoard, project.wiring, project.compiledWiring,
-    project.sectionFamilies, project.layoutLayerGroups, project.layoutMirrorSets, project.palette, project.hidden]);
+    project.sectionFamilies, project.layoutLayerGroups, project.layoutSymmetry, project.sidesMirrored, project.palette, project.hidden]);
 
   useEffect(() => {
     if (physicalPreviewRef.current) void stopPhysicalPreview('context-changed');

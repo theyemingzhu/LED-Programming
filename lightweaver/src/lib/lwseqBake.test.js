@@ -529,6 +529,8 @@ test('own mode bakes each side independently and still hashes the choice', async
 
 test('a bake without symmetry keeps its bytes and its layout hash', async () => {
   const plain = await bakePatternLabRecipe({ ...fixture(), fps: 1 });
+  // The literal was produced by the code BEFORE symmetry existed.
+  assert.equal(plain.sidecar.layoutPhysicalOrderSha256, '5c2fc52f863a09eba980aa4813a1c6ca9e1e4e36c0123db355994fe94c4ef5e2');
   const withNull = await bakePatternLabRecipe({ ...fixture(), symmetry: null, sidesMirrored: false, fps: 1 });
   assert.deepEqual(withNull.bytes, plain.bytes);
   assert.equal(withNull.sidecar.layoutPhysicalOrderSha256, plain.sidecar.layoutPhysicalOrderSha256);
