@@ -70,6 +70,18 @@ async function dependency(stateDir, state, deps) {
   }
   if (!SHA.test(candidate.mergedRevision || '')) return { reason: `PR ${state.afterPr} has not recorded its exact merged revision (${candidate.phase || 'unknown'}).` };
   const proof = await read(join(stateDir, 'revisions', `${candidate.mergedRevision}.json`));
+  if (proof?.revision === candidate.mergedRevision && proof.phase === 'blocked') {
+    const event = await deps.publish(stateDir, {
+      ...proof,
+      checkout: candidate.checkout || candidate.root || candidate.checkoutRoot || proof.checkout,
+      owner: candidate.owner || proof.owner,
+    });
+    if (event?.key) state.dependencyEventKey = event.key;
+    return { reason: `PR ${state.afterPr} publication is blocked: ${proof.reason || proof.cause || 'inspect its exact release proof log'}` };
+  }
+  if (proof?.revision === candidate.mergedRevision && proof.phase === 'superseded') {
+    return { blocked: true, reason: `PR ${state.afterPr} publication was superseded: ${proof.reason || proof.cause || 'its exact release is no longer current'}. Reconcile the prerequisite release before resuming this queue.` };
+  }
   if (proof?.phase !== 'shipped' || proof.revision !== candidate.mergedRevision || !SHA.test(proof.deployRevision || '')) return { reason: `PR ${state.afterPr} is not independently proven live yet.` };
   const remote = await deps.gh(`repos/${state.repo}/pulls/${state.afterPr}`);
   if (!remote.merged || remote.merge_commit_sha !== candidate.mergedRevision || remote.head?.sha !== candidate.revision) return { blocked: true, reason: `PR ${state.afterPr} no longer matches its recorded release identity.` };

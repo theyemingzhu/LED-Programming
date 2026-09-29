@@ -132,3 +132,29 @@ test('explicit repair resume preserves authorization and revalidates corrected m
   assert.equal(resumed.authorization, 'explicit-owner-ship'); assert.equal(resumed.originalRevision, A); assert.equal(resumed.phase, 'waiting');
   await f.tick(); assert.equal((await f.queued()).phase, 'started');
 });
+
+test('blocked exact prerequisite proof publishes its actual failure once with candidate ownership', async t => {
+  const f = await fixture(t); await f.enqueue(); await f.prove();
+  const candidatePath = join(f.stateDir, 'candidates/pr379/state.json');
+  const candidate = JSON.parse(await readFile(candidatePath, 'utf8'));
+  candidate.checkout = '/exact/prerequisite'; await writeFile(candidatePath, JSON.stringify(candidate));
+  await writeFile(join(f.stateDir, 'revisions', `${C}.json`), JSON.stringify({ phase: 'blocked', revision: C, deployRevision: D, reason: 'Production credentials missing', log: '/exact/proof.log' }));
+  const { publishReleaseEvent } = await import('./release-events.mjs');
+  const events = [];
+  const deps = { ...f.deps, publish: (dir, value) => publishReleaseEvent(dir, value, { startRepair: false, notify: async event => events.push(event) }) };
+  await processReleaseQueue(f.stateDir, deps); await processReleaseQueue(f.stateDir, deps);
+  assert.equal((await f.queued()).phase, 'waiting');
+  assert.match((await f.queued()).reason, /Production credentials missing/);
+  assert.equal(events.length, 1); assert.equal(events[0].revision, C);
+  assert.equal(events[0].owner, 'dependency owner'); assert.equal(events[0].checkout, '/exact/prerequisite');
+  assert.equal(events[0].log, '/exact/proof.log'); assert.equal(f.model.starts, 0);
+});
+
+test('superseded exact prerequisite proof blocks the dependent queue with an actionable event', async t => {
+  const f = await fixture(t); await f.enqueue(); await f.prove();
+  await writeFile(join(f.stateDir, 'revisions', `${C}.json`), JSON.stringify({ phase: 'superseded', revision: C, reason: 'main advanced to another revision' }));
+  await f.tick();
+  assert.equal((await f.queued()).phase, 'blocked');
+  assert.match((await f.queued()).reason, /superseded.*main advanced/);
+  assert.equal(f.model.events.length, 1); assert.equal(f.model.starts, 0);
+});
