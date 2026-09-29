@@ -2081,7 +2081,7 @@ function Shell({ offlineUpdateController = null }) {
         const record = result.record;
         markProjectPersisted('browser');
         if (operation === 'install-current-release' || operation === 'recover-current-release') {
-          await writeCardCommissioning(beginCardCommissioning({
+          const commissioningSaved = await writeCardCommissioning(beginCardCommissioning({
             source: 'native-bridge',
             operation,
             strategy: 'clean-recovery',
@@ -2089,6 +2089,11 @@ function Shell({ offlineUpdateController = null }) {
             projectRevision: projectLifecycle.editedRevision,
             projectGeneration: projectLifecycle.generation,
           }));
+          if (commissioningSaved !== true) {
+            const error = new Error('Studio saved the project, but could not save the card recovery state. Check browser storage, then try opening Bridge again. Bridge was not opened.');
+            error.reason = 'commissioning-save-failed';
+            throw error;
+          }
         }
       },
       navigate: url => {
