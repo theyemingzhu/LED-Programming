@@ -105,7 +105,7 @@ export function pixelsFromPatchBoard(patchBoard, strips = []) {
 }
 
 export function pixelsFromWiring(wiring, strips = [], groups = [], capabilities, options = {}) {
-  const compiled = compileWiring({ wiring, strips, groups, capabilities });
+  const compiled = compileWiring({ wiring, strips, groups, mirrorSets: options.mirrorSets || [], capabilities });
   if (!compiled.ok) throw new Error(compiled.errors.map(error => error.message).join(' '));
   if (options.requireSendReady === true && compiled.sendReady !== true) {
     throw new Error('Compiled physical wiring is not send-ready; lock and verify every run before export.');

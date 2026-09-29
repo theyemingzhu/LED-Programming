@@ -33,6 +33,8 @@ import {
 } from './cardPlaylist.js';
 import { normalizeKaleidoscope } from './kaleidoscope.js';
 import { createEmptyExpressionScenes, normalizeExpressionScenesForProject } from './sceneExpressionProject.js';
+import { findMirrorSetStructureErrors, normalizeMirrorSets } from './mirrorSetRules.js';
+import { remapMirrorSetStripIds } from './mirrorSets.js';
 
 export const PROJECT_VERSION = 3;
 const FOREIGN_PROJECT_FORMATS = new Set([
@@ -173,6 +175,7 @@ export function createDefaultProject() {
       pxPerMm: 3.7795,
       editCounts: {},
       layerGroups: [],
+      mirrorSets: [],
       layerOrder: [],
       patchBoard: createDefaultPatchBoard(defaultStrips),
       wiring: makeDefaultWiring(defaultStrips),
@@ -329,6 +332,11 @@ export function migrateStripIdNamespace(project) {
     }
   }
 
+  // Mirror-set members are strip ids; they move with every other strip reference.
+  if (Array.isArray(layout.mirrorSets)) {
+    layout.mirrorSets = remapMirrorSetStripIds(layout.mirrorSets, oldToNew);
+  }
+
   // 4. `hidden` is a shared namespace: a legacy strip and its source layer/path
   //    shared one key. Copy the flag onto the new strip key while KEEPING the old
   //    one so the artwork keeps its hidden state (editCounts stays with the layer
@@ -373,6 +381,14 @@ function alignChainToStripOrder(project) {
     }
     return clean;
   });
+  // A saved mirror set that no longer holds together (a member deleted or
+  // grouped, kaleidoscope turned on) is dropped on load rather than failing the
+  // project. Wiring-dependent rules are enforced by the compiler.
+  const savedMirrorSets = normalizeMirrorSets(layout.mirrorSets, { strips: layout.strips });
+  const brokenMirrorSetIds = new Set(
+    findMirrorSetStructureErrors(savedMirrorSets, layout.strips, layout.layerGroups).map(error => error.setId),
+  );
+  layout.mirrorSets = savedMirrorSets.filter(set => !brokenMirrorSetIds.has(set.id));
   const extantStripIds = new Set(layout.strips.map(strip => String(strip.id || '')));
   layout.projectWarnings = [
     ...(Array.isArray(layout.projectWarnings)

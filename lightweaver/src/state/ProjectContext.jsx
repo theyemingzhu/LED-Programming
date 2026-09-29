@@ -27,6 +27,8 @@ import {
   applyLayoutSnapshot,
   LAYOUT_HISTORY_LIMIT,
 } from './layoutReducer.js';
+import { normalizeMirrorSets } from '../lib/mirrorSetRules.js';
+import { removeMirrorMember } from '../lib/mirrorSets.js';
 import { resolveRotaryInputAction, selectFreshUsbRotaryEvents } from '../lib/usbRotaryInput.js';
 import {
   clearAutosaveQuarantine,
@@ -104,6 +106,7 @@ function makeInitialLayoutState(layout) {
       starterPending: layout.starterPending,
       layers: layout.layers,
       layerGroups: layout.layerGroups,
+      mirrorSets: layout.mirrorSets,
       sectionFamilies: layout.sectionFamilies,
       layerOrder: layout.layerOrder,
       editCounts: layout.editCounts,
@@ -152,9 +155,16 @@ function layoutRootReducer(state, action) {
       ? reconcileWiringToStrips(boundary.wiring, next.strips)
       : boundary.wiring;
     const withWiring = boundaryWiring !== state.wiring ? { ...next, wiring: boundaryWiring } : next;
-    const withBoard = stripsChanged
+    const withBoardOnly = stripsChanged
       ? { ...withWiring, patchBoard: normalizePatchBoard(withWiring.patchBoard, withWiring.strips) }
       : withWiring;
+    // Whatever path removed a strip (delete, merge, split, replace), its id
+    // leaves its mirror set here, and a set left with one member dissolves.
+    const liveIds = new Set(withBoardOnly.strips.map(strip => strip.id));
+    const withBoard = stripsChanged
+      && (withBoardOnly.mirrorSets || []).some(set => set.members.some(id => !liveIds.has(id)))
+      ? { ...withBoardOnly, mirrorSets: normalizeMirrorSets(withBoardOnly.mirrorSets, { strips: withBoardOnly.strips }) }
+      : withBoardOnly;
     return physicalChangeKind ? { ...withBoard, starterPending: false } : withBoard;
   };
   switch (action.type) {
@@ -188,6 +198,8 @@ function layoutRootReducer(state, action) {
         ...state,
         strips: result.strips, wiring: result.wiring, patchBoard: result.patchBoard,
         layerGroups: result.layerGroups, sectionFamilies: result.sectionFamilies,
+        // Separating a strip retires its id; it leaves its mirror set.
+        mirrorSets: Object.keys(result.identityMap || {}).reduce(removeMirrorMember, state.mirrorSets || []),
         stripDensities: result.stripDensities, stripCountOverrides: result.stripCountOverrides,
         hidden: result.hidden, layerOrder: result.layerOrder,
         _history: { past: pushSnapshotStack(state._history.past, snapshot), future: [] },
@@ -204,6 +216,7 @@ function layoutRootReducer(state, action) {
         stripCountOverrides: {},
         stripDensities: {},
         layerGroups: [],
+        mirrorSets: [],
         sectionFamilies: [],
         layerOrder: [],
         patchBoard: action.patchBoard,
@@ -431,6 +444,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     stripCountOverrides: layoutStripCountOverrides,
     stripDensities: layoutStripDensities,
     layerGroups: layoutLayerGroups,
+    mirrorSets: layoutMirrorSets,
     sectionFamilies,
     layerOrder: layoutLayerOrder,
     patchBoard,
@@ -453,6 +467,15 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   const setLayoutStripCountOverrides = useCallback(value => setLayoutField('stripCountOverrides', value), [setLayoutField]);
   const setLayoutStripDensities = useCallback(value => setLayoutField('stripDensities', value), [setLayoutField]);
   const setLayoutLayerGroups = useCallback(value => setLayoutField('layerGroups', value), [setLayoutField]);
+  // Mirror sets: pass the whole array (or an updater). Like the other compat
+  // setters this does NOT record history; call pushLayoutHistory() first when
+  // the edit should be undoable.
+  const setLayoutMirrorSets   = useCallback(value => setLayoutField(
+    'mirrorSets',
+    typeof value === 'function'
+      ? current => normalizeMirrorSets(value(current))
+      : normalizeMirrorSets(value),
+  ), [setLayoutField]);
   const setSectionFamilies    = useCallback(value => setLayoutField('sectionFamilies', value), [setLayoutField]);
   const setLayoutLayerOrder  = useCallback(value => setLayoutField('layerOrder', value), [setLayoutField]);
   const setPatchBoard        = useCallback(value => setLayoutField('patchBoard', value), [setLayoutField]);
@@ -493,7 +516,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       }, 1),
     });
   }, []);
-  const compiledWiring = useMemo(() => compileWiring({ wiring, strips, groups: layoutLayerGroups }), [wiring, strips, layoutLayerGroups]);
+  const compiledWiring = useMemo(() => compileWiring({ wiring, strips, groups: layoutLayerGroups, mirrorSets: layoutMirrorSets }), [wiring, strips, layoutLayerGroups, layoutMirrorSets]);
 
   // Selection dispatchers (LayoutScreen's single selection model rides on these).
   const selectStrip       = useCallback(id => dispatchLayout(layoutActions.selectStrip(id)), []);
@@ -625,8 +648,8 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
   // deriveProjectSectionTargets with their look; the structural inputs are
   // still this one set, which is what keeps the lists identical.
   const deriveProjectSectionTargets = useCallback(
-    (defaultLook) => deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring, defaultLook }),
-    [strips, patchBoard, wiring, compiledWiring],
+    (defaultLook) => deriveSectionTargets({ strips, patchBoard, wiring, compiledWiring, mirrorSets: layoutMirrorSets, defaultLook }),
+    [strips, patchBoard, wiring, compiledWiring, layoutMirrorSets],
   );
   const projectDefaultLookKey = JSON.stringify(normalizeSectionVisualLook(standaloneController?.defaultLook));
   const sectionTargets = useMemo(
@@ -785,6 +808,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         stripCountOverrides: layout.stripCountOverrides || {},
         stripDensities: layout.stripDensities || {},
         layerGroups: layout.layerGroups || [],
+        mirrorSets: layout.mirrorSets || [],
         sectionFamilies: layout.sectionFamilies || [],
         layerOrder: layout.layerOrder || [],
         patchBoard: normalizePatchBoard(shouldSeedDefaultLayout ? defaults.layout.patchBoard : layout.patchBoard, restoredStrips),
@@ -916,6 +940,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         stripCountOverrides: layoutStripCountOverrides,
         stripDensities: layoutStripDensities,
         layerGroups: layoutLayerGroups,
+        mirrorSets: layoutMirrorSets,
         sectionFamilies,
         layerOrder: layoutLayerOrder,
         patchBoard: normalizePatchBoard(patchBoard, strips),
@@ -955,7 +980,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     return project;
   }, [
     projectId, projectName, origin, expressionScenes, strips, starterPending, viewBox, svgText, hidden, projectWarnings, patchBoard, wiring,
-    layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, sectionFamilies, layoutLayerOrder,
+    layoutLayers, layoutDensity, layoutPxPerMm, layoutEditCounts, layoutStripCountOverrides, layoutStripDensities, layoutLayerGroups, layoutMirrorSets, sectionFamilies, layoutLayerOrder,
     activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
     masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
     motionSmoothing,
@@ -1137,6 +1162,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       layoutStripCountOverrides, setLayoutStripCountOverrides,
       layoutStripDensities, setLayoutStripDensities,
       layoutLayerGroups, setLayoutLayerGroups,
+      layoutMirrorSets, setLayoutMirrorSets,
       sectionFamilies, setSectionFamilies,
       layoutLayerOrder,  setLayoutLayerOrder,
       patchBoard,        setPatchBoard,

@@ -1493,6 +1493,7 @@ function Shell({ offlineUpdateController = null }) {
           strips: snapshot.layout?.strips || [],
           patchBoard: snapshot.layout?.patchBoard,
           wiring: snapshot.layout?.wiring,
+          mirrorSets: snapshot.layout?.mirrorSets || [],
           standaloneController: snapshot.devices?.standaloneController,
         });
         prepareCardStoragePayload(prepared.runtimePackage);
@@ -1784,6 +1785,7 @@ function Shell({ offlineUpdateController = null }) {
         strips: snapshot.layout?.strips || [],
         patchBoard: snapshot.layout?.patchBoard,
         wiring: snapshot.layout?.wiring,
+        mirrorSets: snapshot.layout?.mirrorSets || [],
         standaloneController: snapshot.devices?.standaloneController,
       }).config;
     } catch (error) {
