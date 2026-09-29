@@ -75,7 +75,7 @@ async function openStudioDrawer(page: Page, state: ReturnType<typeof sharedCard>
   return page.getByRole('dialog');
 }
 
-test('player saves one installed pattern and an independent Studio context reads the same saved values', async ({ browser, baseURL }) => {
+test('player saves one installed pattern and an independent Studio context reads the same saved values', async ({ browser, baseURL }, testInfo) => {
   const card = sharedCard();
   const playerContext = await browser.newContext({ baseURL }); const studioContext = await browser.newContext({ baseURL });
   try {
@@ -101,11 +101,11 @@ test('player saves one installed pattern and an independent Studio context reads
     await expect(drawer.getByRole('slider', { name: 'Brightness', exact: true })).toHaveValue('40');
     await expect(drawer.getByRole('region', { name: 'Saved pattern settings' })).toContainText('Brightness 40%');
     expect(await studio.evaluate(() => { const saved = JSON.parse(localStorage.getItem('lw_autosave_v3')!); return { looks: saved.devices.standaloneController.looks, defaultLook: saved.devices.standaloneController.defaultLook, playlist: saved.devices.standaloneController.playlist }; })).toEqual(originalProject);
-    await player.screenshot({ path: '/private/tmp/lightweaver-client-pattern-saved.png', fullPage: true });
+    await player.screenshot({ path: testInfo.outputPath('lightweaver-client-pattern-saved.png'), fullPage: true });
     await player.setViewportSize({ width: 390, height: 844 });
     await expect(player.getByRole('button', { name: 'Update pattern', exact: true })).toBeVisible();
     expect(await player.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await player.screenshot({ path: '/private/tmp/lightweaver-client-pattern-saved-phone.png', fullPage: true });
+    await player.screenshot({ path: testInfo.outputPath('lightweaver-client-pattern-saved-phone.png'), fullPage: true });
   } finally { await playerContext.close(); await studioContext.close(); }
 });
 
