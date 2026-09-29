@@ -634,3 +634,15 @@ an incomplete rollout, not an owner-sign-in task.
 **Open tensions:**
 - Colour-journey recipes read `globalStart`, so a twin can drift in phase on the card. Measure on the bench card.
 - Strips with reflection points, or split across runs, cannot join a set in v1.
+
+## 2026-09-29 (later) — Symmetry sides replace mirror sets; mirroring is chosen per look
+
+**Topic:** Hours after mirror sets shipped, Adrian asked what 2-way and 4-way mirroring should feel like for someone who does not know the system, and added two requirements: some strips mirror while others play their own, and a mirror may apply to some patterns and not others. He also chose that a pattern should flow across all of a side's strips.
+
+**Convergent answer:** Two layers. Layout says once which strips belong to which side, in flow order, with the rest "on their own" (this only describes the artwork). Each look on Patterns chooses "Mirror each other" or "Play their own". On the card each side is one continuous zone, and a mirrored look marks sides 2..n as copies of side 1 (`mirrorOf`, `mirrorFlip`), rendered after the source. Firmware 1.2.0, capability `symmetrySides`, gated in Studio.
+
+**Why the morning's decision was reversed:** mirror sets compiled a set to one multi-range zone, which needs no firmware but fixes the mirror into the layout for every pattern and restarts the pattern on every strip. Per-look mirroring and flow across strips both need the card to know which zone copies which. The copy step rejected this morning (it would overwrite streams) is now safe because it runs only during internal rendering and never touches Art-Net, WLED or HTTP frames.
+
+**Rejected:** a separate symmetry panel (the owner: "fit into the context of what's already there, not the island"); sides living only on the canvas (most of the work belongs in the sidebar); a per-strip "Mirror with…" checklist (v1, retired).
+
+**Open:** recordings do not yet record which choice they were baked with; Pattern Lab's decimated preview does not map side flow.
