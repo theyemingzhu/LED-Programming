@@ -25,7 +25,7 @@ const PURE_WHOLE_TREE_COMMANDS = new Set([
   "node --test functions/api/firmware/update-grant.test.js scripts/check-firmware-update-service.test.mjs functions/api/library/_shared/accountAuth.test.js functions/api/library/library-api.test.js tests/cloud-bindings.mjs src/lib/cloudLibraryClient.test.js src/lib/libraryBackup.test.js src/lib/workspaceAssets.test.js", // test:projects
   "node --test scripts/client-release.test.mjs tests/owner-studio.test.mjs", // test:client-release
   "node --test src/client/*.test.js", // test:client
-  "node --test ../scripts/background-release*.test.mjs ../scripts/release-controller.test.mjs ../scripts/release-check-plan.test.mjs ../scripts/release-events.test.mjs ../scripts/install-background-release.test.mjs ../scripts/release-receipt.test.mjs ../scripts/ci-changed-lanes.test.mjs", // test:background-release
+  "node --test ../scripts/background-release*.test.mjs ../scripts/release-controller.test.mjs ../scripts/release-queue.test.mjs ../scripts/release-check-plan.test.mjs ../scripts/release-events.test.mjs ../scripts/install-background-release.test.mjs ../scripts/release-receipt.test.mjs ../scripts/ci-changed-lanes.test.mjs", // test:background-release
 ]);
 const GLOBAL_INPUTS = ['scripts', 'lightweaver/scripts', '.github'];
 const within = (path, prefix) => prefix === '.' || path === prefix || path.startsWith(`${prefix}/`);

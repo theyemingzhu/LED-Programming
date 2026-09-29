@@ -8,20 +8,17 @@ Prove records belong in their session folders.
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Current delivery — release reliability — 2026-09-29
-Owner: primary manager. State: tooling verified; installing pinned local runtime.
-Checkout /Users/adrianrasmussen/.codex/worktrees/release-reliability/led;
-branch codex/release-reliability, based on card-first candidate54e5a931.
-Versioned candidate controller pins exact revision/base/tree, persists check
-receipts, distinguishes interruption/failure, and joins only the matching live
-observer. New failure events expose owner/cause/log/next action and truthful
-notification submission status. A one-shot event repair worker has a20minute
-limit and no routine AI polling. Existing production gates remain unchanged.
-Independent PR379 publication remains on its own immutable candidate/runner.
-Evidence:98/98 release-tooling tests pass, including real fake-executable repair
-launch, exact merge guards, dependency invalidation, interruption, overdue orphan
-checks, missed events and failed notifications. Full required command plan preserved.
-Next: pinned local runtime installation and status proof;
-no new production deployment authorized by this tooling build alone.
+Owner: primary manager. State: ship authorized; queueing behind PR379 live proof.
+PR380 https://github.com/theyemingzhu/LED-Programming/pull/380, isolated checkout
+/Users/adrianrasmussen/.codex/worktrees/release-reliability/led. Initial tooling
+commit3517fad0 verified98/98 and installed locally. Follow-up adds durable ordered
+publication: pin queued head/branch/owner, wait prerequisite exact shipped proof,
+integrate only proven main, persist before push, retarget and start normal checks.
+Legacy PR379 retains its own runner/evidence; concrete failures request one bounded
+repair event. Unrelated main advancement is a reconciliation condition, not an
+excuse to bypass tests. No routine model polling or simultaneous publication.
+Next: focused queue tests, install pinned runtime, enqueue PR380 and verify the
+service persisted its waiting state. Shipped requires final exact live proof.
 
 ## Current delivery — card-first Studio resume — 2026-09-29
 Owner: primary manager. State: authorized release; repaired failed gate, resuming.

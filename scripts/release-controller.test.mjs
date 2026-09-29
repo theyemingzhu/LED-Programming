@@ -190,3 +190,8 @@ test('service recovers missed blocked event idempotently without resuming blocke
   await resumeInterruptedCandidates(controller, opts); const second = await controller.read('pr12');
   assert.equal(publications, 1); assert.match(first.eventKey, /^[a-f0-9]{64}$/); assert.equal(second.updatedAt, first.updatedAt);
 });
+
+test('explicit queued PR has visible waiting state before candidate preparation',async t=>{
+ const f=await fixture(t);await mkdir(join(f.stateDir,'queue'),{recursive:true});await writeFile(join(f.stateDir,'queue','pr380.json'),JSON.stringify({id:'pr380',phase:'waiting',afterPr:379,updatedAt:1,nextAction:'Waiting for PR379 live proof'}));
+ const s=await f.controller.status('pr380');assert.equal(s.phase,'waiting');assert.equal(s.queued.afterPr,379);assert.match(s.nextAction,/PR379/);
+});

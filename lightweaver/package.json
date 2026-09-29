@@ -64,7 +64,7 @@
     "test:mobile": "playwright test --config tests/mobile-playwright.config.ts --reporter=list",
     "test:matrix": "playwright test --config tests/matrix-playwright.config.ts --reporter=json",
     "test:matrix:live": "playwright test tests/live-card-states.spec.ts --project=chromium --workers=1 --reporter=list",
-    "test:background-release": "node --test ../scripts/background-release*.test.mjs ../scripts/release-controller.test.mjs ../scripts/release-check-plan.test.mjs ../scripts/release-events.test.mjs ../scripts/install-background-release.test.mjs ../scripts/release-receipt.test.mjs ../scripts/ci-changed-lanes.test.mjs",
+    "test:background-release": "node --test ../scripts/background-release*.test.mjs ../scripts/release-controller.test.mjs ../scripts/release-queue.test.mjs ../scripts/release-check-plan.test.mjs ../scripts/release-events.test.mjs ../scripts/install-background-release.test.mjs ../scripts/release-receipt.test.mjs ../scripts/ci-changed-lanes.test.mjs",
     "build:client": "vite build --config vite.client.config.js && node scripts/client-release.mjs stage",
     "verify:client": "node scripts/client-release.mjs verify",
     "check:client:prod": "node scripts/client-release.mjs live",

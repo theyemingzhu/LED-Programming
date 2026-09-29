@@ -12,6 +12,7 @@ export const RUNTIME_FILES = [
   'scripts/background-release.mjs',
   'scripts/release-events.mjs',
   'scripts/release-controller.mjs',
+  'scripts/release-queue.mjs',
   'scripts/release-check-plan.mjs',
   'scripts/background-release-proof.mjs',
   'lightweaver/scripts/client-release.mjs',

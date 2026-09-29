@@ -218,7 +218,11 @@ export function createReleaseController({ root = sourceRoot, stateDir, git, gh, 
     const joinedObserver = candidate?.mergedRevision && observer?.revision === candidate.mergedRevision ? observer : recordedObserver?.revision === candidate?.mergedRevision ? recordedObserver : null;
     const eventKey = (candidate?.phase === 'blocked' ? candidate.eventKey : joinedObserver?.eventKey) || candidate?.eventKey;
     const event = /^[a-f0-9]{64}$/.test(eventKey || '') ? await json(join(dir, 'events', `release-${eventKey}.json`)) : null;
-    return { schemaVersion: SCHEMA, candidate, candidates, notification: event?.notification || null, repair: event?.repair || null, event, observer: joinedObserver || (!candidate && !id ? observer : null), phase: (candidate?.phase === 'blocked' ? 'blocked' : joinedObserver?.phase) || candidate?.phase || (!id ? observer?.phase : null) || 'missing', cause: candidate?.phase === 'blocked' ? candidate.cause : joinedObserver?.reason || candidate?.cause || '', nextAction: candidate?.nextAction || '', stateDir: dir };
+    let queueNames = [];
+    try { queueNames = await readdir(join(dir, 'queue')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const queues = (await Promise.all(queueNames.filter(name => /^pr[1-9][0-9]*\.json$/.test(name) && (!id || name === `${id}.json`)).map(name => json(join(dir, 'queue', name))))).filter(Boolean);
+    const queued = queues.sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
+    return { schemaVersion: SCHEMA, queued, queues, candidate, candidates, notification: event?.notification || null, repair: event?.repair || null, event, observer: joinedObserver || (!candidate && !id ? observer : null), phase: (candidate?.phase === 'blocked' ? 'blocked' : joinedObserver?.phase) || candidate?.phase || (!id ? observer?.phase : null) || queued?.phase || 'missing', cause: candidate?.phase === 'blocked' ? candidate.cause : joinedObserver?.reason || candidate?.cause || '', nextAction: candidate?.nextAction || queued?.nextAction || '', stateDir: dir };
   }
   return { prepare, run, status, read, save, emit, block, now, candidateDir, dirPromise };
 }
@@ -290,7 +294,9 @@ async function main(options) {
   if (options.command === 'status') return controller.status(options.id);
   if (options.command === 'resume-all') {
     if (!options.onlyInterrupted) throw new Error('resume-all requires --only-interrupted.');
-    return resumeInterruptedCandidates(controller);
+    const recovered = await resumeInterruptedCandidates(controller);
+    const queued = await (await import('./release-queue.mjs')).processReleaseQueue(await controller.dirPromise);
+    return { ...recovered, queued };
   }
   if (!options.id) throw new Error(`${options.command} requires --id prNUMBER.`);
   if (options.command === 'worker') {

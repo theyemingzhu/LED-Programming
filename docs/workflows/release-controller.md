@@ -79,3 +79,23 @@ Tests exercise failed checks, interruption, immutable revision changes, receipt
 reuse, exact merge/tree checks, notification errors and one-shot repair dispatch.
 They use isolated fixtures and fake external processes; they do not publish a
 site, send a real repair prompt or mutate the physical card.
+
+## An authorized release queued behind another release
+
+`release-queue.mjs` records the exact candidate and prerequisite PR. The recovery
+service checks the queue without a model. It waits for the prerequisite's exact
+shipped proof, then integrates that proven main into the isolated candidate,
+pushes the recorded result, retargets the PR to main and starts normal release
+checks. Dirty files, unexpected heads, unrelated main movement and conflicts
+block the queue with a concrete event. No queued item directly deploys anything.
+Each integration/push/preparation boundary is persisted for crash recovery.
+Legacy prerequisite failures can request one bounded repair using the same
+revision-deduplicated event path. The original runner and its evidence remain
+intact; queue supervision does not silently bypass or restart it.
+
+A blocked queue does not retry itself. After a concrete blocker is resolved,
+`resumeQueuedRelease({ stateDir, pr })` explicitly resumes the recorded queue
+under its existing ship authorization; it does not require the owner to say
+“ship” again. The next tick revalidates the recorded integration boundary. A
+changed candidate revision requires deliberate reconciliation rather than
+silently replacing the authorized candidate.
