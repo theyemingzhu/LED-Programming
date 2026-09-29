@@ -295,6 +295,9 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
     exactProject,
     exactRevision,
     commandReady,
+    installedControlsReady: commandReady && Boolean(readiness.bootId) && !readiness.safeMode
+      && (!link.validatedBootId || link.validatedBootId === readiness.bootId)
+      && ['ready', 'project-mismatch', 'length-mismatch', 'content-mismatch'].includes(state),
     safeControlAccess: state === 'ready' ? 'ready' : state,
     label: state === 'discovery-setup' && hasCountedLights(project, readiness)
       ? 'Lights counted'

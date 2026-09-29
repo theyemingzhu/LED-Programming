@@ -28,7 +28,7 @@ export function CardStatusControl({
   onRecoverLights,
   recoveryPending = false,
 }) {
-  const writesNow = lifecycle?.state === 'length-mismatch' || lifecycle?.state === 'content-mismatch';
+  const writesNow = !lifecycle?.installedControlsReady && (lifecycle?.state === 'length-mismatch' || lifecycle?.state === 'content-mismatch');
   const status = savePending ? 'Saving to card' : lifecycle.label;
   const connected = status === 'Connected';
   const saveToCard = cardFooterNeedsSave(lifecycle) || writesNow || savePending;

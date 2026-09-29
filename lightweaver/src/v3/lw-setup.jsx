@@ -26,10 +26,11 @@ import { isBenchProjectEvidence } from '../lib/benchConfig.js';
 import { readCardCommissioningVerification } from '../lib/cardInstallGate.js';
 import { isUncountedHeadroomCount, projectSkeletonFromCardStatus } from '../lib/discoveryCommit.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
+import { deriveCardSessionView } from '../lib/cardSessionView.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
-import { currentInstallation, hasUnsavedChanges, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { currentInstallation, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
 import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
@@ -316,39 +317,6 @@ export function SetupScreen({
     return { ok: true };
   };
 
-  const adoptedCardRef = useRef('');
-  const adoptWiringFromCard = (status, wiringStatus) => {
-    // A test boot exposes the candidate geometry before the owner confirms it.
-    // Reconstructing it here replaces the open project/generation and falsely
-    // records it installed, invalidating the very confirmation still on screen.
-    const route = new URLSearchParams(window.location.hash.slice(1));
-    if (route.get('task') === 'install-project' || route.get('next') === 'patterns'
-      || !wiringStatus || wiringStatus.hasCandidate !== false
-      || status?.wiringProbation === true || status?.wiringProbation?.active === true) return;
-    const signature = `${status?.cardId || ''}:${status?.projectId || ''}:${status?.bootId || ''}`;
-    if (!signature.replace(/:/g, '') || adoptedCardRef.current === signature) return;
-    const skeleton = projectSkeletonFromCardStatus(status || {});
-    if (!skeleton.portRoles.some(output => output?.role === 'strip' && Number(output.pixelCount) > 0)) return;
-    const alreadyDescribed = (currentProject?.portRoles || [])
-      .some(output => output?.role === 'strip' && Number(output.pixelCount) > 0);
-    // The same rule as the "adopt by default" effect below: this may only run
-    // where nothing can be lost. `applyCardParts` replaces the WHOLE project,
-    // id included, with no owner gate — so a real piece that simply had not
-    // yet written its strip into `portRoles` was overwritten by the first
-    // card it met, whichever project that card held. Matching project IDs do
-    // not make this safe: an older card revision can share the ID of a saved
-    // Studio layout with newer sections. Only the untouched starter may be
-    // described from card readback without an owner action.
-    const openIsUntouched = currentProject?.layout?.starterPending === true;
-    if (!openIsUntouched) return;
-    adoptedCardRef.current = signature;
-    if (!alreadyDescribed) {
-      void applyCardParts(skeleton, status)
-        .then(applied => { if (!applied?.ok) reportAdoptionFailure(applied?.reason); })
-        .catch(error => reportAdoptionFailure('', error));
-    }
-  };
-
   useEffect(() => {
     if (!cardReachable) {
       setCardState({ evidence: null, status: null, wiringStatus: null, read: false });
@@ -369,12 +337,12 @@ export function SetupScreen({
       const status = statusResult.status === 'fulfilled' ? statusResult.value : null;
       const wiringStatus = wiringResult.status === 'fulfilled' ? wiringResult.value : null;
       setCardState({ evidence, status, wiringStatus, read: true });
-      adoptWiringFromCard(status, wiringStatus);
+      // Readback describes the card; only explicit adoption may replace draft wiring.
       if (!evidence) {
         setResolution({ kind: 'none' });
         return;
       }
-      if (isBenchProjectEvidence(evidence)) {
+      if (isBenchProjectEvidence({ ...evidence, ...(typeof status?.provisionalSetup === 'boolean' ? { provisionalSetup: status.provisionalSetup } : {}) })) {
         setResolution({ kind: 'bench' });
         return;
       }
@@ -694,82 +662,7 @@ export function SetupScreen({
     });
   };
 
-  // ── Adopt by default ───────────────────────────────────────────────────────
-  //
-  // ADOPTING describes the card. MEASURING describes the hardware. They only
-  // differ when the physical wiring has changed — and pressing "Find my strips"
-  // IS the owner saying it changed. Everywhere else, a card that already holds
-  // a working project should simply open it, with no question asked.
-  //
-  // It used to ask, every time, and the question is one the owner cannot answer
-  // better than Studio can. Worse, the wrong answer is expensive: adopting
-  // scaffolding makes 256 placeholder lights into a real design, and clearing a
-  // finished piece throws away its setup.
-  //
-  // So this runs only where nothing can be lost:
-  //   • the exact card is connected and reports a project of its own,
-  //   • that project is NOT the temporary Find-my-strips setup,
-  //   • it is not already the project open here,
-  //   • and the open project has no unsaved changes to overwrite.
-  // Anything else keeps the explicit buttons, unchanged.
-  const autoAdoptedRef = useRef('');
-  useEffect(() => {
-    if (!exactTransport || !cardState.read) return;
-    if (provisionalSetup || installIntentOpen
-      || new URLSearchParams(window.location.hash.slice(1)).get('task') === 'install-project'
-      || !cardState.wiringStatus || cardState.wiringStatus.hasCandidate !== false
-      || cardState.status?.wiringProbation === true || cardState.status?.wiringProbation?.active === true) return;
-    const cardProjectId = String(cardState.status?.projectId || cardLink?.readiness?.projectId || '').trim();
-    if (!cardProjectId) return;
-    // Not "is the id the same" — pairing already copies the id across, so that
-    // test skipped every card whose CONTENT Studio was out of step with, which
-    // is the whole case adoption exists for. The question is whether Studio
-    // holds the card's exact project: same id, same fingerprint, same revision.
-    if (cardLifecycle?.exactProject === true) return;
-    // The live lifecycle has revisions, not the persisted summary's dirty flag.
-    if (hasUnsavedChanges(readProjectLifecycle())) return;
-    // A saved Studio project may share the card's ID while containing newer
-    // sections than the card. Rebuilding from that older card would silently
-    // replace the saved layout with a partial card copy, then autosave it.
-    // Automatic reconstruction is only safe over the untouched starter;
-    // "Use this card's project" remains available for an intentional switch.
-    const openIsUntouched = currentProject?.layout?.starterPending === true;
-    if (!openIsUntouched) return;
-    // Keyed on the CARD and the project it holds — never on the Studio project
-    // generation, which adoption itself bumps. Including it made every adoption
-    // mint a new key, so the effect adopted again, forever, and hung the page.
-    const attempt = `${cardLink?.card?.id || ''}:${cardProjectId}`;
-    if (autoAdoptedRef.current === attempt) return;
-    autoAdoptedRef.current = attempt;
-    // A DIFFERENT saved project that matches the card: load it.
-    if (resolution.kind === 'saved-match' && resolution?.resolved && cardActions?.adoptCardProject) {
-      // F27: this automatic call bypassed `byOwner`, so a rejection here had
-      // no catch anywhere in the chain and vanished — same failure mode as
-      // the button, just unreachable by clicking. reportAdoptionFailure reads
-      // ownerAskedToAdoptRef (false here) and routes to the quiet notice.
-      void loadResolvedProject().catch(error => reportAdoptionFailure('', error));
-      return;
-    }
-    // Otherwise Studio already has this project by id but not at the card's
-    // revision — 'matches-current' with exactProject false — so loading the
-    // saved copy would load what is already open and change nothing. Rebuild
-    // from the card's own read-back instead. That IS "Use the card's copy".
-    void startFromCard().catch(error => reportAdoptionFailure('', error));
-  }, [
-    cardLink?.card?.id,
-    cardLink?.readiness?.projectId,
-    cardState.read,
-    cardState.status,
-    cardLifecycle?.exactProject,
-    currentProject?.id,
-    exactTransport,
-    projectLifecycle,
-    cardState.wiringStatus,
-    installIntentOpen,
-    provisionalSetup,
-    resolution.kind,
-    resolution?.resolved,
-  ]);
+  // Project adoption is always explicit; card control never replaces the browser draft.
 
   // A real "try again" for a blocked or uncertain card operation: re-read the
   // card's evidence and re-resolve it. Reopening the connection center only
@@ -963,6 +856,15 @@ export function SetupScreen({
   // connectionLabel, not label: `label` is the footer chip's errand text. See
   // CONNECTION_LABELS in cardLifecycle.js.
   const identityLifecycle = cardLifecycle || deriveCardLifecycle({ link: cardLink || {} });
+  const session = deriveCardSessionView({ link: cardLink || {}, lifecycle: identityLifecycle, project: currentProject, status: cardState.status });
+  const lastInstalledSession = useRef(null);
+  if (session.capabilities.installedControl) lastInstalledSession.current = session;
+  const rememberedInstalled = Boolean(lastInstalledSession.current?.identity.cardId) && !session.capabilities.installedControl && ['DISCONNECTED', 'CHECKING'].includes(session.summaryCode)
+    && lastInstalledSession.current?.identity.cardId === (cardLink?.expectedCard?.id || cardLink?.card?.id);
+  const displaySession = rememberedInstalled ? lastInstalledSession.current : session;
+  const setupTask = new URLSearchParams(window.location.hash.slice(1)).get('task');
+  const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
+    && !wiringTestActive && !reviewLights && (!setupTask || setupTask === 'load-matching-project');
   const identityStatus = wiringTestActive
     ? 'Testing lights'
     : identityLifecycle.connectionLabel || identityLifecycle.label;
@@ -1009,7 +911,7 @@ export function SetupScreen({
           <div className="lw-setup-task" data-testid="setup-active-task">
             <p role="status" data-testid="setup-card-project-note">
               {installedId && installedId === String(currentProject?.id || '').trim()
-                ? 'This card holds the same project that is open here, but the wiring has changed in Studio since it was installed. Use the card’s copy, or save this one to the card.'
+                ? 'This card holds the same project, but Studio has not confirmed that its contents match your draft. Open the installed project, or review your draft before saving it to the card.'
                 : installedId
                   ? 'This card holds a different project from the one open in Studio.'
                   : 'Studio has not matched the project this card holds to the project open here.'}
@@ -1224,18 +1126,36 @@ export function SetupScreen({
           placement in one breath), then Open Patterns, Open Layout and the
           install control. The ready banner this absorbs used to say the same
           things again in its own box beneath. */}
+      {installedHome && (
+        <section className="lw-mod card-support-panel" data-testid="card-installed-home" aria-label="Installed project">
+          <h2>On the card</h2>
+          <p>{displaySession.installation.name || 'Installed project'}{rememberedInstalled ? ' · Last seen' : ''}</p>
+          <p>{rememberedInstalled ? 'Last seen installation · waiting for fresh card state' : session.playback.state === 'playing' ? `Playing: ${session.playback.patternId || 'card playlist'}` : session.playback.state === 'paused' ? 'Playlist paused' : session.playback.state === 'externally-driven' ? 'Playing from an external source' : 'Installed playback available'}</p>
+          <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openCard?.()}>Control installed project</button>
+          <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>
+          {session.draft.relationship !== 'matches' && <div className="lw-setup-banner-actions">
+            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=draw')}>Review draft changes</button>
+            <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard)}>Open installed project</button>
+          </div>}
+          <p>The recoverable card copy may not include original artwork or editor assets.</p>
+          <button type="button" className="btn" onClick={() => setReviewLights(true)}>Review checks</button>
+        </section>
+      )}
+
       {(() => {
         const cardReady = matchesOpenProject && !provisionalSetup && exactTransport && !wiringTestActive && !installIntentOpen;
         const installedText = installRelationship(resolution, cardState.status?.projectId || cardLink?.readiness?.projectId || '', installationMatch, currentProject?.id, provisionalSetup, cardLifecycle?.exactProject === true);
-        const pins = evidence.outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
+        const cardOutputs = displaySession.installation.outputs || [];
+        const shownEvidence = installedHome ? { outputs: cardOutputs, count: cardOutputs.reduce((sum, output) => sum + Number(output.pixels ?? output.count ?? 0), 0) } : evidence;
+        const pins = shownEvidence.outputs.map(output => output.pin).filter(pin => pin !== undefined && pin !== null && pin !== '');
         const led = currentProject?.devices?.standaloneController?.led || {};
         const colorConfirmed = readCardCommissioningVerification({ standaloneController: currentProject?.devices?.standaloneController }).colorConfirmed;
         const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
         const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
-        const lightsValue = evidence.count > 0
-          ? `${evidence.count} on ${pins.length ? pins.map(pin => `GPIO ${pin}`).join(', ') : `${evidence.outputs.length} output${evidence.outputs.length === 1 ? '' : 's'}`}`
-          : 'Not counted yet';
-        const lightsHint = evidence.count > 0
+        const lightsValue = shownEvidence.count > 0
+          ? `${rememberedInstalled ? 'Last seen: ' : ''}${shownEvidence.count} on ${pins.length ? pins.map(pin => `GPIO ${pin}`).join(', ') : `${evidence.outputs.length} output${evidence.outputs.length === 1 ? '' : 's'}`}`
+          : installedHome ? 'Not reported by card' : 'Not counted yet';
+        const lightsHint = installedHome ? rememberedInstalled ? 'Last seen configuration · reconnecting' : 'Configured on the card · physical checks kept separately' : evidence.count > 0
           ? `${colorConfirmed ? `${led.colorOrder} confirmed` : 'Color order not confirmed'} · ${drawn ? `${strips.length} strip${strips.length === 1 ? '' : 's'} drawn` : 'not drawn'}`
           : 'Find my strips counts them';
         const openFirmware = () => go('#screen=card&section=install');
@@ -1255,7 +1175,7 @@ export function SetupScreen({
                 </button>
               )}
               <span className="m" data-testid="setup-progress">
-                {journey.setupComplete
+                {installedHome ? 'Installed project' : journey.setupComplete
                   ? 'Setup complete'
                   : `Step ${Math.max(1, SETUP_CHAIN_IDS.indexOf(journey.currentPhaseId) + 1)} of ${SETUP_CHAIN_IDS.length}`}
               </span>
@@ -1268,8 +1188,8 @@ export function SetupScreen({
                   <span>Connection</span><strong>{identityStatus}</strong>
                 </button>
                 <div className="lw-identity-project">
-                  <span>Project</span>
-                  {nameDraft !== null ? (
+                  <span>{installedHome ? 'On the card' : 'Your draft'}</span>
+                  {installedHome ? <strong>{displaySession.installation.name || 'Installed project'}</strong> : nameDraft !== null ? (
                     <input
                       className="lw-identity-rename"
                       data-testid="setup-project-name-input"
@@ -1289,7 +1209,7 @@ export function SetupScreen({
                       <strong>{projectDisplayName}</strong><em>Rename</em>
                     </button>
                   )}
-                  <small data-testid="setup-identity-installed">{installedText}</small>
+                  <small data-testid="setup-identity-installed">{installedHome ? 'Installed project' : installedText}</small>
                 </div>
                 <button type="button" className="lw-setup-identity-door" data-testid="setup-identity-lights" onClick={openLightsDoor}>
                   <span>Lights</span><strong>{lightsValue}</strong><small>{lightsHint}</small>
@@ -1301,7 +1221,7 @@ export function SetupScreen({
                   itself whether it has anything to show (CardInstallAction);
                   an empty door slot collapses (CSS :empty). */}
               <div className="lw-setup-doors" data-testid={cardReady ? 'setup-card-ready' : 'setup-doors'} aria-label="Card doors">
-                {(journey.setupComplete || evidence.count > 0) && (<>
+                {!installedHome && (journey.setupComplete || evidence.count > 0) && (<>
                 {/* One primary per page: Open Patterns is it only on a finished,
                     lit card. Before install it is a preview door (the card
                     plays a pattern it will not keep), and while the card is
@@ -1318,7 +1238,7 @@ export function SetupScreen({
                 </button>
                 <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
                 </>)}
-                {installDoor}
+                {!installedHome && installDoor}
               </div>
             </div>
           </section>
@@ -1356,7 +1276,7 @@ export function SetupScreen({
         {/* The temporary bench setup is named by the status row's Project cell
             ("Temporary setup — not installed") and by the still-to-do list;
             a banner saying it a third time was cut with the rest. */}
-        {savedMatchLoadOffer && (
+        {savedMatchLoadOffer && !installedHome && (
           <section className="card-support-panel lw-setup-banner">
             <h2>A saved project matches this exact card</h2>
             <p>Load the matching project instead of replaying blank-card setup.</p>
@@ -1368,7 +1288,7 @@ export function SetupScreen({
         {/* The connect phase renders these same two actions when its active
             task IS the unresolved card project, so the banner stands down
             rather than showing a second copy of them. */}
-        {resolution.kind === 'none' && !installationMatch && cardState.read && cardState.status?.projectId && journey.taskId !== 'load-matching-project' && (
+        {!installedHome && resolution.kind === 'none' && !installationMatch && cardState.read && cardState.status?.projectId && journey.taskId !== 'load-matching-project' && (
           <section className="card-support-panel lw-setup-banner">
             <h2>Resolve this card&rsquo;s project</h2>
             <div className="lw-setup-banner-actions">
@@ -1387,7 +1307,7 @@ export function SetupScreen({
           ladder this replaces claimed an order the code never enforced and
           hid the last phase as "upcoming" while the owner was, legitimately,
           tuning patterns on lights that were not yet drawn. */}
-      {!startOwnsPrimary && (() => {
+      {!startOwnsPrimary && !installedHome && (() => {
         let missing = missingPhases(journey);
         // An install in flight (`next=patterns` in the URL) keeps the verify
         // row mounted whatever the journey says mid-push: the install control

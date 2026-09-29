@@ -102,6 +102,8 @@ import { getCardJourneyEvidence } from '../lib/cardJourneyEvidence.js';
 import { OPEN_CONNECT_PANEL_EVENT, hasResumablePreservingUsbUpdate } from '../lib/cardFlowEntry.js';
 import { rememberCardReturnIntent } from '../lib/cardReturnIntent.js';
 import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
+import { chooseCardResumePlace, rememberCardResumePlace } from '../lib/cardResumePlace.js';
+import { deriveCardSessionView } from '../lib/cardSessionView.js';
 import { cardSurfaceForLifecycle } from '../lib/cardActionAuthority.js';
 import { cardProjectFingerprint } from '../lib/cardProjectResolver.js';
 import { applyTypedLedCountToCard } from '../lib/applyLedCountToCard.js';
@@ -359,6 +361,7 @@ function bootstrapFirstRunSetupRoute() {
     // route still applies.
   }
 }
+const originalStudioEntryHash = typeof window === 'undefined' ? '' : window.location.hash;
 bootstrapFirstRunSetupRoute();
 
 /* ---------- tiny icon set (stroked, 1.6) ---------- */
@@ -595,6 +598,8 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
   // provider up the TREE, not the text position of this function, and
   // StatusBar always renders inside <CardActionsProvider> (app.jsx's Shell).
   const cardActions = useCardActions();
+  const session = deriveCardSessionView({ link, lifecycle });
+  const displayLifecycle = session.capabilities.installedControl ? { ...lifecycle, label: 'Connected' } : lifecycle;
   const [recoveryPending, setRecoveryPending] = useState(false);
   const recoverLights = useCallback(async () => {
     if (recoveryPending || !cardActions) return;
@@ -619,7 +624,7 @@ function StatusBar({ link, lifecycle, connectionCenterOpen, cardControlOpen, onO
       <div className="sb-card">
         <CardStatusControl
           link={link}
-          lifecycle={lifecycle}
+          lifecycle={displayLifecycle}
           onOpen={onOpenCardControl}
           open={connectionCenterOpen || cardControlOpen}
           dialogId={cardSurfaceForLifecycle(lifecycle) === 'card-control' ? 'card-control-drawer' : 'card-connection-center'}
@@ -723,6 +728,10 @@ function Shell({ offlineUpdateController = null }) {
   // The URL is the only place the current screen is recorded. `view` and
   // `cardRoute` are read out of it, never stored beside it — see
   // ../lib/studioRoute.js for why the second copy had to go.
+  const initialResumeHash = useRef(originalStudioEntryHash);
+  const resumeEntryHash = useRef(canonicalStudioHash(window.location.hash, studioViewFromHash(window.location.hash, viewOptions())));
+  const resumeAttempted = useRef(false);
+  const resumeUserNavigated = useRef(false);
   const routeStore = useMemo(() => createStudioRouteStore(window), []);
   const routeHash = useSyncExternalStore(routeStore.subscribe, routeStore.read, routeStore.read);
   const view = useMemo(() => studioViewFromHash(routeHash, viewOptions()), [routeHash]);
@@ -1242,6 +1251,21 @@ function Shell({ offlineUpdateController = null }) {
     project: lifecycleProject,
     update: firmwareRecoveryState,
   }), [cardLink, firmwareRecoveryState, lifecycleProject]);
+  useEffect(() => {
+    if (routeHash !== initialResumeHash.current && routeHash !== resumeEntryHash.current) resumeUserNavigated.current = true;
+    if (!cardLifecycle.installedControlsReady) return;
+    const cardId = cardLink.card?.id;
+    if (!resumeAttempted.current) {
+      resumeAttempted.current = true;
+      const remembered = !resumeUserNavigated.current && chooseCardResumePlace({
+        initialHash: initialResumeHash.current,
+        currentHash: routeStore.read(), entryHash: resumeEntryHash.current,
+        cardId, identityVerified: cardLifecycle.exactCard,
+      });
+      if (remembered && remembered !== routeStore.read()) { routeStore.replace(remembered); return; }
+    }
+    rememberCardResumePlace(cardId, routeHash);
+  }, [cardLifecycle.installedControlsReady, cardLifecycle.exactCard, cardLink.card?.id, routeHash, routeStore]);
   // F32: the footer chip is on every screen, so it reads the blackout fact
   // off the same shared journey Card Home's banner and the Patterns toolbar
   // already read (useSetupJourney.js) instead of adding a fourth place that

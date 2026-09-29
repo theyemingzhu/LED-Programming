@@ -1724,7 +1724,7 @@ test('Hardware offers an exact current project without intent and auto-opens onl
   await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 25_000 });
 });
 
-test('a saved match on a connected card offers exactly one Load — the Setup banner wins', async ({ page }) => {
+test('a saved match on a connected card offers exactly one Open installed project action', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.evaluate(async () => {
     const { createDefaultProject } = await import('/src/lib/projectModel.js');
@@ -1770,15 +1770,11 @@ test('a saved match on a connected card offers exactly one Load — the Setup ba
     readiness: cardStatus,
   }]);
 
-  const banner = page.getByTestId('setup-load-matched');
-  await expect(banner).toBeVisible({ timeout: 15_000 });
-  await expect(banner).toContainText(/^Load /);
-  // One project, one Load button: while the Setup journey's saved-match banner
-  // offers the Load, the Matching-card-project panel stands down instead of
-  // offering a second copy of the same guarded adoption. Count only the card
-  // workspace (main): chrome outside it is not a card-project offer.
+  const openInstalled = page.getByTestId('installed-project-open');
+  await expect(openInstalled).toBeVisible({ timeout: 15_000 });
+  await expect(openInstalled).toHaveText('Open installed project');
   await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
-  await expect(page.getByRole('main').getByRole('button', { name: /^Load / })).toHaveCount(1);
+  await expect(page.getByRole('main').getByRole('button', { name: 'Open installed project', exact: true })).toHaveCount(1);
 });
 
 test('Card section navigation becomes one compact switcher on a 390px viewport', async ({ page }) => {

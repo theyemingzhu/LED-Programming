@@ -126,7 +126,13 @@ export function normalizeCardReadiness(raw = {}) {
     runtimePhase,
     mode,
     source: runtimeSource,
+    outputs: Array.isArray(source.outputs) && source.outputs.length <= 16 ? source.outputs.map(output => ({
+      id: cleanText(output?.id, 64), pin: nonNegativeInteger(output?.pin ?? output?.gpio), pixels: positiveInteger(output?.pixels ?? output?.count),
+    })) : null,
+    currentPatternId: cleanText(source.currentPatternId, 96),
+    outputSourceClass: cleanText(source.lwOutput?.sourceClass ?? source.outputSourceClass, 32),
     projectId,
+    projectName: cleanText(source.projectName || source.piece?.name, 128),
     projectFingerprint,
     projectRevision,
     knownGoodProject: explicitBoolean(source.knownGoodProject),
