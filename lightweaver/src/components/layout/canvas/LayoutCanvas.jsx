@@ -16,9 +16,11 @@ import { LightCone, OmniHalo } from '../shared/InspectorPrimitives.jsx';
 import { WiringCordOverlay } from '../wire/WiringCordOverlay.jsx';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import { setSymmetryFold } from '../../../lib/pieceSymmetry.js';
-import { suggestSymmetry, symmetryAxisLine, symmetryStripPlaces } from '../../../lib/symmetrySuggest.js';
+import { suggestSymmetry, symmetryAxisLine, symmetryStripPlaces, worthOffering } from '../../../lib/symmetrySuggest.js';
+import { connectedFamilyForStrip } from '../../../lib/connectedSections.js';
 import { sideTint } from '../shared/sideTints.js';
 import { requestSymmetryReveal, useMirrorEchoFocus } from './mirrorEcho.js';
+import './symmetry-offer.css';
 
 // "Left side" -> "the left side"; "Side 1" -> "side 1".
 const sideNoun = label => `${/^side\b/i.test(label) ? '' : 'the '}${label.charAt(0).toLowerCase()}${label.slice(1)}`;
@@ -115,8 +117,8 @@ export function LayoutCanvas({
     const box = svgText ? parsedVb(viewBox) : null;
     const eligible = strips.filter(strip => strip.kaleidoscope?.enabled !== true);
     const suggestion = suggestSymmetry(eligible, 2, box ? { centre: { x: box.x + box.w / 2, y: box.y + box.h / 2 } } : null);
-    return suggestion?.confidence === 'high' ? suggestion : null;
-  }, [offerPossible, strips, svgText, viewBox]);
+    return worthOffering(suggestion, id => connectedFamilyForStrip(sectionFamilies, id)?.id || null) ? suggestion : null;
+  }, [offerPossible, strips, svgText, viewBox, sectionFamilies]);
   const applyOffer = () => {
     if (!offer) return;
     pushLayoutHistory?.();
@@ -171,6 +173,8 @@ export function LayoutCanvas({
       .sort((a, b) => Number(b.id === selStripId) - Number(a.id === selStripId)).slice(0, 12),
     annotationScale, labelBounds, selStripId,
   );
+  const labelsShown = (!isEditingGesture || movingStripIds.length > 0) && showLeds;
+  const labelledIds = new Set(labelsShown ? labels.map(label => label.strip.id) : []);
   const handleCanvasPointerDown = event => {
     if (!firstLedPicker) {
       handleSvgMouseDown(event);
@@ -495,7 +499,7 @@ export function LayoutCanvas({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       pointerEvents="none"
-                      opacity={0.2}
+                      opacity={0.3}
                     />
                   )}
                   {!isSel && mirrorFocusId === s.id && (
@@ -769,8 +773,8 @@ export function LayoutCanvas({
             )}
 
             {/* ── Symmetry: the mirror line with its two sides named, and each
-                   side strip's flow number just before its first LED. A
-                   number is a strip handle too: tapping it selects the strip. ── */}
+                   side strip's flow number (in its label, or just before its
+                   first LED). A number is a strip handle: tapping selects. ── */}
             {symmetry && mode === 'draw' && !isEditingGesture && (
               <g className="lw-symmetry-marks">
                 {axisLine && (() => {
@@ -804,7 +808,9 @@ export function LayoutCanvas({
                     })}
                   </>;
                 })()}
-                {strips.filter(s => !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length).map(s => {
+                {/* A strip whose label is showing carries its number there;
+                    the rest get a small mark just before LED 1. */}
+                {strips.filter(s => !hidden[s.id] && sidePlaces.has(s.id) && s.pixels?.length && !labelledIds.has(s.id)).map(s => {
                   const place = sidePlaces.get(s.id);
                   const first = s.pixels[0];
                   const next = s.pixels[Math.min(1, s.pixels.length - 1)];
@@ -818,8 +824,10 @@ export function LayoutCanvas({
                     <g key={`${s.id}-flow`} data-testid={`flow-mark-${s.id}`} data-flow-position={place.position}
                        transform={`translate(${x} ${y})`}
                        style={{ cursor: 'pointer', pointerEvents: canDragStrip ? 'all' : 'none' }}
+                       onPointerDown={event => startStripMove(event, s)}
                        onClick={event => {
                          event.stopPropagation();
+                         if (stripDragSuppressClickRef.current) return;
                          selectStrip(s.id);
                        }}>
                       <title>{`${place.label}, ${place.position} of ${place.count}`}</title>
@@ -835,10 +843,16 @@ export function LayoutCanvas({
             )}
 
             {/* One compact, screen-sized annotation per strip; no leader lines. */}
-            {(!isEditingGesture || movingStripIds.length > 0) && showLeds && labels.map(({ strip: s, x, y, width, height }) => {
+            {labelsShown && labels.map(({ strip: s, x, y, width, height }) => {
               const partName = canvasStripLabel(s, sectionFamilies);
-              const label = `${partName} · ${s.pixelCount} LEDs`;
-              const displayName = partName.length > 20 ? `${partName.slice(0, 19).trimEnd()}…` : partName;
+              // In a side, the label leads with the strip's flow number, as the
+              // sidebar row does ("1  Left top").
+              const place = symmetry && mode === 'draw' ? sidePlaces.get(s.id) : null;
+              const label = place
+                ? `${partName} · ${place.label}, ${place.position} of ${place.count} · ${s.pixelCount} LEDs`
+                : `${partName} · ${s.pixelCount} LEDs`;
+              const room = place ? 18 : 20;
+              const displayName = partName.length > room ? `${partName.slice(0, room - 1).trimEnd()}…` : partName;
               return (
                 <g key={s.id + '-callout'} className="lw-strip-callout"
                    data-testid={`strip-callout-${s.id}`}
@@ -857,7 +871,12 @@ export function LayoutCanvas({
                   <rect width={width / annotationScale} height={height / annotationScale} rx="4"
                         fill="oklch(0.18 0.02 220 / 0.88)" stroke={s.color}
                         strokeWidth={s.id === selStripId ? 1.5 : 0.7}/>
-                  <text className="lw-strip-label-name" x="7" y="13" fontFamily="var(--font-ui, sans-serif)" fontSize="11"
+                  {place && (
+                    <text data-testid={`flow-mark-${s.id}`} data-flow-position={place.position}
+                          x="7" y="13" fontFamily="var(--font-mono, monospace)" fontSize="11" fontWeight="600"
+                          fill={sideTint(place.sideIndex)}>{place.position}</text>
+                  )}
+                  <text className="lw-strip-label-name" x={place ? 21 : 7} y="13" fontFamily="var(--font-ui, sans-serif)" fontSize="11"
                         fontWeight={s.id === selStripId ? 600 : 400} fill={s.color}>{displayName}</text>
                 </g>
               );

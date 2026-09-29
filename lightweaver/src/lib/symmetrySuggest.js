@@ -138,6 +138,7 @@ function twoSides(strips, centre, split) {
       { id: 'side-2', label: labels[1], stripIds: [...sideTwo, ...leftovers(second)] },
     ],
     onOwn: own.map(strip => strip.id),
+    matched: pairs.map(pair => [pair.a.id, pair.b.id]),
   };
 }
 
@@ -221,7 +222,11 @@ function fourSides(strips, centre) {
       const sector = Math.min(3, Math.floor(clockwiseKey(centre, strip) / 90));
       sides[sector].stripIds.push(strip.id);
     });
-  return { fold: 4, split: null, orientation, score, sides, onOwn: own.map(strip => strip.id) };
+  return {
+    fold: 4, split: null, orientation, score, sides,
+    onOwn: own.map(strip => strip.id),
+    matched: orbits.map(orbit => orbit.map(strip => strip.id)),
+  };
 }
 
 /**
@@ -233,7 +238,9 @@ function fourSides(strips, centre) {
  *
  * Returns null for any other fold, else:
  *   { fold, orientation: 'mirror' | 'same', sides: [{ id, label, stripIds }],
- *     onOwn: [stripId], split: 'x' | 'y' | null, centre, score, confidence }
+ *     onOwn: [stripId], matched: [[partner ids]], split: 'x' | 'y' | null,
+ *     centre, score, confidence }
+ * `matched` lists the strips that found their partners (a pair, or four).
  */
 export function suggestSymmetry(strips, fold, artwork = null) {
   if (fold !== 2 && fold !== 4) return null;
@@ -262,12 +269,30 @@ export function suggestSymmetry(strips, fold, artwork = null) {
       centre: null,
       sides: labels.map((label, index) => ({ id: `side-${index + 1}`, label, stripIds: [] })),
       onOwn: [],
+      matched: [],
     };
   }
   // Strips with no LED positions yet still play: on their own.
   const placed = new Set([...best.sides.flatMap(side => side.stripIds), ...best.onOwn]);
   const onOwn = [...best.onOwn, ...(strips || []).filter(strip => strip?.id && !placed.has(strip.id)).map(strip => strip.id)];
   return { ...best, onOwn, confidence: symmetryConfidence(best.score) };
+}
+
+/**
+ * Whether a suggestion is strong enough to offer unprompted on the artwork.
+ * Beyond high confidence it needs two matched pairs of separate physical
+ * strips: a strip and its fresh duplicate, or the parts of one divided
+ * strip, trivially mirror each other and are not "two matching sides".
+ * `familyOf(stripId)` names a strip's physical strip (null for a whole one).
+ */
+export function worthOffering(suggestion, familyOf = () => null) {
+  if (suggestion?.confidence !== 'high') return false;
+  const groups = suggestion.matched || [];
+  if (groups.length < 2) return false;
+  return groups.every(ids => {
+    const families = ids.map(id => familyOf(id)).filter(Boolean);
+    return new Set(families).size === families.length;
+  });
 }
 
 /**

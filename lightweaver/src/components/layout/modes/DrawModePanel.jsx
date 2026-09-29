@@ -1867,9 +1867,9 @@ export function DrawModePanel({
                         const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
                         const sideTarget = Boolean(target.mirroredSides) || Boolean(symmetry?.sides.some(side => side.id === target.id));
                         return <button key={target.id} type="button" className="la-section-pattern-action"
-                                       title={`Change ${partName} pattern: ${patternName}`}
+                                       title={sideTarget ? `Change the pattern for ${target.label}: ${patternName}` : `Change ${partName} pattern: ${patternName}`}
                                        data-testid="layout-section-pattern-action" data-target-id={target.id}
-                                       aria-label={`Change pattern for ${partName}`}
+                                       aria-label={sideTarget ? `Change pattern for ${partName}, ${target.label}` : `Change pattern for ${partName}`}
                                        ref={element => {
                                          if (element) patternTriggerRefs.current.set(target.id, element);
                                          else patternTriggerRefs.current.delete(target.id);
@@ -1887,7 +1887,8 @@ export function DrawModePanel({
                                          setPatternCardStatus('');
                                          setPatternPicker({ targetId: target.id, stripId: s.id });
                                        }}>
-                          {sideTarget ? `${target.label}: `
+                          {/* A side's pattern: the side heading already says whose. */}
+                          {sideTarget ? ''
                             : stripTargets.length > 1 || target.sharedGeometryCount > 1 ? `${target.label}${target.sharedGeometryCount > 1 ? ' · shared section' : ''}: ` : ''}{patternName} <span aria-hidden="true">→</span>
                         </button>;
                       })}
@@ -1967,9 +1968,10 @@ export function DrawModePanel({
                         {stripTargets.map(target => {
                           const patternId = target.look?.patternId || 'aurora';
                           const patternName = REAL_PATTERNS.find(pattern => pattern.id === patternId)?.label || patternId;
-                          const targetName = stripTargets.length > 1 ? target.label : partName;
+                          const sideTarget = Boolean(target.mirroredSides) || Boolean(symmetry?.sides.some(side => side.id === target.id));
+                          const targetName = stripTargets.length > 1 || sideTarget ? target.label : partName;
                           return <div className="la-pattern-details" key={target.id}>
-                            <span>{targetName} · {patternName}{target.sharedGeometryCount > 1 ? ' · shared section' : ''}</span>
+                            <span>{targetName} · {patternName}{target.sharedGeometryCount > 1 && !sideTarget ? ' · shared section' : ''}</span>
                             <button type="button" className="btn" data-testid="edit-pattern-details"
                                     data-target-id={target.id}
                                     aria-label={`Edit pattern details for ${targetName}`}

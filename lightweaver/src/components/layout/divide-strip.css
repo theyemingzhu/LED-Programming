@@ -514,7 +514,8 @@
 .la-symmetry {
   display: grid;
   gap: 6px;
-  margin: 2px 0 10px;
+  /* Aligned with the strip groups below it. */
+  margin: 2px 10px 10px;
   scroll-margin-block: 60px 16px;
 }
 .la-symmetry-k { color: var(--text-mid); font-size: 11px; }
@@ -582,14 +583,19 @@
 .la-side-empty,
 .la-side-foot { margin: 0; padding: 7px 10px 8px 12px; color: var(--text-faint); font-size: 11px; line-height: 1.45; }
 .la-side-foot { border-top: 1px solid var(--border-hair); }
-.la .la-strip-row .la-flow-n {
+/* Specific enough to beat the compact list's hidden handle text. */
+.la .la-gpio-group .la-strip-row .la-wire-n.la-flow-n {
+  flex: 0 0 16px;
+  width: 16px;
   justify-content: center;
-  min-width: 16px;
   color: color-mix(in oklab, var(--side-tint, var(--text-mid)) 65%, var(--text-hi));
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+/* With sides on, the data wire is a short fact on the row, not its own line. */
+.la .la-side-group .la-strip-row .la-strip-routes { flex: 0 0 auto; flex-basis: auto; }
 
 .la-side-choice {
   display: grid;

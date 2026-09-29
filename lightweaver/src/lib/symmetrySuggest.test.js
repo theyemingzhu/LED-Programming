@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { suggestSymmetry, symmetryAxisLine, symmetryConfidence, symmetryStripPlaces } from './symmetrySuggest.js';
+import { suggestSymmetry, symmetryAxisLine, symmetryConfidence, symmetryStripPlaces, worthOffering } from './symmetrySuggest.js';
 
 // A strip as Layout holds it: LED positions in LED order.
 function line(id, from, to, count = 24) {
@@ -143,6 +143,21 @@ test('other folds and empty pieces are handled', () => {
   assert.deepEqual(empty.sides.map(side => side.stripIds), [[], []]);
   const noPixels = suggestSymmetry([{ id: 'pending', pixels: [] }], 2);
   assert.deepEqual(noPixels.onOwn, ['pending']);
+});
+
+test('the artwork offer needs two pairs of separate strips', () => {
+  assert.equal(worthOffering(suggestSymmetry(wings(), 2, { centre: C })), true);
+  // One pair: a strip and its duplicate mirror trivially.
+  const two = [line('a', { x: 285, y: 190 }, { x: 165, y: 110 }), line('b', { x: 315, y: 190 }, { x: 435, y: 110 })];
+  const pair = suggestSymmetry(two, 2, { centre: C });
+  assert.equal(pair.confidence, 'high');
+  assert.equal(worthOffering(pair), false);
+  // Parts of one divided straight strip mirror across its middle, but they are one strip.
+  const parts = [0, 1, 2, 3].map(index => line(`part-${index}`, { x: 100 + index * 100, y: 200 }, { x: 190 + index * 100, y: 200 }, 10));
+  const divided = suggestSymmetry(parts, 2);
+  assert.equal(divided.matched.length, 2);
+  assert.equal(worthOffering(divided, () => 'family-1'), false);
+  assert.equal(worthOffering({ ...divided, confidence: 'medium' }), false);
 });
 
 test('confidence buckets', () => {
