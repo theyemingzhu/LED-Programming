@@ -43,3 +43,14 @@ test('live proof rejects cached marker, altered assets, root routing and missing
   const fetchImpl = fetcher(root);
   await assert.rejects(verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: url => url.pathname === '/' ? new Response('Studio') : fetchImpl(url) }), /root differs/);
 });
+test('live proof reads index.html through the root, as Cloudflare Pages serves it', async t => {
+  // Pages answers /index.html with a 308 to /, and the proof fetches with
+  // redirect: 'error', so asking for /index.html directly can never pass.
+  const root = await fixture(t);
+  const serve = fetcher(root);
+  const pages = async url => {
+    if (url.pathname === '/index.html') throw new TypeError('fetch failed: unexpected redirect');
+    return serve(url);
+  };
+  await verifyClientOrigin('https://light.mandalacodes.com', root, { fetchImpl: pages });
+});
