@@ -140,6 +140,8 @@ void test_encode_decode_round_trip() {
   record.syncZones = false;
   record.playlistPlaying = true;
   record.playlistEntryIndex = 5;
+  record.playlistGeneration = 42;
+  record.clientPatternGeneration = 7;
   record.zones[0] = makeZone("outer-ring", "custom-color", 0.55f);
   record.zones[1] = makeZone("inner-disc", "aurora", 0.9f);
   record.zoneCount = 2;
@@ -159,6 +161,8 @@ void test_encode_decode_round_trip() {
   TEST_ASSERT_FALSE(decoded.syncZones);
   TEST_ASSERT_TRUE(decoded.playlistPlaying);
   TEST_ASSERT_EQUAL_UINT8(5, decoded.playlistEntryIndex);
+  TEST_ASSERT_EQUAL_UINT32(42, decoded.playlistGeneration);
+  TEST_ASSERT_EQUAL_UINT32(7, decoded.clientPatternGeneration);
   TEST_ASSERT_EQUAL_UINT8(2, decoded.zoneCount);
 
   const LiveLookZoneRecord& z0 = decoded.zones[0];

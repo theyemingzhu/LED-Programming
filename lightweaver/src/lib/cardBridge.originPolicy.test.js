@@ -54,6 +54,7 @@ function relayedStudioOrigin(origin) {
 test('card bridge launch trusts every direct CORS Studio origin', () => {
   const trustedOrigins = [
     'https://led.mandalacodes.com',
+    'https://light.mandalacodes.com',
     'https://lightweaver-edw.pages.dev',
     'http://localhost',
     'http://localhost:5173',

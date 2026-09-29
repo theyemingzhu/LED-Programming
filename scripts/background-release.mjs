@@ -211,7 +211,7 @@ export async function advanceRelease(state, api, proof, now = Date.now()) {
     const proofFailures = (state.proofFailures || 0) + 1;
     return { ...state, phase: result?.retryable && proofFailures < 3 ? 'verifying' : 'blocked', proofFailures, recoverable: Boolean(result?.retryable), deployRevision: target, deployUrl: workflowUrl(state, deploy), reason: result?.reason || 'Independent live proof failed.', updatedAt: now };
   }
-  return { ...state, phase: 'shipped', deployRevision: target, deployUrl: workflowUrl(state, deploy), studioBuildNumber: result.studioBuildNumber, firmwareBuildNumber: result.firmwareBuildNumber, reason: 'Independent live proof passed.', updatedAt: now };
+  return { ...state, phase: 'shipped', deployRevision: target, deployUrl: workflowUrl(state, deploy), studioBuildNumber: result.studioBuildNumber, firmwareBuildNumber: result.firmwareBuildNumber, ...(result.clientBuildNumber ? { clientBuildNumber: result.clientBuildNumber } : {}), reason: 'Independent live proof passed.', updatedAt: now };
 }
 
 async function runProof({ revision, runId, runAttempt, repo }, dir) {
@@ -230,7 +230,7 @@ export function terminalNotice(state) {
   return {
     title: `Lightweaver release ${state.phase}: ${short}`,
     body: state.phase === 'shipped'
-      ? `Studio build ${state.studioBuildNumber}; firmware build ${state.firmwareBuildNumber}.`
+      ? `Studio build ${state.studioBuildNumber}; firmware build ${state.firmwareBuildNumber}${state.clientBuildNumber ? `; Client build ${state.clientBuildNumber}` : ""}.`
       : String(state.reason || 'Release observer stopped.').slice(0, 240),
   };
 }
@@ -298,7 +298,7 @@ async function main() {
   }
   if (options.command === 'status') {
     const state = await readState(dir);
-    process.stdout.write(`${JSON.stringify(state ? { revision: state.revision, deployRevision: state.deployRevision, phase: state.phase, reason: state.reason, origin: state.origin, testsUrl: state.testsUrl, signerUrl: state.signerUrl, deployUrl: state.deployUrl, studioBuildNumber: state.studioBuildNumber, firmwareBuildNumber: state.firmwareBuildNumber, notified: Boolean(state.notified), observerAlive: pidAlive(state.pid) } : { phase: 'idle' })}\n`);
+    process.stdout.write(`${JSON.stringify(state ? { revision: state.revision, deployRevision: state.deployRevision, phase: state.phase, reason: state.reason, origin: state.origin, testsUrl: state.testsUrl, signerUrl: state.signerUrl, deployUrl: state.deployUrl, studioBuildNumber: state.studioBuildNumber, firmwareBuildNumber: state.firmwareBuildNumber, clientBuildNumber: state.clientBuildNumber, notified: Boolean(state.notified), observerAlive: pidAlive(state.pid) } : { phase: 'idle' })}\n`);
   } else if (options.command === 'worker') await worker(options);
   else {
     const state = await start(options, options.command === 'resume');

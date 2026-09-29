@@ -1,0 +1,13 @@
+/*
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' http: ws:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'
+
+/client-release.json
+  Cache-Control: no-store
+
+/client-build-graph.json
+  Cache-Control: no-store
+
+/index.html
+  Cache-Control: no-cache

@@ -7,6 +7,50 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current delivery — client player — 2026-09-29
+Owner: this manager. State: limited-save follow-up verified; commit/push to PR375 next.
+Confirmed scope: Save on the lights; Studio reads it back. Only the player Owner
+tools link is password-gated; direct Studio remains accessible by owner choice.
+New Update pattern saves edited brightness/speed/hue for exact installed ID and
+revision, confirms fresh readback, and preserves original project/recipes/wiring.
+Switching patterns clears hidden unsaved edits. Saved settings do not leak to a
+plain next pattern; startup saved controls beat a different-pattern resume record.
+Studio drawer has Refresh saved settings; two independent browser contexts prove
+phone save40%, reselect/reload40%, Studio readback40%, original project unchanged.
+Follow-up evidence: unit2996/2996, client8/8, player/owner11/11, drawer2/2 (second
+passed unchanged after clean same-port preview restart), workflow5/5, native
+pattern/playlist10/10 and live-look7/7, bridge contracts, final firmware compile,
+both production builds and client graph PASS. Phone390px screenshot inspected.
+Logs: /private/tmp/lightweaver-pattern-checkpoint.log,
+/private/tmp/lightweaver-pattern-browser.log; /tmp/lw-client-pattern-compile.log.
+Screenshot: /private/tmp/lightweaver-client-pattern-saved-phone.png.
+Publication remains unauthorized: prior automatic review rejected main merge;
+user then requested verification/limited saves, not publication. Do not merge
+until explicit authorization. PR375 baseline94b77f13 (build2303); follow-up head
+will be recorded after push. No card flash or physical persistence proof.
+Working: automatic Studio-link pairing, no address field, installed patterns,
+repeat/stay, brightness/speed/hue, persistent playlist add/remove/reorder/duration.
+Owner tools uses existing password/session and server-checked owner role at
+/api/owner/studio. User confirmed this phone-entry scope; public Studio unchanged.
+Runtime remains same-Wi-Fi card control, with exact card identity and revision checks.
+Firmware1.2.1 compiled; native playlist/live-look14/14 PASS; narrow client bridge9/API.
+Focused evidence: corrected client browser7/7, pairing/model6/6, drawer2/2 PASS;
+release support57/57; client graph2/2. Phone/desktop test-card screenshots inspected.
+Domain: Cloudflare Pages lightweaver-client and light.mandalacodes.com CNAME/TLS
+active. No app deployment or hardware update yet. Original checkout edits intact.
+Integrated release gate PASS: 2,996 unit tests, mobile42/42, production68/68,
+final UI521/521 plus regression groups and client/owner9/9; both production builds,
+Studio63-file graph, client graph and staged artifact/freshness checks PASS.
+Evidence: /private/tmp/lightweaver-client-release-resume.log and
+/private/tmp/lightweaver-client-gate-state.json. Source prefix retained from initial
+run; no passed suite rerun for the owner correction. Actual no-address connection
+view inspected in the in-app browser; no card reached or modified.
+Physical gates: actual card reboot/power-cut persistence and LED appearance
+unperformed. No flash or destructive recovery. Stable preview is port4173/client.html.
+Observer runtime installed (90e71127…), but no candidate publication started.
+Next on explicit authorization: merge PR375 exact head, fetch merged SHA, start
+background-release.mjs with that revision and verify persisted state/live PID.
+
 ## Continuous repair and publish loop — active
 Owner: primary manager. Adrian authorized repeated problem-finding, bounded repairs and background shipping until stopped. Durable chat heartbeat `lightweaver-repair-and-publish-loop` resumes actionable work every 30 minutes and must not merely poll CI. No hardware flash for browser-only changes; physical visual proof is not inferred.
 

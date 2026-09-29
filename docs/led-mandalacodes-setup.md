@@ -1,6 +1,6 @@
 # led.mandalacodes.com setup
 
-Goal: the Lightweaver browser UI lives at `led.mandalacodes.com`.
+Goal: Lightweaver Studio lives at `led.mandalacodes.com`. The separate client lives at `light.mandalacodes.com`; see [client hosting](client-hosting.md).
 
 Current product rule: the public site is a Studio, installer, and support surface. It is not a Cloudflare relay and it does not provide pairing-code remote control. The ESP32 card owns runtime playback.
 
