@@ -8,26 +8,28 @@ Prove records belong in their session folders.
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
 ## Current delivery — card-first Studio resume — 2026-09-29
-Owner: primary manager. State: release authorized; integrated candidate preparing.
+Owner: primary manager. State: authorized release; repaired failed gate, resuming.
 PR379: https://github.com/theyemingzhu/LED-Programming/pull/379.
 Branch codex/card-first-resume; checkout /Users/adrianrasmussen/.codex/worktrees/card-first-resume/led.
-App commit415368a9 integrated signed-main9f920a04. Working behavior and proof:
-installed controls independent of draft, explicit adoption, exact/last-seen card
-facts, per-card navigation, patch-only brightness, unknown-write reconciliation,
-known-output save comparison and scoped checks.3019unit checkpoint,21browser
-cases, final focused regressions and production build passed; screen inspected.
-Release preflight found prior main deploy failed on client/index.html308→/.
-Bounded fix accepts only permanent exact same-origin root canonicalisation;
-byte/length proof remains mandatory.12 affected tests red then green.
-Durable runner planned at .git/lightweaver-releases/candidates/pr379/publish.py;
-state.json records immutable head/base/tree, each required launch gate stage,
-then exact PR merge and existing independent live-proof observer. No AI polling.
-The full release gate must pass before merge; changed head/main or failed check
-blocks publication. Existing production observer serializes live delivery.
-Physical card baseline read-only:lw-b0fe81f61b44, firmware2160,41GPIO18,
-provisionalSetup:false. No real card write/flash or physical playback claim.
-Next: verify persisted runner starts, hand off publishing in background; report
-shipped only after exact live artifacts and Studio/firmware build numbers prove it.
+Installed controls now use card state independently of draft; explicit adoption,
+exact/last-seen facts, per-card navigation, patch-only brightness and uncertain-write
+readback preserve draft and installed playback. Checkpoint3019unit,21browser cases,
+production build and phone/desktop screen inspection passed before publication.
+Candidate11769445 passed release stages0–7, then blocked on obsolete immediate-save
+footer expectation. Repair exposed and fixed real scene-source omission: visible
+Review and save draft now calls complete source+playback save with existing guards.
+Nine focused browser cases pass, including zero writes on review, edited source and
+playlist/look preservation, delayed replies and explicit adoption. Existing passing
+prefix evidence retained with its original revision; affected browser gates rerun.
+Prior deployment index.html308→/ live-proof blocker also fixed with strict same-origin
+root canonicalisation and unchanged hash/length checks;12 affected tests pass.
+Durable runner: common Git lightweaver-releases/candidates/pr379/publish.py, state.json
+pins revision/base/tree and persists gate progress before exact merge/observer handoff.
+Production publication remains blocked until required checks pass. Not shipped.
+Physical card read-only baseline: lw-b0fe81f61b44, firmware2160,41GPIO18,
+provisionalSetup:false. No card writes, flash or physical playback proof.
+Next: resume immutable repaired candidate; report shipped only after exact deployed
+artifacts are independently proven live with Studio and firmware build numbers.
 
 ## Current delivery — client player — 2026-09-29
 Owner: this manager. State: limited-save follow-up verified; commit/push to PR375 next.

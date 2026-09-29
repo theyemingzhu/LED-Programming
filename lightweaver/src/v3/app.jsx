@@ -2387,6 +2387,8 @@ function Shell({ offlineUpdateController = null }) {
         onMatchedProjectLoaded: onMatchedCardProjectLoaded,
         onMatchedProjectVerified: onMatchedCardProjectVerified,
         openCardControl,
+        cardLifecycle,
+        saveProjectToCard,
       }}
     >
     <div className="app">

@@ -453,7 +453,12 @@ test('global Save to card preserves scene playback after a later edit', async ({
   await page.getByLabel('Scene title').fill('Edited gallery tide');
   const cardStatus = page.getByTestId('card-link-status');
   await expect(cardStatus).toHaveAttribute('data-lifecycle-state', 'content-mismatch');
-  await cardStatus.click();
+  // The footer opens installed controls; saving the draft is an explicit action.
+  await page.getByRole('button', { name: 'Card', exact: true }).click();
+  await page.getByTestId('installed-draft-review').click();
+  await expect(page.getByTestId('card-save-summary')).toBeVisible();
+  expect(card.configWrites).toBe(1);
+  await page.getByRole('button', { name: 'Save to card', exact: true }).click();
   await expect.poll(() => card.configWrites).toBe(2);
   await expect.poll(() => card.envelope?.project?.expressionScenes?.scenes?.[0]?.name).toBe('Edited gallery tide');
   expect(card.envelope.project.expressionScenes.playbackSceneId).toBe('scene-install');

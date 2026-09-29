@@ -153,6 +153,7 @@ export function SetupScreen({
   const [resolution, setResolution] = useState({ kind: 'unknown' });
   const [recheckTick, setRecheckTick] = useState(0);
   const [adoptionError, setAdoptionError] = useState('');
+  const [draftSave, setDraftSave] = useState({ pending: false, message: '' });
   // F27: a quiet SIBLING of adoptionError, for the automatic "adopt by
   // default" attempt below (line ~662) — that attempt must never raise an
   // alert (the owner did nothing), but a failure there was previously
@@ -863,6 +864,16 @@ export function SetupScreen({
     && lastInstalledSession.current?.identity.cardId === (cardLink?.expectedCard?.id || cardLink?.card?.id);
   const displaySession = rememberedInstalled ? lastInstalledSession.current : session;
   const setupTask = new URLSearchParams(window.location.hash.slice(1)).get('task');
+  const sceneDraftReview = setupTask === 'install-project' && Boolean(currentProject?.expressionScenes?.playbackSceneId)
+    && ['ready', 'content-mismatch'].includes(identityLifecycle.state) && session.capabilities.installedControl;
+  const saveReviewedSceneDraft = async () => {
+    if (draftSave.pending) return;
+    setDraftSave({ pending: true, message: 'Saving scene source and playback…' });
+    try {
+      const result = await cardActions?.saveSceneDraft?.();
+      setDraftSave({ pending: false, message: result?.message || 'Result not confirmed. Read the card before trying again.' });
+    } catch (error) { setDraftSave({ pending: false, message: error?.message || 'Result not confirmed. Read the card before trying again.' }); }
+  };
   const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
     && !wiringTestActive && !reviewLights && (!setupTask || setupTask === 'load-matching-project');
   const identityStatus = wiringTestActive
@@ -1134,7 +1145,7 @@ export function SetupScreen({
           <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openCard?.()}>Control installed project</button>
           <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>
           {session.draft.relationship !== 'matches' && <div className="lw-setup-banner-actions">
-            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=draw')}>Review draft changes</button>
+            <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>
             <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard)}>Open installed project</button>
           </div>}
           <p>The recoverable card copy may not include original artwork or editor assets.</p>
@@ -1238,7 +1249,11 @@ export function SetupScreen({
                 </button>
                 <button type="button" className="btn" data-testid="setup-open-layout" onClick={() => go('#screen=layout&mode=draw')}>Open Layout</button>
                 </>)}
-                {!installedHome && installDoor}
+                {!installedHome && (sceneDraftReview ? <div>
+                  <p data-testid="card-save-summary">Save the edited scene source and its playback together. Existing card checks run before saving; playback can change.</p>
+                  <button type="button" className="btn primary" disabled={draftSave.pending} onClick={saveReviewedSceneDraft}>Save to card</button>
+                  {draftSave.message && <p role="status">{draftSave.message}</p>}
+                </div> : installDoor)}
               </div>
             </div>
           </section>
@@ -1307,7 +1322,7 @@ export function SetupScreen({
           ladder this replaces claimed an order the code never enforced and
           hid the last phase as "upcoming" while the owner was, legitimately,
           tuning patterns on lights that were not yet drawn. */}
-      {!startOwnsPrimary && !installedHome && (() => {
+      {!startOwnsPrimary && !installedHome && !sceneDraftReview && (() => {
         let missing = missingPhases(journey);
         // An install in flight (`next=patterns` in the URL) keeps the verify
         // row mounted whatever the journey says mid-push: the install control

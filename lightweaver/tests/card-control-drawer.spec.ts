@@ -225,8 +225,9 @@ test('a connected footer opens customer card controls without a popup', async ({
   projectFingerprint = 'c'.repeat(64);
   await verifyCard(page, projectFingerprint);
   const blockedRequests = controlRequestCount;
-  await expect(drawer.getByRole('slider', { name: 'Brightness' })).toBeDisabled();
-  await expect(drawer).toContainText('exact card and installed project are verified');
+  // A differing draft no longer blocks independently read installed controls.
+  await expect(drawer.getByRole('slider', { name: 'Brightness' })).toBeEnabled();
+  await expect(drawer.locator('select[aria-label="Pattern"]')).toHaveValue('bench-warm');
   expect(controlRequestCount).toBe(blockedRequests);
   projectFingerprint = matchingProjectFingerprint;
   await verifyCard(page, projectFingerprint);
