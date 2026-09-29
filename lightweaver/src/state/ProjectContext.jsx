@@ -10,6 +10,8 @@ import {
   migrateProject,
   PROJECT_VERSION,
   resolveStartupProject,
+  sidesMirroredPatternFields,
+  symmetryLayoutFields,
 } from '../lib/projectModel.js';
 import { defaultPortRoles, normalizePortRoles } from '../lib/portRoles.js';
 import { easeCrossfade } from '../lib/motionSmoothing.js';
@@ -951,8 +953,9 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
         stripCountOverrides: layoutStripCountOverrides,
         stripDensities: layoutStripDensities,
         layerGroups: layoutLayerGroups,
-        symmetry: layoutSymmetry,
-        symmetryOfferDismissed: layoutSymmetryOfferDismissed,
+        // Only written when set, so a project without symmetry saves (and
+        // hashes) exactly as it did before symmetry existed.
+        ...symmetryLayoutFields(layoutSymmetry, layoutSymmetryOfferDismissed),
         sectionFamilies,
         layerOrder: layoutLayerOrder,
         patchBoard: normalizePatchBoard(patchBoard, strips),
@@ -961,7 +964,7 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
       pattern: {
         activePatternId, palette, masterSpeed, masterBrightness, masterSaturation,
         masterHueShift, gammaEnabled, gammaValue, patternParams, bpm, symSettings,
-        motionSmoothing, sidesMirrored,
+        motionSmoothing, ...sidesMirroredPatternFields(sidesMirrored),
       },
       show: {
         duration: showDuration,

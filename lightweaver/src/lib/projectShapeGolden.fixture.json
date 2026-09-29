@@ -1,0 +1,654 @@
+{
+  "about": "Golden identity of a project without symmetry, measured on origin/main ba9c1886 before symmetry sides. See projectShapeGolden.test.js.",
+  "input": {
+    "version": 3,
+    "id": "lwproj-golden",
+    "name": "Golden piece",
+    "origin": null,
+    "expressionScenes": {
+      "version": 1,
+      "activeSceneId": null,
+      "scenes": []
+    },
+    "portRoles": [
+      {
+        "pin": 4,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 5,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 6,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 7,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 15,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 16,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 17,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 18,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 21,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 38,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 40,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 41,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 42,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 47,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      },
+      {
+        "pin": 48,
+        "role": "unused",
+        "pixelCount": 0,
+        "controlKind": ""
+      }
+    ],
+    "layout": {
+      "strips": [
+        {
+          "id": "default-outer-circle",
+          "name": "Outer circle",
+          "pathData": "M 176.000,200.000 A 144.000,144.000 0 1 0 464.000,200.000 A 144.000,144.000 0 1 0 176.000,200.000 Z",
+          "closed": true,
+          "svgLength": 904.7786842338604,
+          "pixelCount": 27,
+          "pixels": [
+            {
+              "x": 320,
+              "y": 56,
+              "index": 0
+            },
+            {
+              "x": 353.209,
+              "y": 59.882,
+              "index": 1
+            },
+            {
+              "x": 384.627,
+              "y": 71.317,
+              "index": 2
+            },
+            {
+              "x": 412.561,
+              "y": 89.69,
+              "index": 3
+            },
+            {
+              "x": 435.506,
+              "y": 114.009,
+              "index": 4
+            },
+            {
+              "x": 452.223,
+              "y": 142.965,
+              "index": 5
+            },
+            {
+              "x": 461.812,
+              "y": 174.995,
+              "index": 6
+            },
+            {
+              "x": 463.756,
+              "y": 208.373,
+              "index": 7
+            },
+            {
+              "x": 457.95,
+              "y": 241.3,
+              "index": 8
+            },
+            {
+              "x": 444.708,
+              "y": 272,
+              "index": 9
+            },
+            {
+              "x": 424.742,
+              "y": 298.819,
+              "index": 10
+            },
+            {
+              "x": 399.129,
+              "y": 320.31,
+              "index": 11
+            },
+            {
+              "x": 369.251,
+              "y": 335.316,
+              "index": 12
+            },
+            {
+              "x": 336.717,
+              "y": 343.026,
+              "index": 13
+            },
+            {
+              "x": 303.283,
+              "y": 343.026,
+              "index": 14
+            },
+            {
+              "x": 270.749,
+              "y": 335.316,
+              "index": 15
+            },
+            {
+              "x": 240.871,
+              "y": 320.31,
+              "index": 16
+            },
+            {
+              "x": 215.258,
+              "y": 298.819,
+              "index": 17
+            },
+            {
+              "x": 195.292,
+              "y": 272,
+              "index": 18
+            },
+            {
+              "x": 182.05,
+              "y": 241.3,
+              "index": 19
+            },
+            {
+              "x": 176.244,
+              "y": 208.373,
+              "index": 20
+            },
+            {
+              "x": 178.188,
+              "y": 174.995,
+              "index": 21
+            },
+            {
+              "x": 187.777,
+              "y": 142.965,
+              "index": 22
+            },
+            {
+              "x": 204.494,
+              "y": 114.009,
+              "index": 23
+            },
+            {
+              "x": 227.439,
+              "y": 89.69,
+              "index": 24
+            },
+            {
+              "x": 255.373,
+              "y": 71.317,
+              "index": 25
+            },
+            {
+              "x": 286.791,
+              "y": 59.882,
+              "index": 26
+            }
+          ],
+          "color": "oklch(80% 0.130 72)",
+          "x": 0,
+          "y": 0,
+          "emit": "omni",
+          "angle": 0,
+          "reversed": false,
+          "speed": 1,
+          "brightness": 1,
+          "hueShift": 0,
+          "patternId": null,
+          "generatedLayout": "default-circle-v1",
+          "layoutRole": "outer"
+        },
+        {
+          "id": "default-inner-circle",
+          "name": "Inner circle",
+          "pathData": "M 256.000,200.000 A 64.000,64.000 0 1 0 384.000,200.000 A 64.000,64.000 0 1 0 256.000,200.000 Z",
+          "closed": true,
+          "svgLength": 402.1238596594935,
+          "pixelCount": 17,
+          "pixels": [
+            {
+              "x": 320,
+              "y": 136,
+              "index": 0
+            },
+            {
+              "x": 343.119,
+              "y": 140.322,
+              "index": 1
+            },
+            {
+              "x": 363.117,
+              "y": 152.703,
+              "index": 2
+            },
+            {
+              "x": 377.29,
+              "y": 171.473,
+              "index": 3
+            },
+            {
+              "x": 383.727,
+              "y": 194.095,
+              "index": 4
+            },
+            {
+              "x": 381.557,
+              "y": 217.514,
+              "index": 5
+            },
+            {
+              "x": 371.073,
+              "y": 238.569,
+              "index": 6
+            },
+            {
+              "x": 353.692,
+              "y": 254.414,
+              "index": 7
+            },
+            {
+              "x": 331.76,
+              "y": 262.91,
+              "index": 8
+            },
+            {
+              "x": 308.24,
+              "y": 262.91,
+              "index": 9
+            },
+            {
+              "x": 286.308,
+              "y": 254.414,
+              "index": 10
+            },
+            {
+              "x": 268.927,
+              "y": 238.569,
+              "index": 11
+            },
+            {
+              "x": 258.443,
+              "y": 217.514,
+              "index": 12
+            },
+            {
+              "x": 256.273,
+              "y": 194.095,
+              "index": 13
+            },
+            {
+              "x": 262.71,
+              "y": 171.473,
+              "index": 14
+            },
+            {
+              "x": 276.883,
+              "y": 152.703,
+              "index": 15
+            },
+            {
+              "x": 296.881,
+              "y": 140.322,
+              "index": 16
+            }
+          ],
+          "color": "oklch(78% 0.140 40)",
+          "x": 0,
+          "y": 0,
+          "emit": "omni",
+          "angle": 0,
+          "reversed": false,
+          "speed": 1,
+          "brightness": 1,
+          "hueShift": 0,
+          "patternId": null,
+          "generatedLayout": "default-circle-v1",
+          "layoutRole": "inner"
+        }
+      ],
+      "starterPending": false,
+      "viewBox": "0 0 640 400",
+      "svgText": null,
+      "hidden": {},
+      "layers": [],
+      "density": 60,
+      "pxPerMm": 3.7795,
+      "editCounts": {},
+      "layerGroups": [],
+      "mirrorSets": [],
+      "layerOrder": [],
+      "patchBoard": {
+        "physicalLocked": false,
+        "dataWireCount": 1,
+        "dataWireCountNeedsReview": false,
+        "chains": [
+          {
+            "id": "main",
+            "name": "Main physical strip",
+            "rowIds": [
+              "patch-default-outer-circle",
+              "patch-default-inner-circle"
+            ]
+          }
+        ],
+        "groups": [],
+        "patches": [
+          {
+            "id": "patch-default-outer-circle",
+            "name": "Outer circle",
+            "groupId": null,
+            "source": {
+              "type": "strip",
+              "stripId": "default-outer-circle",
+              "startLed": 0,
+              "endLed": 26,
+              "autoRange": true
+            },
+            "output": {
+              "mode": "normal"
+            },
+            "playback": {
+              "patternId": null,
+              "speed": 1,
+              "brightness": 1,
+              "hueShift": 0,
+              "enabled": null
+            }
+          },
+          {
+            "id": "patch-default-inner-circle",
+            "name": "Inner circle",
+            "groupId": null,
+            "source": {
+              "type": "strip",
+              "stripId": "default-inner-circle",
+              "startLed": 0,
+              "endLed": 16,
+              "autoRange": true
+            },
+            "output": {
+              "mode": "normal"
+            },
+            "playback": {
+              "patternId": null,
+              "speed": 1,
+              "brightness": 1,
+              "hueShift": 0,
+              "enabled": null
+            }
+          }
+        ]
+      },
+      "wiring": {
+        "version": 1,
+        "locked": false,
+        "verified": false,
+        "controllerAnchor": null,
+        "outputs": [
+          {
+            "id": "out1",
+            "name": "Output 1",
+            "pin": 16,
+            "runIds": [
+              "run-default-outer-circle",
+              "run-default-inner-circle"
+            ]
+          }
+        ],
+        "runs": [
+          {
+            "id": "run-default-outer-circle",
+            "type": "strip",
+            "source": {
+              "stripId": "default-outer-circle",
+              "from": 0,
+              "to": 26
+            },
+            "directionPolicy": "flexible",
+            "physicalDirection": "source-forward",
+            "seamLed": null,
+            "verified": false
+          },
+          {
+            "id": "run-default-inner-circle",
+            "type": "strip",
+            "source": {
+              "stripId": "default-inner-circle",
+              "from": 0,
+              "to": 16
+            },
+            "directionPolicy": "flexible",
+            "physicalDirection": "source-forward",
+            "seamLed": null,
+            "verified": false
+          }
+        ]
+      }
+    },
+    "pattern": {
+      "activePatternId": "aurora",
+      "palette": [
+        "#ff6b6b",
+        "#ffd166",
+        "#06d6a0",
+        "#118ab2",
+        "#ef476f",
+        "#ff9f1c"
+      ],
+      "masterSpeed": 1,
+      "masterBrightness": 1,
+      "masterSaturation": 1,
+      "masterHueShift": 0,
+      "gammaEnabled": false,
+      "gammaValue": 2.2,
+      "patternParams": {},
+      "bpm": 120,
+      "symSettings": {
+        "enabled": false,
+        "type": "none",
+        "count": 8,
+        "slices": 6,
+        "phase": 0,
+        "twist": 0,
+        "seam": 0.1,
+        "center": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "guide": {
+          "mode": "fold",
+          "axis": {
+            "x1": 0.5,
+            "y1": 0.08,
+            "x2": 0.5,
+            "y2": 0.92
+          }
+        }
+      },
+      "motionSmoothing": "soft"
+    },
+    "show": {
+      "duration": 600
+    },
+    "live": {
+      "quantize": "free",
+      "recording": false
+    },
+    "devices": {
+      "wledIp": "",
+      "segmentMap": {},
+      "physicalControls": {
+        "encoder": {
+          "enabled": true,
+          "firmware": "rotary-usermod",
+          "pins": {
+            "a": 4,
+            "b": 5,
+            "press": 0
+          },
+          "rotateAction": "brightness",
+          "rotateDirection": "clockwise-brighter",
+          "pressAction": "next-preset",
+          "patternCycleIds": [],
+          "brightnessStep": 8,
+          "helperPresetLabel": "LW Next Look"
+        }
+      },
+      "controllerProfiles": [],
+      "activeControllerId": "",
+      "standaloneController": {
+        "runtimeMode": "sequence",
+        "outputs": [
+          {
+            "id": "out1",
+            "name": "Output 1",
+            "pin": 16,
+            "pixels": 0
+          },
+          {
+            "id": "out2",
+            "name": "Output 2",
+            "pin": 17,
+            "pixels": 0
+          },
+          {
+            "id": "out3",
+            "name": "Output 3",
+            "pin": 18,
+            "pixels": 0
+          },
+          {
+            "id": "out4",
+            "name": "Output 4",
+            "pin": 21,
+            "pixels": 0
+          }
+        ],
+        "controls": {
+          "encoder": {
+            "a": 4,
+            "b": 5,
+            "press": 0,
+            "alternatePress": 6,
+            "brightnessStep": 18,
+            "patternCycleIds": []
+          },
+          "previous": 7,
+          "next": 8,
+          "blackout": 9,
+          "brightness": -1,
+          "statusLed": 2
+        },
+        "led": {
+          "type": "WS2815",
+          "colorOrder": "RGB",
+          "brightnessLimit": 0.45,
+          "outputGammaEnabled": false,
+          "outputGammaValue": 2.2,
+          "calibration": {
+            "red": 1,
+            "green": 1,
+            "blue": 1
+          }
+        },
+        "defaultLook": {
+          "patternId": "aurora",
+          "brightness": 1,
+          "speed": 1,
+          "hueShift": 0,
+          "customHue": 32,
+          "customSaturation": 230,
+          "customBreathe": false,
+          "breatheLowerPct": 85,
+          "breatheUpperPct": 100,
+          "breatheCycleSeconds": 9,
+          "customDrift": false
+        },
+        "activeLookId": "",
+        "looks": [],
+        "activeSequenceAssetId": "",
+        "sequenceAssets": [],
+        "playlist": []
+      }
+    }
+  },
+  "expected": {
+    "saved": {
+      "loadedProjectJsonSha256": "252da1ff71c39cdd06c309cb32959b5c4764a366a2c35d3076976a93288aad64",
+      "loadedProjectContentHash": "97f9c69c27f1da116584804f96b6f80b7a9154f0bf6946e4bf653fb61e3a8e3d",
+      "cardProjectFingerprint": "101e7f79b4cc5bdb3da17ef50396c2a3101e7f79b4cc5bdb3da17ef50396c2a3",
+      "cardConfigJsonSha256": "7607bdf0c95ebe5cb7d6072ec4e826912bb87a753b2caa7a6465a165d4862d83",
+      "cardConfigProjectFingerprint": "101e7f79b4cc5bdb3da17ef50396c2a3101e7f79b4cc5bdb3da17ef50396c2a3"
+    },
+    "savedBeforeMirrorSets": {
+      "loadedProjectJsonSha256": "252da1ff71c39cdd06c309cb32959b5c4764a366a2c35d3076976a93288aad64",
+      "loadedProjectContentHash": "97f9c69c27f1da116584804f96b6f80b7a9154f0bf6946e4bf653fb61e3a8e3d",
+      "cardProjectFingerprint": "101e7f79b4cc5bdb3da17ef50396c2a3101e7f79b4cc5bdb3da17ef50396c2a3",
+      "cardConfigJsonSha256": "7607bdf0c95ebe5cb7d6072ec4e826912bb87a753b2caa7a6465a165d4862d83",
+      "cardConfigProjectFingerprint": "101e7f79b4cc5bdb3da17ef50396c2a3101e7f79b4cc5bdb3da17ef50396c2a3"
+    }
+  }
+}

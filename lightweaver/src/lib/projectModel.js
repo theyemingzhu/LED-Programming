@@ -66,6 +66,26 @@ export function createProjectId() {
   return `lwproj-${Date.now().toString(36)}-${random}`;
 }
 
+// A project WITHOUT symmetry must save exactly the shape it saved before
+// symmetry existed. Its canonical hash is identity: an expression-scene install
+// records the project's content hash on the card and in the installation
+// record, so a new key (`symmetry: null`, `sidesMirrored: true`) or a dropped
+// one (`mirrorSets: []`) would make every such card read as out of date. So the
+// retired v1 `mirrorSets` stays as an always-empty tombstone in its old slot,
+// and the symmetry fields are written only when they carry a choice.
+export function symmetryLayoutFields(symmetry = null, symmetryOfferDismissed = false) {
+  return {
+    mirrorSets: [],
+    ...(symmetry ? { symmetry } : {}),
+    ...(symmetryOfferDismissed === true ? { symmetryOfferDismissed: true } : {}),
+  };
+}
+
+// `pattern.sidesMirrored` defaults to true and is written only when false.
+export function sidesMirroredPatternFields(sidesMirrored = true) {
+  return sidesMirrored === false ? { sidesMirrored: false } : {};
+}
+
 function normalizeProjectId(value, fallback = createProjectId()) {
   const clean = String(value || '')
     .trim()
@@ -175,10 +195,10 @@ export function createDefaultProject() {
       pxPerMm: 3.7795,
       editCounts: {},
       layerGroups: [],
-      // Symmetry: null, or two/four "sides" of strips (lib/pieceSymmetry.js).
-      // Replaces the v1 `mirrorSets`, which are migrated on load and never written.
-      symmetry: null,
-      symmetryOfferDismissed: false,
+      // Symmetry: absent, or two/four "sides" of strips (lib/pieceSymmetry.js),
+      // written after this key only when set. The v1 `mirrorSets` are migrated
+      // on load; the key stays as an empty tombstone (symmetryLayoutFields).
+      mirrorSets: [],
       layerOrder: [],
       patchBoard: createDefaultPatchBoard(defaultStrips),
       wiring: makeDefaultWiring(defaultStrips),
@@ -196,9 +216,9 @@ export function createDefaultProject() {
       bpm: 120,
       symSettings: DEFAULT_SYM_SETTINGS,
       motionSmoothing: 'soft',
-      // Live choice for the look being edited: do the sides mirror each other
-      // (true) or play their own patterns. Only meaningful when symmetry is set.
-      sidesMirrored: true,
+      // `sidesMirrored` (the live choice for the look being edited: do the
+      // sides mirror each other or play their own patterns) is absent = true,
+      // and only written when false (sidesMirroredPatternFields).
     },
     show: {
       duration: 600,
@@ -392,18 +412,23 @@ function alignChainToStripOrder(project) {
     return clean;
   });
   // v1 mirror sets become symmetry once (one set of 2 or 4 members -> that many
-  // sides) and are never written again. A project that already has symmetry
-  // keeps it; sets are discarded. Strips that no longer exist leave their side
-  // on load; a side left empty is kept so the owner can refill it (the compiler
-  // ignores a symmetry that does not hold together and says why).
+  // sides) and their contents are never written again. A project that already
+  // has symmetry keeps it; sets are discarded. Strips that no longer exist leave
+  // their side on load; a side left empty is kept so the owner can refill it
+  // (the compiler ignores a symmetry that does not hold together and says why).
+  // Shape: see symmetryLayoutFields. `mirrorSets` is reset in place so it keeps
+  // its old key position, and the symmetry keys exist only when they are set.
   const legacyMirrorSets = layout.mirrorSets;
-  delete layout.mirrorSets;
-  layout.symmetry = layout.symmetry
+  const symmetry = layout.symmetry
     ? normalizeSymmetry(layout.symmetry, layout.strips)
     : Array.isArray(legacyMirrorSets) && legacyMirrorSets.length
       ? migrateMirrorSetsToSymmetry(legacyMirrorSets, layout.strips)
       : null;
-  layout.symmetryOfferDismissed = layout.symmetryOfferDismissed === true;
+  layout.mirrorSets = [];
+  if (symmetry) layout.symmetry = symmetry;
+  else delete layout.symmetry;
+  if (layout.symmetryOfferDismissed === true) layout.symmetryOfferDismissed = true;
+  else delete layout.symmetryOfferDismissed;
   const extantStripIds = new Set(layout.strips.map(strip => String(strip.id || '')));
   layout.projectWarnings = [
     ...(Array.isArray(layout.projectWarnings)
@@ -472,7 +497,8 @@ export function migrateProject(data) {
   if (data.version === PROJECT_VERSION) {
     const pattern = { ...base.pattern, ...(data.pattern || {}) };
     pattern.motionSmoothing = normalizeMotionSmoothing(pattern.motionSmoothing);
-    pattern.sidesMirrored = pattern.sidesMirrored !== false;
+    if (pattern.sidesMirrored === false) pattern.sidesMirrored = false;
+    else delete pattern.sidesMirrored;
     return alignChainToStripOrder({
       ...base,
       ...data,

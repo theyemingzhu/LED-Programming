@@ -3,8 +3,10 @@
 // replaced them. What survives here is the minimum the project loader needs to
 // migrate a saved project: keep v1 members pointing at the right strips while
 // legacy strip ids are renamed, then hand the sets to
-// migrateMirrorSetsToSymmetry. Nothing writes `layout.mirrorSets` any more, and
-// nothing else reads it.
+// migrateMirrorSetsToSymmetry. Nothing writes a set into `layout.mirrorSets` any
+// more (the key survives only as an empty tombstone so a project without
+// symmetry keeps its content hash, see symmetryLayoutFields in projectModel.js),
+// and nothing else reads it.
 
 export { normalizeMirrorSets } from './mirrorSetRules.js';
 

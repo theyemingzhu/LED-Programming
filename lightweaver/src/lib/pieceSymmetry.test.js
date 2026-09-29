@@ -534,14 +534,15 @@ const savedProject = (layout = {}, pattern = undefined) => ({
   ...(pattern ? { pattern } : {}),
 });
 
-test('v1 mirrorSets migrate to symmetry on load and are never carried forward', () => {
+test('v1 mirrorSets migrate to symmetry on load and their contents are never carried forward', () => {
   const loaded = migrateProject(savedProject({ mirrorSets: [mirrorSet('mirror-1', ['strip-1', 'strip-3'])] }));
   assert.equal(loaded.layout.symmetry.fold, 2);
   assert.deepEqual(loaded.layout.symmetry.sides.map(item => item.stripIds), [['strip-1'], ['strip-3']]);
-  assert.equal(Object.hasOwn(loaded.layout, 'mirrorSets'), false);
+  // Only the empty tombstone survives (projectShapeGolden.test.js says why).
+  assert.deepEqual(loaded.layout.mirrorSets, []);
   const again = migrateProject(JSON.parse(JSON.stringify(loaded)));
   assert.deepEqual(again.layout.symmetry, loaded.layout.symmetry);
-  assert.equal(Object.hasOwn(again.layout, 'mirrorSets'), false);
+  assert.deepEqual(again.layout.mirrorSets, []);
 });
 
 test('symmetry, the offer flag and pattern.sidesMirrored round-trip and default sensibly', () => {
@@ -553,10 +554,20 @@ test('symmetry, the offer flag and pattern.sidesMirrored round-trip and default 
   const twice = migrateProject(JSON.parse(JSON.stringify(once)));
   assert.deepEqual(twice.layout.symmetry, symmetry);
   assert.equal(twice.pattern.sidesMirrored, false);
+  // Defaults are absent, not written, so a project without symmetry keeps the
+  // exact shape (and content hash) it had before symmetry existed.
   const fresh = migrateProject(savedProject());
-  assert.equal(fresh.layout.symmetry, null);
-  assert.equal(fresh.layout.symmetryOfferDismissed, false);
-  assert.equal(fresh.pattern.sidesMirrored, true);
+  assert.equal(Object.hasOwn(fresh.layout, 'symmetry'), false);
+  assert.equal(Object.hasOwn(fresh.layout, 'symmetryOfferDismissed'), false);
+  assert.equal(Object.hasOwn(fresh.pattern, 'sidesMirrored'), false);
+  assert.deepEqual(fresh.layout.mirrorSets, []);
+  // Clearing symmetry and choosing mirrored again drops the keys on reload.
+  const cleared = migrateProject({ ...JSON.parse(JSON.stringify(once)),
+    layout: { ...once.layout, symmetry: null, symmetryOfferDismissed: false },
+    pattern: { ...once.pattern, sidesMirrored: true } });
+  assert.equal(Object.hasOwn(cleared.layout, 'symmetry'), false);
+  assert.equal(Object.hasOwn(cleared.layout, 'symmetryOfferDismissed'), false);
+  assert.equal(Object.hasOwn(cleared.pattern, 'sidesMirrored'), false);
 });
 
 test('a strip that no longer exists leaves its side on load', () => {
