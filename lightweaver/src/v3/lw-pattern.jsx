@@ -129,7 +129,15 @@ import {
   suggestProjectStackName,
   summarizeProjectStack,
 } from '../lib/projectStacks.js';
-import { isMirrorSetTarget, mirrorSetStripCount } from '../lib/mirrorSectionCopy.js';
+import {
+  SIDES_HEADING,
+  SIDES_OPTIONS,
+  hasSymmetrySides,
+  isSideTarget,
+  sectionLabelCopy,
+  sectionMetaCopy,
+  sidesHintCopy,
+} from '../lib/mirrorSectionCopy.js';
 import './patterns-workspace.css';
 import '../styles/project-stacks.css';
 
@@ -480,7 +488,9 @@ function writeSectionDisplayOrder(projectId, ids) {
       patchBoard,
       wiring,
       compiledWiring,
-      layoutMirrorSets,
+      layoutSymmetry,
+      sidesMirrored,
+      setSidesMirrored,
       sectionTargets: projectSectionTargets,
       deriveProjectSectionTargets,
       setPatchBoard,
@@ -982,7 +992,20 @@ function writeSectionDisplayOrder(projectId, ids) {
     const editingProjectOnly = editingSavedLook?.projectOnly === true;
     const editingLayered = (editingSavedLook?.patternLabRecipe?.layers?.length || 0) > 0;
     const editingLabAuthored = editingColorJourney || editingProjectOnly;
-    const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label);
+    // Read the saved choice from the stored look itself: it is a plain boolean
+    // on looks[], so it does not depend on the look normalizer carrying it.
+    const savedLookSidesMirrored = (Array.isArray(standaloneController?.looks) ? standaloneController.looks : [])
+      .find(item => item && item.id === activeLookId)?.sidesMirrored;
+    const sidesSaved = typeof savedLookSidesMirrored === 'boolean' ? savedLookSidesMirrored : null;
+    const showSides = hasSymmetrySides(layoutSymmetry);
+    const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label) || (showSides && sidesSaved !== null && sidesSaved !== (sidesMirrored !== false));
+    // Opening a saved look brings back how it plays its sides. Keyed on the
+    // look id only, so choosing the other option while editing is never undone.
+    useEffect(() => {
+      if (!activeLookId || !showSides || sidesSaved === null) return;
+      if ((sidesMirrored !== false) !== sidesSaved) setSidesMirrored?.(sidesSaved);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeLookId, showSides]);
     const board = useMemo(() => normalizePatchBoard(patchBoard, strips), [patchBoard, strips]);
     const latestBoardRef = useRef(board);
     const latestControllerRef = useRef(standaloneController);
@@ -1034,14 +1057,15 @@ function writeSectionDisplayOrder(projectId, ids) {
         patchBoard: board,
         wiring,
         compiledWiring,
-        mirrorSets: layoutMirrorSets,
+        symmetry: layoutSymmetry,
+        sidesMirrored,
         targets: effectiveSectionTargets,
         resolvePatternId: resolveCodePatternId,
         paletteForPattern: patternId => (
           REAL_PATTERN_BY_ID.get(patternId)?.pal || adaptPattern(patternId)?.pal
         ),
       }),
-      [board, compiledWiring, effectiveSectionTargets, layoutMirrorSets, strips, wiring],
+      [board, compiledWiring, effectiveSectionTargets, layoutSymmetry, sidesMirrored, strips, wiring],
     );
     const previewTargetIds = useMemo(
       () => patternPreviewSegments.map(segment => segment.id),
@@ -1244,13 +1268,13 @@ function writeSectionDisplayOrder(projectId, ids) {
     const runtimeBuild = useMemo(() => {
       try {
         return {
-          runtimePackage: buildCardRuntimePackageFromProject({ projectId, projectName, strips, patchBoard: board, wiring, compiledWiring, mirrorSets: layoutMirrorSets, symSettings, standaloneController }),
+          runtimePackage: buildCardRuntimePackageFromProject({ projectId, projectName, strips, patchBoard: board, wiring, compiledWiring, symmetry: layoutSymmetry, sidesMirrored, symSettings, standaloneController }),
           error: null,
         };
       } catch (error) {
         return { runtimePackage: null, error };
       }
-    }, [projectId, projectName, strips, board, compiledWiring, layoutMirrorSets, standaloneController]);
+    }, [projectId, projectName, strips, board, compiledWiring, layoutSymmetry, sidesMirrored, standaloneController]);
     const runtimePackage = runtimeBuild.runtimePackage;
     const hardwareConfigurationIssue = runtimeBuild.error
       ? String(runtimeBuild.error.message || runtimeBuild.error).replace('is already owned by an LED output or another control', 'is already used by an LED output or another control')
@@ -1914,7 +1938,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         if (target.kind !== 'section' || !normalizedDraftLooks[target.id]) continue;
         nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, look: normalizedDraftLooks[target.id] });
       }
-      const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, mirrorSets: layoutMirrorSets, defaultLook: nextDefaultLook });
+      const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, symmetry: layoutSymmetry, sidesMirrored, defaultLook: nextDefaultLook });
       let nextController = { ...(standaloneController || {}), defaultLook: nextDefaultLook };
       if (!saveNamedLook) return { nextLook, nextBoard, nextController, nextTargets };
       const resolvedLabel = label || mixName.trim() || currentComboLabel;
@@ -1925,6 +1949,14 @@ function writeSectionDisplayOrder(projectId, ids) {
         targets: nextTargets,
         patternLabRecipe: editingSavedLook?.patternLabRecipe ? recipeFromLook({ ...editingSavedLook, label: resolvedLabel, defaultLook: nextDefaultLook, sectionLooks: Object.fromEntries(nextTargets.filter(target => target.kind === 'section').map(target => [target.id, target.look])) }) : null,
       });
+      if (showSides) {
+        // How this look plays its sides is saved with the look, so a playlist
+        // can alternate mirrored and own looks.
+        nextController = {
+          ...nextController,
+          looks: (nextController.looks || []).map(item => (item.id === nextController.activeLookId ? { ...item, sidesMirrored: sidesMirrored !== false } : item)),
+        };
+      }
       return { nextLook, nextBoard, nextController, nextTargets };
     };
 
@@ -3146,7 +3178,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                           strips={visiblePatternPreviewSegments}
                           compactRibbon
                           hidden={{}}
-                          mirrorSets={layoutMirrorSets}
+                          symmetry={layoutSymmetry}
+                          sidesMirrored={sidesMirrored}
                           viewBox={patternPreviewViewBox}
                           patternId={visiblePatternPreviewSegments[0].patternId}
                           playing={true}
@@ -3174,9 +3207,28 @@ function writeSectionDisplayOrder(projectId, ids) {
                   </div>
                 </div>
 
+                   {showSides && <>
+                     <div className="sec-h"><span className="t">{SIDES_HEADING}</span><span className="line" /></div>
+                     <div className="geo-seg" data-testid="pattern-sides" role="group" aria-label={SIDES_HEADING} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                       {SIDES_OPTIONS.map(option => {
+                         const on = (sidesMirrored !== false) === option.mirrored;
+                         return <button
+                           key={String(option.mirrored)}
+                           type="button"
+                           className={on ? 'on' : ''}
+                           aria-pressed={on}
+                           data-testid={option.mirrored ? 'sides-mirrored' : 'sides-own'}
+                           onClick={() => { if (!on) { setSidesMirrored?.(option.mirrored); setLookSaveState(''); } }}
+                         >{option.label}</button>;
+                       })}
+                     </div>
+                     <p className="pm-section-help" data-testid="sides-hint">{sidesHintCopy({ symmetry: layoutSymmetry, sidesMirrored: sidesMirrored !== false })}</p>
+                   </>}
                    <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections">
                      {displayedSectionRows.map((row, rowIndex) => {
                        const target = sectionTargets.find(item => item.id === row.id);
+                       const sidesMeta = showSides ? sectionMetaCopy({ target, symmetry: layoutSymmetry, strips, ledCount: row.pixelCount }) : null;
+                       const rowLabel = showSides ? sectionLabelCopy({ target, symmetry: layoutSymmetry }) || row.label : row.label;
                        const selected = !handoffInvalid && row.id === selectedTarget?.id;
                        const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
                        return <div
@@ -3195,7 +3247,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                          aria-pressed={selected}
                          onClick={() => chooseSectionLook(target)}
                        >
-                         <span className="pm-section-identity"><strong>{row.label}</strong><small>{row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`}</small></span>
+                         <span className="pm-section-identity"><strong>{rowLabel}</strong><small data-testid={sidesMeta ? `section-meta-${row.id}` : undefined}>{sidesMeta || (row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`)}</small></span>
                          <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
                        </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
@@ -3205,15 +3257,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                        </span>}</div>;
                      })}
                    </div>
-                  {isMirrorSetTarget(selectedTarget) &&
-                    <p className="pm-section-help" data-testid="section-mirror-note">
-                      These {mirrorSetStripCount(selectedTarget)} strips mirror each other.{' '}
-                      <button type="button" className="wordlink" data-testid="open-mirror-section-in-layout"
-                              onClick={() => { if (selectedTarget.stripId) selectStrip(selectedTarget.stripId); window.location.hash = '#screen=layout&mode=draw'; }}>
-                        Open in Layout
-                      </button>{' '}to change which strips mirror.
-                    </p>}
-                  {selectedTarget?.kind === 'section' && !isMirrorSetTarget(selectedTarget) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
+                  {selectedTarget?.kind === 'section' && !isSideTarget(selectedTarget, layoutSymmetry) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
                     <p className="pm-section-help" data-testid="section-spans-gpios">
                       This section spans {sectionGpioLabels.get(selectedTarget.id)}; these GPIOs share this section&apos;s pattern.{' '}
                       <button type="button" className="wordlink" data-testid="open-spanning-section-in-layout"
@@ -3500,7 +3544,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                         <PatternPreview
                           strips={strips}
                           hidden={hidden}
-                          mirrorSets={layoutMirrorSets}
+                          symmetry={layoutSymmetry}
+                          sidesMirrored={sidesMirrored}
                           viewBox={viewBox}
                           svgText={svgText}
                           patternId={selId}
