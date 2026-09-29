@@ -1493,7 +1493,7 @@ function Shell({ offlineUpdateController = null }) {
           strips: snapshot.layout?.strips || [],
           patchBoard: snapshot.layout?.patchBoard,
           wiring: snapshot.layout?.wiring,
-          mirrorSets: snapshot.layout?.mirrorSets || [],
+          symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
           standaloneController: snapshot.devices?.standaloneController,
         });
         prepareCardStoragePayload(prepared.runtimePackage);
@@ -1511,7 +1511,7 @@ function Shell({ offlineUpdateController = null }) {
               wiring: snapshot.layout?.wiring,
               compiledWiring,
               layoutLayerGroups: snapshot.layout?.layerGroups || [],
-              mirrorSets: snapshot.layout?.mirrorSets || [],
+              symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
               sectionFamilies: snapshot.layout?.sectionFamilies || [],
               palette: snapshot.pattern?.palette || [],
               hidden: snapshot.layout?.hidden || {},
@@ -1786,7 +1786,7 @@ function Shell({ offlineUpdateController = null }) {
         strips: snapshot.layout?.strips || [],
         patchBoard: snapshot.layout?.patchBoard,
         wiring: snapshot.layout?.wiring,
-        mirrorSets: snapshot.layout?.mirrorSets || [],
+        symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
         standaloneController: snapshot.devices?.standaloneController,
       }).config;
     } catch (error) {

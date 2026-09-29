@@ -21,8 +21,8 @@ const runtimePackage = {
 
 assert.deepEqual(runtimeZoneIds(runtimePackage), ['outer', 'inner']);
 
-// A mirror set reaches the card as ONE zone named by the set, so the sections
-// Studio asks the card for are the set's id, never its members'.
+// A symmetry side reaches the card as ONE zone named by the side, so the
+// sections Studio asks the card for are the side ids, never their strips'.
 {
   const strips = [
     { id: 'left', name: 'Left', pixelCount: 4 },
@@ -32,11 +32,23 @@ assert.deepEqual(runtimeZoneIds(runtimePackage), ['outer', 'inner']);
     strips,
     wiring: makeDefaultWiring(strips),
     patchBoard: createDefaultPatchBoard(strips),
-    mirrorSets: [{ id: 'mirror-1', name: 'Wings', members: ['left', 'right'] }],
+    symmetry: {
+      fold: 2,
+      orientation: 'mirror',
+      sides: [
+        { id: 'side-1', label: 'Left side', stripIds: ['left'] },
+        { id: 'side-2', label: 'Right side', stripIds: ['right'] },
+      ],
+    },
   });
-  assert.deepEqual(runtimeZoneIds(mirrored), ['mirror-1']);
-  assert.deepEqual(mirrored.config.zones[0].ranges, [{ start: 0, count: 4 }, { start: 4, count: 4 }]);
-  assert.deepEqual(missingCardZoneIds({ zones: [{ id: 'left' }, { id: 'right' }] }, ['mirror-1']), ['mirror-1']);
+  assert.deepEqual(runtimeZoneIds(mirrored), ['side-1', 'side-2']);
+  assert.deepEqual(mirrored.config.zones[0].ranges, [{ start: 0, count: 4 }]);
+  assert.equal(mirrored.config.zones[0].continuous, true);
+  assert.equal(mirrored.config.zones[1].mirrorOf, 'side-1');
+  assert.deepEqual(
+    missingCardZoneIds({ zones: [{ id: 'left' }, { id: 'right' }] }, ['side-1', 'side-2']),
+    ['side-1', 'side-2'],
+  );
 }
 assert.deepEqual(
   missingCardZoneIds({ zones: [{ id: 'outer' }] }, ['outer', 'inner', 'inner']),

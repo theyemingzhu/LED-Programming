@@ -1,7 +1,7 @@
 import { CARD_HARDWARE_CAPABILITIES } from './cardRuntimeContract.js';
 import { compileCardKaleidoscopeMappings } from './cardKaleidoscope.js';
 import { validateWiring } from './wiringModel.js';
-import { defaultMirrorSetName, findMirrorSetStructureErrors, normalizeMirrorSets } from './mirrorSetRules.js';
+import { findSymmetryStructureErrors, normalizeSymmetry } from './pieceSymmetry.js';
 
 const stripCount = strip => Math.max(0, Math.trunc(Number(strip?.pixelCount ?? strip?.pixels?.length ?? strip?.leds ?? 0)));
 
@@ -64,13 +64,14 @@ function coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById) {
   return { ...zone, ranges };
 }
 
-// A mirror set compiles to ONE zone whose ranges are the members' ranges in
-// member order. The card already renders every range of a zone from index 0 on
-// one clock, so several ranges in one zone play as identical, synchronized
-// copies. Sets that break a rule are left out (each member then keeps its own
-// zone) and reported as a `mirror-set-ignored` warning rather than blocking the
-// whole project.
-export function compileWiring({ wiring, strips = [], groups = [], mirrorSets = [], capabilities = CARD_HARDWARE_CAPABILITIES } = {}) {
+// Each symmetry side compiles to ONE continuous zone: its ranges are the side's
+// strips' ranges in stripIds order (the order the pattern flows through the
+// side), and `continuous: true` tells the card those ranges are one pattern run
+// (pattern index and count span all ranges). Strips in no side compile exactly
+// as they always did. A symmetry that breaks a rule is left out (every strip
+// then keeps its own zone) and reported as a `symmetry-ignored` warning rather
+// than blocking the whole project.
+export function compileWiring({ wiring, strips = [], groups = [], symmetry = null, capabilities = CARD_HARDWARE_CAPABILITIES } = {}) {
   const validation = validateWiring(wiring, strips, capabilities);
   const model = validation.wiring;
   const errors = [...validation.errors];
@@ -86,13 +87,24 @@ export function compileWiring({ wiring, strips = [], groups = [], mirrorSets = [
   }
   const stripsById = new Map(strips.map(strip => [strip.id, strip]));
   const zoneByStripId = new Map();
-  const requestedMirrorSets = normalizeMirrorSets(mirrorSets);
-  const rejectedMirrorSets = new Map();
-  for (const error of findMirrorSetStructureErrors(requestedMirrorSets, strips, groups)) {
-    if (!rejectedMirrorSets.has(error.setId)) rejectedMirrorSets.set(error.setId, error.message);
+  const requestedSymmetry = normalizeSymmetry(symmetry);
+  const groupedStripIds = new Set();
+  for (const group of groups || []) {
+    for (const member of group.members || []) {
+      const stripId = typeof member === 'string' ? member : member?.stripId;
+      if (stripId) groupedStripIds.add(String(stripId));
+    }
   }
-  const appliedMirrorSets = requestedMirrorSets.filter(set => !rejectedMirrorSets.has(set.id));
-  const mirrorOrderByStripId = new Map();
+  let symmetryRejection = null;
+  if (symmetry) {
+    const structure = findSymmetryStructureErrors(symmetry, strips);
+    const grouped = (symmetry.sides || []).flatMap(side => side.stripIds || []).find(id => groupedStripIds.has(String(id)));
+    if (structure.length) symmetryRejection = structure[0].message;
+    else if (!requestedSymmetry) symmetryRejection = 'Choose 2 sides or 4 sides.';
+    else if (grouped) symmetryRejection = `Ungroup ${stripsById.get(grouped)?.name || grouped} first.`;
+  }
+  const appliedSymmetry = symmetryRejection ? null : requestedSymmetry;
+  const sideOrderByStripId = new Map();
   for (const group of groups || []) {
     const id = String(group.groupId || group.id || '');
     if (!id) continue;
@@ -101,13 +113,13 @@ export function compileWiring({ wiring, strips = [], groups = [], mirrorSets = [
       if (stripId) zoneByStripId.set(stripId, { id, label: String(group.name || group.label || id) });
     }
   }
-  // Mirror sets claim their members after layer groups; validation already
-  // refused any member that is also in a group.
-  for (const set of appliedMirrorSets) {
-    const identity = { id: set.id, label: set.name || defaultMirrorSetName(set, strips) };
-    set.members.forEach((stripId, index) => {
+  // Sides claim their strips after layer groups; validation already refused any
+  // strip that is also in a group.
+  for (const side of appliedSymmetry?.sides || []) {
+    const identity = { id: side.id, label: side.label, continuous: true };
+    side.stripIds.forEach((stripId, index) => {
       zoneByStripId.set(stripId, identity);
-      mirrorOrderByStripId.set(stripId, index);
+      sideOrderByStripId.set(stripId, index);
     });
   }
   const outputs = [];
@@ -170,55 +182,49 @@ export function compileWiring({ wiring, strips = [], groups = [], mirrorSets = [
   }
 
   if (pixels.length > capabilities.maxPixels) errors.push({ code: 'pixel-limit', message: `Compiled wiring uses ${pixels.length} pixels; hardware supports ${capabilities.maxPixels}.` });
-  // Mirror zones list their ranges in member order (the lead first), whatever
-  // order the wiring visits the strips in. Coalescing only ever joins ranges of
-  // the same strip, so two neighbouring mirrored strips stay two ranges.
-  const mirrorSetIds = new Set(appliedMirrorSets.map(set => set.id));
+  // Side zones list their ranges in stripIds order, whatever order the wiring
+  // visits the strips in. Coalescing only ever joins ranges of the same strip,
+  // so two neighbouring strips in one side stay two ranges.
+  const sideIds = new Set((appliedSymmetry?.sides || []).map(side => side.id));
   for (const zone of zoneMap.values()) {
-    if (!mirrorSetIds.has(zone.id)) continue;
-    const orderOf = range => mirrorOrderByStripId.get(pixels[range.start]?.stripId) ?? Number.MAX_SAFE_INTEGER;
+    if (!sideIds.has(zone.id)) continue;
+    const orderOf = range => sideOrderByStripId.get(pixels[range.start]?.stripId) ?? Number.MAX_SAFE_INTEGER;
     zone.ranges = zone.ranges
       .map((range, index) => ({ range, index }))
-      .sort((a, b) => orderOf(a.range) - orderOf(b.range) || a.index - b.index)
+      .sort((x, y) => orderOf(x.range) - orderOf(y.range) || x.index - y.index)
       .map(entry => entry.range);
   }
   const zones = [...zoneMap.values()].map(zone => (
     coalesceZoneRanges(zone, pixels, runsById, previousPhysicalRunById)
   ));
-  const brokenMirrorSets = new Map();
-  for (const set of appliedMirrorSets) {
-    const zone = zones.find(candidate => candidate.id === set.id);
-    const rangesByMember = new Map(set.members.map(stripId => [stripId, 0]));
+  let brokenSymmetry = null;
+  for (const side of appliedSymmetry?.sides || []) {
+    const zone = zones.find(candidate => candidate.id === side.id);
+    const rangesByStrip = new Map(side.stripIds.map(stripId => [stripId, 0]));
     for (const range of zone?.ranges || []) {
       const stripId = pixels[range.start]?.stripId;
-      if (rangesByMember.has(stripId)) rangesByMember.set(stripId, rangesByMember.get(stripId) + 1);
+      if (rangesByStrip.has(stripId)) rangesByStrip.set(stripId, rangesByStrip.get(stripId) + 1);
     }
-    const split = [...rangesByMember.entries()].find(([, count]) => count !== 1);
+    const split = [...rangesByStrip.entries()].find(([, count]) => count !== 1);
     if (split) {
       const name = stripsById.get(split[0])?.name || split[0];
-      brokenMirrorSets.set(set.id, `Join ${name}'s wiring into one run first.`);
+      brokenSymmetry = `Join ${name}'s wiring into one run first.`;
     } else if ((zone?.ranges || []).length > capabilities.maxRangesPerZone) {
-      brokenMirrorSets.set(set.id, 'The mirrored strips need too many wiring runs for one card section.');
+      brokenSymmetry = `${side.label} needs more wiring runs than one card section holds.`;
     }
+    if (brokenSymmetry) break;
   }
-  if (brokenMirrorSets.size) {
-    const retry = compileWiring({
-      wiring, strips, groups, capabilities,
-      mirrorSets: appliedMirrorSets.filter(set => !brokenMirrorSets.has(set.id)),
-    });
-    for (const [setId, message] of [...rejectedMirrorSets, ...brokenMirrorSets]) {
-      retry.warnings.push({ code: 'mirror-set-ignored', setId, message });
-    }
+  if (brokenSymmetry) {
+    const retry = compileWiring({ wiring, strips, groups, capabilities });
+    retry.warnings.push({ code: 'symmetry-ignored', message: brokenSymmetry });
     return retry;
   }
-  for (const [setId, message] of rejectedMirrorSets) {
-    warnings.push({ code: 'mirror-set-ignored', setId, message });
-  }
+  if (symmetryRejection) warnings.push({ code: 'symmetry-ignored', message: symmetryRejection });
   if (zones.length > capabilities.maxZones) errors.push({ code: 'zone-limit', message: `Compiled wiring uses ${zones.length} zones.` });
   for (const zone of zones) if (zone.ranges.length > capabilities.maxRangesPerZone) errors.push({ code: 'zone-range-limit', zoneId: zone.id, message: `Zone ${zone.id} has too many ranges.` });
   const kaleidoscope = compileCardKaleidoscopeMappings({ strips, pixels, zones });
   errors.push(...kaleidoscope.errors);
   const ok = errors.length === 0;
   const sendReady = ok && model.locked && model.verified && model.runs.every(run => run.verified) && model.migrationWarnings.length === 0;
-  return { ok, sendReady, errors, warnings, totalPixels: pixels.length, physicalOutputCount: outputs.length, outputs, runs, pixels, zones, groups, mirrorSets: appliedMirrorSets, kaleidoscopeMappings: kaleidoscope.mappings };
+  return { ok, sendReady, errors, warnings, totalPixels: pixels.length, physicalOutputCount: outputs.length, outputs, runs, pixels, zones, groups, symmetry: appliedSymmetry, kaleidoscopeMappings: kaleidoscope.mappings };
 }
