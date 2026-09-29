@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { ClientPlayerLink } from './ClientPlayerLink.jsx';
 import { readCardPatternsFromCard, readCardZonesFromCard, pushLivePreviewToCard, readBackLivePreview } from '../../lib/cardLiveControl.js';
 import {
   applyCustomerControlAcknowledgement,
@@ -220,6 +221,7 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
           </section> : null}
 
           {controls.failure ? <div className="card-control-error" role="alert"><p>{controls.failure.message}</p><button type="button" className="btn" disabled={mutationDisabled} onClick={() => runControl(controls.retry)}>Retry</button></div> : null}
+          {safeControlsReady && <ClientPlayerLink disabled={mutationDisabled} host={host} cardId={link.card?.id} name={link.card?.name} />}
           <footer className="card-control-actions">
             <button type="button" className="btn" disabled={mutationDisabled} onClick={() => onAdvanced(activePattern)}>Advanced editing</button>
             <button type="button" className={view.blackout ? 'btn primary' : 'btn'} aria-pressed={view.blackout} onClick={() => runControl({ blackout: !view.blackout })} disabled={mutationDisabled}>{view.blackout ? 'Restore' : 'Blackout'}</button>

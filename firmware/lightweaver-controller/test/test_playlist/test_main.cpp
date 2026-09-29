@@ -24,6 +24,7 @@
 #include <string>
 
 #include "LightweaverStorage.h"
+#include "LightweaverClientPolicy.h"
 
 namespace {
 
@@ -243,10 +244,55 @@ void test_id_less_entry_skipped_and_bounds_clamped() {
   TEST_ASSERT_EQUAL_UINT16(LW_PLAYLIST_RECORD_MAX_DWELL_SECONDS, decoded.entries[1].dwellSeconds);
 }
 
+void test_client_origin_routes() {
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("POST", "/api/client-playlist"));
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("GET", "/api/status"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/config"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("GET", "/api/reboot"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/wiring/activate"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/owner/capability"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("OPTIONS", "/api/config"));
+}
+void test_client_playlist_strict_validation() {
+  JsonDocument doc;
+  deserializeJson(doc, R"({"enabled":true,"fadeMs":1500,"entries":[{"patternId":"installed","dwellSeconds":30}]})");
+  PlaylistRecord record;
+  auto installed = [](const char* id) { return strcmp(id, "installed") == 0; };
+  TEST_ASSERT_TRUE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["patternId"] = "default-only";
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["patternId"] = "installed";
+  doc["entries"][0]["dwellSeconds"] = 0;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["dwellSeconds"] = 3601;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["dwellSeconds"] = 30;
+  doc["fadeMs"] = 10001;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["fadeMs"] = 1000;
+  doc["wiring"] = true;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  TEST_ASSERT_EQUAL_UINT16(30, record.entries[0].dwellSeconds);
+  doc.remove("wiring");
+  doc["entries"].to<JsonArray>();
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["enabled"] = false;
+  TEST_ASSERT_TRUE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  for (int i = 0; i < 17; ++i) {
+    JsonObject e = doc["entries"].as<JsonArray>().add<JsonObject>();
+    e["patternId"] = "installed"; e["dwellSeconds"] = 30;
+  }
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  TEST_ASSERT_EQUAL_UINT8(0, record.entryCount);
+
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
+  RUN_TEST(test_client_playlist_strict_validation);
+  RUN_TEST(test_client_origin_routes);
   RUN_TEST(test_representative_4_zone_project_with_16_entry_playlist_measurement);
   RUN_TEST(test_encode_decode_round_trip_16_entries);
   RUN_TEST(test_seventeen_entries_drops_the_seventeenth);

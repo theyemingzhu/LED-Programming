@@ -7,6 +7,30 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current delivery — client player — 2026-09-29
+Owner: this manager. State: integrated release gate passed; commit and background publication handoff next.
+Artifact: codex/client-player in managed client-player checkout, base02aff71b (build2302).
+Working: automatic Studio-link pairing, no address field, installed patterns,
+repeat/stay, brightness/speed/hue, persistent playlist add/remove/reorder/duration.
+Owner tools uses existing password/session and server-checked owner role at
+/api/owner/studio. User confirmed this phone-entry scope; public Studio unchanged.
+Runtime remains same-Wi-Fi card control, with exact card identity and revision checks.
+Firmware1.2.1 compiled; native playlist/live-look14/14 PASS; narrow client bridge9/API.
+Focused evidence: corrected client browser7/7, pairing/model6/6, drawer2/2 PASS;
+release support57/57; client graph2/2. Phone/desktop test-card screenshots inspected.
+Domain: Cloudflare Pages lightweaver-client and light.mandalacodes.com CNAME/TLS
+active. No app deployment or hardware update yet. Original checkout edits intact.
+Integrated release gate PASS: 2,996 unit tests, mobile42/42, production68/68,
+final UI521/521 plus regression groups and client/owner9/9; both production builds,
+Studio63-file graph, client graph and staged artifact/freshness checks PASS.
+Evidence: /private/tmp/lightweaver-client-release-resume.log and
+/private/tmp/lightweaver-client-gate-state.json. Source prefix retained from initial
+run; no passed suite rerun for the owner correction. Actual no-address connection
+view inspected in the in-app browser; no card reached or modified.
+Physical gates: actual card reboot/power-cut persistence and LED appearance
+unperformed. No flash or destructive recovery. Next: publish exact
+candidate through protected signer/deployment and verify durable runner handoff.
+
 ## Continuous repair and publish loop — active
 Owner: primary manager. Adrian authorized repeated problem-finding, bounded repairs and background shipping until stopped. Durable chat heartbeat `lightweaver-repair-and-publish-loop` resumes actionable work every 30 minutes and must not merely poll CI. No hardware flash for browser-only changes; physical visual proof is not inferred.
 

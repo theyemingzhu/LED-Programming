@@ -104,6 +104,7 @@ struct LiveLookRecord {
   // since edited down must not index out of bounds.
   bool playlistPlaying = false;
   uint8_t playlistEntryIndex = 0;
+  uint32_t playlistGeneration = 0;
 };
 
 namespace lightweaver_live_look_detail {
@@ -141,6 +142,7 @@ inline size_t encodeLiveLookRecord(const LiveLookRecord& record, char* outBuffer
   doc["syncZones"] = record.syncZones;
   doc["playlistPlaying"] = record.playlistPlaying;
   doc["playlistEntryIndex"] = record.playlistEntryIndex;
+  doc["playlistGeneration"] = record.playlistGeneration;
   JsonArray zones = doc["zones"].to<JsonArray>();
   uint8_t count = record.zoneCount < LW_LIVE_LOOK_MAX_ZONES ? record.zoneCount : LW_LIVE_LOOK_MAX_ZONES;
   for (uint8_t i = 0; i < count; i++) {
@@ -195,6 +197,7 @@ inline bool decodeLiveLookRecord(const char* json, size_t jsonLength, LiveLookRe
   parsed.syncZones = doc["syncZones"] | true;
   parsed.playlistPlaying = doc["playlistPlaying"] | false;
   parsed.playlistEntryIndex = doc["playlistEntryIndex"] | 0U;
+  parsed.playlistGeneration = doc["playlistGeneration"] | 0U;
   for (JsonVariantConst zoneValue : zones) {
     if (parsed.zoneCount >= LW_LIVE_LOOK_MAX_ZONES) break;
     JsonObjectConst zo = zoneValue.as<JsonObjectConst>();
@@ -349,6 +352,36 @@ inline bool decodePlaylistRecord(JsonVariant playlistJson, PlaylistRecord& outRe
   return true;
 }
 
+// Client edits are strict: reject the complete request before changing state.
+// The legacy project decoder intentionally clamps/drops and is unsuitable here.
+template <typename Installed>
+inline bool decodeClientPlaylist(JsonVariantConst value, PlaylistRecord& out,
+                                 Installed installed) {
+  JsonObjectConst obj = value.as<JsonObjectConst>();
+  if (obj.isNull() || obj.size() != 3 || !obj["enabled"].is<bool>() ||
+      !obj["fadeMs"].is<unsigned>() || obj["fadeMs"].as<unsigned>() > 10000 ||
+      !obj["entries"].is<JsonArrayConst>()) return false;
+  JsonArrayConst entries = obj["entries"].as<JsonArrayConst>();
+  if (entries.size() > LW_PLAYLIST_RECORD_MAX_ENTRIES ||
+      (obj["enabled"].as<bool>() && entries.size() == 0)) return false;
+  PlaylistRecord candidate;
+  candidate.enabled = obj["enabled"].as<bool>();
+  candidate.fadeMs = obj["fadeMs"].as<unsigned>();
+  for (JsonObjectConst e : entries) {
+    if (e.isNull() || e.size() != 2 || !e["patternId"].is<const char*>() ||
+        !e["dwellSeconds"].is<unsigned>()) return false;
+    const char* id = e["patternId"];
+    unsigned dwell = e["dwellSeconds"];
+    if (!*id || strlen(id) >= LW_PLAYLIST_PATTERN_ID_BYTES || !installed(id) ||
+        dwell < 1 || dwell > 3600) return false;
+    auto& entry = candidate.entries[candidate.entryCount++];
+    lightweaver_live_look_detail::copyBounded(entry.patternId, sizeof(entry.patternId), id);
+    entry.dwellSeconds = dwell;
+  }
+  out = candidate;
+  return true;
+}
+
 // Encodes a PlaylistRecord as a "playlist" object under `out`. Not used by
 // production — see the header comment above — kept for round-trip testing.
 inline void encodePlaylistRecord(const PlaylistRecord& record, JsonObject out) {
@@ -397,6 +430,11 @@ void ensureDefaultZone(RuntimeConfig& config);
 RuntimeLoadResult loadRuntimeConfig(
     RuntimeConfig& config,
     RuntimeStorageAccessMode accessMode = RuntimeStorageAccessMode::Normal);
+uint32_t currentClientPlaylistGeneration();
+String clientPlaylistRevision(const RuntimeConfig& config);
+String clientPlaylistJson(const RuntimeConfig& config);
+bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String& message);
+bool loadClientPlaylist(RuntimeConfig& config);
 bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message);
 bool suppressSdProjectAutorunAfterFactoryReset(String& message);
 bool clearRuntimeProjectStorage(String& message);

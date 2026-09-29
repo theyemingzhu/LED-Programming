@@ -2105,6 +2105,89 @@ RuntimeLoadResult loadRuntimeConfig(RuntimeConfig& config,
   return result;
 }
 
+namespace {
+constexpr const char* CLIENT_PLAYLIST_KEY = "clientPlaylist";
+uint32_t clientPlaylistGeneration = 0;
+void encodeClientPlaylist(const RuntimeConfig& cfg, JsonObject out) {
+  out["enabled"] = cfg.playlist.enabled;
+  out["fadeMs"] = cfg.playlist.fadeMs;
+  JsonArray entries = out["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < cfg.playlist.entryCount; ++i) {
+    JsonObject e = entries.add<JsonObject>();
+    e["patternId"] = cfg.playlist.entries[i].patternId;
+    e["dwellSeconds"] = cfg.playlist.entries[i].dwellSeconds;
+  }
+}
+bool parseClientPlaylist(JsonVariantConst value, const RuntimeConfig& cfg, PlaylistRecord& record) {
+  return decodeClientPlaylist(value, record, [&cfg](const char* id) {
+    for (uint8_t i = 0; i < cfg.lookCount; ++i) if (cfg.looks[i].id == id) return true;
+    return false;
+  });
+}
+void applyClientPlaylist(const PlaylistRecord& record, RuntimeConfig& cfg) {
+  cfg.playlist.enabled = record.enabled;
+  cfg.playlist.fadeMs = record.fadeMs;
+  cfg.playlist.entryCount = record.entryCount;
+  for (uint8_t i = 0; i < record.entryCount; ++i) {
+    cfg.playlist.entries[i].patternId = record.entries[i].patternId;
+    cfg.playlist.entries[i].dwellSeconds = record.entries[i].dwellSeconds;
+  }
+}
+}
+uint32_t currentClientPlaylistGeneration() { return clientPlaylistGeneration; }
+String clientPlaylistJson(const RuntimeConfig& config) {
+  JsonDocument doc;
+  encodeClientPlaylist(config, doc.to<JsonObject>());
+  String json; serializeJson(doc, json); return json;
+}
+String clientPlaylistRevision(const RuntimeConfig& config) {
+  return sha256Hex(config.configDigest + ":" + currentConfirmedInstallationId() + ":" + String(clientPlaylistGeneration) + ":" + clientPlaylistJson(config));
+}
+bool loadClientPlaylist(RuntimeConfig& config) {
+  if (!config.knownGoodProject || config.configDigest.length() != 64) return false;
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+  String json = prefs.getString(CLIENT_PLAYLIST_KEY, ""); prefs.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, json) || doc["configDigest"].as<String>() != config.configDigest ||
+      doc["installId"].as<String>() != currentConfirmedInstallationId()) return false;
+  PlaylistRecord record;
+  if (!parseClientPlaylist(doc["playlist"], config, record)) return false;
+  clientPlaylistGeneration = doc["generation"] | 0U;
+  applyClientPlaylist(record, config);
+  return true;
+}
+bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String& message) {
+  PlaylistRecord record;
+  if (!config.knownGoodProject || config.configDigest.length() != 64 ||
+      !parseClientPlaylist(playlist, config, record)) {
+    message = "invalid installed playlist"; return false;
+  }
+  JsonDocument doc;
+  doc["configDigest"] = config.configDigest;
+  doc["installId"] = currentConfirmedInstallationId();
+  doc["generation"] = clientPlaylistGeneration + 1U;
+  encodePlaylistRecord(record, doc["playlist"].to<JsonObject>());
+  String json; serializeJson(doc, json);
+  if (json.length() > NVS_STRING_LIMIT) { message = "playlist exceeds storage limit"; return false; }
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) { message = "playlist storage unavailable"; return false; }
+  if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) {
+    prefs.end(); message = "wiring transaction is active"; return false;
+  }
+  bool written = prefs.putString(CLIENT_PLAYLIST_KEY, json) == json.length();
+  prefs.end();
+  if (!written || !prefs.begin(NVS_NAMESPACE, true)) {
+    message = "playlist write could not be verified; runtime unchanged"; return false;
+  }
+  const bool verified = prefs.getString(CLIENT_PLAYLIST_KEY, "") == json;
+  prefs.end();
+  if (!verified) { message = "playlist readback failed; runtime unchanged"; return false; }
+  ++clientPlaylistGeneration;
+  applyClientPlaylist(record, config);
+  return true;
+}
+
 bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message) {
   // ESP-IDF NVS caps a single string entry at ~4000 bytes. A large playlist
   // pushed from the Studio would otherwise fail deep in putString with an
@@ -2227,6 +2310,9 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
   // would already reject it on the next boot (revision no longer matches),
   // but clearing it here means a stale record never lingers on flash.
   clearPersistedLiveLookRecord();
+  Preferences clientPrefs;
+  if (clientPrefs.begin(NVS_NAMESPACE, false)) { clientPrefs.remove(CLIENT_PLAYLIST_KEY); clientPrefs.end(); }
+  clientPlaylistGeneration = 0;
   message = cleanupOk
       ? "saved to internal flash"
       : "saved to internal flash; cleanup warning: legacy recovery metadata may need service";
@@ -2857,6 +2943,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["safeMode"] = runtimeSafeModeActive();
   doc["configSchemaVersion"] = LW_CONFIG_SCHEMA_VERSION;
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
+  doc["capabilities"]["clientPlaylist"]["version"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;

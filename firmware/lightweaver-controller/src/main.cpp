@@ -430,6 +430,7 @@ void setup() {
       runtimeConfig, firmwareBootProbation
           ? RuntimeStorageAccessMode::ReadOnlyProbation
           : RuntimeStorageAccessMode::Normal);
+  if (loadResult.ok && !loadResult.bootedCandidate) loadClientPlaylist(runtimeConfig);
   runtimeSafeMode = loadResult.safeMode;
   if (Serial) {
     Serial.print("Runtime source: ");
@@ -3371,6 +3372,7 @@ bool captureLiveLookRecordFromRuntime(LiveLookRecord& outRecord) {
   outRecord.syncZones = runtimeConfig.syncZones;
   outRecord.playlistPlaying = playlistPlaying;
   outRecord.playlistEntryIndex = playlistEntryIndex;
+  outRecord.playlistGeneration = currentClientPlaylistGeneration();
   outRecord.zoneCount = 0;
   for (uint8_t i = 0; i < runtimeConfig.zoneCount && outRecord.zoneCount < LW_LIVE_LOOK_MAX_ZONES; i++) {
     const ZoneConfig& z = runtimeConfig.zones[i];
@@ -3486,7 +3488,8 @@ bool restoreLiveLookIfMatching() {
   // restored so /api/status reports it correctly immediately, and the next
   // natural playlist tick (runtimeServicePlaylist(), a full dwell from now)
   // carries the strip on from here.
-  if (runtimeConfig.playlist.enabled && runtimeConfig.playlist.entryCount > 0) {
+  if (runtimeConfig.playlist.enabled && runtimeConfig.playlist.entryCount > 0 &&
+      record.playlistGeneration == currentClientPlaylistGeneration()) {
     playlistPlaying = record.playlistPlaying;
     playlistEntryIndex = record.playlistEntryIndex < runtimeConfig.playlist.entryCount
         ? record.playlistEntryIndex : 0;

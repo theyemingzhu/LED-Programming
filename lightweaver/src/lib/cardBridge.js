@@ -33,6 +33,7 @@ import {
 // assertPrivilegedTarget.
 const PRIVILEGED_BRIDGE_TYPES = new Set([
   'config',
+  'client-playlist',
   'control',
   'reboot',
   'recover-lights',
@@ -106,12 +107,13 @@ const RETRYABLE_BRIDGE_TYPES = new Set([
 // feature first shipped in. Cards report their version in the 'ready'
 // handshake (and on every relay reply); firmware older than the versioned
 // bridge reports nothing, which we treat as 0 (legacy).
-export const CARD_BRIDGE_PROTOCOL_VERSION = 8;
+export const CARD_BRIDGE_PROTOCOL_VERSION = 9;
 export const CARD_BRIDGE_FEATURE_VERSIONS = {
   frame: 1,
   'wifi-handoff-ack': 2,
   'release-bridge': 6,
   'sequence-media': 7,
+  'client-playlist': 9,
 };
 
 export const CARD_BRIDGE_CHANGED_EVENT = 'lightweaver-card-bridge-changed';
@@ -901,6 +903,7 @@ function applyAuthoritativeBridgeStatus(status, host = bridgeHost, { verifiedCur
 
 function isAllowedStudioOrigin(origin = '') {
   return origin === 'https://led.mandalacodes.com'
+    || origin === 'https://light.mandalacodes.com'
     || origin === 'https://lightweaver-edw.pages.dev'
     || /^https?:\/\/localhost(:\d+)?$/.test(origin)
     || /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin);

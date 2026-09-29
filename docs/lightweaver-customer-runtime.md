@@ -1,6 +1,6 @@
 # Lightweaver customer runtime
 
-Start every setup, design, connection, install, update, and recovery flow at **[led.mandalacodes.com](https://led.mandalacodes.com)**. The website is the only address a customer needs to remember.
+Start every setup, design, connection, install, update, and recovery flow at **[led.mandalacodes.com](https://led.mandalacodes.com)**. For everyday control of a configured card, use the separate client at **[light.mandalacodes.com](https://light.mandalacodes.com)**. Design, installation and maintenance stay in Studio. See [client hosting](client-hosting.md) for release and firmware compatibility requirements.
 
 The ESP32 card owns playback after setup, so ordinary daily use remains available without internet. That offline independence is runtime behavior, not a separate onboarding path.
 

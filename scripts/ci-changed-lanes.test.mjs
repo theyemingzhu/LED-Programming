@@ -388,3 +388,13 @@ test('site publishing control changes retain all validation without minting firm
   assert.equal(firmwareBundleOnly([...paths, 'firmware/lightweaver-controller/VERSION']), false);
   assert.equal(firmwareBundleOnly([...paths, '.github/workflows/build-firmware.yml']), false);
 });
+
+test('standalone client selects source and browser without card or cloud work', () => {
+  for (const path of ['lightweaver/src/client/ClientApp.jsx', 'lightweaver/client.html', 'lightweaver/vite.client.config.js', 'lightweaver/client-public/_headers', 'lightweaver/scripts/client-release.mjs']) {
+    const lanes = classifyChangedPaths([path]);
+    assert.equal(lanes.source, true);
+    assert.equal(lanes.browser, true);
+    assert.equal(lanes.firmware, false);
+    assert.equal(lanes.cloud, false);
+  }
+});

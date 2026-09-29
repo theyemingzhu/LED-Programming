@@ -93,3 +93,19 @@ test('a complete staged release is copied without rebuilding any artifact', asyn
     assert.deepEqual(await readFile(join(outputDir, path)), await readFile(join(stagedRoot, path)));
   }
 });
+
+test('client publication is required once the two-surface workflow opts in', () => {
+  const input = { ...good(), clientRequired: true, clientPublishOutcome: 'success', clientFreshnessOutcome: 'success', clientRelease: good().studioRelease, clientGraphPresent: true };
+  assert.equal(createReleaseReceipt(input).shipped, true);
+  assert.equal(createReleaseReceipt(input).clientBuildNumber, 2244);
+  for (const [override, reason] of [
+    [{ clientPublishOutcome: 'failure' }, 'client_publish_failed'],
+    [{ clientFreshnessOutcome: 'failure' }, 'client_live_proof_failed'],
+    [{ clientRelease: { ...input.clientRelease, buildNumber: 2243 } }, 'client_build_mismatch'],
+    [{ clientGraphPresent: false }, 'client_build_mismatch'],
+  ]) {
+    const receipt = createReleaseReceipt({ ...input, ...override });
+    assert.equal(receipt.shipped, false);
+    assert.equal(receipt.reason, reason);
+  }
+});

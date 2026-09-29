@@ -16,11 +16,13 @@
 #include "LightweaverOwnerCapability.h"
 #include "LightweaverHttpFrameStream.h"
 #include "LightweaverFirmwareUpdate.h"
+#include "LightweaverFirmwareBootHealth.h"
 #include "LightweaverProjectRepository.h"
 #include "LightweaverMedia.h"
 #include "LightweaverCardStudio.h"
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverNativeArmPolicy.h"
+#include "LightweaverClientPolicy.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
@@ -30,7 +32,49 @@
 #include <cstdlib>
 
 namespace {
-WebServer server(80);
+class ClientOriginGuard final : public RequestHandler {
+ public:
+  ClientOriginGuard(WebServer& web, RequestHandler* delegate): web_(web), delegate_(delegate) {}
+  ~ClientOriginGuard() override { delete delegate_; }
+  bool denied() const {
+    const char* method = web_.method() == HTTP_GET ? "GET" : web_.method() == HTTP_POST ? "POST" : web_.method() == HTTP_OPTIONS ? "OPTIONS" : "OTHER";
+    return web_.header("Origin") == "https://light.mandalacodes.com" &&
+        !clientHttpRouteAllowed(method, web_.uri().c_str());
+  }
+  bool canHandle(HTTPMethod method, String uri) override { return delegate_->canHandle(method, uri); }
+  bool canRaw(String uri) override { return denied() || delegate_->canRaw(uri); }
+  bool canUpload(String uri) override { return !denied() && delegate_->canUpload(uri); }
+  void reject() { web_.send(403, "application/json", "{\"ok\":false,\"error\":\"client operation unavailable\"}"); }
+  bool handle(WebServer& web, HTTPMethod method, String uri) override {
+    if (denied()) { reject(); return true; }
+    return delegate_->handle(web, method, uri);
+  }
+  void raw(WebServer& web, String uri, HTTPRaw& body) override {
+    if (denied()) { if (body.status == RAW_START) { reject(); web.client().stop(); } return; }
+    delegate_->raw(web, uri, body);
+  }
+  void upload(WebServer& web, String uri, HTTPUpload& body) override {
+    if (!denied()) delegate_->upload(web, uri, body);
+  }
+ private:
+  WebServer& web_;
+  RequestHandler* delegate_;
+};
+class ClientGuardedWebServer final : public WebServer {
+ public:
+  ClientGuardedWebServer(): WebServer(80) {}
+  void protectRegisteredHandlers() {
+    RequestHandler* current = _firstHandler;
+    _firstHandler = nullptr; _lastHandler = nullptr;
+    while (current) {
+      RequestHandler* next = current->next();
+      current->next(nullptr);
+      addHandler(new ClientOriginGuard(*this, current));
+      current = next;
+    }
+  }
+};
+ClientGuardedWebServer server;
 DNSServer dnsServer;
 bool dnsServerActive = false;
 RuntimeConfig* runtimeConfigPtr = nullptr;
@@ -148,7 +192,7 @@ void scheduleApTeardown(uint32_t generation);
 // opener (targetOrigin = the already-validated studioOrigin) and focuses it,
 // instead of reloading the opener tab and discarding its in-memory state.
 // Studio feature-detects, so a pre-v7 card simply keeps reloading the tab.
-constexpr int LW_BRIDGE_VERSION = 8;
+constexpr int LW_BRIDGE_VERSION = 9;
 
 String apSsid() {
   uint64_t mac = ESP.getEfuseMac();
@@ -175,7 +219,10 @@ String sanitizeHostname(const String& raw) {
 // make every call ambiguous.
 void sendCors() {
   String origin = server.header("Origin");
-  if (corsOriginAllowed(origin)) {
+  const bool clientRoute = server.uri() == "/api/status" || server.uri() == "/api/patterns" ||
+      server.uri() == "/api/zones" || server.uri() == "/api/control" ||
+      server.uri() == "/api/client-playlist" || server.uri() == "/api/firmware-info";
+  if (corsOriginAllowed(origin) || (origin == "https://light.mandalacodes.com" && clientRoute)) {
     server.sendHeader("Access-Control-Allow-Origin", origin);
     server.sendHeader("Vary", "Origin");
     server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -339,7 +386,7 @@ String studioBridgeScript() {
   // the ready handshake carry version:N so Studio can feature-detect the frame
   // relay. The opener origin is carried in a bounded fragment and allowlisted
   // before use, so even the ready handshake never needs postMessage('*').
-  script += F("const LW_STUDIO_ORIGINS=['https://led.mandalacodes.com','https://lightweaver-edw.pages.dev'];"
+  script += F("const LW_STUDIO_ORIGINS=['https://light.mandalacodes.com','https://led.mandalacodes.com','https://lightweaver-edw.pages.dev'];"
               "const lwBridgeAllowed=o=>LW_STUDIO_ORIGINS.includes(o)||/^https?:\\/\\/localhost(:\\d+)?$/.test(o)||/^http:\\/\\/127\\.0\\.0\\.1(:\\d+)?$/.test(o);"
               "const lwBridgeRawParams=()=>{"
                 "const raw=(location.hash||'').replace(/^#/,'');if(!raw||raw.length>512)return null;"
@@ -461,6 +508,13 @@ String studioBridgeScript() {
                   "setTimeout(()=>lwCloseBridgeUtility('disconnected'),0);return"
                 "}"
                 "try{let response=null;"
+                  "if(ev.origin==='https://light.mandalacodes.com'){"
+                    "if(ev.source!==window.opener||ev.origin!==lwReadyOrigin)throw lwBridgeError('forbidden','client opener mismatch');"
+                    "if(!['status','ping','patterns','zones','control','client-playlist','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
+                    "if(m.type==='control'){const p=m.payload||{};const allowed=['on','blackout','syncZones','brightness','patternId','playlist','zone','speed','hueShift','hue','saturation','expectedCardId','expectedRevision'];if(Object.keys(p).some(k=>!allowed.includes(k)))throw lwBridgeError('forbidden','client control unavailable')}"
+                  "}"
+                  "if(m.type==='client-playlist'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-playlist');else if(p.method==='POST')response=await post('/api/client-playlist',p.body||{});else throw lwBridgeError('invalid-payload','playlist method required')}"
+                  "else "
                   "if(m.type==='status'||m.type==='ping'){response=await get('/api/status')}"
                   "else if(m.type==='zones'){response=await get('/api/zones')}"
                   "else if(m.type==='patterns'){response=await get('/api/patterns')}"
@@ -1858,6 +1912,7 @@ void handleReboot() {
 }
 
 void handleControlPost();
+void handleClientPlaylistPost();
 
 // WiFi mutation bodies are tiny and security-sensitive. Use WebServer's raw
 // path so an attacker cannot make the framework allocate a Content-Length-
@@ -2068,7 +2123,7 @@ void handleControlRaw(HTTPRaw& raw) {
 class BoundedControlRequestHandler final : public RequestHandler {
  public:
   bool canHandle(HTTPMethod method, String uri) override {
-    return method == HTTP_POST && uri == "/api/control";
+    return method == HTTP_POST && (uri == "/api/control" || uri == "/api/client-playlist");
   }
 
   bool canUpload(String uri) override {
@@ -2077,13 +2132,14 @@ class BoundedControlRequestHandler final : public RequestHandler {
   }
 
   bool canRaw(String uri) override {
-    return uri == "/api/control";
+    return uri == "/api/control" || uri == "/api/client-playlist";
   }
 
   bool handle(WebServer& webServer, HTTPMethod method, String uri) override {
     (void)webServer;
     if (!canHandle(method, uri)) return false;
-    handleControlPost();
+    if (uri == "/api/client-playlist") handleClientPlaylistPost();
+    else handleControlPost();
     return true;
   }
 
@@ -2180,6 +2236,16 @@ void handleControlPost() {
     }
   } else {
     controlRequestBodyReady = false;
+  }
+  if (server.header("Origin") == "https://light.mandalacodes.com") {
+    bool valid = doc.is<JsonObject>() && server.args() == 0;
+    for (JsonPair field : doc.as<JsonObject>()) {
+      const String key = field.key().c_str();
+      if (key != "on" && key != "blackout" && key != "syncZones" && key != "brightness" && key != "patternId" && key != "playlist" &&
+          key != "zone" && key != "speed" && key != "hueShift" && key != "hue" &&
+          key != "saturation" && key != "expectedCardId" && key != "expectedRevision") valid = false;
+    }
+    if (!valid) { server.send(403, "application/json", "{\"ok\":false,\"error\":\"client control unavailable\"}"); return; }
   }
   if (hasControlField(doc, "armNative")) {
     if (!nativeArmEnvelopeValid(doc.as<JsonVariantConst>())) {
@@ -2792,6 +2858,46 @@ void handleFirmwareInfo() {
     serializeJson(capabilitiesInfo, info);
   }
   server.send(200, "application/json", info);
+}
+
+void handleClientPlaylistGet() {
+  sendCors();
+  JsonDocument doc;
+  deserializeJson(doc, clientPlaylistJson(*runtimeConfigPtr));
+  doc["ok"] = true;
+  doc["cardId"] = runtimeCardId();
+  doc["revision"] = clientPlaylistRevision(*runtimeConfigPtr);
+  String body; serializeJson(doc, body);
+  server.send(200, "application/json", body);
+}
+void handleClientPlaylistPost() {
+  sendCors();
+  JsonDocument doc;
+  const bool parsed = controlRequestBodyReady && !controlRequestBodyRejected &&
+      !deserializeJson(doc, controlRequestBody, controlRequestBodyLength);
+  controlRequestBodyReady = false;
+  controlRequestBodyLength = 0;
+  if (!parsed || !doc.is<JsonObject>() || doc.size() != 5) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid playlist envelope\"}"); return;
+  }
+  if (!runtimeCommandReady() || !runtimePlaybackReady() || lightweaverFirmwareBootProbationActive()) {
+    server.send(423, "application/json", "{\"ok\":false,\"error\":\"card not ready\"}"); return;
+  }
+  if (doc["expectedCardId"].as<String>() != runtimeCardId() ||
+      doc["expectedRevision"].as<String>() != clientPlaylistRevision(*runtimeConfigPtr)) {
+    server.send(409, "application/json", "{\"ok\":false,\"error\":\"card or playlist revision changed\"}"); return;
+  }
+  doc.remove("expectedCardId"); doc.remove("expectedRevision");
+  String message;
+  if (!saveClientPlaylist(doc.as<JsonVariantConst>(), *runtimeConfigPtr, message)) {
+    JsonDocument error; error["ok"] = false; error["error"] = message;
+    String body; serializeJson(error, body); server.send(422, "application/json", body); return;
+  }
+  // Saving a schedule pauses playback. A separate explicit Play starts at a
+  // fresh dwell; no old index or deadline is applied to the reordered entries.
+  playlistPauseForManualChange();
+  runtimeAdvanceStateRevision();
+  handleClientPlaylistGet();
 }
 
 void handlePatterns() {
@@ -3681,6 +3787,8 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   server.on("/api/rename", HTTP_POST, handleRenamePost);
   server.on("/api/firmware-info", HTTP_OPTIONS, handleOptions);
   server.on("/api/firmware-info", HTTP_GET, handleFirmwareInfo);
+  server.on("/api/client-playlist", HTTP_OPTIONS, handleOptions);
+  server.on("/api/client-playlist", HTTP_GET, handleClientPlaylistGet);
   server.on("/api/patterns", HTTP_OPTIONS, handleOptions);
   server.on("/api/patterns", HTTP_GET, handlePatterns);
   server.on("/api/zones", HTTP_OPTIONS, handleOptions);
@@ -3720,6 +3828,7 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   server.collectHeaders(kCollectedHeaders,
       sizeof(kCollectedHeaders) / sizeof(kCollectedHeaders[0]));
 
+  server.protectRegisteredHandlers();
   server.begin();
   // No speculative boot scan: it parked the radio off-channel during the exact
   // seconds a phone is joining the hotspot. The setup page asks for a scan when
