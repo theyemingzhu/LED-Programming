@@ -159,7 +159,8 @@ inline LwZoneMirrorError lwValidateZoneMirrors(const Zone* zones, uint8_t zoneCo
       return LwZoneMirrorError::UnknownSource;
     }
     if (source == z) return LwZoneMirrorError::SelfSource;
-    if (mirrorSource[source] != LW_ZONE_NO_MIRROR) return LwZoneMirrorError::ChainedSource;    if (lwZonesOverlap(zones[z], zones[source])) return LwZoneMirrorError::OverlapsSource;
+    if (mirrorSource[source] != LW_ZONE_NO_MIRROR) return LwZoneMirrorError::ChainedSource;
+    if (lwZonesOverlap(zones[z], zones[source])) return LwZoneMirrorError::OverlapsSource;
   }
   badZone = 0;
   return LwZoneMirrorError::None;
