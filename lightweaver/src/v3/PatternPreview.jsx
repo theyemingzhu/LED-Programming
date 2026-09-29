@@ -7,7 +7,7 @@ import {
   resolvePatternParams,
 } from '../lib/frameEngine.js';
 import { smoothPixelFrame } from '../lib/motionSmoothing.js';
-import { applyPatternPreviewSegmentLooks, expandPatternPreviewMirrorSegments } from '../lib/patternPiecePreview.js';
+import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
 import {
   activeLedCoreAlpha,
   activeLedCoronaAlpha,
@@ -73,7 +73,8 @@ function clamp(n, min, max) {
 }
 
 function stripDisplayAlpha(strip, dimmedStripIds) {
-  return dimmedStripIds?.has(strip?.id) ? 0.18 : 1;
+  // A mirrored side follows the side it copies: selecting "Both sides" lights both.
+  return dimmedStripIds?.has(strip?.mirrorOf ?? strip?.id) ? 0.18 : 1;
 }
 
 function whiteHighlightAlpha(r, g, b, brightness) {
@@ -109,7 +110,7 @@ function renderFrame(canvas, t, p) {
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, symOverlay, audioBands, blendAmount, blendType,
     perStripFns, perStripPalettes, vb, heat, motionSmoothing, previousPixels, frameDt,
-    stripPhases, dimmedStripIds, compactRibbon, mirrorSets,
+    stripPhases, dimmedStripIds, compactRibbon, symmetry, sidesMirrored,
   } = p;
 
   // ViewBox → canvas pixel mapping (letterbox, maintain aspect ratio)
@@ -124,11 +125,11 @@ function renderFrame(canvas, t, p) {
     blendAmount, blendType, params: resolvedParams, paletteNorm, bpm,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, audioBands, normBounds, perStripFns, perStripPalettes, patternParamsById,
-    stripPhases, mirrorSets: mirrorSets || [],
+    stripPhases, symmetry: symmetry || null, sidesMirrored,
   });
   // The mirror pass runs again inside this call, after the looks: a per-strip
   // look would otherwise recolour a twin that already holds its lead's colours.
-  applyPatternPreviewSegmentLooks(frame.pixels, visibleStrips, t * 1000, { mirrorSets: mirrorSets || [] });
+  applyPatternPreviewSegmentLooks(frame.pixels, visibleStrips, t * 1000, { symmetry: symmetry || null, sidesMirrored });
   const framePixels = smoothPixelFrame(frame.pixels, previousPixels, {
     mode: motionSmoothing,
     dt: frameDt,
@@ -163,6 +164,7 @@ function renderFrame(canvas, t, p) {
       leds,
       spacing: s.spacing ?? medianSpacing,
       pathData: meta.pathData || '',
+      ...(meta.mirrorOf ? { mirrorOf: meta.mirrorOf } : {}),
       x: meta.x || 0,
       y: meta.y || 0,
     };
@@ -416,8 +418,11 @@ export function PatternPreview({
   dimmedStripIds = null,
   onStripSelect = null,
   testId = undefined,
-  // layout.mirrorSets: twins show their lead's colours (see lib/mirrorFrame.js).
-  mirrorSets = null,
+  // layout.symmetry + the look's choice: each side plays as one run and mirrored
+  // sides show side 1's colours (see lib/mirrorFrame.js). Strips that carry
+  // `mirrorOf` (Patterns segments) are mirrored on their own.
+  symmetry = null,
+  sidesMirrored = true,
 }) {
   const canvasRef = useRef(null);
   const rafRef    = useRef(0);
@@ -459,17 +464,10 @@ export function PatternPreview({
 
   const useRealStrips = Array.isArray(propStrips);
 
-  // A mirror-set segment arrives as one strip holding every member's pixels.
-  // Split it into one strip per member so each plays from its own LED 1 and the
-  // twins can copy the lead (same ids the mirror sets below refer to).
-  const mirrorExpanded = useMemo(
-    () => useRealStrips
-      ? expandPatternPreviewMirrorSegments(propStrips, mirrorSets)
-      : { strips: [], mirrorSets: mirrorSets || [] },
-    [propStrips, useRealStrips, mirrorSets],
-  );
-  const stripSource = mirrorExpanded.strips;
-  const effectiveMirrorSets = mirrorExpanded.mirrorSets;
+  // A side arrives as one strip holding every strip's pixels in the side's
+  // order, so it already plays as one continuous run; a mirrored side is its own
+  // strip with `mirrorOf` naming the side it copies.
+  const stripSource = useRealStrips ? propStrips : [];
 
   const perStripFns = useMemo(() => {
     if (!useRealStrips) return new Map();
@@ -563,7 +561,7 @@ export function PatternPreview({
     stripPhases: stripPhasesRef.current,
     gammaLUT, symSettings, symOverlay, audioBands, vb, heat,
     motionSmoothing, targetFps, controlledTime,
-    onFrame, onFps, onTick, dimmedStripIds, mirrorSets: effectiveMirrorSets,
+    onFrame, onFps, onTick, dimmedStripIds, symmetry, sidesMirrored,
   };
 
   // DPR-aware canvas sizing (fallback to offsetWidth for headless/zero-layout envs)
@@ -717,7 +715,7 @@ export function PatternPreview({
         }
       }
     }
-    if (nearest) onStripSelect(nearest.id);
+    if (nearest) onStripSelect(nearest.mirrorOf ?? nearest.id);
   };
 
   const handlePointerDown = (e) => {

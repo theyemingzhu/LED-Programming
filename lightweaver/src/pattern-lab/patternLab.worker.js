@@ -25,7 +25,7 @@ import {
   finalizePatternLabColors,
 } from '../lib/patternLabCompositor.js';
 import { applyPatternLabMotionToStrips } from '../lib/patternLabMotion.js';
-import { applyMirrorSets } from '../lib/mirrorFrame.js';
+import { applySymmetrySides } from '../lib/mirrorFrame.js';
 import { applyPatternLabTransform, samplePatternLabMask } from '../lib/patternLabTransforms.js';
 
 let initialized = false;
@@ -259,6 +259,10 @@ async function renderRequest(requestId, payload) {
     audioBands: geometry.audioBands,
     normBounds: samplingBounds,
     perStripFns,
+    // Sides play as one continuous run; the mirror copy happens once below,
+    // after every layer has composited.
+    symmetry: geometry.symmetry || null,
+    sidesMirrored: false,
   });
   applyPatternLabSectionMixColor(frame.pixels, baseStrips, recipe, payload.time);
   let renderedPixels = frame.pixels;
@@ -290,6 +294,8 @@ async function renderRequest(requestId, payload) {
       symSettings: geometry.symSettings,
       audioBands: geometry.audioBands,
       normBounds: samplingBounds,
+      symmetry: geometry.symmetry || null,
+      sidesMirrored: false,
     });
     if (layerFrame.pixels.length !== renderedPixels.length
       || preparedLayer.coordinates.length !== renderedPixels.length) {
@@ -308,14 +314,15 @@ async function renderRequest(requestId, payload) {
       );
     });
   }
-  // Mirror sets are applied once, after every layer has composited and before
-  // the look colour, so a twin ends up with exactly its lead's colours (same
+  // Mirrored sides are copied once, after every layer has composited and before
+  // the look colour, so a twin ends up with exactly side 1's colours (same
   // order as the main-thread renderer in patternLabPatternAdapter).
-  if (geometry.mirrorSets?.length) {
-    applyMirrorSets({
+  if (geometry.symmetry && geometry.sidesMirrored !== false) {
+    applySymmetrySides({
       framePixels: renderedPixels,
       strips: baseStrips.filter(strip => strip && !strip.hidden),
-      mirrorSets: geometry.mirrorSets,
+      symmetry: geometry.symmetry,
+      sidesMirrored: true,
     });
   }
   applyPatternLabLookColor(renderedPixels, recipe, payload.time);

@@ -392,8 +392,10 @@ function prepareAiPatternPreview(draft, {
   t = 0.5,
   bpm = 120,
   audioBands = null,
-  // layout.mirrorSets: twins show their lead's colours, as the card plays them.
-  mirrorSets = [],
+  // layout.symmetry: each side plays as one run and mirrored sides show side 1's
+  // colours, as the card plays them.
+  symmetry = null,
+  sidesMirrored = true,
 } = {}) {
   const compiled = compile(draft.code);
   if (compiled.error || !compiled.fn) {
@@ -414,7 +416,7 @@ function prepareAiPatternPreview(draft, {
   if (!runtimeProbe.ok) {
     return runtimeProbe;
   }
-  return { ok: true, activeFn, frameStrips, params, paletteNorm, t, bpm, audioBands, mirrorSets };
+  return { ok: true, activeFn, frameStrips, params, paletteNorm, t, bpm, audioBands, symmetry, sidesMirrored };
 }
 
 function prepareValidatedAiPatternDraft(rawDraft, options = {}) {
@@ -451,7 +453,8 @@ function renderPreparedPreviewFrame(prepared) {
     paletteNorm: prepared.paletteNorm,
     bpm: prepared.bpm,
     audioBands: prepared.audioBands,
-    mirrorSets: prepared.mirrorSets || [],
+    symmetry: prepared.symmetry || null,
+    sidesMirrored: prepared.sidesMirrored,
   });
 }
 

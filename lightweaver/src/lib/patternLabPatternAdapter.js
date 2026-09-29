@@ -6,7 +6,7 @@ import {
   finalizePatternLabColors,
 } from './patternLabCompositor.js';
 import { compilePattern, normalizePalette, renderPixelFrame } from './frameEngine.js';
-import { applyMirrorSets } from './mirrorFrame.js';
+import { applySymmetrySides } from './mirrorFrame.js';
 import { applyPatternLabMotionToStrips } from './patternLabMotion.js';
 import { createPatternLabRecipe, normalizePatternLabRecipe } from './patternLabRecipe.js';
 import { patternLabLayerBaseSupport } from './patternLabLayers.js';
@@ -215,12 +215,14 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
     });
   }
   for (const key of RECIPE_OWNED_RENDER_KEYS) delete renderContext[key];
-  // Mirror sets are applied once, after every layer has been composited, so a
-  // twin ends up with exactly its lead's final colours. Passing them to the
-  // per-layer renders would let a layer mask sampled at the twin's own
-  // coordinates make the twin differ from the lead.
-  const mirrorSets = Array.isArray(context.mirrorSets) ? context.mirrorSets : [];
-  delete renderContext.mirrorSets;
+  // Sides keep their continuous run in every render (the symmetry stays in the
+  // context), but the mirror copy is applied once, after every layer has been
+  // composited, so a mirrored side ends up with exactly side 1's final colours.
+  // Copying inside the per-layer renders would let a layer mask sampled at the
+  // twin's own coordinates make the twin differ from the lead.
+  const symmetry = context.symmetry || null;
+  const sidesMirrored = context.sidesMirrored !== false;
+  renderContext.sidesMirrored = false;
   const bounds = patternLabSamplingBounds(renderContext.strips, renderContext.normBounds, normalized);
   renderContext.normBounds = bounds;
   renderContext.strips = isColorJourney ? renderContext.strips : applyPatternLabMotionToStrips(renderContext.strips, {
@@ -272,13 +274,14 @@ export function renderPatternLabRecipeFrame(recipe, context = {}) {
       }),
     };
   }
-  if (mirrorSets.length) {
+  if (symmetry && sidesMirrored) {
     // Same visible-strip order renderPixelFrame laid the pixels out in.
-    applyMirrorSets({
+    applySymmetrySides({
       framePixels: frame.pixels,
       stripFrames: frame.stripFrames,
       strips: baseStrips.filter(strip => strip && !strip.hidden),
-      mirrorSets,
+      symmetry,
+      sidesMirrored,
     });
   }
   applyPatternLabLookColor(frame.pixels, normalized, context.t);

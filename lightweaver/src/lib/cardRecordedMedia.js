@@ -4,7 +4,7 @@ import { connectCardTransport, getActiveCardTransportAuthority } from './cardTra
 import { readRecordedMedia } from './recordedSequenceMedia.js';
 import { verifyStoredSequenceAsset, MAX_STORED_SEQUENCE_BYTES } from './recordedSequenceAsset.js';
 import { canonicalSceneExpressionBakeJson, verifySceneExpressionFlowBake } from './sceneExpressionRecording.js';
-import { hashPatternLabBakePhysicalOrder } from './lwseqBake.js';
+import { patternLabBakeLayoutHashCandidates } from './lwseqBake.js';
 
 const CHUNK_BYTES = 2048;
 const SHA_FILE = /^\/sequences\/([a-f0-9]{64})\.lwseq$/;
@@ -39,6 +39,15 @@ function assertAssetMatchesConfig(asset, config) {
   }
 }
 
+// A recording plays on the card exactly as it was baked, so it follows the
+// choice of the look that owns it. `project.looks` are the saved looks; the
+// project's live choice is only the fallback. (Verification also accepts the
+// opposite choice, see patternLabBakeLayoutHashCandidates.)
+function recordingSidesMirrored(project, asset) {
+  const look = (project?.looks || []).find(item => item.id === asset?.id || item.file === asset?.file);
+  return look?.sidesMirrored ?? project?.sidesMirrored ?? true;
+}
+
 export async function assertRecordedMediaCurrentLayout(asset, project, bytes) {
   if (!project?.compiledWiring?.ok || !project?.wiring) {
     throw new Error('Current verified physical wiring is required before installing a recording.');
@@ -51,16 +60,17 @@ export async function assertRecordedMediaCurrentLayout(asset, project, bytes) {
       scene: sidecar.scene, strips: project.strips, patchBoard: project.patchBoard,
       wiring: project.wiring, compiledWiring: project.compiledWiring,
       sectionFamilies: project.sectionFamilies, layoutLayerGroups: project.layoutLayerGroups,
-      mirrorSets: project.mirrorSets,
+      symmetry: project.symmetry, sidesMirrored: recordingSidesMirrored(project, asset),
       palette: project.palette, hidden: project.hidden, fps: sidecar.fps,
     });
     if (!result.ok) throw new Error(`Recording “${asset.label}” no longer matches this project's artwork or wiring (${result.reason}). Record it again.`);
     return true;
   }
   if (asset.manifest?.format === 'lightweaver-lwseq-sidecar') {
-    const physicalHash = await hashPatternLabBakePhysicalOrder({
+    const physicalHashes = await patternLabBakeLayoutHashCandidates({
       recipe: asset.manifest.recipe, strips: project.strips,
-      groups: project.layoutLayerGroups, mirrorSets: project.mirrorSets, wiring: project.wiring,
+      groups: project.layoutLayerGroups, symmetry: project.symmetry,
+      sidesMirrored: recordingSidesMirrored(project, asset), wiring: project.wiring,
       compiledWiring: project.compiledWiring, sectionTargets: project.sectionTargets,
       hidden: project.hidden, fps: asset.manifest.fps,
       render: Object.fromEntries([
@@ -69,7 +79,7 @@ export async function assertRecordedMediaCurrentLayout(asset, project, bytes) {
       ].filter(([, value]) => value !== undefined)),
       audioLanes: asset.manifest.recipe?.offlineAudio,
     });
-    if (physicalHash !== asset.manifest.layoutPhysicalOrderSha256) {
+    if (!physicalHashes.includes(asset.manifest.layoutPhysicalOrderSha256)) {
       throw new Error(`Recording “${asset.label}” no longer matches this project's artwork or wiring. Record it again.`);
     }
     return true;

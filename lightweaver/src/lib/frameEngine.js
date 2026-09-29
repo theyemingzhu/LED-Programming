@@ -3,7 +3,7 @@ import { compile, evalPixel } from './patterns.js';
 import { getPatternById } from './patternRegistry.js';
 import { parseParamsFromCode } from './patternParams.js';
 import { applySymmetry } from './symmetry.js';
-import { applyMirrorSets } from './mirrorFrame.js';
+import { applyPreviewMirrors, sideRunByStrip } from './mirrorFrame.js';
 
 export function hexToNorm(hex) {
   const n = parseInt(String(hex).replace('#', ''), 16);
@@ -188,9 +188,14 @@ export function renderPixelFrame({
   perStripPalettes = new Map(),
   patternParamsById = {},
   stripPhases = null,
-  mirrorSets = [],
+  // layout.symmetry (plain object) and the look's choice. A side plays as ONE
+  // continuous run through its strips; when `sidesMirrored`, sides 2..n show
+  // side 1's colours (see lib/mirrorFrame.js). null = no symmetry, no cost.
+  symmetry = null,
+  sidesMirrored = true,
 }) {
   const visibleStrips = strips.filter(s => s && !s.hidden);
+  const sideRuns = symmetry ? sideRunByStrip({ symmetry, strips: visibleStrips }) : null;
   const allPts = visibleStrips.flatMap(s => s.pts || []);
   const bounds = normBounds || getNormBounds(allPts);
   const pixelCount = allPts.length;
@@ -233,6 +238,13 @@ export function renderPixelFrame({
     const stripPalette = perStripPalettes.get(s.id) || paletteNorm;
     const leds = [];
     let rSum = 0, gSum = 0, bSum = 0;
+    // A strip inside a side shares that side's run: progress, index and count
+    // span every strip of the side, in the order the side lists them.
+    // A virtual strip that already IS a whole side (a Patterns preview segment
+    // for a continuous zone) says so with `run`.
+    const sideRun = sideRuns?.get(s.id) || s.run || null;
+    const runCount = sideRun ? sideRun.length : pixelCount;
+    let ptIndex = 0;
 
     for (const pt of s.pts || []) {
       let nx = (pt.x - bounds.minX) / bounds.range;
@@ -242,6 +254,12 @@ export function renderPixelFrame({
       let symSplit = false;
       let stripProgress = pt.kaleidoscopeProgress ?? pt.p;
       let evalIndex = globalIdx;
+      if (sideRun) {
+        const along = sideRun.before + ptIndex;
+        evalIndex = along;
+        if (!pt.hasKaleidoscope) stripProgress = sideRun.length > 1 ? along / (sideRun.length - 1) : 0.5;
+      }
+      ptIndex++;
       if (symSettings?.enabled) {
         const sym = applySymmetry(nx, ny, symSettings, t);
         nx = sym.x; ny = sym.y;
@@ -253,16 +271,22 @@ export function renderPixelFrame({
         if (!pt.hasKaleidoscope) {
           stripProgress = symmetryProgress;
         }
-        evalIndex = indexFromProgress(symmetryProgress, pixelCount);
+        evalIndex = indexFromProgress(symmetryProgress, runCount);
       }
+
+      // The pattern also reads reflection/kaleidoscope progress off the point;
+      // inside a side those must follow the side's run, not the strip's own.
+      const evalPt = sideRun && !symSettings?.enabled && !pt.hasKaleidoscope
+        ? { ...pt, reflectionProgress: stripProgress, kaleidoscopeProgress: stripProgress, sourceProgress: stripProgress }
+        : pt;
 
       let r = 0, g = 0, b = 0;
       if (stripFn) {
-        const colA = evalPixel(stripFn, evalIndex, nx, ny, stripT, stripTime, pixelCount, stripPalette, beat, beatSin, stripParams, s.id, stripProgress, bass, mid, hi, pt);
+        const colA = evalPixel(stripFn, evalIndex, nx, ny, stripT, stripTime, runCount, stripPalette, beat, beatSin, stripParams, s.id, stripProgress, bass, mid, hi, evalPt);
         r = colA.r; g = colA.g; b = colA.b;
 
         if (fnB && blendAmount > 0) {
-          const colB = evalPixel(fnB, evalIndex, nx, ny, stripT, stripTime, pixelCount, paletteNorm, beat, beatSin, blendParams, s.id, stripProgress, bass, mid, hi, pt);
+          const colB = evalPixel(fnB, evalIndex, nx, ny, stripT, stripTime, runCount, paletteNorm, beat, beatSin, blendParams, s.id, stripProgress, bass, mid, hi, evalPt);
           if (blendType === 'fade-black') {
             const a2 = blendAmount < 0.5 ? 1 - blendAmount * 2 : 0;
             const b2 = blendAmount > 0.5 ? (blendAmount - 0.5) * 2 : 0;
@@ -336,10 +360,10 @@ export function renderPixelFrame({
     });
   }
 
-  // Mirror sets: copy each set's lead onto its twins. Skipped entirely (zero
-  // cost) when the piece has none.
-  if (mirrorSets?.length) {
-    applyMirrorSets({ framePixels, stripFrames, strips: visibleStrips, mirrorSets });
+  // Symmetry sides (and any strip carrying `mirrorOf`): copy the lead over its
+  // twins. Skipped entirely (zero cost) when there is nothing to copy.
+  if (symmetry || visibleStrips.some(strip => strip.mirrorOf)) {
+    applyPreviewMirrors({ framePixels, stripFrames, strips: visibleStrips, symmetry, sidesMirrored });
   }
 
   return { pixels: framePixels, stripFrames };
