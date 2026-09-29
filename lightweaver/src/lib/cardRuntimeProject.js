@@ -5,6 +5,7 @@ import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { getCardPatternById, getCardPatternRuntimeId, orderedCardPatterns } from './cardPatternBank.js';
 import { applySavedLookToPatchBoard, deriveSectionTargets, normalizeSavedLooks } from './sectionLookModel.js';
 import { chainAddressCount } from './patchBoard.js';
+import { sideFlipped } from './pieceSymmetry.js';
 import { compileWiring } from './wiringCompiler.js';
 import { colorJourneyLayoutKey, compileColorJourneyNativeRecipe, normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
 import {
@@ -38,7 +39,8 @@ export function buildCardRuntimePackageFromProject({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
-  mirrorSets = [],
+  symmetry = null,
+  sidesMirrored = true,
   symSettings = null,
   standaloneController = {},
 } = {}) {
@@ -46,7 +48,7 @@ export function buildCardRuntimePackageFromProject({
   if (usesKaleidoscope && !compiledWiring && !wiring) {
     throw new Error('Kaleidoscope card setup requires current project wiring so its standalone mapping can be compiled safely.');
   }
-  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, mirrorSets }) : null);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, symmetry }) : null);
   if (compiled && !compiled.ok) throw new Error(compiled.errors.map(error => error.message).join(' '));
   const totalPixels = compiled?.totalPixels ?? totalPhysicalAddresses(patchBoard, strips);
   const configuredOutputs = standaloneController?.outputs || [];
@@ -89,7 +91,18 @@ export function buildCardRuntimePackageFromProject({
     }
   }
   const zones = compiled?.zones || (patchBoard ? patchBoardToZones(patchBoard, strips) : []);
-  const runtimeZones = zones.length ? applyVisualLookDefaultsToZones(zones, patchBoard, visualLook, compiled, strips) : [{
+  // Sides exist on the card only when the compiler kept the symmetry (it drops
+  // one that breaks a rule) and produced a zone for every side.
+  const appliedSymmetry = compiled?.ok && compiled.symmetry
+    && compiled.symmetry.sides.every(side => zones.some(zone => zone.id === side.id))
+    ? compiled.symmetry
+    : null;
+  const liveMirrored = appliedSymmetry ? sidesMirrored !== false : false;
+  const runtimeZones = zones.length ? mirrorSideZones(
+    applyVisualLookDefaultsToZones(zones, patchBoard, visualLook, compiled, strips),
+    appliedSymmetry,
+    liveMirrored,
+  ) : [{
     id: 'full-piece',
     label: 'Full Piece',
     patternId: getCardPatternRuntimeId(visualLook.patternId) || visualLook.patternId,
@@ -114,12 +127,24 @@ export function buildCardRuntimePackageFromProject({
   // auto-plays it) live at controls.playlist — see cardPlaylist.js's
   // normalizePlaylistTiming doc comment for why they are stored there rather
   // than as a bare standaloneController field.
-  const stackTargets = deriveSectionTargets({ strips, patchBoard, compiledWiring: compiled, defaultLook: visualLook });
+  // A look's saved sections are the sections it had when saved: one target for
+  // both sides when it mirrored them, one per side when it did not. Review each
+  // look against the targets of its own mode, not the live one.
+  const stackTargetsByMode = new Map();
+  const stackTargetsFor = mirrored => {
+    if (!stackTargetsByMode.has(mirrored)) {
+      stackTargetsByMode.set(mirrored, deriveSectionTargets({
+        strips, patchBoard, compiledWiring: compiled, symmetry: appliedSymmetry, sidesMirrored: mirrored, defaultLook: visualLook,
+      }));
+    }
+    return stackTargetsByMode.get(mirrored);
+  };
+  const stackTargets = stackTargetsFor(liveMirrored);
   for (const item of playlist.filter(item => item.type === 'combo' && item.enabled !== false)) {
     const look = savedLooks.find(look => look.id === item.lookId);
     const compatibility = getProjectStackCompatibility(look);
     if (!compatibility.ok) throw new Error(compatibility.reason);
-    if (getProjectStackReview(look, stackTargets).needsReview) {
+    if (getProjectStackReview(look, stackTargetsFor(look?.sidesMirrored !== false)).needsReview) {
       throw new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
     }
   }
@@ -137,13 +162,14 @@ export function buildCardRuntimePackageFromProject({
     compiledWiring: compiled,
     wiring,
     symSettings,
+    symmetry: appliedSymmetry,
   });
   // A plain startup look replaces every zone's pattern at boot. When sections
   // have different appearances, give a non-autoplay project a startup combo
   // that reproduces them. An enabled playlist deliberately chooses its own
   // first look and timing, so its startup selection remains authoritative.
   const sectionLooks = zoneLooksFromZones(runtimeZones);
-  const appearance = ({ id, label, ...look }) => JSON.stringify(look);
+  const appearance = ({ id, label, mirrorOf, mirrorFlip, ...look }) => JSON.stringify(look);
   const hasIndependentLooks = new Set(sectionLooks.map(appearance)).size > 1;
   const firstPlainPattern = looks[0]?.preset;
   const plainStartupWouldChangeSections = runtimeZones.some(zone => (
@@ -312,11 +338,12 @@ function buildRuntimeLooksFromPlaylist({
   compiledWiring = null,
   wiring = null,
   symSettings = null,
+  symmetry = null,
 } = {}) {
   const savedLookById = new Map(savedLooks.map(look => [look.id, look]));
   const sequenceAssetById = new Map(sequenceAssets.map(asset => [asset.id, asset]));
   const patchIdByZoneId = new Map(compiledWiring?.ok ? deriveSectionTargets({
-    strips, patchBoard, compiledWiring, defaultLook: visualLook,
+    strips, patchBoard, compiledWiring, sidesMirrored: false, defaultLook: visualLook,
   }).filter(target => target.kind === 'section').map(target => [target.zoneId, target.patchId]) : []);
   return (playlist || [])
     .filter(item => item?.enabled !== false)
@@ -335,6 +362,7 @@ function buildRuntimeLooksFromPlaylist({
         const savedLook = savedLookById.get(item.lookId);
         if (!savedLook) return null;
         const comboDefault = normalizeCardVisualLook(savedLook.defaultLook);
+        const lookMirrored = symmetry ? savedLook.sidesMirrored !== false : false;
         if (savedLook.patternLabRecipe?.base?.kind === 'color-journey') {
           const compiledNative = compileColorJourneyNativeRecipe({
             id: item.id,
@@ -354,7 +382,7 @@ function buildRuntimeLooksFromPlaylist({
             mode: 'procedural',
             preset: item.id,
             brightness: 1,
-            zones: zoneLooksFromZones(runtimeZones).map(zone => ({
+            zones: zoneLooksFromZones(mirrorSideZones(runtimeZones, symmetry, lookMirrored)).map(zone => ({
               ...zone,
               patternId: item.id,
               brightness: comboDefault.brightness,
@@ -369,10 +397,14 @@ function buildRuntimeLooksFromPlaylist({
           };
         }
         const effectiveZones = compiled
-          ? runtimeZones.map(zone => applyLookFieldsToZone(
-              zone,
-              normalizeCardVisualLook(savedLook.sectionLooks?.[patchIdByZoneId.get(zone.id)] || savedLook.sectionLooks?.[zone.id] || comboDefault),
-            ))
+          ? mirrorSideZones(runtimeZones.map(zone => {
+              // A mirrored look shows side 1's section look on every side.
+              const sourceId = sideSourceZoneId(symmetry, zone.id, lookMirrored);
+              return applyLookFieldsToZone(
+                zone,
+                normalizeCardVisualLook(savedLook.sectionLooks?.[patchIdByZoneId.get(sourceId)] || savedLook.sectionLooks?.[sourceId] || comboDefault),
+              );
+            }), symmetry, lookMirrored)
           : (() => {
               const comboBoard = applySavedLookToPatchBoard({ patchBoard, strips, savedLook });
               const comboZones = patchBoardToZones(comboBoard, strips);
@@ -421,10 +453,33 @@ function applyLookFieldsToZone(zone, look) {
   };
 }
 
+// Which zone's section look a zone shows: its own, or (when the sides are
+// mirrored) side 1's for every later side.
+function sideSourceZoneId(symmetry, zoneId, mirrored) {
+  if (!symmetry || !mirrored) return zoneId;
+  const index = symmetry.sides.findIndex(side => side.id === zoneId);
+  return index > 0 ? symmetry.sides[0].id : zoneId;
+}
+
+// Set `mirrorOf`/`mirrorFlip` on every side after the first when the sides are
+// mirrored, and clear them otherwise (a zone spread from a live zone may carry
+// stale ones). The look of a mirrored side is side 1's, so the card's copy step
+// only ever restates what it already shows.
+function mirrorSideZones(zones, symmetry, mirrored) {
+  const sideIndex = new Map((symmetry?.sides || []).map((side, index) => [side.id, index]));
+  return zones.map(zone => {
+    const { mirrorOf: _mirrorOf, mirrorFlip: _mirrorFlip, ...rest } = zone;
+    const index = sideIndex.get(zone.id);
+    if (!mirrored || !(index > 0)) return rest;
+    return { ...rest, mirrorOf: symmetry.sides[0].id, mirrorFlip: sideFlipped(symmetry, index) };
+  });
+}
+
 function zoneLooksFromZones(zones = []) {
   return zones.map(zone => ({
     id: zone.id,
     label: zone.label,
+    ...(zone.mirrorOf ? { mirrorOf: zone.mirrorOf, mirrorFlip: zone.mirrorFlip === true } : {}),
     patternId: zone.patternId,
     brightness: zone.brightness,
     speed: zone.speed,
@@ -442,7 +497,7 @@ function zoneLooksFromZones(zones = []) {
 function applyVisualLookDefaultsToZones(zones, patchBoard, visualLook, compiled = null, strips = []) {
   const patchesById = new Map((patchBoard?.patches || []).map(patch => [patch.id, patch]));
   const patchIdByZoneId = new Map(compiled?.ok ? deriveSectionTargets({
-    strips, patchBoard, compiledWiring: compiled, defaultLook: visualLook,
+    strips, patchBoard, compiledWiring: compiled, sidesMirrored: false, defaultLook: visualLook,
   }).filter(target => target.kind === 'section').map(target => [target.zoneId, target.patchId]) : []);
   const playbackByPatchId = new Map((patchBoard?.patches || []).map(patch => [
     sanitizeId(patch.id || ''),

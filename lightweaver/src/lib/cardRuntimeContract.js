@@ -179,6 +179,7 @@ export function normalizeCardRuntimeConfig(config = {}) {
   CARD_HARDWARE_CAPABILITIES.assertSupported({ ...config, led, controls });
   const totalPixels = led.pixels;
   const zones = normalizeZones(config.zones, totalPixels);
+  assertMirrorTargets(zones, 'Live');
   const kaleidoscopeMappings = normalizeCardKaleidoscopeMappings(
     config.kaleidoscopeMappings,
     totalPixels,
@@ -414,6 +415,12 @@ function normalizeZones(zones, totalPixels) {
       customBreathe: Boolean(z.customBreathe),
       ...normalizeBreatheSettings(z),
       customDrift: Boolean(z.customDrift),
+      // `continuous`: the zone's ranges are ONE pattern run in range order.
+      // `mirrorOf`/`mirrorFlip`: after rendering, copy the source zone's
+      // logical pixels, stretched, reversed when flipped. Both are emitted
+      // only when set so a config without sides is byte-identical to before.
+      ...(z.continuous === true ? { continuous: true } : {}),
+      ...mirrorFields(z),
       ranges: Array.isArray(z.ranges) && z.ranges.length
         ? z.ranges.slice(0, CARD_HARDWARE_CONTRACT.maxRangesPerZone).map(r => ({
             start: clampInt(r.start, 0, 0, Math.max(0, totalPixels - 1)),
@@ -648,6 +655,7 @@ function normalizeLooks(looks = [], patterns = normalizePatterns(DEFAULT_CARD_PA
       normalized.sha256 = look.sha256;
     }
     if (zones.length) {
+      assertMirrorTargets(zones, `Look ${id}`);
       normalized.zones = zones;
     }
     return normalized;
@@ -685,7 +693,37 @@ function normalizeLookZones(zones = []) {
     customBreathe: Boolean(zone.customBreathe),
     ...normalizeBreatheSettings(zone),
     customDrift: Boolean(zone.customDrift),
+    ...mirrorFields(zone),
   })).filter(zone => zone.id && zone.patternId);
+}
+
+function mirrorFields(zone) {
+  const source = sanitizeId(zone?.mirrorOf || '');
+  return source ? { mirrorOf: source, mirrorFlip: zone.mirrorFlip === true } : {};
+}
+
+// A zone that copies another must name a sibling that renders for itself.
+function assertMirrorTargets(zones, where) {
+  const byId = new Map(zones.map(zone => [zone.id, zone]));
+  for (const zone of zones) {
+    if (!zone.mirrorOf) continue;
+    const source = byId.get(zone.mirrorOf);
+    if (!source || source === zone || source.mirrorOf) {
+      throw new RangeError(`${where} zone ${zone.id} mirrors ${zone.mirrorOf}, which is not a zone that plays its own pattern.`);
+    }
+  }
+}
+
+// True when a card config needs firmware that understands sides: any zone that
+// plays as one continuous run, or any zone (live or in a look) that mirrors
+// another. Accepts a config or a runtime package.
+export function runtimeConfigUsesSymmetry(configOrPackage = {}) {
+  const config = configOrPackage?.config && typeof configOrPackage.config === 'object'
+    ? configOrPackage.config
+    : configOrPackage;
+  const uses = zone => zone?.continuous === true || Boolean(zone?.mirrorOf);
+  return (Array.isArray(config?.zones) && config.zones.some(uses))
+    || (Array.isArray(config?.looks) && config.looks.some(look => Array.isArray(look?.zones) && look.zones.some(uses)));
 }
 
 function normalizeColorOrder(value = 'RGB') {

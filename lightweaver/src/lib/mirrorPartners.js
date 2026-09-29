@@ -1,15 +1,14 @@
 // Which strips look like the mirror image of a given strip, and which way they
-// run. Used by Layout's "Mirror with…" checklist to put the likely partner
-// first and to offer "Flip to match" when a partner runs the wrong way.
+// run. Layout's symmetry suggestion (symmetrySuggest.js) uses it to place
+// strips into sides and to tell which way round the sides are drawn.
 //
-// A strip's `pixels` are its LED positions in LED order (LED 1 first), which is
-// the order a mirror set plays in: every member plays the pattern from its own
-// LED 1. Two members look like mirror images when some symmetry of the piece
-// (a reflection or rotation about its centre) carries the lead's LED k onto the
-// partner's LED k. If it only works with the partner read backwards, flipping
-// the partner's path fixes it.
+// A strip's `pixels` are its LED positions in LED order (LED 1 first). Two
+// strips look like mirror images when some symmetry of the piece (a
+// reflection or rotation about its centre) carries one's LED k onto the
+// other's LED k. If it only works with the partner read backwards, the
+// partner is drawn the other way round.
 //
-// Ordering and hints only. Nothing here ticks a box or changes a strip.
+// Geometry only. Nothing here changes a strip.
 
 const SAMPLES = 16;
 // Mean LED distance after the transform, as a share of the strips' length.
@@ -157,4 +156,50 @@ export function rankMirrorPartners(lead, candidates = [], { centre = null } = {}
       return a.order - b.order;
     })
     .map(({ order, ...entry }) => entry);
+}
+
+/**
+ * How well `candidate` lines up with `lead` carried through one symmetry.
+ *
+ * `transform(point) -> point` works in the strips' own coordinates (a
+ * reflection or rotation about some centre). The lead's LEDs are carried
+ * through it and compared with the candidate read forwards (LED k onto LED
+ * k) and backwards. Same thresholds as rankMirrorPartners, so "likely" means
+ * the same thing everywhere:
+ *   { likely, needsFlip, score, forward, backward }
+ * `needsFlip` is true only for a likely match that lines up solely when the
+ * candidate is read backwards.
+ */
+export function matchStripUnder(lead, candidate, transform) {
+  const none = { likely: false, needsFlip: false, score: Infinity, forward: Infinity, backward: Infinity };
+  const leadPoints = finitePoints(lead);
+  const points = finitePoints(candidate);
+  if (leadPoints.length < 2 || points.length < 2 || typeof transform !== 'function') return none;
+  const leadLength = pathLength(leadPoints);
+  const candidateLength = pathLength(points);
+  const scale = Math.max(leadLength, candidateLength);
+  if (!(scale > 0)) return none;
+  const image = resample(leadPoints).map(point => transform(point));
+  const along = resample(points);
+  const forward = meanDistance(image, along) / scale;
+  const backward = meanDistance(image, along.slice().reverse()) / scale;
+  const score = Math.min(forward, backward);
+  const countRatio = Math.min(points.length, leadPoints.length) / Math.max(points.length, leadPoints.length);
+  const lengthRatio = Math.min(leadLength, candidateLength) / scale;
+  const likely = score <= MATCH_TOLERANCE && countRatio >= MIN_COUNT_RATIO && lengthRatio >= MIN_LENGTH_RATIO;
+  return { likely, needsFlip: likely && forward > MATCH_TOLERANCE, score, forward, backward };
+}
+
+// Mean LED position of a strip, or null when it has none.
+export function stripCentroid(strip) {
+  const points = finitePoints(strip);
+  if (!points.length) return null;
+  let x = 0; let y = 0;
+  for (const point of points) { x += point.x; y += point.y; }
+  return { x: x / points.length, y: y / points.length };
+}
+
+// Centre of the box around every LED of the strips given, or null.
+export function stripsBoundsCentre(strips = []) {
+  return boundsCentre((strips || []).map(finitePoints));
 }

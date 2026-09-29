@@ -183,7 +183,8 @@ function realPatternShape(patternId) {
       wiring,
       compiledWiring,
       layoutLayerGroups,
-      layoutMirrorSets,
+      layoutSymmetry,
+      sidesMirrored,
       sectionFamilies,
       palette,
       hidden,
@@ -731,7 +732,10 @@ function realPatternShape(patternId) {
           allowLayoutChange,
           allowProjectChange,
           mediaInstall: {
-            project: { strips, patchBoard, wiring, compiledWiring, layoutLayerGroups, mirrorSets: layoutMirrorSets,
+            // Each look keeps its own mirrored-or-own choice; a recording is
+            // checked against the look that owns it.
+            project: { strips, patchBoard, wiring, compiledWiring, layoutLayerGroups,
+              symmetry: layoutSymmetry, sidesMirrored, looks: savedLooks,
               sectionFamilies, palette, hidden, bpm, gammaEnabled, gammaValue, symSettings, sectionTargets },
             confirmPairing: () => window.confirm('Touch a physical control on the Lightweaver card, then choose Continue to save recorded media to this exact card.'),
           },

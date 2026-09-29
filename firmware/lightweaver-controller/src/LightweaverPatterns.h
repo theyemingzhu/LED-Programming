@@ -36,6 +36,12 @@ struct PatternCoordinateContext {
   uint16_t globalStart = 0;
   const OutputConfig* outputs = nullptr;
   uint8_t outputCount = 0;
+  // Continuous zones (symmetry sides): this slice is pixels
+  // [logicalStart, logicalStart + count) of ONE pattern run logicalCount long,
+  // so a side flows through its strips instead of restarting on each. Zero
+  // logicalCount means the slice is its own run, exactly as before.
+  uint16_t logicalStart = 0;
+  uint16_t logicalCount = 0;
 };
 
 KaleidoscopeSample sampleKaleidoscope(

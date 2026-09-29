@@ -195,7 +195,7 @@ export default function SceneExpressionEditor({
     scene: currentScene, strips: currentProject.strips, patchBoard: currentProject.patchBoard,
     wiring: currentProject.wiring, compiledWiring: currentProject.compiledWiring,
     sectionFamilies: currentProject.sectionFamilies, layoutLayerGroups: currentProject.layoutLayerGroups,
-    mirrorSets: currentProject.layoutMirrorSets,
+    symmetry: currentProject.layoutSymmetry, sidesMirrored: currentProject.sidesMirrored,
     palette: currentProject.palette, hidden: currentProject.hidden, fps: 24,
   });
   let recordEstimate = null;
@@ -281,7 +281,7 @@ export default function SceneExpressionEditor({
   useEffect(() => {
     if (!recordingSaveStartedRef.current) recordingAbortRef.current?.abort();
   }, [project.strips, project.patchBoard, project.wiring, project.compiledWiring,
-    project.sectionFamilies, project.layoutLayerGroups, project.layoutMirrorSets, project.palette, project.hidden]);
+    project.sectionFamilies, project.layoutLayerGroups, project.layoutSymmetry, project.sidesMirrored, project.palette, project.hidden]);
 
   useEffect(() => {
     if (physicalPreviewRef.current) void stopPhysicalPreview('context-changed');
@@ -520,7 +520,7 @@ export default function SceneExpressionEditor({
             patternId="aurora" playing={effectivePlaying}
             strips={previewRenderer?.ok ? previewStrips.map(segment => ({ ...segment, patternId: undefined })) : previewStrips}
             compiledFn={previewRenderer?.ok ? previewRenderer.compiledFn : null}
-            mirrorSets={project.layoutMirrorSets}
+            symmetry={project.layoutSymmetry} sidesMirrored={project.sidesMirrored}
             viewBox={previewViewBox} hidden={project.hidden} controlledTime={elapsedMs / 1000} motionSmoothing="off"
             onFrame={handlePreviewFrame}
             ariaLabel={`${scene.name} preview`} testId="scene-expression-preview"
