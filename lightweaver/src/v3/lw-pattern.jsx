@@ -129,6 +129,7 @@ import {
   suggestProjectStackName,
   summarizeProjectStack,
 } from '../lib/projectStacks.js';
+import { isMirrorSetTarget, mirrorSetStripCount } from '../lib/mirrorSectionCopy.js';
 import './patterns-workspace.css';
 import '../styles/project-stacks.css';
 
@@ -3201,7 +3202,15 @@ function writeSectionDisplayOrder(projectId, ids) {
                        </span>}</div>;
                      })}
                    </div>
-                  {selectedTarget?.kind === 'section' && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
+                  {isMirrorSetTarget(selectedTarget) &&
+                    <p className="pm-section-help" data-testid="section-mirror-note">
+                      These {mirrorSetStripCount(selectedTarget)} strips mirror each other.{' '}
+                      <button type="button" className="wordlink" data-testid="open-mirror-section-in-layout"
+                              onClick={() => { if (selectedTarget.stripId) selectStrip(selectedTarget.stripId); window.location.hash = '#screen=layout&mode=draw'; }}>
+                        Open in Layout
+                      </button>{' '}to change which strips mirror.
+                    </p>}
+                  {selectedTarget?.kind === 'section' && !isMirrorSetTarget(selectedTarget) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
                     <p className="pm-section-help" data-testid="section-spans-gpios">
                       This section spans {sectionGpioLabels.get(selectedTarget.id)}; these GPIOs share this section&apos;s pattern.{' '}
                       <button type="button" className="wordlink" data-testid="open-spanning-section-in-layout"

@@ -835,6 +835,52 @@ test('GPIO pattern workflow keeps same and different section choices through Kee
   await expect.poll(() => page.locator('.pm-section-item').first().evaluate(element => getComputedStyle(element).color)).not.toBe('rgb(255, 255, 255)');
 });
 
+test('a mirror set section says its strips mirror each other and does not claim the GPIO-spanning copy', async ({ page }) => {
+  // Fixture path that does not depend on the mirrorSets compile: a layer group
+  // whose id starts with "mirror-" compiles to one zone with one range per
+  // member strip, which is exactly the zone shape a mirror set compiles to.
+  const project = createPiecePreviewProject('mirror-set-section');
+  const stripIds = project.layout.strips.map((strip: { id: string }) => strip.id);
+  expect(stripIds.length).toBeGreaterThanOrEqual(2);
+  project.layout.layerGroups = [{
+    groupId: 'mirror-1',
+    type: 'strip',
+    name: 'Both wings',
+    members: stripIds.slice(0, 2).map((stripId: string) => ({ stripId })),
+  }];
+  // Put the two members on different GPIOs, as real mirrored wings usually are.
+  const outerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === stripIds[0])!;
+  const innerRun = project.layout.wiring.runs.find((run: any) => run.source?.stripId === stripIds[1])!;
+  project.layout.wiring.outputs = [
+    { id: 'out1', name: 'First output', pin: 16, runIds: [outerRun.id] },
+    { id: 'out2', name: 'Second output', pin: 17, runIds: [innerRun.id] },
+  ];
+  await gotoSavedProjectPatterns(page, project);
+
+  const rows = page.locator('.pm-section-item');
+  await expect(rows.filter({ hasText: 'Both wings' })).toHaveCount(1);
+  // Precondition that makes the negative assertion below meaningful: this
+  // section really does span two GPIOs, so without the mirror guard it would
+  // show the GPIO-spanning copy.
+  await expect(page.locator('[data-testid^="section-gpio-"]').first()).toHaveText(/GPIO \d+ · GPIO \d+/);
+  await rows.filter({ hasText: 'Both wings' }).click();
+  const note = page.getByTestId('section-mirror-note');
+  await expect(note).toBeVisible();
+  await expect(note).toHaveText('These 2 strips mirror each other. Open in Layout to change which strips mirror.');
+  await expect(page.getByTestId('open-mirror-section-in-layout')).toBeVisible();
+  await expect(page.getByTestId('section-spans-gpios')).toHaveCount(0);
+
+  await page.getByTestId('open-mirror-section-in-layout').click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw/);
+});
+
+test('an ordinary section shows no mirror note', async ({ page }) => {
+  const project = createPiecePreviewProject('no-mirror-note');
+  await gotoSavedProjectPatterns(page, project);
+  await page.getByTestId('section-target-patch-default-outer-circle').click();
+  await expect(page.getByTestId('section-mirror-note')).toHaveCount(0);
+});
+
 test('a section spanning two GPIOs exposes one pattern scope and opens its strip in Layout', async ({ page }) => {
   const project = createPiecePreviewProject('spanning-gpio-section');
   const outer = project.layout.wiring.runs.find(run => run.source?.stripId === 'default-outer-circle')!;
@@ -2431,12 +2477,19 @@ test('saving a named mix keeps its name in Tune and Color after reload and selec
   await expect(page.locator('.pm-palette .pm-palmeta strong')).toHaveText('Named section mix');
 });
 
-test('the mirror geometry control switches the active geometry', async ({ page }) => {
+test('the fold geometry control switches the active geometry', async ({ page }) => {
   await gotoFreshPatterns(page);
 
-  await page.locator('.geo-seg').getByRole('button', { name: 'Mirror' }).click();
+  // "Mirror" now names the strip feature; the geometry chip is "Fold".
+  await expect(page.locator('.geo-seg').getByRole('button', { name: 'Mirror' })).toHaveCount(0);
+  await page.locator('.geo-seg').getByRole('button', { name: 'Fold' }).click();
 
-  await expect(page.locator('.geo-seg button.on')).toHaveText(/Mirror/);
+  await expect(page.locator('.geo-seg button.on')).toHaveText(/Fold/);
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return saved.devices?.standaloneController?.symSettings?.type
+      ?? JSON.stringify(saved).match(/"type":"mirror-hv"/)?.[0] ?? null;
+  })).not.toBeNull();
 });
 
 // ── WiFi transition: playback survives, commands do not ─────────────────────

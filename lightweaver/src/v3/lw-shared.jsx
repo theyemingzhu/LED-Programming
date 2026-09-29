@@ -102,7 +102,7 @@ import React from 'react';
 
   const GEOMETRY = [
     { id: 'none', label: 'Original' },
-    { id: 'mirror', label: 'Mirror' },
+    { id: 'mirror', label: 'Fold' },
     { id: 'mandala', label: 'Mandala' },
     { id: 'kaleido', label: 'Kaleido' },
   ];
