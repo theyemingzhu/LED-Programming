@@ -17,7 +17,7 @@ test('unconfigured repair is explicit and prompt constrains diagnostic authority
 
 test('real worker process invokes configured repair once and persists completion',async t=>{
  const dir=await fixture(t), fake=join(dir,'fake-codex');
- await writeFile(fake,'#!/bin/sh\nexit 0\n');await chmod(fake,0o700);
+ await writeFile(fake,'#!/bin/sh\ncase "$*" in *--sandbox*) exit 2;; esac\ncase "$*" in *--approve-for-me*) exit 0;; *) exit 3;; esac\n');await chmod(fake,0o700);
  const e={...releaseEvent(state),repair:{status:'started'}};const eventPath=join(dir,'event.json'),configPath=join(dir,'repair-config.json');
  await writeFile(eventPath,JSON.stringify(e));await writeFile(configPath,JSON.stringify({enabled:true,codexPath:fake}));
  const code=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,[fileURLToPath(new URL('./release-events.mjs',import.meta.url)),'repair-worker',eventPath,configPath]);child.on('error',reject);child.on('exit',resolve);});

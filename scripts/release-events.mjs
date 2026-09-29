@@ -81,7 +81,7 @@ async function repairWorker(eventPath,configPath){
   if(!config?.enabled || !isAbsolute(config.codexPath||'') || !isAbsolute(event?.checkout||''))throw new Error('Repair requires configured executable and known candidate checkout.');
   const resultPath=eventPath.replace(/\.json$/,'.repair.txt');
   const log=await open(eventPath.replace(/\.json$/,'.repair.log'),'a',0o600);
-  const child=spawn(config.codexPath,['exec','--approve-for-me','--sandbox','workspace-write','-C',event.checkout,'--output-last-message',resultPath,repairPrompt(event,eventPath)],{stdio:['ignore',log.fd,log.fd],detached:true});
+  const child=spawn(config.codexPath,['exec','--approve-for-me','-C',event.checkout,'--output-last-message',resultPath,repairPrompt(event,eventPath)],{stdio:['ignore',log.fd,log.fd],detached:true});
   let timedOut=false;
   let killTimer;
   const timer=setTimeout(()=>{timedOut=true;try{process.kill(-child.pid,'SIGTERM');}catch{}killTimer=setTimeout(()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}},5000);},20*60*1000);
