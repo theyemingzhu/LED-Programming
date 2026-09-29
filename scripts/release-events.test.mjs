@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm,readdir,readFile,writeFile,chmod,mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {publishReleaseEvent,releaseEvent,repairPrompt} from './release-events.mjs';
+import {publishReleaseEvent,releaseEvent,repairPrompt,finishRepair} from './release-events.mjs';
 const state={revision:'a'.repeat(40),phase:'blocked',reason:'Check failed',owner:'manager',checkout:'/tmp/checkout'};
 async function fixture(t){const d=await mkdtemp(join(tmpdir(),'release-events-'));t.after(()=>rm(d,{recursive:true,force:true}));return d;}
 test('notification failure remains visible and never claims delivery',async t=>{const d=await fixture(t);const e=await publishReleaseEvent(d,state,{notify:async()=>{throw Error('denied');},startRepair:false});assert.equal(e.notification.status,'failed');assert.equal(e.notification.deliveryConfirmed,false);assert.equal(e.owner,'manager');assert.match(e.nextAction,/repair/i);});
@@ -20,12 +20,47 @@ test('real worker process invokes configured repair once and persists completion
  await writeFile(fake,'#!/bin/sh\ncase "$*" in *--sandbox*) exit 2;; esac\ncase "$*" in *--approve-for-me*) exit 0;; *) exit 3;; esac\n');await chmod(fake,0o700);
  const e={...releaseEvent(state),repair:{status:'started'}};const eventPath=join(dir,'event.json'),configPath=join(dir,'repair-config.json');
  await writeFile(eventPath,JSON.stringify(e));await writeFile(configPath,JSON.stringify({enabled:true,codexPath:fake}));
- const code=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,[fileURLToPath(new URL('./release-events.mjs',import.meta.url)),'repair-worker',eventPath,configPath]);child.on('error',reject);child.on('exit',resolve);});
- assert.equal(code,0);const result=JSON.parse(await readFile(eventPath,'utf8'));assert.equal(result.repair.status,'completed');assert.equal(result.repair.code,0);
+ await writeFile(join(dir,'osascript'),'#!/bin/sh\nexit 0\n');await chmod(join(dir,'osascript'),0o700);
+ const code=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,[fileURLToPath(new URL('./release-events.mjs',import.meta.url)),'repair-worker',eventPath,configPath],{env:{...process.env,PATH:`${dir}:${process.env.PATH}`}});child.on('error',reject);child.on('exit',resolve);});
+ assert.equal(code,0);const result=JSON.parse(await readFile(eventPath,'utf8'));assert.equal(result.repair.status,'verification-required');assert.equal(result.repair.processStatus,'completed');assert.equal(result.repair.code,0);assert.equal(result.repair.notification.deliveryConfirmed,false);
 });
 
 test('interrupted event resumes pending notification and repair without recreating it',async t=>{
  const d=await fixture(t),e=releaseEvent(state);await mkdir(join(d,'events'));await writeFile(join(d,'events',`release-${e.key}.json`),JSON.stringify(e));
  let notices=0,wakes=0;const result=await publishReleaseEvent(d,state,{notify:async()=>notices++,wake:async()=>{wakes++;return{pid:12};}});
  assert.equal(notices,1);assert.equal(wakes,1);assert.equal(result.repair.status,'started');
+});
+
+test('exit zero with blocked candidate persists truthful outcome and sends one actionable follow-up',async t=>{
+ const d=await fixture(t);let wakes=0,notices=[];
+ const e=await publishReleaseEvent(d,state,{notify:async()=>{},wake:async()=>{wakes++;return{pid:12};}});
+ const path=join(d,'events',`release-${e.key}.json`);
+ await mkdir(join(d,'candidates','pr10'),{recursive:true});
+ await writeFile(join(d,'candidates','pr10','state.json'),JSON.stringify({...state,cause:'Still fails',reason:'Still fails',nextAction:'Inspect check.log and correct fixture'}));
+ const result=await finishRepair(path,{code:0,resultPath:'/tmp/result'},{notify:async e=>notices.push(e)});
+ assert.equal(result.repair.status,'still-blocked');assert.equal(result.repair.processStatus,'completed');
+ assert.equal(result.repair.releaseStatus,'blocked');assert.match(notices[0].cause,/release still blocked/);
+ assert.match(notices[0].cause,/Inspect check.log/);assert.equal(result.repair.notification.deliveryConfirmed,false);
+ await finishRepair(path,{code:0},{notify:async e=>notices.push(e)});
+ await publishReleaseEvent(d,state,{notify:async()=>{},wake:async()=>wakes++});
+ assert.equal(notices.length,1);assert.equal(wakes,1);
+ assert.equal(JSON.parse(await readFile(path,'utf8')).repair.status,'still-blocked');
+});
+test('failed completion notice is durable without claiming delivery or starting another repair',async t=>{
+ const d=await fixture(t),e=await publishReleaseEvent(d,state,{notify:async()=>{},startRepair:false});
+ const path=join(d,'events',`release-${e.key}.json`);
+ const result=await finishRepair(path,{code:2},{notify:async()=>{throw Error('desktop denied');}});
+ assert.equal(result.repair.status,'failed');assert.equal(result.repair.notification.status,'failed');
+ assert.equal(result.repair.notification.deliveryConfirmed,false);assert.match(result.repair.notification.error,/denied/);
+});
+test('success is derived from exact release record, never process exit or another revision',async t=>{
+ const d=await fixture(t),e=await publishReleaseEvent(d,state,{notify:async()=>{},startRepair:false});
+ const path=join(d,'events',`release-${e.key}.json`);
+ await writeFile(join(d,'active.json'),JSON.stringify({revision:'b'.repeat(40),phase:'shipped'}));
+ const result=await finishRepair(path,{code:0},{notify:async()=>{}});
+ assert.equal(result.repair.status,'verification-required');assert.equal(result.repair.releaseStatus,'unverified');
+ const second=await publishReleaseEvent(d,{...state,reason:'Second exact event'},{notify:async()=>{},startRepair:false});
+ await mkdir(join(d,'revisions'));await writeFile(join(d,'revisions',`${state.revision}.json`),JSON.stringify({revision:state.revision,phase:'shipped'}));
+ const proved=await finishRepair(join(d,'events',`release-${second.key}.json`),{code:0},{notify:async()=>{}});
+ assert.equal(proved.repair.status,'release-shipped');assert.equal(proved.repair.releaseRevision,state.revision);
 });
