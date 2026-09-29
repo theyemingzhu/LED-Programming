@@ -149,9 +149,9 @@ test('an unequal twin is stretched from side 1, ends to ends', () => {
   assert.equal(segments[0].pixels.length, 6);
   assert.equal(segments[1].pixels.length, 5);
   const pixels = render(segments);
-  for (let i = 0; i < 5; i++) {
-    assert.deepEqual(pixels[6 + i], pixels[mirrorSourceIndex(i, 5, 6)], `twin LED ${i}`);
-  }
+  [0, 1, 3, 4, 5].forEach((source, i) => {
+    assert.deepEqual(pixels[6 + i], pixels[source], `twin LED ${i}`);
+  });
   assert.deepEqual(pixels[6], pixels[0]);
   assert.deepEqual(pixels[10], pixels[5]);
 });

@@ -58,6 +58,9 @@ test('mirrorSourceIndex is identity for equal counts and maps ends to ends when 
   assert.equal(mirrorSourceIndex(37, 38, 41), 40);
   assert.equal(mirrorSourceIndex(0, 1, 41), 0);
   assert.equal(mirrorSourceIndex(0, 5, 1), 0);
+  // interior values, worked by hand: source = round(i * (lead - 1) / (twin - 1))
+  assert.deepEqual([0, 1, 7, 15, 22, 29].map(i => mirrorSourceIndex(i, 30, 24)), [0, 1, 6, 12, 17, 23]);
+  assert.deepEqual([0, 1, 2, 3, 4].map(i => mirrorSourceIndex(i, 5, 6)), [0, 1, 3, 4, 5]);
 });
 
 test('the flip rule flips odd sides only, and only for mirror images', () => {
@@ -146,7 +149,8 @@ test('a 24 to 30 stretch maps first to first and last to last', () => {
   assert.deepEqual(colors(b)[0], colors(a)[0]);
   assert.deepEqual(colors(b)[29], colors(a)[23]);
   for (let i = 0; i < 30; i++) {
-    assert.deepEqual(colors(b)[i], colors(a)[mirrorSourceIndex(i, 30, 24)], `twin LED ${i}`);
+    // written out, not through mirrorSourceIndex, so the two can disagree
+    assert.deepEqual(colors(b)[i], colors(a)[Math.round(i * 23 / 29)], `twin LED ${i}`);
   }
   // and reversed, the ends swap
   const flipped = renderPixelFrame(ctx([lead, twin], { patternId: 'gradient', symmetry: sym([side('side-1', ['lead']), side('side-2', ['twin'])], 'mirror') }));
