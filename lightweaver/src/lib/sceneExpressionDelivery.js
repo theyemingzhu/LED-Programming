@@ -102,7 +102,7 @@ function prepare(project, {
     wiring: layout.wiring,
     strips: layout.strips || [],
     groups: layout.layerGroups || [],
-    mirrorSets: layout.mirrorSets || [],
+    symmetry: layout.symmetry || null,
   });
 
   let kind = 'controller';
@@ -149,6 +149,8 @@ function prepare(project, {
       patchBoard: layout.patchBoard || null,
       wiring: layout.wiring || null,
       compiledWiring,
+      symmetry: layout.symmetry || null,
+      sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
       symSettings: snapshot.symSettings,
       standaloneController: controller,
     }, cardEvidence);

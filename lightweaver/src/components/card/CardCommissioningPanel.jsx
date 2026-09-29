@@ -107,7 +107,7 @@ function runtimePackageFromSnapshot(snapshot = {}, identity = {}) {
     strips: snapshot.layout?.strips || [],
     patchBoard: snapshot.layout?.patchBoard || null,
     wiring: snapshot.layout?.wiring || null,
-    mirrorSets: snapshot.layout?.mirrorSets || [],
+    symmetry: snapshot.layout?.symmetry || null, sidesMirrored: snapshot.pattern?.sidesMirrored !== false,
     symSettings: snapshot.symSettings || null,
     standaloneController: snapshot.devices?.standaloneController || {},
   });
