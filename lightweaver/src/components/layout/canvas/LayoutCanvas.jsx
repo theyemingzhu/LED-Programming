@@ -14,6 +14,9 @@ import {
 } from '../../../lib/previewVisuals.js';
 import { LightCone, OmniHalo } from '../shared/InspectorPrimitives.jsx';
 import { WiringCordOverlay } from '../wire/WiringCordOverlay.jsx';
+import { useProject } from '../../../state/ProjectContext.jsx';
+import { mirrorSetForStrip } from '../../../lib/mirrorSets.js';
+import { useMirrorEchoFocus } from './mirrorEcho.js';
 
 // ── LayoutCanvas ────────────────────────────────────────────────────────────
 // Verbatim lift of the LayoutScreen <svg> stage subtree (defs, artwork, heat,
@@ -39,6 +42,13 @@ export function LayoutCanvas({
 }) {
   const { svgRef, artworkRef, vpRef, spaceRef, stripDragSuppressClickRef } = refs;
   const { selStripId, selLayer, pathSel, selectedPathDecorations = [], existingStrip } = selection;
+  // Mirror echo: while a mirrored strip is selected its partners carry a faint
+  // band in the selection tone, wide enough to show around the LED dots, and the strip a "Mirror with…" row points
+  // at is lit the same way, so the owner can pick partners by eye.
+  const { layoutMirrorSets } = useProject();
+  const mirrorFocusId = useMirrorEchoFocus();
+  const mirrorPartnerIds = new Set((mirrorSetForStrip(layoutMirrorSets || [], selStripId)?.members || [])
+    .filter(id => id !== selStripId));
   const {
     effectiveShowLight, effectiveGlowMode, glowStdDev, directedGlow,
     showHeat, showLeds, layoutPatternFrame, stripSamples, stripArrows,
@@ -421,6 +431,20 @@ export function LayoutCanvas({
                         pointerEvents="none"
                         opacity={isHid ? 0.25 : isMoving ? 0.95 : isSel ? 0.95 : 0.85}
                         style={{ filter: isSel && !isEditingGesture ? `drop-shadow(0 0 3px ${stripColor})` : 'none' }}/>
+                  {!isSel && (mirrorFocusId === s.id || (mirrorPartnerIds.has(s.id) && !isHid)) && (
+                    <path
+                      data-testid={`mirror-echo-${s.id}`}
+                      data-focused={mirrorFocusId === s.id || undefined}
+                      d={s.pathData}
+                      fill="none"
+                      stroke="oklch(64% 0.025 235)"
+                      strokeWidth={annotationScale * 18}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      pointerEvents="none"
+                      opacity={mirrorFocusId === s.id ? 0.42 : 0.2}
+                    />
+                  )}
                   {isSel && !isHid && (
                     <>
                       {/* Thin translucent ribbon, not a thick tube — keeps LED dots readable */}

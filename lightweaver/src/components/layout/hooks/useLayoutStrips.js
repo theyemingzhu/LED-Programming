@@ -36,6 +36,7 @@ import {
   updateFamilyMemberGeometry,
 } from '../../../lib/connectedSections.js';
 import { derivePxPerMmFromCounts } from '../../../lib/layoutLedCounts.js';
+import { removeMirrorMember } from '../../../lib/mirrorSets.js';
 import { LED_COUNT_MAX } from '../../../lib/controlScale.js';
 
 // scaleStrip clamps: never shrink a strip's path below this length (px)…
@@ -68,7 +69,12 @@ export function useLayoutStrips(ctx) {
   } = ctx;
   // Splitting rewrites the physical chain as well as the strip list, so this
   // one action reaches wiring directly (same route useLayoutWire takes).
-  const { wiring, updateWiring, projectName, applyRunSectionConversion } = useProject();
+  const { wiring, updateWiring, projectName, applyRunSectionConversion, setLayoutMirrorSets } = useProject();
+  // A strip cut into pieces no longer plays as the whole strip its mirror set
+  // was chosen for, so it leaves the set (inside the same undo step as the cut).
+  const leaveMirrorSet = useCallback(id => {
+    setLayoutMirrorSets?.(sets => removeMirrorMember(sets, id));
+  }, [setLayoutMirrorSets]);
 
   // Density is a physical fact of the purchased strip — count and length are
   // locked together through it: count = length(m) × density(LEDs/m).
@@ -320,6 +326,7 @@ export function useLayoutStrips(ctx) {
     };
 
     pushLayoutHistory();
+    leaveMirrorSet(id);
     setStrips(prev => prev.flatMap(st => (st.id === id ? [head, tail] : [st])));
     setSectionFamilies(prev => [
       ...prev.filter(family => !family.memberIds?.includes(id)),
@@ -359,7 +366,7 @@ export function useLayoutStrips(ctx) {
     selectStrip(tailId);
     scrollToStrip(tailId);
     return tailId;
-  }, [strips, wiring, updateWiring, nextColor, densityFor, stripCountOverrides,
+  }, [strips, wiring, updateWiring, nextColor, densityFor, stripCountOverrides, leaveMirrorSet,
       setStripCountOverrides, setStripDensities, setSectionFamilies, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
   // Divide one strip into 2..MAX_SPLIT_SECTIONS named strips that stay
@@ -481,6 +488,7 @@ export function useLayoutStrips(ctx) {
     if (!wiringResult?.ok) return null;
     // updateWiring records the single pre-division snapshot before either
     // geometry or density changes, so one Undo restores the whole strip.
+    leaveMirrorSet(id);
     setStrips(prev => prev.flatMap(st => (st.id === id ? pieces : [st])));
     setSectionFamilies(prev => [
       ...prev.filter(family => !family.memberIds?.includes(id)),
@@ -507,7 +515,7 @@ export function useLayoutStrips(ctx) {
     selectStrip(id);
     scrollToStrip(id);
     return newIds;
-  }, [strips, wiring, updateWiring, projectName, nextColor, densityFor, stripCountOverrides,
+  }, [strips, wiring, updateWiring, projectName, nextColor, densityFor, stripCountOverrides, leaveMirrorSet,
       setStripCountOverrides, setStripDensities, setSectionFamilies, pushLayoutHistory, setStrips, selectStrip, scrollToStrip]);
 
   const separateExistingRuns = useCallback(id => {

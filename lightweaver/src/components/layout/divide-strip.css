@@ -506,3 +506,159 @@
 .la-part-actions .btn:disabled { opacity: .45; }
 @media (max-width: 420px) { .la-part-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (pointer: coarse), (max-width: 600px) { .lw-family-controls select, .la-part-actions .btn { min-height: 44px; } }
+
+/* Mirror sets. The row line is a quiet fact that opens the checklist; the
+   checklist is a bounded detail inside the selected strip's editor. Text only,
+   close tones, one accent for the recommendation. */
+.la .la-mirror-line {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  margin: 0;
+  padding: 2px 8px 4px 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-mid);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.la .la-mirror-line:hover { background: var(--bg-sel); color: var(--text-hi); }
+.la .la-mirror-line:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.la .la-mirror-line[aria-expanded="true"] { color: var(--text-hi); }
+.la-mirror-line-key { flex: 0 0 auto; color: var(--text-faint); }
+.la-mirror-line-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.la-mirror-panel {
+  display: grid;
+  gap: 4px;
+  scroll-margin-block: 60px 16px;
+  margin-top: 6px;
+  padding: 8px 0 2px;
+  border-top: 1px solid var(--border-soft);
+}
+.la-mirror-head { display: flex; align-items: center; min-width: 0; min-height: 28px; }
+.la-mirror-title {
+  min-width: 0;
+  overflow: hidden;
+  padding-inline: 6px;
+  color: var(--text-mid);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.la .la-mirror-name {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.la .la-mirror-name::placeholder { color: var(--text-mid); opacity: 1; }
+.la .la-mirror-name:hover { border-color: var(--border-soft); }
+.la .la-mirror-name:focus { border-color: var(--accent); background: var(--bg-app); outline: none; }
+.la-mirror-options {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.la-mirror-option { border-radius: 4px; }
+.la-mirror-option:hover,
+.la-mirror-option:focus-within { background: var(--bg-sel); }
+.la-mirror-pick {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.la-mirror-pick input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.la-mirror-pick input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.la-mirror-option-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--strip-tint, var(--text-hi));
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.la-mirror-count {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.la-mirror-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin-top: -4px;
+  padding: 0 6px 6px 28px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.la-mirror-likely { color: var(--accent); }
+.la .la-mirror-flip {
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-hi);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.la .la-mirror-flip:hover { text-decoration-color: var(--text-hi); }
+.la .la-mirror-flip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.la-mirror-option.is-blocked .la-mirror-pick { cursor: default; }
+.la-mirror-option.is-blocked .la-mirror-option-name,
+.la-mirror-option.is-blocked .la-mirror-count { opacity: .5; }
+.la-mirror-error { margin: 2px 6px; color: var(--danger); font-size: 11px; }
+.la-mirror-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+}
+.la .la-mirror-foot .btn { min-height: 30px; padding-inline: 10px; font-size: 11px; }
+.la-mirror-foot [data-testid="mirror-stop"] { margin-right: auto; }
+.la .la-part-mirror { width: 100%; min-height: 30px; margin-top: 6px; font-size: 11px; }
+@media (pointer: coarse), (max-width: 600px) {
+  .la .la-mirror-line { min-height: 36px; align-items: center; }
+  /* Clear the sticky strip header above and the connection bar below. */
+  .la-mirror-panel { scroll-margin-block: 150px 110px; }
+  .la-mirror-pick { grid-template-columns: 18px minmax(0, 1fr) auto; min-height: 44px; }
+  .la-mirror-pick input[type="checkbox"] { width: 18px; height: 18px; }
+  .la-mirror-note { padding-left: 32px; }
+  .la .la-mirror-flip { min-height: 36px; }
+  .la .la-mirror-name,
+  .la .la-mirror-foot .btn,
+  .la .la-part-mirror { min-height: 44px; }
+}
