@@ -67,7 +67,7 @@ const web = readFileSync(resolve(here, '../src/LightweaverWeb.cpp'), 'utf8');
 const bridgeVersionMatch = web.match(/constexpr int LW_BRIDGE_VERSION = (\d+);/);
 assert.ok(bridgeVersionMatch, 'LightweaverWeb.cpp must pin the bridge protocol version constant');
 const bridgeVersion = Number(bridgeVersionMatch[1]);
-assert.equal(bridgeVersion, 8, 'the bridge protocol version should be 8 (physical Studio frame relay)');
+assert.equal(bridgeVersion, 9, 'the bridge protocol version should be 9 (restricted client playlist relay)');
 assert.match(web, /if\(p\.lwPhysical===1\)frame\.lwPhysical=1/,
   'the card-page bridge must preserve the Studio physical-frame marker');
 

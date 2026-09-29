@@ -213,6 +213,7 @@ jobs:
     needs: preflight
     env:
       DEPLOY_REVISION: ${{ needs.preflight.outputs.revision }}
+      LIGHTWEAVER_SOURCE_REVISION: ${{ needs.preflight.outputs.revision }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -402,6 +403,37 @@ jobs:
             sleep 10
           done
 
+      - name: Build and publish the client to its separate Pages project
+        id: client_publish
+        if: steps.creds.outputs.enabled == 'true'
+        working-directory: lightweaver
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [ "$remote_main" != "$DEPLOY_REVISION" ]; then
+            echo "::error::Main advanced; refusing to publish an obsolete client."
+            exit 1
+          fi
+          npm run deploy:client
+
+      - name: Prove the exact client live
+        id: client_freshness
+        if: steps.creds.outputs.enabled == 'true'
+        working-directory: lightweaver
+        run: |
+          for attempt in $(seq 1 12); do
+            if npm run check:client:prod; then
+              exit 0
+            fi
+            if [ "$attempt" = 12 ]; then
+              echo "::error::Client production did not converge to the verified release."
+              exit 1
+            fi
+            sleep 10
+          done
+
       # The numbers the Studio footer and the card both show. Printed here so
       # the run page answers "which build did this publish?" without decoding a
       # commit SHA. The firmware number comes from the signed manifest, so it
@@ -420,6 +452,8 @@ jobs:
           BUILD_NUMBER: ${{ steps.buildnumber.outputs.value }}
           FIRMWARE_BUILD_NUMBER: ${{ steps.buildnumber.outputs.firmware }}
           FRESHNESS_OUTCOME: ${{ steps.freshness.outcome }}
+          CLIENT_PUBLISH_OUTCOME: ${{ steps.client_publish.outcome }}
+          CLIENT_FRESHNESS_OUTCOME: ${{ steps.client_freshness.outcome }}
           MIGRATION_OUTCOME: ${{ steps.migrate.outcome }}
           PUBLISH_ENABLED: ${{ steps.creds.outputs.enabled }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
@@ -440,9 +474,14 @@ jobs:
             echo "## Production uploaded; live proof failed" >> "$GITHUB_STEP_SUMMARY"
             echo "The Pages upload succeeded, but live freshness outcome was $FRESHNESS_OUTCOME. Do not treat this run as shipped." >> "$GITHUB_STEP_SUMMARY"
             echo "::error::Live freshness proof did not succeed."
+          elif [ "$CLIENT_PUBLISH_OUTCOME" != "success" ] || [ "$CLIENT_FRESHNESS_OUTCOME" != "success" ]; then
+            echo "## Studio published; client not proven live" >> "$GITHUB_STEP_SUMMARY"
+            echo "Studio build $BUILD_NUMBER passed its live proof. Client publish: $CLIENT_PUBLISH_OUTCOME; live proof: $CLIENT_FRESHNESS_OUTCOME. The combined release is not shipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Client release did not pass publication and exact live proof."
           else
             echo "## Production publish — Build $BUILD_NUMBER" >> "$GITHUB_STEP_SUMMARY"
             echo "led.mandalacodes.com now serves Studio build **$BUILD_NUMBER** (\`$DEPLOY_REVISION\`)." >> "$GITHUB_STEP_SUMMARY"
+            echo "light.mandalacodes.com now serves Client build **$BUILD_NUMBER** from the same revision." >> "$GITHUB_STEP_SUMMARY"
             echo "The Studio footer beacon reads \`Studio current · Build $BUILD_NUMBER\` once your browser has it." >> "$GITHUB_STEP_SUMMARY"
             echo "Signed firmware in this release is **Build $FIRMWARE_BUILD_NUMBER** — that is the number a card reports after flashing it." >> "$GITHUB_STEP_SUMMARY"
             echo "The migration, Pages upload, and live freshness check all succeeded." >> "$GITHUB_STEP_SUMMARY"
@@ -458,7 +497,11 @@ jobs:
           MIGRATION_OUTCOME: ${{ steps.migrate.outcome }}
           PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
           FRESHNESS_OUTCOME: ${{ steps.freshness.outcome }}
+          CLIENT_PUBLISH_OUTCOME: ${{ steps.client_publish.outcome }}
+          CLIENT_FRESHNESS_OUTCOME: ${{ steps.client_freshness.outcome }}
           EXPECTED_STUDIO_BUILD_NUMBER: ${{ steps.buildnumber.outputs.value }}
+          CLIENT_REQUIRED: 'true'
+          CLIENT_STAGED_ROOT: ${{ github.workspace }}/lightweaver/.pages/lightweaver-client
           STAGED_ROOT: ${{ github.workspace }}/lightweaver/.pages/lightweaver
           RECEIPT_OUTPUT_DIR: ${{ runner.temp }}/lightweaver-release-proof
         run: |

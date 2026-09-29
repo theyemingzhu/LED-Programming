@@ -212,6 +212,14 @@ test('a connected footer opens customer card controls without a popup', async ({
   await footer.click();
   const drawer = page.getByRole('dialog', { name: 'Gallery Lightweaver controls' });
   await expect(drawer).toBeVisible();
+  const phonePlayer = drawer.getByRole('link', { name: 'Open phone player' });
+  await expect(phonePlayer).toBeVisible();
+  const pairedUrl = new URL((await phonePlayer.getAttribute('href'))!);
+  expect(pairedUrl.origin).toBe('https://light.mandalacodes.com');
+  expect(pairedUrl.search).toBe('');
+  expect(new URLSearchParams(pairedUrl.hash.slice(1)).get('cardId')).toBe(CARD_ID);
+  expect(new URLSearchParams(pairedUrl.hash.slice(1)).get('host')).toBe('lightweaver.local');
+
 
   const matchingProjectFingerprint = projectFingerprint;
   projectFingerprint = 'c'.repeat(64);

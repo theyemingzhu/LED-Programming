@@ -24,6 +24,8 @@
 #include <string>
 
 #include "LightweaverStorage.h"
+#include "LightweaverClientPolicy.h"
+#include "LightweaverClientPattern.h"
 
 namespace {
 
@@ -243,10 +245,118 @@ void test_id_less_entry_skipped_and_bounds_clamped() {
   TEST_ASSERT_EQUAL_UINT16(LW_PLAYLIST_RECORD_MAX_DWELL_SECONDS, decoded.entries[1].dwellSeconds);
 }
 
+void test_startup_saved_controls_win_over_other_look_resume() {
+  ClientPatternOverride savedA;
+  savedA.fields = 1; savedA.brightness = 0.4f;
+  ClientPatternBase resumed;
+  resumed.brightness = 0.9f; resumed.speed = 1.7f;
+  if (clientPatternNeedsSavedRestore(7, 7, "B", "A"))
+    applyClientPatternToZone(savedA, resumed);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.4, resumed.brightness);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 1.7, resumed.speed);
+  // An unsaved tweak for the same look/generation still resumes unchanged.
+  resumed.brightness = 0.6f;
+  if (clientPatternNeedsSavedRestore(7, 7, "A", "A"))
+    applyClientPatternToZone(savedA, resumed);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.6, resumed.brightness);
+  TEST_ASSERT_TRUE(clientPatternNeedsSavedRestore(6, 7, "A", "A"));
+}
+
+void test_named_pattern_overlay_does_not_bleed_into_next_plain_pattern() {
+  ClientPatternBase baseline;
+  baseline.brightness = 0.8f; baseline.speed = 1.3f; baseline.hueShift = 12;
+  ClientPatternBase zone = baseline;
+  ClientPatternOverride savedA;
+  savedA.fields = 1; savedA.brightness = 0.4f;
+  applyClientPatternToZone(savedA, zone);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.4, zone.brightness);
+  removeClientPatternFromZone(savedA, baseline, zone);
+  ClientPatternOverride plainB;
+  applyClientPatternToZone(plainB, zone);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.8, zone.brightness);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 1.3, zone.speed);
+  TEST_ASSERT_EQUAL_INT16(12, zone.hueShift);
+  applyClientPatternToZone(savedA, zone);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.4, zone.brightness);
+  zone.brightness = 0.6f;  // subsequent unsaved live tweak retains old semantics
+  removeClientPatternFromZone(savedA, baseline, zone);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.6, zone.brightness);
+}
+
+void test_client_pattern_patch_is_atomic_and_preserves_unedited_controls() {
+  ClientPatternOverride entry;
+  entry.fields = 2; entry.speed = 1.7f;
+  JsonDocument doc; doc["brightness"] = 0.25;
+  TEST_ASSERT_TRUE(patchClientPattern(doc.as<JsonVariantConst>(), entry));
+  TEST_ASSERT_EQUAL_UINT8(3, entry.fields);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 1.7, entry.speed);
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.25, entry.brightness);
+  doc["brightness"] = 0;
+  TEST_ASSERT_FALSE(patchClientPattern(doc.as<JsonVariantConst>(), entry));
+  TEST_ASSERT_FLOAT_WITHIN(0.001, 0.25, entry.brightness);
+  doc["brightness"] = 0.5; doc["patternId"] = "replacement";
+  TEST_ASSERT_FALSE(patchClientPattern(doc.as<JsonVariantConst>(), entry));
+  doc.remove("patternId"); doc["hueShift"] = 2.5;
+  TEST_ASSERT_FALSE(patchClientPattern(doc.as<JsonVariantConst>(), entry));
+  doc["hueShift"] = 128; doc["speed"] = 3.0;
+  TEST_ASSERT_TRUE(patchClientPattern(doc.as<JsonVariantConst>(), entry));
+  TEST_ASSERT_EQUAL_UINT8(7, entry.fields);
+}
+
+void test_client_origin_routes() {
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("POST", "/api/client-playlist"));
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("POST", "/api/client-pattern"));
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("GET", "/api/client-pattern"));
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("GET", "/api/status"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/config"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("GET", "/api/reboot"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/wiring/activate"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/owner/capability"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("OPTIONS", "/api/config"));
+}
+void test_client_playlist_strict_validation() {
+  JsonDocument doc;
+  deserializeJson(doc, R"({"enabled":true,"fadeMs":1500,"entries":[{"patternId":"installed","dwellSeconds":30}]})");
+  PlaylistRecord record;
+  auto installed = [](const char* id) { return strcmp(id, "installed") == 0; };
+  TEST_ASSERT_TRUE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["patternId"] = "default-only";
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["patternId"] = "installed";
+  doc["entries"][0]["dwellSeconds"] = 0;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["dwellSeconds"] = 3601;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["entries"][0]["dwellSeconds"] = 30;
+  doc["fadeMs"] = 10001;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["fadeMs"] = 1000;
+  doc["wiring"] = true;
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  TEST_ASSERT_EQUAL_UINT16(30, record.entries[0].dwellSeconds);
+  doc.remove("wiring");
+  doc["entries"].to<JsonArray>();
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  doc["enabled"] = false;
+  TEST_ASSERT_TRUE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  for (int i = 0; i < 17; ++i) {
+    JsonObject e = doc["entries"].as<JsonArray>().add<JsonObject>();
+    e["patternId"] = "installed"; e["dwellSeconds"] = 30;
+  }
+  TEST_ASSERT_FALSE(decodeClientPlaylist(doc.as<JsonVariantConst>(), record, installed));
+  TEST_ASSERT_EQUAL_UINT8(0, record.entryCount);
+
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
   UNITY_BEGIN();
+  RUN_TEST(test_client_playlist_strict_validation);
+  RUN_TEST(test_client_origin_routes);
+  RUN_TEST(test_client_pattern_patch_is_atomic_and_preserves_unedited_controls);
+  RUN_TEST(test_named_pattern_overlay_does_not_bleed_into_next_plain_pattern);
+  RUN_TEST(test_startup_saved_controls_win_over_other_look_resume);
   RUN_TEST(test_representative_4_zone_project_with_16_entry_playlist_measurement);
   RUN_TEST(test_encode_decode_round_trip_16_entries);
   RUN_TEST(test_seventeen_entries_drops_the_seventeenth);

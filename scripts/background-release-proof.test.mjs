@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -71,4 +71,29 @@ test('advancing main during proof supersedes the candidate', async t => {
 test('network loss fails closed with a bounded retry signal', async t => {
   const f = await fixture(t); f.options.fetchImpl = async () => { throw new TypeError('fetch failed'); };
   await assert.rejects(verifyProofBundle(f.options));
+});
+
+test('client receipt requires independent live client bytes at the exact build', async t => {
+  const f = await fixture(t);
+  const clientRoot = join(f.directory, 'client');
+  await mkdir(join(clientRoot, 'assets'), { recursive: true });
+  await writeFile(join(clientRoot, 'client.html'), '<html>Lightweaver client</html>');
+  await writeFile(join(clientRoot, 'assets/client.js'), 'client runtime');
+  await writeFile(join(clientRoot, 'client-release.json'), f.files.get('studio-release.json'));
+  const { stageClient } = await import('../lightweaver/scripts/client-release.mjs');
+  await stageClient(clientRoot);
+  f.receipt.clientRequired = true;
+  f.receipt.clientBuildNumber = 2248;
+  await writeFile(join(f.directory, 'receipt.json'), JSON.stringify(f.receipt));
+  let corrupt = false;
+  f.options.fetchImpl = async (url, init) => {
+    if (new URL(url).origin !== 'https://light.mandalacodes.com') return f.fetchImpl(url, init);
+    const path = new URL(url).pathname.slice(1) || 'index.html';
+    const bytes = corrupt && path === 'assets/client.js' ? 'stale client' : await readFile(join(clientRoot, path));
+    return new Response(bytes, { headers: { 'cache-control': 'no-store' } });
+  };
+  const result = await verifyProofBundle(f.options);
+  assert.equal(result.clientBuildNumber, 2248);
+  corrupt = true;
+  await assert.rejects(verifyProofBundle(f.options), /Client live bytes differ/);
 });

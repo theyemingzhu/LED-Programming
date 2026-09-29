@@ -2105,6 +2105,195 @@ RuntimeLoadResult loadRuntimeConfig(RuntimeConfig& config,
   return result;
 }
 
+namespace {
+constexpr const char* CLIENT_PLAYLIST_KEY = "clientPlaylist";
+uint32_t clientPlaylistGeneration = 0;
+void encodeClientPlaylist(const RuntimeConfig& cfg, JsonObject out) {
+  out["enabled"] = cfg.playlist.enabled;
+  out["fadeMs"] = cfg.playlist.fadeMs;
+  JsonArray entries = out["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < cfg.playlist.entryCount; ++i) {
+    JsonObject e = entries.add<JsonObject>();
+    e["patternId"] = cfg.playlist.entries[i].patternId;
+    e["dwellSeconds"] = cfg.playlist.entries[i].dwellSeconds;
+  }
+}
+bool parseClientPlaylist(JsonVariantConst value, const RuntimeConfig& cfg, PlaylistRecord& record) {
+  return decodeClientPlaylist(value, record, [&cfg](const char* id) {
+    for (uint8_t i = 0; i < cfg.lookCount; ++i) if (cfg.looks[i].id == id) return true;
+    return false;
+  });
+}
+void applyClientPlaylist(const PlaylistRecord& record, RuntimeConfig& cfg) {
+  cfg.playlist.enabled = record.enabled;
+  cfg.playlist.fadeMs = record.fadeMs;
+  cfg.playlist.entryCount = record.entryCount;
+  for (uint8_t i = 0; i < record.entryCount; ++i) {
+    cfg.playlist.entries[i].patternId = record.entries[i].patternId;
+    cfg.playlist.entries[i].dwellSeconds = record.entries[i].dwellSeconds;
+  }
+}
+}
+uint32_t currentClientPlaylistGeneration() { return clientPlaylistGeneration; }
+String clientPlaylistJson(const RuntimeConfig& config) {
+  JsonDocument doc;
+  encodeClientPlaylist(config, doc.to<JsonObject>());
+  String json; serializeJson(doc, json); return json;
+}
+String clientPlaylistRevision(const RuntimeConfig& config) {
+  return sha256Hex(config.configDigest + ":" + currentConfirmedInstallationId() + ":" + String(clientPlaylistGeneration) + ":" + clientPlaylistJson(config));
+}
+bool loadClientPlaylist(RuntimeConfig& config) {
+  if (!config.knownGoodProject || config.configDigest.length() != 64) return false;
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+  String json = prefs.getString(CLIENT_PLAYLIST_KEY, ""); prefs.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, json) || doc["configDigest"].as<String>() != config.configDigest ||
+      doc["installId"].as<String>() != currentConfirmedInstallationId()) return false;
+  PlaylistRecord record;
+  if (!parseClientPlaylist(doc["playlist"], config, record)) return false;
+  clientPlaylistGeneration = doc["generation"] | 0U;
+  applyClientPlaylist(record, config);
+  return true;
+}
+bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String& message) {
+  PlaylistRecord record;
+  if (!config.knownGoodProject || config.configDigest.length() != 64 ||
+      !parseClientPlaylist(playlist, config, record)) {
+    message = "invalid installed playlist"; return false;
+  }
+  JsonDocument doc;
+  doc["configDigest"] = config.configDigest;
+  doc["installId"] = currentConfirmedInstallationId();
+  doc["generation"] = clientPlaylistGeneration + 1U;
+  encodePlaylistRecord(record, doc["playlist"].to<JsonObject>());
+  String json; serializeJson(doc, json);
+  if (json.length() > NVS_STRING_LIMIT) { message = "playlist exceeds storage limit"; return false; }
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) { message = "playlist storage unavailable"; return false; }
+  if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) {
+    prefs.end(); message = "wiring transaction is active"; return false;
+  }
+  bool written = prefs.putString(CLIENT_PLAYLIST_KEY, json) == json.length();
+  prefs.end();
+  if (!written || !prefs.begin(NVS_NAMESPACE, true)) {
+    message = "playlist write could not be verified; runtime unchanged"; return false;
+  }
+  const bool verified = prefs.getString(CLIENT_PLAYLIST_KEY, "") == json;
+  prefs.end();
+  if (!verified) { message = "playlist readback failed; runtime unchanged"; return false; }
+  ++clientPlaylistGeneration;
+  applyClientPlaylist(record, config);
+  return true;
+}
+
+namespace {
+constexpr const char* CLIENT_PATTERN_KEY = "clientPatterns";
+uint32_t clientPatternGeneration = 0;
+ClientPatternOverride clientPatternOverrides[LW_MAX_LOOKS];
+ClientPatternOverride activeClientPatternOverrides;
+ClientPatternBase activeClientPatternBase[LW_MAX_ZONES];
+}
+uint32_t currentClientPatternGeneration() { return clientPatternGeneration; }
+int installedClientPatternIndex(const RuntimeConfig& config, const String& patternId) {
+  if (!config.knownGoodProject) return -1;
+  for (uint8_t i = 0; i < config.lookCount; ++i) if (config.looks[i].id == patternId) return i;
+  return -1;
+}
+String clientPatternRevision(const RuntimeConfig& config, const String& patternId) {
+  return sha256Hex(config.configDigest + ":" + currentConfirmedInstallationId() + ":" +
+      String(clientPatternGeneration) + ":" + patternId);
+}
+void writeClientPatternOverrides(const RuntimeConfig& config, const String& patternId, JsonObject out) {
+  const int index = installedClientPatternIndex(config, patternId);
+  if (index >= 0) encodeClientPattern(clientPatternOverrides[index], out);
+}
+void removeActiveClientPatternOverrides(RuntimeConfig& config) {
+  for (uint8_t i = 0; i < config.zoneCount; ++i)
+    removeClientPatternFromZone(activeClientPatternOverrides, activeClientPatternBase[i], config.zones[i]);
+  activeClientPatternOverrides = ClientPatternOverride();
+}
+void applyClientPatternOverrides(RuntimeConfig& config, const String& patternId, bool captureBase) {
+  const int index = installedClientPatternIndex(config, patternId);
+  if (captureBase) {
+    for (uint8_t i = 0; i < config.zoneCount; ++i) {
+      activeClientPatternBase[i].brightness = config.zones[i].brightness;
+      activeClientPatternBase[i].speed = config.zones[i].speed;
+      activeClientPatternBase[i].hueShift = config.zones[i].hueShift;
+    }
+  }
+  activeClientPatternOverrides = index >= 0 ? clientPatternOverrides[index] : ClientPatternOverride();
+  for (uint8_t i = 0; i < config.zoneCount; ++i)
+    applyClientPatternToZone(activeClientPatternOverrides, config.zones[i]);
+}
+bool loadClientPatterns(const RuntimeConfig& config) {
+  clientPatternGeneration = 0;
+  activeClientPatternOverrides = ClientPatternOverride();
+  for (auto& entry : clientPatternOverrides) entry = ClientPatternOverride();
+  if (!config.knownGoodProject || config.configDigest.length() != 64) return false;
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+  const String json = prefs.getString(CLIENT_PATTERN_KEY, ""); prefs.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, json) || doc["configDigest"].as<String>() != config.configDigest ||
+      doc["installId"].as<String>() != currentConfirmedInstallationId() ||
+      !doc["generation"].is<uint32_t>() || !doc["entries"].is<JsonArrayConst>()) return false;
+  ClientPatternOverride candidate[LW_MAX_LOOKS];
+  for (JsonArrayConst row : doc["entries"].as<JsonArrayConst>()) {
+    if (row.isNull() || row.size() != 2 || !row[0].is<const char*>()) return false;
+    const int index = installedClientPatternIndex(config, row[0].as<String>());
+    if (index < 0 || candidate[index].fields || !patchClientPattern(row[1], candidate[index])) return false;
+  }
+  for (uint8_t i = 0; i < LW_MAX_LOOKS; ++i) clientPatternOverrides[i] = candidate[i];
+  clientPatternGeneration = doc["generation"].as<uint32_t>();
+  return true;
+}
+bool saveClientPattern(RuntimeConfig& config, const String& patternId, JsonVariantConst changes, String& message) {
+  const int index = installedClientPatternIndex(config, patternId);
+  if (index < 0 || config.configDigest.length() != 64 || clientPatternGeneration == UINT32_MAX) {
+    message = "installed pattern unavailable"; return false;
+  }
+  ClientPatternOverride candidate = clientPatternOverrides[index];
+  if (!patchClientPattern(changes, candidate)) { message = "invalid pattern controls"; return false; }
+  JsonDocument doc;
+  doc["configDigest"] = config.configDigest;
+  doc["installId"] = currentConfirmedInstallationId();
+  doc["generation"] = clientPatternGeneration + 1U;
+  JsonArray entries = doc["entries"].to<JsonArray>();
+  for (uint8_t i = 0; i < config.lookCount; ++i) {
+    const auto& entry = i == index ? candidate : clientPatternOverrides[i];
+    if (!entry.fields) continue;
+    JsonArray row = entries.add<JsonArray>();
+    row.add(config.looks[i].id);
+    encodeClientPattern(entry, row.add<JsonObject>());
+  }
+  String json; serializeJson(doc, json);
+  if (json.length() > NVS_STRING_LIMIT) { message = "saved pattern controls exceed storage limit"; return false; }
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) { message = "pattern storage unavailable"; return false; }
+  if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) {
+    prefs.end(); message = "wiring transaction is active"; return false;
+  }
+  const bool written = prefs.putString(CLIENT_PATTERN_KEY, json) == json.length(); prefs.end();
+  if (!written || !prefs.begin(NVS_NAMESPACE, true)) {
+    message = "pattern write could not be verified; runtime unchanged"; return false;
+  }
+  const bool verified = prefs.getString(CLIENT_PATTERN_KEY, "") == json; prefs.end();
+  if (!verified) { message = "pattern readback failed; runtime unchanged"; return false; }
+  clientPatternOverrides[index] = candidate;
+  ++clientPatternGeneration;
+  // Apply only this patch to the preview; other unsaved live knobs stay put.
+  // Keep the baseline captured on pattern entry so this save cannot bleed
+  // into the next plain pattern, which normally carries live zone controls.
+  activeClientPatternOverrides = candidate;
+  ClientPatternOverride patch;
+  patchClientPattern(changes, patch);
+  for (uint8_t i = 0; i < config.zoneCount; ++i)
+    applyClientPatternToZone(patch, config.zones[i]);
+  return true;
+}
+
 bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message) {
   // ESP-IDF NVS caps a single string entry at ~4000 bytes. A large playlist
   // pushed from the Studio would otherwise fail deep in putString with an
@@ -2227,6 +2416,12 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
   // would already reject it on the next boot (revision no longer matches),
   // but clearing it here means a stale record never lingers on flash.
   clearPersistedLiveLookRecord();
+  Preferences clientPrefs;
+  if (clientPrefs.begin(NVS_NAMESPACE, false)) { clientPrefs.remove(CLIENT_PLAYLIST_KEY); clientPrefs.remove(CLIENT_PATTERN_KEY); clientPrefs.end(); }
+  clientPlaylistGeneration = 0;
+  clientPatternGeneration = 0;
+  activeClientPatternOverrides = ClientPatternOverride();
+  for (auto& entry : clientPatternOverrides) entry = ClientPatternOverride();
   message = cleanupOk
       ? "saved to internal flash"
       : "saved to internal flash; cleanup warning: legacy recovery metadata may need service";
@@ -2857,6 +3052,8 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["safeMode"] = runtimeSafeModeActive();
   doc["configSchemaVersion"] = LW_CONFIG_SCHEMA_VERSION;
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
+  doc["capabilities"]["clientPlaylist"]["version"] = 1;
+  doc["capabilities"]["clientPattern"]["version"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;

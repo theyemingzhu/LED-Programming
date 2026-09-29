@@ -11,6 +11,7 @@ const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const RUNTIME_FILES = [
   'scripts/background-release.mjs',
   'scripts/background-release-proof.mjs',
+  'lightweaver/scripts/client-release.mjs',
   'lightweaver/src/lib/studioRelease.js',
   'lightweaver/src/lib/productionDeploymentCheck.js',
 ];

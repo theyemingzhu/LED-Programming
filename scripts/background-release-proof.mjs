@@ -9,6 +9,8 @@ import { pathToFileURL } from 'node:url';
 import { parseStudioRelease } from '../lightweaver/src/lib/studioRelease.js';
 import { assertStudioRoot, verifyStudioRelease, verifyStudioBuildGraph, parseStudioBuildGraph } from '../lightweaver/src/lib/productionDeploymentCheck.js';
 
+import { verifyClientOrigin } from '../lightweaver/scripts/client-release.mjs';
+
 const ORIGIN = 'https://led.mandalacodes.com';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
@@ -66,7 +68,16 @@ export async function verifyProofBundle({ directory, revision, runId, runAttempt
   }
   // This closes the race where another release merges while we fetch assets.
   if (await currentMain() !== revision) throw superseded();
-  return { ok: true, revision, studioBuildNumber: marker.buildNumber, firmwareBuildNumber: firmware.buildNumber };
+  if (receipt.clientRequired) {
+    check(receipt.clientBuildNumber === marker.buildNumber, 'Client build differs from exact Studio revision');
+    const client = await verifyClientOrigin('https://light.mandalacodes.com', join(directory, 'client'), {
+      fetchImpl: (url, init) => fetchImpl(url, { ...init, signal: AbortSignal.timeout(20000) }),
+    });
+    check(client.sourceRevision === revision && client.buildNumber === receipt.clientBuildNumber, 'Client identity does not match receipt');
+    if (await currentMain() !== revision) throw superseded();
+  }
+  return { ok: true, revision, studioBuildNumber: marker.buildNumber, firmwareBuildNumber: firmware.buildNumber,
+    ...(receipt.clientRequired ? { clientBuildNumber: receipt.clientBuildNumber } : {}) };
 }
 function gh(args) {
   try { return execFileSync('gh', args, { encoding: 'utf8', timeout: 90000, stdio: ['ignore', 'pipe', 'pipe'] }); }

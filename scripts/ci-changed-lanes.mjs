@@ -147,6 +147,19 @@ export function classifyChangedPaths(paths, {
       continue;
     }
 
+    // The independent static client is not embedded in card firmware or the
+    // Studio cloud library. Its own build and browser acceptance still run.
+    if (isPath(path, 'lightweaver/src/client') || isPath(path, 'lightweaver/client-public') || [
+      'lightweaver/src/client-main.jsx', 'lightweaver/client.html',
+      'lightweaver/vite.client.config.js', 'lightweaver/wrangler.client.toml',
+      'lightweaver/scripts/client-release.mjs', 'lightweaver/scripts/client-release.test.mjs',
+      'lightweaver/scripts/deploy-client-pages.mjs',
+    ].includes(path)) {
+      lanes.source = true;
+      lanes.browser = true;
+      continue;
+    }
+
     // Studio source selects the cloud lane too. That lane's specs drive the
     // real Studio UI — the projects panel, the workspace-asset sync, the
     // Pattern Lab drafts list — so a change under src/ can break them. It

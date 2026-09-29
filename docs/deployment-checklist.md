@@ -406,3 +406,13 @@ open, so Lightweaver is **not ready to ship** yet.
 WLED Basic, Raspberry Pi hosting, Madrix/Art-Net gallery commissioning, and OTA
 are separate future/runtime lanes. Their notes remain in the dedicated docs;
 they do not belong in or satisfy this ESP32-S3 card-production gate.
+
+## Client surface release
+
+- [ ] Verify the staged client build graph and no-store release marker with `npm run verify:client`.
+- [ ] Verify desktop/mobile at `/client.html` and unsupported-card recovery.
+- [ ] Production `light.mandalacodes.com` root, release marker and every staged client asset match the exact integrated revision and repository build number (`npm run check:client:prod`).
+- [ ] The retained release receipt includes Client build and independent proof alongside Studio/firmware; partial publication is not shipped.
+- [ ] Observe the changed client playlist contract on compatible firmware, including persistence after reconnect/reboot; software-only evidence does not pass a physical-output gate.
+
+See [client hosting](client-hosting.md) for the separate Pages project and local card boundary.

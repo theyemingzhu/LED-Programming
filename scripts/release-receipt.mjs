@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,8 +21,10 @@ const validStudioRelease = (value, revision) => value?.schemaVersion === 1
 export function createReleaseReceipt(input) {
   const credentialedPublish = input.credentialsEnabled === 'true'
     && input.migrationOutcome === 'success'
-    && input.publishOutcome === 'success';
-  const liveProofPassed = credentialedPublish && input.freshnessOutcome === 'success';
+    && input.publishOutcome === 'success'
+    && (!input.clientRequired || input.clientPublishOutcome === 'success');
+  const liveProofPassed = credentialedPublish && input.freshnessOutcome === 'success'
+    && (!input.clientRequired || input.clientFreshnessOutcome === 'success');
   const missingFiles = RECEIPT_FILES.filter(path => !input.availableFiles.includes(path));
   const studioBuildNumber = input.studioRelease?.buildNumber ?? null;
   const firmwareBuildNumber = input.firmwareManifest?.buildNumber ?? null;
@@ -33,6 +35,10 @@ export function createReleaseReceipt(input) {
   else if (input.migrationOutcome !== 'success') reason = 'migration_failed';
   else if (input.publishOutcome !== 'success') reason = 'publish_failed';
   else if (input.freshnessOutcome !== 'success') reason = 'live_proof_failed';
+  else if (input.clientRequired && input.clientPublishOutcome !== 'success') reason = 'client_publish_failed';
+  else if (input.clientRequired && input.clientFreshnessOutcome !== 'success') reason = 'client_live_proof_failed';
+  else if (input.clientRequired && (!validStudioRelease(input.clientRelease, input.revision)
+    || input.clientRelease.buildNumber !== studioBuildNumber || !input.clientGraphPresent)) reason = 'client_build_mismatch';
   else if (missingFiles.length) reason = 'staged_artifacts_missing';
   else if (input.studioRelease?.sourceRevision !== input.revision) reason = 'staged_revision_mismatch';
   else if (!validStudioRelease(input.studioRelease, input.revision)
@@ -49,6 +55,7 @@ export function createReleaseReceipt(input) {
     workflow: input.workflow,
     revision: input.revision,
     studioBuildNumber: positiveInteger(studioBuildNumber) ? Number(studioBuildNumber) : null,
+    ...(input.clientRequired ? { clientRequired: true, clientBuildNumber: input.clientRelease?.buildNumber ?? null } : {}),
     firmwareBuildNumber: positiveInteger(firmwareBuildNumber) ? Number(firmwareBuildNumber) : null,
     runId: positiveInteger(input.runId) ? Number(input.runId) : null,
     runAttempt: positiveInteger(input.runAttempt) ? Number(input.runAttempt) : null,
@@ -66,7 +73,7 @@ async function readJson(path) {
   catch { return null; }
 }
 
-export async function writeReleaseReceipt({ stagedRoot, outputDir, ...input }) {
+export async function writeReleaseReceipt({ stagedRoot, clientStagedRoot, outputDir, ...input }) {
   await mkdir(outputDir, { recursive: true });
   const availableFiles = [];
   for (const path of RECEIPT_FILES) {
@@ -80,9 +87,15 @@ export async function writeReleaseReceipt({ stagedRoot, outputDir, ...input }) {
       if (error.code !== 'ENOENT') throw error;
     }
   }
+  if (input.clientRequired && clientStagedRoot) {
+    try { await cp(clientStagedRoot, join(outputDir, 'client'), { recursive: true }); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   const receipt = createReleaseReceipt({
     ...input,
     availableFiles,
+    clientRelease: await readJson(join(outputDir, 'client/client-release.json')),
+    clientGraphPresent: Boolean(await readJson(join(outputDir, 'client/client-build-graph.json'))),
     studioRelease: await readJson(join(outputDir, 'studio-release.json')),
     firmwareManifest: await readJson(join(outputDir, 'firmware/release-manifest.json')),
   });
@@ -94,6 +107,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const receipt = await writeReleaseReceipt({
     stagedRoot: process.env.STAGED_ROOT,
     outputDir: process.env.RECEIPT_OUTPUT_DIR,
+    clientRequired: process.env.CLIENT_REQUIRED === 'true',
+    clientStagedRoot: process.env.CLIENT_STAGED_ROOT,
+    clientPublishOutcome: process.env.CLIENT_PUBLISH_OUTCOME,
+    clientFreshnessOutcome: process.env.CLIENT_FRESHNESS_OUTCOME,
     repository: process.env.GITHUB_REPOSITORY,
     workflow: process.env.GITHUB_WORKFLOW,
     revision: process.env.DEPLOY_REVISION,
