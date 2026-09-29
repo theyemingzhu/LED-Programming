@@ -580,6 +580,22 @@
   white-space: nowrap;
 }
 .la-side-meta { flex: 0 0 auto; color: var(--text-faint); font-family: var(--font-mono); font-size: 10px; }
+/* Play and Pause share one width so the toolbar does not shift between them. */
+.la .toolbar .la-preview-play { min-width: 56px; justify-content: center; }
+
+/* Which way a side runs against side 1, and the Flip that turns it over.
+   The name takes the slack so the direction sits beside its control. */
+.la-side-head:has(.la-side-flip) { align-items: center; }
+.la-side-head:has(.la-side-flip) .la-side-name { flex: 1 1 auto; }
+.la-side-runs { flex: 0 0 auto; color: var(--text-mid); font-size: 11px; white-space: nowrap; }
+.la .la-side-head .la-side-flip {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0 9px;
+  color: var(--text-mid);
+  font-size: 11px;
+}
+.la .la-side-head .la-side-flip:hover { color: var(--text-hi); }
 .la-side-empty,
 .la-side-foot { margin: 0; padding: 7px 10px 8px 12px; color: var(--text-faint); font-size: 11px; line-height: 1.45; }
 .la-side-foot { border-top: 1px solid var(--border-hair); }
@@ -616,5 +632,6 @@
 .la .la-side-choice .btn:disabled { opacity: .45; }
 @media (pointer: coarse), (max-width: 600px) {
   .la .la-symmetry-seg .btn,
+  .la .la-side-head .la-side-flip,
   .la .la-side-choice .btn { min-height: 44px; }
 }

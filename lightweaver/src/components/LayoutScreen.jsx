@@ -185,7 +185,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     wireOverlayMode, setWireOverlayMode,
     chopStripAtEvent,
     // canvas + preview
-    showLight, setShowLight, showLeds, setShowLeds,
+    showLight, toggleShowLight, previewPlaying, togglePreviewPlaying, showLeds, setShowLeds,
     glowMode, setGlowMode, directedGlow, setDirectedGlow,
     showHeat, setShowHeat, lightMenuOpen, setLightMenuOpen,
     enableLightPreview, effectiveGlowMode, effectiveShowLight, glowStdDev,
@@ -502,10 +502,19 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
           <div className="tb-div"/>
 
-          {/* Render toggles — LEDs + Heat top-level; Directed-glow + glow-mode tuck under Light */}
+          {/* Render toggles — LEDs + Heat top-level; Directed-glow + glow-mode tuck under Light.
+              Play is the Light preview's clock: it lights the preview and sets the pattern moving. */}
+          <button type="button"
+                  className={`tb-btn la-preview-play${previewPlaying ? ' active' : ''}`}
+                  data-testid="layout-preview-play"
+                  aria-pressed={previewPlaying}
+                  onClick={togglePreviewPlaying}
+                  title={previewPlaying ? 'Hold the pattern on this frame' : 'Play the pattern on the artwork'}>
+            {previewPlaying ? 'Pause' : 'Play'}
+          </button>
           <div className="la-light-wrap">
             <button className={`tb-btn${showLight ? ' active' : ''}`}
-                    onClick={() => setShowLight(v => !v)}
+                    onClick={toggleShowLight}
                     onContextMenu={e => { e.preventDefault(); setLightMenuOpen(o => !o); }}
                     title="Toggle ambient light preview (click). Right-click or use ▾ for glow options.">
               {TbIcon.bulb}Light

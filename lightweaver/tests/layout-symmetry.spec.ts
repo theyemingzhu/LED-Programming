@@ -189,7 +189,6 @@ test('four sides from the Symmetry line, and which way each side runs', async ({
     { name: 'Right arm', d: 'M 310 200 L 430 200' },
     { name: 'Centre ring', d: RING },
   ]);
-  await expect(page.getByTestId('layout-symmetry-runs-same')).toHaveCount(0);
   await page.getByTestId('layout-symmetry-4').click();
   await expect.poll(() => savedSides(page)).toEqual([
     [ids['Top arm']], [ids['Right arm']], [ids['Bottom arm']], [ids['Left arm']],
@@ -200,12 +199,21 @@ test('four sides from the Symmetry line, and which way each side runs', async ({
   await expect(page.getByTestId('symmetry-axis')).toHaveCount(0);
   await expect(page.locator('[data-testid^="side-band-"]')).toHaveCount(4);
 
-  // Arms drawn from the centre outward all run the same way round.
-  await expect(page.getByTestId('layout-symmetry-runs-same')).toHaveAttribute('aria-pressed', 'true');
-  await page.getByTestId('layout-symmetry-runs-mirror').click();
+  // Arms drawn from the centre outward all run the same way round. Sides 2
+  // and 4 say so on their headers and carry the one Flip; sides 1 and 3 do not.
+  await expect(page.getByTestId('side-runs-side-2')).toHaveText('Same direction');
+  await expect(page.getByTestId('side-runs-side-4')).toHaveText('Same direction');
+  await expect(page.getByTestId('side-flip-side-1')).toHaveCount(0);
+  await expect(page.getByTestId('side-flip-side-3')).toHaveCount(0);
+  await expect(page.getByTestId('side-runs-side-3')).toHaveCount(0);
+  await expect(page.getByTestId('side-flip-side-4')).toHaveAttribute('aria-label', 'Flip Side 2 and Side 4');
+  await page.getByTestId('side-flip-side-4').click();
   await expect.poll(async () => (await savedSymmetry(page))?.orientation).toBe('mirror');
+  await expect(page.getByTestId('side-runs-side-2')).toHaveText('Mirror image');
+  await expect(page.getByTestId('side-runs-side-4')).toHaveText('Mirror image');
   await undo(page);
   await expect.poll(async () => (await savedSymmetry(page))?.orientation).toBe('same');
+  await expect(page.getByTestId('side-runs-side-4')).toHaveText('Same direction');
 
   // None goes back to the data-wire list in one step, and Undo restores the sides.
   await page.getByTestId('layout-symmetry-0').click();
@@ -330,4 +338,156 @@ test('the sides fit a 300px desktop inspector and a 390px phone', async ({ page 
   const phone = await shoot('phone');
   expect(phone.inspectorWidth).toBeLessThanOrEqual(390);
   console.log(JSON.stringify({ desktop, phone }));
+});
+
+// ── Play preview and Flip ────────────────────────────────────────────────────
+// Play is the Light preview's clock: it lights the canvas LEDs with the look's
+// real patterns and sets them moving; Pause holds the frame. Mirrored sides
+// copy side 1 while playing, and Flip on side 2 turns the copy over at once.
+
+const LEDS_PER_STRIP = 24;
+const playButton = (page: any) => page.getByTestId('layout-preview-play');
+// Every LED fill of each strip, read in ONE evaluate so a playing preview
+// cannot move between strips.
+const readStrips = (page: any, stripIds: string[]): Promise<(string | null)[][]> => page.evaluate(
+  ({ stripIds, count }: { stripIds: string[]; count: number }) => stripIds.map(stripId => Array.from({ length: count }, (_, index) =>
+    document.querySelector(`[data-testid="strip-led-${stripId}-${index}"] circle`)?.getAttribute('fill') || null)),
+  { stripIds, count: LEDS_PER_STRIP });
+const lit = (fills: (string | null)[][]) => fills.every(strip => strip.every(Boolean));
+
+test('Play sets the pattern moving on a piece without symmetry, and Pause holds the frame', async ({ page }) => {
+  const ids = await seedPiece(page, WINGED);
+  expect(await savedSymmetry(page)).toBe(null);
+  const strip = [ids['Left top']];
+  await expect(playButton(page)).toHaveText('Play');
+  await expect(playButton(page)).toHaveAttribute('aria-pressed', 'false');
+  // At rest the dots wear the strip's identity colour: one colour, all along.
+  const rest = (await readStrips(page, strip))[0];
+  expect(new Set(rest).size).toBe(1);
+
+  await playButton(page).click();
+  await expect(playButton(page)).toHaveText('Pause');
+  await expect(playButton(page)).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => {
+    const [fills] = await readStrips(page, strip);
+    return lit([fills]) && new Set(fills).size > 1;
+  }).toBe(true);
+  const first = (await readStrips(page, strip))[0];
+  await expect.poll(async () => JSON.stringify((await readStrips(page, strip))[0])).not.toBe(JSON.stringify(first));
+
+  await playButton(page).click();
+  await expect(playButton(page)).toHaveText('Play');
+  await page.waitForTimeout(150);
+  const held = (await readStrips(page, strip))[0];
+  await page.waitForTimeout(600);
+  expect((await readStrips(page, strip))[0]).toEqual(held);
+  // Paused is still lit: the held frame is the pattern, not the resting colour.
+  expect(new Set(held).size).toBeGreaterThan(1);
+
+  // Play again picks up and moves on.
+  await playButton(page).click();
+  await expect.poll(async () => JSON.stringify((await readStrips(page, strip))[0])).not.toBe(JSON.stringify(held));
+});
+
+test('while playing, the mirrored side copies side 1, and Flip turns it over in one Undo step', async ({ page }) => {
+  const ids = await seedPiece(page, WINGED);
+  await page.getByTestId('symmetry-offer-mirror').click();
+  await expect.poll(async () => (await savedSides(page)).length).toBe(2);
+  expect((await savedSymmetry(page)).orientation).toBe('same');
+  const order = [ids['Left top'], ids['Left bottom'], ids['Right top'], ids['Right bottom']];
+  // One run per side, in flow order.
+  const sides = async () => {
+    const [a, b, c, d] = await readStrips(page, order);
+    return { left: [...a, ...b], right: [...c, ...d] };
+  };
+
+  // Side 2 says how it runs and carries the Flip; side 1 does not.
+  await expect(page.getByTestId('side-runs-side-2')).toHaveText('Same direction');
+  await expect(page.getByTestId('side-flip-side-1')).toHaveCount(0);
+  await expect(page.getByTestId('side-flip-side-2')).toHaveText('Flip');
+  await expect(page.getByTestId('side-flip-side-2')).toHaveAttribute('aria-label', 'Flip Right side');
+
+  await playButton(page).click();
+  await expect.poll(async () => {
+    const { left, right } = await sides();
+    return left.every(Boolean) && new Set(left).size > 1 && JSON.stringify(right) === JSON.stringify(left);
+  }).toBe(true);
+  // It is moving, and the copy holds on every frame.
+  const before = (await sides()).left;
+  await expect.poll(async () => JSON.stringify((await sides()).left)).not.toBe(JSON.stringify(before));
+
+  const historyBefore = await page.getByTitle(/Undo/).first().getAttribute('title');
+  await page.getByTestId('side-flip-side-2').click();
+  await expect.poll(async () => (await savedSymmetry(page))?.orientation).toBe('mirror');
+  await expect(page.getByTestId('side-runs-side-2')).toHaveText('Mirror image');
+  // Still playing, and side 2 now plays side 1 back to front.
+  await expect(playButton(page)).toHaveText('Pause');
+  await expect.poll(async () => {
+    const { left, right } = await sides();
+    return left.every(Boolean) && JSON.stringify(right) === JSON.stringify([...left].reverse())
+      && JSON.stringify(right) !== JSON.stringify(left);
+  }).toBe(true);
+
+  // Paused, the flipped frame holds.
+  await playButton(page).click();
+  await page.waitForTimeout(150);
+  const held = await sides();
+  await page.waitForTimeout(500);
+  expect(await sides()).toEqual(held);
+  expect(held.right).toEqual([...held.left].reverse());
+
+  // One Undo step turns it back, and the paused frame follows at once.
+  await undo(page);
+  await expect.poll(async () => (await savedSymmetry(page))?.orientation).toBe('same');
+  expect(await page.getByTitle(/Undo/).first().getAttribute('title')).toBe(historyBefore);
+  await expect(page.getByTestId('side-runs-side-2')).toHaveText('Same direction');
+  await expect.poll(async () => {
+    const { left, right } = await sides();
+    return JSON.stringify(right) === JSON.stringify(left);
+  }).toBe(true);
+  expect((await savedSides(page)).length).toBe(2);
+});
+
+test('with reduced motion, turning the light on shows a still frame, and Play still plays', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const ids = await seedPiece(page, WINGED);
+  const strip = [ids['Left top']];
+  await page.getByTitle(/Toggle ambient light preview/).click();
+  await expect(playButton(page)).toHaveText('Play');
+  await expect.poll(async () => new Set((await readStrips(page, strip))[0]).size).toBeGreaterThan(1);
+  const still = (await readStrips(page, strip))[0];
+  await page.waitForTimeout(600);
+  expect((await readStrips(page, strip))[0]).toEqual(still);
+  await playButton(page).click();
+  await expect(playButton(page)).toHaveText('Pause');
+  await expect.poll(async () => JSON.stringify((await readStrips(page, strip))[0])).not.toBe(JSON.stringify(still));
+});
+
+test('Play and Flip fit the desktop toolbar and a 390px phone', async ({ page }) => {
+  for (const [width, height, label] of [[1280, 860, 'desktop'], [390, 844, 'phone']] as const) {
+    await page.setViewportSize({ width, height });
+    await seedPiece(page, WINGED);
+    await page.getByTestId('symmetry-offer-mirror').click();
+    await playButton(page).click();
+    await expect(playButton(page)).toHaveText('Pause');
+    const box = await playButton(page).boundingBox();
+    const toolbar = await page.locator('.la .toolbar').boundingBox();
+    expect(box).not.toBeNull();
+    // Reachable without scrolling the toolbar.
+    expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height + 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)).toBe(false);
+    await page.screenshot({ path: `test-results/layout-play-${label}.png` });
+    const head = page.getByTestId('side-group-side-2').locator('.la-side-head');
+    await head.evaluate((el: HTMLElement) => el.scrollIntoView({ block: 'center' }));
+    const fits = await head.evaluate((el: HTMLElement) => {
+      const outer = el.getBoundingClientRect();
+      return Array.from(el.children).every(child => {
+        const r = (child as HTMLElement).getBoundingClientRect();
+        return r.right <= outer.right + 1 && r.left >= outer.left - 1;
+      });
+    });
+    expect(fits).toBe(true);
+    await head.screenshot({ path: `test-results/layout-flip-head-${label}.png` });
+    await page.screenshot({ path: `test-results/layout-flip-${label}.png` });
+  }
 });

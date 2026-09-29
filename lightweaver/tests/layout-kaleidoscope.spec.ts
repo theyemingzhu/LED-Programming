@@ -22,10 +22,12 @@ test('Kaleidoscope editor exposes bounded count and per-point inline steppers', 
   await page.getByLabel('More strip actions', { exact: true }).click();
   const actions = page.locator('.la-strip-menu-popover');
   // Secondary editing and wire-order actions share one labeled disclosure.
-  await expect(actions.getByRole('button')).toHaveCount(7);
+  await expect(actions.getByRole('button')).toHaveCount(6);
   await expect(actions.getByRole('button', { name: 'Flip path direction' })).toBeVisible();
   // Mirroring moved to Symmetry at the top of the strip list.
   await expect(actions.getByRole('button', { name: 'Mirror with…', exact: true })).toHaveCount(0);
+  // Split into separate strips was retired; Divide into sections covers it.
+  await expect(actions.getByRole('button', { name: /into two strips/ })).toHaveCount(0);
   await expect(actions.getByRole('button', { name: 'Duplicate strip', exact: true })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Remove strip', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit Kaleidoscope reflection points' }).click();

@@ -58,6 +58,15 @@ function mergeModeIntoHash(nextMode) {
   }
 }
 
+function prefersReducedMotion() {
+  try {
+    return typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+  } catch {
+    return false;
+  }
+}
+
 function measureSelectedPathDecoration(pathData) {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', pathData);
@@ -115,20 +124,52 @@ export function useLayoutCanvasInteraction(ctx, deps) {
   const [showHeat, setShowHeat]     = useState(false);
   const [lightMenuOpen, setLightMenuOpen] = useState(false);   // Light disclosure popover
   const [previewTime, setPreviewTime] = useState(0);
+  // Play / Pause is the clock of the Light preview, not a second preview:
+  // Light decides whether the canvas shows the pattern's colours, and the
+  // clock decides whether they move. Turning Light on plays, as it always
+  // has, unless the viewer asked the system for reduced motion; then it
+  // shows a still frame and Play still plays on request.
+  const [previewPaused, setPreviewPaused] = useState(false);
+  const previewPlaying = showLight && glowMode !== 'dots' && !previewPaused;
+  const previewTimeRef = useRef(0);
+  previewTimeRef.current = previewTime;
   useEffect(() => {
-    if (!showLight) return undefined;
+    if (!previewPlaying) return undefined;
     let frame = 0;
     let previous = 0;
+    let origin = null;
+    const resumeAt = previewTimeRef.current;
     const tick = now => {
+      // Resume where the pause left off rather than jumping ahead.
+      if (origin === null) origin = now / 1000 - resumeAt;
       if (now - previous >= 33) {
-        setPreviewTime(now / 1000);
+        setPreviewTime(now / 1000 - origin);
         previous = now;
       }
       frame = window.requestAnimationFrame(tick);
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
+  }, [previewPlaying]);
+  // Dots draw each strip in its own colour, so lighting the preview moves
+  // the glow off dots; otherwise Light (and Play) would change nothing.
+  const enableLightPreview = useCallback(() => {
+    if (!showLight) setPreviewPaused(prefersReducedMotion());
+    setShowLight(true);
+    setGlowMode(mode => mode === 'dots' ? 'center' : mode);
   }, [showLight]);
+  const toggleShowLight = useCallback(() => {
+    if (showLight) setShowLight(false);
+    else enableLightPreview();
+  }, [showLight, enableLightPreview]);
+  const togglePreviewPlaying = useCallback(() => {
+    if (previewPlaying) {
+      setPreviewPaused(true);
+      return;
+    }
+    enableLightPreview();
+    setPreviewPaused(false);
+  }, [previewPlaying, enableLightPreview]);
 
   // ── Draw tool state ────────────────────────────────────────────────────────
   const [drawMode, setDrawMode]     = useState(false);
@@ -296,11 +337,6 @@ export function useLayoutCanvasInteraction(ctx, deps) {
   useEffect(() => {
     resetView();
   }, [projectRevision]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const enableLightPreview = useCallback(() => {
-    setShowLight(true);
-    setGlowMode(mode => mode === 'dots' ? 'center' : mode);
-  }, []);
 
   // ── Strip move (drag on canvas) ────────────────────────────────────────────
   const startStripMove = useCallback((event, strip) => {
@@ -1065,7 +1101,8 @@ export function useLayoutCanvasInteraction(ctx, deps) {
     // mode
     mode, setMode, cancelActiveTool,
     // preview
-    showLight, setShowLight,
+    showLight, setShowLight, toggleShowLight,
+    previewPlaying, togglePreviewPlaying,
     showLeds, setShowLeds,
     glowMode, setGlowMode,
     directedGlow, setDirectedGlow,

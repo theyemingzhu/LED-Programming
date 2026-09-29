@@ -161,18 +161,6 @@ test('an invalid section count stays visible and cannot divide', async ({ page }
   await expect(commit).toBeEnabled();
 });
 
-test('Split into two shortcut creates two parts under the physical strip', async ({ page }) => {
-  await gotoFreshLayout(page);
-  await createOneStrip(page);
-
-  const firstName = await page.locator('.la-strip-row .layer-name').first().innerText();
-  await page.getByLabel('More strip actions').click();
-  await page.locator('[data-testid^="split-strip-"]').first().click();
-  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Part 1', 'Part 2']);
-  await expect(page.getByTestId('connected-parent')).toContainText(firstName);
-  await expect(page.locator('.la-gpio-group')).toHaveCount(1);
-});
-
 test('the Divide control fits at 390px wide with no horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await gotoFreshLayout(page);
