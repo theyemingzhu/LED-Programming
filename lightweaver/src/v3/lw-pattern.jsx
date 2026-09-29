@@ -141,6 +141,20 @@ import {
 import './patterns-workspace.css';
 import '../styles/project-stacks.css';
 
+// Opening a saved look writes its section looks onto the patch board. A side is
+// not a patch, so its look is written through the symmetry, the way the look
+// itself plays its sides (mirrored unless the look says otherwise).
+function applySavedLookWithSides({ patchBoard, strips, savedLook, symmetry = null }) {
+  let next = applySavedLookToPatchBoard({ patchBoard, strips, savedLook });
+  const sides = Array.isArray(symmetry?.sides) ? symmetry.sides : [];
+  if (!savedLook || !sides.length) return next;
+  for (const [targetId, sectionLook] of Object.entries(savedLook.sectionLooks || {})) {
+    if (!sides.some(side => side.id === targetId)) continue;
+    next = applyLookToPatchBoard({ patchBoard: next, strips, targetId, look: sectionLook, symmetry, sidesMirrored: savedLook.sidesMirrored !== false });
+  }
+  return next;
+}
+
 const sectionOrderKey = projectId => `lw_pattern_section_display_v1:${String(projectId || 'default')}`;
 function readSectionDisplayOrder(projectId) {
   try {
@@ -1510,11 +1524,11 @@ function writeSectionDisplayOrder(projectId, ids) {
       const saved = savedLooks.find(item => item.id === requestedId);
       if (!saved) return;
       setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
-      setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: saved }));
+      setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: saved, symmetry: layoutSymmetry }));
       setLibraryTab('stacks');
       params.delete('editStack');
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${params.toString()}`);
-    }, [board, savedLooks, setPatchBoard, setStandaloneController, strips]);
+    }, [board, layoutSymmetry, savedLooks, setPatchBoard, setStandaloneController, strips]);
 
     useEffect(() => {
       if (cardReturnConsumed.current || typeof window === 'undefined') return;
@@ -1586,7 +1600,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       } else if (requestedLookId) {
         const returnedLook = savedLooks.find(savedLook => String(savedLook.id || '').toLowerCase() === requestedLookId);
         if (returnedLook) {
-          setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: returnedLook }));
+          setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: returnedLook, symmetry: layoutSymmetry }));
           setStandaloneController(previous => ({
             ...(previous || {}),
             defaultLook: returnedLook.defaultLook,
@@ -1610,7 +1624,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       params.delete('editLook');
       const search = params.toString();
       window.history.replaceState(null, '', `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash}`);
-    }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, savedLooks, setPatchBoard, setStandaloneController, strips]);
+    }, [blockPatternCardEffect, board, cardLink, go, invalidatePendingPreview, projectId, savedGlobalLook, layoutSymmetry, savedLooks, setPatchBoard, setStandaloneController, strips]);
 
     // "Use on every section": the selected section's look becomes every
     // section's draft and the piece's default in one tap, and the whole piece
@@ -1932,11 +1946,11 @@ function writeSectionDisplayOrder(projectId, ids) {
       const nextDefaultLook = normalizeSectionVisualLook(normalizedDraftLooks[ALL_SECTIONS_TARGET_ID] || savedGlobalLook);
       let nextBoard = board;
       if (normalizedDraftLooks[ALL_SECTIONS_TARGET_ID]) {
-        nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: ALL_SECTIONS_TARGET_ID, look: nextDefaultLook });
+        nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: ALL_SECTIONS_TARGET_ID, look: nextDefaultLook, symmetry: layoutSymmetry, sidesMirrored });
       }
       for (const target of sectionTargets) {
         if (target.kind !== 'section' || !normalizedDraftLooks[target.id]) continue;
-        nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, look: normalizedDraftLooks[target.id] });
+        nextBoard = applyLookToPatchBoard({ patchBoard: nextBoard, strips, targetId: target.id, look: normalizedDraftLooks[target.id], symmetry: layoutSymmetry, sidesMirrored });
       }
       const nextTargets = deriveSectionTargets({ strips, patchBoard: nextBoard, wiring, compiledWiring, symmetry: layoutSymmetry, sidesMirrored, defaultLook: nextDefaultLook });
       let nextController = { ...(standaloneController || {}), defaultLook: nextDefaultLook };
@@ -1948,15 +1962,9 @@ function writeSectionDisplayOrder(projectId, ids) {
         defaultLook: nextDefaultLook,
         targets: nextTargets,
         patternLabRecipe: editingSavedLook?.patternLabRecipe ? recipeFromLook({ ...editingSavedLook, label: resolvedLabel, defaultLook: nextDefaultLook, sectionLooks: Object.fromEntries(nextTargets.filter(target => target.kind === 'section').map(target => [target.id, target.look])) }) : null,
+        symmetry: layoutSymmetry,
+        sidesMirrored: showSides ? sidesMirrored !== false : undefined,
       });
-      if (showSides) {
-        // How this look plays its sides is saved with the look, so a playlist
-        // can alternate mirrored and own looks.
-        nextController = {
-          ...nextController,
-          looks: (nextController.looks || []).map(item => (item.id === nextController.activeLookId ? { ...item, sidesMirrored: sidesMirrored !== false } : item)),
-        };
-      }
       return { nextLook, nextBoard, nextController, nextTargets };
     };
 
@@ -2367,7 +2375,7 @@ function writeSectionDisplayOrder(projectId, ids) {
         const next = duplicateProjectStack(standaloneController, savedLook.id);
         setStandaloneController(next);
         setExpandedStackId(next.activeLookId);
-        setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: next.looks.find(item => item.id === next.activeLookId) }));
+        setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: next.looks.find(item => item.id === next.activeLookId), symmetry: layoutSymmetry }));
         setLookSaveState('Saving…');
         setPendingLookSave(saveReceipt(next, `Duplicated in ${projectName || 'this project'}.`, { clearDraftIds: [next.activeLookId], resetActiveDraft: false }));
       } catch (error) { setLookSaveState(error.message || 'Could not duplicate stack.'); }
@@ -2383,7 +2391,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (!editingSavedLook) return;
       const repaired = repairProjectStack(editingSavedLook, sectionTargets);
       setStandaloneController(previous => ({ ...previous, looks: previous.looks.map(item => item.id === repaired.id ? repaired : item) }));
-      setPatchBoard(applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: repaired }));
+      setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: repaired, symmetry: layoutSymmetry }));
       setLookSaveState('Saving…');
       setPendingLookSave(saveReceipt({ ...standaloneController, looks: standaloneController.looks.map(item => item.id === repaired.id ? repaired : item) }, `Sections reviewed and saved in ${projectName || 'this project'}.`));
     };
@@ -2482,7 +2490,7 @@ function writeSectionDisplayOrder(projectId, ids) {
             invalidatePendingPreview();
             return;
           }
-          const nextBoard = applySavedLookToPatchBoard({ patchBoard: board, strips, savedLook: realLook });
+          const nextBoard = applySavedLookWithSides({ patchBoard: board, strips, savedLook: realLook, symmetry: layoutSymmetry });
           setPatchBoard(nextBoard);
           setStandaloneController(prev => ({
             ...(prev || {}),
