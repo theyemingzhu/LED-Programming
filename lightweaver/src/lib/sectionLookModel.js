@@ -19,10 +19,11 @@ export function deriveSectionTargets({
   patchBoard = null,
   wiring = null,
   compiledWiring = null,
-  mirrorSets = [],
+  symmetry = null,
+  sidesMirrored = true,
   defaultLook = {},
 } = {}) {
-  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, mirrorSets }) : null);
+  const compiled = compiledWiring || (wiring ? compileWiring({ wiring, strips, symmetry }) : null);
   if (compiled?.ok) {
     const fallbackLook = normalizeSectionVisualLook(defaultLook);
     // A target carries TWO identities and they are not interchangeable:
@@ -56,14 +57,15 @@ export function deriveSectionTargets({
       }
       return patchesByStripId.get(zone.id) || null;
     };
-    return [{
-      id: ALL_SECTIONS_TARGET_ID,
-      zoneId: '',
-      kind: 'all',
-      label: 'All sections',
-      pixelCount: compiled.totalPixels,
-      look: fallbackLook,
-    }, ...compiled.zones.map(zone => {
+    // Sides are only real when the compiled wiring actually carries a zone for
+    // every one of them (a symmetry the compiler ignored has none).
+    const sideSource = compiled.symmetry || symmetry;
+    const zoneById = new Map(compiled.zones.map(zone => [zone.id, zone]));
+    const sides = sideSource?.sides?.length && sideSource.sides.every(side => zoneById.has(side.id))
+      ? sideSource.sides
+      : [];
+    const sideZoneIds = new Set(sides.map(side => side.id));
+    const sectionFor = (zone, overrides = {}) => {
       const patch = zonePatch(zone);
       return {
         id: patch?.id || zone.id,
@@ -77,8 +79,29 @@ export function deriveSectionTargets({
         end: (zone.ranges.at(-1)?.start || 0) + Math.max(0, (zone.ranges.at(-1)?.count || 0) - 1),
         ranges: zone.ranges,
         look: patch ? lookFromPatchPlayback(patch.playback, fallbackLook) : fallbackLook,
+        ...overrides,
       };
-    })];
+    };
+    // A side's identity is the side, not a strip's patch: writes and saved
+    // looks key off `side-N`, and applyLookToPatchBoard fans the look out to
+    // the side's strips.
+    const sideTargets = sidesMirrored === false
+      ? sides.map(side => sectionFor(zoneById.get(side.id), { id: side.id }))
+      : sides.length
+        ? [sectionFor(zoneById.get(sides[0].id), {
+            id: sides[0].id,
+            label: 'Both sides, mirrored',
+            mirroredSides: sides.slice(1).map(side => side.id),
+          })]
+        : [];
+    return [{
+      id: ALL_SECTIONS_TARGET_ID,
+      zoneId: '',
+      kind: 'all',
+      label: 'All sections',
+      pixelCount: compiled.totalPixels,
+      look: fallbackLook,
+    }, ...sideTargets, ...compiled.zones.filter(zone => !sideZoneIds.has(zone.id)).map(zone => sectionFor(zone))];
   }
   const board = normalizePatchBoard(patchBoard, strips);
   const totalPixels = totalStripPixels(strips);
@@ -124,15 +147,25 @@ export function applyLookToPatchBoard({
   strips = [],
   targetId = ALL_SECTIONS_TARGET_ID,
   look = {},
+  symmetry = null,
+  sidesMirrored = true,
 } = {}) {
   const board = normalizePatchBoard(patchBoard, strips);
   const nextLook = normalizeSectionVisualLook(look);
   const isAll = !targetId || targetId === ALL_SECTIONS_TARGET_ID;
   const normalizedTarget = sanitizeId(targetId);
+  // A side target (`side-1`) is not a patch id. It writes to every strip of
+  // that side, or of every side when the look mirrors them, so all of them
+  // agree on the look the side shows.
+  const sideIndex = !isAll && symmetry?.sides ? symmetry.sides.findIndex(side => side.id === targetId) : -1;
+  const sideStripIds = sideIndex < 0 ? null : new Set(
+    (sidesMirrored === false ? [symmetry.sides[sideIndex]] : symmetry.sides).flatMap(side => side.stripIds || []).map(String),
+  );
 
   for (const patch of board.patches || []) {
     if (patch?.source?.type !== 'strip' || patch.output?.mode === 'off') continue;
-    const matches = isAll || patch.id === targetId || sanitizeId(patch.id) === normalizedTarget;
+    const matches = isAll
+      || (sideStripIds ? sideStripIds.has(String(patch.source.stripId)) : (patch.id === targetId || sanitizeId(patch.id) === normalizedTarget));
     if (!matches) continue;
     patch.playback = lookToPlayback(nextLook, patch.playback);
   }
@@ -169,6 +202,7 @@ export function normalizeSavedLooks(looks = []) {
       ...(nativeRecipe ? { nativeRecipe } : {}),
       ...(nativeRecipe && typeof look.nativeRecipeLayoutKey === 'string' ? { nativeRecipeLayoutKey: look.nativeRecipeLayoutKey } : {}),
       ...(look.sectionSnapshotVersion === 1 ? { sectionSnapshotVersion: 1 } : {}),
+      ...(typeof look.sidesMirrored === 'boolean' ? { sidesMirrored: look.sidesMirrored } : {}),
       updatedAt: Number.isFinite(Number(look.updatedAt)) ? Number(look.updatedAt) : 0,
     });
 
@@ -183,6 +217,8 @@ export function saveCurrentLookToController(controller = {}, {
   defaultLook = {},
   targets = [],
   patternLabRecipe = null,
+  symmetry = null,
+  sidesMirrored,
 } = {}) {
   const existing = normalizeSavedLooks(controller.looks);
   const baseId = sanitizeId(lookId || label || `look-${Date.now()}`) || `look-${Date.now()}`;
@@ -202,6 +238,9 @@ export function saveCurrentLookToController(controller = {}, {
     defaultLook: normalizeSectionVisualLook(defaultLook),
     sectionLooks: sectionLooksFromTargets(targets),
     sectionSnapshotVersion: 1,
+    // Each look remembers whether it mirrors the sides, so a playlist can
+    // alternate. A look saved on a piece with sides defaults to mirrored.
+    ...(typeof sidesMirrored === 'boolean' ? { sidesMirrored } : symmetry ? { sidesMirrored: true } : {}),
     ...(linkedRecipe ? { patternLabRecipe: linkedRecipe } : {}),
     updatedAt: Date.now(),
   };
