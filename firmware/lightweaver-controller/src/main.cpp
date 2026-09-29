@@ -132,6 +132,21 @@ LookConfig looks[LW_MAX_LOOKS];
 RuntimeConfig runtimeConfig;
 LightweaverColorPipeline outputColorPipeline;
 int8_t kaleidoscopeMappingZoneIndex[LW_MAX_KALEIDOSCOPE_MAPPINGS] = {};
+// Which zone each runtime zone is copying right now (symmetry sides), and its
+// flip bit. The project's configured value lives on ZoneConfig; a combo look
+// can override it per zone, so the renderer reads this resolved copy instead.
+// Runtime-only globals, never inside RuntimeConfig: 24 bytes total, not per copy.
+static_assert(LW_MAX_ZONES == 12, "activeZoneMirrorSource's initializer lists one entry per zone");
+// Symmetry sides stores its per-zone state in padding that already existed.
+// These pin that: growing either struct multiplies across every RuntimeConfig
+// copy (12 zones, and 32 looks x 12 look zones), so it must be a decision.
+static_assert(sizeof(ZoneConfig) == 96, "ZoneConfig grew; it is copied per RuntimeConfig");
+static_assert(sizeof(LookZoneConfig) == 68, "LookZoneConfig grew; 384 of them live in every RuntimeConfig");
+uint8_t activeZoneMirrorSource[LW_MAX_ZONES] = {
+    LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR,
+    LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR,
+    LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR, LW_ZONE_NO_MIRROR};
+bool activeZoneMirrorFlip[LW_MAX_ZONES] = {};
 
 String pieceName = "Lightweaver";
 String runtimeMode = "sequence";
@@ -352,6 +367,8 @@ bool isRecoveryPresetPattern(const String& id);
 bool renderRecoveryPattern(const String& id, CRGB* target, uint16_t count, uint32_t now, const PatternModifiers& mods);
 void applyLookToRuntimeZones(const LookConfig& look);
 void applyLookZoneToRuntimeZone(ZoneConfig& zone, const LookZoneConfig& lookZone);
+void resolveActiveZoneMirrors(const RuntimeConfig& config, const LookConfig* look);
+bool renderMirrorZone(const ZoneConfig& zone, uint8_t zoneIndex);
 CRGB colorForPreset(const String& preset);
 void showLeds();
 void showLeds(uint8_t brightnessByte);
@@ -789,6 +806,9 @@ void applyRuntimeConfig(const RuntimeConfig& config) {
     looks[i] = config.looks[i];
   }
   rebuildKaleidoscopePixelLookup(config);
+  // The zones may have changed shape, so no mirror from the previous config
+  // survives; the next look start overlays its own on top of these.
+  resolveActiveZoneMirrors(config, nullptr);
 }
 
 void rebuildKaleidoscopePixelLookup(const RuntimeConfig& config) {
@@ -1571,7 +1591,53 @@ void applyLookZoneToRuntimeZone(ZoneConfig& zone, const LookZoneConfig& lookZone
   zone.blackout = lookZone.blackout;
 }
 
+// The runtime zone a combo-look entry lands on: the zone with its id, else the
+// same position when that zone has not been claimed by id. Shared by the
+// pattern apply and the mirror resolve so the two can never disagree.
+static uint8_t lookZoneRuntimeTarget(const RuntimeConfig& config, const LookZoneConfig& lookZone,
+                                     uint8_t lookZoneIndex, const bool* touched) {
+  for (uint8_t zoneIndex = 0; zoneIndex < config.zoneCount; zoneIndex++) {
+    if (config.zones[zoneIndex].id == lookZone.id) return zoneIndex;
+  }
+  if (lookZoneIndex < config.zoneCount && !touched[lookZoneIndex]) return lookZoneIndex;
+  return LW_ZONE_NO_MIRROR;
+}
+
+// Symmetry sides: a look with per-zone entries decides mirroring for the zones
+// it lists (an entry without mirrorOf plays its own pattern); every other zone,
+// and every zone under a plain single-pattern look, keeps the project's
+// configured mirror. Chains are dropped here too, so the renderer's one-pass
+// "draw sources, then copy" order always holds even for a lenient parse.
+void resolveActiveZoneMirrors(const RuntimeConfig& config, const LookConfig* look) {
+  for (uint8_t zoneIndex = 0; zoneIndex < LW_MAX_ZONES; zoneIndex++) {
+    const bool live = zoneIndex < config.zoneCount;
+    activeZoneMirrorSource[zoneIndex] = live ? config.zones[zoneIndex].mirrorSource : LW_ZONE_NO_MIRROR;
+    activeZoneMirrorFlip[zoneIndex] =
+        live && (config.zones[zoneIndex].symmetryFlags & LW_ZONE_FLAG_MIRROR_FLIP);
+  }
+  if (look && look->hasZoneLooks && look->zoneCount > 0) {
+    bool touched[LW_MAX_ZONES] = {};
+    for (uint8_t lookZoneIndex = 0; lookZoneIndex < look->zoneCount; lookZoneIndex++) {
+      const LookZoneConfig& lookZone = look->zones[lookZoneIndex];
+      const uint8_t target = lookZoneRuntimeTarget(config, lookZone, lookZoneIndex, touched);
+      if (target >= config.zoneCount) continue;
+      touched[target] = true;
+      activeZoneMirrorSource[target] = lookZone.mirrorSource;
+      activeZoneMirrorFlip[target] = lookZone.symmetryFlags & LW_ZONE_FLAG_MIRROR_FLIP;
+    }
+  }
+  for (uint8_t zoneIndex = 0; zoneIndex < config.zoneCount; zoneIndex++) {
+    const uint8_t source = activeZoneMirrorSource[zoneIndex];
+    if (source == LW_ZONE_NO_MIRROR) continue;
+    if (source >= config.zoneCount || source == zoneIndex ||
+        activeZoneMirrorSource[source] != LW_ZONE_NO_MIRROR) {
+      activeZoneMirrorSource[zoneIndex] = LW_ZONE_NO_MIRROR;
+    }
+  }
+}
+
 void applyLookToRuntimeZones(const LookConfig& look) {
+  resolveActiveZoneMirrors(runtimeConfig, &look);
   if (runtimeConfig.zoneCount == 0) return;
 
   if (look.hasZoneLooks && look.zoneCount > 0) {
@@ -1579,19 +1645,10 @@ void applyLookToRuntimeZones(const LookConfig& look) {
     bool touched[LW_MAX_ZONES] = {};
     for (uint8_t lookZoneIndex = 0; lookZoneIndex < look.zoneCount; lookZoneIndex++) {
       const LookZoneConfig& lookZone = look.zones[lookZoneIndex];
-      bool matched = false;
-      for (uint8_t zoneIndex = 0; zoneIndex < runtimeConfig.zoneCount; zoneIndex++) {
-        if (runtimeConfig.zones[zoneIndex].id == lookZone.id) {
-          applyLookZoneToRuntimeZone(runtimeConfig.zones[zoneIndex], lookZone);
-          touched[zoneIndex] = true;
-          matched = true;
-          break;
-        }
-      }
-      if (!matched && lookZoneIndex < runtimeConfig.zoneCount && !touched[lookZoneIndex]) {
-        applyLookZoneToRuntimeZone(runtimeConfig.zones[lookZoneIndex], lookZone);
-        touched[lookZoneIndex] = true;
-      }
+      const uint8_t target = lookZoneRuntimeTarget(runtimeConfig, lookZone, lookZoneIndex, touched);
+      if (target >= runtimeConfig.zoneCount) continue;
+      applyLookZoneToRuntimeZone(runtimeConfig.zones[target], lookZone);
+      touched[target] = true;
     }
     return;
   }
@@ -1759,6 +1816,27 @@ bool renderZone(const ZoneConfig& zone, uint8_t zoneIndex, uint32_t now) {
   mods.patternClockMs = advanceZoneAnimationClock(zoneIndex, now, zone.speed);
   mods.hasPatternClock = true;
 
+  // Continuous zone (a symmetry side): the ranges are ONE pattern run in range
+  // order, so each range renders its own slice of an index space as long as
+  // the whole zone. Kaleidoscope reflection is never applied here — strict
+  // validation refuses a mapping on a continuous zone, since its lookup is
+  // defined on the range's own coordinates, not the side's.
+  if (zone.symmetryFlags & LW_ZONE_FLAG_CONTINUOUS) {
+    const uint32_t runLength = lwZoneLogicalLength(zone.ranges, zone.rangeCount, totalPixels);
+    bool rendered = false;
+    uint32_t logicalStart = 0;
+    for (uint8_t r = 0; r < zone.rangeCount; r++) {
+      const PixelRange& range = zone.ranges[r];
+      if (!lwZoneRangeUsable(range, totalPixels)) continue;
+      PatternCoordinateContext context;
+      context.logicalStart = static_cast<uint16_t>(logicalStart);
+      context.logicalCount = static_cast<uint16_t>(runLength);
+      if (renderZoneSlice(zone, look, mods, range.start, range.count, now, &context)) rendered = true;
+      logicalStart += range.count;
+    }
+    return rendered;
+  }
+
   // Traverse each range once. The bounded lookup was built when the runtime
   // config was applied, so frame rendering performs no mapping scans or zone
   // String comparisons per pixel.
@@ -1829,11 +1907,47 @@ bool renderCurrentLook(bool force) {
 
   if (runtimeConfig.zoneCount == 0) return false;
 
+  // Two passes: every zone that plays its own pattern first, then every
+  // mirroring zone copies its (already drawn) source. resolveActiveZoneMirrors
+  // guarantees a source never mirrors, so one pass of each is always enough,
+  // whatever order the zones were declared in.
   bool anyRendered = false;
   for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    if (activeZoneMirrorSource[i] != LW_ZONE_NO_MIRROR) continue;
     if (renderZone(runtimeConfig.zones[i], i, now)) anyRendered = true;
   }
+  for (uint8_t i = 0; i < runtimeConfig.zoneCount; i++) {
+    if (activeZoneMirrorSource[i] == LW_ZONE_NO_MIRROR) continue;
+    if (renderMirrorZone(runtimeConfig.zones[i], i)) anyRendered = true;
+  }
   return anyRendered;
+}
+
+// A mirroring zone draws no pattern of its own: it copies its source zone's
+// logical pixels, stretched to its own length, reversed when flipped. Its own
+// blackout and the provisional arm gate still darken it, exactly as renderZone
+// would. Only ever reached from renderCurrentLook(), so pixels streamed in over
+// Art-Net, WLED realtime or HTTP are never touched by a mirror.
+bool renderMirrorZone(const ZoneConfig& zone, uint8_t zoneIndex) {
+  const uint8_t source = activeZoneMirrorSource[zoneIndex];
+  if (zone.rangeCount == 0 || source >= runtimeConfig.zoneCount || source == zoneIndex ||
+      activeZoneMirrorSource[source] != LW_ZONE_NO_MIRROR) {
+    return false;
+  }
+  if (zone.blackout || !nativeArmZoneVisible(runtimeConfig.provisionalProject,
+                                             provisionalNativeArmedZones, zoneIndex)) {
+    bool cleared = false;
+    for (uint8_t r = 0; r < zone.rangeCount; r++) {
+      const PixelRange& range = zone.ranges[r];
+      if (!lwZoneRangeUsable(range, totalPixels)) continue;
+      fill_solid(leds + range.start, range.count, CRGB::Black);
+      cleared = true;
+    }
+    return cleared;
+  }
+  const ZoneConfig& sourceZone = runtimeConfig.zones[source];
+  return lwCopyMirroredZone(leds, totalPixels, sourceZone.ranges, sourceZone.rangeCount,
+                            zone.ranges, zone.rangeCount, activeZoneMirrorFlip[zoneIndex]) > 0;
 }
 
 bool renderSequenceFrame(bool force) {
@@ -2831,6 +2945,7 @@ String runtimeFirmwareInfo() {
   doc["capabilities"]["nativeRenderArm"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
   doc["capabilities"]["firmwareUpdate"]["network"] = true;
   doc["capabilities"]["firmwareUpdate"]["softwareGrant"] = true;
@@ -3358,6 +3473,12 @@ bool restoreLiveLookIfMatching() {
     }
   }
   runtimeConfig.syncZones = record.syncZones;
+  // Symmetry sides: whether the sides mirror each other is saved per look, not
+  // per zone, so it follows the look the owner was on rather than the startup
+  // look just applied. Only the mirror state moves; no second look start.
+  if (const LookConfig* resumedLook = findLookByExactId(String(record.currentLookId))) {
+    resolveActiveZoneMirrors(runtimeConfig, resumedLook);
+  }
   // Playlist play state. Deliberately does NOT force a boot-time look switch
   // to land visibly on entries[entryIndex] even when it differs from the
   // startup look — same reasoning as the currentLookId note above (a second
@@ -3919,6 +4040,14 @@ String runtimeZonesJson() {
     obj["driftHueMin"] = z.driftHueMin;
     obj["driftHueMax"] = z.driftHueMax;
     obj["blackout"] = z.blackout;
+    // Symmetry sides, as installed (a look may override mirroring while it
+    // plays). Emitted only when set, so a project without sides reads back
+    // byte-for-byte as it did before the feature existed.
+    if (z.symmetryFlags & LW_ZONE_FLAG_CONTINUOUS) obj["continuous"] = true;
+    if (z.mirrorSource < runtimeConfig.zoneCount) {
+      obj["mirrorOf"] = runtimeConfig.zones[z.mirrorSource].id;
+      obj["mirrorFlip"] = (z.symmetryFlags & LW_ZONE_FLAG_MIRROR_FLIP) != 0;
+    }
     JsonArray ranges = obj["ranges"].to<JsonArray>();
     for (uint8_t r = 0; r < z.rangeCount; r++) {
       JsonObject rng = ranges.add<JsonObject>();

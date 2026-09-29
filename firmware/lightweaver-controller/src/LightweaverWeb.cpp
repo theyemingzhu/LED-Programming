@@ -2876,6 +2876,11 @@ void handlePatterns() {
       z["breatheCycleSeconds"] = cfg.looks[i].zones[zoneIndex].breatheCycleSeconds;
       z["customDrift"] = cfg.looks[i].zones[zoneIndex].customDrift;
       z["blackout"] = cfg.looks[i].zones[zoneIndex].blackout;
+      const LookZoneConfig& lookZone = cfg.looks[i].zones[zoneIndex];
+      if (lookZone.mirrorSource < cfg.zoneCount) {
+        z["mirrorOf"] = cfg.zones[lookZone.mirrorSource].id;
+        z["mirrorFlip"] = (lookZone.symmetryFlags & LW_ZONE_FLAG_MIRROR_FLIP) != 0;
+      }
     }
   }
   String out;

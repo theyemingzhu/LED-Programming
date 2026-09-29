@@ -168,6 +168,8 @@ void resetLookZone(LookZoneConfig& zone) {
   zone.breatheCycleSeconds = 9;
   zone.customDrift = false;
   zone.blackout = false;
+  zone.mirrorSource = LW_ZONE_NO_MIRROR;
+  zone.symmetryFlags = 0;
 }
 
 void resetLook(LookConfig& look) {
@@ -243,6 +245,8 @@ void resetZone(ZoneConfig& zone) {
     zone.ranges[i].count = 0;
   }
   zone.rangeCount = 0;
+  zone.mirrorSource = LW_ZONE_NO_MIRROR;
+  zone.symmetryFlags = 0;
   zone.patternId = "aurora";
   zone.brightness = 1.0f;
   zone.speed = 1.0f;
@@ -318,6 +322,178 @@ void resetConfig(RuntimeConfig& config) {
   }
   config.kaleidoscopeMappingCount = 0;
   config.syncZones = true;
+}
+
+// ---- Symmetry sides: zones[].continuous / mirrorOf / mirrorFlip ----
+// See LightweaverZoneSymmetry.h. mirrorOf arrives as a zone id and is stored
+// as that zone's index in config.zones, so both helpers below run only after
+// the live zones have been parsed.
+
+static uint8_t findParsedZoneIndex(const RuntimeConfig& config, const char* id) {
+  if (!id || !id[0]) return LW_ZONE_UNKNOWN_MIRROR;
+  for (uint8_t index = 0; index < config.zoneCount; index++) {
+    if (config.zones[index].id == id) return index;
+  }
+  return LW_ZONE_UNKNOWN_MIRROR;
+}
+
+static uint8_t findLookZoneEntry(const LookConfig& look, const char* id) {
+  if (!id || !id[0]) return LW_ZONE_UNKNOWN_MIRROR;
+  for (uint8_t index = 0; index < look.zoneCount; index++) {
+    if (look.zones[index].id == id) return index;
+  }
+  return LW_ZONE_UNKNOWN_MIRROR;
+}
+
+static JsonArray configLooksJson(JsonDocument& doc) {
+  JsonArray looks = doc["looks"].as<JsonArray>();
+  if (looks.isNull()) looks = doc["patterns"].as<JsonArray>();
+  return looks;
+}
+
+// Lenient parse. Strict validation (validateZoneSymmetryStrict) rejects every
+// config this has to forgive, so anything unresolvable simply plays its own
+// pattern here; the renderer additionally refuses to copy along a chain.
+static void resolveZoneSymmetry(JsonDocument& doc, RuntimeConfig& config) {
+  JsonArray zones = doc["zones"].as<JsonArray>();
+  for (JsonVariant zoneValue : zones) {
+    if (!zoneValue["mirrorOf"].is<const char*>()) continue;
+    const uint8_t target = findParsedZoneIndex(config, zoneValue["id"] | "");
+    if (target == LW_ZONE_UNKNOWN_MIRROR) continue;
+    const uint8_t source =
+        findParsedZoneIndex(config, zoneValue["mirrorOf"].as<const char*>());
+    config.zones[target].mirrorSource =
+        source == LW_ZONE_UNKNOWN_MIRROR || source == target ? LW_ZONE_NO_MIRROR : source;
+  }
+
+  uint8_t lookIndex = 0;
+  for (JsonVariant lookValue : configLooksJson(doc)) {
+    if (lookIndex >= config.lookCount) break;
+    LookConfig& look = config.looks[lookIndex++];
+    JsonArray lookZones = lookValue["zones"].as<JsonArray>();
+    for (JsonVariant zoneValue : lookZones) {
+      if (!zoneValue["mirrorOf"].is<const char*>()) continue;
+      const char* id = zoneValue["id"] | "";
+      const uint8_t entry = findLookZoneEntry(look, id);
+      const uint8_t target = findParsedZoneIndex(config, id);
+      if (entry == LW_ZONE_UNKNOWN_MIRROR || target == LW_ZONE_UNKNOWN_MIRROR) continue;
+      const uint8_t source =
+          findParsedZoneIndex(config, zoneValue["mirrorOf"].as<const char*>());
+      look.zones[entry].mirrorSource =
+          source == LW_ZONE_UNKNOWN_MIRROR || source == target ? LW_ZONE_NO_MIRROR : source;
+    }
+  }
+}
+
+static bool optionalJsonBool(JsonVariantConst value) {
+  return value.isNull() || value.is<bool>();
+}
+
+static bool zoneMirrorErrorMessage(const RuntimeConfig& parsed, const uint8_t* sources,
+                                   const String& prefix, String& message) {
+  uint8_t badZone = 0;
+  const LwZoneMirrorError error =
+      lwValidateZoneMirrors(parsed.zones, parsed.zoneCount, sources, badZone);
+  if (error == LwZoneMirrorError::None) return false;
+  message = prefix + "zone " + parsed.zones[badZone].id + " " + lwZoneMirrorErrorText(error);
+  const uint8_t source = sources[badZone];
+  if (source < parsed.zoneCount && error != LwZoneMirrorError::SelfSource) {
+    message += String(" (") + parsed.zones[source].id + ")";
+  }
+  return true;
+}
+
+// Strict half of the contract, run on the already-parsed config so ids resolve
+// against exactly the zones the card will render. Rules:
+//   - continuous and mirrorFlip are booleans; mirrorOf is a non-empty zone id.
+//   - mirrorOf names an existing zone, never the zone itself, never a zone that
+//     itself mirrors (no chains), and never a zone sharing pixels with it.
+//   - a kaleidoscope mapping may not target a continuous zone: its per-pixel
+//     reflection lookup is defined on one range's own coordinates, and a
+//     continuous run replaces those coordinates with the side's.
+//   - each saved look is checked as it will actually play: its listed zones take
+//     the entry's mirrorOf (none when absent), unlisted zones keep the live one.
+static bool validateZoneSymmetryStrict(JsonDocument& doc, const RuntimeConfig& parsed,
+                                       String& message) {
+  uint8_t liveSources[LW_MAX_ZONES];
+  for (uint8_t index = 0; index < LW_MAX_ZONES; index++) liveSources[index] = LW_ZONE_NO_MIRROR;
+
+  JsonArray zones = doc["zones"].as<JsonArray>();
+  for (JsonVariant zoneValue : zones) {
+    const String id = String(zoneValue["id"] | "");
+    if (!optionalJsonBool(zoneValue["continuous"])) {
+      message = String("zone ") + id + " continuous must be a boolean";
+      return false;
+    }
+    if (!optionalJsonBool(zoneValue["mirrorFlip"])) {
+      message = String("zone ") + id + " mirrorFlip must be a boolean";
+      return false;
+    }
+    JsonVariantConst mirrorOf = zoneValue["mirrorOf"];
+    if (mirrorOf.isNull()) continue;
+    if (!mirrorOf.is<const char*>() || !mirrorOf.as<const char*>()[0]) {
+      message = String("zone ") + id + " mirrorOf must be a zone id";
+      return false;
+    }
+    const uint8_t target = findParsedZoneIndex(parsed, id.c_str());
+    if (target == LW_ZONE_UNKNOWN_MIRROR) {
+      message = String("zone ") + id + " is not a renderable zone";
+      return false;
+    }
+    liveSources[target] = findParsedZoneIndex(parsed, mirrorOf.as<const char*>());
+    if (liveSources[target] == LW_ZONE_UNKNOWN_MIRROR) {
+      message = String("zone ") + id + " mirrors unknown zone " + mirrorOf.as<const char*>();
+      return false;
+    }
+  }
+  if (zoneMirrorErrorMessage(parsed, liveSources, "", message)) return false;
+
+  for (uint8_t mappingIndex = 0; mappingIndex < parsed.kaleidoscopeMappingCount; mappingIndex++) {
+    const KaleidoscopeMappingConfig& mapping = parsed.kaleidoscopeMappings[mappingIndex];
+    const uint8_t zoneIndex = findParsedZoneIndex(parsed, mapping.zoneId.c_str());
+    if (zoneIndex != LW_ZONE_UNKNOWN_MIRROR &&
+        (parsed.zones[zoneIndex].symmetryFlags & LW_ZONE_FLAG_CONTINUOUS)) {
+      message = String("kaleidoscope mapping ") + mapping.id +
+                " cannot target continuous zone " + mapping.zoneId;
+      return false;
+    }
+  }
+
+  for (JsonVariant lookValue : configLooksJson(doc)) {
+    JsonArray lookZones = lookValue["zones"].as<JsonArray>();
+    if (lookZones.isNull()) continue;
+    const String lookId = String(lookValue["id"] | "");
+    uint8_t lookSources[LW_MAX_ZONES];
+    memcpy(lookSources, liveSources, sizeof(lookSources));
+    for (JsonVariant zoneValue : lookZones) {
+      const String id = String(zoneValue["id"] | "");
+      if (!optionalJsonBool(zoneValue["mirrorFlip"])) {
+        message = String("look ") + lookId + " zone " + id + " mirrorFlip must be a boolean";
+        return false;
+      }
+      JsonVariantConst mirrorOf = zoneValue["mirrorOf"];
+      if (!mirrorOf.isNull() && (!mirrorOf.is<const char*>() || !mirrorOf.as<const char*>()[0])) {
+        message = String("look ") + lookId + " zone " + id + " mirrorOf must be a zone id";
+        return false;
+      }
+      const uint8_t target = findParsedZoneIndex(parsed, id.c_str());
+      if (target == LW_ZONE_UNKNOWN_MIRROR) continue;  // rejected earlier as unknown
+      if (mirrorOf.isNull()) {
+        lookSources[target] = LW_ZONE_NO_MIRROR;
+        continue;
+      }
+      lookSources[target] = findParsedZoneIndex(parsed, mirrorOf.as<const char*>());
+      if (lookSources[target] == LW_ZONE_UNKNOWN_MIRROR) {
+        message = String("look ") + lookId + " zone " + id + " mirrors unknown zone " +
+                  mirrorOf.as<const char*>();
+        return false;
+      }
+    }
+    if (zoneMirrorErrorMessage(parsed, lookSources, String("look ") + lookId + " ", message)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void applyJsonToConfig(JsonDocument& doc, RuntimeConfig& config, RuntimeSource source) {
@@ -453,6 +629,10 @@ void applyJsonToConfig(JsonDocument& doc, RuntimeConfig& config, RuntimeSource s
         zone.breatheCycleSeconds = constrain(int(zoneJson["breatheCycleSeconds"] | 9), 4, 30);
         zone.customDrift = zoneJson["customDrift"] | false;
         zone.blackout = zoneJson["blackout"] | false;
+        // mirrorOf is resolved to a zone index by resolveZoneSymmetry() once
+        // the live zones below have been parsed.
+        zone.mirrorSource = LW_ZONE_NO_MIRROR;
+        zone.symmetryFlags = (zoneJson["mirrorFlip"] | false) ? LW_ZONE_FLAG_MIRROR_FLIP : 0;
         if (zone.id.length() > 0 && zone.patternId.length() > 0) look.zoneCount++;
       }
     }
@@ -486,6 +666,10 @@ void applyJsonToConfig(JsonDocument& doc, RuntimeConfig& config, RuntimeSource s
       zone.driftHueMin = zoneJson["driftHueMin"] | 0;
       zone.driftHueMax = zoneJson["driftHueMax"] | 255;
       zone.blackout = zoneJson["blackout"] | false;
+      zone.mirrorSource = LW_ZONE_NO_MIRROR;
+      zone.symmetryFlags = 0;
+      if (zoneJson["continuous"] | false) zone.symmetryFlags |= LW_ZONE_FLAG_CONTINUOUS;
+      if (zoneJson["mirrorFlip"] | false) zone.symmetryFlags |= LW_ZONE_FLAG_MIRROR_FLIP;
       zone.rangeCount = 0;
       JsonArray ranges = zoneJson["ranges"].as<JsonArray>();
       if (!ranges.isNull()) {
@@ -500,6 +684,7 @@ void applyJsonToConfig(JsonDocument& doc, RuntimeConfig& config, RuntimeSource s
       if (zone.rangeCount > 0) config.zoneCount++;
     }
   }
+  resolveZoneSymmetry(doc, config);
 
   // Playlist — optional; absent means no sequencing (see PlaylistConfig in
   // LightweaverTypes.h). Decoded via decodePlaylistRecord() (Storage.h), the
@@ -1211,6 +1396,7 @@ bool validateRuntimeConfigJsonStrict(const String& json,
   if (!loadJsonString(json, parsed, source, message)) return false;
   if (!validateKaleidoscopeMappingsStrict(
           doc, static_cast<uint16_t>(totalPixels), parsed, message)) return false;
+  if (!validateZoneSymmetryStrict(doc, parsed, message)) return false;
   parsed.configDigest = sha256Hex(json);
   return true;
 }
@@ -2673,6 +2859,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
+  doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;
   doc["capabilities"]["firmwareUpdate"]["version"] = LW_FIRMWARE_UPDATE_VERSION;
   doc["capabilities"]["firmwareUpdate"]["network"] = true;
   doc["capabilities"]["firmwareUpdate"]["softwareGrant"] = true;
