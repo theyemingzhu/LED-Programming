@@ -58,8 +58,13 @@ export async function verifyClientOrigin(origin, root, { fetchImpl = fetch } = {
   const graph = JSON.parse((await get(CLIENT_GRAPH, true)).toString());
   if (JSON.stringify(graph) !== JSON.stringify(expected)) throw new Error('Client live build graph differs from staged candidate');
   for (const entry of expected.files) {
-    const bytes = await get(entry.path, entry.path === CLIENT_RELEASE);
-    if (bytes.length !== entry.bytes || hash(bytes) !== entry.sha256) throw new Error(`Client live bytes differ: ${entry.path}`);
+    // Cloudflare Pages answers /index.html with a 308 to /, so the page is
+    // proven at the root, the address a visitor actually opens.
+    const livePath = entry.path === 'index.html' ? '' : entry.path;
+    const bytes = await get(livePath, entry.path === CLIENT_RELEASE);
+    if (bytes.length !== entry.bytes || hash(bytes) !== entry.sha256) {
+      throw new Error(livePath === '' ? 'Client live root differs from staged index' : `Client live bytes differ: ${entry.path}`);
+    }
   }
   // Prove the customer-facing root, not merely the separately fetchable HTML path.
   const index = expected.files.find(entry => entry.path === 'index.html');
