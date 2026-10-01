@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { buildInstallPlan, installBackgroundRelease, launchAgentPlist, RUNTIME_FILES, writeRuntime } from './install-background-release.mjs';
+import { buildInstallPlan, installBackgroundRelease, launchAgentPlist, controllerLaunchAgentPlist, RUNTIME_FILES, writeRuntime } from './install-background-release.mjs';
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'release installer & '));
@@ -64,4 +64,13 @@ test('a source byte change produces a new runtime path but retains one stable jo
   const after = await buildInstallPlan(paths);
   assert.notEqual(after.runtimePath, before.runtimePath);
   assert.equal(after.label, before.label);
+});
+
+test('candidate service resumes interrupted versioned checks without retrying blocked releases', async () => {
+ const plan=await buildInstallPlan(await fixture());const xml=controllerLaunchAgentPlist(plan);
+ assert.match(xml,/release-controller.mjs/);assert.match(xml,/<string>resume-all<\/string>/);assert.match(xml,/--only-interrupted/);assert.match(xml,/release\.[a-f0-9]{12}\.candidates/);
+ assert.ok(RUNTIME_FILES.includes('scripts/release-events.mjs'));assert.ok(RUNTIME_FILES.includes('scripts/release-check-plan.mjs'));
+});
+test('repair activation requires a configured absolute executable',async()=>{
+ await assert.rejects(installBackgroundRelease({...await fixture(),dryRun:true,enableRepair:true}),/absolute codexPath/);
 });

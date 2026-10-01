@@ -10,6 +10,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const RUNTIME_FILES = [
   'scripts/background-release.mjs',
+  'scripts/release-events.mjs',
+  'scripts/release-controller.mjs',
+  'scripts/release-queue.mjs',
+  'scripts/release-check-plan.mjs',
   'scripts/background-release-proof.mjs',
   'lightweaver/scripts/client-release.mjs',
   'lightweaver/src/lib/studioRelease.js',
@@ -25,6 +29,13 @@ export function launchAgentPlist(plan) {
     'resume', '--only-interrupted', '--state-dir', plan.stateDir];
   const items = args.map(value => `    <string>${xml(value)}</string>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n  <key>Label</key><string>${xml(plan.label)}</string>\n  <key>ProgramArguments</key>\n  <array>\n${items}\n  </array>\n  <key>WorkingDirectory</key><string>${xml(plan.repoRoot)}</string>\n  <key>EnvironmentVariables</key>\n  <dict><key>PATH</key><string>${xml(plan.pathEnv)}</string></dict>\n  <key>RunAtLoad</key><true/>\n  <key>StartInterval</key><integer>300</integer>\n  <key>ProcessType</key><string>Background</string>\n</dict>\n</plist>\n`;
+}
+
+export function controllerLaunchAgentPlist(plan) {
+  return launchAgentPlist(plan)
+    .replaceAll('scripts/background-release.mjs', 'scripts/release-controller.mjs')
+    .replace('<string>resume</string>', '<string>resume-all</string>')
+    .replace(`<string>${xml(plan.label)}</string>`, `<string>${xml(plan.label)}.candidates</string>`);
 }
 
 export async function buildInstallPlan({ checkoutRoot = sourceRoot, gitCommonDir, userHome = homedir(), nodePath = process.execPath, pathEnv = process.env.PATH || '' } = {}) {
@@ -76,7 +87,8 @@ function launchctl(args) {
   return result;
 }
 
-export async function installBackgroundRelease({ dryRun = false, platform = process.platform, uid = process.getuid?.(), ...options } = {}) {
+export async function installBackgroundRelease({ dryRun = false, platform = process.platform, uid = process.getuid?.(), enableRepair = false, codexPath, ...options } = {}) {
+  if (enableRepair && !isAbsolute(codexPath || '')) throw new Error('Enabling repair requires an absolute codexPath.');
   const plan = await buildInstallPlan(options);
   const publicPlan = {
     label: plan.label, plistPath: plan.plistPath, runtimePath: plan.runtimePath,
@@ -97,7 +109,17 @@ export async function installBackgroundRelease({ dryRun = false, platform = proc
   await rename(plistTemp, plan.plistPath);
   const bootstrap = launchctl(['bootstrap', `gui/${uid}`, plan.plistPath]);
   if (bootstrap.status !== 0) throw new Error(`Could not start release observer: ${bootstrap.stderr.trim()}`);
-  const installRecord = { label: plan.label, plistPath: plan.plistPath, runtimePath: plan.runtimePath, stateDir: plan.stateDir };
+  const candidatePlist = plan.plistPath.replace(/\.plist$/, '.candidates.plist');
+  const candidateService = `gui/${uid}/${plan.label}.candidates`;
+  if (launchctl(['print', candidateService]).status === 0) {
+    const result = launchctl(['bootout', candidateService]);
+    if (result.status !== 0) throw new Error(`Could not stop candidate resumer: ${result.stderr.trim()}`);
+  }
+  await writeFile(candidatePlist, controllerLaunchAgentPlist(plan), { mode: 0o644 });
+  const candidateStart = launchctl(['bootstrap', `gui/${uid}`, candidatePlist]);
+  if (candidateStart.status !== 0) throw new Error(`Could not start candidate resumer: ${candidateStart.stderr.trim()}`);
+  if (enableRepair) await writeFile(join(plan.stateDir, 'repair-config.json'), `${JSON.stringify({ enabled: true, codexPath, maxAttemptsPerRevision: 1 }, null, 2)}\n`, { mode: 0o600 });
+  const installRecord = { candidatePlist, label: plan.label, plistPath: plan.plistPath, runtimePath: plan.runtimePath, stateDir: plan.stateDir };
   await writeFile(join(plan.stateDir, 'install.json'), `${JSON.stringify(installRecord, null, 2)}\n`, { mode: 0o600 });
   return { dryRun: false, ...publicPlan };
 }
@@ -109,11 +131,14 @@ function commonGitDir() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
-  if (args.length && !(args.length === 1 && args[0] === '--dry-run')) {
-    process.stderr.write('Usage: install-background-release.mjs [--dry-run]\n');
+  const supported = new Set(['--dry-run', '--enable-repair', '--codex-path']);
+  const pathIndex = args.indexOf('--codex-path');
+  const codexPath = pathIndex >= 0 ? args[pathIndex + 1] : undefined;
+  if (args.some((arg, i) => !(pathIndex >= 0 && i === pathIndex + 1) && !supported.has(arg)) || (pathIndex >= 0 && !codexPath)) {
+    process.stderr.write('Usage: install-background-release.mjs [--dry-run] [--enable-repair --codex-path /absolute/path]\n');
     process.exitCode = 2;
   } else {
-    installBackgroundRelease({ dryRun: args[0] === '--dry-run', checkoutRoot: sourceRoot, gitCommonDir: commonGitDir() })
+    installBackgroundRelease({ dryRun: args.includes('--dry-run'), enableRepair: args.includes('--enable-repair'), codexPath, checkoutRoot: sourceRoot, gitCommonDir: commonGitDir() })
       .then(result => process.stdout.write(`${JSON.stringify(result)}\n`))
       .catch(error => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
   }

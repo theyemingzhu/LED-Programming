@@ -8,6 +8,8 @@ import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/prom
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { publishReleaseEvent } from './release-events.mjs';
+
 const exec = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -235,24 +237,16 @@ export function terminalNotice(state) {
   };
 }
 
-async function notifyTerminal(dir, state) {
-  const events = join(dir, 'events');
-  await mkdir(events, { recursive: true, mode: 0o700 });
-  const event = join(events, `${state.revision}-${state.phase}.json`);
-  let handle;
-  try { handle = await open(event, 'wx', 0o600); }
-  catch (error) { if (error.code === 'EEXIST') return; throw error; }
-  const notice = terminalNotice(state);
-  try { await handle.writeFile(`${JSON.stringify({ ...notice, revision: state.revision, phase: state.phase, at: Date.now() })}\n`); }
-  finally { await handle.close(); }
+export async function notifyTerminal(dir, state, dependencies) {
+  const event = await publishReleaseEvent(dir, state, dependencies);
   await withLock(dir, async () => {
     const latest = await readState(dir);
-    if (latest?.revision === state.revision && latest.phase === state.phase) await saveState(dir, { ...latest, notified: true });
+    if (latest?.revision === state.revision && latest.phase === state.phase) {
+      const { notified, ...rest } = latest;
+      await saveState(dir, { ...rest, notification: event.notification, repair: event.repair, eventKey: event.key });
+    }
   });
-  if (process.platform !== 'darwin') return;
-  try {
-    await exec('osascript', ['-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run', notice.title, notice.body], { timeout: 10_000 });
-  } catch { /* The durable event remains available when macOS notifications are unavailable. */ }
+  return event;
 }
 
 async function worker(options) {
@@ -275,6 +269,7 @@ async function worker(options) {
       const failures = current.failures + 1;
       next = { ...current, failures, phase: failures >= 8 ? 'blocked' : current.phase, recoverable: true, reason: failures >= 8 ? 'GitHub API unavailable after eight attempts; run resume when connectivity returns.' : 'GitHub API temporarily unavailable.', updatedAt: Date.now() };
     }
+    if (terminal.has(next.phase)) next.eventRequired = true;
     let saved = false;
     await withLock(dir, async () => {
       const latest = await readState(dir);
@@ -298,9 +293,11 @@ async function main() {
   }
   if (options.command === 'status') {
     const state = await readState(dir);
-    process.stdout.write(`${JSON.stringify(state ? { revision: state.revision, deployRevision: state.deployRevision, phase: state.phase, reason: state.reason, origin: state.origin, testsUrl: state.testsUrl, signerUrl: state.signerUrl, deployUrl: state.deployUrl, studioBuildNumber: state.studioBuildNumber, firmwareBuildNumber: state.firmwareBuildNumber, clientBuildNumber: state.clientBuildNumber, notified: Boolean(state.notified), observerAlive: pidAlive(state.pid) } : { phase: 'idle' })}\n`);
+    process.stdout.write(`${JSON.stringify(state ? { revision: state.revision, deployRevision: state.deployRevision, phase: state.phase, reason: state.reason, origin: state.origin, testsUrl: state.testsUrl, signerUrl: state.signerUrl, deployUrl: state.deployUrl, studioBuildNumber: state.studioBuildNumber, firmwareBuildNumber: state.firmwareBuildNumber, clientBuildNumber: state.clientBuildNumber, notification: state.notification || { status: state.notified ? 'legacy-unconfirmed' : 'unknown', deliveryConfirmed: false }, repair: state.repair, observerAlive: pidAlive(state.pid) } : { phase: 'idle' })}\n`);
   } else if (options.command === 'worker') await worker(options);
   else {
+    const previous = await readState(dir);
+    if (options.command === 'resume' && previous?.eventRequired && terminal.has(previous.phase)) await notifyTerminal(dir, previous);
     const state = await start(options, options.command === 'resume');
     process.stdout.write(`${JSON.stringify(state ? { revision: state.revision, phase: state.phase, pid: state.pid, stateDir: dir } : { phase: 'idle', stateDir: dir })}\n`);
   }
