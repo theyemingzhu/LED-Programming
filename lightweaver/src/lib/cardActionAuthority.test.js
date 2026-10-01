@@ -206,7 +206,7 @@ test('golden table: every lifecycle state × platform capability set', () => {
     assert.equal(lifecycle.state, row.state, `fixture for ${row.state} derives ${lifecycle.state}`);
     covered.add(lifecycle.state);
     for (const [name, capabilities] of Object.entries(CAPABILITY_SETS)) {
-      const expected = row.expected[name] || row.expected;
+      const expected = { ...(row.expected[name] || row.expected), ...(lifecycle.installedControlsReady ? { surface: 'card-control' } : {}) };
       const verdict = deriveCardAction({
         lifecycle,
         link: row.input.link,
@@ -243,7 +243,7 @@ test('loop-breaker pin: a connected exact card asking for load-matching-project 
       link: input.link,
       capabilities: CAPABILITY_SETS['webserial-capable'],
     });
-    assert.equal(verdict.surface, 'setup');
+    assert.equal(verdict.surface, lifecycle.installedControlsReady ? 'card-control' : 'setup');
     assert.notEqual(verdict.surface, 'connection-center');
   }
 });

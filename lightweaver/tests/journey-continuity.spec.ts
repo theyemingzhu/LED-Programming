@@ -195,16 +195,14 @@ test('[J02] a card holding a different project never silently replaces open work
   expect(await readOpenId(), 'Studio replaced the owner’s open work without being asked').toBe('lwproj-open-work');
 
   const offer = page.locator(
-    '[data-testid="setup-keep-open-project"], [data-testid="setup-load-matched"], [data-testid="setup-start-from-card"]',
+    '[data-testid="installed-project-open"]',
   );
   await expect(
     offer.first(),
     'a card holding a project Studio has never seen must offer a real choice, not silence',
   ).toBeVisible({ timeout: CONNECT_BUDGET_MS });
 
-  // Re-read after the card has had time to settle and any auto-adopt pass has
-  // run its course — the open work must still be exactly what it was, not
-  // merely unchanged in the first instant after connect.
+  // The explicit installed-project offer must leave the open work unchanged.
   expect(await readOpenId(), 'Studio replaced the owner’s open work without being asked').toBe('lwproj-open-work');
 
   expect(spec.projectId, 'fixture sanity: installed-different must actually differ').toBe(OTHER_PROJECT_ID);

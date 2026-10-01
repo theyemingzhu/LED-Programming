@@ -1,10 +1,6 @@
-// Adopting the project a card already holds must visibly finish Setup — even
-// for a "legacy" card flashed before fingerprint reporting, which answers with
-// projectRevision 0 and an empty projectFingerprint for a project it genuinely
-// holds. That exact card shape (Adrian's real gallery card, firmware build
-// 1306) used to make "Use this card's project" look dead: adoption applied,
-// but no fingerprint could ever match, so Setup stayed on phase 1 offering the
-// same buttons forever.
+// Legacy cards with no project fingerprint remain controllable. Opening their
+// recoverable project is explicit; reload must preserve installed context, and
+// failed adoption must remain visible without replacing the current draft.
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -76,29 +72,24 @@ async function connectLegacyCard(page) {
   }]);
 }
 
-async function expectSetupComplete(page) {
-  // "Setup complete" + "Installed project matches" + the Patterns door ARE the
-  // finished verdict. The ready banner used to repeat it in a heading and a
-  // paragraph of its own; Card Home was compressed to one status, so this
-  // asserts the banner is present and lets the row and the ladder say it once.
-  await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
-  await expect(page.getByTestId('setup-progress')).toHaveText(/^Setup complete(?: · Viewing phase [1-4])?$/);
-  await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
+async function expectInstalledHome(page) {
+  await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('installed-control-open')).toBeVisible();
+  await expect(page.getByTestId('setup-todo')).toHaveCount(0);
   await expect(page.getByTestId('setup-adoption-error')).toHaveCount(0);
-  await expect(page.getByTestId('setup-open-patterns')).toBeVisible();
 }
 
-test('a fresh Studio adopts the legacy card project and finishes Setup by itself', async ({ page }) => {
+test('a fresh Studio offers the legacy installed project without implicit adoption, including after reload', async ({ page }) => {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expectSetupComplete(page);
-
-  // And it must survive a reload: the restored installation record re-verifies
-  // against the same legacy evidence rather than demoting back to phase 1.
+  await expectInstalledHome(page);
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id);
+  expect(before).not.toBe(PROJECT_ID);
+  await page.getByTestId('installed-project-open').click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id)).toBe(PROJECT_ID);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expect(page.getByTestId('setup-progress')).toHaveText(/^Setup complete(?: · Viewing phase [1-4])?$/, { timeout: 10000 });
-  await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project matches');
+  await expectInstalledHome(page);
 });
 
 test('an older card revision cannot automatically replace a saved same-ID Studio layout', async ({ page }) => {
@@ -131,7 +122,7 @@ test('an older card revision cannot automatically replace a saved same-ID Studio
   expect(openProject.origin).toBeNull();
 });
 
-test('"Use this card’s project" visibly finishes Setup when another project is open', async ({ page }) => {
+test('"Open installed project" explicitly opens the card copy when another project is open', async ({ page }) => {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   // Open a different project with its own described wiring, so nothing
   // auto-adopts and the unresolved-project task must offer the choice.
@@ -147,13 +138,11 @@ test('"Use this card’s project" visibly finishes Setup when another project is
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
 
-  // The unresolved-project task says what the situation IS and offers adoption.
-  // It used to print the card's raw project id — internal slug, meaningless to
-  // an owner — so it now states the relationship instead.
-  await expect(page.getByTestId('setup-card-project-note'))
-    .toContainText(/different project|holds the same project/, { timeout: 10000 });
-  await page.getByTestId('setup-start-from-card').click();
-  await expectSetupComplete(page);
+  // The installed home distinguishes the draft and offers explicit adoption.
+  await expect(page.getByTestId('card-draft-difference'))
+    .toContainText(/different project|draft/i, { timeout: 10000 });
+  await page.getByTestId('installed-project-open').click();
+  await expectInstalledHome(page);
 });
 
 // A truly older card without this API still has an explicit adoption path;
@@ -163,10 +152,10 @@ test('missing wiring safety readback requires explicit adoption even in a fresh 
     route.fulfill({ status: 404, contentType: 'application/json', body: '{"ok":false}' }));
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expect(page.getByTestId('setup-start-from-card')).toBeVisible();
+  await expect(page.getByTestId('installed-project-open')).toBeVisible();
   await expect(page.getByTestId('setup-card-ready')).toHaveCount(0);
-  await page.getByTestId('setup-start-from-card').click();
-  await expectSetupComplete(page);
+  await page.getByTestId('installed-project-open').click();
+  await expectInstalledHome(page);
 });
 
 // legacyStatus() reports a real signed build (1306) that is genuinely older
@@ -178,11 +167,11 @@ test('missing wiring safety readback requires explicit adoption even in a fresh 
 test('the ready banner treats a compatible-but-older release as optional, not required', async ({ page }) => {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expectSetupComplete(page);
+  await expectInstalledHome(page);
 
   // The optional wording lives on the Card release row, said once; the ready
   // banner keeps only its doors.
-  const banner = page.getByTestId('setup-card-ready');
+  const banner = page.getByTestId('card-installed-home');
   await expect(banner).not.toContainText('A newer card release is available');
   await expect(banner).not.toContainText('This card’s software is behind');
   await expect(banner).not.toContainText('Update the card software before relying on it.');
@@ -194,7 +183,7 @@ test('the ready banner treats a compatible-but-older release as optional, not re
 
   // Same one-primary rule as the rest of Card Home: the optional wording must
   // not demote Open Patterns to make room for a louder warning.
-  await expect(page.getByTestId('setup-open-patterns')).toHaveClass(/\bprimary\b/);
+  await expect(page.getByTestId('installed-control-open')).toHaveClass(/\bprimary\b/);
   await expect(page.getByTestId('setup-update-card')).toBeVisible();
 });
 
@@ -227,8 +216,8 @@ test('a card project adoption failure the owner triggers is always visible, neve
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expect(page.getByTestId('setup-card-project-note'))
-    .toContainText(/different project|holds the same project/, { timeout: 10000 });
+  await expect(page.getByTestId('card-draft-difference'))
+    .toContainText(/different project|draft/i, { timeout: 10000 });
 
   // The click re-reads /api/status live rather than trusting the connect-time
   // snapshot. Answer that live read as if the connection dropped mid-read —
@@ -242,14 +231,14 @@ test('a card project adoption failure the owner triggers is always visible, neve
     body: JSON.stringify({ ...legacyStatus(), outputs: [] }),
   }));
 
-  await page.getByTestId('setup-start-from-card').click();
+  await page.getByTestId('installed-project-open').click();
   await expect(page.getByTestId('setup-adoption-error')).toBeVisible({ timeout: 10000 });
   await expect(page.getByTestId('setup-adoption-error')).toContainText('did not report any light outputs');
   // Not silent, and not stuck: the same action is still there to retry.
-  await expect(page.getByTestId('setup-start-from-card')).toBeEnabled();
+  await expect(page.getByTestId('installed-project-open')).toBeEnabled();
 });
 
-test('"Use this card’s project" is disabled while the card link is not connected, not clickable into a rejection', async ({ page }) => {
+test('"Open installed project" cannot be activated while the card link is not connected', async ({ page }) => {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await page.evaluate(async () => {
     const { createDefaultProject } = await import('/src/lib/projectModel.js');
@@ -262,8 +251,8 @@ test('"Use this card’s project" is disabled while the card link is not connect
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await connectLegacyCard(page);
-  await expect(page.getByTestId('setup-start-from-card')).toBeVisible({ timeout: 10000 });
-  await expect(page.getByTestId('setup-start-from-card')).toBeEnabled();
+  await expect(page.getByTestId('installed-project-open')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('installed-project-open')).toBeEnabled();
 
   // `connectBlockers` in setupJourney.js deliberately lets the
   // load-matching-project task through ahead of the reconnect blocker (its
@@ -275,7 +264,8 @@ test('"Use this card’s project" is disabled while the card link is not connect
   // defect names: reconnecting-bridge / revalidating), so it is the
   // deterministic way to model that window without racing React's own
   // scheduling.
+  await page.route('http://lightweaver.local/api/{status,firmware-info}', route => route.abort());
   await dispatchCardLink(page, [{ type: 'operation-boundary-lost' }]);
 
-  await expect(page.getByTestId('setup-start-from-card')).toBeDisabled({ timeout: 10000 });
+  await expect(page.locator('[data-testid="installed-project-open"]:enabled')).toHaveCount(0);
 });

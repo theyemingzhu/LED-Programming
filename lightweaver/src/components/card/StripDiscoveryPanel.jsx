@@ -904,7 +904,7 @@ export function StripDiscoveryPanel({
         },
       } : {}),
       outputs: parts.outputs,
-    }));
+    }), { physicalColorConfirmed: Boolean(parts.colorOrder) });
     // Discovery already knows the exact physical outputs. On an untouched
     // starter project, turn those measurements into a ready-to-place drawing
     // instead of asking the owner to enter the same counts and GPIOs again.

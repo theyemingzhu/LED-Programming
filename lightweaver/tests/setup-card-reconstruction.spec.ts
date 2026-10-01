@@ -157,9 +157,9 @@ test('a card project reconstructed via "Use this card\'s project" shows the part
     readiness: status,
   }]);
 
-  await expect(page.getByTestId('setup-start-from-card')).toBeVisible({ timeout: 10000 });
-  await page.getByTestId('setup-start-from-card').click();
-  await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('installed-project-open')).toBeVisible({ timeout: 10000 });
+  await page.getByTestId('installed-project-open').click();
+  await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 10000 });
 
   await page.getByTestId('topbar-projects').click();
   await expect(page.getByTestId('projects-panel')).toBeVisible();
@@ -226,27 +226,32 @@ test('delayed reconstruction keeps a newer project edit and remains retryable', 
     readiness: status,
   }]);
 
-  const adopt = page.getByTestId('setup-start-from-card');
+  const adopt = page.getByTestId('installed-project-open');
   await expect(adopt).toBeVisible({ timeout: 10000 });
   await adopt.click();
   await readbacksStarted;
-  await page.getByTestId('setup-project-name-edit').click();
-  const nameInput = page.getByTestId('setup-project-name-input');
+  // Card Home labels the installed project. Edit the draft in its workspace.
+  await page.getByRole('button', { name: 'Layout', exact: true }).click();
+  await page.getByTestId('project-name-edit').click();
+  const nameInput = page.getByTestId('project-name-input');
   await nameInput.fill('Work edited during readback');
   await nameInput.press('Enter');
-  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Work edited during readback');
+  await expect(page.getByTestId('project-name-edit')).toContainText('Work edited during readback');
 
   releaseReadbacks();
-  await expect(page.getByTestId('setup-adoption-error'))
-    .toHaveText('Studio kept the open project, so nothing was adopted from the card.');
-  await expect(page.getByTestId('setup-project-name-edit')).toContainText('Work edited during readback');
+  await expect.poll(() => page.evaluate(() => {
+    const draft = JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}');
+    return { id: draft.id, name: draft.name };
+  })).toEqual({ id: 'my-other-piece', name: 'Work edited during readback' });
+  await page.getByRole('button', { name: 'Card', exact: true }).click();
+  await expect(page.getByTestId('card-draft-difference')).toContainText('Work edited during readback');
   await page.screenshot({ path: '/tmp/lightweaver-extra-hour/adoption-stale-edit-preserved.png', fullPage: true });
 
   // A fresh explicit retry captures the edited workspace's current lifecycle
   // marker. Starting dirty is still an intentional adoption choice.
   delayReadbacks = false;
   await adopt.click();
-  await expect(page.getByTestId('setup-card-ready')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('card-installed-home')).toBeVisible({ timeout: 10000 });
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id))
     .toBe(PROJECT_ID);
 });

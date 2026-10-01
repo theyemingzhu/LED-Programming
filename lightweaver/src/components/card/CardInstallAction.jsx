@@ -132,6 +132,19 @@ export function CardInstallAction({
     window.location.hash = '#screen=card&section=setup&task=install-project&next=patterns&replace=project';
   };
 
+  const installedOutputs = cardLink.readiness?.outputs;
+  const draftPixelCount = compiledWiring.outputs.reduce((sum, output) => sum + Number(output.count || 0), 0);
+  const draftPins = compiledWiring.outputs.map(output => output.pin).sort((a, b) => a - b);
+  const comparableOutputs = ['connected-direct', 'connected-bridge'].includes(cardLink.state)
+    && cardLink.readiness?.cardId === cardLink.card?.id && Boolean(cardLink.readiness?.bootId)
+    && Array.isArray(installedOutputs) && installedOutputs.length > 0
+    && installedOutputs.every(output => Number.isInteger(output.pin) && Number.isInteger(output.pixels));
+  const installedPixelCount = comparableOutputs ? installedOutputs.reduce((sum, output) => sum + output.pixels, 0) : null;
+  const pinsUnchanged = comparableOutputs && JSON.stringify(installedOutputs.map(output => output.pin).sort((a, b) => a - b)) === JSON.stringify(draftPins);
+  const saveDifference = comparableOutputs
+    ? `${installedPixelCount === draftPixelCount ? `${draftPixelCount} configured pixels unchanged` : `${installedPixelCount} → ${draftPixelCount} configured pixels`}; ${pinsUnchanged ? 'GPIOs unchanged' : `outputs change to ${draftPins.map(pin => `GPIO ${pin}`).join(', ')}`}. Section and pattern changes are not yet compared.`
+    : `Installed configuration not yet compared. Your draft has ${draftPixelCount} configured pixels on ${draftPins.map(pin => `GPIO ${pin}`).join(', ') || 'unassigned outputs'}.`;
+
   // The full Check-and-install surface stands down while Setup owns the next
   // step. The compact Status door does not: Save to card is the one write
   // on that row, including when the open project and the card disagree.
@@ -147,6 +160,7 @@ export function CardInstallAction({
           the ladder's last phase description, so "Start LED check" read as
           that phase's button and was not. It is its own thing and says so.
           In the status row it is one door among three and needs no heading. */}
+      <p className="lww-flow-message" data-testid="card-save-summary">Save to card: {saveDifference} This saves your draft to the card and can interrupt playback. Required light checks remain in place.</p>
       {!compact && <h2 className="lww-flow-heading">Check and install on this card</h2>}
       {compact && needsLayoutFinish ? (
         <>

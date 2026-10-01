@@ -61,7 +61,7 @@ const SETUP_SURFACE_STATES = new Set([
 ]);
 
 export function cardSurfaceForLifecycle(lifecycle) {
-  if (lifecycle?.state === 'ready') return 'card-control';
+  if (lifecycle?.installedControlsReady === true || lifecycle?.state === 'ready') return 'card-control';
   // Length-only write on the footer chip — not Setup, not Test & Install.
   if (lifecycle?.state === 'length-mismatch') return 'length-save';
   if (lifecycle?.state === 'content-mismatch') return 'content-save';

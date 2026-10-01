@@ -191,7 +191,7 @@ test('an intent Patterns cannot claim stays local and is not handed over again',
   expect(counts.status, `resolved the card ${counts.status} times`).toBeLessThan(20);
 });
 
-test('explicit Load resumes an abandoned pattern-edit intent', async ({ page }) => {
+test('explicit Open installed project resumes an abandoned pattern-edit intent', async ({ page }) => {
   // The recovery path the circuit breaker must leave open: suppressing the
   // automatic hand-over must not strand the owner away from what they asked
   // for. An explicit Load re-authorizes and opens Patterns.
@@ -204,9 +204,8 @@ test('explicit Load resumes an abandoned pattern-edit intent', async ({ page }) 
     readiness: status,
   }]);
 
-  // Setup owns the single saved-match offer now; the older support panel
-  // deliberately stands down so Card Home never renders two Load buttons.
-  const load = page.getByRole('button', { name: /^Load / });
+  // Card Home owns the single explicit installed-project offer.
+  const load = page.getByTestId('installed-project-open');
   await expect(load).toBeVisible({ timeout: 20_000 });
   await page.evaluate(async () => {
     const { markCardEditIntentAbandoned } = await import('/src/lib/cardEditIntent.js');
