@@ -19,7 +19,7 @@ import { openLocalCardPage } from '../lib/cardBridge.js';
 import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
-import { cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
+import { canPushDirectlyToCard, cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
 import { getCardLinkState, isCardLinkConnected } from '../lib/cardLink.js';
 import { cardProjectFingerprint, resolveCardProject, describeResolvedCardProject } from '../lib/cardProjectResolver.js';
 import { isBenchProjectEvidence } from '../lib/benchConfig.js';
@@ -919,7 +919,10 @@ export function SetupScreen({
       || cardLink?.discoveredCard?.id
       || readPersistedCardIdentity()?.id,
     );
-    if (!hasCardEvidence) {
+    // Public Studio must offer its supported network and USB connection
+    // choices first. Opening a remembered HTTP card page here bypassed the
+    // local-network prompt and left owners waiting on a legacy popup.
+    if (!hasCardEvidence || !canPushDirectlyToCard()) {
       onOpenConnectionCenter?.();
       return;
     }
