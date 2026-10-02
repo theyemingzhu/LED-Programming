@@ -1424,27 +1424,12 @@ function writeSectionDisplayOrder(projectId, ids) {
         // URL: it is still what the owner asked for, and loading the matching
         // project by hand can still honour it.
         markCardEditIntentAbandoned(requestedIntent);
-        // F18: an edit request for the project ALREADY open here is not a
-        // "which copy wins" decision at all — the card is not offering a
-        // different project, it is asking Studio to open a look/pattern that
-        // already lives in what's open. lw-card.jsx's own F18 effect already
-        // reacted to this exact refusal (wiring drift broke the exact-match
-        // this claim needs) by routing here for that reason, so bouncing
-        // straight back to the card would ping-pong the two screens — the
-        // 2026-08-07 loop this file's breaker exists to prevent. Reuse the
-        // one place Patterns already reads the card's installed project id
-        // (installedProjectIdFromCardStatus, same field lw-card.jsx's
-        // cardHoldsOpenProject reads off cardLink.readiness) rather than
-        // re-deciding the match here. Stay, and let the existing unauthorized
-        // 'project' gate show the honest next step in place: the look is
-        // offered, not selected — the exact-fingerprint claim this write
-        // still needs was refused, and nothing here grants it.
-        if (installedProjectIdFromCardStatus(cardLink?.readiness) === String(projectId || '').trim()) {
-          blockPatternCardEffect('project');
-          return;
-        }
-        if (go) go('card');
-        else window.location.hash = '#screen=card&section=overview';
+        // An expired handoff may remain in the URL when the owner later
+        // chooses Patterns in the sidebar, including while the card is
+        // unreachable. Refusing that edit must not undo their navigation.
+        // Keep browsing local and explain the missing project verification;
+        // this still neither selects the requested look nor grants a write.
+        blockPatternCardEffect('project');
         return;
       }
       cardReturnConsumed.current = true;

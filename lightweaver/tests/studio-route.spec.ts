@@ -99,6 +99,41 @@ test('rail navigation canonicalizes the route it lands on', async ({ page }) => 
   await expect.poll(() => routeHash(page)).toBe('#screen=card&section=setup');
 });
 
+test.describe('phone sidebar after a card edit handoff', () => {
+  test.use({ viewport: { width: 393, height: 851 }, isMobile: true, hasTouch: true });
+
+  for (const intent of ['editPattern=aurora', 'editLook=saved-look']) {
+    test(`Patterns stays open when ${intent} has no current card authorization`, async ({ page }) => {
+      const cardWrites: string[] = [];
+      page.on('request', request => {
+        if (new URL(request.url()).hostname === 'lightweaver.local'
+          && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) {
+          cardWrites.push(request.url());
+        }
+      });
+      await page.goto(`/?${intent}#screen=card&section=overview`, { waitUntil: 'domcontentloaded' });
+      await expect(railItem(page, 'Card')).toHaveAttribute('aria-current', 'page');
+
+      await railItem(page, 'Patterns').tap();
+
+      await expect(page.locator('.pm')).toBeVisible();
+      await expect(railItem(page, 'Patterns')).toHaveAttribute('aria-current', 'page');
+      await expect.poll(() => routeHash(page)).toBe('#screen=pattern');
+      await expect(page.getByTestId('pattern-gate-notice')).toContainText('That tap was not sent to the card.');
+      expect(new URL(page.url()).search).toBe(`?${intent}`);
+      expect(cardWrites).toEqual([]);
+
+      // Leaving and returning must not replay the old handoff and bounce again.
+      await railItem(page, 'Card').tap();
+      await expect(railItem(page, 'Card')).toHaveAttribute('aria-current', 'page');
+      await railItem(page, 'Patterns').tap();
+      await expect(page.locator('.pm')).toBeVisible();
+      await expect.poll(() => routeHash(page)).toBe('#screen=pattern');
+      expect(cardWrites).toEqual([]);
+    });
+  }
+});
+
 test('a legacy card entrance still resolves and is left in the URL as written', async ({ page }) => {
   // Printed handoff cards and old bookmarks carry these.
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
