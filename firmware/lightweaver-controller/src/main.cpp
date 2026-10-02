@@ -1,3 +1,4 @@
+#include "LightweaverLookModePolicy.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <FastLED.h>
@@ -431,6 +432,7 @@ void setup() {
           ? RuntimeStorageAccessMode::ReadOnlyProbation
           : RuntimeStorageAccessMode::Normal);
   if (loadResult.ok && !loadResult.bootedCandidate) {
+    loadClientLibrary(runtimeConfig);
     loadClientPlaylist(runtimeConfig);
     loadClientPatterns(runtimeConfig);
   }
@@ -1690,15 +1692,14 @@ const LookConfig* findLookById(const String& id) {
 }
 
 bool isLoadedLookRenderable(const LookConfig& look, bool zoneTargeted) {
+  if (!loadedLookZoneShapePlayable(look.mode.c_str(), zoneTargeted, look.hasZoneLooks, look.zoneCount)) return false;
   if (look.mode == "combo") {
     if (zoneTargeted) return false;
-    if (!look.hasZoneLooks || look.zoneCount == 0) return false;
     for (uint8_t i = 0; i < look.zoneCount; i++) {
       if (!isSupportedCompiledPattern(look.zones[i].patternId)) return false;
     }
     return true;
   }
-  if (look.hasZoneLooks) return false;
   if (look.mode == "procedural") return isSupportedProceduralPattern(look.preset);
   if (look.mode == "preset") return isSupportedPresetPattern(look.preset);
   if (look.mode == "sequence") {
@@ -4075,4 +4076,11 @@ String runtimeZonesJson() {
   String out;
   serializeJson(doc, out);
   return out;
+}
+
+void runtimeRefreshInstalledLooks() {
+  while (lookCount < runtimeConfig.lookCount && lookCount < LW_MAX_LOOKS) {
+    looks[lookCount] = runtimeConfig.looks[lookCount];
+    ++lookCount;
+  }
 }

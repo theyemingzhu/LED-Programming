@@ -26,6 +26,8 @@
 #include "LightweaverStorage.h"
 #include "LightweaverClientPolicy.h"
 #include "LightweaverClientPattern.h"
+#include "LightweaverClientLibrary.h"
+#include "LightweaverLookModePolicy.h"
 
 namespace {
 
@@ -303,6 +305,72 @@ void test_client_pattern_patch_is_atomic_and_preserves_unedited_controls() {
   TEST_ASSERT_EQUAL_UINT8(7, entry.fields);
 }
 
+void test_client_library_distinct_section_placements() {
+  const char* ids[] = {"source", "mirror", "center"}; const uint8_t mirrors[] = {255, 0, 255};
+  bool targets[3] = {}; const char* presets[3] = {}; ClientPatternOverride patches[3];
+  JsonDocument doc;
+  deserializeJson(doc, R"({"presetId":"aurora","targetIds":["source","center"],"tuning":{},"assignments":[{"targetId":"source","presetId":"aurora","tuning":{"brightness":0.4}},{"targetId":"center","presetId":"ocean","tuning":{"speed":0.7}}]})");
+  TEST_ASSERT_TRUE(clientLibraryPlacementsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets, presets, patches));
+  TEST_ASSERT_EQUAL_STRING("aurora", presets[0]); TEST_ASSERT_EQUAL_STRING("ocean", presets[2]);
+  TEST_ASSERT_FLOAT_WITHIN(.0001f, .4f, patches[0].brightness); TEST_ASSERT_FLOAT_WITHIN(.0001f, .7f, patches[2].speed);
+  TEST_ASSERT_NULL(presets[1]); TEST_ASSERT_EQUAL_UINT8(0, patches[1].fields);
+  doc["assignments"][1]["targetId"] = "mirror";
+  TEST_ASSERT_FALSE(clientLibraryPlacementsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets, presets, patches));
+  doc["assignments"][1]["targetId"] = "source";
+  TEST_ASSERT_FALSE(clientLibraryPlacementsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets, presets, patches));
+  doc["assignments"][1]["targetId"] = "center"; doc["assignments"][1]["tuning"]["pin"] = 4;
+  TEST_ASSERT_FALSE(clientLibraryPlacementsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets, presets, patches));
+  doc["assignments"][1]["tuning"].remove("pin"); doc["assignments"][1]["presetId"] = "foreign";
+  TEST_ASSERT_FALSE(clientLibraryPlacementsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets, presets, patches));
+}
+
+void test_saved_library_look_passes_runtime_playability_shape() {
+  // Creation and boot decode use this exact mode. The runtime selection and
+  // playlist admission call this same shape policy before checking effects.
+  TEST_ASSERT_EQUAL_STRING("combo", CLIENT_LIBRARY_LOOK_MODE);
+  TEST_ASSERT_TRUE(loadedLookZoneShapePlayable(CLIENT_LIBRARY_LOOK_MODE, false, true, 3));
+  TEST_ASSERT_FALSE(loadedLookZoneShapePlayable("procedural", false, true, 3));
+  TEST_ASSERT_FALSE(loadedLookZoneShapePlayable(CLIENT_LIBRARY_LOOK_MODE, true, true, 3));
+  TEST_ASSERT_FALSE(loadedLookZoneShapePlayable(CLIENT_LIBRARY_LOOK_MODE, false, true, 0));
+  for (const char* preset : CLIENT_LIBRARY_PRESETS) TEST_ASSERT_TRUE(clientLibraryPreset(preset));
+}
+
+void test_client_library_targets_preserve_mirror_map() {
+  const char* ids[] = {"source", "mirror", "center"};
+  const uint8_t mirrors[] = {255, 0, 255}; bool targets[3] = {};
+  JsonDocument doc; deserializeJson(doc, "[\"source\",\"center\"]");
+  TEST_ASSERT_TRUE(clientLibraryTargetsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets));
+  TEST_ASSERT_TRUE(targets[0]); TEST_ASSERT_FALSE(targets[1]); TEST_ASSERT_TRUE(targets[2]);
+  deserializeJson(doc, "[\"mirror\"]");
+  TEST_ASSERT_FALSE(clientLibraryTargetsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets));
+  deserializeJson(doc, "[\"source\",\"source\"]");
+  TEST_ASSERT_FALSE(clientLibraryTargetsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets));
+  deserializeJson(doc, "[\"foreign\"]");
+  TEST_ASSERT_FALSE(clientLibraryTargetsValid(doc.as<JsonVariantConst>(), ids, mirrors, 3, targets));
+  TEST_ASSERT_EQUAL_UINT8(0, mirrors[1]);
+}
+
+void test_client_library_snapshot_persists_appearance_only() {
+  JsonDocument doc;
+  deserializeJson(doc, R"({"id":"client-exact","label":"Petals","preset":"ocean","brightness":0.35,"zones":[["aurora",0.4,1.0,0,32,230,false,85,100,9,false,false]]})");
+  TEST_ASSERT_TRUE(clientLibrarySnapshotValid(doc.as<JsonVariantConst>(), 1));
+  std::string encoded; serializeJson(doc, encoded);
+  JsonDocument readback; deserializeJson(readback, encoded);
+  TEST_ASSERT_TRUE(clientLibrarySnapshotValid(readback.as<JsonVariantConst>(), 1));
+  TEST_ASSERT_EQUAL_STRING("ocean", readback["preset"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("aurora", readback["zones"][0][0].as<const char*>());
+  doc["outputs"][0]["pin"] = 12;
+  TEST_ASSERT_FALSE(clientLibrarySnapshotValid(doc.as<JsonVariantConst>(), 1));
+  doc.remove("outputs"); doc["zones"][0][0] = "studio-unsupported";
+  TEST_ASSERT_FALSE(clientLibrarySnapshotValid(doc.as<JsonVariantConst>(), 1));
+  doc["zones"][0][0] = "aurora"; doc["zones"][0][2] = 4;
+  TEST_ASSERT_FALSE(clientLibrarySnapshotValid(doc.as<JsonVariantConst>(), 1));
+  doc["zones"][0][2] = 1;
+  TEST_ASSERT_FALSE(clientLibrarySnapshotValid(doc.as<JsonVariantConst>(), 2));
+  TEST_ASSERT_TRUE(clientHttpRouteAllowed("POST", "/api/client-library"));
+  TEST_ASSERT_FALSE(clientHttpRouteAllowed("POST", "/api/config"));
+}
+
 void test_client_origin_routes() {
   TEST_ASSERT_TRUE(clientHttpRouteAllowed("POST", "/api/client-playlist"));
   TEST_ASSERT_TRUE(clientHttpRouteAllowed("POST", "/api/client-pattern"));
@@ -354,6 +422,10 @@ int main(int argc, char** argv) {
   UNITY_BEGIN();
   RUN_TEST(test_client_playlist_strict_validation);
   RUN_TEST(test_client_origin_routes);
+  RUN_TEST(test_client_library_snapshot_persists_appearance_only);
+  RUN_TEST(test_client_library_targets_preserve_mirror_map);
+  RUN_TEST(test_saved_library_look_passes_runtime_playability_shape);
+  RUN_TEST(test_client_library_distinct_section_placements);
   RUN_TEST(test_client_pattern_patch_is_atomic_and_preserves_unedited_controls);
   RUN_TEST(test_named_pattern_overlay_does_not_bleed_into_next_plain_pattern);
   RUN_TEST(test_startup_saved_controls_win_over_other_look_resume);

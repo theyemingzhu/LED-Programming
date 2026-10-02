@@ -23,6 +23,7 @@
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverNativeArmPolicy.h"
 #include "LightweaverClientPolicy.h"
+#include "LightweaverClientLibrary.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
@@ -192,7 +193,7 @@ void scheduleApTeardown(uint32_t generation);
 // opener (targetOrigin = the already-validated studioOrigin) and focuses it,
 // instead of reloading the opener tab and discarding its in-memory state.
 // Studio feature-detects, so a pre-v7 card simply keeps reloading the tab.
-constexpr int LW_BRIDGE_VERSION = 9;
+constexpr int LW_BRIDGE_VERSION = 10;
 
 String apSsid() {
   uint64_t mac = ESP.getEfuseMac();
@@ -221,7 +222,7 @@ void sendCors() {
   String origin = server.header("Origin");
   const bool clientRoute = server.uri() == "/api/status" || server.uri() == "/api/patterns" ||
       server.uri() == "/api/zones" || server.uri() == "/api/control" ||
-      server.uri() == "/api/client-playlist" || server.uri() == "/api/client-pattern" || server.uri() == "/api/firmware-info";
+      server.uri() == "/api/client-playlist" || server.uri() == "/api/client-pattern" || server.uri() == "/api/client-library" || server.uri() == "/api/firmware-info";
   if (corsOriginAllowed(origin) || (origin == "https://light.mandalacodes.com" && clientRoute)) {
     server.sendHeader("Access-Control-Allow-Origin", origin);
     server.sendHeader("Vary", "Origin");
@@ -510,10 +511,11 @@ String studioBridgeScript() {
                 "try{let response=null;"
                   "if(ev.origin==='https://light.mandalacodes.com'){"
                     "if(ev.source!==window.opener||ev.origin!==lwReadyOrigin)throw lwBridgeError('forbidden','client opener mismatch');"
-                    "if(!['status','ping','patterns','zones','control','client-playlist','client-pattern','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
+                    "if(!['status','ping','patterns','zones','control','client-playlist','client-pattern','client-library','firmware-info'].includes(m.type))throw lwBridgeError('forbidden','client operation unavailable');"
                     "if(m.type==='control'){const p=m.payload||{};const allowed=['on','blackout','syncZones','brightness','patternId','playlist','zone','speed','hueShift','hue','saturation','expectedCardId','expectedRevision'];if(Object.keys(p).some(k=>!allowed.includes(k)))throw lwBridgeError('forbidden','client control unavailable')}"
                   "}"
-                  "if(m.type==='client-pattern'){const p=m.payload||{};if(p.method==='GET'&&typeof p.patternId==='string')response=await get('/api/client-pattern?patternId='+encodeURIComponent(p.patternId));else if(p.method==='POST')response=await post('/api/client-pattern',p.body||{});else throw lwBridgeError('invalid-payload','pattern method and id required')}"
+                  "if(m.type==='client-library'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-library');else if(p.method==='POST')response=await post('/api/client-library',p.body||{});else throw lwBridgeError('invalid-payload','library method required')}"
+                  "else if(m.type==='client-pattern'){const p=m.payload||{};if(p.method==='GET'&&typeof p.patternId==='string')response=await get('/api/client-pattern?patternId='+encodeURIComponent(p.patternId));else if(p.method==='POST')response=await post('/api/client-pattern',p.body||{});else throw lwBridgeError('invalid-payload','pattern method and id required')}"
                   "else if(m.type==='client-playlist'){const p=m.payload||{};if(p.method==='GET')response=await get('/api/client-playlist');else if(p.method==='POST')response=await post('/api/client-playlist',p.body||{});else throw lwBridgeError('invalid-payload','playlist method required')}"
                   "else "
                   "if(m.type==='status'||m.type==='ping'){response=await get('/api/status')}"
@@ -1915,6 +1917,7 @@ void handleReboot() {
 void handleControlPost();
 void handleClientPlaylistPost();
 void handleClientPatternPost();
+void handleClientLibraryPost();
 
 // WiFi mutation bodies are tiny and security-sensitive. Use WebServer's raw
 // path so an attacker cannot make the framework allocate a Content-Length-
@@ -2125,7 +2128,7 @@ void handleControlRaw(HTTPRaw& raw) {
 class BoundedControlRequestHandler final : public RequestHandler {
  public:
   bool canHandle(HTTPMethod method, String uri) override {
-    return method == HTTP_POST && (uri == "/api/control" || uri == "/api/client-playlist" || uri == "/api/client-pattern");
+    return method == HTTP_POST && (uri == "/api/control" || uri == "/api/client-playlist" || uri == "/api/client-pattern" || uri == "/api/client-library");
   }
 
   bool canUpload(String uri) override {
@@ -2134,13 +2137,14 @@ class BoundedControlRequestHandler final : public RequestHandler {
   }
 
   bool canRaw(String uri) override {
-    return uri == "/api/control" || uri == "/api/client-playlist" || uri == "/api/client-pattern";
+    return uri == "/api/control" || uri == "/api/client-playlist" || uri == "/api/client-pattern" || uri == "/api/client-library";
   }
 
   bool handle(WebServer& webServer, HTTPMethod method, String uri) override {
     (void)webServer;
     if (!canHandle(method, uri)) return false;
-    if (uri == "/api/client-pattern") handleClientPatternPost();
+    if (uri == "/api/client-library") handleClientLibraryPost();
+    else if (uri == "/api/client-pattern") handleClientPatternPost();
     else if (uri == "/api/client-playlist") handleClientPlaylistPost();
     else handleControlPost();
     return true;
@@ -2863,6 +2867,61 @@ void handleFirmwareInfo() {
   server.send(200, "application/json", info);
 }
 
+void sendClientLibrary(const String& installedId = "") {
+  sendCors(); JsonDocument doc;
+  deserializeJson(doc, runtimeZonesJson());
+  doc["sections"].set(doc["zones"]); doc.remove("zones"); doc.remove("syncZones");
+  JsonObject layout = doc["layout"].to<JsonObject>();
+  layout["kaleidoscopeMappings"].set(doc["kaleidoscopeMappings"]); doc.remove("kaleidoscopeMappings");
+  JsonArray outputs = layout["outputs"].to<JsonArray>();
+  for (uint8_t i = 0; i < runtimeConfigPtr->outputCount; ++i) {
+    const auto& output = runtimeConfigPtr->outputs[i]; JsonObject row = outputs.add<JsonObject>();
+    row["id"] = output.id; row["name"] = output.name; row["start"] = output.start; row["pixels"] = output.pixels;
+    JsonArray segments = row["segments"].to<JsonArray>(); uint16_t start = output.start;
+    for (uint8_t j = 0; j < output.segmentCount; ++j) {
+      const auto& segment = output.segments[j]; JsonObject part = segments.add<JsonObject>();
+      part["id"] = segment.id; part["start"] = start; part["count"] = segment.count; part["reversed"] = segment.reversed;
+      start += segment.count;
+    }
+  }
+  doc["ok"] = true; doc["cardId"] = runtimeCardId(); doc["bootId"] = runtimeBootId();
+  doc["revision"] = clientLibraryRevision(*runtimeConfigPtr);
+  doc["layoutRevision"] = clientLibraryLayoutRevision(*runtimeConfigPtr);
+  doc["currentLookId"] = runtimeCurrentPatternId(); doc["remaining"] = LW_MAX_LOOKS - runtimeConfigPtr->lookCount;
+  doc["canInstall"] = clientLibraryCanInstall(*runtimeConfigPtr);
+  JsonArray presets = doc["supportedPresetIds"].to<JsonArray>();
+  for (const char* preset : CLIENT_LIBRARY_PRESETS) presets.add(preset);
+  if (installedId.length()) doc["installedPatternId"] = installedId;
+  String body; serializeJson(doc, body); server.send(200, "application/json", body);
+}
+void handleClientLibraryGet() { sendClientLibrary(); }
+void handleClientLibraryPost() {
+  sendCors(); JsonDocument doc;
+  const bool parsed = controlRequestBodyReady && !controlRequestBodyRejected && !deserializeJson(doc, controlRequestBody, controlRequestBodyLength);
+  controlRequestBodyReady = false; controlRequestBodyLength = 0;
+  if (!parsed || !doc.is<JsonObject>() || (doc.size() != 9 && !(doc.size() == 10 && doc["assignments"].is<JsonArray>())) || server.args() != 0 ||
+      !doc["expectedCardId"].is<const char*>() || !doc["expectedBootId"].is<const char*>() ||
+      !doc["expectedRevision"].is<const char*>() || !doc["expectedLayoutRevision"].is<const char*>() ||
+      !doc["expectedCurrentLookId"].is<const char*>() || !doc["presetId"].is<const char*>() || !doc["label"].is<const char*>()) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid library envelope\"}"); return;
+  }
+  if (!runtimeCommandReady() || !runtimePlaybackReady() || lightweaverFirmwareBootProbationActive()) {
+    server.send(423, "application/json", "{\"ok\":false,\"error\":\"card not ready\"}"); return;
+  }
+  if (doc["expectedCardId"].as<String>() != runtimeCardId() || doc["expectedBootId"].as<String>() != runtimeBootId() ||
+      doc["expectedRevision"].as<String>() != clientLibraryRevision(*runtimeConfigPtr) ||
+      doc["expectedLayoutRevision"].as<String>() != clientLibraryLayoutRevision(*runtimeConfigPtr) ||
+      doc["expectedCurrentLookId"].as<String>() != runtimeCurrentPatternId()) {
+    server.send(409, "application/json", "{\"ok\":false,\"error\":\"card, artwork or current look changed; refresh and retry\"}"); return;
+  }
+  String installedId, message;
+  if (!saveClientLibraryLook(*runtimeConfigPtr, doc.as<JsonVariantConst>(), installedId, message)) {
+    JsonDocument error; error["ok"] = false; error["error"] = message;
+    String body; serializeJson(error, body); server.send(422, "application/json", body); return;
+  }
+  runtimeAdvanceStateRevision(); sendClientLibrary(installedId);
+}
+
 void handleClientPlaylistGet() {
   sendCors();
   JsonDocument doc;
@@ -3039,6 +3098,7 @@ void handlePatterns() {
       z["customDrift"] = cfg.looks[i].zones[zoneIndex].customDrift;
       z["blackout"] = cfg.looks[i].zones[zoneIndex].blackout;
       const LookZoneConfig& lookZone = cfg.looks[i].zones[zoneIndex];
+      if (lookZone.symmetryFlags & LW_ZONE_FLAG_CONTINUOUS) z["continuous"] = true;
       if (lookZone.mirrorSource < cfg.zoneCount) {
         z["mirrorOf"] = cfg.zones[lookZone.mirrorSource].id;
         z["mirrorFlip"] = (lookZone.symmetryFlags & LW_ZONE_FLAG_MIRROR_FLIP) != 0;
@@ -3843,6 +3903,8 @@ void setupLightweaverWeb(RuntimeConfig& config, ErrorCode& errorCode, uint16_t& 
   server.on("/api/rename", HTTP_POST, handleRenamePost);
   server.on("/api/firmware-info", HTTP_OPTIONS, handleOptions);
   server.on("/api/firmware-info", HTTP_GET, handleFirmwareInfo);
+  server.on("/api/client-library", HTTP_OPTIONS, handleOptions);
+  server.on("/api/client-library", HTTP_GET, handleClientLibraryGet);
   server.on("/api/client-pattern", HTTP_OPTIONS, handleOptions);
   server.on("/api/client-pattern", HTTP_GET, handleClientPatternGet);
   server.on("/api/client-playlist", HTTP_OPTIONS, handleOptions);

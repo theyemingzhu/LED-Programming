@@ -6,6 +6,7 @@
 #include "LightweaverOutputColorParser.h"
 #include "LightweaverProjectRepository.h"
 #include "LightweaverRecipe.h"
+#include "LightweaverClientLibrary.h"
 #include "LightweaverLookModePolicy.h"
 #include "LightweaverWifiChannelPolicy.h"
 #include <cstring>
@@ -2189,6 +2190,163 @@ bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String
 }
 
 namespace {
+constexpr const char* CLIENT_LIBRARY_KEY = "clientLibrary";
+uint32_t clientLibraryGeneration = 0;
+String clientLibraryRows = "[]";
+// Compact snapshots contain appearance only. Geometry and mirror relationships
+// are always derived from the confirmed installation, never from the request.
+void encodeLibraryLook(const LookConfig& look, JsonObject row) {
+  row["id"] = look.id; row["label"] = look.label; row["brightness"] = look.brightness; row["preset"] = look.preset;
+  JsonArray zones = row["zones"].to<JsonArray>();
+  for (uint8_t i = 0; i < look.zoneCount; ++i) {
+    const auto& z = look.zones[i]; JsonArray a = zones.add<JsonArray>();
+    a.add(z.patternId); a.add(z.brightness); a.add(z.speed); a.add(z.hueShift);
+    a.add(z.customHue); a.add(z.customSaturation); a.add(z.customBreathe);
+    a.add(z.breatheLowerPct); a.add(z.breatheUpperPct); a.add(z.breatheCycleSeconds);
+    a.add(z.customDrift); a.add(z.blackout);
+  }
+}
+bool decodeLibraryLook(JsonVariantConst row, const RuntimeConfig& config, LookConfig& look) {
+  if (!clientLibrarySnapshotValid(row, config.zoneCount)) return false;
+  if (!row.is<JsonObjectConst>() || row.size() != 5 || !row["id"].is<const char*>() ||
+      !row["label"].is<const char*>() || !row["brightness"].is<float>() ||
+      !row["zones"].is<JsonArrayConst>() || row["zones"].size() != config.zoneCount) return false;
+  look = LookConfig(); look.id = row["id"].as<String>(); look.label = row["label"].as<String>();
+  if (!look.id.startsWith("client-") || look.id.length() > 64 || !look.label.length() || look.label.length() > 64) return false;
+  look.brightness = row["brightness"].as<float>();
+  if (!isfinite(look.brightness) || look.brightness < 0 || look.brightness > 1) return false;
+  look.mode = CLIENT_LIBRARY_LOOK_MODE; look.zoneCount = config.zoneCount; look.hasZoneLooks = true;
+  for (uint8_t i = 0; i < config.zoneCount; ++i) {
+    JsonArrayConst a = row["zones"][i].as<JsonArrayConst>();
+    if (a.size() != 12 || !clientLibraryPreset(a[0].as<const char*>()) ||
+        !a[1].is<float>() || !a[2].is<float>() || !a[3].is<int>() ||
+        !a[4].is<uint8_t>() || !a[5].is<uint8_t>() || !a[6].is<bool>() ||
+        !a[7].is<uint8_t>() || !a[8].is<uint8_t>() || !a[9].is<uint8_t>() || !a[10].is<bool>() || !a[11].is<bool>()) return false;
+    auto& z = look.zones[i]; const auto& base = config.zones[i];
+    z.id = base.id; z.label = base.label; z.mirrorSource = base.mirrorSource;
+    z.symmetryFlags = base.symmetryFlags;
+    z.patternId = a[0].as<String>(); z.brightness = a[1]; z.speed = a[2]; z.hueShift = a[3];
+    if (!isfinite(z.brightness) || z.brightness < 0 || z.brightness > 1 || !isfinite(z.speed) || z.speed < 0.05f || z.speed > 3 || z.hueShift < -128 || z.hueShift > 128) return false;
+    z.customHue = a[4]; z.customSaturation = a[5]; z.customBreathe = a[6];
+    z.breatheLowerPct = a[7]; z.breatheUpperPct = a[8]; z.breatheCycleSeconds = a[9];
+    if (z.breatheLowerPct > z.breatheUpperPct || z.breatheUpperPct > 100 || z.breatheCycleSeconds < 2 || z.breatheCycleSeconds > 60) return false;
+    z.customDrift = a[10]; z.blackout = a[11];
+  }
+  look.preset = row["preset"].as<String>();
+  return true;
+}
+}
+String clientLibraryLayoutRevision(const RuntimeConfig& config) {
+  return sha256Hex(config.configDigest + ":" + currentConfirmedInstallationId());
+}
+String clientLibraryRevision(const RuntimeConfig& config) {
+  return sha256Hex(clientLibraryLayoutRevision(config) + ":library:" + String(clientLibraryGeneration) + ":" + String(runtimeStateRevision()));
+}
+bool clientLibraryCanInstall(const RuntimeConfig& config) {
+  const int index = installedClientPatternIndex(config, runtimeCurrentPatternId());
+  if (index < 0 || !config.zoneCount || config.looks[index].hasNativeRecipe || config.looks[index].mode == "sequence") return false;
+  const auto& look = config.looks[index];
+  // Custom native routes and per-look geometry must never be flattened.
+  for (uint8_t i = 0; i < config.zoneCount; ++i) {
+    if (!clientLibraryPreset(config.zones[i].patternId.c_str())) return false;
+    if (config.zones[i].customDrift && (config.zones[i].driftHueMin != 0 || config.zones[i].driftHueMax != 255)) return false;
+  }
+  for (uint8_t i = 0; i < look.zoneCount; ++i) {
+    int target = -1;
+    for (uint8_t j = 0; j < config.zoneCount; ++j) if (look.zones[i].id == config.zones[j].id) target = j;
+    if (target < 0 || look.zones[i].mirrorSource != config.zones[target].mirrorSource ||
+        (look.zones[i].symmetryFlags & (LW_ZONE_FLAG_MIRROR_FLIP | LW_ZONE_FLAG_CONTINUOUS)) != (config.zones[target].symmetryFlags & (LW_ZONE_FLAG_MIRROR_FLIP | LW_ZONE_FLAG_CONTINUOUS))) return false;
+  }
+  return true;
+}
+bool loadClientLibrary(RuntimeConfig& config) {
+  clientLibraryGeneration = 0; clientLibraryRows = "[]";
+  if (!config.knownGoodProject || config.configDigest.length() != 64) return false;
+  Preferences prefs; if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+  const String json = prefs.getString(CLIENT_LIBRARY_KEY, ""); prefs.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, json) || doc["layout"].as<String>() != clientLibraryLayoutRevision(config) ||
+      !doc["generation"].is<uint32_t>() || !doc["looks"].is<JsonArrayConst>() ||
+      doc["looks"].size() > LW_MAX_LOOKS - config.lookCount) return false;
+  // Decode into unused config slots but publish the count only after every row
+  // validates; a damaged record never exposes a partially restored library.
+  uint8_t count = 0;
+  for (JsonVariantConst row : doc["looks"].as<JsonArrayConst>()) {
+    auto& look = config.looks[config.lookCount + count];
+    if (!decodeLibraryLook(row, config, look)) return false;
+    for (uint8_t i = 0; i < config.lookCount + count; ++i) if (config.looks[i].id == look.id) return false;
+    ++count;
+  }
+  config.lookCount += count; clientLibraryGeneration = doc["generation"];
+  clientLibraryRows = ""; serializeJson(doc["looks"], clientLibraryRows);
+  return true;
+}
+bool saveClientLibraryLook(RuntimeConfig& config, JsonVariantConst request, String& installedId, String& message) {
+  if (!clientLibraryCanInstall(config) || !clientLibraryPreset(request["presetId"].as<const char*>())) {
+    message = "This look cannot safely accept library patterns; installed artwork remains unchanged"; return false;
+  }
+  if (config.lookCount >= LW_MAX_LOOKS || clientLibraryGeneration == UINT32_MAX) { message = "pattern capacity reached"; return false; }
+  const String label = request["label"].as<String>();
+  if (!label.length() || label.length() > 64 || !request["targetIds"].is<JsonArrayConst>() ||
+      !request["targetIds"].size() || request["targetIds"].size() > config.zoneCount || !request["tuning"].is<JsonObjectConst>()) {
+    message = "invalid pattern name, sections or tuning"; return false;
+  }
+  bool targets[LW_MAX_ZONES] = {};
+  const char* ids[LW_MAX_ZONES]; uint8_t mirrors[LW_MAX_ZONES];
+  for (uint8_t i = 0; i < config.zoneCount; ++i) { ids[i] = config.zones[i].id.c_str(); mirrors[i] = config.zones[i].mirrorSource; }
+  const char* presets[LW_MAX_ZONES] = {}; ClientPatternOverride patches[LW_MAX_ZONES];
+  if (!clientLibraryPlacementsValid(request, ids, mirrors, config.zoneCount, targets, presets, patches)) {
+    message = "invalid section pattern placements"; return false;
+  }
+  const int current = installedClientPatternIndex(config, runtimeCurrentPatternId());
+  // Build in an unused slot; lookCount remains unchanged until durable readback.
+  auto& look = config.looks[config.lookCount]; look = LookConfig();
+  look.id = "client-pending";
+  look.label = label; look.mode = CLIENT_LIBRARY_LOOK_MODE; look.brightness = config.looks[current].brightness;
+  look.hasZoneLooks = true; look.zoneCount = config.zoneCount;
+  for (uint8_t i = 0; i < config.zoneCount; ++i) {
+    const auto& base = config.zones[i]; auto& z = look.zones[i];
+    z.id = base.id; z.label = base.label; z.patternId = base.patternId;
+    z.brightness = base.brightness; z.speed = base.speed; z.hueShift = base.hueShift;
+    z.customHue = base.customHue; z.customSaturation = base.customSaturation; z.customBreathe = base.customBreathe;
+    z.breatheLowerPct = base.breatheLowerPct; z.breatheUpperPct = base.breatheUpperPct; z.breatheCycleSeconds = base.breatheCycleSeconds;
+    z.customDrift = base.customDrift; z.blackout = base.blackout;
+    z.mirrorSource = base.mirrorSource; z.symmetryFlags = base.symmetryFlags;
+    if (targets[i]) {
+      z.patternId = presets[i]; z.blackout = false;
+      applyClientPatternToZone(patches[i], z);
+    }
+  }
+  look.preset = request["presetId"].as<String>();
+  JsonDocument snapshot; encodeLibraryLook(look, snapshot.to<JsonObject>());
+  String canonical; serializeJson(snapshot, canonical);
+  // Content-addressed identity makes a retried save of the same named look
+  // idempotent, including when the first HTTP acknowledgement was lost.
+  look.id = "client-" + sha256Hex(clientLibraryLayoutRevision(config) + canonical).substring(0, 32);
+  for (uint8_t i = 0; i < config.lookCount; ++i) if (config.looks[i].id == look.id) { installedId = look.id; return true; }
+  snapshot["id"] = look.id;
+  LookConfig* verifiedLook = new (std::nothrow) LookConfig();
+  if (!verifiedLook) { message = "not enough memory to verify pattern"; return false; }
+  const bool snapshotValid = decodeLibraryLook(snapshot.as<JsonVariantConst>(), config, *verifiedLook); delete verifiedLook;
+  if (!snapshotValid) { message = "current controls cannot safely be saved"; return false; }
+  JsonDocument doc; doc["layout"] = clientLibraryLayoutRevision(config); doc["generation"] = clientLibraryGeneration + 1U;
+  JsonDocument previous; if (deserializeJson(previous, clientLibraryRows)) { message = "library unavailable"; return false; }
+  doc["looks"].set(previous.as<JsonArrayConst>()); encodeLibraryLook(look, doc["looks"].as<JsonArray>().add<JsonObject>());
+  String json; serializeJson(doc, json);
+  if (json.length() > NVS_STRING_LIMIT) { message = "pattern storage capacity reached"; return false; }
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) { message = "pattern storage unavailable"; return false; }
+  if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) { prefs.end(); message = "installation change in progress"; return false; }
+  const bool written = prefs.putString(CLIENT_LIBRARY_KEY, json) == json.length(); prefs.end();
+  if (!written || !prefs.begin(NVS_NAMESPACE, true)) { message = "pattern write not verified"; return false; }
+  const bool verified = prefs.getString(CLIENT_LIBRARY_KEY, "") == json; prefs.end();
+  if (!verified) { message = "pattern readback failed"; return false; }
+  clientLibraryRows = ""; serializeJson(doc["looks"], clientLibraryRows);
+  installedId = look.id; ++config.lookCount; ++clientLibraryGeneration;
+  runtimeRefreshInstalledLooks(); return true;
+}
+
+namespace {
 constexpr const char* CLIENT_PATTERN_KEY = "clientPatterns";
 uint32_t clientPatternGeneration = 0;
 ClientPatternOverride clientPatternOverrides[LW_MAX_LOOKS];
@@ -3054,6 +3212,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["capabilitiesVersion"] = LW_CAPABILITIES_VERSION;
   doc["capabilities"]["clientPlaylist"]["version"] = 1;
   doc["capabilities"]["clientPattern"]["version"] = 1;
+  doc["capabilities"]["clientLibrary"]["version"] = 1;
   doc["capabilities"]["kaleidoscopeReflectionPoints"] =
       LW_KALEIDOSCOPE_REFLECTION_POINTS_VERSION;
   doc["capabilities"]["symmetrySides"] = LW_SYMMETRY_SIDES_VERSION;

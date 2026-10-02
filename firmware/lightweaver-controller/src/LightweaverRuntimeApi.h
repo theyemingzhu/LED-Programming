@@ -223,3 +223,5 @@ float runtimeOutputCalibrationGreen();
 float runtimeOutputCalibrationBlue();
 uint16_t runtimeOutputMeasuredFps();
 bool runtimeOutputDithering();
+
+void runtimeRefreshInstalledLooks();

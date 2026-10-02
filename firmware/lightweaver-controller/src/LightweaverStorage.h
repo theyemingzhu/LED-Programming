@@ -476,3 +476,12 @@ void clearPersistedLiveLookRecord();
 String currentConfirmedInstallationId();
 
 #endif  // LW_STORAGE_NATIVE_TEST
+
+#ifndef LW_STORAGE_NATIVE_TEST
+bool loadClientLibrary(RuntimeConfig& config);
+String clientLibraryRevision(const RuntimeConfig& config);
+String clientLibraryLayoutRevision(const RuntimeConfig& config);
+bool clientLibraryCanInstall(const RuntimeConfig& config);
+bool saveClientLibraryLook(RuntimeConfig& config, JsonVariantConst request, String& installedId, String& message);
+
+#endif

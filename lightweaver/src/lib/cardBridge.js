@@ -35,6 +35,7 @@ const PRIVILEGED_BRIDGE_TYPES = new Set([
   'config',
   'client-playlist',
   'client-pattern',
+  'client-library',
   'control',
   'reboot',
   'recover-lights',
@@ -115,6 +116,7 @@ export const CARD_BRIDGE_FEATURE_VERSIONS = {
   'release-bridge': 6,
   'sequence-media': 7,
   'client-playlist': 9,
+  'client-library': 10,
 };
 
 export const CARD_BRIDGE_CHANGED_EVENT = 'lightweaver-card-bridge-changed';

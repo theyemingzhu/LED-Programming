@@ -39,6 +39,11 @@ function normalizedPatterns(payload = {}) {
       label,
       mode,
       runtimePatternId,
+      ...(PATTERN_ID.test(boundedText(pattern?.preset)) ? { preset: boundedText(pattern.preset) } : {}),
+      ...(pattern?.nativeRecipe?.kind === 'color-journey' && Array.isArray(pattern.nativeRecipe.journey?.stops)
+        && pattern.nativeRecipe.journey.stops.length >= 2 && pattern.nativeRecipe.journey.stops.length <= 32
+        && pattern.nativeRecipe.journey.stops.every(stop => /^#[0-9a-f]{6}$/i.test(stop?.color))
+        ? { previewColors: pattern.nativeRecipe.journey.stops.map(stop => stop.color) } : {}),
       ...savedPatternMetadata(pattern),
       zones: (pattern.zones || []).map(zone => ({ id: boundedText(zone?.id), label: boundedText(zone?.label), patternId: boundedText(zone?.patternId) })),
       controls: {

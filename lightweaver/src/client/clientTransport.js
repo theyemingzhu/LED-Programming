@@ -1,3 +1,4 @@
+import { normalizeClientSections, normalizeClientLibrary, buildClientLibraryInstallRequest, verifyClientLibraryReadback } from './clientLibraryInstall.js';
 import { normalizeClientPattern } from './clientPattern.js';
 import { connectCardTransport } from '../lib/cardTransport.js';
 import { acquireCardBridgeFromGesture, adoptDiscoveredCardBridgeIdentity, getCardBridgeState, sendCardBridgeRequest, cardBridgeFeatureGap } from '../lib/cardBridge.js';
@@ -19,6 +20,11 @@ export async function connectClient(host, { bridge = false, expectedCardId = '' 
       if (path.startsWith('/api/client-pattern')) {
         const patternId = new URL(path, 'http://lightweaver.local').searchParams.get('patternId');
         return sendCardBridgeRequest('client-pattern', { method: options.method || 'GET', ...(options.body ? { body: options.body } : { patternId }) }, { host });
+      }
+      if (path === '/api/client-library') {
+        const gap = cardBridgeFeatureGap('client-library');
+        if (gap) throw new Error('Your lights need an update before Library patterns can be added.');
+        return sendCardBridgeRequest('client-library', { method: options.method || 'GET', ...(options.body ? { body: options.body } : {}) }, { host });
       }
       if (path === '/api/client-playlist') {
         const gap = cardBridgeFeatureGap('client-playlist');
@@ -47,7 +53,36 @@ export async function connectClient(host, { bridge = false, expectedCardId = '' 
     const controls = normalizeCardCustomerControls(zones, patterns);
     const reportedId = patterns.currentId || zones.zones?.[0]?.patternId || '';
     controls.activePatternId = reportedId;
-    return { status: nextStatus, controls };
+    let sections = []; let sectionsError = "";
+    try { sections = normalizeClientSections(zones); } catch (error) { sectionsError = error.message; }
+    let library = null; let libraryError = '';
+    if (nextStatus.capabilities?.clientLibrary?.version === 1) {
+      try { library = await session.readLibrary(); } catch (error) { libraryError = error.message; }
+    }
+    return { status: nextStatus, controls, sections, sectionsError, library, libraryError, layout: library?.layout || null,
+      libraryInstallAvailable: !sectionsError && Boolean(library?.canInstall) && library.remaining > 0 };
+  };
+  session.readLibrary = async () => normalizeClientLibrary(await request('/api/client-library'), identity);
+  session.installLibraryLook = async draft => {
+    const currentStatus = validateClientStatus(await request('/api/status'), identity);
+    if (currentStatus.capabilities?.clientLibrary?.version !== 1) throw new Error('Your lights need an update before Library patterns can be added.');
+    const library = await session.readLibrary();
+    if (!draft.layoutRevision || draft.layoutRevision !== library.layoutRevision) throw new Error('The artwork map changed. Refresh Library before saving.');
+    if (!library.canInstall || library.remaining < 1) throw new Error(library.remaining < 1 ? 'The card is full.' : 'This current look cannot safely accept Library changes.');
+    const body = buildClientLibraryInstallRequest({ ...draft, status: { ...currentStatus,
+      capabilities: { ...currentStatus.capabilities, clientLibrary: { version: 1, supportedPresetIds: library.supportedPresetIds } } },
+      currentLookId: library.currentLookId, libraryRevision: library.revision, sections: library.sections });
+    let receipt;
+    try { receipt = await session.write('/api/client-library', body); }
+    catch (error) { error.delivery = 'unknown'; error.layoutRevision = draft.layoutRevision; throw error; }
+    try {
+      const [readback, patterns] = await Promise.all([session.readLibrary(), request('/api/patterns')]);
+      return verifyClientLibraryReadback(receipt, readback, patterns, identity, draft);
+    } catch (error) {
+      error.savedPatternId = receipt.installedPatternId; error.savedCardId = identity.cardId; error.cardId = identity.cardId;
+      error.layoutRevision = receipt.layoutRevision; error.delivery = 'saved-unverified';
+      throw error;
+    }
   };
   session.readPattern = async patternId => normalizeClientPattern(await request(`/api/client-pattern?patternId=${encodeURIComponent(patternId)}`), identity.cardId, patternId);
   session.readPlaylist = async patterns => normalizeClientPlaylist(await request('/api/client-playlist'), patterns, identity.cardId);

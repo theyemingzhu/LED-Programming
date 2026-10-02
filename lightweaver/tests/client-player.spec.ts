@@ -74,12 +74,11 @@ test('installed patterns, persisted playlist and sliders work at phone and deskt
   await expect(page.locator('.cl-pattern')).toHaveCount(4);
   await page.getByRole('button', { name: 'Stay on pattern' }).click();
   expect(state.controls).toHaveLength(0);
-  await page.getByRole('button', { name: /Your playlist/ }).click();
-  await page.getByRole('button', { name: '+ Add pattern' }).click();
+  await page.getByRole('button', { name: /^Playlist/ }).click();
+  await page.getByRole('button', { name: 'Add Moon garden to playlist' }).click();
   const duration = page.getByRole('spinbutton', { name: /Duration for Moon garden/ });
   await duration.fill(''); await duration.fill('45'); await duration.press('Tab');
-  await page.getByLabel('Pattern to add').selectOption('artwork-amber');
-  await page.getByRole('button', { name: '+ Add pattern' }).click();
+  await page.getByRole('button', { name: 'Add Amber tides to playlist' }).click();
   await page.getByRole('button', { name: 'Move entry 2 up' }).click();
   await page.getByRole('button', { name: 'Save playlist', exact: true }).click();
   await expect(page.getByText('Playlist saved on your card.')).toBeVisible();
@@ -87,6 +86,7 @@ test('installed patterns, persisted playlist and sliders work at phone and deskt
   expect(state.entries).toEqual([{ patternId: 'artwork-amber', dwellSeconds: 30 }, { patternId: 'installed_Moon', dwellSeconds: 45 }]);
   await page.getByRole('button', { name: 'Repeat playlist' }).click();
   await expect(page.getByRole('button', { name: 'Repeat playlist' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('navigation', { name: 'Player views' }).getByRole('button', { name: /^Patterns/ }).click();
   const brightness = page.getByRole('slider', { name: 'Brightness' });
   await brightness.focus(); await brightness.press('ArrowLeft');
   await expect.poll(() => state.brightness).toBe(0.69);
@@ -106,7 +106,7 @@ test('installed patterns, persisted playlist and sliders work at phone and deskt
   expect(state.controls.at(-1)).toEqual({ patternId: 'artwork-amber', syncZones: true });
   expect(state.playing).toBe(false);
   await connect(page);
-  await page.getByRole('button', { name: /Your playlist/ }).click();
+  await page.getByRole('button', { name: /^Playlist/ }).click();
   await expect(page.getByRole('spinbutton', { name: /Duration for Moon garden/ })).toHaveValue('45');
   await page.getByRole('button', { name: 'Remove entry 1' }).click();
   await expect(page.locator('.cl-playlist-row')).toHaveCount(1);
@@ -119,10 +119,11 @@ test('installed patterns, persisted playlist and sliders work at phone and deskt
 test('unsupported playlist firmware keeps existing light controls usable', async ({ page }) => {
   await mockClientCard(page, { oldFirmware: true });
   await connect(page);
-  await page.getByRole('button', { name: /Your playlist/ }).click();
+  await page.getByRole('button', { name: /^Playlist/ }).click();
   await expect(page.getByRole('heading', { name: 'Playlist editing needs a card update' })).toBeVisible();
-  await expect(page.getByRole('slider', { name: 'Brightness' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Save playlist', exact: true })).toHaveCount(0);
+  await page.getByRole('navigation', { name: 'Player views' }).getByRole('button', { name: /^Patterns/ }).click();
+  await expect(page.getByRole('slider', { name: 'Brightness' })).toBeEnabled();
 });
 
 test('a different card or boot cannot receive a stale control', async ({ page }) => {

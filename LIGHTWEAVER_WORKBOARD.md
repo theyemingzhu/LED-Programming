@@ -7,8 +7,53 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Client flow clarity — 2026-09-30
+Owner: primary. State: local preview verified; not published. User could not understand Library/Playlist loading. Found working installed Add hidden below builder/map; Use pattern only selected draft with no placement; final save offscreen; browser/card/playlist save meanings mixed; old firmware limitation hidden. Fixed Library default saved patterns with large Add buttons+duration and Create a new pattern above actual five-card grid. New creation separate: preset defaults whole piece; Add action near name and honest blocked reason; Keep draft on this phone distinct; section mixing/map progressively exposed. Playlist clear Add→time→Save→Play, sticky save/count/unsaved status; tab handoff scrolls to top. No auto save/play, API unchanged this turn.
+Evidence: combined browser12/12 PASS (default/mixed/rename/retry/full/stale/phone5cards/timeout/scroll/save-play separation); client14/14 PASS; checkpoint2996/2996 PASS + Studio build; client build/graph PASS; design detector[]; diff clean. Logs /private/tmp/lw-clear-flow-{checkpoint,browser}.log. Actual connected lw-b0fe81f61b44/build2311 phone and desktop inspected. Aurora added exact ID to30-second playlist draft and Save playlist visible; no card persistence/playback mutation. New Ocean auto whole-piece and early card-update blocker inspected. Screenshots /private/tmp/lightweaver-clear-library-phone.jpg and /private/tmp/lightweaver-clear-playlist-phone.jpg. Stable preview127.0.0.1:4173/client.html, left Playlist draft visible. New pattern persistence remains blocked until authorized signed firmware release/preserving update; no new release/flash.
+
+## Library placement board — 2026-09-30
+Owner: primary. State: local preview verified; not published/flashed. User requested workable drag/drop placement and automatic strip-name updates. Delivered compact palette beside whole-piece/source-section destinations; mouse drag and phone tap-select/tap-destination; visible gradient per assigned section; different native patterns and tuning in one combo look; Tune section edits only that assignment. Mirrors stay grouped with source. Client save protocol extends existing bounded endpoint with optional exact-source assignments, no wiring/config authority.
+Names read directly from card on3s refresh plus Library-open/focus/visibility; same-ID saved renames update without losing placements or playlist draft. Temporary read errors preserve drafts and pause writes, recover automatically. Different boot/card still requires reconnect; Studio-only unsent names are not card state.
+Proof: focused Library+refresh8/8 PASS; client14/14 PASS; integrated checkpoint2996/2996 PASS + Studio build; client build/graph PASS; firmware native14/14 + ESP32 compile PASS. Actual connected lw-b0fe81f61b44/build2311: tap Ocean→Strip1 and Fire→Strip2, native drag Ocean→Strip3, all draft gradients/targets visible. Desktop and390x844 phone inspected; screenshots /private/tmp/lightweaver-placement-board.jpg and /private/tmp/lightweaver-placement-board-phone.jpg. No card mutation made. Source diff clean. Logs /private/tmp/lw-placement-board-checkpoint.log and /private/tmp/client-library-{assign-green,native,compile}.log. New-look persistent save still requires authorized signed firmware release and preserving update; physical appearance/reboot acceptance unperformed. Stable preview127.0.0.1:4173/client.html. Next: owner review or authorized release.
+
+## Artwork-safe Library → Playlist — 2026-09-30
+Owner: primary. State: local browser verified; firmware compile/persistence contracts verified, physical new-feature proof unperformed. Latest user scope: Library adds to playlist without editor access and retains artwork-specific strips/sections/mirrors/direction.
+Delivered: existing exact installed look IDs add directly to a timed playlist draft. New Library look uses card-owned source sections and immutable versioned map; bounded appearance-only save, durable readback, exact card/boot/revision checks, then independently verified ID/preset/tuning/map before draft append. Save playlist remains explicit. Retries of acknowledged saves verify without reinstalling. New zoned looks use existing combo playback mode; runtime selection and playlist admission share tested policy. Client cannot submit wiring or whole config. Unsupported native/sequence source combinations reject rather than flatten. Whole piece applies to all source sections using existing continuous/phase rules; a single global phase across separate zones is not implemented. Catalogue drafts beyond advertised native presets cannot install.
+Evidence: integrated checkpoint2996/2996 PASS + Studio build; client13/13 PASS + client build/graph verification; new Library browser6/6 PASS incl timeout retry/no duplicate and stale/full refusal; earlier related player/recovery8 PASS. Native13/13 PASS, bridge/helper31/31 PASS, focused continuous readback5/5 PASS, ESP32 compile PASS (final admission correction proof in /private/tmp/client-library-compile.log). Diff clean. Logs /private/tmp/lw-artwork-library-checkpoint.log and /private/tmp/client-library-{js,native,compile}.log.
+Actual lw-b0fe81f61b44/build2311: read five strip ranges; inspected Library and directly added Aurora to30-second draft, never saved playlist or changed hardware. Screenshot /private/tmp/lightweaver-library-to-playlist.jpg. Stable preview127.0.0.1:4173/client.html. Current card lacks new install capability; UI disables saving new looks honestly. No new commit/deployment/flash; signed release and preserving update plus physical persistence/appearance acceptance remain next authorized delivery boundary.
+
+## Self-contained client Library — 2026-09-30
+Owner: primary. State: browser work verified; later direct map/playlist instruction superseded the pending capability question (see current entry). Visual Playlist add cards replace name dropdown; focused8 + final layout1 PASS. Self-contained Library has no Studio links or editor routes, tunes presets locally, saves browser drafts, and reads actual defined sections/mirror groups. Old Studio shell modifications fully reversed; retired files preserved /private/tmp/lightweaver-retired-player-studio-20260930084326. Focused self-contained Library2 PASS; metadata helper4 PASS. Integrated checkpoint2996 PASS, client16 PASS (includes retired helper tests before archive), Studio and client production builds PASS, diff clean.
+Actual connected lw-b0fe81f61b44/build2311: five valid strip ranges read independently; UI whole-piece/section chooser inspected selecting Strip1 for Ocean without card write. Screenshot /private/tmp/lightweaver-self-contained-library.png. Save to lights honestly disabled: current firmware has no bounded client library install route and client cannot write full config. Approval question pending, no firmware changes/flash or deployment. Local draft storage is browser-local, not Studio cloud collection. Next: answer on restricted card capability, then implement tested persistence/targeting and authorized release as needed.
+
+## Player UX follow-up — 2026-09-30
+Owner: primary. State: verified local preview; not published. Tabs now precede controls; Playlist/Library have compact playback, gradient playlist rows and clearer add/timing controls. Unsaved playlist survives failed save and reconnect with original revision retained. Library has searchable Studio gradient catalogue, Use pattern links into existing manager, saved collection and creation links. Local links remain in local preview; production keeps canonical Studio.
+Preview server had stopped and was restored on127.0.0.1:4173 (session31364). Initial card route/hostname/AP timed out; after preview restoration real card answered independently: lw-b0fe81f61b44/build2311/playbackReady true/project lightweaver-bench-discovery-v1. Actual connected Library and Playlist screens inspected. No card writes made. Focused playlist cases10 passed; client production build passed. Library follow-up test completion recorded by worker. Screenshot /private/tmp/lightweaver-library-ux.png. Next: review or authorized release.
+
+## Current Sprint — player gradients, branding, library — 2026-09-30
+Owner: this primary. State: done (local verified preview; not published). User-approved scope: real Studio gradient thumbnails and branding; Patterns / Playlist / Library; reuse existing online Studio collection, saved stacks and authoring for whole-piece or isolated-section patterns. Card playback and playlist APIs unchanged. Proposed firmware installer was removed; no firmware changes or flash.
+Integrated evidence: checkpoint unit suite and Studio production build PASS; client tests/build/graph verification PASS; focused browser player/save9, visuals1, library4 PASS; library helper3 PASS. Compatible pattern save uses existing /api/config and verifies installed fingerprint readback while preserving outputs/wiring. Wrong-card and staged layout replacement blocked in player Library; owner setup and physical layout remain outside it. Offline Library browsing works. Actual connected player and reused Library screens inspected; phone screenshots show no overflow. No physical light appearance acceptance claimed.
+Preview: http://127.0.0.1:4173/client.html; paired actual card lw-b0fe81f61b44. Branch codex/client-pattern-library. Logs: /private/tmp/lightweaver-library-checkpoint.log and /private/tmp/lightweaver-client-check.log. Existing production remains Studio/client2314, firmware2311. Next: user review or authorized release; no new deployment started.
+
 ## Current delivery — client player — 2026-09-29
-Owner: this manager. State: limited-save follow-up verified; commit/push to PR375 next.
+Latest verified outcome: website release SHIPPED at f1c16292e5619f02957e0ed0a3fe752f7ea7db46; Studio/client2314, signed firmware2311. Deploy36588664715 and durable observer independent both-domain proof passed. Installed runtime d730b744… under shared .git/lightweaver-releases; exact revision history persisted.
+Real card now updated through verified preserving Studio Wi-Fi flow to2311, exact lw-b0fe81f61b44/new boot-a0bfeedd. Project revision10/fingerprint, GPIO18/41px/five segments unchanged. Public player connected and displayed five real patterns. Live speed1→1.05→1 independently read back; all five zones restored1. No pattern/playlist persistence mutation.
+Next single Bench step: owner observes current lights match Current sections. Physical appearance and saved-pattern reboot acceptance unperformed; do not archive this chat as fully accepted. Evidence docs/bench-sessions/2026-09-30-client-player-connection.md.
+
+Earlier progress (superseded by outcome above):
+Latest follow-up: release2305 failed CI (owner-route expectation and macOS-only
+screenshot paths). Focused repair PR377 merged96703c09f96d3348ca036787c28c74dffbe0f8f7,
+build2311. Route contract1/1 and player/owner11/11 pass. Durable observer PID86722
+alive for exact2311 revision, phase checking. Not shipped; runner owns next proof.
+Live preview requested: actual UI shows Lights unavailable. Read-only USB hello
+at /dev/cu.usbmodem14301 confirms lw-b0fe81f61b44, boot-b9fe4fab-b0fe81f61b44,
+firmware1.1.47/build2160. Wi-Fi joining, empty stationIp, AP active. Saved LAN route
+timed out; local hostname unresolved. No provisioning, flash, or reset performed.
+Next Bench step: owner confirms computer/card Wi-Fi situation, then restore actual
+card network reachability and correlate identity before pairing the player.
+Earlier screenshots/browser tests are simulated card evidence, not physical proof.
+
+Owner: this manager. State: publishing in background. User explicitly authorized ship; PR375 merged.
 Confirmed scope: Save on the lights; Studio reads it back. Only the player Owner
 tools link is password-gated; direct Studio remains accessible by owner choice.
 New Update pattern saves edited brightness/speed/hue for exact installed ID and
@@ -24,10 +69,9 @@ both production builds and client graph PASS. Phone390px screenshot inspected.
 Logs: /private/tmp/lightweaver-pattern-checkpoint.log,
 /private/tmp/lightweaver-pattern-browser.log; /tmp/lw-client-pattern-compile.log.
 Screenshot: /private/tmp/lightweaver-client-pattern-saved-phone.png.
-Publication remains unauthorized: prior automatic review rejected main merge;
-user then requested verification/limited saves, not publication. Do not merge
-until explicit authorization. PR375 baseline94b77f13 (build2303); follow-up head
-will be recorded after push. No card flash or physical persistence proof.
+Authorized release: PR375 merged at c93be0dba3922bb27f860672eea74458b55dbd44
+(build2305), from verified head9c84a1b83a2554c47eb03ac7103b3cd52ea37cd3.
+Tests run36553209640 started. No card flash or physical persistence proof.
 Working: automatic Studio-link pairing, no address field, installed patterns,
 repeat/stay, brightness/speed/hue, persistent playlist add/remove/reorder/duration.
 Owner tools uses existing password/session and server-checked owner role at
@@ -47,9 +91,11 @@ run; no passed suite rerun for the owner correction. Actual no-address connectio
 view inspected in the in-app browser; no card reached or modified.
 Physical gates: actual card reboot/power-cut persistence and LED appearance
 unperformed. No flash or destructive recovery. Stable preview is port4173/client.html.
-Observer runtime installed (90e71127…), but no candidate publication started.
-Next on explicit authorization: merge PR375 exact head, fetch merged SHA, start
-background-release.mjs with that revision and verify persisted state/live PID.
+Durable observer started for exact merged revision, PID66237 confirmed alive;
+phase checking, state persisted in shared .git/lightweaver-releases. Installed
+launch agent com.mandalacodes.lightweaver.release.94a4c1e2c02e resumes observation.
+Next: runner completes tests, protected firmware signing, both-domain publication
+and independent live-byte proof. Not shipped until final proof; no model polling.
 
 ## Continuous repair and publish loop — active
 Owner: primary manager. Adrian authorized repeated problem-finding, bounded repairs and background shipping until stopped. Durable chat heartbeat `lightweaver-repair-and-publish-loop` resumes actionable work every 30 minutes and must not merely poll CI. No hardware flash for browser-only changes; physical visual proof is not inferred.
