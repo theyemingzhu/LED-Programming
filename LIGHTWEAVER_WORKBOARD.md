@@ -7,7 +7,547 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current build — one Card connection flow — 2026-10-01
+Owner: current primary integrator; lightweaver_app owns app source and focused tests.
+State: active, Sprint; owner approved the audited simplification and said build.
+Outcome: footer and Card entries share Card→Connection, Find/Set up Wi-Fi/Connected
+steps, immediate USB choice, collapsed alternatives/details, persistent progress,
+and explicit separate firmware updates. Preserve exact-card/signed USB safeguards.
+Checkout: /private/tmp/lw-unified-card-connection, branchcodex/unified-card-connection,
+basec6eb000f. PR382 publication checkout remains immutable; original unrelated edits
+preserved. Dependency: verified transport before scan/credentials; real card visuals
+remain owner-observed. No backend/protocol changes, firmware flash or new release.
+Next: source implementation and focused regression, integrated checkpoint once,
+rendered desktop/mobile inspection, record remaining actual-card checks.
+
+## Current audit — unified connection steps — 2026-10-01
+Owner: current primary. State: audit complete; consolidation not implemented.
+Artifact: docs/connection-path-audit-2026-10-01.md, candidatec6eb000f/mainf1c16292.
+Verified: footer lifecycle routing differs from Card direct panel entry; network
+connection panel has no scan; USB Wi-Fi and card-local Wi-Fi each own scanning.
+Saved commissioning/update state chooses which setup surface is shown.
+Evidence: routing15/15 passed; prior public entry2/2 and rendered panel inspected.
+Next: consolidate both entrances into one Card connection section and shared
+steps, preserving transports and exact-card/update safeguards. Scope remains audit;
+no additional product changes or release candidate mutations performed.
+
+## Current delivery — Find my card connection entry — 2026-10-01
+Owner: current primary release manager. State: publishing in background; not shipped.
+Authorized by owner “ship”. PR382 exactc6eb000f1260436101c2b8ecf4134b0d76f77302,
+basef1c16292, source candidate build2315. Isolated checkout /private/tmp/lw-find-card-ship.
+Focused browser2/2 passed5.2s on current main; source/test only, no firmware changes.
+Durable service com.mandalacodes.lightweaver.release.pr382 runs existing controller
+with installed observer handoff, required launch:check40 stages, exact-tree merge,
+production CI and independent live-byte proof. Canonical state:
+.git/lightweaver-releases/candidates/pr382/state.json; runner.mjs and handoff.json
+record owner, revision, logs and resumption. Resume: launchctl kickstart
+ gui/501/com.mandalacodes.lightweaver.release.pr382. Meaningful terminal notices only.
+Prior PR379/380/374 departure pauses untouched; unrelated workspace edits preserved.
+Next: runner finishes gates and merges/publishes only this exact candidate; report
+Studio/firmware build numbers only after independent live proof. No Prove or card flash.
+
+## Current glitch — Find my card timeout — 2026-10-01
+Owner: current primary; app fix by lightweaver_app. State: locally verified, Sprint; not deployed.
+Outcome: public Studio Find my card opens existing connection choices immediately,
+including Inspect card over USB, instead of blindly opening a legacy card popup.
+Artifact: lightweaver/src/v3/lw-setup.jsx; lightweaver/tests/setup-find-card.spec.ts.
+Evidence: HTTPS remembered-card regression witnessed red (unwanted popup), then green;
+focused suite 2/2 passed in5.4s, including preserved local HTTP search and USB navigation
+to screen=flash&mode=install. Primary inspected /private/tmp/lw-find-card-fixed.png;
+diff formatting passed. Browser fixture proof only; real-card connection not certified.
+Dependency: owner already reports footer USB works; corrected primary path awaits live
+release and owner observation. Native browser tool blocked by symlink sandbox config.
+Next: include this bounded fix in the next authorized browser release; no firmware flash,
+release or paused publisher resumption performed. Unrelated existing edits preserved.
+
+## Departure handoff — 2026-10-01
+Owner: primary release manager. State: paused by owner departure; NOT SHIPPED.
+Current live marker rechecked: Studio2314 atf1c16292; last verified firmware2311.
+PR379 repair4b384d0e pushed, unmerged, candidate2323. Drawer test wrongly expected
+a rejected write to auto-retry; corrected to verify locked mutations, read-only
+refresh, explicit retry. Product safety unchanged. Full drawer2/2 passed7.6s;
+evidence /private/tmp/lw-drawer-reconcile. No source or hardware changes.
+Retained13 completed stages and11 browser-file receipts in canonical
+.git/lightweaver-releases/candidates/pr379/state.json. Remaining required browser,
+unit/build/staging/release checks and deploy/live proof are unperformed; no ETA.
+Mac-closing deadline: stopped owned runner/checks; PR379 phase paused and its
+LaunchAgent unloaded. PR380d7ab5a21 and PR37453d3e696 queue authorization explicitly
+suspended-owner-departure, so shared service skips them. Other tasks/services intact.
+Canonical release paths now /Users/adrianrasmussen/Documents/Files/4 Coding/led.
+Resume only after owner requests: check exact remote379 head/base and clean checkout,
+refresh recorded deadline, set379 ready/reload its existing service, restore380/374
+recorded prior authorization under queue lock. Preserve every passing receipt and
+production serialization. Do not archive unfinished work or restart the full gate.
+
+## Delivery verification — 2026-09-30
+Owner: Audit LED projects and repos. State: partially complete; do not close pending deliveries.
+Verified GitHub deploy36588664715 success and no-store live markerf1c16292:
+Studio/player2314, firmware release2311; persisted independent live proof agrees.
+Client owner verified real card firmware2311, project/wiring retained and speed
+write/readback restored. Physical Current sections appearance awaits Adrian.
+Archived superseded Fix Find my card detection: connection obligation now verified
+by client owner; appearance remains explicitly tracked in Plan Light client app.
+PR37973161a61 stopped overnight at stage13 after3600s; owning chat resumed for
+fresh-start autosave/startup/navigation diagnosis. PR3800a0d0032 and PR37453d3e696
+remain open waiting behind379. They are not shipped and must not be archived.
+Next: active379 owner repairs concrete failure and completes379→380→374;
+client remains open until physical appearance acceptance is resolved. No Prove.
+
+## Current inventory — library audit — 2026-09-29
+Owner: Audit LED projects and repos. State: finish/ship/close authorized; delivery owners active.
+Evidence: docs/led-library-audit-2026-09-29.md. Five completed chats archived;
+obsolete handoff PR312 closed, documents/branch retained. No worktree deletion.
+Card-state owner resumed379 then380; mobile owner resumed374 after380;
+client owner resumed381 release proof and card acceptance. All three starts verified.
+PR379 repair record identifies main/base drift and stage12 loading timeout;
+its owner must reconcile exact base/tree before resuming. Existing380 queue retained.
+Next: independent owners finish concrete repairs and verify durable handoffs;
+archive unfinished chats only after actual shipment/acceptance obligations are met.
+No new Prove run. Hardware appearance is not certified by website release.
+
+## Current delivery — release reliability and card-first resume — 2026-09-30
+Owner: primary manager. State: publishing in background; not shipped.
+Authorized order PR379 → PR380 → PR374 remains machine-recorded. Do not archive
+until independent live proof and all owned work are complete. No hardware or Prove.
+PR379 exact73161a61 (candidate Studio2322), basef1c16292, retained stages0–12.
+Overnight stage13 failure traced to orphan Vite9617 surviving the old runner's
+shell-only timeout. Fresh server: unchanged footer119 passed2.1s; unchanged
+Layout install CTA and Hardware fold passed2/2 in4.7s. No app/test changes.
+Evidence /private/tmp/lw-footer-fresh and /tmp/lightweaver-stage13-nav-focused.log.
+Legacy publish.py now kills its process group on timeout, uses browser fail-fast,
+and records successful individual spec files against the exact revision. All22
+stage13 specs/options preserved. Resumed with explicit4h deadline and repair history;
+runner PID290. State in common Git lightweaver-releases/candidates/pr379/state.json.
+PR380 exactd7ab5a21 pushed and pinned waiting after379. Repair completion now
+reads actual release state and emits one durable actionable follow-up notice;11
+focused tests passed. Installed runtimece2bbc858322e1fa06db02a8d3da436f76f07f906dfc8dc6f78e1db2bd94d028.
+PR374 exact53d3e696 waits after380. Preserve shared installed complete runtime;
+never reinstall an older observer over the candidate/queue service.
+PR379 outcome: installed card controls independent of draft, explicit adoption,
+per-card resume, patch-only brightness, uncertain-write readback and full scene save.
+Earlier checkpoint3019unit/21browser, build and phone/desktop inspection passed;
+authorized remaining release checks and exact live proof still pending.
+Next: background runner completes remaining required gates and exact live proof.
+Completion/failure is event-driven; no model polling or repeated permission needed.
+
+## Current proposal — client player — 2026-09-29
+Owner: this manager. State: active; owner approved implementation.
+Artifact: docs/plans/2026-09-29-client-player-plan.md.
+Outcome: light.mandalacodes.com dedicated installed-pattern/playlist player.
+Dependencies: narrow card playlist-edit API, new exact-origin bridge permission,
+hosting/domain inspection. Reuse existing card controls and timed playback.
+Evidence: code inspection found existing sliders send patternId and pause the
+playlist; client patch-only controls must avoid that. DNS not yet inspected.
+Implementation checkout: /Users/adrianrasmussen/.codex/worktrees/client-player/led
+(branch codex/client-player, based on current main). Domain provisioned and active.
+Ownership: client_controls app/bridge; firmware_client card API/persistence;
+client_hosting build/domain/CI; primary sole integrator and screen verification.
+Next: agree narrow playlist contract, implement lanes, run focused checks and one
+integrated checkpoint. Preserve existing mobile sidebar fix and unrelated edits.
+
+## Current delivery — mobile sidebar Patterns — 2026-09-29
+Owner: mobile navigation primary. State: repaired and pushed; durable queue waiting
+for PR380 independent live proof (behind PR379). Not merged/deployed/shipped.
+PR374 exact head53d3e6962eac1df8b447fde59638901c89104d4d; managed checkout
+/Users/adrianrasmussen/.codex/worktrees/mobile-pattern-navigation/led.
+Failure: one existing patterns-v3 test still expected the deliberately removed
+Card redirect. Bounded test-only repair now asserts Patterns remains active,
+Ocean is not selected, intent survives, and no control/config writes/popups occur.
+Focused verification: affected test1/1 and route/card-handoff12/12 PASS; diff clean.
+Original gate evidence preserved in common-Git lightweaver-releases/history/
+pr374-9c15c2a9 (source stages and browser batches39+11+3+6+55+125+140 passed).
+Old PR374-only LaunchAgent stopped/retired; no duplicate publisher.
+Queue: common-Git lightweaver-releases/queue/pr374.json pins head and afterPr380.
+Candidate service com.mandalacodes.lightweaver.release.94a4c1e2c02e.candidates
+startup verified running, last exit0; immutable runtime3851df5b...de04c2f.
+Next machine action: wait for exact PR380 shipped proof, integrate proven main,
+push and validate integrated candidate, merge, then independent live-byte proof.
+Resume/status via that pinned scripts/release-controller.mjs status --id pr374
+--state-dir '<common-git-dir>/lightweaver-releases'; service uses resume-all
+--only-interrupted. No model polling. Root duplicate diff left untouched.
+Physical card unchanged. Chat remains open until live proof and obligations clear.
+
 ## Manager delivery view — 2026-09-28
+
+### Selected-pattern playback — merged, publishing in background
+Owner: this manager. State: merged; deployment and live proof pending.
+Artifact: PR363 merged as2f95794c, Studio2250; reviewed head3b320482.
+Base main71441dc9/Studio2246; candidate preview on9220.
+Behavior: Layout pattern choices preview immediately on the selected installed
+card section, including reselect. Other sections retain their patterns. Exact
+card identity/readiness/ranges and installed project ID guard writes; wrong
+project or ranges refuse them. Wrong-project regression witnessed RED then GREEN;
+same-project playback/reselect GREEN. Full local release gate PASS after installing
+locked mapper test dependencies; staged site and firmware binary freshness PASS.
+Actual preview screenshot shows Ribbon2 Plasma while siblings retain Lava Lamp;
+simulated card only; physical LED appearance unperformed.
+Inventory: idle-UI4c2240a9 and stack91de724b/b552f52e already included in
+shipped2246. Compact-count regression fixed earlier by50d1da18/207d383b and
+both affected cases passed in /tmp/stacks-release-final-stages.log. No duplicate
+integration of those finished changes.
+Background: exact Tests run36434360018 started; non-LLM observer alive and pinned
+to2f95794c in .git/lightweaver-releases/active.json. Resume with installed
+runtime via install.json or node scripts/background-release.mjs resume. Next:
+observer verifies deploy receipt and live bytes; report shipped only on proof.
+
+
+### Background publishing — shipped build 2246
+Owner: this manager. State: shipped with independent live proof.
+Artifact: PR362 merged as71441dc94758ec2027e3da6dde008685c39dd6a3, Studio2246.
+Studio/firmware source unchanged; signed firmware remains2160. PR362 includes the
+bounded test-harness repairs from the stack release. CI is not being bypassed.
+Working: non-LLM observer tracks exact merged/signing-child identity, rejects
+skipped deploys, downloads deploy receipt/staged graphs and independently verifies
+live Studio/firmware bytes. Mac LaunchAgent installed and loaded; pinned runtime,
+per-revision state, bounded retry and one terminal desktop event; restart tested.
+Persistent defaults: global ~/.codex/AGENTS.md, ship skill, project AGENTS/manager
+and background-publishing guide. No model/sub-agent waits or periodic AI heartbeat.
+Evidence:88 integrated Node tests; actual detached startup/interrupted restart;
+workflow YAML/diff check; service startup exit0. Existing full stack product gate
+and desktop/phone proof retained; no duplicate full UI run for CI-only changes.
+Runner state: .git/lightweaver-releases/active.json, history in revisions/,
+proofs in proofs/. Resume: installed runtime via install.json or
+node scripts/background-release.mjs resume. Read status once on relevant follow-up.
+Release result: Tests36424022782 and actual Deploy36425574219 succeeded;
+persisted observer independently checked exact staged/live bytes and recorded
+Studio2246/firmware2160 shipped. No hardware action.
+
+### Project stack release — shipped in Studio build 2246
+Owner: this manager. State: SHIPPED after independent live proof.
+PR361 source in main; follow-up PR362 merged as71441dc9, Studio2246.
+CI36418928110: all lanes pass except browser smoke; deploy36420328214 skipped.
+Failure: strip-discovery fixture post-Bench boot validation times out in CI;
+passed twice locally. Additional bridge asset-route teardown exception found.
+Merged test-only repairs in PR362: proxy teardown drains
+in-flight routes (focused case passed); boot wait uses the production poll budget
+and captures exact identity diagnostics. The latter is a candidate, not a proven CI
+fix: natural recovery switches to a faster cadence once revalidation starts.
+No production authority changes and no bypass; hosted failure remains unresolved.
+Local gate complete:2871 units;416 release UI;42 mobile;68 production; metadata,
+build/staging and binary freshness. No additional full gate for test-only fixes.
+Evidence: /tmp/stacks-main-ci-failed.log, /tmp/stacks-ci-browser-traces,
+/tmp/stacks-release-final-stages.log. Next: focused repairs, follow-up PR, main CI,
+deploy then independent strict no-store live proof. No hardware mutation.
+
+### Stack chip width and packing — verified local build
+Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local d8c3f0df.
+Working: chips reduced from 220x134px to 148x104px on the actual desktop.
+Five fit across instead of three; ten fit in two rows. Phone retains two columns,
+unclipped single-row actions and square palettes. No selection behavior change.
+Evidence: density regression RED before CSS and GREEN after; 2/2 affected browser
+checks passed. Actual 1280x800 and 390x844 reviewed; production build PASS
+(/tmp/stacks-tight-build.log). Screenshots: stack-tight-desktop.png and
+stack-tight-phone.png in this chat's visualizations directory.
+Next: owner review in existing 9220 preview. Local only; no deployment/firmware.
+
+### Compact stack action row — verified local build
+Owner: this manager; Sprint glitch loop. State: done at local-build boundary.
+Artifact: codex/project-pattern-stacks, refinement on local 62ac29d7.
+Working: Preview, Edit and Playlist share one 30px row, including used status.
+Evidence: focused desktop/390px layout and action regression PASS; actual desktop
+and phone inspected; production build PASS (/tmp/stacks-compact-actions-build.log).
+Screenshots: stack-actions-compact-desktop.png and stack-actions-compact-phone.png
+in this chat's visualizations directory. No behavior, firmware or release change.
+Next: owner review in existing 9220 preview.
+
+### Stack selection, explicit actions and gradient tiles — verified local build
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: codex/project-pattern-stacks, committed locally as 62ac29d7.
+Working: selecting a stack switches locally without opening its editor, scrolling,
+or sending a card command. Explicit Preview shows the whole stack in Studio;
+Edit opens controls; Add to playlist adds once and then shows In playlist.
+Smooth square palette thumbnails identify each section; Off remains dark.
+Phone controls and four-thumbnail rows fit at 390px. Draft/save guards preserved.
+Evidence: 17/17 focused Patterns browser tests; integrated checkpoint 2869/2869
+unit tests and build PASS; final spacing build PASS. Actual desktop and phone
+reviewed. Logs: /tmp/stacks-actions-checkpoint.log and
+/tmp/stacks-actions-build-final.log. Screenshots: stack-actions-desktop.png and
+stack-actions-phone.png in this chat's visualizations directory.
+No deployment, firmware, storage schema or card changes.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+### Stack chips and explicit creation — verified local build
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: local commit cebfa3d0 on codex/project-pattern-stacks. NOT DEPLOYED.
+Working: compact side-by-side chips with one expanded editor; visible New stack,
+Stack name, Save stack and Save changes. Creation/expansion scrolls to the editor
+and focuses its name. Full section assignments are visible; Patterns has a clear
+Return to save action. Existing unfinished new stacks can be resumed.
+Persistence: New captures current default and every displayed section without
+changing the source record. Draft writes are verified before switching; unfinished
+new drafts preserve untouched sections across chip changes/reload. Errors remain
+visible. Existing layout-review and Lab guards remain enforced.
+Evidence: focused New/save/Resume/lifecycle/browser checks passed; integrated
+checkpoint 2869/2869 unit tests; final production build PASS. Actual 1280x800 and
+390x844 reviewed. /tmp/stacks-chips-checkpoint.log and
+/tmp/stacks-chips-build-final.log; screenshots stack-chips-desktop.png and
+stack-chips-phone.png in this chat's visualizations directory.
+No deployment, firmware changes, card mutation, or storage schema change.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+
+### Compact stack workflow — verified local refinement
+Owner: this manager; Sprint. State: done at the authorized local-build boundary.
+Artifact: local commit 74067ccf295aea6820ed85b06faa8400fdd2e172,
+branch codex/project-pattern-stacks. NOT DEPLOYED.
+Working: compact single-row stack library, clickable names, color segments, direct
+Add for unused stacks, section assignments and lifecycle actions under More.
+Save uses one name/action row; secondary playlist/details actions remain accessible.
+Errors/review warnings stay visible; linked-update notice appears when dirty.
+Actual 1280x800: saved row 222→61px; save panel 249→150px. Phone rows 73px;
+44px controls retained, metadata wraps, no decorative grid behind stack library.
+Evidence: 24 relevant browser checks passed, final swatch sizing regression passed,
+production build PASS; actual desktop/phone checked. Screenshots: stack-minimal-
+desktop.png and stack-minimal-phone.png in this chat's visualizations directory.
+No deployment, firmware, persistence schema or card mutation. Capacity unchanged.
+Next: owner review in existing 9220 preview; release requires authorization.
+
+
+### Stack finesse and functional ordering — verified local refinement
+Owner: this manager; Sprint. State: done at approved local-build boundary.
+COMMITTED0d492d27627a2b9892d0201f68aae744e3e69dbf; NOT DEPLOYED.
+Artifact: codex/project-pattern-stacks, refinement on91de724b in samecheckout.
+Working: compact savepanel keeps Tune visible; More/details disclosure; separate
+Save-as-new versus Repeat; usedstack offers Arrange playlist; picker previews
+append order and playlistpositions; phone Add stacks/Back to order navigation.
+Evidence:56distinct relevantbrowser checks passing;2869/2869units; production
+build PASS. Actual1280x800/390x844 inspected. Final evidence:
+/tmp/stacks-finesse-arrange-final.log, /tmp/stacks-finesse-checkpoint.log,
+/tmp/stacks-finesse-build-final.log, /tmp/lightweaver-stack-finesse-desktop.png.
+Plan:docs/plans/2026-09-28-project-pattern-stacks-refinement.md.
+No deployment/firmware change/cardmutation. Cardcapacitylimitunchanged.
+Next: ownerreview in existing9220 preview, then authorized integration/release.
+
+### Install readback recovery — release gate active
+Owner: primary of this chat. User explicitly authorized deployment. PR359,
+branch `codex/install-readback-recovery`, pushed original fix `1a0d019f`.
+Full local gate found stale commissioning fixtures and a real legacy rollback
+lockout. Bounded additional fix retains strict confirm authority but permits
+rollback with fresh exact card/build/fw/boot/project/activation proof. Focused
+61 commissioning unit +5 browser checks PASS, source now frozen.
+Test-only edits during original release-ui caused timestamped/untimestamped
+cardLink module divergence; speculative changes discarded. Invalidated run
+stopped; clean final unit/release-ui/artifact sequence running in
+`/private/tmp/lightweaver-install-release-final.log`. Earlier core, cloud,
+mapper, browser-regression/mobile, production suites passed.
+Next: final gate → commit/push bounded repair → merge PR359 → exactmain CI →
+real deploy → strict independent live graph proof. Public last verified
+Studio2228 / firmware2160. No card writes or firmware release needed.
+
+### Friend website install failure — verified local fix (install-readback)
+Owner: primary of this chat. COMMITTED, NOT DEPLOYED.
+Artifact: `codex/install-readback-recovery`, commit `1a0d019f`, managed checkout
+`/Users/adrianrasmussen/.codex/worktrees/install-readback/led`, base main2228.
+Confirmed: failed identity preflight (zero POSTs) or explicit HTTP4xx refusal
+could be misclassified as an accepted write/restart, then hide original failure
+behind `read-back-mismatch` against unchanged project. Fixed delivery markers,
+preserved refusal/identity reasons and intentional retry; ambiguous writes still
+require readback without automatic resend and no longer assert a proven restart.
+Evidence: two witnessed-red regressions; 45 focused tests PASS; browser refusal
+→ intentional Retry → exact verified install PASS, both rendered screens inspected.
+Integrated checkpoint: 2860/2860 unit tests + production build PASS;
+`/private/tmp/lightweaver-install-readback-checkpoint.log`.
+Screenshot evidence: checkout `lightweaver/test-results/layout-send-to-card-an-exp-67879--a-phantom-restart-mismatch-chromium/`.
+Limits: screenshots show friend's Studio2228/card2160, temporary512pixel GPIO15
+setup; precise original network/refusal trigger remains unconfirmed. Transport
+question pending. No firmware/card writes. Public marker confirmed still2228.
+Next: include verified commit in next authorized release, then retest friend’s
+install and inspect exact remaining refusal if any. Do not claim friend recovered.
+
+
+SHIPPED compact Patterns preview — Studio2228 / firmware2160.
+PR358 merged terminalmain6dbffe675ac9532e06522f864e018345694a9b78.
+Tests36388828100 SUCCESS; real Deploy36389815352 SUCCESS with credentials,
+publication and liveverification. Independent PROD_CHECK_REQUIRED check:prod
+EXIT0: strictrelease2228, all62staged/livefiles, signedfirmware1.1.47/build2160,
+publicno-login grant and production/privateAccess checks. Evidence
+/tmp/lightweaver-2228-live-proof.log. Actualpublicbrowser shows thinanimated
+preview and footer2228; screenshot/tmp/lightweaver-2228-live.png.
+Localoriginaltab2228 saved45LEDproject preserved. No card/firmwarewrites.
+This compact-preview shipment complete; no automation running or newworkers.
+Separate layoutplayback27fcca61 candidate and pattern-stack proposal are not
+included in this release. Do not claim those shipped or implement proposal.
+
+
+Studio2228 exactmain Tests36388828100 SUCCESS. Actual Deploy36389815352
+inprogress; parent follows through strict final productionproof. Sourcefrozen,
+clean staged62filegraph and local2228 ready. No repeated tests/cardwrites.
+
+
+
+ACTIVE SHIPMENT compactpreview: owner says ship. PR358 merged exactmain
+6dbffe675ac9532e06522f864e018345694a9b78, Studio2228. Focused tests/real-screen
+2227 already passed. Primary owns exactmain CI → real deploy → independent
+livegraph proof. Clean build/stage in reused launch-live-proof checkout;
+sole4173 remains verifiedcompact2227 pending mergedartifact. Card2160 untouched.
+Separate layoutplayback candidate27fcca61 and pattern-stack proposal stay separate.
+
+
+DONE LOCAL PREVIEW — Studio2227/c075b05faeedc2df022aeb9f8d4e12d0844f3e0e.
+Top Patterns preview now20px animated color ribbon, reduced pane padding,
+retained whole-piece/part controls and readable special-pattern fallback.
+Bounded4file change on codex/compact-pattern-preview in launch-live-proof;
+red120px→green20px animation/control test, section-navigation test, exactcommit
+productionbuild PASS. Parent inspected actual saved45LEDproject on sole4173,
+colors visible, compactheight and originalpatternchoices preserved. Screenshot
+/tmp/lightweaver-2227-compact-preview.png. Committed/localverified, NOT merged
+or deployed; production remains2226. No cardwrites. Worker idle. Independent
+layoutplayback27fcca61 remains a separate candidate for next authorized release.
+
+
+### Project pattern stacks — proposal (chat 01a0e6bf)
+Owner: this manager. Historical proposal; superseded by Adrian’s approved
+build and the verified local implementation recorded above.
+Outcome: project-owned saved arrangements of all section patterns, separately
+selectable in Playlist, including a ten-stack project workflow.
+Evidence: read-only source inspection at local `8bbf965f`; existing compound
+saved looks and playlist combo references are reusable. Current limits: 12 saved
+looks, 16 timed playlist entries; ten-stack payload capacity still needs proof.
+Artifact: `docs/plans/2026-09-28-project-pattern-stacks-proposal.md` contains exact
+creation/edit/save/picker semantics, ownership and acceptance criteria.
+No app/card changes, tests executed, or preview disruption in this planning task.
+Dependency: proposed behavior and implementation scope to be reviewed by Adrian.
+Next: Adrian reviews proposal; reconcile with current main and concurrent
+Patterns work before any later implementation.
+
+ACTIVE Sprint: owner requests top Patterns preview reduced to a thin ~20px animated
+strip. compact_pattern_preview (Sol low) owns bounded app/CSS/regression changes
+in reused clean launch-live-proof checkout from main2226. Primary owns sole4173
+preview integration and actual-screen review. No deployment/card writes in this
+new correction. Separate layout playback candidate27fcca61 remains independent.
+
+
+SHIPPED ALL CURRENT APPROVED SOFTWARE — Studio2226 / firmware2160.
+PR357 merged exact terminalmain bd88f300c2502adf8c3dcdaca8c6c98ae49481be.
+Tests36385812339 SUCCESS; actual Deploy36386973599 SUCCESS, realcredentials,
+Pagespublication and liveverification. Independent PROD_CHECK_REQUIRED check:prod
+EXIT0: strictno-store2226 marker, all62staged/live graphfiles, signed1.1.47
+firmwarebytes, public no-login grant proof and production/privateAccess checks.
+Evidence /tmp/lightweaver-2226-live-proof.log; publicIAB footer2226/current and
+Layout verified, screenshot /tmp/lightweaver-2226-live.png. Original localtab
+2226 saved45LED13/10/12/10 Fire/LavaLamp/Snowfield/StainedGlass preserved.
+No hardwarewrites, credentialstorage, firmwarebump, or projectoverwrite.
+Pattern-details manager completed1cca40eb and is idle. No approved software
+implementation remains unshipped. Release coordination automation retired.
+Broader Bench physical appearance remains unobserved; this is not claimed passed.
+Publicorigin retains a distinct older recoverydraft and temporary-setup status;
+no cardmutation or claim that this publicdraft matches the local45LEDproject.
+Recovery evidence and rootworkboard/CAPABILITIES bookkeeping remain preserved,
+not blindly included in product release. Nextaction: owner feedback/physical proof
+when available; do not rerun accepted release gates or old hardware trials.
+
+
+MAIN2226 required Tests36385812339 SUCCESS. Real Deploy36386973599 now running.
+Exactmain bd88f300 clean build/stage/62file graph verification PASS. Local2226
+originaltab saved45LED project and current patterns preserved. Parent owns final
+production proof. Usage96% weekly, ordinary use allowed; no extra workers/tests.
+
+
+### Layout pattern immediate playback — verified candidate (chat 01a0e6a9)
+Owner: this manager; Sprint, Manager Playbook v7. COMMITTED, NOT SHIPPED.
+Artifact: `codex/layout-pattern-playback`, commit `27fcca61714643c7e96d1398abc75741f39835d4`,
+managed checkout `/Users/adrianrasmussen/.codex/worktrees/layout-pattern-playback/led`.
+Layout selection now sends immediate section-only live preview, including reselect;
+card identity/readiness and exact installed section ranges remain enforced.
+Disconnected/error/success state is visible and cleared between targets/projects.
+Builder: GPT-6 Sol / medium, bounded app path; parent directed and accepted diff
+and final rendered gallery. Cost unknown. One visual status-grid regression caught
+and fixed during parent inspection; no changes to firmware, schemas or physical card.
+Evidence: regression red (zero commands), 13/13 focused browser tests green,
+2858/2858 unit tests plus Vite checkpoint pass; checkpoint log
+`/private/tmp/lightweaver-layout-pattern-checkpoint.log`. Correct second output,
+repeat selection, persisted sibling look and stale-range refusal verified with
+simulated card. Physical LED appearance remains unperformed.
+Screenshot: worktree `lightweaver/test-results/patterns-section-row-Layou-751a4--section-including-reselect-chromium/layout-pattern-playing-on-card.png`.
+Patch applies cleanly atop the separate pattern-details commit 1cca40eb (read-only
+apply check); no changes made to that checkout or the live4173/card session.
+Next: integrate commit 27fcca61 into the next authorized release; this request did
+not authorize deployment. Screenshots' unavailable card bridge remains separate.
+
+
+SHIPPED — Studio2224 / firmware2160 — 2026-09-28 05:56UTC.
+Terminalmain dc76c284369353b9e395669a554213af09f83c6d, PR356.
+MainTests36382856001 SUCCESS, actualDeploy36383845479 SUCCESS with real
+credentials/build/upload/livecheck. Firmwareclassifier36383845418 succeeded
+and correctlyskipped newfirmware; existing signed1.1.47/build2160 preserved.
+Independent PROD_CHECK_REQUIRED check:prod EXIT0 in pristine exactmain checkout:
+62liveStudiofiles, strictno-store release2224 marker, signedfirmwarebytes,
+publicno-login readiness/grant signature, productionjobgraph and privateAccess
+denial allverified. Evidence /tmp/lightweaver-2224-live-proof.log. Actualpublic
+IABtab6 rendersfooter2224; localoriginaltab2 renders2224 and saved45LEDdraft
+unchanged. Physicalcardunchanged; observedappearance remains separate pending.
+Postshipmanager01a0e5dd-3ede-7f20-8de2-dbef3cc061bc nowauthorized to begin
+approved striplabel/patterndetails/per-partcontrols pass on freshmain isolated
+checkout, reporttestedcandidate beforeanotherdeploy. Parentsolehardware/preview.
+Shippingboundary COMPLETE; no replayof oldreleasechecks/fixes. BroaderBenchgoal
+notfalselymarkedcomplete. Nextaction: follow newmanagerresult and ownerfeedback.
+
+
+MAIN2224 ALL REQUIRED CI PASS: Tests36382856001 success. Authorized real
+Deploy site36383845479 inprogress, preflightpassed and deployjobactive,
+deferredjobskipped. Parentwatchlog/tmp/lightweaver-2224-deploy-watch.log.
+Exactmain2224 pristine build/stage/verifygraph ready. Originallocalpreview
+now2224 through /index.html?verify=2224, saved45LEDdraft intact; screenshot
+/tmp/lightweaver-2224-layout.png. Awaitactualpublishsuccess andstrictlivegraph
+proof beforeShipped. No moretests needed unlessnewfailure. Card2160 unchanged.
+
+
+MERGED2224: PR356 merged dc76c284369353b9e395669a554213af09f83c6d.
+Fix8bbf965f: exact candidate probation verdict at UI, fresh readbacks, expiry
+denials; J06/J07/F14 3/3 and F14repeat5/5; integratedunit2858pass; cleanbuildpass.
+MainTests36382856001 running, log/tmp/lightweaver-main-2224-ci-watch.log.
+Parent preparing pristine exactmain2224 build/stage/verify in launch-live-proof.
+Allworkersdone. Bothpublishersactive; next CIcompletion → realdeploy → strict
+PROD_CHECK_REQUIRED livegraphproof. No cardwrites. Local2222 originalIAB recovered
+via /index.html?verify=2222 preserving45LEDdraft. Public2169. Notshippedyet.
+
+
+FINAL VERDICT FIX: J07 reproduced product deadlock then passed with narrow
+exact-candidate fresh status/wiring authority at panel display/mutation guards.
+Sourcefrozen; primary integrated2858/2858unit PASS. Worker fiveF14repeats PASS,
+stable section-target-all assertion replaces composite name; finaltwo specs
+running. Primaryreview requested finiteexpiry denial, included. Sourceworker
+playlist_release_fixture owns explicitfiles/commit. No other sourcewriter.
+LocalIAB RECOVERED without data deletion: originaltab2 now uses sameorigin
+/index.html?verify=2222#screen=layout&next=patterns and rendersStudio2222.
+Saved45LED13/10/12/10 Fire/LavaLamp/Snowfield/StainedGlass intact.
+Evidence /tmp/lightweaver-2222-restored-preview.png. Old immutableassets preserved
+for localcachecompatibility; clean proofcheckout remains pristine. Publicsite
+actualbrowser currently2169. No cardwrites. Next commit/PR/merge, exactmainCI
+thenpublish/proof; notshipped.
+
+
+RELEASE2222 FAILED05:23UTC: main Tests36380903465 completed failure, all other
+seven lanes passed; browser J07 recovery confirmation disabled on3attempts.
+F14 count-save old All sections42LED selector flaky;16groupcases passed,72unrun
+(first35smoke cases earlierpassed). NOT SHIPPED. Root reused playlist_release_fixture
+for exactJ07/F14 final-source reproduction/fix on9385. J07 reproducedred;
+worker now owns narrow CardCommissioningPanel/cardCommissioningFlow source guard
+fix with fresh exact-candidate authority and negative mismatch/expiry tests.
+Ordinary command-ready is false during probation and cannot gate its verdict.
+release_classifier_fix
+read-only independent stalepreview cache diagnosis. No whole-gate rerun before
+focused cause fix. PreviewIAB serves old2213index referencing main-Dt6USuR-.js
+while diskcurrent2222references main-qs_uQ1iY.js. Added12missingoldhashedassets
+beside currentdist; no storageclear and no recovery yet. Proofcheckout unchanged
+exactmain2222 staged62files. Bothpublishersactive;failedTests correctlyprevented
+publication. Usage93%weekly, ordinaryallowed; bounded criticalpathonly.
+
+
+MERGED RELEASE2222: PR355 merged52be975b2aed3ea7edb7a2f7896a2a022ca1fa4c.
+Exact mainTests36380903465 inprogress; source,firmware,windowless PASS05:15UTC,
+cloud/production/smoke/preserving stillrunning independently. Parent watcher
+session69516/log/tmp/lightweaver-main-2222-ci-watch.log. Clean proofcheckout at
+exactmain2222 build/stage/verify PASS; useits .pages graph for finalcheck:prod.
+Local4173 servedexact2222 afterserverrefresh(session17974). OriginalIABtab2 blank
+persists evenwithrestoredold2213; freshisolatedChromium artifact2218 plusSWreload
+renderednormallywithoutpageerrors, main2222windowless alsoPASS. Do not clear
+ownerstorage tofixIAB; preserve45LEDdraft. Allworkersdone; no furthercodechanges
+needed unlessnewCI/runtimefailure. AwaitexactmainCI thenactualpublish, independent
+PROD_CHECK_REQUIRED liveproof. Bothpublishersactive. Notshippedyet. Card2160
+unchanged; broadBenchphysicalappearancependingseparately. No duplicatetests.
+
 
 RELEASE CANDIDATE VERIFIED: branch codex/browser-gate-latency throughb3f09b72.
 Source9ceec06f fixes exact probation confirm/rollback, pre-send causechain and
