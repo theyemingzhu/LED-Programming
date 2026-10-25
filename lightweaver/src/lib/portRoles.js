@@ -23,6 +23,17 @@ export const PORT_CONTROL_KINDS = Object.freeze(['knob', 'slider', 'button']);
 // model never rejects a large strip.
 export const PORT_MAX_PIXEL_COUNT = 65535;
 
+// Saved projects wrote the whole menu before GPIO 39 was approved. Expanding
+// that complete historical array during load changes the project's content
+// hash even when its wiring and installed card have not changed.
+const LEGACY_OUTPUT_PINS = Object.freeze(CARD_HARDWARE_CONTRACT.outputPins.filter(pin => pin !== 39));
+
+function isCompleteLegacyMenu(raw) {
+  return Array.isArray(raw)
+    && raw.length === LEGACY_OUTPUT_PINS.length
+    && raw.every((entry, index) => Number(entry?.pin) === LEGACY_OUTPUT_PINS[index]);
+}
+
 export function defaultPortRoles(outputPins = CARD_HARDWARE_CONTRACT.outputPins) {
   return resolveOutputPins(outputPins).map(pin => ({
     pin,
@@ -32,12 +43,13 @@ export function defaultPortRoles(outputPins = CARD_HARDWARE_CONTRACT.outputPins)
   }));
 }
 
-// Always returns a complete, valid entry for every contract pin, in pin order.
+// Always returns a complete, valid entry for the selected pin menu, in pin order.
+// A complete pre-GPIO39 saved menu keeps its historic shape and identity.
 // Anything unrecognized collapses to the safe "unused, zero pixels" default
 // rather than throwing, because this runs on persisted project data that may
 // predate the field entirely or have been hand-edited.
 export function normalizePortRoles(raw, { outputPins } = {}) {
-  const pins = resolveOutputPins(outputPins);
+  const pins = resolveOutputPins(outputPins ?? (isCompleteLegacyMenu(raw) ? LEGACY_OUTPUT_PINS : undefined));
   const byPin = new Map();
   if (Array.isArray(raw)) {
     for (const entry of raw) {

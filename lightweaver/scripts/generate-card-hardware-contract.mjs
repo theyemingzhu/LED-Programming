@@ -28,6 +28,10 @@ const LIMIT_CEILINGS = {
   maxPlaylistEntries: 0xff,
 };
 
+// ESP32-S3 N16R8 uses this entire range for SPI flash and octal PSRAM.
+// A GPIO value in range 0-48 is not necessarily available on this module.
+const N16R8_MEMORY_PINS = new Set(Array.from({ length: 12 }, (_, index) => 26 + index));
+
 function boundedInteger(value, label, ceiling) {
   const parsed = positiveInteger(value, label);
   if (parsed > ceiling) {
@@ -49,6 +53,9 @@ export function validateCardHardwareManifest(manifest) {
   for (const pin of outputPins) {
     if (!Number.isSafeInteger(pin) || pin < 0 || pin > 48) {
       throw new RangeError(`outputPins must contain a safe GPIO value (0-48): ${pin}`);
+    }
+    if (N16R8_MEMORY_PINS.has(pin)) {
+      throw new RangeError(`GPIO ${pin} is reserved for N16R8 flash and PSRAM and cannot be an outputPin.`);
     }
     if (uniquePins.has(pin)) throw new RangeError(`outputPins must be unique: ${pin}`);
     uniquePins.add(pin);
