@@ -107,6 +107,7 @@ interface FakeCard {
   beaconPinned: number | null;
   beaconPins: number[];
   beaconRefused: number[];
+  availableBeaconPorts: number[];
   frames: string[][];
 }
 
@@ -126,10 +127,10 @@ const BEACON_PORTS = [15, 16, 17, 18, 21, 38, 40, 41, 42, 47, 48];
  *    runtimeConfigJsonChangesWiring sees outputCount 0 -> N and files the write
  *    as a candidate. Nothing is applied and the card stays blank forever.
  */
-async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirmware, reportedMaxMilliamps = 100 as number | null } = {}) {
+async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirmware, reportedMaxMilliamps = 100 as number | null, availableBeaconPorts = BEACON_PORTS } = {}) {
   const card: FakeCard = {
     configs: [], applied: null, reboots: 0, booted: false, restartPending: false, statusReads: 0,
-    beaconPinned: null, beaconPins: [], beaconRefused: [], frames: [],
+    beaconPinned: null, beaconPins: [], beaconRefused: [], availableBeaconPorts, frames: [],
   };
   await page.routeWebSocket(`ws://${HOST}:81/ws`, socket => {
     socket.onMessage(message => {
@@ -172,7 +173,7 @@ async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirm
     if (pathname === '/api/beacon/port') {
       if (request.method() === 'GET') {
         await route.fulfill({
-          json: { ok: true, available: !card.booted, ports: BEACON_PORTS, pixelsPerPort: 8 },
+          json: { ok: true, available: !card.booted, ports: card.availableBeaconPorts, pixelsPerPort: 8 },
         });
         return;
       }
@@ -182,7 +183,7 @@ async function mockBlankCard(page: any, { firmware = 'blank-applies' as CardFirm
         await route.fulfill({ json: { ok: true, pinned: false } });
         return;
       }
-      if (!BEACON_PORTS.includes(body.gpio)) {
+      if (!card.availableBeaconPorts.includes(body.gpio)) {
         card.beaconRefused.push(body.gpio);
         await route.fulfill({
           status: 409,
@@ -654,6 +655,34 @@ test.describe('a blank card whose firmware applies its first config', () => {
       await expect(page.getByTestId(`discovery-probe-${claimed}`)).toHaveCount(0);
     }
     expect(card.beaconRefused, 'Studio must never ask for a port the card excluded').toEqual([]);
+  });
+
+  test('new firmware reports GPIO 39, while GPIO 36 and 37 remain unavailable', async ({ page }, testInfo) => {
+    card.availableBeaconPorts = [...BEACON_PORTS, 39];
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    await expect(page.getByTestId('discovery-probe-39')).toBeVisible();
+    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('GPIO 36 and 37');
+    await expect(page.getByTestId('discovery-gpio-availability')).toContainText('PSRAM');
+    await expect(page.getByTestId('discovery-probe-36')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-probe-37')).toHaveCount(0);
+    await page.getByTestId('discovery-probe-39').click();
+    await expect.poll(() => card.beaconPinned).toBe(39);
+    await page.screenshot({ path: testInfo.outputPath('gpio39-discovery-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: testInfo.outputPath('gpio39-discovery-mobile.png'), fullPage: true });
+    await page.getByTestId('discovery-start').click();
+    await expect.poll(() => card.configs.length).toBeGreaterThan(0);
+    expect(card.configs[0].led.outputs.map((output: { pin: number }) => output.pin)).toEqual([39]);
+  });
+
+  test('older firmware does not offer GPIO 39 until the card reports it', async ({ page }) => {
+    await page.goto('/#screen=discovery', { waitUntil: 'domcontentloaded' });
+    await dispatchBlankCard(page);
+    await expect(page.getByTestId('discovery-plan')).toBeVisible();
+    await expect(page.getByTestId('discovery-probe-39')).toHaveCount(0);
+    await expect(page.getByTestId('discovery-probe-38')).toBeVisible();
+    expect(card.beaconRefused).toEqual([]);
   });
 
   test('starting the run releases the port so the card is not left pinned', async ({ page }) => {

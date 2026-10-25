@@ -385,7 +385,12 @@ test('rejects symlinked destination parents without writing outside the output r
   const outside = join(root, 'symlink-outside');
   await mkdir(output, { recursive: true });
   await mkdir(outside, { recursive: true });
-  await symlink(outside, join(output, 'sequences'), 'dir');
+  try {
+    await symlink(outside, join(output, 'sequences'), 'dir');
+  } catch (error) {
+    if (process.platform !== 'win32' || error.code !== 'EPERM') throw error;
+    await symlink(outside, join(output, 'sequences'), 'junction');
+  }
 
   const run = await runPackage('symlink-parent', packageWith({
     '/lightweaver.json': profile(),
@@ -411,10 +416,11 @@ test('syncs asset directories before profile commit and the root after profile c
   });
   assert.equal(run.status, 0, run.stderr);
 
-  const assetRename = run.stdout.indexOf(`TRACE renamed asset sequences/.lw/${sequenceSha256}.lwseq`);
-  const assetDirectorySync = run.stdout.indexOf('TRACE synced directory sequences/.lw');
-  const profileRename = run.stdout.indexOf('TRACE renamed profile lightweaver.json');
-  const rootSync = run.stdout.lastIndexOf('TRACE synced directory .');
+  const trace = run.stdout.replaceAll('\\', '/');
+  const assetRename = trace.indexOf(`TRACE renamed asset sequences/.lw/${sequenceSha256}.lwseq`);
+  const assetDirectorySync = trace.indexOf('TRACE synced directory sequences/.lw');
+  const profileRename = trace.indexOf('TRACE renamed profile lightweaver.json');
+  const rootSync = trace.lastIndexOf('TRACE synced directory .');
   assert.ok(assetRename >= 0, 'asset rename must be observable in the durability trace');
   assert.ok(assetDirectorySync > assetRename, 'asset parent must sync after asset rename');
   assert.ok(profileRename > assetDirectorySync, 'profile must commit after asset directory sync');

@@ -6,7 +6,7 @@
 #include <cstdint>
 
 constexpr uint8_t LW_CARD_HARDWARE_CONTRACT_VERSION = 1;
-constexpr uint8_t LW_CARD_HARDWARE_OUTPUT_GPIOS[] = {4, 5, 6, 7, 15, 16, 17, 18, 21, 38, 40, 41, 42, 47, 48};
+constexpr uint8_t LW_CARD_HARDWARE_OUTPUT_GPIOS[] = {4, 5, 6, 7, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47, 48};
 constexpr size_t LW_CARD_HARDWARE_OUTPUT_GPIO_COUNT =
     sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS) / sizeof(LW_CARD_HARDWARE_OUTPUT_GPIOS[0]);
 constexpr uint8_t LW_CARD_HARDWARE_MAX_OUTPUTS = 4;

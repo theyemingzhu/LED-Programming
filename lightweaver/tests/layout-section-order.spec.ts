@@ -83,7 +83,8 @@ test('the GPIO picker lists the connector pins first and folds the rest under Mo
   const firstFour = await select.locator(':scope > option').evaluateAll((nodes: HTMLOptionElement[]) => nodes.map(node => node.value));
   expect(firstFour).toEqual(['16', '17', '18', '21']);
   const folded = select.locator('optgroup[label="More pins"] option');
-  await expect(folded).toHaveCount(11);
+  await expect(folded).toHaveCount(12);
+  await expect(select.locator('optgroup[label="More pins"] option[value="39"]')).toHaveCount(1);
   // Picking a connector pin still moves the strip to that output.
   await select.selectOption('17');
   await expect(page.getByTestId('gpio-group-17')).toBeVisible();

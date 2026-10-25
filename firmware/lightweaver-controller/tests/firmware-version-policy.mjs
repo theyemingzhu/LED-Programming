@@ -4,6 +4,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const firmwareRoot = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(firmwareRoot, '../..');
@@ -16,9 +17,9 @@ const {
   compareVersions,
   main,
   parseVersion,
-} = await import(helperPath);
+} = await import(pathToFileURL(helperPath).href);
 
-assert.equal(readFileSync(versionPath, 'utf8').trim(), '1.2.1');
+assert.equal(readFileSync(versionPath, 'utf8').trim(), '1.2.2');
 
 assert.deepEqual(parseVersion('1.2.3'), [1, 2, 3]);
 for (const malformed of ['', '1', '1.2', 'v1.2.3', '1.2.3-beta', '01.2.3', '1.02.3', '1.2.03']) {

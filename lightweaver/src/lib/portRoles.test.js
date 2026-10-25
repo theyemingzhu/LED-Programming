@@ -25,6 +25,18 @@ test('defaultPortRoles honours an explicit pin list', () => {
   assert.deepEqual(defaultPortRoles([7, 9]).map(entry => entry.pin), [7, 9]);
 });
 
+test('a complete saved pre-GPIO39 menu keeps its exact pin list until an explicit upgrade', () => {
+  const legacyPins = CARD_HARDWARE_CONTRACT.outputPins.filter(pin => pin !== 39);
+  const saved = defaultPortRoles(legacyPins);
+  saved.find(entry => entry.pin === 18).role = PORT_ROLE_STRIP;
+  saved.find(entry => entry.pin === 18).pixelCount = 41;
+  assert.deepEqual(normalizePortRoles(saved), saved);
+  assert.deepEqual(normalizePortRoles(saved, { outputPins: CARD_HARDWARE_CONTRACT.outputPins })
+    .map(entry => entry.pin), [...CARD_HARDWARE_CONTRACT.outputPins]);
+  assert.deepEqual(normalizePortRoles(saved.slice(1)).map(entry => entry.pin),
+    [...CARD_HARDWARE_CONTRACT.outputPins], 'an incomplete or damaged menu still heals to the current contract');
+});
+
 test('normalizePortRoles fills every missing pin from defaults', () => {
   const pins = CARD_HARDWARE_CONTRACT.outputPins;
   const roles = normalizePortRoles([{ pin: pins[1], role: PORT_ROLE_STRIP, pixelCount: 120 }]);

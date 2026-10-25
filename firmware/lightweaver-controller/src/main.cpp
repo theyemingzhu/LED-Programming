@@ -1293,7 +1293,7 @@ bool discoveryPinAvailable(uint8_t pin) {
 //   10, 11, 12, 13 claimed by the microSD SPI bus (LW_SD_CS/MOSI/SCK/MISO)
 //   19, 20        native USB D-/D+ — the flashing and serial path
 //   26..37        SPI flash + the octal PSRAM bus on this module
-//   39            left free as a JTAG TCK spare for bench debugging
+//   39            approved as LED output; unavailable for JTAG TCK while used
 //   43, 44        UART0 TX/RX — the boot log an owner reads during recovery
 // Collisions with CONTROL pins are a runtime concern, not a compile-time one:
 // controls are freely assignable, so discoveryPinAvailable() (this file) and
@@ -1325,6 +1325,8 @@ bool addLedsForPin(uint8_t pin, CRGB* start, uint16_t count) {
       return addLedsForOrder<21>(start, count);
     case 38:
       return addLedsForOrder<38>(start, count);
+    case 39:
+      return addLedsForOrder<39>(start, count);
     case 40:
       return addLedsForOrder<40>(start, count);
     case 41:

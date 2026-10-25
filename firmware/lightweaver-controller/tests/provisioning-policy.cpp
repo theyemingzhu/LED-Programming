@@ -78,6 +78,10 @@ int main() {
   assert(isApprovedProvisioningOutputGpio(17));
   assert(isApprovedProvisioningOutputGpio(18));
   assert(isApprovedProvisioningOutputGpio(21));
+  assert(isApprovedProvisioningOutputGpio(39));
+  assert(factoryBeaconPinForStep(10) == 39);
+  assert(!isApprovedProvisioningOutputGpio(36));
+  assert(!isApprovedProvisioningOutputGpio(37));
 
   // 38 used to be asserted as REJECTED, back when it was discovery-only. The
   // widened pin menu approves it deliberately, so that assertion was stale.

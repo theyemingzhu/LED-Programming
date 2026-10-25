@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   classify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
       source: ${{ steps.lanes.outputs.source }}
@@ -70,7 +70,7 @@ jobs:
   source:
     needs: classify
     if: needs.classify.outputs.source == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -99,7 +99,7 @@ jobs:
   browser:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     name: browser smoke
     env:
@@ -139,7 +139,7 @@ jobs:
   browser_windowless:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     name: windowless browser
     env:
@@ -174,7 +174,7 @@ jobs:
   browser_firmware_update:
     needs: classify
     if: needs.classify.outputs.browser == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     name: preserving firmware update browser
     env:
@@ -209,7 +209,7 @@ jobs:
   cloud:
     needs: classify
     if: needs.classify.outputs.cloud == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -234,7 +234,7 @@ jobs:
   production:
     needs: classify
     if: needs.classify.outputs.production == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -259,7 +259,7 @@ jobs:
   firmware:
     needs: classify
     if: needs.classify.outputs.firmware == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -338,7 +338,7 @@ jobs:
   artifact:
     needs: classify
     if: needs.classify.outputs.artifact == 'true' && needs.classify.outputs.firmware != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

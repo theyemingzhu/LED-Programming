@@ -30,11 +30,12 @@ const redirects = readFileSync(resolve(root, 'public/_redirects'), 'utf8');
 const index = readFileSync(resolve(root, 'index.html'), 'utf8');
 const freshness = readFileSync(resolve(root, 'scripts/check-prod-freshness.mjs'), 'utf8');
 const deploymentCheck = readFileSync(resolve(root, 'src/lib/productionDeploymentCheck.js'), 'utf8');
-const headers = readFileSync(resolve(root, 'public/_headers'), 'utf8');
+const headers = readFileSync(resolve(root, 'public/_headers'), 'utf8').replaceAll('\r\n', '\n');
 const routes = JSON.parse(readFileSync(resolve(root, 'public/_routes.json'), 'utf8'));
-const workflow = readFileSync(resolve(root, '../.github/workflows/deploy-site.yml'), 'utf8');
-const testWorkflow = readFileSync(resolve(root, '../.github/workflows/test.yml'), 'utf8');
+const workflow = readFileSync(resolve(root, '../.github/workflows/deploy-site.yml'), 'utf8').replaceAll('\r\n', '\n');
+const testWorkflow = readFileSync(resolve(root, '../.github/workflows/test.yml'), 'utf8').replaceAll('\r\n', '\n');
 const exhaustiveWorkflow = readFileSync(resolve(root, '../.github/workflows/exhaustive.yml'), 'utf8');
+const firmwareWorkflow = readFileSync(resolve(root, '../.github/workflows/build-firmware.yml'), 'utf8').replaceAll('\r\n', '\n');
 const setupDoc = readFileSync(resolve(root, '../docs/led-mandalacodes-setup.md'), 'utf8');
 const todo = readFileSync(resolve(root, '../TODO.md'), 'utf8');
 const runtimeRootReferences = [
@@ -73,7 +74,10 @@ function workflowRunScript(stepName) {
 }
 
 function runWorkflowScript(script, env = {}) {
-  return spawnSync('/bin/bash', ['-c', `set -euo pipefail\n${script}`], {
+  const bash = process.platform === 'win32'
+    ? join(process.env.ProgramFiles || 'C:/Program Files', 'Git/bin/bash.exe')
+    : '/bin/bash';
+  return spawnSync(bash, ['-c', `set -euo pipefail\n${script}`], {
     cwd: root,
     encoding: 'utf8',
     env: { PATH: process.env.PATH, ...env },
@@ -144,6 +148,10 @@ assert.match(testWorkflow, /npm run ci:cloud/);
 assert.match(testWorkflow, /npm run ci:production/);
 assert.match(testWorkflow, /npm run ci:firmware-sensitive/);
 assert.match(testWorkflow, /npm run ci:artifact/);
+assert.doesNotMatch(testWorkflow, /runs-on: ubuntu-latest/);
+assert.match(testWorkflow, /runs-on: ubuntu-24\.04/);
+assert.match(exhaustiveWorkflow, /runs-on: ubuntu-24\.04/);
+assert.match(firmwareWorkflow, /  build:\n    needs: \[classify, verify\]\n    runs-on: ubuntu-24\.04/);
 assert.doesNotMatch(testWorkflow, /npm run launch:(?:source|check)/);
 assert.match(testWorkflow, /wrangler d1 migrations apply PROJECTS_DB[\s\S]*?--config wrangler\.local\.toml[\s\S]*?--local/);
 assert.doesNotMatch(testWorkflow, /^\s{2}pull_request:/m);
@@ -316,11 +324,19 @@ writeFileSync(process.env.MIGRATION_RECORD, JSON.stringify({
     'exec', '--', 'wrangler', 'd1', 'migrations', 'apply', 'PROJECTS_DB',
     '--config', record.configPath, '--remote',
   ]);
-  assert.equal(record.mode, 0o600, 'generated production migration config must be owner-readable only');
+  assert.match(migrationScript, /chmod 600 "\$migration_config"/);
+  if (process.platform !== 'win32') {
+    assert.equal(record.mode, 0o600, 'generated production migration config must be owner-readable only');
+  }
   assert.match(record.config, /binding\s*=\s*"PROJECTS_DB"/);
   assert.match(record.config, /database_name\s*=\s*"lightweaver-projects-production"/);
   assert.match(record.config, /database_id\s*=\s*"123e4567-e89b-42d3-a456-426614174000"/);
-  assert.match(record.config, new RegExp(`migrations_dir\\s*=\\s*${JSON.stringify(resolve(root, 'migrations')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.ok(
+    record.config.replaceAll('\\', '/').includes(
+      `migrations_dir = "${resolve(root, 'migrations').replaceAll('\\', '/')}"`,
+    ),
+    'migration config must point to the repository migrations',
+  );
   assert.match(migrationScript, /0002_account_access\.sql/);
   assert.match(migrationScript, /0003_account_session_generation\.sql/);
   assert.equal(existsSync(record.configPath), false, 'temporary migration config must be removed after Wrangler exits');

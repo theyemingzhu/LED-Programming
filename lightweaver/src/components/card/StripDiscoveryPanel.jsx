@@ -304,7 +304,12 @@ export function StripDiscoveryPanel({
   // unused otherwise: the card's compiled pin menu is far wider than the four
   // outputs it can actually drive, so guessing which ones are wired would both
   // waste the pixel budget and walk the owner through ports they never touched.
-  const [portRoles, setPortRoles] = useState(readDiscoveredPortRoles);
+  // Discovery is an intentional new card setup. Even when local storage still
+  // holds the complete older menu, offer newly approved pins on this screen;
+  // ordinary saved project loads keep their historical array/hash unchanged.
+  const [portRoles, setPortRoles] = useState(() => normalizePortRoles(readDiscoveredPortRoles(), {
+    outputPins: CARD_HARDWARE_CONTRACT.outputPins,
+  }));
   const [session, setSession] = useState(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
@@ -365,13 +370,16 @@ export function StripDiscoveryPanel({
   // Ports the picker is allowed to offer. A pin the shipped controls claim can
   // never become an LED output — buildBenchConfig skips it and the firmware's
   // discoveryPinAvailable() refuses it — so it must not be selectable at all.
-  // The row is still rendered, labelled unavailable, rather than dropped: the
-  // owner is looking at a physical card, and a port that silently vanishes from
-  // the list reads as a Studio bug instead of an answer.
-  const selectablePortRoles = useMemo(
-    () => portRoles.filter(entry => !BENCH_RESERVED_CONTROL_PINS.includes(entry.pin)),
-    [portRoles],
-  );
+  // A reporting blank card owns the menu. Older firmware cannot advertise the
+  // newly approved GPIO 39, so keep that pin hidden until it reports support.
+  const [probePortEvidence, setProbePortEvidence] = useState(null);
+  const probePortKey = `${host}|${cardLink?.card?.id || ''}`;
+  const probePorts = probePortEvidence?.key === probePortKey ? probePortEvidence.ports : null;
+  const selectablePortRoles = useMemo(() => {
+    const cardPins = probePorts?.available ? new Set(probePorts.ports) : null;
+    return portRoles.filter(entry => !BENCH_RESERVED_CONTROL_PINS.includes(entry.pin)
+      && (cardPins ? cardPins.has(entry.pin) : entry.pin !== 39));
+  }, [portRoles, probePorts]);
   // Only the ports the owner asked Studio to look at get bench pixels. A port
   // left on "Skip" must be provisioned zero, otherwise the session would treat
   // it as discoverable and walk the owner through a port they said to leave
@@ -412,7 +420,6 @@ export function StripDiscoveryPanel({
   // The probe belongs to the idle screen only. Once a run starts, the bench
   // config takes the outputs over and the beacon is no longer driving anything.
   const phaseIsPastIdle = Boolean(session) && session.phase !== 'idle';
-  const [probePorts, setProbePorts] = useState(null);
   const [pinnedPort, setPinnedPort] = useState(null);
   const [probeBusy, setProbeBusy] = useState(null);
   // The port the owner is currently talking about. Set the instant they press
@@ -428,12 +435,12 @@ export function StripDiscoveryPanel({
     if (phaseIsPastIdle) return undefined;
     let cancelled = false;
     readBeaconPorts(host, { bridgeVersion: getCardBridgeState().version })
-      .then(result => { if (!cancelled) setProbePorts(result); })
-      // A card that cannot answer simply gets no grid; the sweep still runs and
-      // the role pickers below are unaffected.
-      .catch(() => { if (!cancelled) setProbePorts(null); });
+      .then(result => { if (!cancelled) setProbePortEvidence({ key: probePortKey, ports: result }); })
+      // Older cards can lack this endpoint; they keep the established pin menu
+      // without the newly approved GPIO 39.
+      .catch(() => { if (!cancelled) setProbePortEvidence(null); });
     return () => { cancelled = true; };
-  }, [host, phaseIsPastIdle]);
+  }, [host, phaseIsPastIdle, probePortKey]);
 
   // The firmware drops a pin on its own so a closed tab cannot park the card on
   // one port forever. Re-assert while the owner is still looking at it.
@@ -712,8 +719,11 @@ export function StripDiscoveryPanel({
   relightRef.current = relight;
 
   const startDiscovery = async ({ clearedAlready = false, selectedRoles = portRoles } = {}) => {
-    const selectedBench = buildBenchConfig(selectedRoles, { pixelsPerPort: Object.fromEntries(selectedRoles.filter(entry => entry.role === PORT_ROLE_STRIP).map(entry => [entry.pin, Math.max(entry.pixelCount || 0, DISCOVERY_BENCH_HEADROOM)])), maxPixels: cardMaxPixels });
-    setPortRoles(selectedRoles);
+    const availablePins = new Set(selectablePortRoles.map(entry => entry.pin));
+    const cardSelectedRoles = normalizePortRoles(selectedRoles.map(entry => availablePins.has(entry.pin)
+      ? entry : { ...entry, role: PORT_ROLE_UNUSED, pixelCount: 0 }));
+    const selectedBench = buildBenchConfig(cardSelectedRoles, { pixelsPerPort: Object.fromEntries(cardSelectedRoles.filter(entry => entry.role === PORT_ROLE_STRIP).map(entry => [entry.pin, Math.max(entry.pixelCount || 0, DISCOVERY_BENCH_HEADROOM)])), maxPixels: cardMaxPixels });
+    setPortRoles(cardSelectedRoles);
     setBusy(true);
     setFailure('');
     setFailureDetail('');
@@ -726,7 +736,7 @@ export function StripDiscoveryPanel({
     // A fresh run replaces whatever interrupted run was stored (ui-repair B2).
     clearDiscoveryRun();
     setInterruptedRun(null);
-    const next = createStripDiscoverySession({ portRoles: selectedRoles, benchLayout: selectedBench.layout });
+    const next = createStripDiscoverySession({ portRoles: cardSelectedRoles, benchLayout: selectedBench.layout });
     setSession(next);
     try {
       // installBenchConfig only resolves once the card has applied the config,
@@ -775,7 +785,7 @@ export function StripDiscoveryPanel({
           await clearCardProject({ host }).catch(() => null);
           await waitForClearedCard({ host }).catch(() => null);
           setBusy(false);
-          await startDiscovery({ clearedAlready: true, selectedRoles });
+          await startDiscovery({ clearedAlready: true, selectedRoles: cardSelectedRoles });
           return;
         } catch (clearError) {
           const clearMessage = clearError?.message || 'Studio could not clear the card.';
@@ -1549,7 +1559,7 @@ export function StripDiscoveryPanel({
             <p className="strip-discovery-note" role="status" data-testid="discovery-probe-busy">{probeBusy.message}</p>
           )}
           <div className="strip-discovery-grid" role="group" aria-label="Card output ports">
-            {portRoles.filter(entry => !BENCH_RESERVED_CONTROL_PINS.includes(entry.pin)).map(entry => {
+            {selectablePortRoles.map(entry => {
               const lit = pinnedPort === entry.pin;
               const picked = entry.role === PORT_ROLE_STRIP;
               return (
@@ -1570,6 +1580,9 @@ export function StripDiscoveryPanel({
               );
             })}
           </div>
+          <p className="strip-discovery-note" data-testid="discovery-gpio-availability">
+            GPIO 36 and 37 are used by this card&apos;s PSRAM, so they cannot drive LED strips. GPIO 39 appears when this card reports it as available.
+          </p>
           {selectedPort !== null && <div className="strip-discovery-confirm">
             <h3>Did your strip light up?</h3>
             <p className="strip-discovery-note" data-testid="discovery-start-note">Counting saves a temporary setup on the card, kept after restart until you install your project.</p>
