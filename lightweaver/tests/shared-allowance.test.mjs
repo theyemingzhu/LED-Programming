@@ -96,7 +96,9 @@ test('the actual generated Pages router receives the guarded binding and deferre
     const { default: worker } = await import(pathToFileURL(join(root, 'dist/_worker.js/index.js')).href);
     const f = fixture('/'); let release; f.context.env.DEFERRED_READY = new Promise(resolve => { release = resolve; });
     const native = f.context.env[binding]; const response = await worker.fetch(f.context.request, f.context.env, f.context);
-    assert.equal(response.status, 200); assert.equal(f.context.env[binding], native); release(); await f.finish();
+    assert.equal(response.status, 200); assert.ok(response.headers.get('X-Shared-Allowance-Revision')); assert.equal(f.context.env[binding], native); release(); await f.finish();
     assert.equal(f.reads, 2); assert.equal(f.calls.find(x => x.action === '/settle').input.rowsRead, 18);
+    const manifest = JSON.parse(readFileSync(join(root, 'dist/_shared-allowance-release.json'), 'utf8'));
+    const { createHash } = await import('node:crypto'); assert.equal(manifest.workerSha256, createHash('sha256').update(readFileSync(join(root, 'dist/_worker.js/index.js'))).digest('hex')); assert.equal(manifest.project, project);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
