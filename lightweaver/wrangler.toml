@@ -2,3 +2,9 @@ name = "lightweaver"
 compatibility_date = "2026-07-15"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "dist"
+
+# Reserve cloud database work against the account ledger. Card control is local.
+[[durable_objects.bindings]]
+name = "SHARED_ALLOWANCE"
+class_name = "AllowanceGovernor"
+script_name = "i64os-quota-guard"

@@ -9,7 +9,7 @@
     "build": "npm run fonts:prepare && vite build && node scripts/generate-service-worker.mjs",
     "build:card": "npm run fonts:prepare && node scripts/build-card-studio.mjs",
     "build:functions": "mkdir -p .pages/functions-build && wrangler pages functions build functions --outdir .pages/functions-build --project-directory . --output-routes-path .pages/functions-build/_routes.json",
-    "stage:pages": "npm run build:functions && rm -rf .pages/lightweaver && mkdir -p .pages/lightweaver && cp -R dist/. .pages/lightweaver/ && node scripts/generate-studio-build-graph.mjs .pages/lightweaver",
+    "stage:pages": "npm run build:functions && rm -rf .pages/lightweaver && mkdir -p .pages/lightweaver && cp -R dist/. .pages/lightweaver/ && node scripts/build-pages-allowance.mjs --project lightweaver --binding PROJECTS_DB --output .pages/lightweaver && node scripts/generate-studio-build-graph.mjs .pages/lightweaver",
     "verify:pages": "node tests/pages-staging.mjs --artifact",
     "deploy:pages": "node scripts/deploy-pages-production.mjs",
     "pages:project": "wrangler pages project create lightweaver --production-branch main",
@@ -49,7 +49,7 @@
     "firmware:bump": "node ../firmware/lightweaver-controller/scripts/firmware-version.mjs bump",
     "firmware:version:check": "node ../firmware/lightweaver-controller/scripts/firmware-version.mjs check",
     "check:prod": "node scripts/check-prod-freshness.mjs",
-    "test:unit": "node --test src/lib/*.test.js src/scene-expression/*.test.js tests/ci-changed-lanes.test.mjs tests/mandala-engine.mjs tests/mandala-engine-transients.mjs ../scripts/color-journey-shared.test.mjs ../scripts/development-workflow.test.mjs ../scripts/node-tool-command.test.mjs scripts/ensure-rollup-native.test.mjs",
+    "test:unit": "node --test src/lib/*.test.js src/scene-expression/*.test.js tests/ci-changed-lanes.test.mjs tests/mandala-engine.mjs tests/mandala-engine-transients.mjs ../scripts/color-journey-shared.test.mjs ../scripts/development-workflow.test.mjs ../scripts/node-tool-command.test.mjs scripts/ensure-rollup-native.test.mjs tests/shared-allowance.test.mjs",
     "test:windowless:tooling": "node --test tests/windowless-*.test.mjs",
     "test:windowless:browser": "playwright test --config tests/windowless-playwright.config.ts",
     "test:projects": "node --test functions/api/firmware/update-grant.test.js scripts/check-firmware-update-service.test.mjs functions/api/library/_shared/accountAuth.test.js functions/api/library/library-api.test.js tests/cloud-bindings.mjs src/lib/cloudLibraryClient.test.js src/lib/libraryBackup.test.js src/lib/workspaceAssets.test.js",
@@ -71,7 +71,9 @@
     "test:client-release": "node --test scripts/client-release.test.mjs tests/owner-studio.test.mjs",
     "deploy:client": "npm run build:client && npm run verify:client && node scripts/deploy-client-pages.mjs",
     "test:client": "node --test src/client/*.test.js",
-    "test:client:browser": "playwright test tests/client-player.spec.ts tests/client-pattern-save.spec.ts tests/owner-studio.spec.ts --project=chromium --workers=1"
+    "test:client:browser": "playwright test tests/client-player.spec.ts tests/client-pattern-save.spec.ts tests/owner-studio.spec.ts --project=chromium --workers=1",
+    "test:allowance": "node --test tests/shared-allowance.test.mjs",
+    "build:allowance": "node scripts/build-pages-allowance.mjs --project lightweaver --binding PROJECTS_DB"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
@@ -96,6 +98,7 @@
     "miniflare": "4.20260708.1",
     "playwright": "^1.59.1",
     "vite": "^6.3.2",
-    "wrangler": "4.110.0"
+    "wrangler": "4.110.0",
+    "esbuild": "0.25.12"
   }
 }
