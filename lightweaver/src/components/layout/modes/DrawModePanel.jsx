@@ -57,6 +57,7 @@ import { REAL_PATTERNS } from '../../../v3/v3-data.js';
 import { I as StudioIcons } from '../../../v3/lw-shared.jsx';
 import { LayoutPatternGallery } from '../LayoutPatternGallery.jsx';
 import { StripCountControl } from '../StripCountControl.jsx';
+import { describeCardPinPlace } from '../../../lib/cardPinout.js';
 import '../../../styles/lw-draw.css';
 import '../divide-strip.css';
 
@@ -1580,7 +1581,7 @@ export function DrawModePanel({
                            setSideDragActive(false);
                          } : undefined}>
                   {!sideView && !singleFamilyOutput(groupedStrips, linkedStrips) && <div className="la-gpio-group-head">
-                    <span>Data wire · GPIO {output.pin}</span>
+                    <span title={describeCardPinPlace(output.pin)} data-tooltip={describeCardPinPlace(output.pin)}>Data wire · GPIO {output.pin}</span>
                     <span data-testid="layout-output-inventory">{outputInventory(output, sectionCount)}</span>
                   </div>}
                   {sideView && <div className="la-side-head">

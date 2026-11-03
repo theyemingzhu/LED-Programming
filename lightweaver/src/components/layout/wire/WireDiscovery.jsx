@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { discoverCardWiring } from '../../../lib/cardWiringSafety.js';
+import { CardPinMap } from '../../card/CardPinMap.jsx';
 
 export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -7,6 +8,7 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
   const [batch, setBatch] = useState(0);
   const [assignments, setAssignments] = useState([]);
   const [status, setStatus] = useState('');
+  const [confirmedPin, setConfirmedPin] = useState(null);
   const [loading, setLoading] = useState(false);
   const discoveryActiveRef = useRef(false);
   const stopPromiseRef = useRef(null);
@@ -52,6 +54,7 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
     try {
       await stopCardDiscovery();
       onPinConfirmed?.(outputId, assignment.pin);
+      setConfirmedPin(assignment.pin);
       setStatus(`${outputs.find(output => output.id === outputId)?.name || 'LED port'} uses GPIO ${assignment.pin}. Test its LED count next.`);
       setAssignments([]);
     } catch (error) {
@@ -75,7 +78,7 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
     }
   };
 
-  if (!open) return <button className="btn lw-find-wire" title="Test safe card ports with colors to identify which GPIO drives this LED wire." data-tooltip="Test safe card ports with colors to identify which GPIO drives this LED wire." disabled={disabled} onClick={() => { setOpen(true); void runBatch(0); }}>Find my LED wire</button>;
+  if (!open) return <button className="btn lw-find-wire" title="Test safe card ports with colors to identify which GPIO drives this LED wire." data-tooltip="Test safe card ports with colors to identify which GPIO drives this LED wire." disabled={disabled} onClick={() => { setOpen(true); setConfirmedPin(null); void runBatch(0); }}>Find my LED wire</button>;
 
   return (
     <section className="lw-wire-discovery" aria-label="Find my LED wire">
@@ -87,6 +90,13 @@ export function WireDiscovery({ outputs = [], cardHost, onPinConfirmed, disabled
       <div className="lw-wire-discovery-colors">
         {assignments.map(assignment => <button key={assignment.pin} title={`Assign GPIO ${assignment.pin} to this LED port and restore the working lights.`} data-tooltip={`Assign GPIO ${assignment.pin} to this LED port and restore the working lights.`} disabled={loading} style={{ '--wire-color': assignment.color }} onClick={() => choose(assignment)}><i/>{assignment.label || assignment.color}<small>GPIO {assignment.pin}</small></button>)}
       </div>
+      {(assignments.length > 0 || confirmedPin !== null) && (
+        <CardPinMap
+          testId="wire-discovery-pin-map"
+          title={assignments.length ? 'Each colour, on the card' : 'Your LED wire, on the card'}
+          lit={assignments.length ? assignments.map(assignment => ({ pin: assignment.pin, color: assignment.color })) : [{ pin: confirmedPin }]}
+        />
+      )}
       <p className="lw-wire-discovery-status">{status}</p>
       {!loading && assignments.length > 0 && <button className="btn" title="Test the next set of safe GPIO ports because none of these colors reached the LEDs." data-tooltip="Test the next set of safe GPIO ports because none of these colors reached the LEDs." onClick={() => runBatch(batch + 1)}>None of these lit</button>}
       {!loading && assignments.length === 0 && status.includes('could not') && <ul><li>Check LED power.</li><li>Connect card and LED grounds together.</li><li>Use the strip’s DATA IN end.</li><li>Reseat the data connector.</li></ul>}
