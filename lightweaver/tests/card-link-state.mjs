@@ -591,6 +591,30 @@ const rebootRevalidated = reduceCardLink(differentBootRace, {
 assert.equal(rebootRevalidated.state, 'connected-direct');
 assert.equal(isCardLinkConnected(rebootRevalidated), true);
 
+// A card that restarts twice in a row (boot-2, then boot-3) must not leave the
+// link validating boot-2 forever. One boot-3 reply is still a stray; boot-3
+// replying twice in a row is the card's current life and takes over, then
+// passes its own matching pair before the link goes green.
+const bootThree = event => reduceCardLink(event, {
+  type: 'direct-status', connected: true, host: '192.168.18.70',
+  card: { id: 'lw-001122aabbcc', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) },
+  expectedCard: { id: 'lw-001122aabbcc', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) },
+  readiness: readyEnvelope('lw-001122aabbcc', { bootId: 'boot-3' }),
+});
+const secondRestartRepeated = bootThree(differentBootRace);
+assert.equal(secondRestartRepeated.candidateBootId, 'boot-3', 'a newer boot that answers twice in a row replaces a candidate that will never answer again');
+assert.equal(isCardLinkConnected(secondRestartRepeated), false, 'the replacement still needs its own matching pair');
+const secondRestartValidated = bootThree(secondRestartRepeated);
+assert.equal(secondRestartValidated.state, 'connected-direct');
+assert.equal(secondRestartValidated.validatedBootId, 'boot-3');
+const oldBootAfterTakeover = reduceCardLink(secondRestartRepeated, {
+  type: 'direct-status', connected: true, host: '192.168.18.70',
+  card: { id: 'lw-001122aabbcc', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) },
+  expectedCard: { id: 'lw-001122aabbcc', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) },
+  readiness: readyEnvelope('lw-001122aabbcc', { bootId: 'boot-1' }),
+});
+assert.equal(oldBootAfterTakeover.candidateBootId, 'boot-3', 'the validated old boot still cannot disturb the candidate');
+
 const directMiss = reduceCardLink(direct, { type: 'direct-ping-missed' });
 const directRecoveryCandidate = reduceCardLink(directMiss, {
   type: 'direct-ping-ok', host: direct.host, card: direct.card,

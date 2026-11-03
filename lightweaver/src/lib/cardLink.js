@@ -85,6 +85,7 @@ export function initialCardLinkState(host = '') {
     expectedCard: null,
     validatedBootId: '',
     candidateBootId: '',
+    rivalBootId: '',
     requiresStableRevalidation: false,
     revalidationGeneration: 0,
     operationGeneration: 1,
@@ -111,6 +112,7 @@ function clearedLiveEvidence(prev, additions = {}, {
     cardBlank: null,
     validatedBootId: clearValidatedBoot ? '' : prev.validatedBootId,
     candidateBootId: '',
+    rivalBootId: '',
     requiresStableRevalidation: requireStable,
     revalidationGeneration: requireStable
       ? (prev.revalidationGeneration || 0) + 1
@@ -233,7 +235,7 @@ function applyStatusEnvelope(prev, event, transport, host) {
       return {
         ...clearedLiveEvidence(prev, {
           state: 'revalidating', reason: bootChanged ? 'card-restarted' : 'checking-card',
-          transport, host, card, expectedCard, candidateBootId: incomingBootId, missedPings: 0,
+          transport, host, card, expectedCard, candidateBootId: incomingBootId, rivalBootId: '', missedPings: 0,
         }),
         // Starting a candidate inside an existing recovery generation must not
         // mint another generation or invalidate the operation twice.
@@ -249,7 +251,16 @@ function applyStatusEnvelope(prev, event, transport, host) {
       // Responses can arrive out of order across a reboot. Neither the prior
       // boot nor an unrelated newer boot is evidence for the candidate already
       // under validation; ignore it without clearing/replacing that candidate.
-      return prev;
+      // One exception: a card that restarts twice in quick succession (a Bench
+      // config write, then another) leaves the candidate naming a boot that
+      // will never answer again. Two envelopes in a row from the same newer
+      // boot are not a stray reply but the card's current life, so that boot
+      // becomes the candidate and still has to pass its own matching pair.
+      // Without this the link sat on "Card restarted — verifying" until the
+      // revalidation deadline disconnected it.
+      if (incomingBootId === prev.validatedBootId) return prev;
+      if (prev.rivalBootId !== incomingBootId) return { ...prev, rivalBootId: incomingBootId };
+      return { ...prev, candidateBootId: incomingBootId, rivalBootId: '' };
     }
   }
 
@@ -297,6 +308,7 @@ function applyStatusEnvelope(prev, event, transport, host) {
     cardBlank: blank,
     validatedBootId: completeEnvelope ? incomingBootId : prev.validatedBootId,
     candidateBootId: '',
+    rivalBootId: '',
     requiresStableRevalidation: false,
     acknowledgedAt,
     bridgeLifecycle: transport === 'bridge' ? (event.bridgeLifecycle ?? prev.bridgeLifecycle ?? null) : null,
@@ -480,7 +492,7 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
           card: normalizeCardIdentity(status, host), expectedCard,
           discoveredCard: null, readiness: status,
           cardBlank: typeof classified.blank === 'boolean' ? classified.blank : null,
-          validatedBootId: classified.bootId, candidateBootId: '',
+          validatedBootId: classified.bootId, candidateBootId: '', rivalBootId: '',
           requiresStableRevalidation: false,
           acknowledgedAt: event.acknowledgedAt || new Date().toISOString(),
           activity: 'idle', bridgeLifecycle: lifecycle,
