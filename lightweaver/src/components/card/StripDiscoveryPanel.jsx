@@ -1582,11 +1582,6 @@ export function StripDiscoveryPanel({
               );
             })}
           </div>
-          <CardPinMap
-            testId="discovery-pin-map"
-            title={selectedPort !== null || pinnedPort !== null ? 'Where this port is on the card' : 'Where the ports are on the card'}
-            lit={[...new Set([selectedPort, pinnedPort].filter(pin => pin !== null))].map(pin => ({ pin }))}
-          />
           <p className="strip-discovery-note" data-testid="discovery-gpio-availability">
             GPIO 36 and 37 are used by this card&apos;s PSRAM, so they cannot drive LED strips. GPIO 39 appears when this card reports it as available.
           </p>
@@ -1598,6 +1593,15 @@ export function StripDiscoveryPanel({
               <button type="button" className="btn" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another port</button>
             </div>
           </div>}
+          {/* Shown once a port is tapped: the drawing answers "where is the one I
+              just lit", and before that it would only push the grid down. */}
+          {(selectedPort !== null || pinnedPort !== null) && (
+            <CardPinMap
+              testId="discovery-pin-map"
+              title="Where this port is on the card"
+              lit={[...new Set([selectedPort, pinnedPort].filter(pin => pin !== null))].map(pin => ({ pin }))}
+            />
+          )}
           {/* discovery-output-limit and discovery-no-outputs moved to the
               notice layer — both are about the run's whole port selection,
               never about one row (each skipped port keeps its own line in
