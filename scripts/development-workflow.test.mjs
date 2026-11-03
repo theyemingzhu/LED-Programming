@@ -5,7 +5,6 @@ import test from 'node:test';
 const repoRoot = new URL('../', import.meta.url);
 const developmentCli = await import('./lightweaver-dev.mjs').catch(() => ({}));
 const { resolveDevelopmentSteps } = developmentCli;
-const agents = await readFile(new URL('AGENTS.md', repoRoot), 'utf8');
 const workflow = await readFile(new URL('docs/development-workflow.md', repoRoot), 'utf8').catch(() => '');
 
 test('repository CLI exposes stable preview and focused browser commands', () => {
@@ -32,12 +31,14 @@ test('repository CLI keeps checkpoint bounded and release exhaustive', () => {
   assert.throws(() => resolveDevelopmentSteps('unknown'), /preview, focused, checkpoint, or release/);
 });
 
+// The agent policy moved out of AGENTS.md (now a pointer to CLAUDE.md) in the
+// 2026-11-03 instruction-file audit; docs/development-workflow.md is its home.
 test('agent policy makes the fast loop the default and release work explicit', () => {
-  assert.match(agents, /Default to the glitch loop/i);
-  assert.match(agents, /do not bump firmware/i);
-  assert.match(agents, /do not flash hardware/i);
-  assert.match(agents, /“build” means implement/i);
-  assert.match(agents, /visual-feedback list/i);
+  assert.match(workflow, /### Glitch loop[\s\S]*?Use this by default/);
+  assert.match(workflow, /glitch loop does not bump `VERSION`/i);
+  assert.match(workflow, /glitch loop does not[\s\S]{0,120}flash a card/i);
+  assert.match(workflow, /“Ship” keeps its release meaning/);
+  assert.match(workflow, /visual-feedback list/i);
 });
 
 test('workflow explains exact gates, escalation, and destructive firmware boundary', () => {
