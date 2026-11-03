@@ -89,7 +89,9 @@ const deploymentDocs = [
   readFileSync(resolve(root, '../docs/worker-flash-runbook.md'), 'utf8'),
 ].join('\n');
 const deploymentChecklist = readFileSync(resolve(root, '../docs/deployment-checklist.md'), 'utf8');
-const agentsDoc = readFileSync(resolve(root, '../AGENTS.md'), 'utf8');
+// The shipping vocabulary lives in CLAUDE.md; AGENTS.md is now only a pointer
+// to it (2026-11-03 instruction-file audit), so the contract is checked there.
+const agentsDoc = readFileSync(resolve(root, '../CLAUDE.md'), 'utf8');
 
 assert.equal(pkg.scripts['build:design'], undefined);
 assert.match(pkg.scripts['stage:pages'], /^npm run build:functions && /);

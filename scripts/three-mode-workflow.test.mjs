@@ -5,8 +5,7 @@ import test from 'node:test';
 const repoRoot = new URL('../', import.meta.url);
 const read = path => readFile(new URL(path, repoRoot), 'utf8').catch(() => '');
 
-const [agents, workboard, development, sprint, bench, prove, benchTemplate, proveTemplate] = await Promise.all([
-  read('AGENTS.md'),
+const [workboard, development, sprint, bench, prove, benchTemplate, proveTemplate] = await Promise.all([
   read('LIGHTWEAVER_WORKBOARD.md'),
   read('docs/development-workflow.md'),
   read('docs/workflows/sprint.md'),
@@ -16,17 +15,19 @@ const [agents, workboard, development, sprint, bench, prove, benchTemplate, prov
   read('docs/prove-sessions/TEMPLATE.md'),
 ]);
 
+// The mode policy moved out of AGENTS.md (now a pointer to CLAUDE.md) in the
+// 2026-11-03 instruction-file audit; its home is development-workflow "How to ask".
 test('agent policy infers Sprint and Bench without requiring memorized commands', () => {
-  assert.match(agents, /features?.*glitches?.*Sprint/is);
-  assert.match(agents, /lights?.*colou?r.*pixels?.*Bench/is);
-  assert.match(agents, /do not require Adrian to remember/i);
-  assert.match(agents, /ambiguous.*Sprint/is);
+  assert.match(development, /features? or glitches?.*Sprint/is);
+  assert.match(development, /card, strip, colou?rs.*Bench/is);
+  assert.match(development, /do not need to remember mode names/i);
+  assert.match(development, /primary agent chooses the operating mode/i);
 });
 
 test('Prove is explicit-only and shipping never silently invokes it', () => {
-  assert.match(agents, /“Prove Lightweaver”.*authorization/is);
-  assert.match(agents, /check everything.*confirmation/is);
-  assert.match(agents, /ship.*does not.*Prove/is);
+  assert.match(development, /“Prove Lightweaver”.*explicitly authorized/is);
+  assert.match(development, /check everything.*confirmation/is);
+  assert.match(development, /“Ship”.*never silently invokes Prove/is);
   assert.match(prove, /never starts automatically/i);
   assert.match(prove, /exact phrase.*Prove Lightweaver/is);
   assert.match(prove, /development freeze/i);
