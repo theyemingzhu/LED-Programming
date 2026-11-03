@@ -1,0 +1,21 @@
+/* The card pin drawing (CardPinMap). Colours come from the shared control
+   tokens so the drawing follows the console theme. */
+.lw-pinmap { margin: 12px 0; }
+.lw-pinmap-title { margin-bottom: 6px; color: var(--text-hi, inherit); font-size: 12px; font-weight: 600; }
+.lw-pinmap svg { color: var(--text-mid, rgba(255, 255, 255, 0.6)); display: block; width: 100%; height: auto; max-width: 560px; }
+
+.lw-pinmap-board { fill: var(--bg-elev, rgba(255, 255, 255, 0.04)); stroke: var(--border-soft, rgba(255, 255, 255, 0.16)); }
+.lw-pinmap-end { fill: var(--text-mid, currentColor); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.lw-pinmap-pin rect { fill: none; stroke: currentColor; stroke-opacity: 0.45; stroke-width: 1; }
+.lw-pinmap-label { fill: var(--text-mid, currentColor); font-size: 8px; }
+.lw-pinmap-pin.is-ground .lw-pinmap-label,
+.lw-pinmap-pin.is-power .lw-pinmap-label { font-weight: 600; }
+.lw-pinmap-pin.is-connector rect { stroke-opacity: 1; stroke: var(--control-selected-edge, #C8813F); stroke-width: 1.5; }
+.lw-pinmap-pin.is-lit rect { stroke-opacity: 1; fill: var(--control-selected-edge, #C8813F); stroke: var(--control-selected-edge, #C8813F); stroke-width: 1.5; }
+.lw-pinmap-pin.is-lit .lw-pinmap-label { fill: var(--text-hi, currentColor); font-weight: 700; }
+.lw-pinmap-tag { fill: var(--text-hi, currentColor); font-size: 11px; font-weight: 700; }
+
+.lw-pinmap-text p { margin: 4px 0; color: var(--text-mid, inherit); font-size: 12px; line-height: 1.4; }
+.lw-pinmap-text strong { color: var(--text-hi, inherit); }
+.lw-pinmap-key { opacity: 0.8; }

@@ -35,6 +35,8 @@ import { readPersistedCardIdentity } from '../../lib/cardIdentity.js';
 import { buildPackageForPortRoles, deploySetupToCard } from '../../lib/cardSetupDeploy.js';
 import { discoveryProjectParts, layoutIsUncountedHeadroom, withDiscoveryPatternChoices } from '../../lib/discoveryCommit.js';
 import { auditionBenchPattern, requireBenchInstallReadback, requireBenchZoneMapping, restoreBenchPatternSnapshot } from '../../lib/benchPatternAudition.js';
+import { CardPinMap } from './CardPinMap.jsx';
+import { describeCardPinPlace } from '../../lib/cardPinout.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../../lib/cardLiveControl.js';
 import { getCardWiringStatus } from '../../lib/cardWiringSafety.js';
 import { useProject } from '../../state/ProjectContext.jsx';
@@ -1569,7 +1571,7 @@ export function StripDiscoveryPanel({
                   className={`strip-discovery-port${lit ? ' is-lit' : ''}${picked ? ' is-picked' : ''}${selectedPort === entry.pin ? ' is-selected' : ''}`}
                   data-testid={`discovery-probe-${entry.pin}`}
                   aria-pressed={lit}
-                  title={`Light GPIO ${entry.pin}`}
+                  title={`Light it. ${describeCardPinPlace(entry.pin)}`}
                   onClick={() => probePort(entry.pin)}
                 >
                   <span className="strip-discovery-port-pin">{portLabel(entry)}</span>
@@ -1591,6 +1593,15 @@ export function StripDiscoveryPanel({
               <button type="button" className="btn" data-testid="discovery-try-another" disabled={busy} onClick={() => { setSelectedPort(null); }}>Try another port</button>
             </div>
           </div>}
+          {/* Shown once a port is tapped: the drawing answers "where is the one I
+              just lit", and before that it would only push the grid down. */}
+          {(selectedPort !== null || pinnedPort !== null) && (
+            <CardPinMap
+              testId="discovery-pin-map"
+              title="Where this port is on the card"
+              lit={[...new Set([selectedPort, pinnedPort].filter(pin => pin !== null))].map(pin => ({ pin }))}
+            />
+          )}
           {/* discovery-output-limit and discovery-no-outputs moved to the
               notice layer — both are about the run's whole port selection,
               never about one row (each skipped port keeps its own line in
