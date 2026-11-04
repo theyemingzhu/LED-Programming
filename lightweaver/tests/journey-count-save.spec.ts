@@ -77,9 +77,15 @@ test('[F14] a length-only Layout save survives the card losing its own reboot re
   const spec = cardState('installed-match'); // pin 18, 41 pixels — matches the project Studio adopts on first sight.
   const card = await boot(page, spec, '/', seedKnownCard);
   await waitConnectedUnaided(page, 'F14 connect');
+  // The owner explicitly opens the card copy; discovery never replaces a draft.
+  await page.getByTestId('installed-project-open').click();
+  await expect.poll(() => page.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.id; }
+    catch { return null; }
+  })).toBe(spec.projectId);
   await expect(
     journeyLocator(page),
-    'a card holding exactly the project Studio has open must read as setup-complete on first sight',
+    'explicitly opening the installed card copy completes setup',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
 
   const STARTING_PIXELS = spec.pixels; // 41

@@ -124,17 +124,12 @@ test('[F13] a card that came back on a newer signed build reconnects without re-
     .poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] })
     .toMatch(CONNECTED);
 
-  // B. The installation is still recognized. A firmware update preserves the
-  // project (the preservation matrix says so, and the card still reports it),
-  // so nothing about setup may restart.
-  await expect(
-    page.getByTestId('setup-journey'),
-    'an updated card still holding its project must read as setup-complete, not re-onboard',
-  ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
-  await expect(
-    page.getByTestId('setup-identity-row'),
-    'the identity row must name the installed project as matching, not as a stranger',
-  ).toContainText('Installed project matches', { timeout: CONNECT_BUDGET_MS });
+  // B. Recognize the preserved installation without replacing the untouched
+  // browser draft or asking the owner to pair the updated card again.
+  await expect(page.getByTestId('card-installed-home')).toContainText(spec.projectName);
+  await expect(page.getByTestId('installed-control-open')).toBeEnabled();
+  await expect(page.getByTestId('installed-project-open')).toBeVisible();
+  await expect(page.getByTestId('setup-identity-row')).toContainText('Installed project');
 
   // C. The footer reports the build the card is ACTUALLY on. This is the number
   // Adrian reads to answer "am I running the newest code?".
