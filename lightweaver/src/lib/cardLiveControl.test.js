@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { postPlaylistControlToCard, pushSectionPreviewToCard, readCardZonesFromCard, recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
+import { postPlaylistControlToCard, pushSectionPreviewToCard, readCardZonesFromCard, readCardPatternsFromCard, recoverCardLights, zoneConfirmsLivePreviewIntent } from './cardLiveControl.js';
 
 test('HTTPS section controls honor explicit direct transport and reject a different paired card', async () => {
   const previousWindow = globalThis.window;
@@ -312,3 +312,24 @@ test('recoverCardLights honours an explicit direct transport on an https page', 
     globalThis.fetch = originalFetch;
   }
 });
+
+for (const transport of ['local-origin', 'direct-lna']) {
+  test(`card reads retain explicit ${transport} authority acquisition`, async () => {
+    const calls = [];
+    const authority = {
+      connected: true,
+      async request(path) {
+        if (path === '/api/zones') return { zones: [{ id: 'left' }] };
+        return { currentId: 'warm-white', currentIndex: 0, patterns: [{ id: 'warm-white', label: 'Warm', mode: 'preset', zones: [], controls: {} }] };
+      },
+    };
+    const options = {
+      host: '192.168.50.219', expectedCardId: 'lw-transport-read', transport,
+      connectTransportImpl: async input => { calls.push(input); return authority; },
+    };
+    assert.equal((await readCardZonesFromCard(options)).zones.length, 1);
+    assert.equal((await readCardPatternsFromCard(options)).patterns.length, 1);
+    assert.deepEqual(calls.map(call => call.transport), [transport, transport]);
+    assert.ok(calls.every(call => call.expectedCardId === options.expectedCardId));
+  });
+}

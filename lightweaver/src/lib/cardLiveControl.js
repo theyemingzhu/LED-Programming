@@ -762,6 +762,7 @@ async function readCardZones(host, input = {}) {
     const acquired = await (options.connectTransportImpl || connectCardTransport)({
       host,
       expectedCardId: options.expectedCardId,
+      ...(options.transport ? { transport: options.transport } : {}),
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     });
     if (acquired?.connected) authority = acquired;
@@ -885,6 +886,7 @@ async function readCardPatterns(host, options = {}) {
     const acquired = await (options.connectTransportImpl || connectCardTransport)({
       host,
       expectedCardId: options.expectedCardId,
+      ...(options.transport ? { transport: options.transport } : {}),
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     });
     if (acquired?.connected) authority = acquired;
