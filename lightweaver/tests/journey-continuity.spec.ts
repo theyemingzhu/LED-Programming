@@ -140,21 +140,21 @@ test('[J02] a returning browser recognizes the installed project without re-onbo
   const card = await boot(page, spec, '/', seedKnownCard);
   await waitConnectedUnaided(page, 'J02 initial connect');
 
+  // The returning browser remembers the card, not its project. The installed
+  // project is ready to control, while the untouched browser draft stays put
+  // until the owner explicitly asks to open the card's recoverable copy.
+  await expect(page.getByTestId('card-installed-home')).toContainText('Matrix piece');
+  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft: Untitled Project');
+  await expect(page.getByTestId('installed-control-open')).toBeEnabled();
+  await expect(journeyLocator(page)).toHaveAttribute('data-journey-task', 'load-matching-project');
+  await page.getByTestId('installed-project-open').click();
   await expect(
     journeyLocator(page),
-    'a card holding exactly the project it already reports installed must read as setup-complete on first sight',
+    'explicitly opening the installed project completes the browser setup',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
 
-  // F7: seedKnownCard leaves no project of its own open, so this journey just
-  // completed through adoptWiringFromCard's skeleton-only shortcut in
-  // lw-setup.jsx (the untouched-starter case documented above at
-  // seedOtherProjectOpen) — not the slower "adopt by default" effect that
-  // reconstructs through reconstructInstalledCardState. That shortcut hands
-  // its skeleton straight to applyCardParts with no button press, so without
-  // a `card-partial` origin stamped on the skeleton itself
-  // (projectSkeletonFromCardStatus, discoveryCommit.js) the adopted project
-  // carried no record of where it came from, and Projects silently read "Not
-  // saved yet" instead of naming this as a partial card reconstruction.
+  // The reconstructed card copy must still disclose that it lacks the
+  // original artwork rather than silently appearing as a complete saved file.
   await page.getByTestId('topbar-projects').click();
   await expect(page.getByTestId('projects-panel')).toBeVisible();
   await expect(page.getByTestId('projects-association')).toHaveText('Card copy (partial — no artwork)');
