@@ -1167,11 +1167,19 @@ function writeSectionDisplayOrder(projectId, ids) {
     );
     // A card-returned saved look is selected by its canonical Studio look ID;
     // ordinary pattern edits continue to follow the live pattern itself.
-    const selId = savedLooks.some(savedLook => savedLook.id === activeLookId)
-      ? activeLookId
-      : (customPatternById.has(activePatternId) ? activePatternId : look.patternId);
+    // A saved stack keeps its identity while its working copy is edited, but
+    // the preview and tuning controls must describe the draft on the selected
+    // target. Otherwise a newly chosen pattern can light the card while the
+    // preview still names the stack's previous pattern.
+    const selectedTargetHasDraft = Boolean(draftLooks[selectedTarget?.id]
+      || (selectedTarget?.kind === 'section' && draftLooks[ALL_SECTIONS_TARGET_ID]));
+    const selId = selectedTargetHasDraft
+      ? look.patternId
+      : savedLooks.some(savedLook => savedLook.id === activeLookId)
+        ? activeLookId
+        : (customPatternById.has(activePatternId) ? activePatternId : look.patternId);
     const sel = REAL_PATTERN_BY_ID.get(selId) || customPatternById.get(selId) || adaptPattern(selId) || ALL[0];
-    const selectedDisplayLabel = editingSavedLook?.label || sel.label;
+    const selectedDisplayLabel = selectedTargetHasDraft ? sel.label : editingSavedLook?.label || sel.label;
     const patternNameFor = useCallback((patternId) => {
       if (!patternId) return '';
       const entry = REAL_PATTERN_BY_ID.get(patternId) || customPatternById.get(patternId) || adaptPattern(patternId) || getCardPatternById(patternId);

@@ -105,18 +105,18 @@ function readProject(page: Page) {
 // ---------------------------------------------------------------------------
 test('[J06] a lost /api/config reply after a real install write is not duplicated, and an edit made before it settles is not lost', async ({ page }) => {
   const spec = cardState('installed-match');
-  // Boot at '/' first, exactly as J02 does: the adoption that turns "a known
-  // card holding a matching project" into a verified, install-authorized
-  // Studio project runs inside Card Home / Setup's own mount effect. Booting
-  // straight to '#screen=pattern' skips that mount entirely, so no
-  // adoption ever runs and Install stays disabled forever — found empirically
-  // (the fixture behaves exactly like J02-negative until Setup has mounted at
-  // least once).
+  // Open the installed card copy explicitly before testing a guarded edit.
   const card = await boot(page, spec, '/', seedKnownCard);
   await waitConnectedUnaided(page, 'J06 connect');
+  // The owner explicitly opens the card copy; discovery never replaces a draft.
+  await page.getByTestId('installed-project-open').click();
+  await expect.poll(() => page.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.id; }
+    catch { return null; }
+  })).toBe(spec.projectId);
   await expect(
     journeyLocator(page),
-    'a card holding exactly the project Studio has open must read as setup-complete on first sight',
+    'explicitly opening the installed card copy completes setup',
   ).toHaveAttribute('data-journey-complete', 'true', { timeout: CONNECT_BUDGET_MS });
 
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
