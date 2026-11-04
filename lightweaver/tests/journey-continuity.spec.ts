@@ -16,6 +16,7 @@ import { createCardSimulator, seedWiringDivergedProject, type CardSimulator } fr
 import {
   cardState,
   MATRIX_CARD_ID,
+  MATRIX_PROJECT_ID,
   MATRIX_BUILD_ID,
   MATRIX_FIRMWARE_VERSION,
   MATRIX_PATTERNS,
@@ -158,6 +159,14 @@ test('[J02] a returning browser recognizes the installed project without re-onbo
   await page.getByTestId('topbar-projects').click();
   await expect(page.getByTestId('projects-panel')).toBeVisible();
   await expect(page.getByTestId('projects-association')).toHaveText('Card copy (partial — no artwork)');
+
+  // Opening the card copy updates the live project immediately, while its
+  // browser autosave is debounced. Reload only after that replacement is on
+  // disk; the reload assertion below still proves the saved journey resumes.
+  await expect.poll(() => page.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.id; }
+    catch { return null; }
+  })).toBe(MATRIX_PROJECT_ID);
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitConnectedUnaided(page, 'J02 after reload');
