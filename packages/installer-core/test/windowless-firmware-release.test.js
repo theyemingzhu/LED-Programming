@@ -59,6 +59,7 @@ test('new combined releases validate exact card Studio identity and full-image r
 test('legacy signed manifests remain readable but cannot pass the new-build card Studio assertion', () => {
   const legacy = structuredClone(manifest);
   delete legacy.cardStudio;
+  delete legacy.buildNumber;
   delete legacy.image.cardStudioReadback;
   assert.doesNotThrow(() => validateFirmwareManifest(legacy));
   assert.throws(() => assertFirmwareManifestCardStudio(legacy), /newly built.*card Studio/i);
@@ -89,6 +90,12 @@ test('schema 2 requires the immutable application image, exact-byte ticket, and 
   };
 
   assert.equal(validateFirmwareManifest(version2).update.image.size, 1000000);
+  const unnumbered = structuredClone(version2);
+  delete unnumbered.buildNumber;
+  delete unnumbered.cardStudio;
+  delete unnumbered.image.cardStudioReadback;
+  assert.throws(() => validateFirmwareManifest(unnumbered), /buildNumber.*positive integer/i);
+
   assert.throws(() => validateFirmwareManifest({
     ...version2,
     update: { ...version2.update, ticket: { ...version2.update.ticket, url: '/firmware/update.json' } },
