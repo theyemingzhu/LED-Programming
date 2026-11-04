@@ -41,6 +41,10 @@ Do not archive a checkout that still owns a live preview or other active work.
 
 ## Every authorized ship
 
+For new candidates, use the [resumable release controller](release-controller.md)
+from preparation through live proof. Do not create another per-PR runner. The
+manual observer commands below remain available for existing merged releases.
+
 1. Implement and verify the coherent candidate once. Keep required checks and
    exact evidence; use focused tests for bounded repairs instead of restarting
    all previously passed suites. Follow the normal authorized PR/merge route.
@@ -55,7 +59,7 @@ Do not archive a checkout that still owns a live preview or other active work.
    state and common-directory resumption path in the workboard. Only then return
    **publishing in background**, allowing the next build to start immediately.
 4. Do not poll with a model or create a recurring AI heartbeat. The observer
-   persists the terminal result and requests one desktop notification. Native
+   persists the terminal result and requests one desktop notification. Submission is recorded separately from delivery confirmation. Native
    delivery follows the user's macOS notification settings; persisted state is
    always the durable source of truth.
 5. At a relevant follow-up, read `status` once. Report Studio and firmware build

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { advanceRelease, createGithubApi, parseOptions, prepareStart, saveState, selectInstalledEntry, terminalNotice, withLock } from './background-release.mjs';
+import { advanceRelease, createGithubApi, parseOptions, prepareStart, saveState, selectInstalledEntry, terminalNotice, notifyTerminal, withLock } from './background-release.mjs';
 
 const base = 'a'.repeat(40);
 const child = 'b'.repeat(40);
@@ -126,4 +126,11 @@ test('independent proof retries bounded network trouble but blocks conclusive fa
   assert.equal((await advanceRelease(state(), api(), async () => ({}), state().deadlineAt + 1)).phase, 'blocked');
   assert.equal((await advanceRelease(state(), api(), async () => ({ ok: false, superseded: true, reason: 'main advanced' }), 2_000)).phase, 'superseded');
   assert.match(terminalNotice({ ...state(), phase: 'blocked', reason: 'Exact deploy failed' }).body, /Exact deploy failed/);
+});
+
+ test('terminal notification stores submission failure truthfully in observer state', async t => {
+ const dir=await mkdtemp(join(tmpdir(),'lw-notice-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const blocked={...state(),phase:'blocked',reason:'real failing check',notified:true};await saveState(dir,blocked);
+ await notifyTerminal(dir,blocked,{notify:async()=>{throw Error('desktop unavailable');},startRepair:false});
+ const saved=JSON.parse(await readFile(join(dir,'active.json'),'utf8'));assert.equal(saved.notified,undefined);assert.equal(saved.notification.status,'failed');assert.equal(saved.notification.deliveryConfirmed,false);
 });

@@ -7,6 +7,19 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current delivery — release reliability — 2026-09-29
+Owner: primary manager. State: ship authorized; queueing behind PR379 live proof.
+PR380 https://github.com/theyemingzhu/LED-Programming/pull/380, isolated checkout
+/Users/adrianrasmussen/.codex/worktrees/release-reliability/led. Initial tooling
+commit3517fad0 verified98/98 and installed locally. Follow-up adds durable ordered
+publication: pin queued head/branch/owner, wait prerequisite exact shipped proof,
+integrate only proven main, persist before push, retarget and start normal checks.
+Legacy PR379 retains its own runner/evidence; concrete failures request one bounded
+repair event. Unrelated main advancement is a reconciliation condition, not an
+excuse to bypass tests. No routine model polling or simultaneous publication.
+Next: focused queue tests, install pinned runtime, enqueue PR380 and verify the
+service persisted its waiting state. Shipped requires final exact live proof.
+
 ## Current delivery — card-first Studio resume — 2026-09-29
 Owner: primary manager. State: authorized release; repaired failed gate, resuming.
 PR379: https://github.com/theyemingzhu/LED-Programming/pull/379.
