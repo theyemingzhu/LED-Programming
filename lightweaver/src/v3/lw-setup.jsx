@@ -875,6 +875,8 @@ export function SetupScreen({
     } catch (error) { setDraftSave({ pending: false, message: error?.message || 'Result not confirmed. Read the card before trying again.' }); }
   };
   const installedHome = (session.capabilities.installedControl || rememberedInstalled) && !installIntentOpen
+    && !hasResumableCommissioning(commissioningFlow) && !provisionalSetup
+    && !isBenchProjectEvidence(cardState.status) && !isBenchProjectEvidence(cardLink?.readiness)
     && !wiringTestActive && !reviewLights && (!setupTask || setupTask === 'load-matching-project');
   const identityStatus = wiringTestActive
     ? 'Testing lights'
