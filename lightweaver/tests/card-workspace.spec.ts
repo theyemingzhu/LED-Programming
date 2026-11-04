@@ -1906,7 +1906,7 @@ test('Card Home and Support recovery both surface a working connect action for a
   expect(calls.recoveryCenter).toBe(1);
 });
 
-test('connected Card Home identifies the card and keeps one active Setup task', async ({ page }) => {
+test('connected Card Home identifies the installed card without replacing the open draft', async ({ page }) => {
   const status = readyStatus('lw-gallery-card');
   await page.addInitScript(identity => {
     localStorage.setItem('lw_card_identity_v1', JSON.stringify(identity));
@@ -1932,8 +1932,13 @@ test('connected Card Home identifies the card and keeps one active Setup task', 
   // the ladder do not already carry (checking, blank, bench, failure).
   await expect(page.getByTestId('setup-identity-row')).toContainText('Gallery card');
   await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
-  // The ladder carries exactly one active task for the connected card.
-  await expect(page.getByTestId('setup-active-task')).toHaveCount(1);
+  // The installed card is available directly; the starter draft remains a
+  // separate choice until the owner explicitly opens the card's project.
+  await expect(page.getByTestId('card-installed-home')).toBeVisible();
+  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft: Untitled Project');
+  await expect(page.getByTestId('installed-control-open')).toBeEnabled();
+  await expect(page.getByTestId('installed-project-open')).toBeVisible();
+  await expect(page.getByTestId('setup-active-task')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
 });
 
@@ -2175,7 +2180,9 @@ test('ready overview offers Batch production as a low-emphasis link, not a setup
     expectedCard: { id: 'lw-gallery-card', firmwareVersion: '1.0.0', buildId: 'a'.repeat(40) },
     readiness: status,
   }]);
-  await expect(page.getByTestId('setup-active-task')).toBeVisible();
+  await expect(page.getByTestId('card-installed-home')).toBeVisible();
+  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft: Untitled Project');
+  await expect(page.getByTestId('setup-active-task')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
 
   await expect(page.getByTestId('card-setup-steps')).toHaveCount(0);
