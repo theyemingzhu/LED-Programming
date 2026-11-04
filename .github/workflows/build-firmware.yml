@@ -146,7 +146,7 @@ jobs:
 
   build:
     needs: [classify, verify]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: firmware-release
     permissions:
       contents: write

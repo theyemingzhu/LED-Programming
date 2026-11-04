@@ -31,6 +31,20 @@ provisionalSetup:false. No card writes, flash or physical playback proof.
 Next: resume immutable repaired candidate; report shipped only after exact deployed
 artifacts are independently proven live with Studio and firmware build numbers.
 
+## Current Sprint — GPIO output choices — 2026-10-24
+Owner: primary. State: done locally on codex/add-safe-gpio39. N16R8 card uses
+octal PSRAM, so GPIO36/37 cannot be outputs; GPIO38 was already approved.
+GPIO39 is in the shared contract and firmware FastLED registration. Studio
+offers it only when the card reports it; older cards retain their menu. Complete
+legacy project port lists retain their saved identity/hash. The screen was
+inspected at desktop and 390px; focused new/old-card browser checks passed.
+Integrated checkpoint unit 2997/2997 and native Rollup check passed. Default
+Vite config bundling hit a Windows sandbox access denial; the equivalent
+production build passed with Vite's runner config loader and service worker
+generation passed. Firmware PlatformIO N16R8 compile passed. No card flash,
+release, deployment, or physical LED observation. GPIO39 needs a future card
+update and Bench observation before claiming real-strip proof.
+
 ## Current delivery — client player — 2026-09-29
 Owner: this manager. State: limited-save follow-up verified; commit/push to PR375 next.
 Confirmed scope: Save on the lights; Studio reads it back. Only the player Owner

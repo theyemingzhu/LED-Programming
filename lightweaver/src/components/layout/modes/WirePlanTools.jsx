@@ -9,6 +9,7 @@ import { LedChipsetSelect } from '../shared/LedChipsetSelect.jsx';
 import { WireHoverDescription } from '../shared/WireHoverDescription.jsx';
 import { WiringAssemblyMap } from '../wire/WiringAssemblyMap.jsx';
 import { WireDiscovery } from '../wire/WireDiscovery.jsx';
+import { CardPinMap } from '../../card/CardPinMap.jsx';
 import { activeBoardGpios, assignWiringRunToPin, BOARD_CONTROL_FIELDS, planBoardGpioAssignment } from '../../../lib/gpioAssignments.js';
 import { PORT_ROLE_STRIP } from '../../../lib/portRoles.js';
 import { describeCardCapacity } from '../../../lib/designCapacity.js';
@@ -364,6 +365,7 @@ export function WirePlanTools({ state, cardHost, onAttentionChange, openOnEntry 
               <button type="button" className="btn" data-testid="unlock-wiring" title="Reopen wiring edits and clear the completed verification before changing connections." data-tooltip="Reopen wiring edits and clear the completed verification before changing connections." onClick={unlockWiring}>Unlock to edit</button>
             </div>
           )}
+          <CardPinMap testId="wire-pin-map" lit={(wiring.outputs || []).map((output, index) => ({ pin: output.pin, tag: String(index + 1), name: `Port ${index + 1}` }))}/>
           <WireDiscovery outputs={wiring.outputs} cardHost={cardHost} disabled={wiring.locked} onPinConfirmed={changeOutputPin}/>
           {compiledWiring.sendReady && <button className="btn lw-open-assembly" title="Show or hide the assembly map used to build the verified LED wiring." data-tooltip="Show or hide the assembly map used to build the verified LED wiring." onClick={() => setShowAssembly(value => !value)}>{showAssembly ? 'Hide assembly map' : 'Open assembly map'}</button>}
           {showAssembly && compiledWiring.sendReady && <WiringAssemblyMap wiring={wiring} compiled={compiledWiring} strips={strips} physicalScale={Number(pxPerMm) > 0 ? { pxPerMm: Number(pxPerMm) } : null} onClose={() => setShowAssembly(false)}/>}

@@ -43,7 +43,7 @@ As of 2026-06 the runtime is **ESP32-S3 only**. The card runs the Lightweaver fi
 - `led-art-mapper/` is the standalone geometry tool. Its WLED and coordinate artifacts are external exports, not the active card runtime contract.
 - `lightweaver/` (React) is the public Studio, installer, design, commissioning, and control surface.
 - `visitor-ui/` is a **future Pi-hosted** branded React UI (captive-portal scene selector per `branded-installation-ui.md`). **Not in the current ESP-only plan** — the firmware card page is today's visitor UI. Retained for a future Pi integration; visitor-facing polish goes into the firmware page for now.
-- **Tests** live under `/e2e/` using `@playwright/test`. **Diagnostic scripts** are archived in `/scripts/debug/`.
+- **Tests** live under `/e2e/`. **Diagnostic scripts** are archived in `/scripts/debug/`.
 
 ## Shipment vocabulary and standing authorization
 
@@ -110,7 +110,7 @@ A signed card release happens when either is true: real firmware changed
 (`firmware/**` source, platformio, release machinery), or **VERSION was
 bumped** — the bump IS the on-demand trigger, so "finalize firmware" means
 bump `firmware/lightweaver-controller/VERSION` plus its pinned literal in
-`tests/firmware-version-policy.mjs` and merge (~30 min, signed, published).
+`firmware/lightweaver-controller/tests/firmware-version-policy.mjs` and merge (~30 min, signed, published).
 
 A release cannot be lost by timing. Lane classification can only answer "did
 THIS merge touch the card", so a release run that is cancelled — or overtaken by
@@ -151,8 +151,8 @@ unaffected; a customer card gets the drift at the next release.
 ## Branch landing rules (standing policy — read before pushing or merging)
 Full policy: `docs/branch-maintenance.md`. The short version every session must follow:
 - Every branch is either **PR'd**, **`archive/`-prefixed with a TODO.md entry**, or **deletable**. Never end a session with only "pushed to branch X".
-- Before opening a PR for a branch you don't own, check the account's session list and ask the owning session whether the build is done. If unsure, open it as a **draft**.
-- Once the owning session confirms done and CI is green, **merge without asking** and delete the branch. Land one stream at a time.
+- Before opening a PR for a branch you don't own, open it as a **draft**; you may message the owning session through the app's session messaging, but check git/PR state rather than waiting on a reply.
+- Once the build is confirmed done (per git/PR state) and CI is green, **merge without asking** and delete the branch. Land one stream at a time.
 - "**Wrap it up**" from Adrian means: finish the increment, then merge / PR-and-watch / archive-and-log — pick one, do it, report which.
 - **Half-built work never merges.** Wrapping an unfinished stream = push the branch + a TODO.md resume entry (branch name, done, remaining, resume point). No resume entry, no wrap.
 
@@ -166,6 +166,6 @@ Full policy: `docs/branch-maintenance.md`. The short version every session must 
 - **Outstanding work** → `TODO.md` (project root)
 
 ## TODO format
-`TODO.md` items follow the workspace convention: `- [ ] **Bold lead.** _(band: agent-runnable | you-required | routine)_ One descriptive sentence.` with an optional link/detail line underneath pointing to the full plan doc, PR, or referenced files. Group items under `## Soon` / `## Future` / `## Operational notes`. The band hint tells the i64os Temple page which lane to render the item in.
+`TODO.md` follows the workspace TODO convention: one plain sentence with `_(band: …)_ _(effort: …)_`; big items link a plan in `todo/plans/<slug>.md`. The old **Bold lead.** format is retired.
 
 @./THINKING.md

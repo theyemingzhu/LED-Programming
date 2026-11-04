@@ -49,6 +49,11 @@ assert.match(policy, /LW_APPROVED_OUTPUT_GPIOS[\s\S]*LW_CARD_HARDWARE_OUTPUT_GPI
 const manifestPins = JSON.parse(
   readFileSync(resolve(root, '../../packages/lightweaver-contract/card-hardware.json'), 'utf8'),
 ).outputPins;
+const outputRegistration = functionBody(main, 'bool addLedsForPin(', 'void setOutputInitializationFailure(');
+const registeredPins = [...outputRegistration.matchAll(/case (\d+):\s*return addLedsForOrder<\1>\(start, count\);/g)]
+  .map((match) => Number(match[1]));
+assert.deepEqual(registeredPins, manifestPins,
+  'every approved output GPIO must have a matching FastLED template registration');
 assert.match(
   hardware,
   new RegExp(`LW_CARD_HARDWARE_OUTPUT_GPIOS\\[\\]\\s*=\\s*\\{${manifestPins.join(', ')}\\}`),
@@ -58,15 +63,18 @@ assert.match(policy, /LW_FACTORY_BEACON_PIXEL_LIMIT\s*=\s*8/);
 assert.match(policy, /LW_FACTORY_BEACON_BRIGHTNESS_LIMIT\s*=\s*24/,
   'the beacon must use the brightest approved bench-safe level');
 assert.match(policy, /LW_FACTORY_BEACON_MAX_MILLIAMPS\s*=\s*100/);
-// Halved from 3000 when the approved-GPIO list grew to 15. The sweep, not the
-// step, is what an owner actually experiences, and 15 x 3000 put it at 45s.
+// Halved from 3000 when the approved-GPIO list grew. The sweep, not the
+// step, is what an owner actually experiences; the current 16 pins take 24s.
 assert.match(policy, /LW_FACTORY_BEACON_STEP_MS\s*=\s*1500/,
   'each output must stay selected long enough for a clear human observation');
 // The whole point of the beacon is being recognisable from across a bench, so the
 // sweep has to stay inside the patience of someone deciding whether a freshly
 // flashed card is alive. This bounds the WORST case: every approved GPIO
 // registered, none claimed by controls.
-assert.ok(15 * 1500 <= 25000,
+assert.ok(manifestPins.includes(39), 'GPIO39 must be advertised as an approved output');
+assert.ok(!manifestPins.includes(36) && !manifestPins.includes(37),
+  'octal PSRAM GPIO36/37 must remain unavailable as LED outputs');
+assert.ok(manifestPins.length * 1500 <= 25000,
   'a full beacon sweep must stay well inside how long an owner will watch before calling a card dead');
 assert.match(policy, /factoryBeaconPulseOn[\s\S]*<\s*LW_FACTORY_BEACON_STEADY_ON_MS[\s\S]*>=\s*LW_FACTORY_BEACON_SECOND_ON_START_MS[\s\S]*<\s*LW_FACTORY_BEACON_SECOND_ON_END_MS/,
   'the visibility pattern must provide a long steady hold and a distinct second pulse');
