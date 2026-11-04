@@ -34,6 +34,10 @@ async function installFindCardHarness(page: Page) {
   await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id: 'lw-find-card', firmwareVersion: '1.4.0', buildId: 'a'.repeat(40),
+      address: '192.168.77.1',
+    }));
     localStorage.setItem('lw_chip_card_host', '192.168.77.1');
     localStorage.setItem('lw_chip_card_host_history', JSON.stringify(['192.168.77.1']));
   });
@@ -64,4 +68,37 @@ test('Find my card searches first, and only opens the connection panel once that
   await expect(page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true })).toBeVisible({ timeout: 30000 });
   // And no card-page window was opened behind the owner's back on the way.
   expect(await page.evaluate(() => (window as any).__findCardHarness.opens)).toEqual([]);
+});
+
+test('public Find my card opens connection choices for a remembered card without a legacy popup', async ({ page, baseURL }) => {
+  await page.route('https://led.mandalacodes.com/**', async route => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: `${baseURL}${url.pathname}${url.search}` });
+    await route.fulfill({ response });
+  });
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id: 'lw-find-card', firmwareVersion: '1.4.0', buildId: 'a'.repeat(40),
+      hostname: 'lightweaver.local',
+    }));
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    (window as any).__cardPopups = [];
+    window.open = ((url?: string | URL) => {
+      (window as any).__cardPopups.push(String(url || ''));
+      return null;
+    }) as typeof window.open;
+  });
+  await page.route('http://lightweaver.local/**', route => route.abort());
+  await page.route('http://192.168.4.1/**', route => route.abort());
+  await page.goto('https://led.mandalacodes.com/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('setup-connect-card').click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true });
+  await expect(dialog).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__cardPopups)).toEqual([]);
+  await expect(dialog.getByRole('button', { name: 'Inspect card over USB', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Inspect card over USB', exact: true }).click();
+  await expect(page).toHaveURL(/screen=flash&mode=install/);
+  await expect(dialog).not.toBeVisible();
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
