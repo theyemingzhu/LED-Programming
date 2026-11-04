@@ -7,6 +7,8 @@ import {
   createCardCustomerControls,
   normalizeCardCustomerControls,
 } from '../../lib/cardCustomerControls.js';
+import { deriveCardSessionView } from '../../lib/cardSessionView.js';
+import { isUncertainCardWriteFailure } from '../../lib/cardTransientFailure.js';
 import { deriveCardLifecycle } from '../../lib/cardLifecycle.js';
 import { retryWhileTransient } from '../../lib/cardTransientFailure.js';
 
@@ -23,13 +25,21 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const readContextKey = JSON.stringify([
-    host || '', link?.transport || '', link?.card?.id || '', link?.expectedCard?.id || '',
+    link?.state || '', host || '', link?.transport || '', link?.card?.id || '', link?.expectedCard?.id || '',
     link?.card?.firmwareVersion || '', link?.card?.buildId || '',
     link?.readiness?.cardId || '', link?.readiness?.bootId || link?.validatedBootId || '',
     link?.readiness?.projectId || '', link?.readiness?.projectRevision ?? '',
+    link?.readiness?.currentPatternId || '', link?.readiness?.playlist?.entryIndex ?? '', link?.readiness?.playlist?.playing ?? '',
     link?.readiness?.projectFingerprint || '', link?.readiness?.operationGeneration ?? link?.operationGeneration ?? '',
   ]);
   renderedReadContextKey.current = readContextKey;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    restoreFocusRef.current = document.activeElement;
+    const timer = window.setTimeout(() => panelRef.current?.focus(), 0);
+    return () => { window.clearTimeout(timer); restoreFocusRef.current?.focus?.(); };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -37,8 +47,6 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
     const contextGeneration = ++cardContextGeneration.current;
     const contextIsCurrent = () => active && cardContextGeneration.current === contextGeneration
       && renderedReadContextKey.current === readContextKey;
-    restoreFocusRef.current = document.activeElement;
-    window.setTimeout(() => panelRef.current?.focus(), 0);
     setControls(null);
     setLoadError('');
     // Both are pure reads, so opening the drawer on a card that is still
@@ -85,7 +93,6 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
       active = false;
       if (cardContextGeneration.current === contextGeneration) cardContextGeneration.current += 1;
       document.removeEventListener('keydown', onKeyDown);
-      restoreFocusRef.current?.focus?.();
     };
   }, [host, link.card?.id, link.transport, onClose, open, readContextKey, reloadKey]);
 
@@ -101,8 +108,9 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
   const cardLifecycle = lifecycle || deriveCardLifecycle({ link: link || {} });
   const connectionStatus = cardLifecycle.connectionLabel || cardLifecycle.label;
   const connected = connectionStatus === 'Connected';
-  const safeControlsReady = lifecycle?.safeControlAccess === 'ready';
-  const mutationDisabled = !safeControlsReady || Boolean(controls?.pending) || !controls?.view
+  const session = deriveCardSessionView({ link, lifecycle: cardLifecycle });
+  const safeControlsReady = session.capabilities.installedControl;
+  const mutationDisabled = !safeControlsReady || Boolean(controls?.failure) || Boolean(controls?.pending) || !controls?.view
     || controls.readContextKey !== readContextKey;
   const activePattern = view?.patterns.find(pattern => pattern.id === view.activePatternId);
   const customControls = activePattern?.controls && Object.values(activePattern.controls).some(Boolean)
@@ -140,14 +148,18 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
       revision: optimistic.command.id,
       exactCardPatternId: look.patternId,
       expectedControlPatch: patch,
+      installedControlPatch: true,
     };
-    retryWhileTransient(() => {
+    Promise.resolve().then(async () => {
       if (!commandIsCurrent()) throw Object.assign(new Error('Card session changed during control.'), { reason: 'superseded' });
-      return pushLivePreviewToCard(look, controlOptions);
-    }, {
-      attempts: 3,
-      delayMs: 350,
-      readBack: () => commandIsCurrent() ? readBackLivePreview(look, { ...controlOptions, timeoutMs: 1200 }) : null,
+      try { return await pushLivePreviewToCard(look, controlOptions); }
+      catch (error) {
+        if (!isUncertainCardWriteFailure(error)) throw error;
+        let settled = null;
+        try { if (commandIsCurrent()) settled = await readBackLivePreview(look, { ...controlOptions, timeoutMs: 1200 }); } catch { /* Keep the uncertainty visible. */ }
+        if (settled) return settled;
+        throw new Error('Result not confirmed. Refresh the card controls before making another change.');
+      }
     }).then(response => {
       if (commandIsCurrent()) setControls(current => current ? applyCustomerControlAcknowledgement(current, optimistic.command.id, response) : current);
     }).catch(error => {
@@ -187,7 +199,8 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
         {!controls && !loadError ? <p className="card-control-loading" role="status">Reading the card controls…</p> : null}
         {view ? <div className="card-control-body">
           <section aria-labelledby="card-pattern-heading">
-            <h3 id="card-pattern-heading">Pattern</h3>
+            <h3 id="card-pattern-heading">Pattern on the card</h3>
+            <p>Changes the running lights; does not save your draft. Selecting a pattern stops the current playlist. Brightness keeps the playlist running.</p>
             <div className="card-pattern-select">
               <button type="button" onClick={() => cyclePattern(-1)} disabled={mutationDisabled} aria-label="Previous pattern">Previous</button>
               <select aria-label="Pattern" value={view.activePatternId} disabled={mutationDisabled} onChange={event => runControl({ patternId: event.target.value })}>
@@ -220,7 +233,7 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
             </> : null}
           </section> : null}
 
-          {controls.failure ? <div className="card-control-error" role="alert"><p>{controls.failure.message}</p><button type="button" className="btn" disabled={mutationDisabled} onClick={() => runControl(controls.retry)}>Retry</button></div> : null}
+          {controls.failure ? <div className="card-control-error" role="alert"><p>{controls.failure.message}</p><button type="button" className="btn" onClick={() => setReloadKey(key => key + 1)}>Refresh card controls</button></div> : null}
           {activePattern?.savedControlsRevision && <section aria-label="Saved pattern settings"><h3>Saved pattern settings</h3><p>{Object.entries(activePattern.savedControls || {}).map(([key, value]) => key === 'brightness' ? `Brightness ${Math.round(value * 100)}%` : key === 'speed' ? `Speed ${value}×` : `Hue shift ${value}`).join(' · ') || 'Original pattern settings'}</p><button type="button" className="btn" disabled={mutationDisabled} onClick={() => setReloadKey(key => key + 1)}>Refresh saved settings</button></section>}
           {safeControlsReady && <ClientPlayerLink disabled={mutationDisabled} host={host} cardId={link.card?.id} name={link.card?.name} />}
           <footer className="card-control-actions">

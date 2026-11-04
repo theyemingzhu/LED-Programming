@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CARD_HOST_CHANGED_EVENT,
   CARD_CONNECTION_MISS_LIMIT,
@@ -16,6 +16,8 @@ export function useCardStatus({
   timeoutMs = 12000,
   missLimit = CARD_CONNECTION_MISS_LIMIT,
 } = {}) {
+  const requestGeneration = useRef(0);
+  const contextKey = () => `${readStoredCardHost()}:${readPersistedCardIdentity()?.id || ''}`;
   const [state, setState] = useState({
     checking: Boolean(enabled),
     connected: false,
@@ -35,12 +37,15 @@ export function useCardStatus({
     if (!enabled) return { connected: false, host: readStoredCardHost(), error: new Error('direct card access disabled') };
     if (lanProbesHeld()) return { connected: false, host: readStoredCardHost(), error: new Error('LAN probes held') };
     setState(prev => ({ ...prev, checking: true, error: null }));
+    const generation = ++requestGeneration.current;
+    const context = contextKey();
     const result = await discoverCardStatus({
       preferredHost: readStoredCardHost(),
       expectedCard: readPersistedCardIdentity(),
       timeoutMs,
       persist: false,
     });
+    if (generation !== requestGeneration.current || context !== contextKey()) return { ...result, superseded: true };
     setState(prev => reduceCardConnectionState(prev, { ...result, allowAdopt: false }, { now: Date.now(), missLimit }));
     return result;
   }, [enabled, missLimit, timeoutMs]);
@@ -48,12 +53,14 @@ export function useCardStatus({
   const connect = useCallback(async (preferredHost = '') => {
     if (!enabled) return { connected: false, host: readStoredCardHost(), error: new Error('direct card access disabled') };
     setState(prev => ({ ...prev, checking: true, reconnecting: true, error: null }));
+    const generation = ++requestGeneration.current;
     const result = await discoverCardStatus({
       preferredHost: preferredHost || readStoredCardHost(),
       expectedCard: readPersistedCardIdentity(),
       timeoutMs: Math.max(timeoutMs, 12000),
       persist: true,
     });
+    if (generation !== requestGeneration.current) return { ...result, superseded: true };
     setState(prev => reduceCardConnectionState(prev, { ...result, allowAdopt: false }, { now: Date.now(), missLimit }));
     return result;
   }, [enabled, missLimit, timeoutMs]);
@@ -78,13 +85,15 @@ export function useCardStatus({
       if (!active || running || lanProbesHeld()) return;
       running = true;
       try {
+        const generation = ++requestGeneration.current;
+        const context = contextKey();
         const result = await discoverCardStatus({
           preferredHost: readStoredCardHost(),
           expectedCard: readPersistedCardIdentity(),
           timeoutMs,
           persist: false,
         });
-        if (!active) return;
+        if (!active || generation !== requestGeneration.current || context !== contextKey()) return;
         setState(prev => {
           const next = reduceCardConnectionState(prev, { ...result, allowAdopt: false }, { now: Date.now(), missLimit });
           latestState = next;
@@ -112,7 +121,7 @@ export function useCardStatus({
 
     reconnectNow();
     schedule(reconnectIntervalMs);
-    const onHostChange = () => reconnectNow();
+    const onHostChange = () => { requestGeneration.current += 1; reconnectNow(); };
     const onOnline = () => reconnectNow();
     const onVisible = () => {
       if (document.visibilityState === 'visible') reconnectNow();
@@ -122,6 +131,7 @@ export function useCardStatus({
     document.addEventListener?.('visibilitychange', onVisible);
     return () => {
       active = false;
+      requestGeneration.current += 1;
       clearTimeout(timer);
       window.removeEventListener?.(CARD_HOST_CHANGED_EVENT, onHostChange);
       window.removeEventListener?.('online', onOnline);

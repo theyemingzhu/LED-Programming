@@ -139,11 +139,21 @@ export function CardActionsProvider({ deps, children }) {
     [],
   );
 
+  const saveSceneDraft = useCallback(async () => {
+    const app = depsRef.current;
+    if (!app.cardLifecycle?.installedControlsReady
+      || !['ready', 'content-mismatch'].includes(app.cardLifecycle.state)
+      || !app.serializeProject()?.expressionScenes?.playbackSceneId) {
+      return { ok: false, message: 'The installed project changed. Read the card again before saving this draft.' };
+    }
+    return app.saveProjectToCard?.();
+  }, []);
+
   const openCard = useCallback(() => depsRef.current.openCardControl?.(), []);
 
   const value = useMemo(
-    () => ({ adoptCardProject, recoverLights, importProjectFile, openCard }),
-    [adoptCardProject, recoverLights, importProjectFile, openCard],
+    () => ({ adoptCardProject, recoverLights, importProjectFile, openCard, saveSceneDraft }),
+    [adoptCardProject, recoverLights, importProjectFile, openCard, saveSceneDraft],
   );
   return <CardActionsContext.Provider value={value}>{children}</CardActionsContext.Provider>;
 }

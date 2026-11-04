@@ -1,5 +1,5 @@
 import { isBenchProjectEvidence } from './benchConfig.js';
-import { normalizeUsbLedColorOrder } from './usbLedColorOrder.js';
+import { readBrowserPhysicalVerification } from './cardVerificationRetention.js';
 
 // One rule for every "Install on card" button.
 //
@@ -38,18 +38,7 @@ export const CARD_INSTALL_BLOCK_MESSAGES = Object.freeze({
 // halves matter — a confirmed order for a different colour order proves
 // nothing about what will light up.
 export function readCardCommissioningVerification({ wiring, standaloneController } = {}) {
-  const runs = Array.isArray(wiring?.runs) ? wiring.runs : [];
-  const physicallyVerified = Boolean(wiring?.verified && runs.every(run => run?.verified));
-  const colorOrder = normalizeUsbLedColorOrder(standaloneController?.led?.colorOrder || 'RGB');
-  const colorConfirmed = Boolean(
-    standaloneController?.led?.colorOrderConfirmed
-    && normalizeUsbLedColorOrder(standaloneController?.led?.confirmedColorOrder || '') === colorOrder
-  );
-  return Object.freeze({
-    physicallyVerified,
-    colorConfirmed,
-    verified: physicallyVerified && colorConfirmed,
-  });
+  return readBrowserPhysicalVerification({ wiring, standaloneController });
 }
 
 // The one producer of cardAccess:'bench'. Screens compute their own access

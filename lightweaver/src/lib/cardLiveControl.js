@@ -305,7 +305,7 @@ export function requireLivePreviewAcknowledgement(response, look = {}, options =
   const requestedRuntimePatternId = String(options.exactCardPatternId || '').trim()
     || getCardPatternRuntimeId(requestedPatternId) || requestedPatternId;
   const echoedPatternId = String(response.appliedPatternId || '').trim();
-  if (requestedRuntimePatternId && echoedPatternId && requestedRuntimePatternId !== echoedPatternId) {
+  if ((!options.installedControlPatch || options.expectedControlPatch?.patternId) && requestedRuntimePatternId && echoedPatternId && requestedRuntimePatternId !== echoedPatternId) {
     throw previewAckError('preview-mismatch', 'The card runtime reported a different pattern.');
   }
   const requestedRevision = acknowledgementRevision(options.revision ?? look?.revision);
@@ -434,6 +434,16 @@ export function buildLivePreviewControlPayload(look = {}, options = {}) {
   const controlPayload = Object.fromEntries(CUSTOMER_CONTROL_WIRE_FIELDS.flatMap(field => (
     values[field.control] === undefined ? [] : [[field.wire, values[field.control]]]
   )));
+  if (options.installedControlPatch === true) {
+    const patch = options.expectedControlPatch;
+    if (!patch || !Object.keys(patch).length) throw new CardPushError('invalid-control-patch', 'Choose a card control first.');
+    const payload = Object.fromEntries(Object.keys(patch).map(key => {
+      const field = CUSTOMER_CONTROL_WIRE_FIELDS.find(candidate => candidate.control === key);
+      if (!field || controlPayload[field.wire] === undefined) throw new CardPushError('invalid-control-patch', 'Unsupported card control.');
+      return [field.wire, controlPayload[field.wire]];
+    }));
+    return { ...payload, ...(patch.patternId ? { cancelStream: true, syncZones: true } : {}) };
+  }
   return {
     cancelStream: true,
     // Transient firmware contract: apply the Studio profile to
@@ -1449,6 +1459,7 @@ export async function readBackLivePreview(look = {}, options = {}) {
   return Object.freeze({
     ok: true,
     readBack: true,
+    ...Object.fromEntries(CUSTOMER_CONTROL_WIRE_FIELDS.filter(field => controlPayload[field.wire] !== undefined).map(field => [field.acknowledgement, controlPayload[field.wire]])),
     patternId: requestedRuntimePatternId,
     appliedPatternId: requestedRuntimePatternId,
     ...(options.revision !== undefined ? { revision: options.revision, confirmedRevision: options.revision } : {}),

@@ -202,3 +202,28 @@ test('commissioning needs both a real bench check and a colour order still in us
   assert.equal(readCardCommissioningVerification().verified, false);
   assert.equal(readCardCommissioningVerification({}).verified, false);
 });
+
+
+test('legacy confirmation cannot verify missing wiring or an unknown colour order', () => {
+  assert.equal(readCardCommissioningVerification({ wiring: { verified: true, runs: [] } }).physicallyVerified, false);
+  for (const confirmedColorOrder of ['', 'unknown', undefined]) {
+    assert.equal(readCardCommissioningVerification({ standaloneController: {
+      led: { colorOrder: 'RGB', colorOrderConfirmed: true, confirmedColorOrder },
+    } }).colorConfirmed, false);
+  }
+  assert.equal(readCardCommissioningVerification({ standaloneController: {
+    led: { colorOrder: 'unknown', colorOrderConfirmed: true, confirmedColorOrder: 'RGB' },
+  } }).colorConfirmed, false);
+});
+
+test('browser confirmation survives reload and unrelated project changes', () => {
+  const project = {
+    id: 'installation', name: 'Before', revision: 1,
+    wiring: { verified: true, runs: [{ id: 'strip', verified: true }] },
+    standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB' } },
+  };
+  const reloaded = JSON.parse(JSON.stringify(project));
+  const edited = { ...reloaded, name: 'After', revision: 99, patterns: ['new-pattern'], playlist: ['new-pattern'] };
+  assert.equal(readCardCommissioningVerification(edited).verified, true);
+  assert.deepEqual(readCardCommissioningVerification(edited), readCardCommissioningVerification(project));
+});

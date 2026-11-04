@@ -405,7 +405,7 @@ test('wide desktop footer keeps card, firmware, Studio, and test controls in ord
       buildId: 'gallery-release-build-with-a-long-identity',
     }),
   }]);
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
   await expect(page.locator('.card-status-summary')).toHaveCount(0);
 
   const regions = await page.locator('.status-bar').evaluate(node => {
@@ -1468,7 +1468,9 @@ test('Hardware loads the verified production project that matches the paired car
     }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
+  // Installed controls stay connected while the browser draft differs.
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
+  await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'project-mismatch');
 
   await page.getByRole('region', { name: 'Matching card project' })
     .getByRole('button', { name: /Load .*production job bench-fixture-44, project revision/ }).click();
@@ -1724,7 +1726,7 @@ test('Hardware offers an exact current project without intent and auto-opens onl
   await expect(page).toHaveURL(/#screen=pattern$/, { timeout: 25_000 });
 });
 
-test('a saved match on a connected card offers exactly one Load — the Setup banner wins', async ({ page }) => {
+test('a saved match on a connected card offers exactly one Open installed project action', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.evaluate(async () => {
     const { createDefaultProject } = await import('/src/lib/projectModel.js');
@@ -1770,15 +1772,11 @@ test('a saved match on a connected card offers exactly one Load — the Setup ba
     readiness: cardStatus,
   }]);
 
-  const banner = page.getByTestId('setup-load-matched');
-  await expect(banner).toBeVisible({ timeout: 15_000 });
-  await expect(banner).toContainText(/^Load /);
-  // One project, one Load button: while the Setup journey's saved-match banner
-  // offers the Load, the Matching-card-project panel stands down instead of
-  // offering a second copy of the same guarded adoption. Count only the card
-  // workspace (main): chrome outside it is not a card-project offer.
+  const openInstalled = page.getByTestId('installed-project-open');
+  await expect(openInstalled).toBeVisible({ timeout: 15_000 });
+  await expect(openInstalled).toHaveText('Open installed project');
   await expect(page.getByRole('region', { name: 'Matching card project' })).toHaveCount(0);
-  await expect(page.getByRole('main').getByRole('button', { name: /^Load / })).toHaveCount(1);
+  await expect(page.getByRole('main').getByRole('button', { name: 'Open installed project', exact: true })).toHaveCount(1);
 });
 
 test('Card section navigation becomes one compact switcher on a 390px viewport', async ({ page }) => {
@@ -1838,7 +1836,7 @@ test('direct discovery never auto-adopts; explicit pairing persists identity but
   await page.getByTestId('card-link-status').click();
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_identity_v1') || 'null')?.id)).toBe('lw-explicit-pair');
-  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Needs attention|Save to card/);
+  await expect(page.getByTestId('card-link-status')).toHaveAccessibleName(/Connected/);
 });
 
 test('Card Home and Support recovery both surface a working connect action for a disconnected card', async ({ page }) => {

@@ -1,3 +1,4 @@
+import { retainCardPhysicalVerification } from '../lib/cardVerificationRetention.js';
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, useReducer } from 'react';
 import { useWled } from '../hooks/useWled.js';
 import { useUsbLed } from '../hooks/useUsbLed.js';
@@ -643,14 +644,15 @@ export function ProjectProvider({ children, repository = null, initialProjectEnv
     dispatchLayout({ type: 'layout/redo' });
     return { ok: true };
   }, [layout, standaloneController, expressionScenes]);
-  const setStandaloneController = useCallback(value => {
+  const setStandaloneController = useCallback((value, { physicalColorConfirmed = false } = {}) => {
     const next = typeof value === 'function' ? value(standaloneController) : value;
     const kind = standaloneControllerPhysicalChangeKind(standaloneController, next);
     const boundary = invalidateWiringVerification(wiring, { kind });
     if (!boundary.ok) return boundary;
-    if (boundary.wiring !== wiring) dispatchLayout({ type: 'layout/setWiring', wiring: boundary.wiring });
-    setStandaloneControllerRaw(next);
-    return { ok: true, wiring: boundary.wiring, errors: [] };
+    const retained = retainCardPhysicalVerification({ wiring, nextWiring: boundary.wiring, standaloneController, nextStandaloneController: next, physicalColorConfirmed });
+    if (retained.wiring !== wiring) dispatchLayout({ type: 'layout/setWiring', wiring: retained.wiring });
+    setStandaloneControllerRaw(retained.standaloneController);
+    return { ok: true, wiring: retained.wiring, errors: [] };
   }, [standaloneController, wiring]);
   // The section list is derived ONCE here, from the project's own strips,
   // patch board and compiled wiring, so every screen shows the same sections
