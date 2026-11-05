@@ -102,11 +102,13 @@ test('two sides in one click from the offer, drawn and listed by side, and Undo 
   await expect(offer).toContainText('This piece has two matching sides.');
   await expect(offer).toContainText('the right side plays whatever the left side plays');
   await expect(offer).toContainText('Centre ring keeps its own pattern.');
-  // One filled primary.
-  await expect(offer.locator('.btn.primary')).toHaveCount(1);
-  await expect(offer.locator('.btn.primary')).toHaveText('Mirror the two sides');
-
-  await page.getByTestId('symmetry-offer-mirror').click();
+  // Mirroring stays secondary so Install on card remains the sole filled primary.
+  await expect(offer.getByTestId('symmetry-offer-mirror')).not.toHaveClass(/primary/);
+  const install = page.getByTestId('layout-check-and-install');
+  await expect(install).toHaveClass(/primary/);
+  await expect(install).toBeVisible();
+  await page.getByTestId('symmetry-offer-mirror').focus();
+  await page.keyboard.press('Enter');
   await expect(offer).toHaveCount(0);
   await expect.poll(() => savedSides(page)).toEqual([
     [ids['Left top'], ids['Left bottom']],
@@ -299,6 +301,10 @@ test('the sides fit a 300px desktop inspector and a 390px phone', async ({ page 
       { name: 'Right bottom outer wing with a long name', d: 'M 330 230 L 450 320' },
       { name: 'Left bottom outer wing', d: 'M 270 230 L 150 320' },
     ]);
+    await expect(page.getByTestId('symmetry-offer-mirror')).not.toHaveClass(/primary/);
+    await expect(page.getByTestId('layout-check-and-install')).toHaveClass(/primary/);
+    const mirrorHeight = await page.getByTestId('symmetry-offer-mirror').evaluate(el => el.getBoundingClientRect().height);
+    if (label === 'phone') expect(mirrorHeight).toBeGreaterThanOrEqual(44);
     await page.screenshot({ path: `test-results/layout-symmetry-offer-${label}.png` });
     await page.getByTestId('symmetry-offer-mirror').click();
     await selectStrip(page, ids['Left top']);

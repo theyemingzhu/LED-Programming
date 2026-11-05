@@ -46,7 +46,7 @@ function SymmetryOffer({ suggestion, strips, onMirror, onChoose, onKeep }) {
         Mirror them and {sideNoun(second.label)} plays whatever {sideNoun(first.label)} plays.{ownSentence(own)}
       </p>
       <div className="la-symmetry-offer-actions">
-        <button type="button" className="btn primary" data-testid="symmetry-offer-mirror" onClick={onMirror}>Mirror the two sides</button>
+        <button type="button" className="btn" data-testid="symmetry-offer-mirror" onClick={onMirror}>Mirror the two sides</button>
         <button type="button" className="btn" data-testid="symmetry-offer-choose" onClick={onChoose}>Choose sides myself</button>
         <button type="button" className="btn la-symmetry-offer-keep" data-testid="symmetry-offer-keep" onClick={onKeep}>Keep as drawn</button>
       </div>
