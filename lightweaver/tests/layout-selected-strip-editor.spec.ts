@@ -65,6 +65,9 @@ test('selected part opens its own Pattern details and saves speed without changi
   const hueShift = page.getByTestId('look-hue-shift-slider');
   await hueShift.focus();
   await hueShift.press('End');
+  // The pattern library edits a draft; the explicit stack editor owns Save.
+  await page.getByTestId('stack-new').click();
+  await expect(page.getByTestId('stack-save-bar')).toBeVisible();
   await page.getByTestId('look-save-preset').click();
   await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout.patchBoard.patches);

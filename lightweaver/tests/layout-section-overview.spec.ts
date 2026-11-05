@@ -16,8 +16,14 @@ test('Layout shows actual section shape, output inventory, and exact pattern act
   const group = page.getByTestId('gpio-group-16');
   await expect(group.getByTestId('layout-output-inventory')).toContainText('1 section');
   const section = group.locator('.la-strip-row');
-  await expect(section.locator('svg.la-section-miniature path')).toHaveAttribute('d', /C 180 18/);
-  await expect(section).toContainText('LEDs');
+  const stripId = await section.locator('..').getAttribute('data-strip-id');
+  // Compact rows no longer duplicate the artwork in a miniature. The selected
+  // strip's real canvas path and named count control retain those facts.
+  await expect(page.locator(`path[data-strip-path="${stripId}"]`)).toHaveAttribute('d', /C 180 18/);
+  await expect(group.getByTestId('layout-output-inventory')).toContainText(/\d+ LEDs/);
+  await section.locator('.layer-name').click();
+  const settings = page.getByRole('region', { name: 'Branch layout settings', exact: true });
+  await expect(settings.getByRole('spinbutton', { name: 'Branch LED count', exact: true })).toHaveValue(/^[1-9]\d*$/);
   const changePattern = section.getByRole('button', { name: /Change pattern for/ });
   await expect(changePattern).toHaveAttribute('data-target-id', /.+/);
   await expect(page.getByTestId('layout-mapping-details')).toHaveCount(1);
@@ -27,12 +33,17 @@ test('Layout shows actual section shape, output inventory, and exact pattern act
   await page.screenshot({ path: testInfo.outputPath('layout-section-overview.png') });
   const patchId = await changePattern.getAttribute('data-target-id');
   await changePattern.click();
+  const gallery = page.getByRole('dialog', { name: 'Choose pattern for Branch', exact: true });
+  await expect(gallery.getByTestId('layout-pattern-audition-canvas')).toBeVisible();
+  await gallery.getByRole('button', { name: 'Close pattern gallery', exact: true }).click();
+  const editPattern = settings.getByTestId('edit-pattern-details');
+  await expect(editPattern).toHaveAttribute('data-target-id', patchId!);
+  await editPattern.click();
   await expect(page.getByTestId(`section-target-${patchId}`)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('pattern-project-preview')).toBeVisible();
   await page.getByTestId('return-to-layout-section').click();
-  await expect(changePattern).toBeFocused();
+  await expect(editPattern).toBeFocused();
 
-  const stripId = await section.locator('..').getAttribute('data-strip-id');
   await page.goto(`/#screen=pattern&target=${encodeURIComponent(patchId || '')}&project=stale-project&generation=0&returnStrip=${encodeURIComponent(stripId || '')}`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('alert').filter({ hasText: 'That section changed in Layout' })).toBeVisible();
   await expect(page.getByTestId('return-to-layout-section')).toHaveCount(0);

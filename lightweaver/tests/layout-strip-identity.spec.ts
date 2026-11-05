@@ -5,7 +5,7 @@ async function revealDivideControls(page: any) {
   if (await toggle.count()) await toggle.click();
 }
 
-test('41 LEDs divide into four individually colored, numbered strips with compact labels', async ({ page }) => {
+test('41 LEDs divide into four individually colored Parts with compact labels', async ({ page }) => {
   await page.goto('/#screen=layout');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -16,7 +16,7 @@ test('41 LEDs divide into four individually colored, numbered strips with compac
   await revealDivideControls(page);
   await page.locator('[data-testid^="divide-sections-"]').fill('4');
   await page.locator('[data-testid^="divide-commit-"]').click();
-  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Strip 1', 'Strip 2', 'Strip 3', 'Strip 4']);
+  await expect(page.locator('.la-strip-row .layer-name')).toHaveText(['Part 1', 'Part 2', 'Part 3', 'Part 4']);
   await expect(page.locator('.la-batch')).toHaveCount(0);
   await expect(page.locator('.la-strip-row.sel')).toHaveCount(1);
   await expect(page.locator('.la-strip-row').first()).toHaveClass(/\bsel\b/);
@@ -39,6 +39,8 @@ test('41 LEDs divide into four individually colored, numbered strips with compac
     }
   }
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.strips?.map((s: any) => s.pixelCount))).toEqual([11, 10, 10, 10]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout.strips.map((s: any) => s.name)))
+    .toEqual(['Strip 1', 'Strip 2', 'Strip 3', 'Strip 4']);
   await page.screenshot({ path: '/tmp/lightweaver-strip-identity.png' });
 });
 
@@ -66,10 +68,12 @@ for (const sourceName of ['Untitled Project', 'North arch']) {
     await revealDivideControls(page);
     await page.locator('[data-testid^="divide-sections-"]').fill('4');
     await page.locator('[data-testid^="divide-commit-"]').click();
-    const expected = Array.from({ length: 4 }, (_, i) => `${sourceName === 'Untitled Project' ? 'Strip' : sourceName} ${i + 1}`);
-    await expect(page.locator('.la-strip-row .layer-name')).toHaveText(expected);
+    const expectedNames = Array.from({ length: 4 }, (_, i) => `${sourceName === 'Untitled Project' ? 'Strip' : sourceName} ${i + 1}`);
+    const expectedLabels = Array.from({ length: 4 }, (_, i) => `${sourceName === 'Untitled Project' ? 'Part' : sourceName} ${i + 1}`);
+    await expect(page.locator('.la-strip-row .layer-name')).toHaveText(expectedLabels);
     await expect.poll(async () => (await saved()).length).toBe(4);
     const divided = await saved();
+    expect(divided.map((strip: any) => strip.name)).toEqual(expectedNames);
     expect(divided[0].id).toBe(original.id);
     expect(new Set(divided.map((s: any) => s.id)).size).toBe(4);
     expect(divided.reduce((n: number, s: any) => n + s.pixelCount, 0)).toBe(original.pixelCount);
