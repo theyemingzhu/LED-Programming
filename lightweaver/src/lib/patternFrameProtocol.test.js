@@ -68,3 +68,12 @@ test('fixed legacy dialect ignores modern reflection fields and keeps its 15-arg
   assert.deepEqual(unpackPatternSample(packed, 0).slice(0,15), args.slice(0,15));
   assert.throws(() => packPatternFrameJob({ sources:[source],samples:[] }, {argumentCount:16}), /dialect/);
 });
+
+test('fixed mapper dialect keeps 12 actual arguments and supports its bounded 256 section sources',()=>{
+  const sources=Array.from({length:256},(_,i)=>`return {r:${i},g:0,b:0};`);
+  const args=[1,0,0,0,0,1,[],0,0,{},0,0,'private-query',2];
+  const packed=packPatternFrameJob({sources,samples:[{source:255,args}]},{argumentCount:12});
+  assert.equal(packed.sourceIndices[0],255);
+  assert.deepEqual(unpackPatternSample(packed,0).slice(0,12),args.slice(0,12));
+  assert.throws(()=>packPatternFrameJob({sources,samples:[]}),/budget/);
+});
