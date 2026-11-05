@@ -1,4 +1,15 @@
 {
   "note": "Changes that are finished but are waiting for the next card update, because sending one costs a signed update to every card in a customer's home. Run \"npm run firmware:waiting\" to read this, and \"npm run firmware:release\" to carry it all at once.",
-  "waiting": []
+  "waiting": [
+    {
+      "id": "release-reliability-current-20261104",
+      "what": "Require a visible build number on modern signed firmware manifests while retaining legacy compatibility.",
+      "why": "The validator is ready and tested; batch it into the next signed card release.",
+      "added": "2026-11-04",
+      "source": {
+        "kind": "branch",
+        "branch": "codex/release-reliability-current-20261104"
+      }
+    }
+  ]
 }
