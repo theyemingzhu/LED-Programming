@@ -8,6 +8,8 @@ import {
 } from '../lib/frameEngine.js';
 import { createPatternFrameService } from '../lib/patternFrameIsolation.js';
 import { renderIsolatedPixelFrame } from '../lib/isolatedFrameEngine.js';
+import { getPatternById } from '../lib/patternRegistry.js';
+import { CUSTOM_PATTERNS_EVENT, WORKSPACE_ASSETS_EVENT } from '../lib/customPatterns.js';
 import { smoothPixelFrame } from '../lib/motionSmoothing.js';
 import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
 import {
@@ -427,6 +429,18 @@ export function PatternPreview({
   sidesMirrored = true,
 }) {
   const usesCallbackRenderer = Boolean(compiledFn || blendCompiledFn);
+  const [sourceRevision, refreshSources] = useState(0);
+  useEffect(() => {
+    const refresh = () => refreshSources(value => value + 1);
+    window.addEventListener(CUSTOM_PATTERNS_EVENT, refresh);
+    window.addEventListener(WORKSPACE_ASSETS_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(CUSTOM_PATTERNS_EVENT, refresh);
+      window.removeEventListener(WORKSPACE_ASSETS_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
   const canvasRef = useRef(null);
   const generationRef = useRef(0);
   const [previewError, setPreviewError] = useState(null);
@@ -450,7 +464,7 @@ export function PatternPreview({
 
   const resolvedParams = useMemo(() => {
     return resolvePatternParams(patternId, params);
-  }, [patternId, params]);
+  }, [patternId, params, sourceRevision]);
 
   const activeFn = useMemo(() => {
     if (compiledFn) return compiledFn;
@@ -557,6 +571,16 @@ export function PatternPreview({
     [visibleStrips],
   );
 
+  // Source bytes and assignments determine a failed owner's next permitted
+  // attempt. Array identity and ordinary phase/clock updates must never retry
+  // unchanged hostile source. Same-ID source edits also invalidate stale frames.
+  const sourceIdentity = JSON.stringify({
+    sources: [...new Set([patternId, blendPatternId,
+      ...visibleStrips.map(strip => strip.patternId),
+    ].filter(Boolean))].map(id => [id, getPatternById(id)?.code ?? null]),
+    strips: visibleStrips.map(strip => [strip.id, strip.patternId ?? null]),
+  });
+
   // Refresh propsRef every render — RAF closure always reads fresh values
   propsRef.current = {
     patternId, playing, speed, glow, dotSize, dotCeiling, bpm, resolvedParams, patternParamsById, paletteNorm, compactRibbon,
@@ -598,7 +622,7 @@ export function PatternPreview({
     previousPixelsRef.current = null;
     staticRenderRef.current = 0;
     lastRenderRef.current = 0;
-  }, [patternId, blendPatternId, pixelCount, svgViewBox, motionSmoothing, usesCallbackRenderer]);
+  }, [patternId, blendPatternId, pixelCount, svgViewBox, motionSmoothing, usesCallbackRenderer, sourceIdentity]);
 
   // Single persistent RAF loop — never restarts, reads fresh propsRef each tick
   useEffect(() => {
