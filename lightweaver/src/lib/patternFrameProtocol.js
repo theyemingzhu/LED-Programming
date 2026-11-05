@@ -7,8 +7,8 @@ const MAX_TRANSPORT_BYTES = 8_000_000;
  * deduplicated value table (palettes, params, strip IDs and reflection points).
  */
 export function packPatternFrameJob({ sources, samples }, { argumentCount = 21 } = {}) {
-  if (argumentCount !== 21 && argumentCount !== 15) throw new Error('Unsupported pattern dialect.');
-  if (!Array.isArray(sources) || !sources.length || sources.length > 64
+  if (argumentCount !== 21 && argumentCount !== 15 && argumentCount !== 12) throw new Error('Unsupported pattern dialect.');
+  if (!Array.isArray(sources) || !sources.length || sources.length > (argumentCount === 12 ? 256 : 64)
     || sources.some(source => typeof source !== 'string' || source.length > 65536)
     || !Array.isArray(samples) || samples.length > MAX_SAMPLES
     || samples.some(sample => !Number.isInteger(sample?.source) || sample.source < 0 || sample.source >= sources.length
