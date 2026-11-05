@@ -20,8 +20,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 - [ ] Check symmetry sides on the real gallery card: a mirrored look plays both sides as mirror images, an own look plays them apart, and each side flows through its strips _(band: you-required)_ _(effort: quick)_ → Plan: [symmetry-sides.md](lightweaver/todo/plans/symmetry-sides.md)
   Needs firmware 1.2.0 on the card. Also watch colour-journey looks on a side: those patterns read each strip's physical position.
 
-- [ ] Stamp recordings with the mirrored or own choice they were baked with _(band: agent-runnable)_ _(effort: quick)_
-  Today a recording stays marked current if the look is switched between mirrored and own afterwards, so it keeps playing the old version until re-recorded.
+- [ ] Keep recording currentness aligned with the mirrored or own choice _(band: agent-runnable)_ _(effort: quick)_
+  Both existing bake fingerprints already stamp the choice. Source PR405 fixes completed-new-bake handoff: changing the mode marks the result stale and blocks Add to project; restoring the mode reuses the same result. Saved-recording library/project currentness remains separately under qualification, so this broader item stays open. Frozen recording bytes and playback compatibility are preserved.
 
 - [ ] Map side flow in Pattern Lab's decimated preview for large pieces _(band: agent-runnable)_ _(effort: quick)_
   Index-based patterns can sit wrong along a side in Pattern Lab's quick preview on very large pieces; the card and the main preview are correct.
@@ -29,8 +29,9 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 - [ ] Keep one filled button on Layout while the symmetry offer shows _(band: agent-runnable)_ _(effort: quick)_
   "Mirror the two sides" and "Install on card" are both filled orange while the offer card is up.
 
-- [ ] Get the 14 long-red Layout browser specs green, or decide each is stale _(band: agent-runnable)_ _(effort: deep)_
-  Measured 2026-09-29: the same 14 fail on main b4b90ad5 and on the mirror-sets branch (connected-section-editor x3, layout-inspector-density x3, layout-multi-gpio x2, layout-section-overview, layout-selected-strip-editor, layout-strip-identity x2, layout-strip-split x2). None are in the PR lanes.
+- [ ] Land the qualified Layout regression repairs in the source release gate _(band: agent-runnable)_ _(effort: moderate)_
+  The 2026-09-29 count of 14 failures was a historical baseline, not a current count. The six surviving files now pass 21 current cases: connected sections 3, inspector density 3, multi-GPIO 3, section overview 3, selected editor 6 and strip identity 3. All 12 historical cases in these files are requalified; the other two belonged to the deliberately retired Split shortcut (`c2f33bab`, replaced by Divide into sections), not absent tests counted as passing. Existing Divide replacement checks pass 2/2.
+  The combined source candidate based on PR402 passes `npm run test:layout-regression` 21/21 with no retries/skips or timeout increases. That six-file target now runs exactly once in `ci:browser-regression`; hosted `ci:browser-smoke` and workflows are unchanged. It preserves count totals, identity, Undo/reload, wiring locks, looks, GPIO rules, compactness and phone checks. Source qualification is complete; delivery of this candidate is still pending.
 
 - [ ] Let a strip in a symmetry side use reflection points, and add a way to remove reflection points _(band: agent-runnable)_ _(effort: moderate)_
   Symmetry sides exclude strips with reflection points, and the Layout inspector has no control to remove them once added.
