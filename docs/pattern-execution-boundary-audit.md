@@ -1,5 +1,10 @@
 # Executable pattern boundary: unresolved security regressions
 
+Current partial implementation: [isolated-pattern-frames.md](isolated-pattern-frames.md).
+The evidence below describes the original audited base and remains useful for
+unmigrated native paths; the architecture decision is now authorized. The
+current candidate does not close the whole boundary.
+
 Measured on `d43e7248c912caf33ae233b7f5ca138581046618` (2026-11-05).
 This packet changes no product behavior. The architecture/trust decision is
 pending; this is not an isolation fix and must not be described as one.

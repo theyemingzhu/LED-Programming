@@ -15,6 +15,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Continue isolated pattern execution from draft branch `codex/pattern-isolated-frames-20261105`: optimize the 8,000-pixel frame protocol, migrate Flow sample remapping and Layout async previews, then recording, AI runtime probes, legacy Studio and mapper; the ordinary active canvas preview is isolated and tested, but the overall boundary remains open _(band: agent-runnable)_ _(effort: deep)_ → Resume: [isolated-pattern-frames.md](docs/isolated-pattern-frames.md)
+
 - [ ] Check symmetry sides on the real gallery card: a mirrored look plays both sides as mirror images, an own look plays them apart, and each side flows through its strips _(band: you-required)_ _(effort: quick)_ → Plan: [symmetry-sides.md](lightweaver/todo/plans/symmetry-sides.md)
   Needs firmware 1.2.0 on the card. Also watch colour-journey looks on a side: those patterns read each strip's physical position.
 

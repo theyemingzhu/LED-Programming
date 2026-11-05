@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import {
   buildGammaLut,
   compilePattern,
@@ -6,6 +6,8 @@ import {
   renderPixelFrame,
   resolvePatternParams,
 } from '../lib/frameEngine.js';
+import { createPatternFrameService } from '../lib/patternFrameIsolation.js';
+import { renderIsolatedPixelFrame } from '../lib/isolatedFrameEngine.js';
 import { smoothPixelFrame } from '../lib/motionSmoothing.js';
 import { applyPatternPreviewSegmentLooks } from '../lib/patternPiecePreview.js';
 import {
@@ -120,7 +122,7 @@ function renderFrame(canvas, t, p) {
   const toX = x => x * scale + offX;
   const toY = y => y * scale + offY;
 
-  const frame = renderPixelFrame({
+  const frame = p.isolatedFrame || renderPixelFrame({
     t, strips: visibleStrips, patternId: p.patternId, activeFn, blendFn,
     blendAmount, blendType, params: resolvedParams, paletteNorm, bpm,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
@@ -424,7 +426,10 @@ export function PatternPreview({
   symmetry = null,
   sidesMirrored = true,
 }) {
+  const usesCallbackRenderer = Boolean(compiledFn || blendCompiledFn);
   const canvasRef = useRef(null);
+  const generationRef = useRef(0);
+  const [previewError, setPreviewError] = useState(null);
   const rafRef    = useRef(0);
   const tRef      = useRef(0);
   const previousPixelsRef = useRef(null);
@@ -449,14 +454,14 @@ export function PatternPreview({
 
   const activeFn = useMemo(() => {
     if (compiledFn) return compiledFn;
-    return compilePattern(patternId);
-  }, [patternId, compiledFn]);
+    return blendCompiledFn ? compilePattern(patternId) : null;
+  }, [patternId, compiledFn, blendCompiledFn]);
 
   const blendFn = useMemo(() => {
     if (!blendPatternId) return null;
     if (blendCompiledFn) return blendCompiledFn;
-    return compilePattern(blendPatternId);
-  }, [blendPatternId, blendCompiledFn]);
+    return compiledFn ? compilePattern(blendPatternId) : null;
+  }, [blendPatternId, blendCompiledFn, compiledFn]);
 
   const gammaLUT = useMemo(() => {
     return buildGammaLut(gammaEnabled, gammaValue);
@@ -470,7 +475,7 @@ export function PatternPreview({
   const stripSource = useRealStrips ? propStrips : [];
 
   const perStripFns = useMemo(() => {
-    if (!useRealStrips) return new Map();
+    if (!useRealStrips || (!compiledFn && !blendCompiledFn)) return new Map();
     const map = new Map();
     for (const s of (stripSource || [])) {
       if (s.patternId && !map.has(s.patternId)) {
@@ -479,7 +484,7 @@ export function PatternPreview({
       }
     }
     return map;
-  }, [stripSource, useRealStrips]);
+  }, [stripSource, useRealStrips, compiledFn, blendCompiledFn]);
 
   const perStripPalettes = useMemo(() => {
     if (!useRealStrips) return new Map();
@@ -555,7 +560,8 @@ export function PatternPreview({
   // Refresh propsRef every render — RAF closure always reads fresh values
   propsRef.current = {
     patternId, playing, speed, glow, dotSize, dotCeiling, bpm, resolvedParams, patternParamsById, paletteNorm, compactRibbon,
-    activeFn, blendFn, blendAmount, blendType,
+    activeFn, blendFn, blendAmount, blendType, blendPatternId,
+    usesCallbackRenderer,
     perStripFns, perStripPalettes, visibleStrips, normBounds, medianSpacing, pixelCount,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     stripPhases: stripPhasesRef.current,
@@ -587,14 +593,18 @@ export function PatternPreview({
   }, []);
 
   useEffect(() => {
+    generationRef.current++;
+    setPreviewError(null);
     previousPixelsRef.current = null;
     staticRenderRef.current = 0;
     lastRenderRef.current = 0;
-  }, [patternId, blendPatternId, pixelCount, svgViewBox, motionSmoothing]);
+  }, [patternId, blendPatternId, pixelCount, svgViewBox, motionSmoothing, usesCallbackRenderer]);
 
   // Single persistent RAF loop — never restarts, reads fresh propsRef each tick
   useEffect(() => {
     let last = performance.now();
+    let alive = true, busy = false, failedGeneration = null;
+    const service = createPatternFrameService();
     const tick = (now) => {
       const p = propsRef.current;
       const dt = Math.min((now - last) / 1000, 0.1); last = now;
@@ -647,22 +657,53 @@ export function PatternPreview({
         const renderDt = lastRenderRef.current
           ? Math.min((now - lastRenderRef.current) / 1000, 0.25)
           : dt;
-        const pixels = renderFrame(canvas, renderTime, {
-          ...p,
-          previousPixels: previousPixelsRef.current,
-          frameDt: renderDt,
-        });
-        previousPixelsRef.current = pixels;
-        staticRenderRef.current = now;
-        lastRenderRef.current = now;
-        if (p.playing) p.onFrame?.(pixels);
+        const paint = isolatedFrame => {
+          const pixels = renderFrame(canvas, renderTime, {
+            ...p, isolatedFrame,
+            previousPixels: previousPixelsRef.current,
+            frameDt: renderDt,
+          });
+          previousPixelsRef.current = pixels;
+          staticRenderRef.current = now;
+          lastRenderRef.current = now;
+          if (p.playing) p.onFrame?.(pixels);
+        };
+        if (p.usesCallbackRenderer) {
+          // Existing externally provided render adapters retain their public
+          // contract. They are a separate migration, never a failure fallback.
+          paint(null);
+        } else if (!busy && failedGeneration !== generationRef.current) {
+          busy = true;
+          const generation = generationRef.current;
+          renderIsolatedPixelFrame({
+            t: renderTime, strips: p.visibleStrips, patternId: p.patternId,
+            // Preserve the existing preview's shared blend-param behavior.
+            blendSourcePatternId: p.blendPatternId,
+            blendAmount: p.blendAmount, blendType: p.blendType,
+            params: p.resolvedParams, paletteNorm: p.paletteNorm, bpm: p.bpm,
+            masterSpeed: p.masterSpeed, masterBrightness: p.masterBrightness,
+            masterSaturation: p.masterSaturation, masterHueShift: p.masterHueShift,
+            gammaLUT: p.gammaLUT, symSettings: p.symSettings, audioBands: p.audioBands,
+            normBounds: p.normBounds, perStripPalettes: p.perStripPalettes,
+            patternParamsById: p.patternParamsById, stripPhases: p.stripPhases,
+            symmetry: p.symmetry || null, sidesMirrored: p.sidesMirrored,
+          }, service).then(frame => {
+            if (alive && generation === generationRef.current) paint(frame);
+          }).catch(error => {
+            if (!alive || generation !== generationRef.current) return;
+            failedGeneration = generation;
+            setPreviewError(error?.message?.includes('deadline')
+              ? 'Pattern preview stopped: isolated rendering took too long or is unavailable in this browser.'
+              : `Pattern preview stopped: ${String(error?.message || 'rendering failed').slice(0, 160)}`);
+          }).finally(() => { busy = false; });
+        }
       }
 
       rafRef.current = requestAnimationFrame(tick);
     };
     fpsRef.current.last = performance.now();
     rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => { alive = false; cancelAnimationFrame(rafRef.current); service.dispose(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Symmetry overlay dragging (hub = center, handle = rotate) ─────────────
@@ -764,6 +805,7 @@ export function PatternPreview({
   };
 
   return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
     <canvas
       ref={canvasRef}
       aria-label={ariaLabel}
@@ -778,5 +820,7 @@ export function PatternPreview({
         cursor: symOverlay ? 'grab' : onStripSelect ? 'pointer' : undefined,
       }}
     />
+    {previewError && <span role="status" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 16, background: 'var(--surface, #14161c)' }}>{previewError}</span>}
+    </div>
   );
 }
