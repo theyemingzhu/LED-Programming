@@ -140,6 +140,13 @@ async function connectOverBridge(page, stateId: string) {
     const target = (await setupConnect.count()) ? setupConnect : footerChip;
     if (!(await target.count())) throw new Error('not connected over the bridge, and nothing to click to connect');
     await target.first().click();
+    // Public Find my card now opens connection choices before any legacy
+    // card-page popup. This https fixture deliberately exercises that bridge
+    // fallback, so choose it explicitly from the opened center.
+    const center = page.getByRole('dialog', { name: 'Connect Lightweaver', exact: true });
+    await expect(center).toBeVisible();
+    await center.locator('summary').click();
+    await center.getByRole('button', { name: 'Connect through the card’s own page (fallback)' }).click();
     await expect.poll(() => linkState(page), { timeout: CONNECT_BUDGET_MS, intervals: [250] }).toMatch(CONNECTED);
   }
   expect(await linkTransport(page), 'the https lane must hold a bridge link').toBe('connected-bridge/bridge');
