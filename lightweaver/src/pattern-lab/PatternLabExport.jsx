@@ -4,6 +4,7 @@ import { createArtNetSetupNotes, toMadrixFixtureCsv } from '../lib/madrixPatchEx
 import { toXlightsXmodel } from '../lib/xlightsExport.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import './PatternLabExport.css';
+import { recordingSideMode, recordingSideModeMatches } from '../lib/recordingSideMode.js';
 
 const CLASSIFICATION_COPY = {
   'live-on-card': {
@@ -92,6 +93,7 @@ export default function PatternLabExport({
   const [layoutExportStatus, setLayoutExportStatus] = useState(null);
   const [bakeStatus, setBakeStatus] = useState(null);
   const [completedBakeResult, setCompletedBakeResult] = useState(null);
+  const [completedBakeSideMode, setCompletedBakeSideMode] = useState(undefined);
   const [handoffStatus, setHandoffStatus] = useState(null);
   const bakeAbortRef = useRef(null);
   useEffect(() => () => bakeAbortRef.current?.abort(), []);
@@ -101,6 +103,12 @@ export default function PatternLabExport({
     setBakeStatus(null);
     setHandoffStatus(null);
   }, [recipe]);
+  const completedBakeCurrent = Boolean(completedBakeResult
+    && recordingSideModeMatches(completedBakeSideMode, project));
+  const staleSideModeMessage = completedBakeResult && !completedBakeCurrent
+    ? (completedBakeSideMode
+      ? `This recording uses ${completedBakeSideMode} sides. Bake again to use the current choice.`
+      : 'This recording was baked without symmetry. Bake again to use the current choice.') : '';
   if (!compatibility) return null;
 
   const copy = CLASSIFICATION_COPY[compatibility.classification] || {
@@ -153,6 +161,7 @@ export default function PatternLabExport({
 
   async function bakeSequence() {
     if (bakeAbortRef.current || typeof onBake !== 'function') return;
+    const bakedSideMode = recordingSideMode(project);
     const controller = new AbortController();
     bakeAbortRef.current = controller;
     setBakeStatus({ state: 'rendering', message: 'Baking deterministic frames…' });
@@ -166,6 +175,7 @@ export default function PatternLabExport({
       download(result.bytes, `${slug}.lwseq`, 'application/octet-stream');
       download(`${result.sidecarJson}\n`, `${slug}.lwseq.json`, 'application/json');
       setCompletedBakeResult(result);
+      setCompletedBakeSideMode(bakedSideMode);
       setBakeStatus({
         state: 'complete',
         message: `Exported ${result.sidecar.frameCount} frames for ${result.sidecar.pixelCount} pixels with verified hashes.`,
@@ -184,6 +194,7 @@ export default function PatternLabExport({
 
   async function useInProject(saveAsNew = false) {
     if (typeof onUseInProject !== 'function') return;
+    if (compatibility.classification === 'bake-to-card' && !completedBakeCurrent) return;
     setHandoffStatus({ state: 'adding', message: 'Adding the reviewed item…' });
     try {
       const result = await onUseInProject({ bakeResult: completedBakeResult, saveAsNew });
@@ -204,7 +215,7 @@ export default function PatternLabExport({
   }
 
   const handoffReady = compatibility.classification === 'live-on-card'
-    || (compatibility.classification === 'bake-to-card' && completedBakeResult);
+    || (compatibility.classification === 'bake-to-card' && completedBakeCurrent);
   const sequenceAssets = project.standaloneController?.sequenceAssets || [];
   const updatingSequence = compatibility.classification === 'bake-to-card'
     && sequenceAssets.some(asset => asset.id === recipe?.sourceSequenceAssetId
@@ -212,11 +223,11 @@ export default function PatternLabExport({
   const handoffReviewCopy = compatibility.classification === 'live-on-card'
     ? `A new saved look named “${recipe?.name || 'Untitled pattern'}” will be added and selected. Existing looks stay unchanged.`
     : compatibility.classification === 'bake-to-card'
-      ? (completedBakeResult
+      ? (completedBakeCurrent
           ? (updatingSequence
               ? `Update the saved recording “${recipe?.name || 'Untitled pattern'}” and download its new verified controller package, or save this bake as a separate recording. Card playback changes only after the package is loaded.`
               : `A new sequence asset named “${recipe?.name || 'Untitled pattern'}” and a verified controller package will be added. Card playback changes only after the package is loaded.`)
-          : 'Bake this exact recipe first. The completed sequence will be verified again before anything is added.')
+          : (staleSideModeMessage || 'Bake this exact recipe first. The completed sequence will be verified again before anything is added.'))
       : 'This recipe is not ready to add. Use the compatibility guidance above to create a card-safe version.';
 
   return (
@@ -303,7 +314,7 @@ export default function PatternLabExport({
         <p
           data-testid="pattern-lab-bake-status"
           role={bakeStatus.state === 'error' ? 'alert' : 'status'}
-        >{bakeStatus.message}</p>
+        >{bakeStatus.state === 'complete' && staleSideModeMessage ? staleSideModeMessage : bakeStatus.message}</p>
       )}
 
       <div className="plab-project-handoff" data-testid="pattern-lab-project-handoff">
