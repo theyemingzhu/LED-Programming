@@ -1,11 +1,10 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { useIsolatedPatternFrame } from '../lib/useIsolatedPatternFrame.js';
 import { samplePath as libSamplePath } from '../lib/mapper.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import {
   buildGammaLut,
-  compilePattern,
   normalizePalette,
-  renderPixelFrame,
 } from '../lib/frameEngine.js';
 import {
   activeLedCoreAlpha,
@@ -1951,67 +1950,20 @@ export function LayoutScreen() {
 
   const isEditingGesture = movingStripIds.length > 0 || !!rubberBand;
 
-  const layoutPatternFrame = useMemo(() => {
-    if (!strips.length) return new Map();
-    const frameStrips = strips
-      .filter(s => !hidden[s.id])
-      .map(s => ({
-        id: s.id,
-        patternId: s.patternId || null,
-        speed: s.speed,
-        brightness: s.brightness,
-        hueShift: s.hueShift,
-        pts: (s.pixels || []).map((px, i) => ({
-          x: px.x,
-          y: px.y,
-          p: (s.pixels || []).length > 1 ? i / ((s.pixels || []).length - 1) : 0.5,
-          i,
-        })),
-      }));
-    if (!frameStrips.length) return new Map();
-
-    const perStripFns = new Map();
-    for (const s of frameStrips) {
-      if (s.patternId && !perStripFns.has(s.patternId)) {
-        const fn = compilePattern(s.patternId);
-        if (fn) perStripFns.set(s.patternId, fn);
-      }
-    }
-
-    const frame = renderPixelFrame({
-      t: 8.75,
-      strips: frameStrips,
-      patternId: activePatternId,
-      activeFn: compilePattern(activePatternId),
-      params: patternParams?.[activePatternId] || {},
-      patternParamsById: patternParams,
-      paletteNorm: normalizePalette(palette),
-      bpm,
-      masterSpeed,
-      masterBrightness,
-      masterSaturation,
-      masterHueShift,
-      gammaLUT: buildGammaLut(gammaEnabled, gammaValue),
-      symSettings,
-      audioBands: null,
-      perStripFns,
-    });
-    return new Map(frame.stripFrames.map(stripFrame => [stripFrame.id, stripFrame]));
-  }, [
-    strips,
-    hidden,
-    activePatternId,
-    patternParams,
-    palette,
-    bpm,
-    masterSpeed,
-    masterBrightness,
-    masterSaturation,
-    masterHueShift,
-    gammaEnabled,
-    gammaValue,
-    symSettings,
-  ]);
+  const legacyFrameOptions = useMemo(() => ({
+    t: 8.75,
+    strips: strips.filter(strip => !hidden[strip.id]).map(strip => ({
+      id:strip.id, patternId:strip.patternId || null, speed:strip.speed,
+      brightness:strip.brightness, hueShift:strip.hueShift,
+      pts:(strip.pixels || []).map((pixel,index,all) => ({ x:pixel.x,y:pixel.y,p:all.length > 1 ? index/(all.length-1) : .5,i:index })),
+    })),
+    patternId:activePatternId, params:patternParams?.[activePatternId] || {},
+    patternParamsById:patternParams, paletteNorm:normalizePalette(palette), bpm,
+    masterSpeed, masterBrightness, masterSaturation, masterHueShift,
+    gammaLUT:buildGammaLut(gammaEnabled,gammaValue), symSettings, audioBands:null,
+  }), [strips,hidden,activePatternId,patternParams,palette,bpm,masterSpeed,masterBrightness,masterSaturation,masterHueShift,gammaEnabled,gammaValue,symSettings]);
+  const legacyPatternFrame = useIsolatedPatternFrame(legacyFrameOptions);
+  const layoutPatternFrame = useMemo(() => new Map((legacyPatternFrame.frame?.stripFrames || []).map(frame => [frame.id,frame])), [legacyPatternFrame.frame]);
 
   const stripSamples = useMemo(() => {
     if (!showLight || isEditingGesture || glowMode === 'dots') return {};
@@ -2321,7 +2273,7 @@ export function LayoutScreen() {
   const glowStdDev = effectiveGlowMode === 'outward' ? 2.8 : effectiveGlowMode === 'inward' ? 0.8 : 1.6;
 
   return (
-    <div className="lw-layout-screen" style={{ '--lw-layout-panel-width': `${panelWidth}px` }}>
+    <div className="lw-layout-screen" data-legacy-pattern-state={legacyPatternFrame.status} data-legacy-pattern-error={legacyPatternFrame.failure} style={{ '--lw-layout-panel-width': `${panelWidth}px` }}>
 
       {/* ── Hidden file inputs ─────────────────────────────────────── */}
       <input ref={fileRef} type="file" accept=".svg"  style={{ display: 'none' }} onChange={handleFile}/>
@@ -2329,6 +2281,7 @@ export function LayoutScreen() {
 
       {/* ── Canvas column ──────────────────────────────────────────── */}
       <div className="lw-canvas-col">
+        {legacyPatternFrame.error && <p role="status" style={{padding:8}}>{legacyPatternFrame.error}</p>}
         <div className="lw-canvas-toolbar">
           <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
