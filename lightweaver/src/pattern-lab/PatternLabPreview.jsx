@@ -11,6 +11,7 @@ import { patternLabSelectedTargetId } from '../lib/patternLabSectionEditing.js';
 import { pushLivePreviewToCard } from '../lib/cardLiveControl.js';
 import { PatternPreview } from '../v3/PatternPreview.jsx';
 import usePatternLabWorker from './usePatternLabWorker.js';
+import { patternLabDisplayStrips, patternLabWorkerColorLookup as workerColorLookup } from '../lib/patternLabSampleMapping.js';
 import { useCardStatus } from '../hooks/useCardStatus.js';
 import {
   applyPatternLabPreviewCalibrationToHex,
@@ -233,29 +234,6 @@ function useSettledWorkerMode({ playing, recipe, time, renderOptions }) {
   return playing || changed ? 'preview' : 'final';
 }
 
-function workerColorLookup(frame) {
-  if (!frame?.colors?.length || !frame?.indices?.length) return null;
-  const { colors, indices } = frame;
-  return index => {
-    let low = 0;
-    let high = indices.length - 1;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (indices[middle] < index) low = middle + 1;
-      else high = middle;
-    }
-    let selected = low;
-    if (selected > 0 && Math.abs(indices[selected - 1] - index) <= Math.abs(indices[selected] - index)) {
-      selected -= 1;
-    }
-    return {
-      r: colors[selected * 3],
-      g: colors[selected * 3 + 1],
-      b: colors[selected * 3 + 2],
-    };
-  };
-}
-
 function byteHex(value) {
   return Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, '0').toUpperCase();
 }
@@ -361,13 +339,7 @@ export default function PatternLabPreview({
     if (!workerFunction) return suppliedDisplayGeometry;
     return {
       ...suppliedDisplayGeometry,
-      strips: suppliedDisplayGeometry.strips.map(strip => ({
-        ...strip,
-        patternId: null,
-        speed: 1,
-        brightness: 1,
-        hueShift: 0,
-      })),
+      strips: patternLabDisplayStrips(suppliedDisplayGeometry.strips),
     };
   }, [suppliedDisplayGeometry, workerFunction]);
   const failure = useMemo(() => {
@@ -515,14 +487,13 @@ export default function PatternLabPreview({
           playing={playing}
           controlledTime={renderTime}
           compiledFn={workerFunction}
-          params={recipe.base.params}
           palette={recipe.palette}
           strips={displayGeometry.strips}
           viewBox={displayGeometry.viewBox}
           svgText={displayGeometry.svgText}
           hidden={displayGeometry.hidden}
-          symmetry={displayGeometry.symmetry}
-          sidesMirrored={displayGeometry.sidesMirrored}
+          symmetry={null}
+          sidesMirrored={false}
           bpm={displayGeometry.bpm}
           masterSpeed={1}
           masterBrightness={1}

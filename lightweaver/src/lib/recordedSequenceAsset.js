@@ -1,3 +1,4 @@
+import { bakedSideModeFields } from './recordingSideMode.js';
 import { canonicalSceneExpressionBakeJson } from './sceneExpressionRecording.js';
 import { normalizePatternLabSequenceAssets, MAX_PATTERN_LAB_SEQUENCE_ASSETS } from './patternLabHandoff.js';
 import { LWSEQ_HEADER_BYTES, assertLwseqOutputTopology, buildStandaloneProfile } from './standaloneController.js';
@@ -113,6 +114,7 @@ export async function createRecordedSequenceAsset({ kind, bakeResult, controller
     version: 1, id, label: title, format: 'lwseq', assetRef: `sha256:${mediaHash}`,
     file, sidecarFile: `${file}.json`, byteLength: bytes.byteLength,
     source: { kind, payload: structuredClone(sidecar.scene), sha256: sourceHash },
+    ...bakedSideModeFields(bakeResult.bakedSideMode),
     outputs: structuredClone(outputs), manifest: structuredClone(sidecar),
     mediaRef: { kind: 'indexeddb-sha256', byteLength: bytes.byteLength, sha256: mediaHash },
     look: { id, label: title, mode: 'sequence', file, fps: sidecar.fps, loop: true },

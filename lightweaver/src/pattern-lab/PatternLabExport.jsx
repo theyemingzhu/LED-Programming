@@ -1,3 +1,4 @@
+import { RecordedSequenceChoice } from '../components/RecordedSequenceChoice.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { download } from '../lib/export.js';
 import { createArtNetSetupNotes, toMadrixFixtureCsv } from '../lib/madrixPatchExport.js';
@@ -364,7 +365,7 @@ export default function PatternLabExport({
           <summary>Saved recordings ({sequenceAssets.length})</summary>
           <p>Verified recording media is kept in this browser for card installation. If its source or artwork changes, record it again before installing.</p>
           <ul className="plab-recordings-list">{sequenceAssets.map(asset => <li key={asset.id}>
-            <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames</span>{' '}
+            <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames<RecordedSequenceChoice asset={asset} /></span>{' '}
             <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>{asset.source?.kind === 'expression-scene' ? 'Edit scene' : 'Edit in Lab'}</button>
           </li>)}</ul>
         </details>}

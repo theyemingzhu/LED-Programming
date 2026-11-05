@@ -1,3 +1,4 @@
+import { RecordedSequenceChoice } from '../components/RecordedSequenceChoice.jsx';
 /* Light Weaver v3 — Playlist screen */
 /* Exact mockup file. The component BODY (JSX, class names, layout) is
    unchanged from the design source; only the data + handlers were swapped
@@ -1262,6 +1263,7 @@ function realPatternShape(patternId) {
                         <div className="pl-copy">
                           <strong>{displayLabel}{item.type === 'combo' && <span className="mixtag">Stack</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
                           <span>{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? `${stackSummary?.sectionCount || 0} sections` : `${p.label} across the piece`}</span>
+                          {recorded && <RecordedSequenceChoice asset={recorded} />}
                         </div>
                         <div className="pl-actions">
                           <label className="pl-dwell">
@@ -1435,7 +1437,7 @@ function realPatternShape(patternId) {
                     const added = playlistContainsSequence(playlist, asset.id);
                     return <button key={asset.id} className="pl-source" onClick={() => addSequence(asset)} disabled={added || recoveryPending}>
                       <span className="pl-src-art"><LedRow pal={realPatternShape('aurora').pal} n={5} /></span>
-                      <span className="pl-src-nm">{asset.label}<span className="mixtag">recording</span></span>
+                      <span className="pl-src-nm pl-recording-copy"><span>{asset.label}<span className="mixtag">recording</span></span><RecordedSequenceChoice asset={asset} /></span>
                       <span className="pl-src-add">{added ? I.check : I.plus}</span>
                     </button>;
                   })}

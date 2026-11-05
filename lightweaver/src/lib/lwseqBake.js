@@ -707,6 +707,7 @@ export async function bakePatternLabRecipe(input = {}) {
     sidecar,
     sidecarJson,
     recipe: prepared.recipe,
+    bakedSideMode: prepared.symmetry ? (prepared.sidesMirrored ? 'mirrored' : 'own') : null,
     outputs: prepared.outputs,
     estimate: estimatePreparedBake(prepared),
   });
