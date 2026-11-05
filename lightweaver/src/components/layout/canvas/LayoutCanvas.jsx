@@ -91,7 +91,7 @@ export function LayoutCanvas({
   const axisLine = useMemo(() => symmetryAxisLine(symmetry, strips.filter(strip => !hidden[strip.id])), [symmetry, strips, hidden]);
   const {
     effectiveShowLight, effectiveGlowMode, glowStdDev, directedGlow,
-    showHeat, showLeds, layoutPatternFrame, stripSamples, stripArrows,
+    showHeat, showLeds, layoutPatternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
   } = lightPreview;
   const {
     wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
@@ -201,6 +201,16 @@ export function LayoutCanvas({
         <main className="body">
         <div className="dotgrid"/>
         <div className="stage">
+        {layoutPreviewError && (
+          <div role="status" data-testid="layout-preview-error" title={layoutPreviewError.message} style={{
+            position: 'absolute', top: 70, left: 10, maxWidth: 'calc(100% - 20px)', zIndex: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            padding: '6px 10px', background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 6,
+          }}>
+            <span>Light preview stopped.</span>
+            <button type="button" className="btn" onClick={retryLayoutPreview}>Retry</button>
+          </div>
+        )}
         {/* Viewport */}
         <div
           ref={vpRef}

@@ -193,14 +193,16 @@ export function renderPixelFrame({
   // side 1's colours (see lib/mirrorFrame.js). null = no symmetry, no cost.
   symmetry = null,
   sidesMirrored = true,
+  patternCompiler = compilePattern,
+  evaluatePixel = evalPixel,
 }) {
   const visibleStrips = strips.filter(s => s && !s.hidden);
   const sideRuns = symmetry ? sideRunByStrip({ symmetry, strips: visibleStrips }) : null;
   const allPts = visibleStrips.flatMap(s => s.pts || []);
   const bounds = normBounds || getNormBounds(allPts);
   const pixelCount = allPts.length;
-  const fnA = activeFn || compilePattern(patternId);
-  const fnB = blendFn || (blendPatternId ? compilePattern(blendPatternId) : null);
+  const fnA = activeFn || patternCompiler(patternId);
+  const fnB = blendFn || (blendPatternId ? patternCompiler(blendPatternId) : null);
   const resolvedParams = resolvePatternParams(patternId, params);
   const blendParams = blendPatternId
     ? resolvePatternParams(blendPatternId, patternParamsById[blendPatternId] || {})
@@ -282,11 +284,11 @@ export function renderPixelFrame({
 
       let r = 0, g = 0, b = 0;
       if (stripFn) {
-        const colA = evalPixel(stripFn, evalIndex, nx, ny, stripT, stripTime, runCount, stripPalette, beat, beatSin, stripParams, s.id, stripProgress, bass, mid, hi, evalPt);
+        const colA = evaluatePixel(stripFn, evalIndex, nx, ny, stripT, stripTime, runCount, stripPalette, beat, beatSin, stripParams, s.id, stripProgress, bass, mid, hi, evalPt);
         r = colA.r; g = colA.g; b = colA.b;
 
         if (fnB && blendAmount > 0) {
-          const colB = evalPixel(fnB, evalIndex, nx, ny, stripT, stripTime, runCount, paletteNorm, beat, beatSin, blendParams, s.id, stripProgress, bass, mid, hi, evalPt);
+          const colB = evaluatePixel(fnB, evalIndex, nx, ny, stripT, stripTime, runCount, paletteNorm, beat, beatSin, blendParams, s.id, stripProgress, bass, mid, hi, evalPt);
           if (blendType === 'fade-black') {
             const a2 = blendAmount < 0.5 ? 1 - blendAmount * 2 : 0;
             const b2 = blendAmount > 0.5 ? (blendAmount - 0.5) * 2 : 0;

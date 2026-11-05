@@ -1,5 +1,5 @@
 /**
- * patterns.js — sandboxed pattern compiler + per-pixel evaluator
+ * patterns.js — native pattern compiler + per-pixel evaluator
  *
  * Pattern code is a JS function body.  Available names:
  *
@@ -14,7 +14,9 @@
  * Return { r, g, b } each 0–255.
  *
  * Security: new Function() is eval-equivalent.
- * This is a local-only creative tool — that's fine.
+ * Global shadowing and token checks are compatibility restrictions, not a
+ * security boundary. Execute untrusted source through patternFrameIsolation.js.
+ * Legacy synchronous callers still require migration; see the boundary audit.
  */
 
 // ── Built-in helpers injected into every compiled pattern ─────────────────
@@ -191,23 +193,11 @@ function samplePalette(t) {
 }
 `;
 
-// ── Sandbox hardening ──────────────────────────────────────────────────────
-//
-// Pattern bodies are compiled with `new Function`, which is eval-equivalent.
-// The Studio is deployed publicly (led.mandalacodes.com) and holds an AI token
-// in localStorage, so a hostile pattern body must NOT be able to reach the page
-// environment. We apply defense-in-depth while keeping the synchronous
-// per-pixel API:
-//
-//   1. GLOBAL SHADOWING — extra trailing parameters shadow the dangerous
-//      globals so the body sees them as `undefined` (we always pass undefined).
-//   2. IDENTIFIER DENYLIST — tokens that param-shadowing cannot cover
-//      (`import`, `constructor`, prototype walking, dynamic import, async/await)
-//      are rejected at compile time before `new Function` ever runs.
-
-// Globals neutralised by shadowing them as function parameters. The body can
-// still *reference* these names, but they resolve to the `undefined` arguments
-// we pass — never the real page globals.
+// ── Source compatibility restrictions ──────────────────────────────────────
+// These checks do not isolate JavaScript. Computed constructors, the global
+// receiver and unbounded loops bypass them. The isolated frame service keeps
+// them for compatibility and supplies the separate-realm/CSP/deadline boundary.
+// Existing synchronous callers remain unsafe for untrusted source.
 const SHADOWED_GLOBALS = [
   'window', 'self', 'globalThis', 'document', 'fetch', 'XMLHttpRequest',
   'WebSocket', 'localStorage', 'sessionStorage', 'indexedDB', 'eval', 'Function',
@@ -216,7 +206,7 @@ const SHADOWED_GLOBALS = [
 
 // Tokens that shadowing can't neutralise (keywords / prototype reach / dynamic
 // import). `import` and `constructor` are not bindable as parameter names, and
-// `__proto__` / `prototype` enable prototype-chain escapes out of the sandbox.
+// `__proto__` / `prototype` enable prototype-chain access.
 // async/await would let a body suspend and smuggle work past the synchronous
 // guard rails. Each is matched on word boundaries so legitimate builtins
 // (e.g. `prototype` never appears in real pattern math) are unaffected.
@@ -261,8 +251,8 @@ export function compile(code) {
       ...SHADOWED_GLOBALS,
       `${BUILTINS}\n{\n${code}\n}`,
     );
-    // Call the compiled function with `undefined` for every shadow param so the
-    // dangerous globals are unreachable from inside the pattern body.
+    // Shadow direct global names for compatibility. This does not prevent
+    // computed/global-receiver access; only an isolated caller supplies a boundary.
     const fn = (...args) => rawFn(...args.slice(0, 21), ...SHADOWED_GLOBALS.map(() => undefined));
     return { fn, error: null };
   } catch (e) {
@@ -271,7 +261,7 @@ export function compile(code) {
 }
 
 /**
- * Evaluate one pixel.  Safe — runtime errors return dim red.
+ * Evaluate one pixel. Thrown runtime errors return dim red; loops are not stopped.
  *
  * @param {Function}  fn
  * @param {number}    index
