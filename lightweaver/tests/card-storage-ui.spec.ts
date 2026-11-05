@@ -46,7 +46,10 @@ async function gotoSavedProject(page, project, screen) {
     localStorage.setItem('lw_autosave_v3', JSON.stringify(savedProject));
   }, project);
   const route = screen === 'settings'
-    ? '/#screen=card&section=settings'
+    // Installed-match Home keeps its writer closed until this explicit task.
+    // Enter the current install flow so this case exercises capacity refusal,
+    // rather than expecting legacy Settings to expose an implicit card write.
+    ? '/#screen=card&section=setup&task=install-project&next=patterns'
     : `/#screen=${screen}`;
   await page.goto(route, { waitUntil: 'domcontentloaded' });
 }
