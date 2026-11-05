@@ -223,7 +223,14 @@ export async function bakeSceneExpressionFlow(input = {}) {
     frameCount: prepared.frameCount, pixelCount: prepared.pixelCount,
     outputs: prepared.outputs };
   return Object.freeze({ bytes, sidecar, sidecarJson: canonical(sidecar),
+    bakedSideMode: prepared.layout.symmetry ? (prepared.layout.sidesMirrored ? 'mirrored' : 'own') : null,
     outputs: prepared.outputs, estimate: estimateSceneExpressionFlowRecording(input) });
+}
+
+// Exact single-choice hash for legacy provenance inspection, not playback validity.
+export async function hashSceneExpressionFlowLayout(input = {}) {
+  const prepared = prepare(input);
+  return sha256(canonical(prepared.layout), input.signal);
 }
 
 export async function verifySceneExpressionFlowBake(bakeResult, input = {}) {

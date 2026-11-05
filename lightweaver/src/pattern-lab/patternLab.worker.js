@@ -26,6 +26,7 @@ import {
 } from '../lib/patternLabCompositor.js';
 import { applyPatternLabMotionToStrips } from '../lib/patternLabMotion.js';
 import { applySymmetrySides } from '../lib/mirrorFrame.js';
+import { planPatternLabSideSamples, sampledSideContexts } from '../lib/patternLabSampleMapping.js';
 import { applyPatternLabTransform, samplePatternLabMask } from '../lib/patternLabTransforms.js';
 
 let initialized = false;
@@ -91,13 +92,30 @@ function sampledStrips(geometry, indices) {
   return strips;
 }
 
-function compileAuthoritativePattern(patternId, indices, visiblePixelCount) {
-  const compiled = compilePattern(patternId);
+function authoritativePattern(compiled, indices, visiblePixelCount, sideContexts = null, coordinateSymmetry = false) {
   if (!compiled) return null;
   return (index, x, y, t, time, _sampleCount, ...rest) => {
+    // Coordinate symmetry already computed its index in the full run domain.
+    if (coordinateSymmetry) return compiled(index, x, y, t, time, _sampleCount, ...rest);
+    const side = sideContexts?.get(rest[4]); // stripId, after palette/beat/params
+    if (side) {
+      const local = Math.max(0, Math.min(side.indices.length - 1, Math.round(index) - side.sampled.before));
+      const along = side.full.before + side.indices[local] - side.start;
+      if (!side.hasKaleidoscope) {
+        const progress = side.full.length > 1 ? along / (side.full.length - 1) : 0.5;
+        rest[5] = progress;
+        rest[9] = progress;
+        rest[10] = progress;
+      }
+      return compiled(along, x, y, t, time, side.full.length, ...rest);
+    }
     const sampledIndex = Math.max(0, Math.min(indices.length - 1, Math.round(index)));
     return compiled(indices[sampledIndex], x, y, t, time, visiblePixelCount, ...rest);
   };
+}
+
+function compileAuthoritativePattern(patternId, indices, visiblePixelCount, sideContexts = null, coordinateSymmetry = false) {
+  return authoritativePattern(compilePattern(patternId), indices, visiblePixelCount, sideContexts, coordinateSymmetry);
 }
 
 function layerTransforms(layer) {
@@ -217,8 +235,24 @@ async function renderRequest(requestId, payload) {
   const stateful = statefulPattern({ ...recipe, time: payload.time }, indices, options);
   const hasSourceLook = patternLabHasSourceLook(recipe);
   const isColorJourney = recipe.base?.kind === 'color-journey';
+  // Stateful simulations keep their documented resolution-sized state. Stateless
+  // patterns and journeys sample the exact full lead pixels before mirroring.
+  const sideSamples = geometry.symmetry && !stateful
+    ? planPatternLabSideSamples(geometry, indices) : null;
+  const renderIndices = sideSamples?.indices || indices;
+  const sampled = sampledStrips(geometry, renderIndices);
+  const sideContexts = sideSamples ? sampledSideContexts(geometry, sampled, sideSamples.fullRuns) : null;
+  const coordinateSymmetry = !stateful && Boolean(geometry.symSettings?.enabled);
+  if (coordinateSymmetry) {
+    // Let the existing renderer turn transformed symmetry progress into a full
+    // run index. A sampled side length would round to a different LED.
+    for (const strip of sampled) {
+      strip.run = sideContexts?.get(strip.id)?.full || { before: 0, length: geometry.visiblePixelCount };
+    }
+  }
   const activeFn = isColorJourney
-    ? createColorJourneyPattern(recipe.journey, payload.time)
+    ? authoritativePattern(createColorJourneyPattern(recipe.journey, payload.time, recipe.sourceLook?.nativeSourcePhase16),
+      renderIndices, geometry.visiblePixelCount, sideContexts, coordinateSymmetry)
     : stateful
     ? (index, x, y, _time, _cycle, _count, _palette, _beat, _beatSin, _params, _stripId, stripProgress) => {
       const sampleIndex = Math.max(0, Math.min(indices.length - 1, Math.round(index)));
@@ -230,8 +264,7 @@ async function renderRequest(requestId, payload) {
         sourceIndex: indices[sampleIndex],
       }, stateful.state);
     }
-    : compileAuthoritativePattern(recipe.base?.patternId, indices, geometry.visiblePixelCount);
-  const sampled = sampledStrips(geometry, indices);
+    : compileAuthoritativePattern(recipe.base?.patternId, renderIndices, geometry.visiblePixelCount, sideContexts, coordinateSymmetry);
   const samplingBounds = patternLabSamplingBounds(sampled, geometry.normalizationBounds, recipe);
   const motionSampled = applyPatternLabMotionToStrips(sampled, {
     elapsedSeconds: Number(payload.time) || 0,
@@ -241,7 +274,7 @@ async function renderRequest(requestId, payload) {
   });
   const baseStrips = patternLabSectionMixStrips(stateful || isColorJourney ? sampled : motionSampled, recipe);
   const perStripFns = patternLabSectionMixFunctions(baseStrips, recipe,
-    patternId => compileAuthoritativePattern(patternId, indices, geometry.visiblePixelCount));
+    patternId => compileAuthoritativePattern(patternId, renderIndices, geometry.visiblePixelCount, sideContexts, coordinateSymmetry));
   const frame = renderPixelFrame({
     t: Number(payload.time) || 0,
     strips: baseStrips,
@@ -261,7 +294,7 @@ async function renderRequest(requestId, payload) {
     perStripFns,
     // Sides play as one continuous run; the mirror copy happens once below,
     // after every layer has composited.
-    symmetry: geometry.symmetry || null,
+    symmetry: coordinateSymmetry ? null : geometry.symmetry || null,
     sidesMirrored: false,
   });
   applyPatternLabSectionMixColor(frame.pixels, baseStrips, recipe, payload.time);
@@ -273,8 +306,10 @@ async function renderRequest(requestId, payload) {
     }
     const layerFn = compileAuthoritativePattern(
       layer.generator.patternId,
-      indices,
+      renderIndices,
       geometry.visiblePixelCount,
+      sideContexts,
+      coordinateSymmetry,
     );
     if (!layerFn) throw new RangeError(`Unknown Pattern Lab layer pattern: ${String(layer.generator.patternId)}`);
     const preparedLayer = layerGeometry(motionSampled, layer, samplingBounds);
@@ -294,7 +329,7 @@ async function renderRequest(requestId, payload) {
       symSettings: geometry.symSettings,
       audioBands: geometry.audioBands,
       normBounds: samplingBounds,
-      symmetry: geometry.symmetry || null,
+      symmetry: coordinateSymmetry ? null : geometry.symmetry || null,
       sidesMirrored: false,
     });
     if (layerFrame.pixels.length !== renderedPixels.length
@@ -317,7 +352,7 @@ async function renderRequest(requestId, payload) {
   // Mirrored sides are copied once, after every layer has composited and before
   // the look colour, so a twin ends up with exactly side 1's colours (same
   // order as the main-thread renderer in patternLabPatternAdapter).
-  if (geometry.symmetry && geometry.sidesMirrored !== false) {
+  if (!sideSamples && geometry.symmetry && geometry.sidesMirrored !== false) {
     applySymmetrySides({
       framePixels: renderedPixels,
       strips: baseStrips.filter(strip => strip && !strip.hidden),
@@ -332,8 +367,9 @@ async function renderRequest(requestId, payload) {
   });
   if (cancelledRequests.delete(requestId)) return;
 
-  const colors = new Uint8ClampedArray(renderedPixels.length * 3);
-  renderedPixels.forEach((color, index) => {
+  const colors = new Uint8ClampedArray(indices.length * 3);
+  indices.forEach((_, index) => {
+    const color = renderedPixels[sideSamples ? sideSamples.slots[index] : index];
     colors[index * 3] = color.r;
     colors[index * 3 + 1] = color.g;
     colors[index * 3 + 2] = color.b;

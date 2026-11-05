@@ -21,13 +21,13 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
   Needs firmware 1.2.0 on the card. Also watch colour-journey looks on a side: those patterns read each strip's physical position.
 
 - [ ] Keep recording currentness aligned with the mirrored or own choice _(band: agent-runnable)_ _(effort: quick)_
-  Both existing bake fingerprints already stamp the choice. Source PR405 fixes completed-new-bake handoff: changing the mode marks the result stale and blocks Add to project; restoring the mode reuses the same result. Saved-recording library/project currentness remains separately under qualification, so this broader item stays open. Frozen recording bytes and playback compatibility are preserved.
+  Both bake fingerprints already stamp the choice. The next combined source candidate retains PR407's completed-bake handoff guard and adds persisted optional side-choice provenance for saved Lab and Flow recordings, compact Baked/Source feedback, exact-owner precedence and honest legacy/ambiguous-owner unknowns. Saved choice, reload, owning-look and unchanged media/controller-wire behavior are verified. Source qualification is complete; delivery remains pending. This is side-choice feedback, not a promise that every old recording matches all current recipe/artwork edits. Frozen bytes and playback compatibility are preserved.
 
 - [ ] Map side flow in Pattern Lab's decimated preview for large pieces _(band: agent-runnable)_ _(effort: quick)_
-  Index-based patterns can sit wrong along a side in Pattern Lab's quick preview on very large pieces; the card and the main preview are correct.
+  Source PR410 now preserves original pixel/side identity and exact mirrored lead samples for ordinary built-ins, coordinate symmetry and Color Journey, including layers, masks and native phase. Twenty-four exact sampled/full parity cases and mounted worker/canvas proof qualify the repair; delivery is pending in the next combined candidate. Living generators retain their documented resolution-dependent quick-preview approximation; no universal all-generator RGB equality is claimed.
 
 - [ ] Keep one filled button on Layout while the symmetry offer shows _(band: agent-runnable)_ _(effort: quick)_
-  "Mirror the two sides" and "Install on card" are both filled orange while the offer card is up.
+  Source PR409 gives Mirror the existing secondary style and keeps Install on card as the only filled primary. Desktop/390px, keyboard save, phone 44px and overflow checks pass; delivery is pending in the next combined candidate.
 
 - [ ] Land the qualified Layout regression repairs in the source release gate _(band: agent-runnable)_ _(effort: moderate)_
   The 2026-09-29 count of 14 failures was a historical baseline, not a current count. The six surviving files now pass 21 current cases: connected sections 3, inspector density 3, multi-GPIO 3, section overview 3, selected editor 6 and strip identity 3. All 12 historical cases in these files are requalified; the other two belonged to the deliberately retired Split shortcut (`c2f33bab`, replaced by Divide into sections), not absent tests counted as passing. Existing Divide replacement checks pass 2/2.
