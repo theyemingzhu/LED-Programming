@@ -1,11 +1,11 @@
 import { buildPatternPreviewSegments, applyPatternPreviewSegmentLooks } from './patternPiecePreview.js';
 import { getCardPatternById } from './cardPatternBank.js';
 import { getPatternById } from './patternRegistry.js';
-import { compilePattern, renderPixelFrame, normalizePalette } from './frameEngine.js';
+import { renderPixelFrame, normalizePalette } from './frameEngine.js';
 import { normalizeProjectRenderStrips } from './renderGeometry.js';
 import { normalizeSceneExpression, resolveSceneExpression } from './sceneExpression.js';
 import { buildSceneExpressionAreaCatalog } from './sceneExpressionTargets.js';
-import { createSceneExpressionPreviewRenderer } from './sceneExpressionFlow.js';
+import { compileBundledScenePattern, createSceneExpressionPreviewRenderer } from './sceneExpressionFlow.js';
 import { mapSceneExpressionPreviewFrame } from './sceneExpressionFrame.js';
 import { effectiveSceneFlowAt, scenePlaybackAt, scenePreviewAvailability } from '../scene-expression/sceneExpressionEditorModel.js';
 import { estimateLwseqBytes, LWSEQ_HEADER_BYTES, toLwseqBytes } from './standaloneController.js';
@@ -159,7 +159,11 @@ function buildStepRenderContexts(prepared, clock) {
     const perStripPalettes = new Map(segments.filter(segment => Array.isArray(segment.palette))
       .map(segment => [segment.id, normalizePalette(segment.palette)]));
     const perStripFns = new Map(segments.filter(segment => segment.patternId)
-      .map(segment => [segment.patternId, compilePattern(segment.patternId)]));
+      .map(segment => {
+        const fn = compileBundledScenePattern(segment.patternId);
+        if (!fn) throw new TypeError(`Pattern ${segment.patternId} cannot render in this Studio.`);
+        return [segment.patternId, fn];
+      }));
     return [step.id, { segments, renderer, strips, perStripPalettes, perStripFns }];
   }));
 }
