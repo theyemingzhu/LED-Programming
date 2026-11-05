@@ -31,13 +31,13 @@ test('mounted Layout registry source cannot read page storage or mutate its glob
   await expect.poll(() => page.locator('[data-testid^="strip-led-"] circle').first().getAttribute('fill')).toBe('rgb(0 0 255)');
   await expect(page.locator('iframe[data-pattern-isolation]')).toHaveCount(1);
 });
-async function changeLiveLayoutSource(page: any, code: string) {
-  await page.evaluate(async (source: string) => {
+async function changeLiveLayoutSource(page: any, code: string, imported = false) {
+  await page.evaluate(async ({ source, imported }: { source: string; imported: boolean }) => {
     const { getPatternById } = await import('/src/lib/patternRegistry.js');
-    const { CUSTOM_PATTERNS_EVENT } = await import('/src/lib/customPatterns.js');
+    const { CUSTOM_PATTERNS_EVENT, WORKSPACE_ASSETS_EVENT } = await import('/src/lib/customPatterns.js');
     getPatternById('aurora').code = source;
-    window.dispatchEvent(new CustomEvent(CUSTOM_PATTERNS_EVENT));
-  }, code);
+    window.dispatchEvent(new CustomEvent(imported ? WORKSPACE_ASSETS_EVENT : CUSTOM_PATTERNS_EVENT));
+  }, { source: code, imported });
 }
 test('mounted Layout loop holds its last frame, stays responsive, retries and recovers in place', async ({ page }, testInfo) => {
   await replaceMountedSource(page, 'return [0,0,255];');
@@ -58,7 +58,7 @@ test('mounted Layout loop holds its last frame, stays responsive, retries and re
   await expect(status).toHaveCount(0);
   await expect(status).toContainText('Light preview stopped');
   await page.screenshot({ path: testInfo.outputPath('layout-failure.png') });
-  await changeLiveLayoutSource(page, 'return [0,255,0];');
+  await changeLiveLayoutSource(page, 'return [0,255,0];', true);
   await expect(status).toHaveCount(0);
   await expect(firstLed).toHaveAttribute('fill', 'rgb(0 255 0)');
   await page.screenshot({ path: testInfo.outputPath('layout-recovered.png') });

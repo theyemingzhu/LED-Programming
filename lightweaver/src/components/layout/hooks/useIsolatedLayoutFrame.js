@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPatternFrameService } from '../../../lib/patternFrameIsolation.js';
 import { renderIsolatedPixelFrame } from '../../../lib/isolatedFrameEngine.js';
-import { CUSTOM_PATTERNS_EVENT } from '../../../lib/customPatterns.js';
+import { CUSTOM_PATTERNS_EVENT, WORKSPACE_ASSETS_EVENT } from '../../../lib/customPatterns.js';
 import { createLayoutFrameOwner } from './layoutFrameOwner.js';
 import { mapLayoutPatternFrame } from './layoutFrameMapping.js';
 
@@ -21,7 +21,11 @@ export function useIsolatedLayoutFrame(inputs, t, previewTime) {
   useEffect(() => {
     const changed = () => setSourceRevision(revision => revision + 1);
     window.addEventListener(CUSTOM_PATTERNS_EVENT, changed);
-    return () => window.removeEventListener(CUSTOM_PATTERNS_EVENT, changed);
+    window.addEventListener(WORKSPACE_ASSETS_EVENT, changed);
+    return () => {
+      window.removeEventListener(CUSTOM_PATTERNS_EVENT, changed);
+      window.removeEventListener(WORKSPACE_ASSETS_EVENT, changed);
+    };
   }, []);
   useEffect(() => {
     const owner = createLayoutFrameOwner({
