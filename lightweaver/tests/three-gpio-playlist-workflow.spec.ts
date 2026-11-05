@@ -1,4 +1,7 @@
 import { test, expect } from './studioTest';
+import { blockMainFrameServiceWorkers } from './harness/mainFrameServiceWorkerBlock';
+
+test.use({ serviceWorkers: 'allow' });
 import { createDefaultProject } from '../src/lib/projectModel.js';
 import { createDefaultCircleLayout } from '../src/lib/defaultCircleLayout.js';
 import { createDefaultPatchBoard } from '../src/lib/patchBoard.js';
@@ -40,6 +43,7 @@ function makeThreeOutputProject() {
 }
 
 test('three GPIO section patterns stay in Layout and a kept combo installs with its playlist', async ({ page }) => {
+  await blockMainFrameServiceWorkers(page);
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const expectedSignedOutSessionErrors: string[] = [];
@@ -106,6 +110,8 @@ test('three GPIO section patterns stay in Layout and a kept combo installs with 
   await page.route('**/api/library/session', unauthenticatedSession);
 
   await page.addInitScript(({ id, build, savedProject }) => {
+    // This seed describes Studio's top frame, never the opaque pattern worker.
+    if (window !== window.top) return;
     localStorage.setItem('lw_card_identity_v1', JSON.stringify({
       version: 1, id, firmwareVersion: '1.0.0', buildId: build,
     }));

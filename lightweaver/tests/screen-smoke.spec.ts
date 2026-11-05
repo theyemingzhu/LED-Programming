@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { blockMainFrameServiceWorkers } from './harness/mainFrameServiceWorkerBlock';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createDefaultProject } from '../src/lib/projectModel.js';
@@ -1163,11 +1164,16 @@ test('patterns section rows stay within the viewport and the footer stays single
   expect(spread).toBeLessThanOrEqual(1);
 });
 
+test.describe('opaque pattern-frame smoke', () => {
+// The custom main-frame blocker below retains hermetic registration blocking
+// without Playwright injecting its unguarded API getter into opaque frames.
+test.use({ serviceWorkers: 'allow' });
 for (const viewport of [
   { name: 'desktop', width: 1280, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
   test(`main screens load without overflow or console errors on ${viewport.name}`, async ({ page }) => {
+    await blockMainFrameServiceWorkers(page);
     // Hermetic: answer ambient card-status polling with a benign empty body so
     // a real card on the LAN (or its CORS rejection of the dev origin, or an
     // aborted load) can't leak console errors into the assertion below.
@@ -1231,3 +1237,4 @@ for (const viewport of [
     expect(consoleErrors).toEqual([]);
   });
 }
+});
