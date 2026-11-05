@@ -196,7 +196,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     startStripMove, movingStripIds, stripDragSuppressClickRef,
     handleSvgMouseDown, handleSvgClick, handleSvgDblClick, handleSvgMouseMove,
     handleSvgMouseUp, handleSvgMouseLeave, handleContextMenu, handleWheel,
-    isEditingGesture, layoutPatternFrame, stripSamples, stripArrows,
+    isEditingGesture, layoutPatternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
     visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
     // import
     dragOver, fileRef, loadRef,
@@ -370,7 +370,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     selection: { selStripId, selLayer, pathSel, selectedPathDecorations, existingStrip },
     lightPreview: {
       effectiveShowLight, effectiveGlowMode, glowStdDev, directedGlow,
-      showHeat, showLeds, layoutPatternFrame, stripSamples, stripArrows,
+      showHeat, showLeds, layoutPatternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
     },
     wire: {
       wireOverlayMode, visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
