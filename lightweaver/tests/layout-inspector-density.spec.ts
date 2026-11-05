@@ -14,11 +14,12 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
   await page.setInputFiles('input[accept=".svg"]', { name: 'ribbons.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(artwork) });
   await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(8);
-  await page.locator('.la-strip-row').first().click();
+  await page.locator('.la-strip-row .layer-name').first().click();
   await expect(page.getByText('Color tag', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Strip brightness', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Strip added · update', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Ribbon 1 layout settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toBeVisible();
   await expect(page.getByTestId('layout-total-led-control')).toContainText('Project LEDs');
   const evidence: any[] = [];
   for (const width of [1440, 390]) {
@@ -30,10 +31,12 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
       const total = rect('[data-testid="layout-total-led-control"]');
       const row = rect('.la-strip-row');
       const detail = rect('.la-strip-inspector');
+      const countHeader = rect('.la-strip-settings-head');
       const pattern = rect('.la-section-pattern-action');
       const side = rect('.la .side');
       const rows = [...document.querySelectorAll('.la-strip-row')].map(el => el.getBoundingClientRect());
-      return { width: innerWidth, inspectorWidth: side.width, detailHeight: detail.height, rowHeight: row.height,
+      return { width: innerWidth, inspectorWidth: side.width, detailHeight: detail.height,
+        countHeaderHeight: countHeader.height, detailBodyHeight: detail.height - countHeader.height, rowHeight: row.height,
         sameAddRow: Math.abs(add.top - total.top) < 3, patternInline: Math.abs((pattern.top + pattern.bottom) / 2 - (row.top + row.bottom) / 2) < 3,
         nameWidth: rect('.la-strip-row .layer-name').width,
         visibleRows: rows.filter(r => r.top >= side.top && r.bottom <= Math.min(side.bottom, innerHeight)).length,
@@ -46,7 +49,10 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
   writeFileSync(join(evidenceDir, `${process.env.INSPECTOR_BASELINE ? 'before' : 'after'}.json`), JSON.stringify(evidence, null, 2));
   console.log(JSON.stringify(evidence));
   if (process.env.INSPECTOR_BASELINE) return;
-  expect(evidence[0].detailHeight).toBeLessThan(220);
+  // The LED count moved from the compact row into its own inspector header.
+  // Budget the compact settings body separately from that bounded control row.
+  expect(evidence[0].detailBodyHeight).toBeLessThan(220);
+  expect(evidence[0].countHeaderHeight).toBeLessThanOrEqual(36);
   expect(evidence[0].rowHeight).toBeLessThanOrEqual(48);
   expect(evidence[0].visibleRows).toBe(8);
   for (const item of evidence) {
@@ -79,9 +85,9 @@ test('locked imported strip divides into four connected sections without card wr
   await page.setInputFiles('input[accept=".svg"]', { name: 'ribbon.svg', mimeType: 'image/svg+xml',
     buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 100"><g id="ribbon" data-name="Ribbon"><path d="M 30 50 L 550 50" stroke="white" fill="none"/></g></svg>') });
   await page.getByTestId('artwork-create-all-strips').click();
-  await page.locator('.la-strip-row').click();
-  await page.getByLabel('Strip LED count', { exact: true }).fill('41');
-  await page.getByLabel('Strip LED count', { exact: true }).blur();
+  await page.locator('.la-strip-row .layer-name').click();
+  await page.getByRole('spinbutton', { name: 'Ribbon LED count', exact: true }).fill('41');
+  await page.getByRole('spinbutton', { name: 'Ribbon LED count', exact: true }).blur();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.strips?.[0]?.pixelCount)).toBe(41);
   await page.evaluate(() => {
     const saved = JSON.parse(localStorage.getItem('lw_autosave_v3')!);
@@ -90,24 +96,39 @@ test('locked imported strip divides into four connected sections without card wr
     localStorage.setItem('lw_autosave_v3', JSON.stringify(saved));
   });
   await page.reload();
-  await page.locator('.la-strip-row').click();
+  await page.locator('.la-strip-row .layer-name').click();
   await page.locator('[data-testid^="divide-toggle-"]').click();
   await expect(page.getByTestId('divide-unlock-notice')).toBeVisible();
   await page.locator('[data-testid^="divide-sections-"]').fill('4');
   await page.locator('[data-testid^="divide-commit-"]').click();
-  await expect(page.locator('.la-strip-row .layer-len')).toHaveText(['11 LEDs', '10 LEDs', '10 LEDs', '10 LEDs']);
-  await expect(page.getByTestId('connected-child')).toHaveCount(4);
-  await expect(page.getByLabel('Section 1 actual LEDs')).toHaveCount(1);
-  await expect(page.getByLabel('Section 2 GPIO override')).toHaveCount(0);
-  await page.getByLabel('Parent GPIO', { exact: true }).selectOption('18');
+  const rows = page.locator('.la-strip-row');
+  await expect(rows).toHaveCount(4);
+  const familyGpio = page.getByRole('combobox', { name: 'Ribbon shared GPIO output', exact: true });
+  await familyGpio.selectOption('18');
+  // Only the selected part has an editor. Check every part's actual count and
+  // shared output through that editor rather than removed inline row summaries.
+  for (const [index, count] of [11, 10, 10, 10].entries()) {
+    const row = rows.nth(index);
+    const sectionId = await row.locator('..').getAttribute('data-strip-id');
+    await row.locator('.layer-name').click();
+    await expect(page.getByTestId('connected-section-editor')).toHaveCount(1);
+    await expect(page.getByTestId('connected-child')).toHaveCount(1);
+    await expect(page.getByTestId('connected-child')).toHaveAttribute('data-section-id', sectionId);
+    const editor = page.getByTestId('connected-section-editor');
+    await expect(editor.getByRole('spinbutton', { name: / LED count$/ })).toHaveValue(String(count));
+    await expect(editor.getByRole('combobox', { name: / GPIO override$/ })).toHaveValue('18');
+  }
+  await rows.first().locator('.layer-name').click();
+  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('combobox', { name: 'Ribbon 2 GPIO override', exact: true })).toHaveCount(0);
   for (const width of [1069, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     if (width === 1069) await page.locator('.la .side').evaluate((element: HTMLElement) => {
       element.style.width = '300px';
       element.style.flexBasis = '300px';
     });
-    await page.getByTestId('connected-section-editor').scrollIntoViewIfNeeded();
-    const gpio = page.getByLabel('Parent GPIO', { exact: true });
+    const gpio = familyGpio;
+    await gpio.scrollIntoViewIfNeeded();
     await expect(gpio).toHaveValue('18');
     const gpioBox = (await gpio.boundingBox())!;
     expect(gpioBox.width).toBeGreaterThanOrEqual(88);
@@ -132,7 +153,7 @@ test('artwork creates a named strip and mapped layers open only their own layout
   await page.getByLabel('Layer LED count', { exact: true }).fill('41');
   await page.getByRole('button', { name: 'Create strip from Ribbon 1', exact: true }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(1);
-  await expect(page.getByLabel('Strip LED count', { exact: true })).toHaveValue('41');
+  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toHaveValue('41');
   await expect(create).toHaveCount(0);
   await page.locator('.layer-row').nth(1).click();
   await expect(create).toContainText('Ribbon 2');
@@ -142,5 +163,5 @@ test('artwork creates a named strip and mapped layers open only their own layout
   await expect(page.getByRole('region', { name: 'Ribbon 1 layout settings', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Ribbon 2 layout settings', exact: true })).toHaveCount(0);
   await expect(create).toHaveCount(0);
-  await expect(page.getByLabel('Strip LED count', { exact: true })).toHaveValue('41');
+  await expect(page.getByRole('spinbutton', { name: 'Ribbon 1 LED count', exact: true })).toHaveValue('41');
 });
