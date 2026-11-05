@@ -2057,7 +2057,7 @@ export default function PatternLabScreen({
           </button>
           <button
             type="button"
-            className="plab-back"
+            className="plab-build-scene"
             data-testid="pattern-lab-build-scene"
             onClick={() => setSceneEditorOpen(true)}
           >

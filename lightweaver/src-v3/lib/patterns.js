@@ -1,5 +1,5 @@
 /**
- * patterns.js — sandboxed pattern compiler + per-pixel evaluator
+ * patterns.js — native legacy pattern compiler + per-pixel evaluator
  *
  * Pattern code is a JS function body.  Available names:
  *
@@ -14,7 +14,8 @@
  * Return { r, g, b } each 0–255.
  *
  * Security: new Function() is eval-equivalent.
- * This is a local-only creative tool — that's fine.
+ * This compiler alone is not a sandbox. Mounted source renderers use the
+ * legacy dialect of the shared opaque-origin frame service.
  */
 
 // ── Built-in helpers injected into every compiled pattern ─────────────────
@@ -191,6 +192,10 @@ function samplePalette(t) {
 }
 `;
 
+const compiledSources = new WeakMap();
+
+export function getCompiledPatternSource(fn) { return compiledSources.get(fn) ?? null; }
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 /**
@@ -207,6 +212,7 @@ export function compile(code) {
       'stripId', 'stripProgress', 'bass', 'mid', 'hi',
       `${BUILTINS}\n{\n${code}\n}`,
     );
+    compiledSources.set(fn, String(code));
     return { fn, error: null };
   } catch (e) {
     return { fn: null, error: e.message };
@@ -214,7 +220,7 @@ export function compile(code) {
 }
 
 /**
- * Evaluate one pixel.  Safe — runtime errors return dim red.
+ * Evaluate one pixel. Thrown errors return dim red; this function cannot stop loops.
  *
  * @param {Function}  fn
  * @param {number}    index

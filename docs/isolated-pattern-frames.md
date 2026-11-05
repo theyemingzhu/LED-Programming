@@ -1,9 +1,10 @@
-# Isolated pattern frames: draft implementation, partial migration
+# Isolated pattern frames: combined source candidate
 
-This candidate isolates the ordinary, source-driven `src/v3/PatternPreview.jsx`
-branch used by the active Studio Patterns preview. It does **not** close the
-whole executable-pattern boundary. No firmware, signer, release, transport,
-merge, deployment or card flash is included.
+This candidate combines the ordinary Patterns preview, modern Layout, and reachable
+`?v=3` legacy Layout/preview isolation repairs. Flow preview and recording require
+actual bundled source before their trusted native adapter runs. It includes the
+packed frame protocol and recovery fixes. No firmware, signer, release, transport,
+deployment or card flash is included. Mapper remains a separate source candidate.
 
 ## Boundary and behavior
 
@@ -98,49 +99,32 @@ The explicit older `tests/security/pattern-execution-boundary.mjs` probe suite
 still tests unmigrated native compilers and remains red by design. It must not
 be reported as a global security pass.
 
-### Performance limits
+### Performance evidence and limits
 
-Visible headless Chromium on this Mac, same synthetic Aurora source and geometry,
-20 timed frames after bootstrap: 1,024 samples baseline p50/p95 ~1.4/2.5 ms,
-isolated ~5.5/6.4 ms; 8,000 pixels baseline ~8.3/10.4 ms, isolated ~39.2/44.8 ms.
-Ten RAF-paced isolated frames delivered ~124 and ~26 fps respectively on this
-host's headless clock. This measures service throughput, not a promise of those
-rates on the physical display; the component retains its existing caller-supplied target (the active Patterns
-screen requests 30 fps).
-No >50 ms page long tasks were observed during that small measurement. The
-Chromium memory API reported quantized 10 MB values before/after; that cannot
-establish peak worker memory or absence of leaks.
+The packed protocol deduplicates source strings and uses typed sample buffers.
+The public `service.render({sources, samples})` interface is unchanged. A pinned
+same-page Chromium comparison at 8,000 samples improved p50/p95 from 34.9/39.4 ms
+to 11.7/14.9 ms; headless RAF throughput improved from 28 to 81.7 fps. These are
+synthetic service measurements, not physical display or Safari guarantees.
+Strict heap containment, physical/offline WebKit and card-local packaging remain
+open. The original browser compatibility and resource limits above still apply.
 
-Playwright WebKit measurements were ~7/8 ms at 1,024 and ~42/44 ms at 8,000,
-with ~65/~24 RAF-paced fps. WebKit does not expose the long-task/heap metrics
-used here. Mobile Chromium uses device emulation, not physical mobile hardware.
-The 8,000-pixel regression is material: this draft does not meet a universal
-60-fps full-resolution acceptance bar. Reduce serialization and duplicate
-geometry cost before treating it as release-ready. Long bakes and stateful Lab
-rendering have not been migrated or benchmarked by this candidate.
+## Current mounted paths and remaining scope
 
-## Actual remaining entry paths and next scope
+| Surface | Source authority and current behavior |
+| --- | --- |
+| Ordinary Patterns preview | Custom/imported/accepted registry source runs in the isolated service; changed source clears a stopped owner while unchanged hostile source stays stopped. |
+| Modern Layout | Data-only frame mapping feeds a coalesced async isolated owner; stale/cancelled replies cannot replace the last valid frame. Source/import events recover the owner. |
+| Flow preview and recording | Native bundled adapter rejects IDs without actual bundled source. Static card metadata alone is insufficient: `warm-white` previously reached saved custom source. The guard covers actual Flow and recording preparation; explicit trusted dependency injection remains. |
+| Pattern Lab preview/bake/layers | Mounted prepare paths validate actual bundled source, including section mix; worker cannot read saved registry storage. Existing callback reads RGB only. No isolation migration or custom-source support is claimed. |
+| Reachable `?v=3` legacy Layout/preview | Fixed legacy dialect uses the same isolated service, retaining legacy helper and argument semantics. Actual imported and saved custom-source regressions are covered. |
+| Standalone mapper | Separate PR399; not included in this combined candidate. |
+| Unmounted AI/export/compatibility helpers | Not evidence of a currently mounted execution path. Native APIs remain for trusted/dead compatibility; a future mount needs a fresh provenance check. |
+| Pi/operator runtime | Explicitly deferred by project instructions; not part of this work. |
 
-| Surface | Source provenance / current behavior | Next compatible change |
-| --- | --- | --- |
-| Ordinary active `PatternPreview` without compiledFn/blendCompiledFn | Registry source, including custom/imported/accepted AI source; isolated in this candidate | Optimize full-resolution batching; expand stress/platform proof |
-| `SceneExpressionEditor` mounted `PatternPreview` with `createSceneExpressionPreviewRenderer().compiledFn` | The bundled adapter resolves each segment's registry pattern, which may be custom/imported, then executes that source natively | Factor Flow coordinate/index/time remapping into a data-only sample transform; send resolved source strings and remapped sample arguments to this service; preserve existing compiledFn API for trusted callers |
-| `PatternLabPreview` mounted `PatternPreview` with `workerColorLookup(frame)` | Bundled callback only looks up already returned RGB arrays; the callback itself executes no pattern source | Keep this trusted data lookup; separately audit/migrate upstream same-origin Lab execution if custom source support is added |
-| `patternLabPatternAdapter`, layers / source looks / bake | Main base and layer generators require built-in registry identity; section-mix functions also compile IDs and need a source-provenance audit | Verify every section-mix branch is bundled-source-only, then isolate any custom-source branch; do not label every callback hostile or every Worker safe |
-| Layout `useLayoutCanvasInteraction` | Mounted Layout uses registry source via synchronous per-strip/default render | Replace its useMemo render with a coalesced async owner retaining prior valid frames, then reuse existing strip/physical/mirror mapping |
-| `sceneExpressionRecording` / Flow bake | Registry sources and optional native Flow callback; batching yields do not interrupt a stuck pixel | Apply the data-only Flow remapping above, then await isolated frame batches with abort/deadline ownership |
-| AI draft validation/probes | Narrow separate validator plus native compile/probe/render | Preserve validation and move runtime probes and render through isolated sample/frame jobs; no validator weakening |
-| Reachable `?v=3` legacy Studio | Separate native compiler/helpers/evaluator and mounted preview/export/AI paths | Build a dialect-specific isolated runtime preserving legacy helper/RGB semantics, then migrate preview/export owners |
-| Mapper app editor/import/thumbnail/run | Separate native compiler/evaluator | Add mapper dialect runtime and async preview/frame owner; retain helper/evaluator differences |
-| Mapper controller / deferred Pi compiler | Separate native functions outside active Studio path | Separate runtime audit; no server-execution claim made |
-
-`LiveStrand`, `LivePreviewRow` and `LedStage` in `v3/lw-pattern.jsx` currently have
-no mounted consumer in that file. The earlier audit named these definitions as
-execution surfaces; they are not evidence of an active entry path. This
-candidate leaves those unused helpers unchanged and tests/migrates the real
-`PatternPreview` path instead.
-
-Immediate continuation: Flow's data-only sample remapping plus Layout's async
-frame owner are the next reachable custom-source paths. The same 8k throughput
-limit applies, so optimize the protocol before widening full-resolution use.
-Do not merge/deploy this draft as a completed security fix.
+Combined unit verification passed **3,044 tests** and the public production build.
+Combined browser results are recorded with the integration receipt rather than
+inferred from the individual PRs. Earlier 3,027-unit and first-pass performance
+figures above describe the original PR392 checkpoint only. Source proof does not
+establish production headers, installed bytes, physical hardware acceptance or
+complete executable-pattern security closure.

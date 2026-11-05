@@ -1,11 +1,11 @@
 import compilerSource from './patterns.js?raw';
+import legacyCompilerSource from '../../src-v3/lib/patterns.js?raw';
 import bootstrapSource from './pattern-isolation/bootstrap.js?raw';
+import { packPatternFrameJob, unpackPatternSample } from './patternFrameProtocol.js';
 
-const MAX_SAMPLES = 32000;
-const MAX_SOURCE = 65536;
 // Share the existing compiler/evaluator verbatim, including its restrictions,
 // helpers and RGB conversion. They are compatibility checks, NOT isolation.
-const runtime = compilerSource.replace(/export function /g, 'function ')
+const runtimeFor = source => source.replace(/export function /g, 'function ')
   .replace(/^if \(import\.meta\.hot\).*$/m, '');
 
 function workerRuntime() {
@@ -15,8 +15,9 @@ function workerRuntime() {
     Object.defineProperty(globalThis, name, { value: undefined, writable: false, configurable: false });
   }
 }
-const workerSource = `(${workerRuntime.toString()})();\n${runtime}\n
+const workerSourceFor = dialect => `(${workerRuntime.toString()})();\n${dialect === 'legacy-v3' ? '(() => {' : ''}\n${runtimeFor(dialect === 'legacy-v3' ? legacyCompilerSource : compilerSource)}\n
 const send = postMessage.bind(globalThis);
+const unpack = ${unpackPatternSample.toString()};
 let previousSources = '', functions = [];
 onmessage = ({data}) => {
   try {
@@ -25,18 +26,27 @@ onmessage = ({data}) => {
       functions = data.sources.map(source => { const result = compile(source); if (result.error) throw new Error(result.error); return result.fn; });
       previousSources = key;
     }
-    const pixels = new Uint8Array(data.samples.length * 3);
-    for (let i = 0; i < data.samples.length; i++) {
-      const sample = data.samples[i];
-      const color = evalPixel(functions[sample.source], ...sample.args);
+    const pixels = new Uint8Array(data.sampleCount * 3);
+    const args = Array(21);
+    let currentFunction;
+    const invoke = () => currentFunction(...${dialect === 'legacy-v3' ? 'args.slice(0, 15)' : 'args'});
+    for (let i = 0; i < data.sampleCount; i++) {
+      unpack(data, i, args);
+      currentFunction = functions[data.sourceIndices[i]];
+      // Reuse the existing result normalization and error RGB. The invocation
+      // already contains the exact native argument values for this fixed dialect.
+      const color = evalPixel(invoke);
       pixels[i*3] = color.r; pixels[i*3+1] = color.g; pixels[i*3+2] = color.b;
     }
     send({id: data.id, pixels}, [pixels.buffer]);
   } catch (error) { send({id: data.id, error: String(error?.message || 'Pattern failed').slice(0, 300)}); }
-};`;
+};
+${dialect === 'legacy-v3' ? '})();' : ''}`;
 
 /** One outstanding frame per owner. No execution fallback is permitted. */
-export function createPatternFrameService({ deadlineMs = 500, startupMs = 3000 } = {}) {
+export function createPatternFrameService({ deadlineMs = 500, startupMs = 3000, dialect = 'modern' } = {}) {
+  if (dialect !== 'modern' && dialect !== 'legacy-v3') throw new Error('Unsupported pattern dialect.');
+  const workerSource = workerSourceFor(dialect);
   let frame = null, port = null, ready = null, pending = null;
   let disposed = false, serial = 0, sourcesKey = null, cancelStartup = null;
 
@@ -86,14 +96,7 @@ export function createPatternFrameService({ deadlineMs = 500, startupMs = 3000 }
     async render({ sources, samples }) {
       if (disposed) throw new Error('Pattern service disposed.');
       if (pending) throw new Error('Pattern frame already pending.');
-      if (!Array.isArray(sources) || !sources.length || sources.length > 64 || sources.some(s => typeof s !== 'string' || s.length > MAX_SOURCE)
-        || !Array.isArray(samples) || samples.length > MAX_SAMPLES
-        || samples.some(s => !Number.isInteger(s?.source) || s.source < 0 || s.source >= sources.length || !Array.isArray(s.args) || s.args.length > 17)) {
-        throw new Error('Pattern frame exceeds input budget.');
-      }
-      // Structured clone handles Maps/typed arrays elsewhere; samples are plain
-      // numeric/JSON pattern arguments. Bound total clone volume before sending.
-      if (JSON.stringify({ sources, samples }).length > 8_000_000) throw new Error('Pattern frame exceeds byte budget.');
+      const packet = packPatternFrameJob({ sources, samples }, { argumentCount: dialect === 'legacy-v3' ? 15 : 21 });
       const key = JSON.stringify(sources);
       if (sourcesKey !== null && key !== sourcesKey) teardown();
       await initialize();
@@ -104,7 +107,10 @@ export function createPatternFrameService({ deadlineMs = 500, startupMs = 3000 }
         const id = ++serial;
         const timer = setTimeout(() => fail(new Error('Pattern execution deadline exceeded.')), deadlineMs);
         pending = { id, length: samples.length * 3, resolve, reject, timer };
-        port.postMessage({ type: 'render', job: { id, sources, samples } });
+        // Bootstrap's fixed sample-count metadata stays compatible; all pixel
+        // argument data travels as bounded buffers rather than nested arrays.
+        port.postMessage({ type: 'render', job: { id, ...packet, samples: { length: packet.sampleCount } } },
+          [packet.numbers.buffer, packet.tags.buffer, packet.sourceIndices.buffer]);
       });
     },
     dispose() { disposed = true; fail(new Error('Pattern service disposed.')); },

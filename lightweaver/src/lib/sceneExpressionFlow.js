@@ -1,7 +1,16 @@
 import { compilePattern, resolvePatternParams } from './frameEngine.js';
+import { isBuiltInPattern } from './patternRegistry.js';
 import { resolveSceneExpressionSelection } from './sceneExpressionTargets.js';
 
 const sourceKey = (stripId, sourceLed) => `${stripId}:${sourceLed}`;
+
+/** Native scene rendering accepts resolved bundled source IDs only. Card-bank
+ * metadata can name a source absent from this Studio; never let saved custom
+ * assets fill that gap. Registry lookup resolves bundled entries first.
+ */
+export function compileBundledScenePattern(patternId) {
+  return isBuiltInPattern(patternId) ? compilePattern(patternId) : null;
+}
 
 /**
  * Adapt the existing pixel renderer to one logical route without changing any
@@ -9,7 +18,7 @@ const sourceKey = (stripId, sourceLed) => `${stripId}:${sourceLed}`;
  * original x/y coordinates; only effect index/progress and domain identity move.
  */
 export function createSceneExpressionPreviewRenderer({
-  assignments = [], catalog, segments = [], compile = compilePattern,
+  assignments = [], catalog, segments = [], compile = compileBundledScenePattern,
   stateByStrip = {}, getFlowTime = null,
 } = {}) {
   const errors = [];
