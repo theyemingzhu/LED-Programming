@@ -15,12 +15,12 @@ async function importedArtwork(page: any) {
   });
   await page.getByTestId('artwork-create-all-strips').click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
-  await page.locator('.la-strip-row').first().click({ position: { x: 8, y: 8 } });
+  await page.locator('.la-strip-row .layer-name').first().click();
 }
 
 async function divideFirst(page: any) {
   await importedArtwork(page);
-  const count = page.locator('.la-strip-row .la-row-count input').first();
+  const count = page.getByRole('spinbutton', { name: 'Inner halo LED count', exact: true });
   await count.fill('60');
   await count.blur();
   await expect(count).toHaveValue('60');
@@ -30,29 +30,38 @@ async function divideFirst(page: any) {
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
 }
 
-const rowCount = (page: any, index: number) => page.locator('.la-strip-row .la-row-count input').nth(index);
+// Count controls belong to the selected inspector, not the compact strip row.
+// Select each section through its visible name before reading or editing it.
+async function sectionCount(page: any, index: number) {
+  const row = page.locator('.la-strip-row').nth(index);
+  const sectionId = await row.locator('..').getAttribute('data-strip-id');
+  await row.locator('.layer-name').click();
+  await expect(page.getByTestId('connected-child')).toHaveAttribute('data-section-id', sectionId);
+  return page.getByTestId('connected-section-editor').getByRole('spinbutton', { name: / LED count$/ });
+}
 const savedFamilies = (page: any) => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.layout?.sectionFamilies || []);
 
 test('connected section count edits preserve family identity, Undo, and reload', async ({ page }) => {
   await divideFirst(page);
   await expect(page.getByTestId('connected-child')).toHaveCount(1);
-  const before = [Number(await rowCount(page, 0).inputValue()), Number(await rowCount(page, 1).inputValue())];
+  const before = [Number(await (await sectionCount(page, 0)).inputValue()), Number(await (await sectionCount(page, 1)).inputValue())];
   expect(before[0] + before[1]).toBe(60);
   await expect.poll(() => savedFamilies(page)).toHaveLength(1);
   const familyBefore = await savedFamilies(page);
-  await rowCount(page, 0).fill('20');
-  await rowCount(page, 0).blur();
-  await expect(rowCount(page, 0)).toHaveValue('20');
-  await expect(rowCount(page, 1)).toHaveValue(String(before[1]));
+  const firstCount = await sectionCount(page, 0);
+  await firstCount.fill('20');
+  await firstCount.blur();
+  await expect(firstCount).toHaveValue('20');
+  await expect(await sectionCount(page, 1)).toHaveValue(String(before[1]));
   await page.getByTitle(/Undo/).first().click();
-  await expect(rowCount(page, 0)).toHaveValue(String(before[0]));
+  await expect(await sectionCount(page, 0)).toHaveValue(String(before[0]));
   await expect.poll(() => savedFamilies(page)).toEqual(familyBefore);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || 'null')?.layout?.strips?.length)).toBe(4);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.locator('.la-strip-row')).toHaveCount(4);
-  await page.locator('.la-strip-row').first().click({ position: { x: 8, y: 8 } });
+  await page.locator('.la-strip-row .layer-name').first().click();
   await expect(page.getByTestId('connected-child')).toHaveCount(1);
-  await expect(rowCount(page, 0)).toHaveValue(String(before[0]));
+  await expect(await sectionCount(page, 0)).toHaveValue(String(before[0]));
 });
 
 test('locked connected section refuses Add split without changing saved family', async ({ page }) => {
@@ -66,7 +75,7 @@ test('locked connected section refuses Add split without changing saved family',
     localStorage.setItem('lw_autosave_v3', JSON.stringify(saved));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('.la-strip-row').first().click({ position: { x: 8, y: 8 } });
+  await page.locator('.la-strip-row .layer-name').first().click();
   await expect(page.getByTestId('connected-add-split')).toBeDisabled();
   await expect(savedFamilies(page)).resolves.toEqual(before);
 });
@@ -75,14 +84,14 @@ test('selected section owns its look and GPIO; merging requires a shared GPIO', 
   await divideFirst(page);
   const secondRow = page.locator('.la-strip-row').nth(1);
   const secondId = await secondRow.locator('..').getAttribute('data-strip-id');
-  await secondRow.click({ position: { x: 8, y: 8 } });
+  await secondRow.locator('.layer-name').click();
   await expect(page.getByTestId(`strip-callout-${secondId}`)).toHaveAttribute('data-selected', 'true');
   await secondRow.getByTestId('layout-section-pattern-action').click();
   await page.getByRole('dialog', { name: /Choose pattern for/ }).getByRole('button', { name: 'Plasma', exact: true }).click();
   await expect(secondRow).toContainText('Plasma');
   await expect(page.locator('.la-strip-row').first()).toContainText('Aurora');
   await page.getByRole('combobox', { name: 'Inner halo 2 GPIO override' }).selectOption('17');
-  await page.locator('.la-strip-row').first().click({ position: { x: 8, y: 8 } });
+  await page.locator('.la-strip-row .layer-name').first().click();
   const merge = page.getByTestId('connected-merge');
   await expect(merge).toBeDisabled();
   await page.getByRole('combobox', { name: /shared GPIO output/ }).selectOption('16');
