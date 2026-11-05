@@ -29,8 +29,9 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 - [ ] Keep one filled button on Layout while the symmetry offer shows _(band: agent-runnable)_ _(effort: quick)_
   "Mirror the two sides" and "Install on card" are both filled orange while the offer card is up.
 
-- [ ] Get the 14 long-red Layout browser specs green, or decide each is stale _(band: agent-runnable)_ _(effort: deep)_
-  Measured 2026-09-29: the same 14 fail on main b4b90ad5 and on the mirror-sets branch (connected-section-editor x3, layout-inspector-density x3, layout-multi-gpio x2, layout-section-overview, layout-selected-strip-editor, layout-strip-identity x2, layout-strip-split x2). None are in the PR lanes.
+- [ ] Recheck the remaining Layout browser cases from the September baseline _(band: agent-runnable)_ _(effort: deep)_
+  Historical measurement, 2026-09-29: the same 14 failed on main b4b90ad5 and on the mirror-sets branch (connected-section-editor x3, layout-inspector-density x3, layout-multi-gpio x2, layout-section-overview, layout-selected-strip-editor, layout-strip-identity x2, layout-strip-split x2). That is a dated baseline, not the current failure count.
+  Requalified 2026-11-05 against source candidate deb287d1: all three `connected-section-editor` cases pass after replacing stale row-count selectors with the selected section's inspector controls. Count totals, sibling independence, family identity, Undo/reload, wiring locks, per-section looks and GPIO merge rules remain asserted. The other listed groups were not rerun in this repair, and this file remains outside the PR lanes.
 
 - [ ] Let a strip in a symmetry side use reflection points, and add a way to remove reflection points _(band: agent-runnable)_ _(effort: moderate)_
   Symmetry sides exclude strips with reflection points, and the Layout inspector has no control to remove them once added.
