@@ -1,5 +1,5 @@
 import { test, expect, type Route } from '@playwright/test';
-import { choosePattern } from './helpers/pattern-lab.ts';
+import { choosePattern, openControls } from './helpers/pattern-lab.ts';
 
 const AUTOSAVE_KEY = 'lw_autosave_v3';
 let cardMutationRequests: string[];
@@ -118,3 +118,82 @@ test('a saved layered recording reopens its complete recipe in Lab', async ({ pa
   expect(assetId).toBeTruthy();
   expect(cardMutationRequests).toEqual([]);
 });
+
+for (const family of ['Lab', 'Flow'] as const) {
+  test(`saved ${family} recording reports its baked choice after mode changes and reload`, async ({ page }, testInfo) => {
+    const saved = await page.evaluate(async ({ key, family }) => {
+      const { createDefaultProject } = await import('/src/lib/projectModel.js');
+      const { createPatternLabRecipe } = await import('/src/lib/patternLabRecipe.js');
+      const { bakePatternLabRecipe } = await import('/src/lib/lwseqBake.js');
+      const { bakeSceneExpressionFlow } = await import('/src/lib/sceneExpressionRecording.js');
+      const { compileWiring } = await import('/src/lib/wiringCompiler.js');
+      const { classifyPatternLabCompatibility } = await import('/src/lib/patternLabCompatibility.js');
+      const { createPatternLabHandoff, applyPatternLabHandoff } = await import('/src/lib/patternLabHandoff.js');
+      const { createRecordedSequenceAsset, applyRecordedSequenceAsset } = await import('/src/lib/recordedSequenceAsset.js');
+      const project = createDefaultProject(); project.id = `saved-${family}-choice`; project.name = `${family} recorded sides`;
+      const strips = ['left', 'right'].map((id, i) => ({ ...project.layout.strips[0], id, name: id, pixelCount: 2,
+        pathData: `M ${i * 50} 0 L ${i * 50 + 10} 20`, pixels: [{ x: i * 50, y: 0 }, { x: i * 50 + 10, y: 20 }] }));
+      const symmetry = { fold: 2, orientation: 'mirror', sides: strips.map((s, i) => ({ id: `side-${i + 1}`, label: s.name, stripIds: [s.id] })) };
+      const wiring = { version: 1, locked: true, verified: true, outputs: [{ id: 'one', name: 'One', pin: 16, runIds: ['left', 'right'] }],
+        runs: strips.map(s => ({ id: s.id, type: 'strip', verified: true, directionPolicy: 'fixed', physicalDirection: 'source-forward', seamLed: null, source: { stripId: s.id, from: 0, to: 1 } })) };
+      const context = { strips, wiring, compiledWiring: compileWiring({ strips, wiring, symmetry }), symmetry, sidesMirrored: true, fps: 1 };
+      let result;
+      if (family === 'Lab') {
+        const recipe = createPatternLabRecipe({ id: 'recorded-choice', name: 'Saved Lab choice', evolution: { enabled: true, durationSeconds: 300 } });
+        const compatibility = classifyPatternLabCompatibility(recipe, { metrics: { pixelCount: 4, fps: 1, operationsPerFrame: 100, stateBytes: 256, framebufferBytes: 12, nativeConfigBytes: 256, microSdBytes: 1_000_000 } });
+        result = await createPatternLabHandoff({ ...context, recipe, compatibility, bakeResult: await bakePatternLabRecipe({ ...context, recipe }) });
+        if (result.kind !== 'sequence') throw new Error(JSON.stringify(result));
+        project.devices.standaloneController = await applyPatternLabHandoff({}, result);
+      } else {
+        const scene = { format: 'lightweaver-expression-scene', version: 1, id: 'recorded-flow', name: 'Saved Flow choice',
+          defaults: { pattern: { rendererId: 'chase', speed: 1 }, color: { kind: 'palette', colors: ['#ff0000', '#000000'] }, intensity: { brightness: 1 } },
+          steps: [{ id: 'one', label: 'One', holdMs: 1000, transitionFromPrevious: { mode: 'cut', durationMs: 0 }, assignments: [{ selection: { domain: 'continuous', areaIds: ['strip:left', 'strip:right'], flow: { version: 1, directions: {} } } }] }], loop: { mode: 'once' } };
+        result = await createRecordedSequenceAsset({ kind: 'expression-scene', bakeResult: await bakeSceneExpressionFlow({ ...context, scene }) });
+        project.devices.standaloneController = await applyRecordedSequenceAsset({}, result);
+      }
+      Object.assign(project.layout, { strips, wiring, symmetry, starterPending: false, sectionFamilies: [], layerGroups: [], patchBoard: null });
+      project.pattern.sidesMirrored = true; localStorage.setItem(key, JSON.stringify(project));
+      return { asset: JSON.stringify(project.devices.standaloneController.sequenceAssets[0]), label: result.asset.label };
+    }, { key: AUTOSAVE_KEY, family });
+    await page.reload();
+    await page.goto('/#screen=playlist');
+    const library = page.getByTestId('playlist-recordings');
+    await expect(library).toContainText('Recorded: Mirrored.');
+    await library.getByRole('button', { name: new RegExp(saved.label) }).click();
+    await expect(page.locator('.pl-row')).toContainText('Recorded: Mirrored.');
+    const changeMode = async (mirrored: boolean) => {
+      await expect.poll(async () => page.evaluate(key => JSON.parse(localStorage.getItem(key) || '{}').devices?.standaloneController?.sequenceAssets?.length, AUTOSAVE_KEY)).toBe(1);
+      await page.evaluate(({ key, mirrored }) => { const project = JSON.parse(localStorage.getItem(key)!); project.pattern.sidesMirrored = mirrored; localStorage.setItem(key, JSON.stringify(project)); }, { key: AUTOSAVE_KEY, mirrored });
+      await page.reload();
+    };
+    await changeMode(false);
+    await expect(library).toContainText('Recorded: Mirrored · source: Own. Record again to update.');
+    await expect(page.locator('.pl-row')).toContainText('Recorded: Mirrored · source: Own. Record again to update.');
+    await page.screenshot({ path: testInfo.outputPath(`saved-${family}-playlist-desktop.png`), fullPage: true });
+    await page.goto('/#screen=pattern-lab');
+    await page.getByTestId('pattern-lab-runtime-tools').locator(':scope > summary').click();
+    const lab = page.getByTestId('pattern-lab-saved-recordings'); await lab.locator(':scope > summary').click();
+    await expect(lab).toContainText('Recorded: Mirrored · source: Own. Record again to update.');
+    await lab.scrollIntoViewIfNeeded(); await page.screenshot({ path: testInfo.outputPath(`saved-${family}-choice-desktop.png`), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 }); await openControls(page); await lab.scrollIntoViewIfNeeded(); await expect(lab).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`saved-${family}-choice-phone.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.goto('/#screen=playlist');
+    await expect(page.locator('.pl-row')).toContainText('Recorded: Mirrored · source: Own. Record again to update.');
+    await page.locator('.pl-row').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`saved-${family}-playlist-phone.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    // Its own saved look wins over the project and an unrelated selected look.
+    await page.evaluate(key => {
+      const project = JSON.parse(localStorage.getItem(key)!);
+      const asset = project.devices.standaloneController.sequenceAssets[0];
+      project.devices.standaloneController.looks = [{ id: asset.id, label: 'Recording owner', sidesMirrored: true }, { id: 'unrelated', label: 'Unrelated selected look', sidesMirrored: false }];
+      project.devices.standaloneController.activeLookId = 'unrelated';
+      localStorage.setItem(key, JSON.stringify(project));
+    }, AUTOSAVE_KEY);
+    await page.reload(); await expect(library).toContainText('Recorded: Mirrored.');
+    await changeMode(true); await page.goto('/#screen=playlist'); await expect(library).toContainText('Recorded: Mirrored.');
+    const currentAsset = await page.evaluate(key => JSON.stringify(JSON.parse(localStorage.getItem(key)!).devices.standaloneController.sequenceAssets[0]), AUTOSAVE_KEY);
+    expect(currentAsset).toBe(saved.asset); expect(cardMutationRequests).toEqual([]);
+  });
+}

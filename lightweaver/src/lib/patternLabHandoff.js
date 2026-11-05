@@ -1,3 +1,4 @@
+import { bakedSideModeFields } from './recordingSideMode.js';
 import { resolvePatternLabVisualLook } from './patternLabLookColor.js';
 import { CARD_HARDWARE_CONTRACT } from './cardHardwareContract.js';
 import {
@@ -311,6 +312,7 @@ function normalizeSequenceAsset(value) {
     byteLength,
     ...(!isFlow ? { recipe: { id: recipeId, name: recipeName, sha256: manifest.recipeSha256 } } : {}),
     source,
+    ...bakedSideModeFields(value.bakedSideMode),
     ...(media ? { media: clone(media) } : {}),
     ...(validMediaRef ? { mediaRef: clone(mediaRef) } : {}),
     outputs,
@@ -435,7 +437,7 @@ function bytesToBase64(bytes) {
   return btoa(binary);
 }
 
-function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
+function makeSequenceResult({ normalizedRecipe, verified, controller, id, bakedSideMode }) {
   const label = boundedString(normalizedRecipe.name, MAX_LABEL_LENGTH) || 'Pattern Lab sequence';
   const file = `/sequences/${verified.manifest.lwseqSha256}.lwseq`;
   const sidecarFile = `${file}.json`;
@@ -454,6 +456,7 @@ function makeSequenceResult({ normalizedRecipe, verified, controller, id }) {
       sha256: verified.manifest.recipeSha256,
     },
     outputs: verified.outputs,
+    ...bakedSideModeFields(bakedSideMode),
     manifest: verified.manifest,
     mediaRef: { kind: 'indexeddb-sha256', byteLength: verified.bytes.byteLength,
       sha256: verified.manifest.lwseqSha256 },
@@ -645,7 +648,7 @@ export async function createPatternLabHandoff({
         render: render || { symSettings }, audioLanes: normalized.offlineAudio,
       });
       const id = replacing?.id || uniqueId(normalized.name, new Set(existing.map(asset => asset.id)));
-      const result = makeSequenceResult({ normalizedRecipe: normalized, verified, controller, id });
+      const result = makeSequenceResult({ normalizedRecipe: normalized, verified, controller, id, bakedSideMode: bakeResult.bakedSideMode });
       return replacing ? { ...result, replaceSequenceAssetId: id } : result;
     } catch (error) {
       if (error?.code === 'bake-stale-recipe') {
