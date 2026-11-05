@@ -1,5 +1,5 @@
 /**
- * patterns.js — sandboxed pattern compiler + per-pixel evaluator
+ * patterns.js — native mapper pattern compiler + per-pixel evaluator
  *
  * Pattern code is a JS function body.  Available names:
  *
@@ -14,7 +14,8 @@
  * Return { r, g, b } each 0–255.
  *
  * Security: new Function() is eval-equivalent.
- * This is a local-only creative tool — that's fine.
+ * The compiler alone is not a sandbox. Mounted authored code executes through
+ * the mapper dialect of the shared opaque-origin frame service.
  */
 
 // ── Built-in helpers injected into every compiled pattern ─────────────────
@@ -183,14 +184,17 @@ function samplePalette(t) {
  *                        palette, beat, beatSin, params + builtins
  * @returns {{ fn: Function|null, error: string|null }}
  */
-// Names shadowed to `undefined` inside compiled pattern bodies. Passing these as
-// trailing parameters (with no matching argument) blocks pattern code from
-// reaching network/storage/eval globals even though this is a local design tool.
+// Direct-name compatibility restrictions, not a security boundary: computed
+// constructors and the global receiver bypass shadow arguments. Isolation is
+// supplied by the frame owner, which retains this mapper dialect verbatim.
 const SHADOWED_GLOBALS = [
   'window', 'document', 'globalThis', 'self', 'fetch', 'XMLHttpRequest',
   'WebSocket', 'localStorage', 'sessionStorage', 'indexedDB', 'eval', 'Function',
   'setTimeout', 'setInterval', 'requestAnimationFrame', 'process',
 ];
+
+const compiledSources = new WeakMap();
+export function getCompiledPatternSource(fn) { return compiledSources.get(fn) ?? null; }
 
 export function compile(code) {
   try {
@@ -200,6 +204,7 @@ export function compile(code) {
       ...SHADOWED_GLOBALS,
       BUILTINS + '\n' + code,
     );
+    compiledSources.set(fn, String(code));
     return { fn, error: null };
   } catch (e) {
     return { fn: null, error: e.message };
@@ -207,7 +212,7 @@ export function compile(code) {
 }
 
 /**
- * Evaluate one pixel.  Safe — runtime errors return dim red.
+ * Evaluate one pixel. Thrown errors return dim red; loops require owner termination.
  *
  * @param {Function}  fn
  * @param {number}    index

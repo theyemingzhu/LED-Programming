@@ -26,7 +26,7 @@ function claimFreePort() {
 // wait for HMR — so the 500 ms polling watcher vite.config.js turns on for
 // `npm run dev` is pure stat-sweeping here, and it competes with the browser
 // launch on a small CI runner.
-export async function openAppPage() {
+export async function openAppPage({ headless = true } = {}) {
   const port = await claimFreePort();
   const server = await createServer({
     root: appRoot,
@@ -37,7 +37,7 @@ export async function openAppPage() {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless });
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/`);
 
