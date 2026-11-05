@@ -30,8 +30,9 @@ A timeout rejects the frame and removes the iframe/Worker session. Unmount
 cancels pending work. The preview displays a stopped/unavailable message and
 never falls back to native evaluation after an isolation failure. Changing the
 selected pattern resets the visible error and can start a clean session.
-The current source protocol limits 64 sources, 64 KiB each, 32,000 samples,
-8 MB serialized input and 96,000 output bytes.
+The current source protocol limits 64 sources,
+65,536 JavaScript string code units each, 32,000 samples,
+8 million serialized JSON code units and 96,000 output bytes.
 
 Native Workers do not provide strict per-pattern heap/instruction quotas.
 A hostile pattern may exhaust renderer/browser memory before termination or
