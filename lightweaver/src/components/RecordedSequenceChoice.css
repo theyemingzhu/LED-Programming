@@ -1,0 +1,3 @@
+.recorded-sequence-choice { display: block; color: var(--text-lo); font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.pl-src-nm.pl-recording-copy { display: block; min-width: 0; text-align: left; }
+.pl-recording-copy > span { display: block; }
