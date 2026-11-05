@@ -2068,7 +2068,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.plab-back {
+.plab-back,
+.plab-build-scene {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2084,7 +2085,9 @@
   font-size: 12px;
   cursor: pointer;
 }
-.plab-back:hover { color: var(--text-hi); background: var(--bg-elev); }
+.plab-build-scene { min-height: 44px; }
+.plab-build-scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plab-back:hover, .plab-build-scene:hover { color: var(--text-hi); background: var(--bg-elev); }
 .plab-back svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .plab-toolbar .plab-workflow { margin-left: 10px; }
 @media (max-width: 1200px) { .plab-lede { display: none; } }
@@ -2377,6 +2380,19 @@
    and the title is the one thing that must survive every width. */
 @media (max-width: 1000px) {
   .plab-back { display: none; }
+  .plab-workflow-step { min-width: 44px; height: 44px; min-height: 44px; }
+}
+
+/* Keep the existing scene action beside the workflow on a phone. Its text is
+   the action; the repeated Lab mark and workflow labels can yield while the
+   four icon buttons retain their accessible names and full touch targets. */
+@media (max-width: 640px) {
+  .plab-toolbar-mark { display: none; }
+  .plab-toolbar-identity { flex: 0 0 auto; }
+  .plab-build-scene { margin-left: 0; padding-inline: 8px; white-space: nowrap; }
+  .plab-toolbar .plab-workflow { gap: 0; margin-left: auto; }
+  .plab-workflow-step { width: 44px; padding: 0; }
+  .plab-workflow-label { display: none; }
 }
 
 .plab-private-library.plab-compact-step { padding: 0; }

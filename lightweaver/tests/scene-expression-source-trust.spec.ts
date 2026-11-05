@@ -46,9 +46,6 @@ test('mounted Flow rejects imported missing-bank source, preserves alias, and ke
 });
 
 test('actual Studio Flow controls reject an imported source shadow and keep the valid alias usable', async ({ page }, testInfo) => {
-  // The existing Lab scene-entry button is hidden below 1000px. Enter through
-  // its normal desktop UI, then inspect the open editor at phone width.
-  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/#screen=pattern-lab', { waitUntil: 'domcontentloaded' });
   await page.evaluate(async () => {
     const { saveCustomPattern } = await import('/src/lib/customPatterns.js');
