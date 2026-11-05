@@ -185,13 +185,15 @@ export function renderPixelFrame({
   normBounds = null,
   perStripFns = new Map(),
   patternParamsById = {},
+  patternCompiler = compilePattern,
+  evaluatePixel = evalPixel,
 }) {
   const visibleStrips = strips.filter(s => s && !s.hidden);
   const allPts = visibleStrips.flatMap(s => s.pts || []);
   const bounds = normBounds || getNormBounds(allPts);
   const pixelCount = allPts.length;
-  const fnA = activeFn || compilePattern(patternId);
-  const fnB = blendFn || (blendPatternId ? compilePattern(blendPatternId) : null);
+  const fnA = activeFn || patternCompiler(patternId);
+  const fnB = blendFn || (blendPatternId ? patternCompiler(blendPatternId) : null);
   const resolvedParams = resolvePatternParams(patternId, params);
   const blendParams = blendPatternId
     ? resolvePatternParams(blendPatternId, patternParamsById[blendPatternId] || {})
@@ -239,11 +241,11 @@ export function renderPixelFrame({
 
       let r = 0, g = 0, b = 0;
       if (stripFn) {
-        const colA = evalPixel(stripFn, evalIndex, nx, ny, stripT, stripTime, pixelCount, paletteNorm, beat, beatSin, stripParams, s.id, stripProgress, bass, mid, hi);
+        const colA = evaluatePixel(stripFn, evalIndex, nx, ny, stripT, stripTime, pixelCount, paletteNorm, beat, beatSin, stripParams, s.id, stripProgress, bass, mid, hi);
         r = colA.r; g = colA.g; b = colA.b;
 
         if (fnB && blendAmount > 0) {
-          const colB = evalPixel(fnB, evalIndex, nx, ny, stripT, stripTime, pixelCount, paletteNorm, beat, beatSin, blendParams, s.id, stripProgress, bass, mid, hi);
+          const colB = evaluatePixel(fnB, evalIndex, nx, ny, stripT, stripTime, pixelCount, paletteNorm, beat, beatSin, blendParams, s.id, stripProgress, bass, mid, hi);
           if (blendType === 'fade-black') {
             const a2 = blendAmount < 0.5 ? 1 - blendAmount * 2 : 0;
             const b2 = blendAmount > 0.5 ? (blendAmount - 0.5) * 2 : 0;

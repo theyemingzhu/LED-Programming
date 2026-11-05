@@ -1,11 +1,12 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import {
   buildGammaLut,
-  compilePattern,
   normalizePalette,
-  renderPixelFrame,
   resolvePatternParams,
 } from '../lib/frameEngine.js';
+import { createPatternFrameService } from '../../src/lib/patternFrameIsolation.js';
+import { renderLegacyPixelFrame } from '../lib/isolatedFrameEngine.js';
+import { useLegacyPatternSourceKey, legacyPatternError } from '../lib/useIsolatedPatternFrame.js';
 import { smoothPixelFrame } from '../lib/motionSmoothing.js';
 import {
   activeLedCoreAlpha,
@@ -112,12 +113,8 @@ function renderFrame(canvas, t, p) {
   const toX = x => x * scale + offX;
   const toY = y => y * scale + offY;
 
-  const frame = renderPixelFrame({
-    t, strips: visibleStrips, patternId: p.patternId, activeFn, blendFn,
-    blendAmount, blendType, params: resolvedParams, paletteNorm, bpm,
-    masterSpeed, masterBrightness, masterSaturation, masterHueShift,
-    gammaLUT, symSettings, audioBands, normBounds, perStripFns, patternParamsById,
-  });
+  const frame = p.isolatedFrame;
+  if (!frame) throw new Error('Isolated legacy frame required.');
   const framePixels = smoothPixelFrame(frame.pixels, previousPixels, {
     mode: motionSmoothing,
     dt: frameDt,
@@ -321,6 +318,9 @@ export function LEDPreview({
   heat = false,
 }) {
   const canvasRef = useRef(null);
+  const serviceRef = useRef(null);
+  const generationRef = useRef(0);
+  const [previewError,setPreviewError] = useState(null);
   const rafRef    = useRef(0);
   const tRef      = useRef(0);
   const previousPixelsRef = useRef(null);
@@ -334,38 +334,15 @@ export function LEDPreview({
     [paletteProp],
   );
 
-  const resolvedParams = useMemo(() => {
-    return resolvePatternParams(patternId, params);
-  }, [patternId, params]);
-
-  const activeFn = useMemo(() => {
-    if (compiledFn) return compiledFn;
-    return compilePattern(patternId);
-  }, [patternId, compiledFn]);
-
-  const blendFn = useMemo(() => {
-    if (!blendPatternId) return null;
-    if (blendCompiledFn) return blendCompiledFn;
-    return compilePattern(blendPatternId);
-  }, [blendPatternId, blendCompiledFn]);
+  const resolvedParams = resolvePatternParams(patternId, params);
+  const activeFn = compiledFn;
+  const blendFn = blendPatternId ? blendCompiledFn : null;
 
   const gammaLUT = useMemo(() => {
     return buildGammaLut(gammaEnabled, gammaValue);
   }, [gammaEnabled, gammaValue]);
 
   const useRealStrips = Array.isArray(propStrips);
-
-  const perStripFns = useMemo(() => {
-    if (!useRealStrips) return new Map();
-    const map = new Map();
-    for (const s of (propStrips || [])) {
-      if (s.patternId && !map.has(s.patternId)) {
-        const fn = compilePattern(s.patternId);
-        if (fn) map.set(s.patternId, fn);
-      }
-    }
-    return map;
-  }, [propStrips, useRealStrips]);
 
   const realStripData = useMemo(() => {
     if (!useRealStrips) return [];
@@ -448,11 +425,21 @@ export function LEDPreview({
     [visibleStrips],
   );
 
+  const sourceKey = useLegacyPatternSourceKey({ strips:visibleStrips, patternId, activeFn, blendFn,
+    blendSourcePatternId:blendPatternId, blendAmount });
+  useEffect(() => {
+    generationRef.current++;
+    setPreviewError(null);
+    const service = createPatternFrameService({dialect:'legacy-v3'});
+    serviceRef.current = service;
+    return () => { service.dispose(); if (serviceRef.current === service) serviceRef.current = null; };
+  }, [sourceKey]);
+
   // Refresh propsRef every render — RAF closure always reads fresh values
   propsRef.current = {
     patternId, playing, speed, glow, dotSize, bpm, resolvedParams, patternParamsById, paletteNorm,
-    activeFn, blendFn, blendAmount, blendType,
-    perStripFns, visibleStrips, normBounds, medianSpacing, pixelCount,
+    activeFn, blendFn, blendPatternId, blendAmount, blendType,
+    visibleStrips, normBounds, medianSpacing, pixelCount,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,
     gammaLUT, symSettings, audioBands, vb, heat,
     motionSmoothing, targetFps,
@@ -490,6 +477,7 @@ export function LEDPreview({
   // Single persistent RAF loop — never restarts, reads fresh propsRef each tick
   useEffect(() => {
     let last = performance.now();
+    let alive = true, busy = false, failedGeneration = null;
     const tick = (now) => {
       const p = propsRef.current;
       const dt = Math.min((now - last) / 1000, 0.1); last = now;
@@ -516,23 +504,38 @@ export function LEDPreview({
         const renderDt = lastRenderRef.current
           ? Math.min((now - lastRenderRef.current) / 1000, 0.25)
           : dt;
-        const pixels = renderFrame(canvas, tRef.current, {
-          ...p,
-          previousPixels: previousPixelsRef.current,
-          frameDt: renderDt,
-        });
-        previousPixelsRef.current = pixels;
-        staticRenderRef.current = now;
-        lastRenderRef.current = now;
-        if (p.playing) p.onFrame?.(pixels);
+        if (!busy && failedGeneration !== generationRef.current && serviceRef.current) {
+          busy = true;
+          const generation = generationRef.current;
+          const t = tRef.current;
+          renderLegacyPixelFrame({
+            t, strips:p.visibleStrips, patternId:p.patternId, activeFn:p.activeFn, blendFn:p.blendFn,
+            blendSourcePatternId:p.blendPatternId, blendAmount:p.blendAmount, blendType:p.blendType,
+            params:p.resolvedParams, patternParamsById:p.patternParamsById, paletteNorm:p.paletteNorm,
+            bpm:p.bpm, masterSpeed:p.masterSpeed, masterBrightness:p.masterBrightness,
+            masterSaturation:p.masterSaturation, masterHueShift:p.masterHueShift,
+            gammaLUT:p.gammaLUT, symSettings:p.symSettings, audioBands:p.audioBands, normBounds:p.normBounds,
+          }, serviceRef.current).then(frame => {
+            if (!alive || generation !== generationRef.current) return;
+            const pixels = renderFrame(canvas,t,{...p,isolatedFrame:frame,previousPixels:previousPixelsRef.current,frameDt:renderDt});
+            previousPixelsRef.current = pixels;
+            staticRenderRef.current = now;
+            lastRenderRef.current = now;
+            if (p.playing) p.onFrame?.(pixels);
+          }).catch(error => {
+            if (!alive || generation !== generationRef.current) return;
+            failedGeneration = generation;
+            setPreviewError(legacyPatternError(error));
+          }).finally(() => { busy = false; });
+        }
       }
 
       rafRef.current = requestAnimationFrame(tick);
     };
     fpsRef.current.last = performance.now();
     rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => { alive = false; cancelAnimationFrame(rafRef.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', '--preview-bg': 'transparent' }}/>;
+  return <div style={{position:'relative',width:'100%',height:'100%',minHeight:0}}><canvas ref={canvasRef} style={{ width:'100%',height:'100%',display:'block','--preview-bg':'transparent' }}/>{previewError && <span role="status" style={{position:'absolute',inset:0,display:'grid',placeItems:'center',padding:16,background:'var(--bg, #14161c)'}}>{previewError}</span>}</div>;
 }

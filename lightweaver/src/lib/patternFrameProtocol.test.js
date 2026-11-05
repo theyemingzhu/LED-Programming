@@ -60,3 +60,11 @@ test('full 32000-sample boundary remains supported by the packed allocation budg
   assert.ok(packed.transportBytes < 8_000_000);
   assert.equal(unpackPatternSample(packed, 31999)[0], 31999);
 });
+
+test('fixed legacy dialect ignores modern reflection fields and keeps its 15-argument contract', () => {
+  const args = [1, 0, 0, 0, 0, 1, [], 0, 0, {}, 0, 0, 0, 0, 0, null];
+  const packed = packPatternFrameJob({ sources: ['return 0;'], samples: [sample(args)] }, { argumentCount: 15 });
+  assert.equal(packed.sourceIndices[0], 0, 'legacy never reads the six modern reflection arguments');
+  assert.deepEqual(unpackPatternSample(packed, 0).slice(0,15), args.slice(0,15));
+  assert.throws(() => packPatternFrameJob({ sources:[source],samples:[] }, {argumentCount:16}), /dialect/);
+});

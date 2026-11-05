@@ -6,7 +6,8 @@ const MAX_TRANSPORT_BYTES = 8_000_000;
  * Tags 0..4 represent number/undefined/null/true/false; tag 5 references a
  * deduplicated value table (palettes, params, strip IDs and reflection points).
  */
-export function packPatternFrameJob({ sources, samples }) {
+export function packPatternFrameJob({ sources, samples }, { argumentCount = 21 } = {}) {
+  if (argumentCount !== 21 && argumentCount !== 15) throw new Error('Unsupported pattern dialect.');
   if (!Array.isArray(sources) || !sources.length || sources.length > 64
     || sources.some(source => typeof source !== 'string' || source.length > 65536)
     || !Array.isArray(samples) || samples.length > MAX_SAMPLES
@@ -51,8 +52,8 @@ export function packPatternFrameJob({ sources, samples }) {
     const sample = samples[i], input = sample.args;
     // evalPixel catches an explicit null reflection before invoking the source.
     // Index 255 is outside the bounded source table and keeps that error RGB.
-    if (input[15] === null) { sourceIndices[i] = 255; continue; }
-    const reflection = input[15] ?? {};
+    if (argumentCount === 21 && input[15] === null) { sourceIndices[i] = 255; continue; }
+    const reflection = argumentCount === 21 ? input[15] ?? {} : {};
     for (let j = 0; j < 10; j++) args[j] = input[j];
     args[10] = input[10] || 0;
     args[11] = input[11] || 0;
