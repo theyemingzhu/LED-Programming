@@ -1,9 +1,16 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { ProjectProvider } from './state/ProjectContext.jsx';
+import { ProjectProvider, useProject } from './state/ProjectContext.jsx';
 import { TopBar, LeftRail, StatusBar } from './components/Chrome.jsx';
 import { KeyboardHelp } from './components/KeyboardHelp.jsx';
 import { CommandPalette } from './components/CommandPalette.jsx';
 import { useTweaks, TweaksPanel } from './components/Tweaks.jsx';
+
+// Layout mirrors its editing state into the project. A new imported project
+// must start a new editing session before old local effects can write it back.
+function ProjectLayoutScreen() {
+  const { projectRevision } = useProject();
+  return <LayoutScreen key={projectRevision}/>;
+}
 
 const LoadingPane = () => <div className="lw-loading-pane">Loading...</div>;
 
@@ -131,7 +138,7 @@ export default function App() {
           <Suspense fallback={<LoadingPane/>}>
             {screen === 'patterns' && <PatternsScreen/>}
             {screen === 'playlist' && <PlaylistScreen/>}
-            {screen === 'layout' && <LayoutScreen/>}
+            {screen === 'layout' && <ProjectLayoutScreen/>}
             {screen === 'settings' && <ChipScreen/>}
             {screen === 'flash' && <FlashScreen/>}
             {screen === 'installer' && <InstallerScreen/>}
