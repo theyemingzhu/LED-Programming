@@ -29,6 +29,8 @@ import {
   detectPlatformCapabilities,
 } from '../../lib/platformCapabilities.js';
 import { getActiveUsbInspection, releaseActiveUsbInspection } from '../../lib/usbInspection.js';
+import { findPairedCardUsbAddress } from '../../lib/cardUsbReconnect.js';
+import { usbWifiErrorMessage } from '../../lib/usbWifiProvisioning.js';
 import { BridgeResumePanel } from './BridgeResumePanel.jsx';
 
 function platformCapabilities() {
@@ -85,6 +87,8 @@ export function CardConnectionCenter({
   const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [usbInspection, setUsbInspection] = useState(null);
   const [usbReleaseState, setUsbReleaseState] = useState('idle');
+  const [usbLocateBusy, setUsbLocateBusy] = useState(false);
+  const [usbLocatedHost, setUsbLocatedHost] = useState('');
   const capabilities = useMemo(platformCapabilities, [open]);
   const rememberedCard = readPersistedCardIdentity();
   const hasKnownCard = Boolean(link.card?.id || link.expectedCard?.id || rememberedCard?.id);
@@ -154,6 +158,7 @@ export function CardConnectionCenter({
     setConnectionDetailsOpen(false);
     setUsbInspection(getActiveUsbInspection());
     setUsbReleaseState('idle');
+    setUsbLocatedHost('');
     const timer = window.setTimeout(() => panelRef.current?.focus(), 0);
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -240,6 +245,24 @@ export function CardConnectionCenter({
     } catch {
       setUsbReleaseState('error');
     }
+  };
+
+  const locatePairedCardOverUsb = async () => {
+    if (usbLocateBusy || !navigator.serial?.requestPort) return;
+    setFailure('');
+    setUsbLocatedHost('');
+    setUsbLocateBusy(true);
+    try {
+      const port = await navigator.serial.requestPort();
+      const address = await findPairedCardUsbAddress({ port, pairedCard: readPersistedCardIdentity() });
+      setHost(address);
+      setUsbLocatedHost(address);
+    } catch (error) {
+      if (error?.name !== 'NotFoundError') setFailure(error?.code === 'identity_mismatch'
+        ? 'USB answered with a different card or firmware build. Inspect this exact card over USB to refresh its saved identity.'
+        : error?.code ? usbWifiErrorMessage(error.code)
+          : error?.message || 'USB could not read this card’s Wi-Fi address.');
+    } finally { setUsbLocateBusy(false); }
   };
 
   const connect = async (rawHost = '', { bridge = false } = {}) => {
@@ -572,6 +595,8 @@ export function CardConnectionCenter({
                   commissioningReconnectHost(readCardCommissioning(), link, {
                     storedHost: readStoredCardHost(),
                     history: readStoredCardHostHistory(),
+                    pairedAddress: rememberedCard?.id === link.expectedCard?.id
+                      ? rememberedCard.address : '',
                   }),
                   { bridge: true },
                 )}
@@ -721,6 +746,17 @@ export function CardConnectionCenter({
           {directAttempt?.reason === 'wrong-card' && (
             <p role="alert">Expected {directAttempt.expectedCardId || 'the paired card'}; found {directAttempt.observedCardId || 'a different card'}. No card changes are available.</p>
           )}
+        </div>
+      )}
+
+      {!usbInspection && hasKnownCard && capabilities.canWebSerialInstall && !directAttempt?.connected && (
+        <div className="card-connection-actions">
+          <button type="button" className="btn" onClick={locatePairedCardOverUsb} disabled={usbLocateBusy}>
+            {usbLocateBusy ? 'Reading card over USB…' : 'Find this card over USB'}
+          </button>
+          {usbLocatedHost && <button type="button" className="btn primary" onClick={() => connectCardLink(usbLocatedHost)}>
+            Open card at {usbLocatedHost}
+          </button>}
         </div>
       )}
 

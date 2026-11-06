@@ -529,19 +529,22 @@ function usableReconnectHost(value = '') {
 export function commissioningReconnectHost(flow, link = {}, {
   storedHost = '',
   history = [],
+  pairedAddress = '',
 } = {}) {
-  return commissioningReconnectHosts(flow, link, { storedHost, history })[0];
+  return commissioningReconnectHosts(flow, link, { storedHost, history, pairedAddress })[0];
 }
 
 export function commissioningReconnectHosts(flow, link = {}, {
   storedHost = '',
   history = [],
+  pairedAddress = '',
 } = {}) {
   const candidates = [
     link?.handoffCorrelation?.host,
     flow?.stationHost,
-    link?.host,
+    pairedAddress,
     storedHost,
+    link?.host,
     ...(Array.isArray(history) ? history : []),
     'lightweaver.local',
   ];

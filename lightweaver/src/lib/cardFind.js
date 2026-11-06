@@ -24,6 +24,7 @@
 import {
   canPushDirectlyToCard,
   discoverCardStatus,
+  isLocalCardHost,
   normalizeCardHost,
   readStoredCardHost,
   readStoredCardHostHistory,
@@ -34,8 +35,13 @@ import { readPersistedCardIdentity } from './cardIdentity.js';
 import { connectCardLink, reportDirectCardStatus } from './cardLink.js';
 import { pairDiscoveredCard } from './cardPairing.js';
 
-function bestKnownHost(link = {}) {
-  return normalizeCardHost(link.host || readStoredCardHost() || '') || DEFAULT_CARD_HOST;
+export function bestKnownHost(link = {}) {
+  const paired = readPersistedCardIdentity();
+  const candidates = [paired?.address, readStoredCardHost(), link.host]
+    .map(value => value ? normalizeCardHost(value) : '')
+    .filter(value => value && value !== '192.168.4.1' && isLocalCardHost(value));
+  const stationIp = candidates.find(value => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value));
+  return stationIp || candidates[0] || DEFAULT_CARD_HOST;
 }
 
 /**

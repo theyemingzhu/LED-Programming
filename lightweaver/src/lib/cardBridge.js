@@ -3,6 +3,7 @@ import {
   isLocalCardHost,
   normalizeCardHost,
   readStoredCardHost,
+  rememberVerifiedPairedCardHost,
   writeStoredCardHost,
 } from './cardConnection.js';
 import {
@@ -885,7 +886,7 @@ function applyAuthoritativeBridgeStatus(status, host = bridgeHost, { verifiedCur
         host: normalizeCardHost(host), lifecycle: bridgeLifecycle })
       : null;
     bridgeIdentityError = bridgeRuntimeCommandReady ? '' : 'runtime-not-ready';
-    writeStoredCardHost(host);
+    rememberVerifiedPairedCardHost(host, identity.id);
     return Object.freeze({
       verified: true,
       commandReady: status.commandReady === true,

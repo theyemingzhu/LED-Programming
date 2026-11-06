@@ -30,7 +30,7 @@ import {
   sendCardBridgeRequest,
 } from '../../lib/cardBridge.js';
 import { acceptWifiHandoff } from '../../lib/cardWifiHandoff.js';
-import { setupNetworkLabelForCardId, setupNetworkSsidForCardId } from '../../lib/cardIdentity.js';
+import { readPersistedCardIdentity, setupNetworkLabelForCardId, setupNetworkSsidForCardId } from '../../lib/cardIdentity.js';
 import { classifyCardReadiness } from '../../lib/cardReadiness.js';
 import { STRIP_DISCOVERY_ROUTE } from '../../lib/cardAction.js';
 import { assignProductionWiringIdentity } from '../../lib/productionWiringIdentity.js';
@@ -863,6 +863,8 @@ export function CardCommissioningPanel({
   const reconnectHosts = commissioningReconnectHosts(flow, link, {
     storedHost: readStoredCardHost(),
     history: readStoredCardHostHistory(),
+    pairedAddress: readPersistedCardIdentity()?.id === flow?.expectedCard?.id
+      ? readPersistedCardIdentity()?.address : '',
   });
   const pollHost = reconnectHosts[0];
   useEffect(() => {

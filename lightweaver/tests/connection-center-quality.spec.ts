@@ -110,6 +110,20 @@ async function seedRememberedCard(page) {
   await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
+test('a remembered card offers read-only USB address recovery beside Wi-Fi reconnect', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: { requestPort: async () => ({}) } });
+  });
+  await seedRememberedCard(page);
+  await installOpenSpy(page);
+  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Find this card over USB' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Look for the card again' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__openedUrls?.at(-1) || '')).toContain('192.168.18.70');
+});
+
 async function openInstallationDoor(page) {
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   // Fail at the DEFAULT card host, not the remembered address. cardLink drops

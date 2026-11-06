@@ -121,6 +121,9 @@ export function isLocalCardHost(rawHost = '') {
 }
 
 export function ordinaryCardRecoveryHost(_rawHost = '', expectedCard = readPersistedCardIdentity()) {
+  const pairedAddress = normalizeCardHost(expectedCard?.address || '');
+  if (pairedAddress !== '192.168.4.1' && isIpv4(pairedAddress)
+    && isLocalCardHost(pairedAddress)) return pairedAddress;
   const pairedHostname = normalizeCardHost(expectedCard?.hostname || '');
   if (
     pairedHostname.endsWith('.local')
@@ -198,8 +201,23 @@ function cardSpecificHosts(expectedCard = null) {
   const normalizedHostname = expectedCard.hostname ? normalizeCardHost(expectedCard.hostname) : '';
   const hostname = isLocalCardHost(normalizedHostname) ? normalizedHostname : '';
   const normalizedAddress = expectedCard.address ? normalizeCardHost(expectedCard.address) : '';
-  const address = isIpv4(normalizedAddress) && isLocalCardHost(normalizedAddress) ? normalizedAddress : '';
-  return [...new Set([hostname, address].filter(Boolean))];
+  const address = isIpv4(normalizedAddress) && isLocalCardHost(normalizedAddress)
+    && normalizedAddress !== '192.168.4.1' ? normalizedAddress : '';
+  return [...new Set([address, hostname].filter(Boolean))];
+}
+
+// A bridge reply may update a paired card's address only after its identity
+// was verified. Re-read pairing at commit time so a late reply for an old card
+// cannot overwrite a newer pairing or make a setup-AP address permanent.
+export function rememberVerifiedPairedCardHost(rawHost, cardId) {
+  const host = normalizeCardHost(rawHost);
+  const current = readPersistedCardIdentity();
+  if (!current?.id || current.id !== cardId || !isLocalCardHost(host)) return false;
+  writeStoredCardHost(host);
+  if (isIpv4(host) && host !== '192.168.4.1') {
+    return persistCardIdentity({ ...current, address: host });
+  }
+  return true;
 }
 
 export function candidateCardHosts(preferredHost = '', expectedCard = readPersistedCardIdentity()) {
