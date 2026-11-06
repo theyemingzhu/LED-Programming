@@ -63,6 +63,10 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (request.mode === 'navigate' && url.pathname === '/mapper.html') {
+    event.respondWith(networkFirst(request, '/mapper.html'));
+    return;
+  }
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request, '/index.html'));
     return;
@@ -86,7 +90,7 @@ export async function generateServiceWorker({ distDir = defaultDistDirectory } =
     .map(file => `/${file}`)
     .sort();
   const localShell = files
-    .filter(file => file === 'index.html' || file === 'manifest.webmanifest' || file.startsWith('fonts/'))
+    .filter(file => file === 'index.html' || file === 'mapper.html' || file === 'manifest.webmanifest' || file.startsWith('fonts/'))
     .map(file => `/${file}`);
   const precache = [...new Set(['/index.html', '/studio-release.json', ...localShell, ...hashedAssets])].sort();
   const release = JSON.parse(await readFile(resolve(directory, 'studio-release.json'), 'utf8'));

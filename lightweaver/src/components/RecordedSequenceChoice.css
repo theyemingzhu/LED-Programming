@@ -2,3 +2,7 @@
 .recorded-sequence-choice > span { white-space: nowrap; }
 .pl-src-nm.pl-recording-copy { display: block; min-width: 0; text-align: left; }
 .pl-recording-copy > span { display: block; }
+
+.recorded-sequence-choice .recording-freshness { color: var(--text-hi); }
+.recorded-sequence-choice .recording-update-status { white-space: normal; flex-basis: 100%; }
+.recording-rebake { font: inherit; padding: 2px 7px; min-height: 28px; }

@@ -91,6 +91,7 @@ function lightweaverApiPlugin() {
 export default defineConfig(({ mode }) => {
   const cardTarget = mode === 'card';
   return {
+    resolve: { dedupe: ['codemirror', '@codemirror/state', '@codemirror/view', '@codemirror/lang-javascript', '@codemirror/theme-one-dark', 'esptool-js'] },
     base: cardTarget ? '/studio/' : '/',
     publicDir: cardTarget ? false : 'public',
     plugins: cardTarget
@@ -114,6 +115,7 @@ export default defineConfig(({ mode }) => {
           ? resolve(__dirname, 'card.html')
           : {
               main: resolve(__dirname, 'index.html'),
+              mapper: resolve(__dirname, 'mapper.html'),
               visitor: resolve(__dirname, 'src/visitor/visitor.html'),
             },
       },

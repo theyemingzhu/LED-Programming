@@ -361,14 +361,14 @@ export default function PatternLabExport({
             role={handoffStatus.state === 'error' ? 'alert' : 'status'}
           >{handoffStatus.message}</p>
         )}
-        {sequenceAssets.length > 0 && <details className="plab-advanced" data-testid="pattern-lab-saved-recordings">
-          <summary>Saved recordings ({sequenceAssets.length})</summary>
+        {sequenceAssets.length > 0 && <section className="plab-saved-recordings" data-testid="pattern-lab-saved-recordings">
+          <h3>Saved recordings ({sequenceAssets.length})</h3>
           <p>Verified recording media is kept in this browser for card installation. If its source or artwork changes, record it again before installing.</p>
           <ul className="plab-recordings-list">{sequenceAssets.map(asset => <li key={asset.id}>
-            <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames<RecordedSequenceChoice asset={asset} /></span>{' '}
+            <span>{asset.label} · {formatCount(asset.manifest?.pixelCount)} LEDs · {formatCount(asset.manifest?.frameCount)} frames<RecordedSequenceChoice asset={asset} allowRebake /></span>{' '}
             <button type="button" className="btn" onClick={() => void onOpenSequenceAsset?.(asset)}>{asset.source?.kind === 'expression-scene' ? 'Edit scene' : 'Edit in Lab'}</button>
           </li>)}</ul>
-        </details>}
+        </section>}
       </div>
 
       <div className="plab-runtime-cleanup">

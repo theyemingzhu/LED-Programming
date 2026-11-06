@@ -5060,7 +5060,9 @@ _updateEmptyState();
 _updateScaleOverlay(); // Feature 13: initial scale overlay
 _initInspector();
 _updateUndoRedoUI();
-initFlash();
+if (document.body.dataset.studioMapper !== 'true') initFlash();
+
+export function studioMapperSnapshot() { return _serializeProject({ fullPatterns: true }); }
 // BPM CSS variable — initialise with default 120 BPM
 document.documentElement.style.setProperty('--bpm-interval', `${Math.round(60000 / 120)}ms`);
 

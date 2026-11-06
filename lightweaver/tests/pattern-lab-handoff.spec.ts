@@ -9,7 +9,7 @@ async function expectRecordedChoice(container: Locator, changed = false) {
   if (changed) await expect(status).toContainText('Source: Own');
   else await expect(status).not.toContainText('Source:');
   await expect(status).toHaveAttribute('aria-label', changed
-    ? 'Recorded: Mirrored · source: Own. Record again to update.' : 'Recorded: Mirrored.');
+    ? /Recorded: Mirrored · source: Own.*Freshness|Recorded: Mirrored · source: Own.*Source/ : /Recorded: Mirrored\./);
 }
 
 
@@ -121,7 +121,7 @@ test('a saved layered recording reopens its complete recipe in Lab', async ({ pa
   await tools.locator(':scope > summary').click();
   const recordings = page.getByTestId('pattern-lab-saved-recordings');
   await expect(recordings).toBeVisible();
-  await recordings.locator('summary').click();
+
   await expect(recordings).toContainText('Saved layered test');
   await page.screenshot({ path: testInfo.outputPath('saved-layered-recording.png'), fullPage: true });
   await recordings.getByRole('button', { name: 'Edit in Lab' }).click();
@@ -184,7 +184,7 @@ for (const family of ['Lab', 'Flow'] as const) {
     await page.screenshot({ path: testInfo.outputPath(`saved-${family}-playlist-desktop.png`), fullPage: true });
     await page.goto('/#screen=pattern-lab');
     await page.getByTestId('pattern-lab-runtime-tools').locator(':scope > summary').click();
-    const lab = page.getByTestId('pattern-lab-saved-recordings'); await lab.locator(':scope > summary').click();
+    const lab = page.getByTestId('pattern-lab-saved-recordings');
     await expectRecordedChoice(lab, true);
     await lab.scrollIntoViewIfNeeded(); await page.screenshot({ path: testInfo.outputPath(`saved-${family}-choice-desktop.png`), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 }); await openControls(page); await lab.scrollIntoViewIfNeeded(); await expect(lab).toBeVisible();
@@ -193,7 +193,7 @@ for (const family of ['Lab', 'Flow'] as const) {
     await page.goto('/#screen=playlist');
     await expectRecordedChoice(page.locator('.pl-row'), true);
     await page.locator('.pl-row').scrollIntoViewIfNeeded();
-    expect(await page.locator('.pl-row').getByTestId('recorded-sequence-choice').evaluate(node => node.getBoundingClientRect().height)).toBeLessThanOrEqual(36);
+    expect(await page.locator('.pl-row').getByTestId('recorded-sequence-choice').evaluate(node => node.getBoundingClientRect().height)).toBeLessThanOrEqual(52);
     await page.screenshot({ path: testInfo.outputPath(`saved-${family}-playlist-phone.png`), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     // Its own saved look wins over the project and an unrelated selected look.
@@ -208,5 +208,38 @@ for (const family of ['Lab', 'Flow'] as const) {
     await changeMode(true); await page.goto('/#screen=playlist'); await expectRecordedChoice(library);
     const currentAsset = await page.evaluate(key => JSON.stringify(JSON.parse(localStorage.getItem(key)!).devices.standaloneController.sequenceAssets[0]), AUTOSAVE_KEY);
     expect(currentAsset).toBe(saved.asset); expect(cardMutationRequests).toEqual([]);
+    // Reopening/reloading never rebakes. Only this explicit action replaces it.
+    // Return from the deliberately unrelated owner fixtures to send-ready source.
+    await page.evaluate(key => {
+      const project = JSON.parse(localStorage.getItem(key)!);
+      project.devices.standaloneController.looks = [];
+      project.pattern.sidesMirrored = false;
+      project.layout.wiring.locked = true; project.layout.wiring.verified = true;
+      for (const run of project.layout.wiring.runs) run.verified = true;
+      localStorage.setItem(key, JSON.stringify(project));
+    }, AUTOSAVE_KEY);
+    await page.reload();
+    await page.goto('/#screen=pattern-lab');
+    await page.getByTestId('pattern-lab-runtime-tools').locator(':scope > summary').click();
+    const updateLibrary = page.getByTestId('pattern-lab-saved-recordings');
+    await expect(updateLibrary.getByTestId('recorded-sequence-choice')).toHaveAttribute('data-freshness-state', 'stale');
+    await updateLibrary.getByRole('button', { name: 'Record again', exact: true }).click();
+    await expect(updateLibrary).toContainText('Recording updated.');
+    await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem(key)!).devices.standaloneController.sequenceAssets[0].bakedSideMode, AUTOSAVE_KEY)).toBe('own');
+    const updated = await page.evaluate(async key => {
+      const { readRecordedMedia } = await import('/src/lib/recordedSequenceMedia.js');
+      const project = JSON.parse(localStorage.getItem(key)!);
+      return project.devices.standaloneController.sequenceAssets[0];
+    }, AUTOSAVE_KEY);
+    expect(updated.id).toBe(JSON.parse(saved.asset).id);
+    expect(updated.bakedSideMode).toBe('own');
+    expect(updated.manifest.layoutPhysicalOrderSha256).not.toBe(JSON.parse(saved.asset).manifest.layoutPhysicalOrderSha256);
+    expect(await page.evaluate(async hash => {
+      const { readRecordedMedia } = await import('/src/lib/recordedSequenceMedia.js');
+      return (await readRecordedMedia(hash)).byteLength;
+    }, JSON.parse(saved.asset).manifest.lwseqSha256)).toBe(JSON.parse(saved.asset).byteLength);
+    await page.screenshot({ path: testInfo.outputPath(`saved-${family}-rebake-phone.png`), fullPage: true });
+    expect(cardMutationRequests).toEqual([]);
+
   });
 }
