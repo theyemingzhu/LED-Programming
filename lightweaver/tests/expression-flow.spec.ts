@@ -111,7 +111,7 @@ test('Flow route reorders and reverses stable sections without changing the inst
   await openControls(page);
   await page.getByTestId('pattern-lab-runtime-tools').locator(':scope > summary').click();
   const savedRecordings = page.getByTestId('pattern-lab-saved-recordings');
-  await savedRecordings.locator(':scope > summary').click();
+  await expect(savedRecordings).toBeVisible();
   await savedRecordings.getByRole('button', { name: 'Edit scene', exact: true }).click();
   await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
   await expect(page.getByLabel('Scene', { exact: true })).toHaveValue(recorded.source.payload.id);
