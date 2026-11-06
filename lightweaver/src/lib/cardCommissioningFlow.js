@@ -529,20 +529,30 @@ function usableReconnectHost(value = '') {
 export function commissioningReconnectHost(flow, link = {}, {
   storedHost = '',
   history = [],
+  pairedAddress = '',
 } = {}) {
-  return commissioningReconnectHosts(flow, link, { storedHost, history })[0];
+  return commissioningReconnectHosts(flow, link, { storedHost, history, pairedAddress })[0];
 }
 
 export function commissioningReconnectHosts(flow, link = {}, {
   storedHost = '',
   history = [],
+  pairedAddress = '',
 } = {}) {
-  const candidates = [
-    link?.handoffCorrelation?.host,
-    flow?.stationHost,
+  const authoritative = [link?.handoffCorrelation?.host, flow?.stationHost];
+  const remembered = [
+    pairedAddress,
     link?.host,
     storedHost,
     ...(Array.isArray(history) ? history : []),
+  ];
+  // A reachable station IP beats an unresolved mDNS name regardless of which
+  // browser field held it. The exact USB handoff and flow station host retain
+  // priority because they describe this commissioning attempt directly.
+  const candidates = [
+    ...authoritative,
+    ...remembered.filter(value => usableCardStationIp(value)),
+    ...remembered,
     'lightweaver.local',
   ];
   const hosts = [];

@@ -7,8 +7,25 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
-## Current Bench — USB/Wi-Fi reconnect — 2026-11-05
-Owner: primary. State: Bench connection passed; PR416 release-ready, not merged or deployed. Correct runtime ID is
+## Current Sprint — remembered-card reconnect — 2026-11-06
+Owner: primary. State: implementation and verification active on
+`codex/reconnect-all-paths-20261106`. Prior PR416 is shipped: independent
+production proof verified Studio build 2389 and firmware build 2320 for merged
+`b8bc1e874b3f083f117a87e178fb4db7a3b10ee1`.
+Current failure: Windows cannot resolve `lightweaver.local` although the same
+card answers at `192.168.18.50`; Studio used the hostname ahead of its verified
+IP and did not bind a successful bridge IP to the paired identity. Current
+candidate saves a verified same-card bridge IP, prefers paired station IP for
+reconnect, and offers read-only exact-card USB address discovery when DHCP moves
+the card. Focused connection unit tests 116/116 and production Vite build pass.
+Checkpoint Windows unit run has 3 unrelated/environment failures (CSP bootstrap
+byte hash under Windows line endings; temporary job artifact rename EPERM); focused
+browser regression and release gate are in progress. No firmware change or card
+write. Next: finish browser/checkpoint and release verification, then PR/merge,
+background publishing, and strict live proof before claiming shipped.
+
+## Previous Bench — USB/Wi-Fi reconnect — 2026-11-05
+Owner: primary. State: Bench connection passed; PR416 shipped, Studio build 2389, firmware build 2320. Correct runtime ID is
 `lw-40402bad4f7c` (ROM MAC bytes reversed in ID); the earlier derived ID was
 wrong. CH340 UART COM5 and native USB COM6 were correlated to the same chip.
 The pre-recovery active image was non-Lightweaver Arduino with an 8 MB layout;
@@ -36,10 +53,11 @@ regression had two flaky cases under CI retry; projects browser had one.
 Monolithic Windows gate lacked `c++`; isolated WSL initially lacked locked
 Mapper dependencies and `/private/tmp`; an obsolete Flow test selector was
 repaired in 784b3110. Passed stages were retained while failed suites reran
-focused or standalone. Public Studio remains build 2385 at 7e338a06; local
-fix is not deployed. Remembered card ID before recovery remains unknown.
-Next: finalize PR416, merge authorized browser-only revision and start exact
-background-release observer; report shipped only after independent live proof.
+focused or standalone. Last observed public Studio was build 2385 at 7e338a06.
+PR416 merged as `b8bc1e874b3f083f117a87e178fb4db7a3b10ee1`; independent
+live proof passed through the non-LLM observer. Remembered card ID before
+recovery remains unknown. The newer reconnect Sprint above addresses the
+remaining stale-host path.
 Evidence and one next step: docs/bench-sessions/2026-11-05-lw-40402bad4f7c-usb-wifi-reconnect.md.
 
 ## Current delivery — card-first Studio resume — 2026-09-29

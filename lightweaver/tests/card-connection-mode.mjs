@@ -37,8 +37,8 @@ assert.deepEqual(
     hostname: 'lightweaver-ddeeff',
     address: '192.168.18.70',
   }).slice(0, 4),
-  ['lightweaver-ddeeff.local', '192.168.18.70', 'lightweaver.local', '192.168.4.1'],
-  'the remembered card-specific hostname and replaceable address must precede generic fallbacks',
+  ['192.168.18.70', 'lightweaver-ddeeff.local', 'lightweaver.local', '192.168.4.1'],
+  'the remembered card station IP must precede mDNS and generic fallbacks',
 );
 assert.equal(
   candidateCardHosts('lightweaver.local', {

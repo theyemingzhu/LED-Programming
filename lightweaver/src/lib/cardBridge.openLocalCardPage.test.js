@@ -686,6 +686,7 @@ test('ordinary navigation persists only after paired identity and readiness are 
   });
   await statusPromise;
   assert.equal(values.get('lw_chip_card_host'), '192.168.50.30');
+  assert.equal(JSON.parse(values.get('lw_card_identity_v1')).address, '192.168.50.30');
 });
 
 test('a wrong-card identity response never persists the speculative candidate', async () => {
@@ -710,6 +711,7 @@ test('a wrong-card identity response never persists the speculative candidate', 
   await new Promise(resolve => setTimeout(resolve, 0));
 
   assert.equal(values.get('lw_chip_card_host'), '192.168.50.33');
+  assert.equal(JSON.parse(values.get('lw_card_identity_v1')).address, undefined);
   assert.equal(getCardBridgeState().identityError, 'wrong-card');
 });
 

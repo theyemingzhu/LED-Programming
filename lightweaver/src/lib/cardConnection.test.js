@@ -191,7 +191,7 @@ async function withFakeBrowser(browser, run) {
   }
 }
 
-test('ordinary recovery leaves a stale literal address for the paired stable hostname', () => {
+test('ordinary recovery alternates a failed paired IP and local name', () => {
   assert.equal(typeof cardConnection.ordinaryCardRecoveryHost, 'function');
   assert.equal(cardConnection.ordinaryCardRecoveryHost('192.168.18.70', {
     id: 'lw-gallery',
@@ -202,12 +202,15 @@ test('ordinary recovery leaves a stale literal address for the paired stable hos
     id: 'lw-gallery',
     hostname: 'gallery-card.local',
     address: '192.168.18.70',
-  }), 'gallery-card.local');
+  }), '192.168.18.70');
   assert.equal(cardConnection.ordinaryCardRecoveryHost('192.168.18.70', {
     id: 'lw-gallery',
     hostname: 'card.example.com',
     address: '192.168.18.70',
-  }), 'lightweaver.local');
+  }), '192.168.18.70');
+  assert.equal(cardConnection.ordinaryCardRecoveryHost('192.168.4.1', {
+    id: 'lw-gallery', hostname: 'gallery-card.local', address: '192.168.4.1',
+  }), 'gallery-card.local');
 });
 
 test('URL bootstrap adopts a private card IP before mDNS and dispatches one host change', async () => {
@@ -231,6 +234,28 @@ test('URL bootstrap adopts a private card IP before mDNS and dispatches one host
     ]);
     assert.equal(cardConnection.bootstrapCardHostFromLocation(), '192.168.18.70');
     assert.equal(browser.events.length, 1);
+  });
+});
+
+test('a paired station IP precedes its mDNS name on reconnect', () => {
+  const hosts = cardConnection.candidateCardHosts('lightweaver.local', {
+    id: 'lw-gallery', hostname: 'lightweaver.local', address: '192.168.18.50',
+  });
+  assert.ok(hosts.indexOf('192.168.18.50') < hosts.indexOf('lightweaver.local'));
+});
+
+test('verified host persistence refuses another card and setup AP address', async () => {
+  const browser = fakeBrowser('', 'lightweaver.local');
+  await withFakeBrowser(browser, () => {
+    browser.window.localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id: 'lw-gallery', address: '192.168.18.50',
+    }));
+    assert.equal(cardConnection.rememberVerifiedPairedCardHost('192.168.18.99', 'lw-other'), false);
+    assert.equal(cardConnection.readStoredCardHost(), 'lightweaver.local');
+    assert.equal(cardConnection.rememberVerifiedPairedCardHost('192.168.4.1', 'lw-gallery'), true);
+    assert.equal(JSON.parse(browser.window.localStorage.getItem('lw_card_identity_v1')).address, '192.168.18.50');
+    assert.equal(cardConnection.rememberVerifiedPairedCardHost('192.168.18.51', 'lw-gallery'), true);
+    assert.equal(JSON.parse(browser.window.localStorage.getItem('lw_card_identity_v1')).address, '192.168.18.51');
   });
 });
 
