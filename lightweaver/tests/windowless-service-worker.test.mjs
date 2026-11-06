@@ -10,6 +10,7 @@ test('generated public worker is deterministic, offline-first for shell, and nev
   const directory = await mkdtemp(join(tmpdir(), 'lw-windowless-sw-'));
   try {
     await mkdir(join(directory, 'assets'));
+    await writeFile(join(directory, 'mapper.html'), '<main>Mapper</main>');
     await writeFile(join(directory, 'index.html'), '<main>Lightweaver Studio</main>');
     await writeFile(join(directory, 'assets', 'main-a1b2c3d4.js'), 'console.log("studio")');
     await writeFile(join(directory, 'manifest.webmanifest'), '{"name":"Lightweaver Studio"}');
@@ -38,6 +39,8 @@ test('generated public worker is deterministic, offline-first for shell, and nev
     assert.match(worker, /SKIP_WAITING/);
     assert.doesNotMatch(worker, /install[\s\S]{0,300}skipWaiting\(/, 'install must leave updates waiting');
     assert.ok(first.precache.includes('/assets/main-a1b2c3d4.js'));
+    assert.ok(first.precache.includes('/mapper.html'));
+    assert.match(worker, /networkFirst\(request, '\/mapper\.html'\)/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

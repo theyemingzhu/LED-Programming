@@ -1,0 +1,6 @@
+.mapper-workspace { display:flex; flex-direction:column; height:calc(100dvh - 106px); min-height:550px; min-width:0; gap:8px; padding:12px; }
+.mapper-workspace iframe { width:100%; flex:1; min-height:380px; border:1px solid var(--border); border-radius:5px; background:#080808; }
+.mapper-heading, .mapper-handoff { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.mapper-heading p { flex:1; margin:0; font-size:12px; min-width:180px; }
+.mapper-handoff span { flex:1; min-width:180px; font-size:12px; }
+@media(max-width:700px) { .mapper-workspace { padding:8px; height:calc(100dvh - 116px); } .mapper-heading p { font-size:11px; } }

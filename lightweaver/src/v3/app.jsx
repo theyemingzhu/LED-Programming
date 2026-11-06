@@ -137,6 +137,9 @@ import {
   compareSceneExpressionPreviewTopology,
 } from '../scene-expression/sceneExpressionPreviewTopology.js';
 
+const MapperScreen = __LIGHTWEAVER_BUILD_TARGET__ === 'card-local'
+  ? () => <p>Open the public Studio to use Mapper.</p>
+  : lazy(() => import('../mapper/MapperScreen.jsx'));
 const PatternScreen = lazy(() => import('./lw-pattern.jsx').then(module => ({ default: module.PatternScreen })));
 const PatternLabScreen = lazy(() => import('../pattern-lab/PatternLabScreen.jsx'));
 const PlaylistScreen = lazy(() => import('./lw-playlist.jsx').then(module => ({ default: module.PlaylistScreen })));
@@ -162,7 +165,7 @@ const STUDIO_SCREENS = [
 // (pattern-lab used to live here too, as a depth door off Patterns. It is in
 //  the rail now: it is where looks are MADE, and burying the making of them
 //  behind a button on another screen meant most people never found it.)
-const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery', 'pattern-lab'];
+const SCREEN_KEYS = [...STUDIO_SCREENS.map(screen => screen.id), 'discovery', 'pattern-lab', 'mapper'];
 // Screens that actually render a light preview the short-strip control changes.
 const PREVIEW_SCREENS = new Set(['layout', 'pattern', 'pattern-lab', 'playlist', 'show']);
 // Transports that are on their way to an answer, not out of ideas. A card
@@ -172,6 +175,7 @@ const CARD_LINK_SETTLING_STATES = new Set(['connecting', 'reconnecting', 'reconn
 const SCREEN_BY_ID = {
   ...Object.fromEntries(STUDIO_SCREENS.map(screen => [screen.id, screen.Component])),
   'pattern-lab': PatternLabScreen,
+  mapper: MapperScreen,
 };
 const PROTECTED_COMMISSIONING_STAGES = new Set(['install-safely', 'set-up-card', 'check-lights']);
 const SCREEN_RECOVERY_KEY = 'lw_screen_recovery_v1';

@@ -3,6 +3,26 @@ import { test, expect } from '@playwright/test';
 test.use({ serviceWorkers: 'allow' });
 
 test('real legacy project import isolates saved custom source, stops loops and recovers', async ({ page }) => {
+  // Observe the actual mounted service's packet and matching reply, without
+  // replacing execution. A default-layout ready frame cannot satisfy this probe.
+  await page.addInitScript(() => {
+    const post = MessagePort.prototype.postMessage;
+    MessagePort.prototype.postMessage = function(message: any, ...args: any[]) {
+      if (message?.type === 'render' && message.job) {
+        const job = message.job;
+        const frame = { sources: [...job.sources], sampleCount: job.sampleCount,
+          stripIds: job.values.filter((value: unknown) => typeof value === 'string'), completed: false };
+        (window as any).__legacyMountedFrame = frame;
+        const replied = (event: MessageEvent) => {
+          if (event.data?.id !== job.id) return;
+          frame.completed = event.data.pixels instanceof Uint8Array && event.data.pixels.length === job.sampleCount * 3;
+          this.removeEventListener('message', replied);
+        };
+        this.addEventListener('message', replied);
+      }
+      return Reflect.apply(post, this, [message, ...args]);
+    };
+  });
   await page.route('**/*', route => ['blob:','data:'].includes(new URL(route.request().url()).protocol) || new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort());
   await page.routeWebSocket('**', socket => {
     if(new URL(socket.url()).hostname === 'localhost') socket.connectToServer(); else socket.close();
@@ -19,10 +39,21 @@ test('real legacy project import isolates saved custom source, stops loops and r
     (window as any).__legacyCanary = 173;
     return value;
   });
-  const load = async (name: string) => page.locator('.lw-topbar input[type=file]').setInputFiles({ name:'synthetic.lw.json', mimeType:'application/json', buffer:Buffer.from(JSON.stringify({ ...project, name })) });
+  const expectSyntheticFrame = async (source: string) => {
+    await expect(page.locator('[data-strip-id]')).toHaveCount(1);
+    await expect(page.locator('[data-strip-id="synthetic-strip"]')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as any).__legacyMountedFrame)).toEqual({
+      sources: [source], sampleCount: 2, stripIds: ['synthetic-strip'], completed: true,
+    });
+    await expect(page.locator('[data-legacy-pattern-state]')).toHaveAttribute('data-legacy-pattern-state','ready');
+    await expect(page.locator('iframe[data-pattern-isolation]')).toHaveCount(1);
+  };
+  const load = async (name: string) => {
+    await page.locator('.lw-topbar input[type=file]').setInputFiles({ name:'synthetic.lw.json', mimeType:'application/json', buffer:Buffer.from(JSON.stringify({ ...project, name })) });
+    await expectSyntheticFrame('Math.__legacyMutation = 173; return [this.__legacyCanary || 0, 255, 0];');
+  };
   await load('Legacy synthetic source');
   await expect(page.locator('.lw-projbreadcrumbs strong')).toHaveText('Legacy synthetic source');
-  await page.waitForTimeout(100);
   // Before isolation the actual mounted Layout useMemo writes 173 here.
   expect(await page.evaluate(() => (Math as any).__legacyMutation)).toBeUndefined();
   await expect(page.locator('[data-legacy-pattern-state]')).toHaveAttribute('data-legacy-pattern-state','ready');
@@ -36,6 +67,7 @@ test('real legacy project import isolates saved custom source, stops loops and r
     localStorage.setItem('lw_custom_patterns', JSON.stringify([{ id:'custom_legacy_synthetic', name:'Synthetic', code:'return [0,1,0];' }]));
     window.dispatchEvent(new CustomEvent('lw:custom-updated'));
   });
+  await expectSyntheticFrame('return [0,1,0];');
   await expect(page.locator('[data-legacy-pattern-state]')).toHaveAttribute('data-legacy-pattern-state','ready');
   await expect(page.getByRole('status').filter({hasText:'Pattern preview stopped'})).toHaveCount(0);
   await page.screenshot({path:'/private/tmp/lightweaver-legacy-isolated-layout.png',fullPage:true});

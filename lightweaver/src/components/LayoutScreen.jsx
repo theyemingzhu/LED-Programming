@@ -498,6 +498,7 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
             <button className="tb-btn" onClick={() => loadRef.current?.click()} title="Import a project file">
               {TbIcon.load}Import
             </button>
+            {__LIGHTWEAVER_BUILD_TARGET__ !== 'card-local' && <a className="tb-btn" href="#screen=mapper">Mapper</a>}
           </div>
 
           <div className="tb-div"/>

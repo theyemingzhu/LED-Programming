@@ -18,7 +18,9 @@ import { oneDark }                                   from '@codemirror/theme-one
 
 import { CanvasManager }                             from './canvas.js';
 import { samplePath, assignIndices, createPhysicalFrame } from './mapper.js';
-import { compile, evalPixel, _evalErrorState }       from './patterns.js';
+import { compile }                                  from './patterns.js';
+import { mapperFrameInputs } from './mapper-frame-inputs.js';
+import { createMapperPatternRunner }                 from './isolated-patterns.js';
 import { PreviewRenderer }                           from './preview.js';
 import { toWLEDIndexMap, toCoordinateMap, toFastLED, toCSV, download } from './export.js';
 import { initFlash }                                 from './flash.js';
@@ -145,6 +147,19 @@ const state = {
   _crossfadeStart:   null, // timestamp
   _crossfadeTarget:  null, // scene id to reach
 };
+
+const _patternRunner = createMapperPatternRunner();
+let _renderEpoch = 0;
+let _lastPaintTs = null;
+function _invalidatePatternFrame() {
+  _renderEpoch++;
+  _patternRunner.invalidate();
+  document.body.dataset.patternState = state.animating ? 'preparing' : 'paused';
+}
+function _cacheCompiledPattern(id,fn) {
+  if(state.compiledFns.get(id)!==fn) { state.compiledFns.set(id,fn); _invalidatePatternFrame(); }
+}
+window.addEventListener('pagehide',()=>stopAnim());
 
 // BUG 4: reusable Uint8Array buffer for WLED push — resized only when pixel count changes,
 // avoids per-frame allocations at 30 fps. First byte reserved for WLED native WS opcode (0x02).
@@ -700,6 +715,7 @@ function _renderEffectLibrary() {
           pat.code = eff.code; // update in case library changed
         }
         state.activePatternId = eff.id;
+        _invalidatePatternFrame();
         _loadPatternIntoEditor();
         renderPatternCards();
         // Close library
@@ -1031,6 +1047,8 @@ async function _handleFileImport(file) {
 }
 
 function _rebuildNorm() {
+  _invalidatePatternFrame();
+  previewRenderer._frozenColorFn = null;
   const visibleStrips = state.strips.filter(s => s.visible !== false);
 
   if (!visibleStrips.length) {
@@ -1085,10 +1103,14 @@ function _rebuildNorm() {
 // ── Pattern compile ───────────────────────────────────────────────────────
 
 let _recompileTimer = null;
+let _patternCompilePending = false;
 
 function _scheduleRecompile() {
+  _patternCompilePending = true;
+  _invalidatePatternFrame();
   clearTimeout(_recompileTimer);
   _recompileTimer = setTimeout(() => {
+    _patternCompilePending = false;
     _saveEditorToPattern();
     renderParamSliders(); // B4: re-parse @params after edit
     if (!state.animating) return;
@@ -1096,11 +1118,14 @@ function _scheduleRecompile() {
     if (!p) return;
     const { fn, error } = compile(p.code);
     _showError(error);
-    if (fn) state.compiledFns.set(p.id, fn);
+    if (fn) _cacheCompiledPattern(p.id, fn);
+    else stopAnim();
   }, 500);
 }
 
 function _compileAndRun() {
+  clearTimeout(_recompileTimer);
+  _patternCompilePending = false;
   _saveEditorToPattern();
   renderPatternSelect();
   renderParamSliders(); // B4: parse @params on run
@@ -1121,7 +1146,7 @@ function _compileAndRun() {
     const { fn, error } = compile(p.code);
     if (pid === state.activePatternId) _showError(error);
     if (error && pid === state.activePatternId) { hasError = true; }
-    if (fn) state.compiledFns.set(pid, fn);
+    if (fn) _cacheCompiledPattern(pid, fn);
   }
   if (hasError) { stopAnim(); return; }
   startAnim();
@@ -1138,6 +1163,7 @@ function _showError(msg) {
 const _ERR_LOG_MAX = 5;
 const _errLog = []; // [{ message, ts, count }]
 let _lastEvalErrorCount = 0;
+let _lastEvalErrorGeneration = -1;
 
 function _logRuntimeError(message) {
   if (!message) return;
@@ -1178,10 +1204,11 @@ function _renderErrLog() {
   panel.querySelector('#pattern-err-log-dismiss').addEventListener('click', () => { panel.style.display = 'none'; });
 }
 
-function _pollPatternRuntimeErrors() {
-  if (_evalErrorState.count !== _lastEvalErrorCount) {
-    _lastEvalErrorCount = _evalErrorState.count;
-    if (_evalErrorState.message) _logRuntimeError(_evalErrorState.message);
+function _pollPatternRuntimeErrors(diagnostics,generation) {
+  if(!diagnostics)return;
+  if(diagnostics.count!==_lastEvalErrorCount || generation!==_lastEvalErrorGeneration) {
+    _lastEvalErrorCount=diagnostics.count;_lastEvalErrorGeneration=generation;
+    if(diagnostics.count && diagnostics.message)_logRuntimeError(diagnostics.message);
   }
 }
 
@@ -1258,12 +1285,13 @@ function _buildStripLi(strip, from, to, extraClass) {
     _pushHistory();
     const v = /** @type {HTMLSelectElement} */ (e.target).value;
     strip.patternId = v || null;
+    _invalidatePatternFrame();
     // Ensure the selected pattern is compiled
     if (strip.patternId) {
       const p = state.patterns.find(p => p.id === strip.patternId);
       if (p && !state.compiledFns.has(p.id)) {
         const { fn } = compile(p.code);
-        if (fn) state.compiledFns.set(p.id, fn);
+        if (fn) _cacheCompiledPattern(p.id, fn);
       }
     }
   });
@@ -1581,11 +1609,12 @@ function renderStripsList() {
       e.stopPropagation();
       const v = /** @type {HTMLSelectElement} */ (e.target).value;
       group.patternId = v || null;
+      _invalidatePatternFrame();
       if (group.patternId) {
         const p = state.patterns.find(p => p.id === group.patternId);
         if (p && !state.compiledFns.has(p.id)) {
           const { fn } = compile(p.code);
-          if (fn) state.compiledFns.set(p.id, fn);
+          if (fn) _cacheCompiledPattern(p.id, fn);
         }
       }
     });
@@ -1692,6 +1721,7 @@ function _showAssignPanel(group, anchorEl) {
       } else {
         group.stripIds = group.stripIds.filter(id => id !== strip.id);
       }
+      _invalidatePatternFrame();
       renderStripsList();
     });
     panel.appendChild(row);
@@ -1761,6 +1791,7 @@ function renderPatternCards() {
 
     btn.addEventListener('click', () => {
       state.activePatternId = p.id;
+      _invalidatePatternFrame();
       // Stale frozen frame from previous pattern — clear it
       previewRenderer._frozenColorFn = null;
       if (!state.animating) previewRenderer.renderStatic();
@@ -1777,7 +1808,7 @@ function renderPatternCards() {
       if (state.animating) {
         const { fn, error } = compile(p.code);
         _showError(error);
-        if (fn) state.compiledFns.set(p.id, fn);
+        if (fn) _cacheCompiledPattern(p.id, fn);
       }
     });
 
@@ -2198,6 +2229,7 @@ function _tickCrossfade() {
 
 function startAnim() {
   if (state.animating) return;
+  _lastPaintTs=null;document.body.dataset.patternState='preparing';
   state.animating  = true;
   state.lastTs     = null;
   state.fpsHistory = [];
@@ -2217,6 +2249,8 @@ function startAnim() {
 }
 
 function stopAnim() {
+  _invalidatePatternFrame();
+  document.body.dataset.patternState='paused';
   state.animating = false;
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
   // C2: stop WLED push
@@ -2278,15 +2312,7 @@ function _tick(ts) {
     });
   }
 
-  if (dt > 0) {
-    state.fpsHistory.push(1 / dt);
-    if (state.fpsHistory.length > 60) state.fpsHistory.shift();
-    const fps = Math.round(state.fpsHistory.reduce((a, b) => a + b, 0) / state.fpsHistory.length);
-    document.getElementById('status-fps').textContent = `FPS: ${fps}`;
-  }
-
-  if (state.compiledFns.size && state.normalisedPixels.length) {
-    const pixelCount = state.normalisedPixels.length;
+  if (state.compiledFns.size && state.normalisedPixels.length && !_patternRunner.busy && !_patternCompilePending && previewRenderer.enabled) {
     const physicalPixelCount = state.strips.reduce(
       (total, strip) => total + Math.max(0, Number(strip.pixelCount) || 0),
       0,
@@ -2341,63 +2367,79 @@ function _tick(ts) {
       perStripCtx.set(strip.id, { fn, params, st, hueMatrix, brightness: effectiveBrightness });
     }
 
-    const _colorFn = (i, nx, ny, stripId) => {
-      const pxData = state.normalisedPixels[i];
-      // Use chain root's context so pattern/speed flows through the whole chain
-      const effectiveId = pxData.chainRootId ?? stripId;
-      const ctx = perStripCtx.get(effectiveId) ?? perStripCtx.get(stripId);
-      if (!ctx?.fn) return { r: 0, g: 0, b: 0 };
+    const epoch=_renderEpoch;
+    const points=state.normalisedPixels;
+    const rows=mapperFrameInputs(points,perStripCtx,paletteRgb,beat,beatSin);
+    _patternRunner.render(rows).then(({colors,diagnostics,generation})=>{
+      if(!state.animating || epoch!==_renderEpoch)return;
+      const _colorFn = (i, nx, ny, stripId) => {
+        const pxData = points[i];
+        // Use chain root's context so pattern/speed flows through the whole chain
+        const effectiveId = pxData.chainRootId ?? stripId;
+        const ctx = perStripCtx.get(effectiveId) ?? perStripCtx.get(stripId);
+        if (!ctx?.fn) return { r: 0, g: 0, b: 0 };
 
-      const patternIndex = pxData.chainIndex ?? pxData.index ?? i;
-      const patternTotal = pxData.chainTotal ?? pixelCount;
+        let {r,g,b}=colors[i] || {r:0,g:0,b:0};
 
-      const stripProgress = pxData.stripIndex / Math.max((pxData.stripTotal || 1) - 1, 1);
-      let { r, g, b } = evalPixel(ctx.fn, patternIndex, nx, ny, ctx.st.t, ctx.st.time, patternTotal, paletteRgb, beat, beatSin, ctx.params, pxData.stripId, stripProgress);
+        // A3: hue shift
+        if (ctx.hueMatrix) ({ r, g, b } = _applyHueMatrix(r, g, b, ctx.hueMatrix));
 
-      // A3: hue shift
-      if (ctx.hueMatrix) ({ r, g, b } = _applyHueMatrix(r, g, b, ctx.hueMatrix));
+        // A1+A2: combined brightness
+        r = Math.round(r * ctx.brightness);
+        g = Math.round(g * ctx.brightness);
+        b = Math.round(b * ctx.brightness);
 
-      // A1+A2: combined brightness
-      r = Math.round(r * ctx.brightness);
-      g = Math.round(g * ctx.brightness);
-      b = Math.round(b * ctx.brightness);
+        // Feature 6: master saturation
+        if (state.masterSaturation < 1) {
+          ({ r, g, b } = _applySaturation(r, g, b, state.masterSaturation));
+        }
 
-      // Feature 6: master saturation
-      if (state.masterSaturation < 1) {
-        ({ r, g, b } = _applySaturation(r, g, b, state.masterSaturation));
+        // Feature 7: gamma correction
+        if (gammaLut) { r = gammaLut[r]; g = gammaLut[g]; b = gammaLut[b]; }
+
+        const physicalOffset = pxData.index * 3;
+        lastFrame[physicalOffset]     = r;
+        lastFrame[physicalOffset + 1] = g;
+        lastFrame[physicalOffset + 2] = b;
+
+        return { r, g, b };
+      };
+      previewRenderer._frozenColorFn = _colorFn;
+      previewRenderer.render(_colorFn);
+
+      state.lastFrame = lastFrame;
+
+      // Task 7: surface any runtime errors raised inside evalPixel during this frame
+      _pollPatternRuntimeErrors(diagnostics,generation);
+
+      // Feature 14: crossfade blend
+      if (state._crossfadeFrom && state._crossfadeStart) {
+        const elapsed  = performance.now() - state._crossfadeStart;
+        const progress = Math.min(1, elapsed / state.crossfadeDuration);
+        for (let i = 0; i < state.lastFrame.length; i++) {
+          state.lastFrame[i] = Math.round(
+            state._crossfadeFrom[i] * (1 - progress) + state.lastFrame[i] * progress
+          );
+        }
+        _tickCrossfade();
       }
-
-      // Feature 7: gamma correction
-      if (gammaLut) { r = gammaLut[r]; g = gammaLut[g]; b = gammaLut[b]; }
-
-      const physicalOffset = pxData.index * 3;
-      lastFrame[physicalOffset]     = r;
-      lastFrame[physicalOffset + 1] = g;
-      lastFrame[physicalOffset + 2] = b;
-
-      return { r, g, b };
-    };
-    previewRenderer._frozenColorFn = _colorFn;
-    previewRenderer.render(_colorFn);
-
-    state.lastFrame = lastFrame;
-
-    // Task 7: surface any runtime errors raised inside evalPixel during this frame
-    _pollPatternRuntimeErrors();
-
-    // Feature 14: crossfade blend
-    if (state._crossfadeFrom && state._crossfadeStart) {
-      const elapsed  = performance.now() - state._crossfadeStart;
-      const progress = Math.min(1, elapsed / state.crossfadeDuration);
-      for (let i = 0; i < state.lastFrame.length; i++) {
-        state.lastFrame[i] = Math.round(
-          state._crossfadeFrom[i] * (1 - progress) + state.lastFrame[i] * progress
-        );
+      document.body.dataset.patternState='ready';
+      const painted=performance.now();
+      if(_lastPaintTs!=null && painted>_lastPaintTs) {
+        state.fpsHistory.push(1000/(painted-_lastPaintTs));if(state.fpsHistory.length>60)state.fpsHistory.shift();
+        document.getElementById('status-fps').textContent=`FPS: ${Math.round(state.fpsHistory.reduce((a,b)=>a+b,0)/state.fpsHistory.length)}`;
       }
-      _tickCrossfade();
-    }
+      _lastPaintTs=painted;
+    }).catch(error=>{
+      if(!state.animating || epoch!==_renderEpoch)return;
+      stopAnim();
+      document.body.dataset.patternState='stopped';
+      const message=error?.message?.includes('deadline')?'Pattern preview stopped: rendering took too long or is unavailable.':`Pattern preview stopped: ${String(error?.message||'rendering failed').slice(0,160)}`;
+      _showError(message);_logRuntimeError(message);showToast(message,'warn');
+    });
   }
 
+  if(!previewRenderer.enabled)state.lastFrame=createPhysicalFrame(state.strips.reduce((sum,strip)=>sum+Math.max(0,Number(strip.pixelCount)||0),0));
   state.rafId = requestAnimationFrame(_tick);
 }
 
@@ -2722,6 +2764,7 @@ function _showStripPopup(strip) {
       state.patterns.map(p => `<option value="${_escHtml(p.id)}"${strip.patternId === p.id ? ' selected' : ''}>${_escHtml(p.name)}</option>`).join('');
     patSel.onchange = () => {
       strip.patternId = patSel.value || null;
+      _invalidatePatternFrame();
       renderStripsList();
       _markDirty();
     };
@@ -3013,6 +3056,8 @@ async function loadProject(file) {
   );
   if (!shouldLoad) return;
 
+  stopAnim();
+  state.compiledFns.clear();
   canvasManager.clearCanvas();
   state.strips = [];
   state.artworkLayers = [];
@@ -3052,6 +3097,7 @@ async function loadProject(file) {
   assignIndices(state.strips);
   if (data.patterns?.length) state.patterns = data.patterns;
   state.activePatternId = data.activePatternId || state.patterns[0]?.id;
+  _invalidatePatternFrame();
 
   // Restore B-series state
   if (Array.isArray(data.palette) && data.palette.length === 6) {
@@ -3429,6 +3475,7 @@ function _importPattern() {
       const p = { id: crypto.randomUUID(), name: importedName || 'Imported', code: data.code };
       state.patterns.push(p);
       state.activePatternId = p.id;
+      _invalidatePatternFrame();
       renderPatternSelect();
       renderPatternCards();
       renderStripsList();
@@ -4470,6 +4517,7 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 document.getElementById('pattern-select').addEventListener('change', e => {
   _saveEditorToPattern();
   state.activePatternId = /** @type {HTMLSelectElement} */ (e.target).value;
+  _invalidatePatternFrame();
   _loadPatternIntoEditor();
   renderPatternCards();
 });
@@ -4480,6 +4528,7 @@ document.getElementById('btn-new-pattern').addEventListener('click', async () =>
   const p = { id: crypto.randomUUID(), name, code: 'return hsv(fract(index / 60 + time), 1, 1);' };
   state.patterns.push(p);
   state.activePatternId = p.id;
+  _invalidatePatternFrame();
   renderPatternSelect();
   renderPatternCards();
   renderStripsList(); // C1: update strip/group pattern dropdowns with new pattern
@@ -4492,6 +4541,7 @@ document.getElementById('btn-delete-pattern').addEventListener('click', () => {
   state.patterns        = state.patterns.filter(p => p.id !== deletedId);
   state.compiledFns.delete(deletedId);
   state.activePatternId = state.patterns[0].id;
+  _invalidatePatternFrame();
   // C1: null out any strip/group that was using the deleted pattern
   state.strips.forEach(s => { if (s.patternId === deletedId) s.patternId = null; });
   state.groups.forEach(g => { if (g.patternId === deletedId) g.patternId = null; });
@@ -5010,19 +5060,22 @@ _updateEmptyState();
 _updateScaleOverlay(); // Feature 13: initial scale overlay
 _initInspector();
 _updateUndoRedoUI();
-initFlash();
+if (document.body.dataset.studioMapper !== 'true') initFlash();
+
+export function studioMapperSnapshot() { return _serializeProject({ fullPatterns: true }); }
 // BPM CSS variable — initialise with default 120 BPM
 document.documentElement.style.setProperty('--bpm-interval', `${Math.round(60000 / 120)}ms`);
 
 // ── HMR — patterns-library.js hot-swaps without a page reload ────────────
 if (import.meta.hot) {
+  import.meta.hot.dispose(()=>{stopAnim();_patternRunner.dispose();});
   import.meta.hot.accept('./patterns-library.js', newMod => {
     if (!newMod) return;
     _LIBRARY_IDS.clear();
     newMod.PATTERNS.forEach(p => _LIBRARY_IDS.add(p.id));
     const customs = state.patterns.filter(p => !_LIBRARY_IDS.has(p.id));
     state.patterns = [...newMod.PATTERNS, ...customs];
-    state.compiledFns.clear();
+    state.compiledFns.clear();_invalidatePatternFrame();
     _saveEditorToPattern();
     renderPatternSelect();
     renderPatternCards();
