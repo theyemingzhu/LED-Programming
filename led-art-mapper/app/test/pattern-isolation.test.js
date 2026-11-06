@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openAppPage } from './helpers/app-page.js';
 
 let app, page;
@@ -93,10 +96,12 @@ test('effect file and actual editor isolate source; diagnostics and rapid replac
   await page.waitForFunction(()=>document.body.dataset.patternState==='ready');
   await page.waitForTimeout(600);
   assert.equal(await page.evaluate(()=>document.body.dataset.patternState),'ready');
+  const screenshots=await mkdtemp(join(tmpdir(),'lightweaver-mapper-'));
   await page.setViewportSize({width:1440,height:960});
-  await page.screenshot({path:'/private/tmp/lightweaver-mapper-desktop.png'});
+  await page.screenshot({path:join(screenshots,'desktop.png')});
   await page.setViewportSize({width:390,height:844});
-  await page.screenshot({path:'/private/tmp/lightweaver-mapper-mobile.png'});
+  await page.screenshot({path:join(screenshots,'mobile.png')});
+  console.log('mapper screenshots',screenshots);
   await page.click('#btn-play-toolbar');
   await page.waitForFunction(()=>document.querySelectorAll('iframe[data-pattern-isolation]').length===0);
   await page.setViewportSize({width:430,height:844});
