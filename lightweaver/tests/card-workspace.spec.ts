@@ -841,6 +841,56 @@ test('commissioning reconnect skips the setup AP and uses a remembered home-netw
   expect(reconnectHost).toBe('192.168.18.70');
 });
 
+test('commissioning can reconnect by a known card IP when .local does not resolve', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'serial', { configurable: true, value: {} });
+    localStorage.setItem('lw_chip_card_host', '192.168.4.1');
+    localStorage.removeItem('lw_chip_card_host_history');
+  });
+  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
+  await seedCommissioningFlow(page, 'wifi');
+  const result = await page.evaluate(async () => {
+    const mainSource = await (await fetch('/src/main.jsx')).text();
+    const domUrl = mainSource.match(/["']([^"']*react-dom_client[^"']*)["']/)?.[1];
+    const panelSource = await (await fetch('/src/components/card/CardCommissioningPanel.jsx')).text();
+    const reactUrl = panelSource.match(/["']([^"']*\/deps\/react\.js[^"']*)["']/)?.[1];
+    if (!domUrl || !reactUrl) throw new Error('could not resolve React module URLs');
+    const [{ CardCommissioningPanel }, { ProjectProvider }, reactModule, domModule] = await Promise.all([
+      import('/src/components/card/CardCommissioningPanel.jsx'),
+      import('/src/state/ProjectContext.jsx'),
+      import(reactUrl),
+      import(domUrl),
+    ]);
+    const React = reactModule.default ?? reactModule;
+    const createRoot = domModule.createRoot ?? domModule.default?.createRoot;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let received = '';
+    const root = createRoot(host);
+    root.render(React.createElement(ProjectProvider, null,
+      React.createElement(CardCommissioningPanel, {
+        result: null,
+        link: { state: 'disconnected', host: '192.168.4.1', transport: 'bridge' },
+        onReconnect: value => { received = value; },
+      }),
+    ));
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Card IP address"]');
+    if (!input) throw new Error('known-IP recovery input not rendered');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, '192.168.18.50');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const button = [...host.querySelectorAll('button')].find(node => node.textContent?.trim() === 'Connect at this IP');
+    if (!button) throw new Error('known-IP recovery button not rendered');
+    button.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return received;
+  });
+  expect(result).toBe('192.168.18.50');
+  await page.getByLabel('Card IP address').last().locator('..').screenshot({ path: testInfo.outputPath('known-ip-recovery.png') });
+});
+
 test('reality-driven detection replaces the dead 192.168.4.1 link with the restore path once the card rejoins the LAN', async ({ page }) => {
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
   await seedCommissioningFlow(page, 'wifi');

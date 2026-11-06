@@ -171,10 +171,13 @@ export async function readLightweaverFirmwareIdentity(
       const result = bytesOf(await loader.readFlash(address, size));
       // readFlash itself is not abortable here. A slow final read must not turn
       // an expired or cancelled verification into a positive identity.
-      if (shouldStop?.() === true || now() >= deadline) {
-        invalidateRead('cancelled-or-expired-during-read');
+      if (shouldStop?.() === true) {
+        invalidateRead('cancelled-during-read');
         return null;
       }
+      // The exploratory scan deadline is not a USB packet failure. Once a
+      // complete packet has returned, the loader can still be used safely.
+      if (now() >= deadline) return null;
       if (!result || result.length < size) {
         invalidateRead('incomplete-flash-read');
         return null;
@@ -227,10 +230,11 @@ export async function readLightweaverFirmwareIdentity(
         // partition-table and OTA selector read can promote it to the currently
         // booted firmware; otherwise those fixed offsets have no authority.
         const table = bytesOf(await loader.readFlash(0x8000, 0x1000));
-        if (shouldStop?.() === true || now() >= deadline) {
-          invalidateRead('cancelled-or-expired-during-read');
+        if (shouldStop?.() === true) {
+          invalidateRead('cancelled-during-read');
           return null;
         }
+        if (now() >= deadline) return null;
         if (!table || table.byteLength !== 0x1000) {
           invalidateRead('incomplete-partition-table-read');
           return null;
@@ -248,10 +252,11 @@ export async function readLightweaverFirmwareIdentity(
           }
         }
         if (selectorReadFailed) return null;
-        if (shouldStop?.() === true || now() >= deadline) {
-          invalidateRead('cancelled-or-expired-during-read');
+        if (shouldStop?.() === true) {
+          invalidateRead('cancelled-during-read');
           return null;
         }
+        if (now() >= deadline) return null;
         return Object.freeze({
           firmwareVersion: candidate.firmwareVersion,
           buildId: candidate.buildId,

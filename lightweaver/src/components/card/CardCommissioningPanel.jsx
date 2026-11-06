@@ -77,6 +77,7 @@ import {
   writeCardCommissioning,
 } from '../../lib/cardCommissioningFlow.js';
 import { describeSetupHotspotWait, SETUP_HOTSPOT_RESCAN_MS } from '../../lib/setupHotspotWait.js';
+import { usableCardStationIp } from '../../lib/cardPostFlashNetwork.js';
 
 // The card's soft-AP address. Only reachable while this device is joined to the
 // card's own setup hotspot.
@@ -291,6 +292,7 @@ export function CardCommissioningPanel({
   const [setupReach, setSetupReach] = useState({ state: 'idle' });
   const [autoReconnect, setAutoReconnect] = useState({ state: 'idle', attempts: 0, host: '' });
   const [manualReconnectState, setManualReconnectState] = useState('idle');
+  const [knownCardIp, setKnownCardIp] = useState('');
   // An inconclusive restart follows the safe setup-network path first. The
   // already-on-LAN route remains a secondary recovery instead of asking the
   // owner to diagnose which boot path the card took.
@@ -1175,6 +1177,16 @@ export function CardCommissioningPanel({
   // the manual reconnect is named as the thing that moves the step.
   const canAutoDetect = canPushDirectlyToCard();
   const reconnectInstalledCard = () => onReconnect?.(reconnectHost);
+  const reconnectAtKnownIp = event => {
+    event.preventDefault();
+    const ip = usableCardStationIp(knownCardIp);
+    if (!ip) {
+      setFailure('Enter the card’s current private-network IP address, for example 192.168.18.50.');
+      return;
+    }
+    setFailure('');
+    onReconnect?.(ip);
+  };
   const retryAfterGalleryReturn = () => {
     if (manualReconnectTimerRef.current != null) window.clearTimeout(manualReconnectTimerRef.current);
     setManualReconnectState('trying');
@@ -1573,6 +1585,11 @@ export function CardCommissioningPanel({
               {!postFlashInconclusive && flow.networkState !== 'setup-joined' && setupReach.state !== 'unreachable' && (
                 <button type="button" className="btn" onClick={reconnectInstalledCard} disabled={reconnecting}>{reconnecting ? 'Reconnecting…' : 'Reconnect installed card'}</button>
               )}
+              <form className="card-commissioning-network" onSubmit={reconnectAtKnownIp}>
+                <label htmlFor="commissioning-card-ip">If the card tab says its address cannot be found, enter the card’s current IP address.</label>
+                <input id="commissioning-card-ip" aria-label="Card IP address" type="text" inputMode="decimal" autoComplete="off" spellCheck="false" value={knownCardIp} onChange={event => setKnownCardIp(event.target.value)} placeholder="192.168.1.50" />
+                <button type="submit" className="btn" disabled={reconnecting}>Connect at this IP</button>
+              </form>
             </>
           ) : flow.operation === 'inspect-card' ? (
             <div>
