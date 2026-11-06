@@ -544,6 +544,8 @@ export function CardCommissioningPanel({
   const reconnectHost = commissioningReconnectHost(flow, link, {
     storedHost: readStoredCardHost(),
     history: readStoredCardHostHistory(),
+    pairedAddress: readPersistedCardIdentity()?.id === flow?.expectedCard?.id
+      ? readPersistedCardIdentity()?.address : '',
   });
   reconnectContextRef.current = {
     flow,

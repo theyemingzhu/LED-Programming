@@ -1355,6 +1355,12 @@ test('ordinary reconnect does not replace the exact station handoff owner', asyn
       storedHost: 'lightweaver.local', pairedAddress: '192.168.18.50',
     });
     assert.deepEqual(hosts.slice(0, 2), ['192.168.18.50', 'lightweaver.local']);
+    assert.equal(commissioningReconnectHost(null, { host: '192.168.18.90' }, {
+      storedHost: 'lightweaver.local',
+    }), '192.168.18.90');
+    assert.equal(commissioningReconnectHost(null, { host: 'lightweaver.local' }, {
+      storedHost: '192.168.18.91',
+    }), '192.168.18.91');
   });
   assert.equal(planCommissioningReconnectAttempt(flow, { ...link, handoffFlowId: 'another-flow' }, { attempt: 1 }).state, 'retry');
 });
