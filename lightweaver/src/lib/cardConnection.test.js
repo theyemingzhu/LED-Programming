@@ -191,13 +191,13 @@ async function withFakeBrowser(browser, run) {
   }
 }
 
-test('ordinary recovery uses the paired station IP before an unresolved local name', () => {
+test('ordinary recovery alternates a failed paired IP and local name', () => {
   assert.equal(typeof cardConnection.ordinaryCardRecoveryHost, 'function');
   assert.equal(cardConnection.ordinaryCardRecoveryHost('192.168.18.70', {
     id: 'lw-gallery',
     hostname: 'gallery-card.local',
     address: '192.168.18.70',
-  }), '192.168.18.70');
+  }), 'gallery-card.local');
   assert.equal(cardConnection.ordinaryCardRecoveryHost('gallery-card.local', {
     id: 'lw-gallery',
     hostname: 'gallery-card.local',

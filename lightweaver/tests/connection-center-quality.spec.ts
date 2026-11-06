@@ -120,8 +120,20 @@ test('a remembered card offers read-only USB address recovery beside Wi-Fi recon
   const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
   await expect(dialog.getByRole('button', { name: 'Find this card over USB' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
+});
+
+test('an unresolved paired local name reconnects through its remembered station IP', async ({ page }) => {
+  await seedRememberedCard(page);
+  await installOpenSpy(page);
+  await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
+  await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });
+  const dialog = page.getByRole('dialog', { name: 'Connect Lightweaver' });
+  await expect(dialog.getByRole('button', { name: 'Look for the card again' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Look for the card again' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).__openedUrls?.at(-1) || '')).toContain('192.168.18.70');
+  await expect.poll(() => page.evaluate(() => (window as any).__openedWindows.at(-1))).toMatchObject({
+    url: expect.stringContaining('http://192.168.18.70/'),
+    target: 'lightweaver-card-bridge',
+  });
 });
 
 async function openInstallationDoor(page) {
@@ -954,7 +966,7 @@ test('a staged GPIO restoration stops at the Check lights handoff without legacy
   });
 });
 
-test('wrong-card and ordinary no-answer recovery use the stable LAN name before explicit setup-network continuation', async ({ page }) => {
+test('wrong-card and ordinary no-answer recovery alternate the paired IP and local name before setup-network continuation', async ({ page }) => {
   await installOpenSpy(page);
   await page.getByRole('button', { name: 'Connect Lightweaver' }).click();
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'wrong-card' });
@@ -1005,7 +1017,7 @@ test('wrong-card and ordinary no-answer recovery use the stable LAN name before 
 
   await page.getByTestId('setup-network-already-on-wifi').click();
   await expect.poll(() => page.evaluate(() => (window as any).__openedWindows.at(-1))).toMatchObject({
-    url: expect.stringContaining('http://gallery-card.local/'),
+    url: expect.stringContaining('http://192.168.18.70/'),
     target: 'lightweaver-card-bridge',
   });
   await dispatchCardLinkEvent(page, { type: 'bridge-lost', reason: 'no-answer', host: 'gallery-card.local' });

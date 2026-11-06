@@ -122,13 +122,15 @@ export function isLocalCardHost(rawHost = '') {
 
 export function ordinaryCardRecoveryHost(_rawHost = '', expectedCard = readPersistedCardIdentity()) {
   const pairedAddress = normalizeCardHost(expectedCard?.address || '');
-  if (pairedAddress !== '192.168.4.1' && isIpv4(pairedAddress)
-    && isLocalCardHost(pairedAddress)) return pairedAddress;
   const pairedHostname = normalizeCardHost(expectedCard?.hostname || '');
-  if (
-    pairedHostname.endsWith('.local')
-    && isLocalCardHost(pairedHostname)
-  ) return pairedHostname;
+  const usableAddress = pairedAddress !== '192.168.4.1' && isIpv4(pairedAddress)
+    && isLocalCardHost(pairedAddress);
+  const usableHostname = pairedHostname.endsWith('.local') && isLocalCardHost(pairedHostname);
+  // A failed IP should try the paired local name; a failed name should try
+  // the paired IP. The bridge still verifies the exact card before use.
+  if (usableAddress && normalizeCardHost(_rawHost || '') !== pairedAddress) return pairedAddress;
+  if (usableHostname) return pairedHostname;
+  if (usableAddress) return pairedAddress;
   return DEFAULT_CARD_HOST;
 }
 
