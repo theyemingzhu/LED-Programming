@@ -272,6 +272,24 @@ test('a flash read failure invalidates the held inspection loader and restores i
   assert.equal(loader.FLASH_READ_TIMEOUT, 100_000);
 });
 
+test('an exploratory deadline after a complete flash packet keeps the USB card usable', async () => {
+  let clock = 0;
+  const failures = [];
+  const loader = {
+    FLASH_READ_TIMEOUT: 100_000,
+    async readFlash(_address, size) {
+      clock = 26_000;
+      return new Uint8Array(size).fill(0xff);
+    },
+  };
+  assert.equal(await readLightweaverFirmwareIdentity(loader, {
+    now: () => clock,
+    onReadFailure: failure => failures.push(failure),
+  }), null);
+  assert.deepEqual(failures, [], 'a completed packet is a timed-out optional scan, not a broken USB connection');
+  assert.equal(loader.FLASH_READ_TIMEOUT, 100_000);
+});
+
 test('a late cancellation or OTA selector read failure invalidates the held loader', async () => {
   const flash = await signed2070Flash();
   let cancelled = false;
@@ -287,7 +305,7 @@ test('a late cancellation or OTA selector read failure invalidates the held load
     shouldStop: () => cancelled,
     onReadFailure: failure => cancellation.push(failure.reason),
   }), null);
-  assert.deepEqual(cancellation, ['cancelled-or-expired-during-read']);
+  assert.deepEqual(cancellation, ['cancelled-during-read']);
   assert.equal(late.FLASH_READ_TIMEOUT, 100_000);
 
   const failures = [];

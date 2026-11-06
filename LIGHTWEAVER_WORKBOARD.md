@@ -7,6 +7,41 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current Bench — USB/Wi-Fi reconnect — 2026-11-05
+Owner: primary. State: Bench connection passed; PR416 release-ready, not merged or deployed. Correct runtime ID is
+`lw-40402bad4f7c` (ROM MAC bytes reversed in ID); the earlier derived ID was
+wrong. CH340 UART COM5 and native USB COM6 were correlated to the same chip.
+The pre-recovery active image was non-Lightweaver Arduino with an 8 MB layout;
+the signed Lightweaver 1.2.2 needs the 16 MB layout. NVS, boot, table, OTA,
+app and old SPIFFS were privately backed up; NVS was read twice with matching
+hash. Signed boot/table/app were restored through COM6 without factory-image
+erase, NVS or OTA write, or physical button. Independent readback exactly
+matches signed boot/table/app and backed-up OTA. NVS changed after boot but
+saved Wi-Fi/project are confirmed by USB and LAN. Card is station-connected at
+192.168.18.50, so setup AP is inactive. Three read-only USB reconnects succeeded
+with bounded hello retries (~2.1 s each); the last boot matches LAN status.
+Card reports build 2320, project `lightweaver-bench-discovery-v1`, GPIO38/41
+256 pixels each, command/playback ready. Adrian observed Studio Connected after
+replacing `lightweaver.local` in its failing tab with `192.168.18.50`. Windows
+DNS could not resolve `.local` while the card page at the IP returned HTTP 200.
+The connection test passed; physical LEDs were not observed.
+PR416: https://github.com/theyemingzhu/LED-Programming/pull/416. Focused
+optional-scan deadline regression was red then green; reader 24/24 and USB
+baseline 76/76 passed. Known-IP browser regression 1/1 passed with rendered
+form inspected. Release gate constituents passed on 784b3110: core/projects,
+Mapper, production jobs, deploy/build graph, Studio release, browser regression,
+production 68/68, unit 3089/3089, release UI 528 passed + 1 flaky, client,
+Studio/Pages builds and staged graph, firmware binary freshness. Browser
+regression had two flaky cases under CI retry; projects browser had one.
+Monolithic Windows gate lacked `c++`; isolated WSL initially lacked locked
+Mapper dependencies and `/private/tmp`; an obsolete Flow test selector was
+repaired in 784b3110. Passed stages were retained while failed suites reran
+focused or standalone. Public Studio remains build 2385 at 7e338a06; local
+fix is not deployed. Remembered card ID before recovery remains unknown.
+Next: finalize PR416, merge authorized browser-only revision and start exact
+background-release observer; report shipped only after independent live proof.
+Evidence and one next step: docs/bench-sessions/2026-11-05-lw-40402bad4f7c-usb-wifi-reconnect.md.
+
 ## Current delivery — card-first Studio resume — 2026-09-29
 Owner: primary manager. State: authorized release; repaired failed gate, resuming.
 PR379: https://github.com/theyemingzhu/LED-Programming/pull/379.
