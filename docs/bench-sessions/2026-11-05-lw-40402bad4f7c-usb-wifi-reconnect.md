@@ -46,7 +46,7 @@
 | 2026-11-05 | Card page | HTTP GET `http://192.168.18.50/` and DNS check for `lightweaver.local` | Locate actual card page | Card page returns HTTP 200 at IP; `lightweaver.local` fails DNS on the same Windows computer. | root cause confirmed |
 | 2026-11-05 | Studio tab | Adrian copied the failing tab URL and error | Distinguish address failure from card protocol failure | Studio opened `http://lightweaver.local/?lwBridgeAttempt=3#studioBridge=1&bridgeUtility=1&studioOrigin=https%3A%2F%2Fled.mandalacodes.com`; Chrome showed `ERR_NAME_NOT_RESOLVED`. | fail for mDNS route |
 | 2026-11-05 | Studio tab | Adrian replaced only `.local` hostname with verified `192.168.18.50` | Preserve bridge launch and connect exact card | Adrian observed the card page display and Studio show Connected. The card IP had just passed read-only bench check, 1.2.2/build 2320. | pass, owner-observed UI |
-| 2026-11-05 | Local UI regression | Known-IP reconnect form in commissioning panel | Give a recoverable path when `.local` fails | Focused browser regression 1/1 passed; production build passed; rendered form screenshot inspected. The change remains local and is not yet in live Studio. | pass locally |
+| 2026-11-05 | Local UI regression | Known-IP reconnect form in commissioning panel | Give a recoverable path when `.local` fails | Focused browser regression 1/1 passed; production build passed; rendered form screenshot inspected. PR416 carries the change; it is not yet in live Studio. | pass locally |
 
 ## Human observations
 
@@ -62,4 +62,4 @@ Adrian reports that Studio recognizes a previously connected card, but reconnect
 
 ## Single next step
 
-Integrate and publish the locally tested known-IP recovery control when this code batch is authorized for release; until then, the now-connected Studio browser has the exact working IP `192.168.18.50`. A future LED-output Bench session would need a separate owner observation.
+Finish PR416 merge and exact-revision background publication, then verify the no-store live Studio build graph. Until then, the now-connected Studio browser has the exact working IP `192.168.18.50`. A future LED-output Bench session would need a separate owner observation.
