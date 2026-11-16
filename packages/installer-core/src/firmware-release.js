@@ -188,7 +188,7 @@ export function validateFirmwareManifest(
   if (!/^[a-f0-9]{40}$/.test(manifest.buildId)) {
     throw new Error('buildId must be the immutable source revision');
   }
-  if (manifest.buildNumber !== undefined && !isPositiveSafeInteger(manifest.buildNumber)) {
+  if ((manifest.schemaVersion === 2 || manifest.buildNumber !== undefined) && !isPositiveSafeInteger(manifest.buildNumber)) {
     throw new Error('buildNumber must be a positive integer');
   }
   parseSemver(manifest.minimumInstallerVersion, 'minimumInstallerVersion');
