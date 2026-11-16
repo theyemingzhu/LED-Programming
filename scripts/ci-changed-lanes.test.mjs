@@ -389,6 +389,26 @@ test('site publishing control changes retain all validation without minting firm
   assert.equal(firmwareBundleOnly([...paths, '.github/workflows/build-firmware.yml']), false);
 });
 
+test('exhaustive workflow changes retain all checks without requiring firmware signing', () => {
+  const workflow = '.github/workflows/exhaustive.yml';
+  const paths = [workflow, 'lightweaver/tests/layout-selected-strip-editor.spec.ts'];
+  assert.deepEqual(classifyChangedPaths(paths), allLanes);
+  assert.deepEqual(classifyChangedPaths(paths, { cardBundleUnchanged: true }), allLanes);
+  assert.equal(firmwareBundleOnly([workflow]), true);
+  assert.equal(firmwareBundleOnly(paths), true);
+  assert.equal(firmwareBundleOnly(paths, { conservative: true }), false);
+
+  for (const path of [
+    '.github/workflows/build-firmware.yml',
+    '.github/workflows/new-release-workflow.yml',
+    'firmware/lightweaver-controller/VERSION',
+    'firmware/lightweaver-controller/src/main.cpp',
+    'scripts/sign-release-artifacts.mjs',
+  ]) {
+    assert.equal(firmwareBundleOnly([...paths, path]), false, path);
+  }
+});
+
 test('standalone client selects source and browser without card or cloud work', () => {
   for (const path of ['lightweaver/src/client/ClientApp.jsx', 'lightweaver/client.html', 'lightweaver/vite.client.config.js', 'lightweaver/client-public/_headers', 'lightweaver/scripts/client-release.mjs']) {
     const lanes = classifyChangedPaths([path]);
