@@ -20,7 +20,9 @@ concurrency:
 jobs:
   launch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # Setup and the earlier suites took about 28 minutes before the serial
+    # release UI suite. Leave room for all 531 cases and normal CI retries.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
