@@ -40,17 +40,17 @@ test('independent strip keeps its row compact and edits LEDs beside Layout', asy
   await page.screenshot({ path: '/tmp/lightweaver-compact-independent-strip.png', fullPage: true });
 });
 
-test('selected part opens its own Pattern details and saves speed without changing siblings', async ({ page }) => {
+test('selected part opens its own Pattern details and saves speed without changing siblings', async ({ page }, testInfo) => {
   await fourSections(page);
   const row = page.locator('.la-strip-row').nth(1);
   await row.click({ position: { x: 8, y: 8 } });
   const detail = page.getByTestId('connected-section-editor');
   const edit = detail.getByRole('button', { name: /Edit pattern details for/ });
   await expect(edit).toBeVisible();
-  await page.screenshot({ path: '/private/tmp/lightweaver-pattern-details-layout-desktop.png' });
+  await page.screenshot({ path: testInfo.outputPath('lightweaver-pattern-details-layout-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await edit.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: '/private/tmp/lightweaver-pattern-details-layout-phone.png' });
+  await page.screenshot({ path: testInfo.outputPath('lightweaver-pattern-details-layout-phone.png') });
   const targetId = await edit.getAttribute('data-target-id');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout?.patchBoard?.patches?.length)).toBe(4);
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').layout.patchBoard.patches);
