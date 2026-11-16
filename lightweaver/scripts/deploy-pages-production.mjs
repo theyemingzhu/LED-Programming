@@ -37,6 +37,11 @@ database_id = ${tomlString(config.PROJECTS_DB_DATABASE_ID)}
 binding = "PROJECT_BLOBS"
 bucket_name = ${tomlString(config.PROJECT_BLOBS_BUCKET_NAME)}
 
+[[durable_objects.bindings]]
+name = "SHARED_ALLOWANCE"
+class_name = "AllowanceGovernor"
+script_name = "i64os-quota-guard"
+
 [vars]
 ${accessVariables}LIGHTWEAVER_NATIVE_AUTH_READY = ${tomlString(config.LIGHTWEAVER_NATIVE_AUTH_READY)}
 MAX_LIBRARY_BODY_BYTES = ${tomlString(config.MAX_LIBRARY_BODY_BYTES)}
