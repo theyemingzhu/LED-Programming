@@ -19,10 +19,13 @@ function configuredMethods(env) {
   const enabled = studioPasswordlessEnabled(env);
   const ready = enabled && env.PROJECTS_DB && typeof env.STUDIO_AUTH_CODE_KEY === 'string'
     && env.STUDIO_AUTH_CODE_KEY.length >= 32;
+  const provider = env.STUDIO_EMAIL_PROVIDER || 'cloudflare';
+  const emailProviderReady = provider === 'resend'
+    || (provider === 'cloudflare' && /^[a-f0-9]{32}$/i.test(env.STUDIO_EMAIL_ACCOUNT_ID || ''));
   return {
     enabled,
     google: Boolean(ready && env.STUDIO_GOOGLE_CLIENT_ID && env.STUDIO_GOOGLE_CLIENT_SECRET),
-    email: Boolean(ready && /^[a-f0-9]{32}$/i.test(env.STUDIO_EMAIL_ACCOUNT_ID || '')
+    email: Boolean(ready && emailProviderReady
       && env.STUDIO_EMAIL_API_TOKEN && normalizeSignInEmail(env.STUDIO_EMAIL_FROM)),
   };
 }
@@ -94,8 +97,11 @@ async function signInMethods(env) {
 }
 
 async function sendCode(env, email, code, fetchImpl) {
+  const resend = env.STUDIO_EMAIL_PROVIDER === 'resend';
+  const endpoint = resend ? 'https://api.resend.com/emails'
+    : `https://api.cloudflare.com/client/v4/accounts/${env.STUDIO_EMAIL_ACCOUNT_ID}/email/sending/send`;
   // Workers support manual redirects. The response check rejects all redirects.
-  const result = await fetchImpl(`https://api.cloudflare.com/client/v4/accounts/${env.STUDIO_EMAIL_ACCOUNT_ID}/email/sending/send`, {
+  const result = await fetchImpl(endpoint, {
     method: 'POST',
     redirect: 'manual',
     signal: AbortSignal.timeout(8_000),
@@ -112,8 +118,10 @@ async function sendCode(env, email, code, fetchImpl) {
   });
   if (!result.ok) throw new Error('Email delivery failed.');
   const delivery = await result.json();
-  if (delivery.success !== true
-    || ![...(delivery.result?.queued || []), ...(delivery.result?.delivered || [])].includes(email)) {
+  const accepted = resend ? typeof delivery.id === 'string' && delivery.id.length > 0
+    : delivery.success === true
+      && [...(delivery.result?.queued || []), ...(delivery.result?.delivered || [])].includes(email);
+  if (!accepted) {
     throw new Error('Email delivery was not accepted.');
   }
 }

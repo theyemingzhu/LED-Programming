@@ -197,6 +197,31 @@ test('email code is delivered only for approved addresses and creates the same n
   assert.equal(disabledSession.status, 401);
 });
 
+test('Resend delivers a Studio code using its sending key without a Cloudflare account ID', async t => {
+  const f = await fixture(t);
+  await f.migrateAndLink();
+  f.env.STUDIO_EMAIL_PROVIDER = 'resend';
+  delete f.env.STUDIO_EMAIL_ACCOUNT_ID;
+  assert.equal((await (await f.request('methods')).json()).email, true);
+  let sent;
+  const start = await f.request('email/start', {
+    body: { email: EMAIL },
+    options: { providerFetch: async (url, options) => {
+      assert.equal(url, 'https://api.resend.com/emails');
+      assert.equal(options.redirect, 'manual');
+      assert.equal(options.headers.authorization, 'Bearer email-test-token');
+      sent = JSON.parse(options.body);
+      return Response.json({ id: 'c4ad7fce-4210-4ed6-b404-6dddb83ba94b' });
+    } },
+  });
+  assert.equal(start.status, 202);
+  assert.equal(sent.to, EMAIL);
+  assert.equal(sent.from, credentials.STUDIO_EMAIL_FROM);
+  const verified = await f.request('email/verify', { body: { email: EMAIL, code: codeFrom(sent) } });
+  assert.equal(verified.status, 200);
+  assert.equal((await verified.json()).session.role, 'owner');
+});
+
 test('email codes expire, run out of attempts, and fail after the approved account changes', async t => {
   const f = await fixture(t);
   await f.migrateAndLink();
