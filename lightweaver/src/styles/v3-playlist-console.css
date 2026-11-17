@@ -129,6 +129,17 @@
   font-family: var(--font-mono);
   flex: 0 0 auto;
 }
+.pm.pl-workspace .pl-row .pl-dwell-input {
+  height: 34px;
+  min-height: 34px;
+  background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / calc(100% - 12px) 1px no-repeat;
+  border-color: transparent;
+  box-shadow: none;
+}
+.pm.pl-workspace .pl-row .pl-dwell-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .pm .pl-dwell-unit {
   font-size: 11px;
   color: var(--text-lo);
@@ -267,6 +278,28 @@
 .pm .pl-more {
   height: 36px;
   border-radius: var(--r-md);
+}
+.pm.pl-workspace .pl-row .pl-actions > .plbtn,
+.pm.pl-workspace .pl-row .pl-more {
+  height: 34px;
+  min-height: 34px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+.pm.pl-workspace .pl-row .pl-more {
+  min-width: 36px;
+  border-color: transparent;
+}
+.pm.pl-workspace .pl-row .pl-actions > .plbtn:is(:hover, :focus-visible):not(:disabled),
+.pm.pl-workspace .pl-row .pl-more:is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: var(--bg-elev-2);
+}
+.pm.pl-workspace .pl-row .pl-actions > .plbtn.on {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
 }
 .pm .pl-more {
   width: 36px;

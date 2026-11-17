@@ -37,6 +37,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 .cl-installation h1, .cl-connect h1 { font-size: clamp(26px, 5vw, 42px); line-height: 1.13; }
 
 .cl-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+.cl-installation .cl-controls { margin-top: 8px; }
 .cl-light-controls, .cl-playback { display: flex; align-items: center; gap: 12px; }
 .cl-light-controls:has(.cl-range) { flex: 1 1 300px; max-width: 440px; min-width: 0; }
 .cl-playback { flex-wrap: wrap; }
@@ -49,6 +50,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 .cl-range input { display: block; width: 100%; min-height: 28px; margin: 0; accent-color: #e5c99c; cursor: pointer; }
 
 .cl-tabs { display: flex; gap: 18px; margin: 10px 0; border-bottom: 1px solid #31392e; }
+.cl-installation + .cl-tabs { margin-top: 6px; }
 .cl-tabs button {
   min-height: 44px;
   background: none;
@@ -97,6 +99,23 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
   white-space: nowrap;
 }
 .cl-button:hover:not(:disabled) { background: #35412c; }
+.cl-installation .cl-button,
+.cl-installation .cl-button:hover:not(:disabled) {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent;
+  background: transparent;
+}
+.cl-installation .cl-button::before {
+  content: '';
+  position: absolute;
+  inset: 5px 0;
+  z-index: -1;
+  pointer-events: none;
+  border: 1px solid #68735d;
+  border-radius: 4px;
+}
+.cl-installation .cl-button:hover:not(:disabled)::before { background: #252d20; border-color: #869176; }
 .cl-primary { background: #dec49a; color: #1a2116; border-color: #dec49a; }
 .cl-primary:hover:not(:disabled) { background: #efd6ad; }
 .cl-text-button { min-height: 44px; padding: 0; border: 0; background: transparent; color: #dec49a; font-size: 13px; }
@@ -176,6 +195,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
   .cl-brand-sub { display: none; }
   .cl-main { padding: 12px 0 14px; }
   .cl-controls { gap: 8px; margin-top: 8px; }
+  .cl-installation .cl-controls { margin-top: 4px; }
   .cl-light-controls:has(.cl-range) { flex-basis: 220px; }
   .cl-pattern-grid { grid-template-columns: 1fr; gap: 6px; }
   .cl-pattern { min-height: 46px; padding: 6px 10px; }
