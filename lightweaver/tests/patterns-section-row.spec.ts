@@ -6,9 +6,8 @@ import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 import { makeDefaultWiring } from '../src/lib/wiringModel.js';
 
 // The section row on Patterns (sections-effortless plan, change 2): each chip
-// carries its section's pattern name, one status line says what the card
-// holds (read from the card's own /api/zones, never guessed), and a piece with
-// one section gets a word link to Layout instead of an empty row.
+// carries its section's pattern name, a differing card layout stays visible,
+// and a piece with one section gets a word link to Layout.
 
 function sectionProject(id: string) {
   const project = createDefaultProject();
@@ -84,7 +83,7 @@ async function mockReadyCard(page, project, cardZones, cardId = 'lw-section-row'
 }
 
 
-test('section chips carry their pattern names and the card-holds line is read from the card', async ({ page }) => {
+test('section chips carry their patterns and Edit layout sits in the All sections row', async ({ page }) => {
   const project = sectionProject('section-row-full');
   project.layout.wiring.outputs = [
     { id: 'out1', name: 'Outer output', pin: 16, runIds: ['run-default-outer-circle'] },
@@ -98,7 +97,10 @@ test('section chips carry their pattern names and the card-holds line is read fr
   await expect(page.getByTestId('section-gpio-patch-default-outer-circle')).toHaveText('GPIO 16');
   await expect(page.getByTestId('section-gpio-patch-default-inner-circle')).toHaveText('GPIO 17');
   await expect(page.getByTestId('pattern-bank-scope')).toBeVisible();
-  await expect(page.getByTestId('section-target-all')).toContainText('Mixed');
+  const allSectionsRow = page.locator('.pm-section-entry').filter({ has: page.getByTestId('section-target-all') });
+  const editLayout = allSectionsRow.getByRole('button', { name: 'Edit layout' });
+  await expect(allSectionsRow).not.toContainText('Mixed');
+  await expect(editLayout).toBeVisible();
   // Picking a pattern for a section updates its chip at once.
   await page.getByTestId('section-target-patch-default-inner-circle').click();
   // Tapping the chip flashes that section on the piece: the OTHER zone dims
@@ -116,7 +118,8 @@ test('section chips carry their pattern names and the card-holds line is read fr
   await expect(page.getByTestId('section-pattern-all')).toHaveText('Plasma');
 
   const holds = page.getByTestId('card-holds');
-  await expect(holds).toHaveText(`Card holds ${zones.map(zone => zone.label).join(', ')}`);
+  await expect(holds).toHaveCount(0);
+  await expect(page.locator('.pm-section-footer').getByRole('button', { name: 'Edit layout' })).toHaveCount(0);
   await expect(page.getByTestId('divide-in-layout')).toHaveCount(0);
   // The compact artwork preview and section rows remain tappable at phone width.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -141,6 +144,24 @@ test('section chips carry their pattern names and the card-holds line is read fr
   await expect(page.getByTestId('section-target-patch-default-outer-circle')).toHaveClass(/\bon\b/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
   expect(overflow).toBe(false);
+  await editLayout.click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw/);
+});
+
+test('dropping a pattern previews only the receiving strip on the verified card', async ({ page }) => {
+  const project = sectionProject('section-row-drop');
+  const zones = compiledZones(project).map(zone => ({ ...zone, brightness: 1 }));
+  await mockReadyCard(page, project, zones);
+  const target = page.getByTestId('section-target-patch-default-inner-circle');
+  const plasma = page.locator('.pm-cards .pmcard[data-pattern-id="plasma"]');
+  await plasma.dragTo(target);
+
+  await expect(target).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toHaveText('Plasma');
+  await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toHaveText('Fire');
+  await expect.poll(() => controlPosts.filter(post => post.patternId === 'plasma')).toEqual([
+    expect.objectContaining({ zone: zones[1].id, syncZones: false }),
+  ]);
 });
 
 test('a card still holding one section says so and points at Install', async ({ page }) => {
@@ -214,7 +235,7 @@ test('a one-section piece offers Divide in Layout instead of an empty row', asyn
   project.layout.layerGroups = [];
   const zones = compiledZones(project);
   await mockReadyCard(page, project, zones.map(zone => ({ id: zone.id, label: zone.label, ranges: zone.ranges })));
-  await expect(page.getByTestId('card-holds')).toHaveText(`Card holds ${zones[0].label}`);
+  await expect(page.getByTestId('card-holds')).toHaveCount(0);
   await page.getByTestId('divide-in-layout').click();
   await expect(page).toHaveURL(/#screen=layout&mode=draw/);
 });
