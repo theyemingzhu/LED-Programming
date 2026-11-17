@@ -240,8 +240,9 @@ input[type=number]::-webkit-outer-spin-button {
 .app {
   --studio-header-height: 44px;
   --studio-footer-height: 28px;
+  --studio-rail-width: 58px;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 320px;
+  grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) 320px;
   grid-template-rows: var(--studio-header-height) minmax(36px, auto) minmax(0, 1fr) minmax(var(--studio-footer-height), auto);
   grid-template-areas:
     "top   top   top"
@@ -1041,9 +1042,14 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 @media (max-width: 640px) {
   .app {
     --studio-header-height: 68px;
-    grid-template-columns: 58px minmax(0, 1fr) 0px;
+    --studio-rail-width: 48px;
+    grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) 0px;
     grid-template-rows: auto minmax(36px, auto) minmax(0, 1fr) auto;
   }
+
+  .rail { padding-block: 6px; }
+  .rail-item { height: 44px; }
+  .rail-item.active::before { left: 0; width: 2px; }
 
   .topbar {
     height: auto;

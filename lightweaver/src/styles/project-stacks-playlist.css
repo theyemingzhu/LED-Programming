@@ -96,22 +96,22 @@
 
 @media (max-width: 640px) {
   .pm .pl-list {
-    padding-inline: 8px;
+    padding-inline: 4px;
   }
   .pm .pl-list .pl-timing {
     padding: 8px;
-    margin-inline: -8px;
+    margin-inline: -4px;
     gap: 6px 12px;
   }
   .pm .pl-list > .sec-h {
-    margin-inline: -8px;
-    padding-inline: 8px;
+    margin-inline: -4px;
+    padding-inline: 6px;
   }
   .pm .pl-row {
     grid-template-columns: 44px minmax(0, 1fr) 24px;
     row-gap: 3px;
     column-gap: 8px;
-    padding: 6px 8px;
+    padding: 6px;
   }
   .pm .pl-row .pl-index {
     display: block;

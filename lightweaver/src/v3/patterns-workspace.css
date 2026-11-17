@@ -220,9 +220,9 @@
   .pm.pm-workspace .pm-bank-filters .pt-tools { flex: 1 1 100%; }
 }
 @media (max-width: 560px) {
-  .pm.pm-workspace { padding-inline: 10px; }
-  .pm.pm-workspace .pm-target { padding-inline: 8px; }
-  .pm.pm-workspace .pm-target > .sec-h { margin-inline: -8px; padding-inline: 8px; }
+  .pm.pm-workspace .pm-target { padding-inline: 6px; }
+  .pm.pm-workspace .pm-target > .sec-h { margin-inline: -6px; padding-inline: 6px; }
+  .pm.pm-workspace .project-stack-save { margin-inline: 0; padding-inline: 6px; }
   .pm.pm-workspace .pm-target .pm-preview-pane { padding-inline: 0; }
   .pm.pm-workspace .pm-target .pm-preview-controls { flex-wrap: wrap; gap: 0; }
   .pm.pm-workspace .pm-target .pm-preview-meta { flex: 1 1 100%; height: 18px; }

@@ -33,6 +33,11 @@
 }
 .pm .pm-title p { color: var(--text-lo); }
 
+@media (max-width: 640px) {
+  .pm:is(.pm-workspace, .pl-workspace) { padding-inline: 0; }
+  .pm:is(.pm-workspace, .pl-workspace) .pm-hero { padding-inline: 6px; }
+}
+
 /* ── section heads: a mono label on a hairline rule ──────── */
 /* .sec-h already lays out as label + meta + rule. The schematic
    register only changes the register of the label, and adds the
