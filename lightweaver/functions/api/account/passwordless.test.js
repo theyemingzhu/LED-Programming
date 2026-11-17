@@ -48,6 +48,7 @@ async function fixture(t) {
   let exchange;
   const waits = [];
   const providerFetch = async (url, options) => {
+    assert.equal(options.redirect, 'manual', 'Workers require manual handling of provider redirects');
     if (String(url) === 'https://oauth2.googleapis.com/token') {
       assert.ok(exchange, 'unexpected Google token exchange');
       return exchange(options);

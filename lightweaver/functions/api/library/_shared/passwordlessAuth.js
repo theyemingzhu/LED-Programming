@@ -94,9 +94,10 @@ async function signInMethods(env) {
 }
 
 async function sendCode(env, email, code, fetchImpl) {
+  // Workers support manual redirects. The response check rejects all redirects.
   const result = await fetchImpl(`https://api.cloudflare.com/client/v4/accounts/${env.STUDIO_EMAIL_ACCOUNT_ID}/email/sending/send`, {
     method: 'POST',
-    redirect: 'error',
+    redirect: 'manual',
     signal: AbortSignal.timeout(8_000),
     headers: {
       authorization: `Bearer ${env.STUDIO_EMAIL_API_TOKEN}`,
@@ -120,7 +121,7 @@ async function sendCode(env, email, code, fetchImpl) {
 async function verifyGoogleIdentity({ requestUrl, env, flow, code, googleJwks, fetchImpl, current }) {
   const exchanged = await fetchImpl('https://oauth2.googleapis.com/token', {
     method: 'POST',
-    redirect: 'error',
+    redirect: 'manual',
     signal: AbortSignal.timeout(8_000),
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
