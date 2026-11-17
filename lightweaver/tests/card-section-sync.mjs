@@ -251,10 +251,11 @@ console.log('card-section-sync tests passed');
   // Not read yet: say nothing, never guess.
   assert.equal(cardSectionDifference(targets, null).known, false);
   assert.equal(cardSectionSummary(targets, null), '');
-  // Card holds every section.
+  // Card holds every section, so the section register needs no extra summary.
   const full = { zones: [{ id: 'ring-1', label: 'Ring 1' }, { id: 'ring-2', label: 'Ring 2' }, { id: 'ring-3', label: 'Ring 3' }] };
   assert.deepEqual(cardSectionDifference(targets, full).missing, []);
-  assert.equal(cardSectionSummary(targets, full), 'Card holds Ring 1, Ring 2, Ring 3');
+  assert.equal(cardSectionSummary(targets, full), '');
+  assert.equal(cardSectionSummary(targets.slice(0, 3), full), 'Card has one extra section; Install to send yours');
   // Card still on the single auto zone from before the divide.
   const single = { zones: [{ id: 'all', label: 'All' }] };
   const diff = cardSectionDifference(targets, single);
@@ -265,6 +266,6 @@ console.log('card-section-sync tests passed');
   // Card holds two of three (a divide after the last install).
   const partial = { zones: [{ id: 'ring-1', label: 'Ring 1' }, { id: 'ring-2', label: 'Ring 2' }] };
   assert.equal(cardSectionSummary(targets, partial), 'Card holds Ring 1, Ring 2; Install to send yours');
-  // A single-section project on a matching card says so, no "Install" nag.
-  assert.equal(cardSectionSummary(targets.slice(0, 2), { zones: [{ id: 'ring-1', label: 'Ring 1' }] }), 'Card holds Ring 1');
+  // A matching single-section project also needs no summary.
+  assert.equal(cardSectionSummary(targets.slice(0, 2), { zones: [{ id: 'ring-1', label: 'Ring 1' }] }), '');
 }
