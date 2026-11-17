@@ -1209,6 +1209,10 @@ for (const viewport of [
     });
     await page.route('**/api/account/session', unauthenticatedSession);
     await page.route('**/api/library/session', unauthenticatedSession);
+    await page.route('**/api/account/methods', route => route.fulfill({
+      headers: { 'cache-control': 'no-store' },
+      json: { enabled: false, google: false, email: false },
+    }));
 
     const consoleErrors: string[] = [];
     page.on('console', msg => {
