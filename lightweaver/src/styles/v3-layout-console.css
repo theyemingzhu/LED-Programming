@@ -599,11 +599,51 @@
   align-items: stretch;
   gap: 4px;
 }
-.la .la-strip-detail .lw-sel-grid .la-size-ctrl { gap: 3px; }
-.la .la-strip-detail .lw-sel-grid .la-size-readout { flex: 1 1 auto; gap: 3px; }
+.la .la-strip-detail .la-strip-length-field {
+  justify-content: space-between;
+  gap: 6px;
+}
+.la .la-strip-detail .la-strip-length-label {
+  color: var(--text-mid);
+  font-size: 11px;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl {
+  flex: 0 0 auto;
+  width: auto;
+  gap: 2px;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn {
+  width: 30px;
+  min-width: 30px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-mid);
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn:hover:not(:disabled) {
+  background: var(--bg-elev-2);
+}
+.la .la-strip-detail .lw-sel-grid .la-size-readout { flex: 0 0 auto; gap: 3px; }
 .la .la-strip-detail .lw-sel-grid .la-size-readout input[type=number] {
-  width: 100%;
+  width: 58px;
   min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 2px;
+  text-align: center;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 40px 1px no-repeat;
+  box-shadow: none;
+  appearance: textfield;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-readout input::-webkit-inner-spin-button { appearance: none; }
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl :is(button, input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .la .la-strip-detail .lw-sel-grid .la-led-count-field { flex: 1 1 auto; min-width: 0; }
 .la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number] {
@@ -653,8 +693,6 @@
 @media (pointer: coarse) {
   .la .la-strip-detail .lw-sel-grid .la-led-count-field .btn,
   .la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number],
-  .la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn,
-  .la .la-strip-detail .lw-sel-grid .la-size-readout input[type=number],
   .la .la-strip-detail .lw-sel-grid .la-strip-density .btn,
   .la .la-strip-detail .lw-sel-grid .la-gpio-select { min-height: 44px; height: 44px; }
   .la .la-strip-detail .actions .btn { min-height: 44px; }

@@ -2024,7 +2024,8 @@ export function DrawModePanel({
                         {/* Count, scale and wiring stay directly editable. */}
                         {!connectedFamily && <>
                         <div className="lw-sel-grid">
-                          <div className="la-strip-physical-field">
+                          <div className="la-strip-physical-field lw-sel-wide la-strip-length-field">
+                            <span className="la-strip-length-label">Length</span>
                             <div className="la-size-ctrl">
                               <button type="button" className="btn" aria-label="Make strip smaller"
                                       title="Shrink 10%"
