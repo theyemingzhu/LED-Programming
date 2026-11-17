@@ -260,9 +260,9 @@ test('groups selected strips and merges them into one composite strip', async ({
   await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  await page.locator('.la-strip-row').nth(0).locator('.la-wire-n').click();
-  await page.locator('.la-strip-row').nth(1).locator('.la-wire-n').click({ modifiers: ['Shift'] });
-  await page.locator('.la-strip-row').nth(2).locator('.la-wire-n').click({ modifiers: ['Shift'] });
+  await page.locator('.la-strip-row').nth(0).locator('.layer-name').click();
+  await page.locator('.la-strip-row').nth(1).locator('.layer-name').click({ modifiers: ['Shift'] });
+  await page.locator('.la-strip-row').nth(2).locator('.layer-name').click({ modifiers: ['Shift'] });
   await expect(page.getByText('3 strips selected')).toBeVisible();
 
   await page.locator('.la-batch-actions input').fill('Heart outline');
@@ -270,11 +270,10 @@ test('groups selected strips and merges them into one composite strip', async ({
   await expect(page.getByText('Heart outline', { exact: true })).toBeVisible();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  // Row centers contain pattern buttons after grouping; use the wire-number
-  // handle so these clicks select strips rather than opening Patterns.
-  await page.locator('.la-strip-row').nth(0).locator('.la-wire-n').click();
-  await page.locator('.la-strip-row').nth(1).locator('.la-wire-n').click({ modifiers: ['Shift'] });
-  await page.locator('.la-strip-row').nth(2).locator('.la-wire-n').click({ modifiers: ['Shift'] });
+  // Click each strip name to select it within the group.
+  await page.locator('.la-strip-row').nth(0).locator('.layer-name').click();
+  await page.locator('.la-strip-row').nth(1).locator('.layer-name').click({ modifiers: ['Shift'] });
+  await page.locator('.la-strip-row').nth(2).locator('.layer-name').click({ modifiers: ['Shift'] });
   await page.locator('.la-batch-actions input').fill('Heart merged');
   // Step 10 renamed the destructive strip merge to "Combine into one strip".
   await page.getByRole('button', { name: 'Combine into one strip' }).click();

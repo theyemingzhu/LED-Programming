@@ -411,6 +411,12 @@
   .la .la-strip-menu-popover .btn,
   .la .la-divide-toggle { min-height: 44px; }
 }
+@media (max-width: 600px) {
+  .la .la-strip-connection :is(.btn, .la-gpio-select) {
+    min-height: 30px;
+    padding-block: 0;
+  }
+}
 
 /* Keep artwork creation, the project total, and selected-strip edits distinct. */
 .la-artwork-create {
@@ -447,8 +453,6 @@
 .la .la-gpio-group-head { flex-wrap: wrap; gap: 4px 8px; }
 .la .la-gpio-group-head > span { white-space: nowrap; }
 
-.la .la-gpio-group .la-strip-row .la-wire-n { font-size: 0; width: 12px; flex: 0 0 12px; }
-.la .la-gpio-group .la-strip-row .la-wire-n svg { width: 12px; height: 16px; opacity: .8; }
 .la .la-gpio-group .la-strip-row .layer-name { min-width: 50px !important; }
 .la-row-count { display: inline-flex; align-items: stretch; flex: 0 0 auto; height: 28px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-app); }
 .la-row-count button { width: 16px; border: 0; padding: 0; background: transparent; color: var(--text-mid); cursor: pointer; }
@@ -602,7 +606,6 @@
 .la-side-empty,
 .la-side-foot { margin: 0; padding: 7px 10px 8px 12px; color: var(--text-faint); font-size: 11px; line-height: 1.45; }
 .la-side-foot { border-top: 1px solid var(--border-hair); }
-/* Specific enough to beat the compact list's hidden handle text. */
 .la .la-gpio-group .la-strip-row .la-wire-n.la-flow-n {
   flex: 0 0 16px;
   width: 16px;

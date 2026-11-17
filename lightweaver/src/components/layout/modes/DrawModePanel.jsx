@@ -1785,6 +1785,7 @@ export function DrawModePanel({
                   <div
                        className={`la-strip-row${connectedFamily ? ' la-part-row' : ''}${isSel ? ' sel' : ''}${droppedStripIds.includes(s.id) ? ' is-dropped' : ''}${stripGroupDragOver === `strip:${s.id}` ? ' is-drop-target' : ''}`}
                        draggable
+                       title={sideView ? 'Drag to another side, or up and down to change the order the pattern flows' : 'Drag to change physical wire order'}
                        onDragStart={e => {
                          const ids = selectedStripIds.includes(s.id) ? selectedStripIds : [s.id];
                          e.dataTransfer.effectAllowed = 'move';
@@ -1839,13 +1840,11 @@ export function DrawModePanel({
                          // were working on closed its own readout.
                          selectStrip(s.id);
                        }}>
-                      {/* In a side the handle IS the flow number the artwork shows. */}
-                      <span className={`la-wire-n${flowPosition ? ' la-flow-n' : ''}`}
-                            data-testid={flowPosition ? `flow-n-${s.id}` : undefined}
-                            title={sideView ? 'Drag to another side, or up and down to change the order the pattern flows' : 'Drag to change physical wire order'}
+                      {flowPosition ? <span className="la-wire-n la-flow-n"
+                            data-testid={`flow-n-${s.id}`}
                             style={{ flexShrink: 0, cursor: 'grab', color: isBatchSel ? 'var(--accent)' : undefined }}>
-                        {flowPosition ? flowPosition : <DragHandleIcon/>}
-                      </span>
+                        {flowPosition}
+                      </span> : null}
                       <InlineRename value={partName} onCommit={n => renameStrip(s.id, n)}
                                     className="layer-name" style={{ cursor: 'pointer', flex: 1, minWidth: 0, color: s.color }}/>
                       {s.reversed && <span className="la-strip-rev">REV</span>}

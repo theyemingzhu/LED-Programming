@@ -188,10 +188,18 @@
 .pm .pl-timing-switch {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: 12.5px;
   color: var(--text-mid);
+  text-align: left;
+  cursor: pointer;
 }
+.pm .pl-timing-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pm .pl-timing-note {
   flex: 1 1 240px;
   margin: 0 0 0 auto;

@@ -99,8 +99,8 @@ test('one selected editor, direct counts, and no numbered or repeated section na
   await page.locator('.la-strip-row').first().evaluate((element: HTMLElement) => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: '/tmp/lightweaver-selected-editor-phone-strips.png', fullPage: true });
   await expect(page.locator('.lw-connected-bar')).toHaveCount(0);
-  await expect(page.locator('.la-wire-n')).toHaveCount(4);
-  for (const grip of await page.locator('.la-wire-n').all()) await expect(grip).not.toContainText(/\d/);
+  await expect(page.locator('.la-strip-row[draggable="true"]')).toHaveCount(4);
+  await expect(page.locator('.la-strip-row .la-wire-n')).toHaveCount(0);
   await expect(page.getByRole('spinbutton', { name: 'Ribbon 2 LED count' })).toHaveValue('10');
   await expect(page.getByTestId('connected-boundary')).toHaveCount(0);
   await page.getByRole('spinbutton', { name: 'Ribbon 2 LED count' }).fill('73');

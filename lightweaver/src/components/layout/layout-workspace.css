@@ -166,13 +166,69 @@
 
 @media (max-width: 600px) {
   .la .la-inspector-main > .panel-head { position: static; }
+
+  .la .toolbar.la-workspace-toolbar { gap: 4px; }
+  .la .la-workspace-toolbar .la-create-tools > .tb-btn { flex: 1 0 auto; }
+  .la .la-workspace-toolbar .la-view-tools,
+  .la .la-workspace-toolbar .la-zoom { gap: 2px; }
+  .la .la-workspace-toolbar .tb-btn,
+  .la .la-workspace-toolbar .la-zoom button {
+    min-height: 30px;
+    height: 30px;
+    padding-block: 0;
+  }
+  .la .la-workspace-toolbar .tb-btn.icon,
+  .la .la-workspace-toolbar .la-zoom button { min-width: 44px; }
+
+  .la .la-gpio-group .la-strip-row button,
+  .la .la-mode-nav .btn { min-height: 30px; }
+  .la .la-gpio-group .la-strip-row-eye { width: 44px; min-width: 44px; }
+  .la .la-gpio-group .la-strip-row span.layer-name,
+  .la .la-gpio-group .la-section-pattern-action { white-space: normal; overflow-wrap: anywhere; }
+  .la .la-gpio-group .la-section-pattern-action { flex-basis: 34%; text-align: end; }
+  .la .la-pattern-details > .btn { min-height: 30px; padding-block: 0; }
+  .la .la-pattern-details > .btn:only-child {
+    width: 100%;
+    justify-content: flex-start;
+    padding-inline: 0;
+  }
+
+  .la .la-strip-settings-head .la-row-count,
+  .la .la-strip-settings-head .la-row-count :is(button, input),
+  .la .la-strip-detail .lw-sel-grid .la-size-ctrl :is(button, input[type=number]),
+  .la .la-strip-detail .lw-sel-grid .la-strip-density .btn {
+    height: 30px;
+    min-height: 30px;
+    padding-block: 0;
+  }
+  .la .la-strip-settings-head .la-row-count input[type=number] {
+    width: 52px;
+    text-align: center;
+    appearance: textfield;
+  }
+  .la .la-strip-detail .lw-sel-grid .la-size-readout { width: 52px; }
+  .la .la-strip-settings-head .la-data-route span { white-space: nowrap; }
 }
 
 @media (max-width: 379px) {
+  .la:not(.mode-wire, .inspector-collapsed) { --mobile-sheet-height: clamp(180px, 39dvh, 300px); }
   /* The rail claims 57px. At the narrowest widths the canvas keeps its
      separate Fit board button, so it need not compete for toolbar width. */
   .la .la-workspace-toolbar .la-toolbar-fit { display: none; }
   .la .la-workspace-toolbar .la-create-tools { flex-wrap: wrap; gap: 3px; }
   .la .la-workspace-toolbar .la-create-tools .tb-btn { padding-inline: 5px; }
-  .la .la-fit-board { width: 44px; height: 44px; }
+  .la .la-overlay.br {
+    inset: auto 8px 8px;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 0 10px;
+  }
+  .la .la-overlay.br > div { gap: 4px; }
+  .la .la-overlay.br .la-canvas-cursor { flex-basis: 100%; order: -1; justify-content: start; }
+  .la .la-overlay.br .la-canvas-view-actions { margin: 0 0 0 auto; }
+  .la .la-fit-board { width: 44px; height: 30px; }
+}
+
+@media (max-width: 600px) and (max-height: 520px) {
+  .la:not(.mode-wire, .inspector-collapsed) { --mobile-sheet-height: clamp(112px, 28dvh, 150px); }
 }

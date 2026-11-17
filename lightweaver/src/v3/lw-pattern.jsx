@@ -3091,7 +3091,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
     const stackSavePanel = (
                 <div className="project-stack-save" data-testid="stack-save-bar" aria-label="Save complete look">
-                  <div className="sec-h"><span className="t">Complete look</span><span className="m">{sectionCount} {sectionCount === 1 ? 'section' : 'sections'} together</span></div>
+                  <div className="sec-h"><span className="t">Complete look</span><span className="m">{sectionCount} {sectionCount === 1 ? 'section' : 'sections'}</span></div>
                   {newStackResumeMessage && !editingSavedLook && <p className="project-stack-resume-note">{newStackResumeMessage}</p>}
                   <label className="project-stack-name-label" htmlFor="project-stack-name">Look name</label>
                   <div className="project-stack-save-controls">
@@ -3355,7 +3355,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                    </>}
                    <span className="sr-only" id="pattern-section-order-help">Drag to reorder, or use the Up and Down keys. Display order only.</span>
                    <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections" ref={sectionListRef}>
-                     {displayedSectionRows.map(row => {
+                     {displayedSectionRows.map((row, index) => {
                        const target = sectionTargets.find(item => item.id === row.id);
                        const sidesMeta = showSides ? sectionMetaCopy({ target, symmetry: layoutSymmetry, strips, ledCount: row.pixelCount }) : null;
                        const rowLabel = showSides ? sectionLabelCopy({ target, symmetry: layoutSymmetry }) || row.label : row.label;
@@ -3401,7 +3401,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                              nudgeDisplayedSection(row.id, event.key === 'ArrowUp' ? -1 : 1);
                            }}
                          >
-                           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg>
+                           <span aria-hidden="true">{index + (displayedSectionRows[0]?.id === ALL_SECTIONS_TARGET_ID ? 0 : 1)}</span>
                          </button>
                        )}</div>;
                      })}

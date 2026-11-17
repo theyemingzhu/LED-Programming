@@ -1227,10 +1227,8 @@ function realPatternShape(patternId) {
                             onDragStart={(event) => startDrag(event, i)}
                             onDragEnd={endDrag}
                           >
-                            <span className="pl-grip-dots" aria-hidden="true">::</span>
-                            <span className="pl-grip-position" aria-hidden="true">{i + 1}</span>
+                            <strong aria-hidden="true">{i + 1}</strong>
                           </button>
-                          <strong>{String(i + 1).padStart(2, "0")}</strong>
                           <span>{i === 0 ? "first" : "press"}</span>
                         </div>
                         {stackSummary ? <StackArtwork summary={stackSummary} /> : <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>}
@@ -1326,16 +1324,16 @@ function realPatternShape(patternId) {
                       />
                       <span className="pl-timing-unit">s</span>
                     </label>
-                    <label className="pl-timing-switch">
-                      <button
-                        type="button"
-                        aria-pressed={playlistTiming.enabled}
-                        className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")}
-                        onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
-                        data-testid="playlist-enabled-toggle"
-                      />
+                    <button
+                      type="button"
+                      className="pl-timing-switch"
+                      aria-pressed={playlistTiming.enabled}
+                      onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
+                      data-testid="playlist-enabled-toggle"
+                    >
+                      <span aria-hidden="true" className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")} />
                       <span>Play on the card</span>
-                    </label>
+                    </button>
                     <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
                   </div>
                   {playlistTiming.enabled && playlistOverflow > 0 &&
