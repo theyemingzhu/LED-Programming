@@ -26,7 +26,7 @@ async function readJsonFile(file) {
   return JSON.parse(await file.text());
 }
 
-export function ProjectLibraryPanel() {
+export function ProjectLibraryPanel({ googleOutcome, methods, methodsError, retryMethods, headingRef }) {
   const library = useCloudLibrary();
   const [view, setView] = useState('active');
   const [query, setQuery] = useState('');
@@ -84,7 +84,8 @@ export function ProjectLibraryPanel() {
           : result.error?.message || 'The online library could not complete that action.');
         return result;
       }
-      if (success) setNotice(typeof success === 'function' ? success(result) : success);
+      if (result?.project?.missingRecordingNotice) setNotice(result.project.missingRecordingNotice);
+      else if (success) setNotice(typeof success === 'function' ? success(result) : success);
       return result;
     } finally {
       setBusy('');
@@ -204,10 +205,11 @@ export function ProjectLibraryPanel() {
       <div className="cloud-library-heading">
         <div>
           <span className="cloud-kicker">Private workspace</span>
-          <h3>Online project library</h3>
+          <h3 ref={headingRef} tabIndex={-1}>Online project library</h3>
         </div>
       </div>
-      <AccountAccessPanel />
+      <AccountAccessPanel googleOutcome={googleOutcome} methods={methods} methodsError={methodsError}
+        retryMethods={retryMethods} />
 
       {library.session.status === 'authenticated' && (
         <>

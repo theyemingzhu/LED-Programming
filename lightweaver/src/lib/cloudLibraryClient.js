@@ -1,5 +1,6 @@
 import { isLibraryBackup } from './libraryBackup.js';
 import { migrateProject } from './projectModel.js';
+import { prepareOnlineProjectMedia, restoreOnlineProjectMedia } from './onlineProjectMedia.js';
 
 const ERROR_STATES = new Map([
   [401, 'sign-in'],
@@ -30,7 +31,7 @@ function apiUrl(baseUrl, path, searchParams) {
   return `${base}${suffix}${query ? `?${query}` : ''}`;
 }
 
-async function errorFromResponse(response) {
+async function errorFromResponse(response, { artworkWrite = false } = {}) {
   let payload;
   try {
     payload = await response.json();
@@ -38,9 +39,12 @@ async function errorFromResponse(response) {
     payload = null;
   }
   const remote = payload?.error;
+  const isArtworkSizeLimit = artworkWrite && response.status === 413 && remote?.code === 'payload_too_large';
   return new CloudLibraryError(
     typeof remote?.code === 'string' ? remote.code : 'request_failed',
-    typeof remote?.message === 'string' ? remote.message : `Library request failed (${response.status}).`,
+    isArtworkSizeLimit
+      ? 'This artwork bundle is too large to save online. Download a backup from Projects to keep the whole project.'
+      : typeof remote?.message === 'string' ? remote.message : `Library request failed (${response.status}).`,
     {
       status: response.status,
       requestId: typeof remote?.requestId === 'string' ? remote.requestId : null,
@@ -178,11 +182,29 @@ function resultField(payload, field, predicate, status) {
   return value;
 }
 
+async function projectMediaOperation(operation, document) {
+  try {
+    return await operation(document);
+  } catch (cause) {
+    throw new CloudLibraryError(
+      'project_media_unavailable',
+      cause?.message || 'The artwork recordings could not be recovered.',
+      { cause },
+    );
+  }
+}
+
 export function createCloudLibraryClient({
   fetchImpl = fetch,
   baseUrl = '/api/library',
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('A fetch implementation is required.');
+
+  function requireCurrentProjectWrite(isCurrent) {
+    if (isCurrent && !isCurrent()) {
+      throw new CloudLibraryError('project_write_superseded', 'The active project or session changed before saving.');
+    }
+  }
 
   async function send(path, {
     method = 'GET',
@@ -191,6 +213,7 @@ export function createCloudLibraryClient({
     mutationRequestId,
     responseType = 'json',
     requestBaseUrl = baseUrl,
+    artworkWrite = false,
   } = {}) {
     const headers = { accept: 'application/json' };
     if (body !== undefined) {
@@ -229,7 +252,7 @@ export function createCloudLibraryClient({
       });
     }
 
-    if (!response.ok) throw await errorFromResponse(response);
+    if (!response.ok) throw await errorFromResponse(response, { artworkWrite });
     if (!jsonContentType(response)) {
       throw invalidResponse(response.status);
     }
@@ -359,29 +382,44 @@ export function createCloudLibraryClient({
       ), result.status);
     },
 
-    async createProject({ title, project }, { requestId: mutationRequestId } = {}) {
+    async createProject({ title, project }, { requestId: mutationRequestId, isCurrent } = {}) {
+      const bundled = await projectMediaOperation(prepareOnlineProjectMedia, project);
+      requireCurrentProjectWrite(isCurrent);
       const result = await send('projects', {
         method: 'POST',
-        body: { title, project },
-        mutationRequestId,
+        body: { title, project: bundled },
+        mutationRequestId, artworkWrite: true,
       });
       return resultField(result.payload, 'project', isProjectMetadata, result.status);
     },
 
     async readProject(id) {
       const result = await send(`projects/${encodeURIComponent(id)}`);
-      return resultField(result.payload, 'project', value => (
+      const project = resultField(result.payload, 'project', value => (
         isProjectMetadata(value) && isPortableProjectDocument(value.document)
       ), result.status);
+      let missingLegacyRecording = false;
+      const document = await projectMediaOperation(
+        value => restoreOnlineProjectMedia(value, { onMissingLegacyMedia: () => { missingLegacyRecording = true; } }),
+        project.document,
+      );
+      return {
+        ...project,
+        document,
+        ...(missingLegacyRecording && {
+          missingRecordingNotice: 'Recording missing. You can edit this project. Import the original backup or record the sequence again before saving online, downloading a backup, or installing.',
+        }),
+      };
     },
 
-    async updateProject(id, { baseRevision, title, project }, { requestId: mutationRequestId } = {}) {
-      const body = { baseRevision, project };
+    async updateProject(id, { baseRevision, title, project }, { requestId: mutationRequestId, isCurrent } = {}) {
+      const body = { baseRevision, project: await projectMediaOperation(prepareOnlineProjectMedia, project) };
+      requireCurrentProjectWrite(isCurrent);
       if (title !== undefined) body.title = title;
       const result = await send(`projects/${encodeURIComponent(id)}`, {
         method: 'PUT',
         body,
-        mutationRequestId,
+        mutationRequestId, artworkWrite: true,
       });
       return resultField(result.payload, 'project', isProjectMetadata, result.status);
     },

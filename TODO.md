@@ -15,6 +15,8 @@ cd "/Users/adrianrasmussen/Documents/Files/2 Areas/Coding/led" && npm run firmwa
 
 ## Follow-ups
 
+- [ ] Explore owner-published artwork updates through Peace Live. Design per-artwork targeting, buyer consent and a safe restore path before any remote playback or content changes.
+
 - [ ] Finish isolated pattern execution acceptance: combined source candidate covers ordinary preview, modern Layout, reachable legacy Layout/preview, packed frame performance and actual bundled-source guards for Flow/recording. Mapper399 is integrated into reviewed source PR411, retained in Future because no active delivery target is established. Current mounted Studio paths and publication policy are delivered through PR402/407/412 with independent exact live/artifact/CSP proof; this does not close the broader boundary. Pattern Lab mounted paths already require bundled source; unmounted AI helpers and deferred Pi do not justify speculative migrations. Keep offline/physical target acceptance and remaining resource limits open before closing the overall boundary _(band: agent-runnable)_ _(effort: deep)_ → Resume: [isolated-pattern-frames.md](docs/isolated-pattern-frames.md)
 
 - [ ] Check symmetry sides on the real gallery card: a mirrored look plays both sides as mirror images, an own look plays them apart, and each side flows through its strips _(band: you-required)_ _(effort: quick)_ → Plan: [symmetry-sides.md](lightweaver/todo/plans/symmetry-sides.md)
