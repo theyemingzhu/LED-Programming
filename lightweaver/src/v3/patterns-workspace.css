@@ -100,8 +100,7 @@
 .pm.pm-workspace .pm-section-entry { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--border-hair); }
 .pm.pm-workspace .pm-section-entry:last-child { border-bottom: 0; }
 .pm.pm-workspace .pm-section-entry.on { background: var(--accent-soft); }
-.pm.pm-workspace .pm-section-entry[draggable="true"] { cursor: grab; }
-.pm.pm-workspace .pm-section-entry[draggable="true"]:active { cursor: grabbing; }
+.pm.pm-workspace .pm-section-entry[data-drop-target] { box-shadow: inset 0 2px var(--accent); }
 .pm.pm-workspace .pm-section-item {
   flex: 1 1 auto;
   min-width: 0;
@@ -131,14 +130,22 @@
   gap: 4px 10px;
 }
 .pm.pm-workspace .pm-lab-preview .btn { min-height: 44px; }
-.pm.pm-workspace .pm-order-tools { flex: none; display: flex; align-items: center; gap: 1px; padding: 0 3px; color: var(--text-lo); }
-.pm.pm-workspace .pm-order-tools button { display: grid; place-items: center; width: 24px; height: 25px; color: var(--text-mid); border-radius: 2px; }
-.pm.pm-workspace .pm-order-tools button:hover:not(:disabled) { color: var(--text-hi); background: var(--bg-elev); }
-.pm.pm-workspace .pm-order-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.pm.pm-workspace .pm-order-tools button:disabled { opacity: .3; }
-.pm.pm-workspace .pm-order-tools svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.pm.pm-workspace .pm-drag-mark { display: grid; place-items: center; width: 14px; }
-.pm.pm-workspace .pm-drag-mark svg { fill: currentColor; stroke: none; }
+.pm.pm-workspace .pm-section-grip {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  color: var(--text-mid);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.pm.pm-workspace .pm-section-grip svg { width: 17px; height: 17px; fill: currentColor; }
+.pm.pm-workspace .pm-section-grip:hover { color: var(--text-hi); background: var(--bg-elev); }
+.pm.pm-workspace .pm-section-grip:active { cursor: grabbing; }
+.pm.pm-workspace .pm-section-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (pointer: coarse) {
+  .pm.pm-workspace .pm-section-grip { flex-basis: 44px; min-height: 44px; }
+}
 .pm.pm-workspace .pm-section-help { grid-column: 1 / -1; margin: 5px 0; }
 .pm.pm-workspace .pm-section-footer {
   grid-column: 1 / -1;

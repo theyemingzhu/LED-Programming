@@ -1252,7 +1252,13 @@ function writeSectionDisplayOrder(projectId, ids) {
           - (positions.get(b.id) ?? (savedOrder.length + natural.get(b.id)));
       });
     }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
-    const dragSectionId = useRef('');
+    const sectionListRef = useRef(null);
+    const sectionDragRef = useRef(null);
+    const [sectionDropTarget, setSectionDropTarget] = useState('');
+    useEffect(() => () => {
+      cancelAnimationFrame(sectionDragRef.current?.frame);
+      sectionDragRef.current = null;
+    }, [projectId]);
     const moveDisplayedSection = (sourceId, targetId) => {
       if (!sourceId || !targetId || sourceId === targetId) return;
       const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
@@ -1263,13 +1269,56 @@ function writeSectionDisplayOrder(projectId, ids) {
       ids.splice(to, 0, sourceId);
       setSectionDisplayOrder({ projectId, ids });
       writeSectionDisplayOrder(projectId, ids);
-      requestAnimationFrame(() => sectionRowRefs.current.get(sourceId)?.focus());
     };
     const nudgeDisplayedSection = (id, direction) => {
       const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
       const index = ids.indexOf(id);
       if (index < 0 || index + direction < 0 || index + direction >= ids.length) return;
       moveDisplayedSection(id, ids[index + direction]);
+      requestAnimationFrame(() => sectionRowRefs.current.get(id)?.parentElement?.querySelector('.pm-section-grip')?.focus());
+    };
+    const updateSectionDropTarget = (drag) => {
+      const list = sectionListRef.current;
+      const row = document.elementFromPoint(drag.x, drag.y)?.closest('[data-section-order-id]');
+      const targetId = list?.contains(row) ? row.dataset.sectionOrderId : '';
+      if (targetId === drag.targetId) return;
+      drag.targetId = targetId;
+      setSectionDropTarget(targetId === drag.sourceId ? '' : targetId);
+    };
+    const startSectionDrag = (event, sourceId) => {
+      if (!event.isPrimary || event.button !== 0 || sectionDragRef.current) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const drag = { pointerId: event.pointerId, sourceId, targetId: sourceId, x: event.clientX, y: event.clientY, frame: 0 };
+      sectionDragRef.current = drag;
+      const scrollAtEdge = () => {
+        const list = sectionListRef.current;
+        if (sectionDragRef.current !== drag || !list) return;
+        const { top, bottom, left, right } = list.getBoundingClientRect();
+        if (drag.x >= left && drag.x <= right && drag.y >= top && drag.y <= bottom) {
+          const step = drag.y < top + 14 ? -5 : drag.y > bottom - 14 ? 5 : 0;
+          if (step) {
+            list.scrollTop += step;
+            updateSectionDropTarget(drag);
+          }
+        }
+        drag.frame = requestAnimationFrame(scrollAtEdge);
+      };
+      drag.frame = requestAnimationFrame(scrollAtEdge);
+    };
+    const moveSectionDrag = (event) => {
+      const drag = sectionDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      updateSectionDropTarget(drag);
+    };
+    const endSectionDrag = (event, commit = false) => {
+      const drag = sectionDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      sectionDragRef.current = null;
+      cancelAnimationFrame(drag.frame);
+      setSectionDropTarget('');
+      if (commit) moveDisplayedSection(drag.sourceId, drag.targetId);
     };
     const sectionRowRefs = useRef(new Map());
     const bankRef = useRef(null);
@@ -3304,8 +3353,9 @@ function writeSectionDisplayOrder(projectId, ids) {
                      </div>
                      <p className="pm-section-help" data-testid="sides-hint">{sidesHintCopy({ symmetry: layoutSymmetry, sidesMirrored: sidesMirrored !== false })}</p>
                    </>}
-                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections">
-                     {displayedSectionRows.map((row, rowIndex) => {
+                   <span className="sr-only" id="pattern-section-order-help">Drag to reorder, or use the Up and Down keys. Display order only.</span>
+                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections" ref={sectionListRef}>
+                     {displayedSectionRows.map(row => {
                        const target = sectionTargets.find(item => item.id === row.id);
                        const sidesMeta = showSides ? sectionMetaCopy({ target, symmetry: layoutSymmetry, strips, ledCount: row.pixelCount }) : null;
                        const rowLabel = showSides ? sectionLabelCopy({ target, symmetry: layoutSymmetry }) || row.label : row.label;
@@ -3316,11 +3366,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                        return <div
                          key={row.id}
                          className={`pm-section-entry${selected ? ' on' : ''}`}
-                         draggable={canReorder}
-                         onDragStart={event => { if (!canReorder) return; dragSectionId.current = row.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.id); }}
-                         onDragOver={event => { if (canReorder && dragSectionId.current) event.preventDefault(); }}
-                         onDrop={event => { event.preventDefault(); moveDisplayedSection(dragSectionId.current, row.id); dragSectionId.current = ''; }}
-                         onDragEnd={() => { dragSectionId.current = ''; }}
+                         data-section-order-id={canReorder ? row.id : undefined}
+                         data-drop-target={sectionDropTarget === row.id || undefined}
                        ><button
                          type="button"
                          ref={node => { if (node) sectionRowRefs.current.set(row.id, node); else sectionRowRefs.current.delete(row.id); }}
@@ -3335,11 +3382,28 @@ function writeSectionDisplayOrder(projectId, ids) {
                            <span className="pm-section-pattern-name" data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span>
                          </span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
-                       </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
-                         <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
-                         <button type="button" data-testid={`section-move-up-${row.id}`} aria-label={`Move ${row.label} up in display order`} disabled={rowIndex <= 1} onClick={() => nudgeDisplayedSection(row.id, -1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg></button>
-                         <button type="button" data-testid={`section-move-down-${row.id}`} aria-label={`Move ${row.label} down in display order`} disabled={rowIndex >= displayedSectionRows.length - 1} onClick={() => nudgeDisplayedSection(row.id, 1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
-                       </span>}</div>;
+                       </button>{canReorder && sectionCount > 1 && (
+                         <button
+                           type="button"
+                           className="pm-section-grip"
+                           aria-label={`Reorder ${rowLabel}`}
+                           aria-describedby="pattern-section-order-help"
+                           aria-keyshortcuts="ArrowUp ArrowDown"
+                           title="Drag to reorder. Display order only."
+                           onPointerDown={event => startSectionDrag(event, row.id)}
+                           onPointerMove={moveSectionDrag}
+                           onPointerUp={event => endSectionDrag(event, true)}
+                           onPointerCancel={endSectionDrag}
+                           onLostPointerCapture={endSectionDrag}
+                           onKeyDown={event => {
+                             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                             event.preventDefault();
+                             nudgeDisplayedSection(row.id, event.key === 'ArrowUp' ? -1 : 1);
+                           }}
+                         >
+                           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg>
+                         </button>
+                       )}</div>;
                      })}
                    </div>
                   {selectedTarget?.kind === 'section' && !isSideTarget(selectedTarget, layoutSymmetry) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
