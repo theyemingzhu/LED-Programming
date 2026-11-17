@@ -25,6 +25,7 @@ import {
   splitStripPathsN,
 } from '../../../lib/stripSplit.js';
 import { convertExistingRunsToSections } from '../../../lib/sectionRunConversion.js';
+import { runSeparationMappingIssue } from './layoutRunSeparation.js';
 import { useProject } from '../../../state/ProjectContext.jsx';
 import {
   connectedFamilyForStrip,
@@ -69,7 +70,7 @@ export function useLayoutStrips(ctx) {
   } = ctx;
   // Splitting rewrites the physical chain as well as the strip list, so this
   // one action reaches wiring directly (same route useLayoutWire takes).
-  const { wiring, updateWiring, projectName, applyRunSectionConversion, setLayoutSymmetry } = useProject();
+  const { wiring, updateWiring, projectName, applyRunSectionConversion, layoutSymmetry, setLayoutSymmetry } = useProject();
   // A strip cut into pieces keeps its place in its symmetry side: the pieces
   // take its place in order, so the pattern still flows through the same LEDs
   // (inside the same undo step as the cut). Call after the strips are set.
@@ -528,6 +529,8 @@ export function useLayoutStrips(ctx) {
 
   const separateExistingRuns = useCallback(id => {
     const source = strips.find(strip => strip.id === id);
+    const mappingIssue = runSeparationMappingIssue(source, layoutSymmetry);
+    if (mappingIssue) return { ok: false, error: mappingIssue };
     const plan = planSectionsAtRunBoundaries(source, wiring);
     if (!plan.ok) return plan;
     const splitPlan = planStripSplitFromCounts(source.pixelCount, plan.counts);
@@ -543,7 +546,7 @@ export function useLayoutStrips(ctx) {
       scrollToStrip(id);
     }
     return applied;
-  }, [strips, wiring, patchBoard, layerGroups, sectionFamilies, applyRunSectionConversion, selectStrip, scrollToStrip]);
+  }, [strips, wiring, patchBoard, layerGroups, sectionFamilies, layoutSymmetry, applyRunSectionConversion, selectStrip, scrollToStrip]);
 
   const familyMutationContext = useCallback((familyId) => {
     if (wiring.locked) return { ok: false, error: 'Wiring is locked — unlock it in Test & Install.' };

@@ -19,8 +19,8 @@ import { prepareCardStoragePayload } from '../lib/cardStoragePayload.js';
 import { prepareCardDeployment, waitForCardDeploymentVerification } from '../lib/cardDeployment.js';
 import { normalizePatchBoard } from '../lib/patchBoard.js';
 import { evaluateCardInstallGate, readCardCommissioningVerification } from '../lib/cardInstallGate.js';
-import { normalizeSavedLooks } from '../lib/sectionLookModel.js';
-import { addProjectStacksToPlaylist, getProjectStackCompatibility, getProjectStackReview, summarizeProjectStack } from '../lib/projectStacks.js';
+import { deriveSectionTargets, normalizeSavedLooks } from '../lib/sectionLookModel.js';
+import { addProjectStacksToPlaylist, getProjectStackCompatibility, summarizeProjectStack } from '../lib/projectStacks.js';
 import { getCardWiringStatus } from '../lib/cardWiringSafety.js';
 import { normalizeCardVisualLook } from '../lib/cardVisualLook.js';
 import {
@@ -91,8 +91,8 @@ function readPlaylistSource(projectId, hasStacks) {
   return hasStacks ? 'stacks' : 'patterns';
 }
 
-function stackNeedsSectionReview(look, targets) {
-  const review = getProjectStackReview(look, targets);
+function stackNeedsSectionReview(look, summary) {
+  const review = summary.review;
   return review.removedSectionIds.length > 0 || (look?.sectionSnapshotVersion === 1 && review.needsReview);
 }
 
@@ -225,6 +225,9 @@ function realPatternShape(patternId) {
     const [openRowMenuId, setOpenRowMenuId] = useState(null);
     const reorderHandleRefs = useRef(new Map());
     const rowMenuTriggerRefs = useRef(new Map());
+    const sectionDialogRef = useRef(null);
+    const sectionDialogEntryRef = useRef(null);
+    const [inspectedLookId, setInspectedLookId] = useState(null);
     const playlistOrderRef = useRef(null);
     const sourcePickerRef = useRef(null);
     const pendingReorderFocus = useRef(null);
@@ -253,7 +256,20 @@ function realPatternShape(patternId) {
       ? current.filter(candidate => candidate !== id) : [...current, id]);
     const toggleStackDetails = (id) => setExpandedStackIds(current => current.includes(id)
       ? current.filter(candidate => candidate !== id) : [...current, id]);
-    const stackSummaries = new Map(savedLooks.map(look => [look.id, summarizeProjectStack(look, sectionTargets)]));
+    const liveSidesMirrored = sidesMirrored !== false;
+    const otherModeTargets = useMemo(() => layoutSymmetry
+      ? deriveSectionTargets({
+          strips, patchBoard: board, wiring, compiledWiring, symmetry: layoutSymmetry,
+          sidesMirrored: !liveSidesMirrored,
+        })
+      : sectionTargets, [board, compiledWiring, layoutSymmetry, liveSidesMirrored, sectionTargets, strips, wiring]);
+    const stackSummaries = new Map(savedLooks.map(look => {
+      // The authoring workspace can be in a different mode from this saved look.
+      const targets = (look.sidesMirrored !== false) === liveSidesMirrored ? sectionTargets : otherModeTargets;
+      return [look.id, summarizeProjectStack(look, targets)];
+    }));
+    const inspectedLook = savedLookById.get(inspectedLookId);
+    const inspectedSummary = stackSummaries.get(inspectedLookId);
     const sequenceAssets = (standaloneController?.sequenceAssets || []).filter(asset =>
       asset?.mediaRef?.kind === 'indexeddb-sha256'
       && asset.mediaRef.sha256 === asset?.manifest?.lwseqSha256);
@@ -857,8 +873,8 @@ function realPatternShape(patternId) {
       if (recoveryPendingRef.current || !savedLook) return;
       if (playlistContainsCombo(playlist, savedLook.id)) { void previewSavedLookOnCard(savedLook); return; }
       try {
-        if (stackNeedsSectionReview(savedLook, sectionTargets)) {
-          throw new Error('Review sections in Patterns before adding this stack.');
+        if (stackNeedsSectionReview(savedLook, stackSummaries.get(savedLook.id))) {
+          throw new Error('Review sections in Patterns before adding this look.');
         }
         const next = addProjectStacksToPlaylist(standaloneController, [savedLook.id]);
         if (!writePlaylist(next.playlist)) throw new Error('Playlist change was refused. Check this project’s wiring before trying again.');
@@ -874,14 +890,14 @@ function realPatternShape(patternId) {
       const orderedIds = selectedStacksInLibraryOrder.map(look => look.id);
       if (!orderedIds.length) return;
       try {
-        if (orderedIds.some(id => stackNeedsSectionReview(savedLookById.get(id), sectionTargets))) {
-          throw new Error('Review sections in Patterns before adding these stacks.');
+        if (orderedIds.some(id => stackNeedsSectionReview(savedLookById.get(id), stackSummaries.get(id)))) {
+          throw new Error('Review sections in Patterns before adding these looks.');
         }
         const next = addProjectStacksToPlaylist(standaloneController, orderedIds);
         const added = next.playlist.length - (standaloneController?.playlist?.length || 0);
         if (!writePlaylist(next.playlist)) throw new Error('Playlist change was refused. Check this project’s wiring before trying again.');
         setSelectedStackIds([]);
-        setStackFeedback(added ? `${added} ${added === 1 ? 'stack' : 'stacks'} added to playlist.` : 'Selected stacks are already in the playlist.');
+        setStackFeedback(added ? `${added} ${added === 1 ? 'look' : 'looks'} added to playlist.` : 'Selected looks are already in the playlist.');
       } catch (error) {
         setStackFeedback(error instanceof RangeError ? `Not enough playlist slots. ${error.message}` : error.message);
       }
@@ -1096,12 +1112,11 @@ function realPatternShape(patternId) {
     return (
       <div className="screen">
         <div className="screen-scroll">
-          <div className="pm">
+          <div className="pm pl-workspace">
             <header className="pm-hero">
               <div className="pm-title">
-                <span className="pm-kicker">Studio · Playlist</span>
                 <h1>Playlist</h1>
-                <p>The order the dial press cycles through on the card. The first look starts on boot.</p>
+                <p>Arrange the dial order and timed playback.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
               </div>
               <div className="pm-actions">
@@ -1110,29 +1125,27 @@ function realPatternShape(patternId) {
                   className="btn primary"
                   disabled={!installGate.allowed}
                   title={installGate.allowed ? undefined : installGate.message}
+                  aria-label={playlistSyncing ? 'Sending…' : 'Install playlist on card'}
                   onClick={() => loadPlaylistToCard()}
                 >
-                  {I.bolt}{playlistSyncing ? 'Sending…' : 'Install playlist on card'}
+                  {I.bolt}<span className="pl-install-label">{playlistSyncing ? 'Sending…' : 'Install playlist'}{!playlistSyncing && <span className="pl-install-location"> on card</span>}</span>
                 </button>
-                {/* Was wrapped in a `.pm-menu` div — the class Patterns uses
-                    for its real "Card tools" dropdown, but here with no
-                    popover, no aria-haspopup, no chevron: leftover markup
-                    from that other screen's real menu, not one of its own. */}
-                <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
-                <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
-                <button className="btn" onClick={openCard}>{I.open}Open card page</button>
               </div>
             </header>
+            <dialog className="pl-section-dialog" ref={sectionDialogRef} aria-labelledby="pl-section-dialog-title" onClose={() => {
+              rowMenuTriggerRefs.current.get(sectionDialogEntryRef.current)?.focus();
+              setInspectedLookId(null);
+            }}>
+              <header className="pl-section-dialog-head">
+                <h2 id="pl-section-dialog-title">{inspectedLook?.label || 'Look sections'}</h2>
+                <form method="dialog"><button className="btn">Done</button></form>
+              </header>
+              {inspectedSummary && <StackAssignments summary={inspectedSummary} />}
+            </dialog>
             {playlistSaveStatus && <p className="pl-project-save-status" role="status" data-testid="playlist-project-save-status">{playlistSaveStatus}</p>}
 
             <div className="pm-grid">
               <section className="pm-main">
-                <div className="pl-hostrow">
-                  <span className="sf-l">Card address</span>
-                  <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
-                  <span className="pl-count" data-testid="playlist-physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
-                </div>
-
                 {connected && cardPlaylistStatus &&
                   <div className="pl-transport" data-testid="playlist-card-transport">
                     <span className="pl-transport-status" data-testid="playlist-card-transport-status">{playlistStatusLine}</span>
@@ -1167,12 +1180,12 @@ function realPatternShape(patternId) {
                       above, where it described something two elements away. */}
                   <div className="sec-h">
                     <h2 className="t">Playlist order</h2>
-                    <span className="m">{playlist.length} looks · dial press advances</span>
+                    <span className="m">{playlist.length} {playlist.length === 1 ? 'entry' : 'entries'}</span>
                     <span className="line" />
                   </div>
                   <div className="pl-order-help-row">
-                    <p className="pl-order-help" data-testid="playlist-order-help">Drag rows to set playback order. Each stack&apos;s sections play together.</p>
-                    <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add stacks</button>
+                    <p className="pl-order-help" data-testid="playlist-order-help">Drag to reorder.</p>
+                    <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add saved looks</button>
                   </div>
                   <div className="pl-timing">
                     <label className="pl-timing-field">
@@ -1200,7 +1213,7 @@ function realPatternShape(patternId) {
                       />
                       <span>Play on the card</span>
                     </label>
-                    <p className="pl-timing-note">Each look loops for its Length, then fades to the next{playlistTiming.enabled ? '; the last returns to the first.' : '.'}</p>
+                    <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
                   </div>
                   {playlistTiming.enabled && playlistOverflow > 0 &&
                     <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
@@ -1229,7 +1242,7 @@ function realPatternShape(patternId) {
                     return (
                       <article
                         key={id}
-                        className={"pl-row" + (live === id ? " is-live" : "") + (drag.from === i ? " is-dragging" : "") + (drag.from !== null && drag.over === i ? " is-drop-target" : "")}
+                        className={"pl-row" + (stackSummary ? " is-complete-look" : "") + (live === id ? " is-live" : "") + (drag.from === i ? " is-dragging" : "") + (drag.from !== null && drag.over === i ? " is-drop-target" : "")}
                         data-testid={`playlist-row-${id}`}
                         data-playlist-index={i}
                         onDragOver={(e) => hoverDrop(e, i)}
@@ -1254,15 +1267,16 @@ function realPatternShape(patternId) {
                             onDragStart={(event) => startDrag(event, i)}
                             onDragEnd={endDrag}
                           >
-                            ::
+                            <span className="pl-grip-dots" aria-hidden="true">::</span>
+                            <span className="pl-grip-position" aria-hidden="true">{i + 1}</span>
                           </button>
                           <strong>{String(i + 1).padStart(2, "0")}</strong>
-                          <span>{i === 0 ? "startup" : "press"}</span>
+                          <span>{i === 0 ? "first" : "press"}</span>
                         </div>
                         {stackSummary ? <StackArtwork summary={stackSummary} /> : <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>}
                         <div className="pl-copy">
-                          <strong>{displayLabel}{item.type === 'combo' && <span className="mixtag">Stack</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
-                          <span>{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? `${stackSummary?.sectionCount || 0} sections` : `${p.label} across the piece`}</span>
+                          <strong>{displayLabel}{item.type === 'combo' && <span className="mixtag pl-look-kind">Look</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
+                          <span className="pl-row-summary">{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? `${stackSummary?.sectionCount || 0} ${stackSummary?.sectionCount === 1 ? 'section' : 'sections'}` : `${p.label} across the piece`}</span>
                           {recorded && <RecordedSequenceChoice asset={recorded} />}
                         </div>
                         <div className="pl-actions">
@@ -1312,7 +1326,16 @@ function realPatternShape(patternId) {
                               <>
                                 <button className="pl-row-menu-backdrop" aria-label="Close playlist row actions" onClick={() => closeRowMenu(true)} />
                                 <div className="pl-row-menu-pop" id={`playlist-row-menu-${id}`} role="menu" aria-label={`Actions for ${displayLabel}`}>
-                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>{item.type === 'combo' ? 'Repeat this stack' : `Duplicate ${displayLabel}`}</span></button>
+                                  {stackSummary && <>
+                                    <a role="menuitem" className="pl-row-menu-item pl-mobile-entry-action" href={`#screen=pattern&editStack=${encodeURIComponent(savedLook.id)}`}>Edit look</a>
+                                    <button role="menuitem" className="pl-row-menu-item pl-mobile-entry-action" onClick={() => {
+                                      sectionDialogEntryRef.current = id;
+                                      setInspectedLookId(savedLook.id);
+                                      closeRowMenu(false);
+                                      sectionDialogRef.current?.showModal();
+                                    }}>View sections</button>
+                                  </>}
+                                  <button role="menuitem" className="pl-row-menu-item" onClick={() => { closeRowMenu(true); dup(i); }}>{I.copy}<span>{item.type === 'combo' ? 'Repeat this look' : `Duplicate ${displayLabel}`}</span></button>
                                   <button role="menuitem" className="pl-row-menu-item danger" onClick={() => { closeRowMenu(false); remove(i); }}>{I.trash}<span>Remove {displayLabel}</span></button>
                                 </div>
                               </>
@@ -1322,7 +1345,7 @@ function realPatternShape(patternId) {
                         {stackSummary && <div className="pl-row-stack-details">
                           <button type="button" className="pl-stack-details-toggle" aria-expanded={expandedStackIds.includes(`row-${id}`)} onClick={() => toggleStackDetails(`row-${id}`)}>{expandedStackIds.includes(`row-${id}`) ? 'Hide sections' : 'Show sections'}</button>
                           {expandedStackIds.includes(`row-${id}`) && <StackAssignments summary={stackSummary} />}
-                          <a className="pl-stack-details-toggle" href={`#screen=pattern&editStack=${encodeURIComponent(savedLook.id)}`}>Edit stack</a>
+                          <a className="pl-stack-details-toggle" href={`#screen=pattern&editStack=${encodeURIComponent(savedLook.id)}`}>Edit look</a>
                         </div>}
                       </article>
                     );
@@ -1353,18 +1376,23 @@ function realPatternShape(patternId) {
                     >
                       <span className="k">Playing</span>
                       <strong className="v">{playingItem ? (playingItem.type === 'combo' ? savedLookById.get(playingItem.lookId)?.label : '') || playingItem.label : '—'}</strong>
-                      {/* Was a fourth, boolean-only vocabulary for "has this
-                          reached the card" ("live preview confirmed" / "no
-                          live look sent"). Same underlying state
-                          (`previewAction`) the Card address row above already
-                          reads with `cardActionStatusLabel` — one phrase for
-                          the fact, wherever it is shown. */}
-                      <span className="n">{cardActionStatusLabel(previewAction)}</span>
+                      <span className="n" data-testid="playlist-physical-preview-status">{cardActionStatusLabel(previewAction)}</span>
                     </div>
                     <div className="pl-stat" data-testid="playlist-stat-slots">
                       <span className="k">Card slots left</span>
                       <strong className="v">{slotsLeft}</strong>
                       <span className="n">of {CARD_PLAYLIST_LIMIT}</span>
+                    </div>
+                  </div>
+                  <div className="pl-card-tools" role="group" aria-label="Playlist card tools">
+                    <div className="pl-hostrow">
+                      <span className="sf-l">Card address</span>
+                      <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
+                    </div>
+                    <div className="pl-card-tools-actions">
+                      <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
+                      <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
+                      <button className="btn" onClick={openCard}>{I.open}Open card page</button>
                     </div>
                   </div>
                 </div>
@@ -1378,9 +1406,9 @@ function realPatternShape(patternId) {
                     <button type="button" className="pl-source-tab" role="tab" aria-selected={sourceChoice === 'patterns'} onClick={() => chooseSource('patterns')}>Patterns</button>
                   </div>
                   {sourceChoice === 'stacks' ? <div role="tabpanel" aria-label="Project stacks">
-                    <div className="sec-h"><h2 className="t">Project stacks</h2><span className="m">{savedLooks.length}</span></div>
-                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Selected stacks are added at the end, in library order. Arrange playback in Playlist order. Repeat a stack from its playlist row.</p>
-                    {!!selectedStacksInLibraryOrder.length && <ol className="pl-stack-selection-preview" data-testid="playlist-stack-selection-preview" aria-label="Selected stacks in add order">
+                    <div className="sec-h"><h2 className="t">Saved looks</h2><span className="m">{savedLooks.length}</span></div>
+                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Selected looks are added at the end, in library order. Arrange playback in Playlist order. Repeat a look from its playlist row.</p>
+                    {!!selectedStacksInLibraryOrder.length && <ol className="pl-stack-selection-preview" data-testid="playlist-stack-selection-preview" aria-label="Selected looks in add order">
                       {selectedStacksInLibraryOrder.map((look, index) => <li key={look.id}>{index + 1}. {look.label}</li>)}
                     </ol>}
                     {!!savedLooks.length && <button type="button" className="btn pl-stack-add-selected" disabled={!selectedStackIds.length || recoveryPending} onClick={addSelectedStacks}>Add selected{selectedStackIds.length ? ` (${selectedStackIds.length})` : ''}</button>}
@@ -1389,7 +1417,7 @@ function realPatternShape(patternId) {
                       {savedLooks.map(look => {
                         const summary = stackSummaries.get(look.id);
                         const compatibility = getProjectStackCompatibility(look);
-                        const needsReview = stackNeedsSectionReview(look, sectionTargets);
+                        const needsReview = stackNeedsSectionReview(look, summary);
                         const eligible = compatibility.ok && !needsReview;
                         const added = playlistContainsCombo(playlist, look.id);
                         const expanded = expandedStackIds.includes(look.id);
@@ -1397,24 +1425,24 @@ function realPatternShape(patternId) {
                           <div className="pl-stack-head">
                             <input type="checkbox" aria-label={`Select ${look.label}`} checked={selectedStackIds.includes(look.id)} disabled={!eligible || added || recoveryPending} onChange={() => toggleStackSelection(look.id)} />
                             <StackArtwork summary={summary} />
-                            <strong>{look.label}</strong><span className="mixtag">Stack</span>
+                            <strong>{look.label}</strong><span className="mixtag">Look</span>
                           </div>
                           <div className="pl-stack-meta">
                             <span>{summary.sectionCount} {summary.sectionCount === 1 ? 'section' : 'sections'}</span>
                             {added && <span>In playlist: {(stackPlaylistPositions.get(look.id) || []).join(', ')}</span>}
                             {!eligible && <span className="pl-stack-ineligible">{needsReview ? 'Review sections' : 'Unavailable on card'}</span>}
                           </div>
-                          {!eligible && <p className="pl-stack-feedback">{needsReview ? 'Section layout changed. Open this stack in Patterns to review its assignments.' : compatibility.reason}</p>}
+                          {!eligible && <p className="pl-stack-feedback">{needsReview ? 'Section layout changed. Open this look in Patterns to review its assignments.' : compatibility.reason}</p>}
                           <div className="pl-stack-actions">
-                            {eligible && <button type="button" className={!added ? 'pl-stack-primary' : undefined} disabled={recoveryPending || (added && !connected)} onClick={() => addCombo(look)}>{added ? 'Preview' : 'Add stack'}</button>}
-                            <a href={`#screen=pattern&editStack=${encodeURIComponent(look.id)}`}>Edit stack</a>
+                            {eligible && <button type="button" className={!added ? 'pl-stack-primary' : undefined} disabled={recoveryPending || (added && !connected)} onClick={() => addCombo(look)}>{added ? 'Preview' : 'Add look'}</button>}
+                            <a href={`#screen=pattern&editStack=${encodeURIComponent(look.id)}`}>Edit look</a>
                             <button type="button" aria-expanded={expanded} onClick={() => toggleStackDetails(look.id)}>{expanded ? 'Hide sections' : 'Show sections'}</button>
                           </div>
                           {expanded && <StackAssignments summary={summary} />}
                         </div>;
                       })}
                     </div>
-                    {!savedLooks.length && <p className="pl-empty">No project stacks yet. Create one on Patterns.</p>}
+                    {!savedLooks.length && <p className="pl-empty">No saved looks yet. Create one on Patterns.</p>}
                   </div> : <div role="tabpanel" aria-label="Patterns">
                     <div className="sec-h"><h2 className="t">Pattern pool</h2><span className="m">{playlistPatternCount} added · {patternTiles.length} total</span></div>
                     <p className="pl-pool-help">Select a pattern to add it. Added patterns stay in place.</p>

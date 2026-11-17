@@ -1,11 +1,7 @@
 // showComposition.js — the saved Program format for the Show (music-responsive)
-// screen, and its graceful degradation when reopened against a layout that has
-// changed. Pure ESM, no React/DOM/audio inside the model itself (persistence
-// helpers touch localStorage/File only, guarded the same way the existing
-// per-mode tune panel in src/v3/lw-show.jsx guards its own localStorage reads —
-// see MODE_PARAMS_KEY / loadSavedParams / persistParams there, lines ~40-53,
-// and exportDefaults around line ~340. This module is NOT imported by that
-// file; nothing there was edited).
+// screen, and its graceful degradation when reopened against a changed layout.
+// The model is pure ESM. The persistence helpers read and write localStorage
+// independently of the Show UI's per-mode defaults.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // WHAT A "COMPOSITION" IS
@@ -264,27 +260,85 @@ export function importComposition(json) {
   return normalizeComposition(parsed);
 }
 
+function sameJsonValues(value, expected) {
+  if (Array.isArray(expected)) {
+    return Array.isArray(value) && value.length === expected.length
+      && expected.every((item, index) => sameJsonValues(value[index], item));
+  }
+  if (isPlainObject(expected)) {
+    const keys = Object.keys(expected);
+    return isPlainObject(value) && Object.keys(value).length === keys.length
+      && keys.every(key => Object.hasOwn(value, key) && sameJsonValues(value[key], expected[key]));
+  }
+  return value === expected;
+}
+
+/** Read a separate Show file for an already-open project and preview layout. */
+export function importCompositionFile(json, { projectId, stripIds }) {
+  const invalid = 'Choose a valid Voices file exported from Show.';
+  let raw;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    throw new Error(invalid);
+  }
+  if (!isPlainObject(raw) || !Array.isArray(raw.areas) || !Array.isArray(raw.fields) || !Array.isArray(raw.voices)) {
+    throw new Error(invalid);
+  }
+  if (raw.version !== SHOW_COMPOSITION_VERSION) {
+    throw new Error('This Voices file uses an unsupported version.');
+  }
+  if (!projectId || raw.projectId !== projectId) {
+    throw new Error('Open the project this Voices file came from.');
+  }
+
+  const known = new Set(stripIds);
+  const checkStrips = (ids) => {
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) {
+      throw new Error(invalid);
+    }
+    if (ids.some(id => !known.has(id))) {
+      throw new Error('Some strips in this Voices file are missing. Open its original layout or choose its preview in Show.');
+    }
+  };
+  for (const area of raw.areas) {
+    if (!Array.isArray(area?.instances)) throw new Error(invalid);
+    for (const instance of area.instances) {
+      if (instance?.stripIds !== WHOLE_PIECE) checkStrips(instance?.stripIds);
+    }
+  }
+  for (const field of raw.fields) {
+    if (field?.scope?.kind === 'strips') checkStrips(field.scope.stripIds);
+  }
+
+  const composition = importComposition(json);
+  // The local loader tolerates damaged and older data. A file replacement
+  // accepts only the shape our exporter writes, regardless of JSON key order.
+  if (!sameJsonValues(raw, JSON.parse(exportComposition(composition)))) throw new Error(invalid);
+  return composition;
+}
+
 // ── persistence: keyed by projectId, a sibling of the project file ────────
 // Storage shape: { [projectId]: Composition[] }. Mirrors the localStorage
 // guard pattern of loadSavedParams/persistParams in src/v3/lw-show.jsx.
 
-function readStore() {
-  if (typeof localStorage === 'undefined') return {};
+function readStore(strict = false) {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    return isPlainObject(parsed) ? parsed : {};
+    if (!isPlainObject(parsed)) throw new Error('Invalid Voices storage');
+    return parsed;
   } catch {
+    if (strict) throw new Error('This browser could not read its saved Voices. Your current Voices are still open.');
     return {};
   }
 }
 
-function writeStore(store) {
-  if (typeof localStorage === 'undefined') return;
+function writeStore(store, strict = false) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
-    /* storage full/blocked — same as persistParams, fail silently */
+    if (strict) throw new Error('This browser could not save Voices. Your current Voices are still open.');
   }
 }
 
@@ -297,13 +351,12 @@ export function loadCompositions(projectId) {
 }
 
 /** persistCompositions(projectId, compositions[]) -> normalized list saved. */
-export function persistCompositions(projectId, compositions) {
+export function persistCompositions(projectId, compositions, { strict = false } = {}) {
   if (typeof projectId !== 'string' || !projectId) return [];
   const normalized = (Array.isArray(compositions) ? compositions : []).map((c) =>
     normalizeComposition({ ...c, projectId }));
-  const store = readStore();
-  store[projectId] = normalized;
-  writeStore(store);
+  const store = readStore(strict);
+  writeStore({ ...store, [projectId]: normalized }, strict);
   return normalized;
 }
 

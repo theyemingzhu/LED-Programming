@@ -59,7 +59,7 @@ import {
 import { openInChrome } from '../lib/openInChrome.js';
 import { loadVerifiedFirmwareUpdateRelease } from '../lib/firmwareUpdateRelease.js';
 import {
-  clearFirmwareUpdateSession,
+  clearFirmwareUpdateSessionIfMatches,
   correlateFirmwareUpdateRecovery,
   createCardFirmwareUpdater,
   readFirmwareUpdateSession,
@@ -639,9 +639,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         onFirmwareRecoveryState({ phase });
       } else if (['restarting', 'probation'].includes(phase)) {
         onFirmwareRecoveryState({ phase });
-      } else if (phase === 'reconnected') {
-        onFirmwareRecoveryState({ phase: 'reconnected' });
-      } else if (error) {
+      } else if (phase !== 'reconnected' && error) {
         onFirmwareRecoveryState({ phase: 'blocked', reason: recoveryBlocker || error });
       } else {
         onFirmwareRecoveryState(null);
@@ -655,11 +653,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       if (!session || session.cardId !== card.id
         || session.targetBuildId !== target.buildId
         || session.targetFirmwareVersion !== target.firmwareVersion) return;
-      const result = correlateFirmwareUpdateRecovery(
-        session,
-        readiness?.firmwareUpdate || observedUpdateStatus || {},
-        readiness || {},
-      );
+      const updateStatus = readiness?.firmwareUpdate || observedUpdateStatus || {};
+      const result = correlateFirmwareUpdateRecovery(session, updateStatus, readiness || {});
       if (result.phase === 'rolled-back') {
         rolledBackRef.current = true;
         setRollback({ restoredBuildNumber: result.restoredBuildNumber, reason: result.reason });
@@ -674,11 +669,12 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         setConfirming(false);
         setUsbConfirmed(false);
         setPhase('reconnected');
-        clearFirmwareUpdateSession();
+        onFirmwareRecoveryState?.({ phase: 'reconnected', session, readiness, updateStatus });
+        clearFirmwareUpdateSessionIfMatches(session);
       } else if (['restarting', 'pending-reboot', 'probation', 'valid', 'rolled-back'].includes(session.phase)) {
         setPhase(session.phase === 'probation' ? 'probation' : 'restarting');
       }
-    }, [card.id, observedUpdateStatus, readiness, target]);
+    }, [card.id, observedUpdateStatus, onFirmwareRecoveryState, readiness, target]);
 
     useEffect(() => {
       const session = readFirmwareUpdateSession();
@@ -735,7 +731,8 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
       }).then(result => {
         if (!active || recoveryAttempt !== recoveryAttemptRef.current || usbCheckBusyRef.current) return;
         if (result.state === 'reconnected') {
-          clearFirmwareUpdateSession();
+          onFirmwareRecoveryState?.({ phase: 'reconnected', session, ...result.snapshot });
+          clearFirmwareUpdateSessionIfMatches(session);
           setObservedUpdateStatus(result.snapshot?.updateStatus || null);
           setPhase('reconnected');
           setError('');
@@ -766,7 +763,7 @@ import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
         setPhase('idle');
       });
       return () => { active = false; };
-    }, [card.id, phase, readiness?.host, reconnectHost, target, recoveryAttemptVersion]);
+    }, [card.id, onFirmwareRecoveryState, phase, readiness?.host, reconnectHost, target, recoveryAttemptVersion]);
 
     const start = async () => {
       if (mode === 'wifi' && alreadyOnPublishedFirmware) return;

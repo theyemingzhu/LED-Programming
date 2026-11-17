@@ -5,6 +5,9 @@ import { createDefaultProject, migrateProject, resolveStartupProject, toLegacyPr
 import { createDefaultPatchBoard } from './patchBoard.js';
 import { createDefaultCircleLayout } from './defaultCircleLayout.js';
 import { makeDefaultWiring } from './wiringModel.js';
+import { deriveSectionTargets, saveCurrentLookToController } from './sectionLookModel.js';
+import { addProjectStacksToPlaylist, getProjectStackReview } from './projectStacks.js';
+import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 
 const jsonRoundTrip = value => JSON.parse(JSON.stringify(value));
 
@@ -202,6 +205,65 @@ test('real drawn legacy layouts still rescue into a fresh default project', () =
 
   assert.equal(rescued.layout.strips.length, 1);
   assert.equal(rescued.layout.strips[0].sourceLayerId, 'legacy-strip');
+});
+
+function projectWithLegacySectionLook() {
+  const project = createDefaultProject();
+  const strips = [
+    { id: 'legacy_svg_path', pathData: 'M0 0 L5 0', pixelCount: 5 },
+    { id: 'strip-1', pathData: 'M0 0 L8 0', pixelCount: 8 },
+  ];
+  const patchBoard = createDefaultPatchBoard(strips);
+  Object.assign(project.layout, { strips, patchBoard, wiring: makeDefaultWiring(strips), starterPending: false });
+  const targets = deriveSectionTargets(project.layout).map(target => target.stripId === 'legacy_svg_path'
+    ? { ...target, look: { patternId: 'fire', speed: 1.4, brightness: 0, customHue: 110 } }
+    : target);
+  const controller = saveCurrentLookToController({}, { label: 'A', targets });
+  project.devices.standaloneController = addProjectStacksToPlaylist(controller, ['a']);
+  return project;
+}
+
+test('a legacy SVG path and its saved assignment migrate together on reopen', () => {
+  const saved = projectWithLegacySectionLook();
+  const expected = saved.devices.standaloneController.looks[0].sectionLooks['patch-legacy-svg-path'];
+  saved.devices.standaloneController.looks.push({
+    id: 'b', label: 'B', zones: { legacy_svg_path: { patternId: 'ocean', brightness: 0.4 } },
+  });
+  const reopened = migrateProject(jsonRoundTrip(saved));
+  const { looks, activeLookId, playlist } = reopened.devices.standaloneController;
+  assert.equal(reopened.layout.strips[0].id, 'strip-2');
+  assert.equal(reopened.layout.strips[0].sourceLayerId, 'legacy_svg_path');
+  assert.equal(reopened.layout.patchBoard.patches[0].id, 'patch-strip-2');
+  assert.deepEqual(looks[0].sectionLooks['patch-strip-2'], expected);
+  assert.equal(Object.hasOwn(looks[0].sectionLooks, 'patch-legacy-svg-path'), false);
+  assert.equal(looks[1].sectionLooks['strip-2'].patternId, 'ocean');
+  assert.equal(activeLookId, 'a');
+  assert.equal(playlist[0].lookId, 'a');
+  assert.equal(getProjectStackReview(looks[0], deriveSectionTargets(reopened.layout)).needsReview, false);
+  const { config } = buildCardRuntimePackageFromProject({
+    ...reopened.layout, standaloneController: reopened.devices.standaloneController,
+  });
+  const zone = config.looks.find(look => look.id === 'combo-a').zones.find(zone => zone.id === 'strip-2');
+  assert.equal(zone.patternId, 'fire');
+  assert.equal(zone.speed, 1.4);
+  assert.equal(zone.brightness, 0);
+  assert.equal(zone.customHue, 110);
+  assert.deepEqual(migrateProject(jsonRoundTrip(reopened)).devices.standaloneController.looks, looks);
+});
+
+test('legacy strip migration rejects colliding saved assignment destinations', () => {
+  const saved = projectWithLegacySectionLook();
+  const assignments = saved.devices.standaloneController.looks[0].sectionLooks;
+  assignments['patch-strip-2'] = { patternId: 'ocean' };
+  assert.equal(migrateProject(jsonRoundTrip(saved)), null);
+});
+
+test('legacy strip migration rejects ambiguous canonical section IDs', () => {
+  const saved = projectWithLegacySectionLook();
+  const { patchBoard } = saved.layout;
+  patchBoard.patches[1].id = 'patch-legacy-svg-path';
+  patchBoard.chains[0].rowIds[1] = 'patch-legacy-svg-path';
+  assert.equal(migrateProject(jsonRoundTrip(saved)), null);
 });
 
 test('old projects load without Kaleidoscope fields and legacy export strips new metadata', () => {

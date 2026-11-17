@@ -238,8 +238,8 @@ test('mobile Layout keeps a useful canvas and presents the inspector as a bottom
 test('mode toolbar only presents tools that apply while keeping secondary groups named', async ({ page }) => {
   await gotoLayout(page);
   const toolbar = page.locator('.la .toolbar');
-  await expect(toolbar.getByRole('group', { name: 'Project' })).toBeVisible();
-  await expect(toolbar.getByRole('group', { name: 'View' })).toBeVisible();
+  await expect(toolbar.getByRole('group', { name: 'Create layout' })).toBeVisible();
+  await expect(toolbar.getByRole('group', { name: 'View', exact: true })).toBeVisible();
   await expect(page.getByTitle('Import an SVG to map LED strips')).toBeVisible();
   await expect(page.getByTitle('Draw a new LED strip path on the artwork.')).toBeVisible();
   await expect(page.getByTitle('Split one physical strip where the wire jumps to a new spot.')).toHaveCount(0);

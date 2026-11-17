@@ -148,6 +148,25 @@
 /* the stage keeps its own frame; the transport above it is the page's live bar */
 .sh .transport { padding: 12px 20px; }
 
+.sh .show-stream-execution,
+.sh .show-voices-storage,
+.show-scene-execution {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-mid);
+}
+
+.sh .show-transport-source { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sh .show-voices-storage { margin: 0 0 8px; }
+.sh .show-voices-file-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.show-scene-execution { margin: 0; padding: 8px 16px; background: var(--bg-panel); }
+
+@media (max-width: 640px) {
+  .sh .transport { flex: none; height: auto; padding: 8px 12px; }
+  .sh .show-transport-source { flex: 1 1 100px; }
+  .sh .show-stream-execution { order: 1; flex-basis: 100%; }
+}
+
 /* The transport's button is the one control on this screen that drives the
    hardware, so it wears clay whether it is starting or stopping. It only
    carried it while already playing, which meant the colour appeared after the

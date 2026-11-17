@@ -74,3 +74,172 @@
   .pl-back-to-order { display: inline-flex; align-items: center; }
   .pl-row-stack-details { grid-column: 1 / -1; padding: 0 10px 8px; }
 }
+
+/* Connection and transfer actions sit with the card facts they affect. */
+.pl-card-tools {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-hair);
+}
+.pm .pl-card-tools .pl-hostrow {
+  margin: 0;
+}
+.pl-card-tools-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pm .pl-index .pl-grip-position {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .pm .pl-list {
+    padding-inline: 8px;
+  }
+  .pm .pl-list .pl-timing {
+    padding: 8px;
+    margin-inline: -8px;
+    gap: 6px 12px;
+  }
+  .pm .pl-list > .sec-h {
+    margin-inline: -8px;
+  }
+  .pm .pl-row {
+    grid-template-columns: 44px minmax(0, 1fr) 24px;
+    row-gap: 3px;
+    column-gap: 8px;
+    padding: 6px 8px;
+  }
+  .pm .pl-row .pl-index {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .pm .pl-row .pl-index > strong,
+  .pm .pl-row .pl-index > span {
+    display: none;
+  }
+  .pm .pl-row .pl-grip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 44px;
+    height: 44px;
+  }
+  .pm .pl-index .pl-grip-position {
+    display: inline;
+    color: var(--text-mid);
+    font-size: 12px;
+    letter-spacing: normal;
+  }
+  .pm .pl-row > .pl-art {
+    grid-column: 3;
+    grid-row: 1;
+    width: 24px;
+    height: 20px;
+  }
+  .pm .pl-row > .pl-art .ledrow { gap: 1px; }
+  .pm .pl-row > .pl-art .led { width: 4px; height: 4px; }
+  .pm .pl-row > .pl-art-combo .pl-art-slice { min-width: 0; }
+  .pm .pl-row .pl-copy {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .pm .pl-row .pl-copy > strong {
+    display: block;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .pm .pl-row .pl-copy > strong > .mixtag {
+    display: inline-block;
+    margin-inline-start: 5px;
+  }
+  .pm .pl-row.is-complete-look .pl-copy .pl-look-kind,
+  .pm .pl-row.is-complete-look .pl-copy .pl-row-summary {
+    display: none;
+  }
+  .pm .pl-row .pl-actions {
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    gap: 4px;
+  }
+  .pm .pl-row .pl-dwell {
+    grid-template-columns: auto minmax(38px, 1fr) auto;
+    gap: 4px;
+  }
+  .pm .pl-row .pl-actions > .plbtn,
+  .pm .pl-row .pl-dwell-input,
+  .pm .pl-row .pl-more {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .pm .pl-row .pl-row-stack-details {
+    margin: 0;
+    padding: 0 0 0 2px;
+    gap: 0 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .pm .pl-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .pm .pl-row .pl-index {
+    align-self: start;
+  }
+  .pm .pl-row .pl-grip {
+    padding-bottom: 8px;
+  }
+  .pm .pl-row > .pl-art {
+    grid-column: 1;
+    align-self: start;
+    justify-self: center;
+    margin-top: 32px;
+    height: 7px;
+    pointer-events: none;
+  }
+  .pm .pl-row .pl-dwell {
+    grid-template-columns: minmax(44px, 1fr) auto;
+  }
+  .pm .pl-row .pl-dwell > .sf-l {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+}
+
+.pm .pl-row-menu-item.pl-mobile-entry-action { display: none; }
+.pl-section-dialog {
+  box-sizing: border-box;
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-hi);
+}
+.pl-section-dialog::backdrop { background: color-mix(in srgb, var(--bg-canvas) 76%, transparent); }
+.pl-section-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pl-section-dialog-head h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.pl-section-dialog-head .btn { min-height: 44px; }
+
+@media (max-width: 640px) {
+  .pm.pl-workspace .pl-row-stack-details { display: none; }
+  .pm.pl-workspace .pl-row-menu-item.pl-mobile-entry-action { display: flex; min-height: 44px; }
+  .pm.pl-workspace .pm-actions { justify-content: flex-start; }
+  .pm.pl-workspace .pl-install-location { display: none; }
+  .pm.pl-workspace .pl-timing-note { font-family: var(--font-ui); }
+  .pm.pl-workspace .pl-list .pl-timing-switch { margin-left: auto; }
+}

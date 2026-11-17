@@ -3491,3 +3491,13 @@ evidence are recorded in PR313; no production failure was identified from it.
 No active implementation assignment or launch blocker remains for this release.
 This completion entry is a local documentation commit after live verification;
 the production source remains the exact revision named above.
+
+
+## Owner workflow UI publication — 2026-11-17
+
+UI candidate based on current main; scoped phone refinement included. Native
+relative-look/default-startup changes remain in the committed firmware queue.
+Publishing authorization is for Studio/Player UI, not a card flash. Layout owns
+the separate single-output, multi-section bench pass and recoverable restore gate.
+See [release scope](docs/journeys/ui-release-2026-11-17.md). Background release
+revision, state and proof are persisted in Git common-dir `lightweaver-releases`.

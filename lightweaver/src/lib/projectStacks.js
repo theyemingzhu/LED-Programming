@@ -1,13 +1,11 @@
 import { normalizeStoredNativeColorJourney } from './colorJourneyNative.js';
-import { normalizeSavedLooks, normalizeSectionVisualLook, MAX_SAVED_LOOKS } from './sectionLookModel.js';
+import { findSavedSectionLook, normalizeSavedLooks, normalizeSectionVisualLook, savedSectionLookKeys, sectionLookKey, snapshotSectionLooks, MAX_SAVED_LOOKS } from './sectionLookModel.js';
 import { CARD_PLAYLIST_ENTRY_LIMIT, makeComboPlaylistItem } from './cardPlaylist.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const sections = targets => (targets || []).filter(target => target?.kind === 'section');
 function appearanceForTarget(look, target) {
-  const keys = look?.sectionSnapshotVersion === 1 ? [target.id] : [target.id, target.zoneId, target.stripId];
-  const key = keys.find(id => id && Object.hasOwn(look?.sectionLooks || {}, id));
-  return key ? look.sectionLooks[key] : look?.defaultLook || {};
+  return findSavedSectionLook(look, target) || look?.defaultLook || {};
 }
 export function suggestProjectStackName(looks = []) {
   const names = new Set(looks.map(look => look.label));
@@ -20,11 +18,17 @@ export function createProjectStackId(looks = []) {
 }
 export function getProjectStackReview(look, targets = []) {
   const rows = sections(targets);
-  const current = new Set(rows.map(target => target.id));
-  const saved = new Set(Object.keys(look?.sectionLooks || {}));
-  const legacyAliases = new Set(rows.flatMap(target => [target.id, target.zoneId, target.stripId]).filter(Boolean));
-  const missingSectionIds = look?.sectionSnapshotVersion === 1 ? [...current].filter(id => !saved.has(id)) : [];
-  const removedSectionIds = [...saved].filter(id => !(look?.sectionSnapshotVersion === 1 ? current : legacyAliases).has(id));
+  const currentKeys = rows.map(target => sectionLookKey(target.id));
+  const matchingKeys = new Set(rows.flatMap(target => savedSectionLookKeys(look, target)));
+  const savedIds = Object.keys(look?.sectionLooks || {});
+  const savedKeys = new Set(savedIds.map(sectionLookKey));
+  // Row order is deliberately ignored. An install recompiles physical ranges
+  // from the current wiring while assignments continue to follow section IDs.
+  const missingSectionIds = look?.sectionSnapshotVersion === 1 ? rows.filter((_, index) => {
+    const key = currentKeys[index];
+    return !key || !savedKeys.has(key) || currentKeys.indexOf(key) !== currentKeys.lastIndexOf(key);
+  }).map(target => target.id) : [];
+  const removedSectionIds = savedIds.filter(id => !matchingKeys.has(sectionLookKey(id)));
   return { needsReview: Boolean(missingSectionIds.length || removedSectionIds.length), missingSectionIds, removedSectionIds };
 }
 export function summarizeProjectStack(look, targets = []) {
@@ -36,7 +40,7 @@ export function summarizeProjectStack(look, targets = []) {
   }), review: getProjectStackReview(look, targets) };
 }
 export function repairProjectStack(look, targets = []) {
-  return { ...clone(look), sectionSnapshotVersion: 1, sectionLooks: Object.fromEntries(sections(targets).map(target => [target.id, clone(appearanceForTarget(look, target))])), updatedAt: Date.now() };
+  return { ...clone(look), sectionSnapshotVersion: 1, sectionLooks: snapshotSectionLooks(targets, target => clone(appearanceForTarget(look, target))), updatedAt: Date.now() };
 }
 export function getProjectStackCompatibility(look) {
   if (!look) return { ok: false, reason: 'This stack is missing.' };
