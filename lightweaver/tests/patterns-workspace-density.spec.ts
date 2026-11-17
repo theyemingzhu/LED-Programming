@@ -179,6 +179,45 @@ test('Save look is visible beside its name and status outside Tune', async ({ pa
   await expect(page.locator('.pm-tune-pane').getByTestId('look-save-preset')).toHaveCount(0);
 });
 
+test('five sections fit without nested scrolling and the square bank shows more columns', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openFixture(page, 5);
+  const sections = page.getByTestId('pattern-section-list');
+  const lastSection = page.getByTestId('section-target-patch-strip-5');
+  const expectAllSectionsVisible = async () => {
+    await expect(lastSection).toBeInViewport({ ratio: 0.99 });
+    const { clientHeight, scrollHeight } = await sections.evaluate(node => ({
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+    }));
+    expect(scrollHeight).toBeLessThanOrEqual(clientHeight + 1);
+  };
+  await expectAllSectionsVisible();
+  const listBox = (await sections.boundingBox())!;
+  const previewBox = (await page.getByTestId('pattern-project-preview').boundingBox())!;
+  expect(Math.abs(listBox.y + listBox.height - previewBox.y - previewBox.height)).toBeLessThanOrEqual(2);
+  const firstCard = page.locator('.pm-cards .pmcard').first();
+  const horizontal = page.getByRole('button', { name: 'Horizontal', exact: true });
+  const square = page.getByRole('button', { name: 'Square', exact: true });
+  await horizontal.click();
+  const horizontalWidth = (await firstCard.boundingBox())!.width;
+  await square.click();
+  await expect(square).toHaveAttribute('aria-pressed', 'true');
+  const tile = (await firstCard.boundingBox())!;
+  const swatch = (await firstCard.locator('.pmcard-led').boundingBox())!;
+  expect(Math.abs(tile.width - tile.height)).toBeLessThanOrEqual(2);
+  expect(tile.width).toBeLessThan(horizontalWidth);
+  expect(Math.abs(swatch.width - tile.width)).toBeLessThanOrEqual(2);
+  await expect(firstCard.locator('.pmcard-row .pmcard-index')).toHaveText('01');
+  await page.screenshot({ path: testInfo.outputPath('patterns-square-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.screen-scroll').evaluate(node => { node.scrollTop = 0; });
+  await expectAllSectionsVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(2);
+  await firstCard.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('patterns-square-phone.png') });
+});
+
 test('section order controls reorder the visual list without changing physical topology', async ({ page }) => {
   const project = await openFixture(page, 4);
   const firstOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));

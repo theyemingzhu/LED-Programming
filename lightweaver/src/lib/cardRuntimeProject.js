@@ -144,7 +144,10 @@ export function buildCardRuntimePackageFromProject({
     const compatibility = getProjectStackCompatibility(look);
     if (!compatibility.ok) throw new Error(compatibility.reason);
     if (getProjectStackReview(look, stackTargetsFor(look?.sidesMirrored !== false)).needsReview) {
-      throw new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
+      const error = new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
+      error.code = 'stack-sections-changed';
+      error.lookId = look.id;
+      throw error;
     }
   }
   const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
