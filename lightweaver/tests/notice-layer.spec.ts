@@ -23,6 +23,12 @@ import { test, expect, type Page } from '@playwright/test';
 
 const TONES = ['progress', 'info', 'success', 'warning', 'error'] as const;
 
+async function openCardSetup(page: Page, width = 1280) {
+  await page.setViewportSize({ width, height: 780 });
+  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
+}
+
 async function publish(page: Page, notices: unknown[]) {
   await page.evaluate(async (list) => {
     const mod = await import('/src/lib/noticeLayer.js');
@@ -128,10 +134,7 @@ async function geometry(page: Page) {
 // status bar behave differently at each, which is exactly why both are here.
 for (const width of [1280, 390]) {
   test(`${width}px — a notice appearing moves nothing on the page`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 780 });
-    await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.status-bar');
-    await page.waitForTimeout(1200);
+    await openCardSetup(page, width);
 
     const result = await publishAndMeasureScreenShift(page, [
       { key: 'a', tone: 'error', title: 'Saving is paused', body: 'Studio could not find a safe place to keep this project.', actionLabels: ['Retry'] },
@@ -145,10 +148,7 @@ for (const width of [1280, 390]) {
   });
 
   test(`${width}px — notices stay inside the layer, clear of the rail and status bar`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 780 });
-    await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('.status-bar');
-    await page.waitForTimeout(1200);
+    await openCardSetup(page, width);
 
     // The worst case the contract allows: three buttons with long labels, on
     // the tone that also renders a spinner, next to a dismissible card.
@@ -180,10 +180,7 @@ for (const width of [1280, 390]) {
 }
 
 test('every tone renders, and only the dismissible ones offer a close button', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 780 });
-  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.status-bar');
-  await page.waitForTimeout(1200);
+  await openCardSetup(page);
 
   for (const tone of TONES) {
     await publish(page, [{ key: tone, tone, title: `${tone} notice`, body: 'Edge check.' }]);
@@ -210,10 +207,7 @@ test('every tone renders, and only the dismissible ones offer a close button', a
 });
 
 test('the stack caps at three and counts the rest instead of stacking them', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 780 });
-  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.status-bar');
-  await page.waitForTimeout(1200);
+  await openCardSetup(page);
 
   await publish(page, [1, 2, 3, 4, 5].map(n => ({
     key: `n${n}`, tone: 'info', title: `Message ${n}`, body: 'Body.',
@@ -228,10 +222,7 @@ test('the stack caps at three and counts the rest instead of stacking them', asy
 });
 
 test('notice actions honour disabled state', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 780 });
-  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.status-bar');
-  await page.waitForTimeout(1200);
+  await openCardSetup(page);
 
   await page.evaluate(async () => {
     const mod = await import('/src/lib/noticeLayer.js');
@@ -255,10 +246,7 @@ test('notice actions honour disabled state', async ({ page }) => {
 });
 
 test('a repeating condition keyed the same way stays one notice', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 780 });
-  await page.goto('/#screen=card&section=setup', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.status-bar');
-  await page.waitForTimeout(1200);
+  await openCardSetup(page);
 
   // This is the failure mode every migrated publisher has to avoid: a polled
   // condition that republishes without a stable key stacks a card per poll.
