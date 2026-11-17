@@ -190,10 +190,14 @@ test('imports SVG, creates strips, saves, reloads, and previews on the Show scre
   await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  const saveDownload = page.waitForEvent('download');
   await page.getByTestId('topbar-projects').click();
-  await page.getByRole('button', { name: 'Export to computer', exact: true }).click();
-  const savedProject = await saveDownload;
+  const projectFile = page.getByRole('dialog', { name: 'Projects' }).getByRole('region', { name: 'Project file' });
+  const downloadBackup = projectFile.getByRole('button', { name: 'Download backup', exact: true });
+  await expect(downloadBackup).toBeVisible();
+  const [savedProject] = await Promise.all([
+    page.waitForEvent('download'),
+    downloadBackup.click(),
+  ]);
   const projectPath = path.join(tmp, await savedProject.suggestedFilename());
   await savedProject.saveAs(projectPath);
 
@@ -217,7 +221,7 @@ test('imports SVG, creates strips, saves, reloads, and previews on the Show scre
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
   await page.getByTestId('topbar-projects').click();
   const fileChooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Import from computer', exact: true }).click();
+  await projectFile.getByRole('button', { name: 'Import from computer', exact: true }).click();
   await (await fileChooser).setFiles(projectPath);
   await expect(page.getByRole('dialog', { name: 'Replace current project?' })).toHaveCount(0);
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
