@@ -29,9 +29,17 @@ export async function installHttpsStudio(page: Page, localBaseURL: string) {
     const requested = new URL(route.request().url());
     // page.request.fetch bypasses routing, so there is no loop. The hash never
     // reaches the server, so only pathname + search are forwarded.
+    const method = route.request().method();
     const upstream = await page.request.fetch(
       `${localBaseURL}${requested.pathname}${requested.search}`,
-      { method: route.request().method(), headers: route.request().headers() },
+      {
+        method,
+        headers: route.request().headers(),
+        // A reused Vite socket can reset during module loading. Retry only
+        // read-only requests and only ECONNRESET (Playwright's bounded policy).
+        // HTTP errors and writes must remain visible without replay.
+        maxRetries: method === 'GET' || method === 'HEAD' ? 2 : 0,
+      },
     );
     await route.fulfill({ response: upstream });
   });

@@ -130,7 +130,8 @@ for (const viewport of VIEWPORTS) {
       const card = await mockConnectedTimedCard(page, project, `lw-playlist-timed-set-${viewport.label}`);
       await gotoPlaylist(page, project);
 
-      await expect(page.getByText(/loops for its Length, then fades to the next/i)).toBeVisible();
+      const timingNote = page.getByText(/^Each entry plays for its length, then fades to the next/);
+      await expect(timingNote).toHaveText('Each entry plays for its length, then fades to the next.');
 
       // Length is edited in minutes, while the saved/card contract remains seconds.
       const lengthInput = page.getByTestId(`playlist-dwell-${auroraId}`);
@@ -151,6 +152,7 @@ for (const viewport of VIEWPORTS) {
       await expect(enableToggle).toHaveAttribute('aria-pressed', 'false');
       await enableToggle.click();
       await expect(enableToggle).toHaveAttribute('aria-pressed', 'true');
+      await expect(timingNote).toHaveText('Each entry plays for its length, then fades to the next. The order repeats.');
 
       // Install and assert the EXACT JSON the simulator received for the
       // contract's playlist block — not merely that installing succeeded.
