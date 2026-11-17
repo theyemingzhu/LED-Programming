@@ -152,8 +152,8 @@ unaffected; a customer card gets the drift at the next release.
 Full policy: `docs/branch-maintenance.md`. The short version every session must follow:
 - Every branch is either **PR'd**, **`archive/`-prefixed with a TODO.md entry**, or **deletable**. Never end a session with only "pushed to branch X".
 - Before opening a PR for a branch you don't own, open it as a **draft**; you may message the owning session through the app's session messaging, but check git/PR state rather than waiting on a reply.
-- Once the build is confirmed done (per git/PR state) and CI is green, **merge without asking** and delete the branch. Land one stream at a time.
-- "**Wrap it up**" from Adrian means: finish the increment, then merge / PR-and-watch / archive-and-log — pick one, do it, report which.
+- Once the owning session confirms the build is done, hand the reviewed revision to GitHub auto-merge where available. Preserve required checks. Land one stream at a time and remove the branch after confirmed merge.
+- "**Wrap it up**" from Adrian means finish the increment and follow the [branch handoff policy](docs/branch-maintenance.md#session-ending-verb-wrap-it-up). Let CI handle the wait.
 - **Half-built work never merges.** Wrapping an unfinished stream = push the branch + a TODO.md resume entry (branch name, done, remaining, resume point). No resume entry, no wrap.
 
 ## Where to look for…
