@@ -21,6 +21,9 @@ async function openPreservingFixture(page: any, mode: 'wifi' | 'usb', outcome = 
       firmwareVersion: '1.2.0', buildId: TARGET_BUILD, buildNumber: 1300,
       runtimePhase: 'ready', knownGoodProject: true, commandReady: true,
       outputReady: true, playbackReady: true,
+      // The recovery coordinator reads /api/update/status independently.
+      // Keep the shell's status-only path nonterminal in this fixture.
+      ...(outcome === 'reload-disconnected' ? { firmwareUpdate: { phase: 'pending-reboot' } } : {}),
     };
     await page.route('http://lightweaver.local/api/status', route => route.fulfill({ json: exactRestartedStatus }));
     await page.route('http://lightweaver.local/api/update/status', route => route.fulfill({ json: { phase: 'idle' } }));
@@ -736,12 +739,22 @@ test('preserving update: rollback names the restored build and a redacted reason
   expect(await page.evaluate(() => (window as any).__LW_UPDATE_READ_STATUS_CALLS__)).toBeGreaterThan(0);
 });
 
+async function pendingLookCheck(page) {
+  return page.evaluate(async cardId => {
+    const { readPendingInstallationVerification } = await import('/src/lib/studioPendingInstallationVerification.js');
+    return readPendingInstallationVerification(cardId)?.record || null;
+  }, CARD_ID);
+}
+
 test('preserving update: reload resumes redacted state and shows valid only after exact correlation', async ({ page }) => {
   await openPreservingFixture(page, 'wifi', 'reload-valid');
   const panel = page.getByTestId('preserving-update-panel');
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
   await expect(panel.locator('.card-acknowledged-facts dd').first()).toHaveText(CARD_ID);
   await expect(panel.locator('.card-acknowledged-facts dd').nth(1)).toHaveText('1.2.0 · Build 1300');
+  await expect.poll(() => pendingLookCheck(page)).toEqual(expect.objectContaining({
+    cardId: CARD_ID, buildId: TARGET_BUILD, observedBootId: 'boot-new', projectHead: HEAD,
+  }));
 });
 
 test('preserving update: a verified blank card continues to light setup', async ({ page }) => {
@@ -750,6 +763,7 @@ test('preserving update: a verified blank card continues to light setup', async 
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
   const continueButton = panel.getByTestId('preserving-update-continue');
   await expect(continueButton).toHaveText('Set up lights');
+  expect(await pendingLookCheck(page)).toBeNull();
   await page.screenshot({ path: '/tmp/setup-flow-gaps-blank-setup-destination.png', fullPage: true });
   await continueButton.click();
   await expect(page).toHaveURL(/#screen=card&section=setup$/);
@@ -889,6 +903,9 @@ test('preserving update: a Wi-Fi reboot self-heals from exact runtime-known-good
   await expect(panel).toContainText(`Reconnected to Card ${CARD_ID} on firmware 1.2.0 · Build 1300`);
   await expect(panel.getByRole('alert')).toHaveCount(0);
   expect(await page.evaluate(() => sessionStorage.getItem('lw_firmware_update_session_v1'))).toBeNull();
+  await expect.poll(() => pendingLookCheck(page)).toEqual(expect.objectContaining({
+    cardId: CARD_ID, buildId: TARGET_BUILD, observedBootId: 'boot-new', projectHead: HEAD,
+  }));
   const recoveredLink = await page.evaluate(async () => {
     const { getSharedCardLink } = await import('/src/lib/cardLink.js');
     const state = getSharedCardLink().getState();
@@ -1374,4 +1391,78 @@ test('[F40-wifi-ready] a card that CAN take a Wi-Fi update leads with Wi-Fi and 
   await panel.getByText('Need another way?').click();
   await expect(secondary).toBeVisible();
   await expect(secondary).not.toHaveClass(/btn-lg/);
+});
+
+test('Card Home retains an unchecked saved-look notice after shell-only recovery and reload', async ({ page }, testInfo) => {
+  const status = {
+    app: 'Lightweaver', provisioningContractVersion: 1, cardId: CARD_ID, cardName: 'Gallery card',
+    bootId: 'boot-new', firmwareVersion: '1.2.0', buildId: TARGET_BUILD, buildNumber: 1300,
+    projectId: 'installed-piece', projectRevision: 7, projectHead: HEAD, projectFingerprint: FINGERPRINT,
+    runtimePhase: 'ready', knownGoodProject: true, commandReady: true,
+    outputReady: true, playbackReady: true, provisionalSetup: false, firmwareUpdate: { phase: 'idle' },
+  };
+  let writes = 0;
+  await page.route('http://192.168.4.1/**', route => route.abort());
+  await page.route('http://lightweaver.local/**', route => {
+    if (route.request().method() !== 'GET') {
+      writes++;
+      return route.abort();
+    }
+    const { pathname } = new URL(route.request().url());
+    if (pathname === '/api/status' || pathname === '/api/firmware-info') return route.fulfill({ json: status });
+    return route.fulfill({ status: 404, json: { ok: false } });
+  });
+  await page.addInitScript(({ status, previousBootId }) => {
+    if (localStorage.getItem('lw_autosave_v3')) return;
+    localStorage.setItem('lw_autosave_v3', JSON.stringify({
+      id: 'draft-piece', version: 3, name: 'Keep this draft',
+      layout: { starterPending: false, strips: [] },
+      portRoles: [{ pin: 18, role: 'strip', pixelCount: 31 }],
+    }));
+    localStorage.setItem('lw_card_identity_v1', JSON.stringify({
+      version: 1, id: status.cardId, firmwareVersion: status.firmwareVersion, buildId: status.buildId,
+    }));
+    localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
+    sessionStorage.setItem('lw_firmware_update_session_v1', JSON.stringify({
+      version: 1, cardId: status.cardId, previousBootId,
+      expectedProjectHead: status.projectHead, expectedProjectFingerprint: status.projectFingerprint,
+      targetFirmwareVersion: status.firmwareVersion, targetBuildId: status.buildId,
+      targetBuildNumber: status.buildNumber, ticketSha256: '4'.repeat(64),
+      phase: 'pending-reboot', acknowledgedBytes: 3,
+    }));
+  }, { status, previousBootId: 'boot-old' });
+  const connect = async () => page.evaluate(async readiness => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const card = { id: readiness.cardId, name: readiness.cardName, firmwareVersion: readiness.firmwareVersion,
+      buildId: readiness.buildId, buildNumber: readiness.buildNumber };
+    const event = { type: 'card-verified', via: 'direct', host: 'lightweaver.local', card, expectedCard: card, readiness };
+    getSharedCardLink().dispatch(event);
+    getSharedCardLink().dispatch(event);
+  }, status);
+
+  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
+  await connect();
+  const notice = page.getByTestId('fact-post-update-verification');
+  await expect(notice).toContainText('Playback on the lights has yet to be checked.');
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('lw_firmware_update_session_v1'))).toBeNull();
+  expect(await pendingLookCheck(page)).toEqual(expect.objectContaining({ observedBootId: 'boot-new', projectHead: HEAD }));
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('card-workspace-heading')).toBeVisible();
+  await connect();
+  const review = notice.getByRole('button', { name: 'Review saved looks' });
+  await expect(review).toBeVisible();
+  if (process.env.LW_ARRIVAL_SCREENSHOTS) {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await notice.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath('card-saved-looks-after-update-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await notice.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath('card-saved-looks-after-update-phone.png') });
+  }
+  await review.click();
+  await expect(page.getByRole('dialog', { name: /controls/i })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id)).toBe('draft-piece');
+  expect(writes).toBe(0);
 });

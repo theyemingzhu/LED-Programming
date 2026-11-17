@@ -254,6 +254,7 @@ test('Show selects, edits, and reopens the exact shared scene source', async ({ 
   await library.locator(`[data-scene-id="${tideId}"]`).getByRole('button', { name: 'Edit scene' }).click();
   await expect(page.getByTestId('scene-expression-editor')).toBeVisible();
   await expect(page.getByText('Studio · Show · Scene')).toBeVisible();
+  await expect(page.getByText('Compatible scenes run on the card after installation. Flow recordings play fixed motion from Playlist.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Back to Show' })).toBeVisible();
   await expect(page.getByLabel('Scene title')).toHaveValue('Tide room');
   await expect(page.getByRole('region', { name: 'Scene steps' }).locator('article')).toHaveCount(2);

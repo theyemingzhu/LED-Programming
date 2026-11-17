@@ -81,3 +81,12 @@
 @media (max-width: 320px) {
   .pm .project-stack-card { flex-basis: min(152px, 100%); width: min(152px, 100%); }
 }
+
+.pm .pm-tune-pane .pm-tuning-scope {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+.pm .pm-tuning-scope > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

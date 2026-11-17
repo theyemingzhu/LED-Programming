@@ -233,7 +233,7 @@ export function useLayoutArtwork(ctx, { getLedCount }) {
   const addAllStrips = useCallback(() => {
     if (strips.length > 0 &&
         typeof window !== 'undefined' &&
-        !window.confirm(`Replace all ${strips.length} drawn strip(s) with auto-generated strips from every layer? This cannot be undone except via Undo.`)) {
+        !window.confirm(`Replace the current LED strips with new strips from every artwork layer? Review the data wiring and affected looks before installing again.`)) {
       return;
     }
     const newStrips = [];

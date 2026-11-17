@@ -8,7 +8,7 @@ import { createCardSimulator } from './harness/cardSimulator';
 import { cardState, MATRIX_CARD_ID, MATRIX_BUILD_ID, MATRIX_FIRMWARE_VERSION, type CardStateSpec } from './harness/cardStates';
 import { BENCH_PROJECT_ID } from '../src/lib/benchConfig.js';
 
-async function seedInstalledMatch(page: Page, spec: CardStateSpec, led: Record<string, unknown>) {
+async function seedCardAndDraft(page: Page, spec: CardStateSpec, led: Record<string, unknown>) {
   const card = createCardSimulator(spec);
   await card.install(page);
   await page.addInitScript(({ id, firmwareVersion, buildId }) => {
@@ -17,56 +17,98 @@ async function seedInstalledMatch(page: Page, spec: CardStateSpec, led: Record<s
     localStorage.setItem('lw_chip_card_host', 'lightweaver.local');
   }, { id: MATRIX_CARD_ID, firmwareVersion: MATRIX_FIRMWARE_VERSION, buildId: MATRIX_BUILD_ID });
   await page.addInitScript((s) => {
+    if (sessionStorage.getItem('lw-card-facts-seeded')) return;
+    sessionStorage.setItem('lw-card-facts-seeded', '1');
     localStorage.setItem('lw_autosave_v3', JSON.stringify({
-      id: s.projectId, name: 'Facts piece',
-      layout: { starterPending: false, strips: [{ id: 'strip-1', pixels: s.pixels, pin: s.pin }],
-        wiring: { verified: true, runs: [{ id: 'strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward' }] } },
+      version: 3, id: s.projectId, name: 'Facts piece',
+      layout: {
+        starterPending: false,
+        viewBox: '0 0 240 200',
+        strips: [{ id: 'strip-1', name: 'Artwork', pathData: 'M 20 20 L 200 60 L 100 180', pixelCount: s.pixels, pin: s.pin }],
+        wiring: {
+          verified: true,
+          outputs: [{ id: 'out1', pin: s.pin, runIds: ['run-strip-1'] }],
+          runs: [{
+            id: 'run-strip-1', type: 'strip', verified: true, physicalDirection: 'source-forward',
+            source: { stripId: 'strip-1', from: 0, to: s.pixels - 1 },
+          }],
+        },
+      },
       portRoles: [{ port: 'out1', role: 'strip', pin: s.pin, pixelCount: s.pixels }],
       devices: { standaloneController: { led: { colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB', ...s.led } } },
     }));
     localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
-      generation: 1, editedRevision: 1, installedRevision: 1, dirty: false,
-      installation: { cardId: s.cardId, projectRevision: s.projectRevision, projectFingerprint: s.projectFingerprint, studioFingerprint: s.projectFingerprint, verified: true },
+      version: 2,
+      dirty: false,
+      persistedDestination: 'browser',
+      installation: null,
     }));
-  }, { projectId: spec.projectId, projectRevision: spec.projectRevision, projectFingerprint: spec.projectFingerprint, pixels: spec.pixels, pin: spec.pin, cardId: MATRIX_CARD_ID, led });
+  }, { projectId: spec.projectId, pixels: spec.pixels, pin: spec.pin, led });
   return card;
 }
 
-test('the facts read the project, and the power limit reads the path the editor writes', async ({ page }) => {
+test('Card Home distinguishes the editable project limit from the current card limit', async ({ page }, testInfo) => {
   const spec = cardState('installed-match');
-  await seedInstalledMatch(page, spec, { maxMilliamps: 3200, psuAmps: 4, milliampsPerPixel: 50, brightnessLimit: 0.45 });
+  await seedCardAndDraft(page, spec, { maxMilliamps: 3200, psuAmps: 4, milliampsPerPixel: 50, brightnessLimit: 0.45 });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
   const facts = page.getByTestId('card-facts');
   await expect(facts.getByTestId('fact-outputs')).toContainText(`GPIO ${spec.pin}`);
-  await expect(facts.getByTestId('fact-lights')).toContainText(String(spec.pixels));
+  await expect(facts.getByRole('spinbutton', { name: 'Light count' })).toHaveValue('41');
   await expect(facts.getByTestId('fact-color-order')).toContainText('GRB');
   await expect(facts.getByTestId('fact-artwork')).toContainText('1 strip');
-  // An installed, matching card is the authority on its own limit: Studio
-  // reconciles led.maxMilliamps from the card's read-back (the simulator
-  // reports 2000), so the row shows what the card actually enforces, not
-  // the number the project file happened to carry.
-  await expect(facts.getByTestId('fact-power')).toContainText('2000 mA');
+  const power = facts.getByTestId('fact-power');
+  await expect(power).toContainText('Project limit');
+  await expect(power).toContainText('Applies when saved to card');
+  await expect(power.getByTestId('fact-power-limit')).toHaveText('3200 mA');
+  await expect(power.getByTestId('fact-card-power-limit')).toHaveText('On card: 2000 mA');
   await expect(facts.getByTestId('fact-brightness')).toContainText('115');
-  // Nothing on Card Home is still to do once installed.
   await expect(page.getByTestId('setup-todo')).toHaveCount(0);
+
+  if (process.env.LW_ARRIVAL_SCREENSHOTS) {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await power.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`card-project-power-${viewport.width}.png`) });
+    }
+  }
+
+  await page.context().setOffline(true);
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    const link = getSharedCardLink();
+    const snapshot = link.getState();
+    link.dispatch({
+      type: 'direct-status', connected: true, host: snapshot.host,
+      card: snapshot.card, expectedCard: snapshot.expectedCard,
+      readiness: { ...snapshot.readiness, bootId: 'unvalidated-power-boot' },
+    });
+  });
+  await expect(power.getByTestId('fact-card-power-limit')).toHaveCount(0);
+  await page.evaluate(async () => {
+    const { getSharedCardLink } = await import('/src/lib/cardLink.js');
+    getSharedCardLink().dispatch({ type: 'direct-status', connected: false, reason: 'card-unreachable' });
+  });
+  await expect(power.getByTestId('fact-card-power-limit')).toHaveCount(0);
+  await expect(power.getByTestId('fact-power-limit')).toHaveText('3200 mA');
 });
 
 test('a card-reported GRB setting is not described as a color check on the strip', async ({ page }) => {
-  await seedInstalledMatch(page, cardState('installed-match'), { confirmedColorOrder: '' });
+  await seedCardAndDraft(page, cardState('installed-match'), { confirmedColorOrder: '' });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByTestId('fact-color-order')).toContainText('Not confirmed');
   await expect(page.getByTestId('fact-color-order')).not.toContainText('Confirmed on the strip');
-  await expect(page.getByRole('button', { name: /Lights 41 on GPIO 18/ })).toContainText('Color order not confirmed');
+  await expect(page.getByRole('button', { name: /Lights 41 on GPIO 18/ }))
+    .toContainText('Configured on the card · physical checks kept separately');
 });
 
 test('a local look edit keeps the connected same-project card ready for Save', async ({ page }) => {
   const spec = cardState('installed-match');
-  const card = await seedInstalledMatch(page, spec, {});
+  const card = await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
   // Model an edit kept in this browser after the installed revision. The
   // card still holds the same project and its live status remains healthy.
@@ -77,13 +119,25 @@ test('a local look edit keeps the connected same-project card ready for Save', a
       { id: 'plasma', type: 'pattern', patternId: 'plasma', label: 'Plasma', enabled: true, createdAt: 2 },
     ];
     localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+    localStorage.setItem('lw_project_lifecycle_v1', JSON.stringify({
+      version: 2, dirty: true, persistedDestination: null, installation: null,
+    }));
   });
   await page.reload({ waitUntil: 'domcontentloaded' });
 
   await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', /content-mismatch|project-mismatch/, { timeout: 20000 });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete');
-  await expect(page.getByRole('button', { name: 'Save to card' })).toBeEnabled();
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project');
+  await expect(page.getByTestId('installed-control-open')).toBeEnabled();
+  const draft = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
+  expect(draft.id).toBe(card.state.projectId);
+  expect(draft.devices.standaloneController.playlist.map(entry => entry.patternId)).toEqual(['aurora', 'plasma']);
+
+  await page.getByRole('button', { name: 'Review and save draft' }).click();
+  await expect(page).toHaveURL(/#screen=card&section=setup&task=install-project$/);
+  await expect(page.getByTestId('card-save-summary')).toContainText('GPIOs unchanged');
+  await expect(page.getByRole('button', { name: 'Save to card', exact: true })).toBeEnabled();
   await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
+  expect(card.requests.filter(request => request.method === 'POST')).toEqual([]);
   expect(card.unhandled).toEqual([]);
 });
 
@@ -94,23 +148,24 @@ test('a counted revision-one install is not described as temporary Find-my-strip
     projectRevision: 1,
     provisionalSetup: false,
   };
-  const card = await seedInstalledMatch(page, spec, {});
+  const card = await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
 
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
   await expect(page.getByTestId('card-detected-state')).toHaveCount(0);
   await expect(page.getByTestId('setup-journey')).not.toContainText('Temporary light setup');
   expect(card.unhandled).toEqual([]);
 });
 
-test('the supply size is typed in the power row and sets the limit the card caps itself at', async ({ page }) => {
+test('editing supply size saves the project limit without changing the current card limit', async ({ page }) => {
   const spec = cardState('installed-match');
-  await seedInstalledMatch(page, spec, {});
+  const card = await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
   const power = page.getByTestId('card-facts').getByTestId('fact-power');
-  await expect(power.getByTestId('fact-power-limit')).toHaveText('2000 mA');
+  await expect(power.getByTestId('fact-power-limit')).toHaveText('Not set');
+  await expect(power.getByTestId('fact-card-power-limit')).toHaveText('On card: 2000 mA');
 
   // Setting the supply writes led.maxMilliamps (80% of the supply); the
   // readout beside the field says so at once.
@@ -122,6 +177,8 @@ test('the supply size is typed in the power row and sets the limit the card caps
     const led = stored.devices?.standaloneController?.led || {};
     return [led.maxMilliamps, led.psuAmps];
   }, { timeout: 10000 }).toEqual([2400, 3]);
+  await expect(power.getByTestId('fact-card-power-limit')).toHaveText('On card: 2000 mA');
+  expect(card.requests.filter(request => request.method !== 'GET' && request.method !== 'OPTIONS')).toEqual([]);
 
   // The Hardware fold no longer carries a second copy of these editors.
   await page.getByTestId('card-hardware-fold').locator('summary').click();
@@ -132,9 +189,9 @@ test('the supply size is typed in the power row and sets the limit the card caps
 
 test('the brightness fader in the row writes the limit', async ({ page }) => {
   const spec = cardState('installed-match');
-  await seedInstalledMatch(page, spec, { brightnessLimit: 0.45 });
+  await seedCardAndDraft(page, spec, { brightnessLimit: 0.45 });
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
   const row = page.getByTestId('fact-brightness');
   await expect(row).toContainText('115');
@@ -146,12 +203,13 @@ test('the brightness fader in the row writes the limit', async ({ page }) => {
   }, { timeout: 10000 }).toBe(200);
 });
 
-test('an installed card sends count changes to Layout; a bench card takes them in the row and lights the strip', async ({ page }) => {
-  // Installed and matching: the strips are Layout's geometry, so no stepper.
+test('an installed, matching project sends count changes to Layout', async ({ page }) => {
   const spec = cardState('installed-match');
-  await seedInstalledMatch(page, spec, {});
+  await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
+  await page.getByRole('button', { name: 'Open installed project' }).click();
+  await expect(page.getByTestId('card-link-status')).toHaveAttribute('data-lifecycle-state', 'ready');
   await expect(page.getByTestId('fact-lights-stepper')).toHaveCount(0);
   await expect(page.getByTestId('fact-lights')).toContainText(String(spec.pixels));
   await page.getByTestId('fact-lights').getByRole('button', { name: 'Change count' }).click();
@@ -162,9 +220,9 @@ for (const width of [1440, 390]) {
   test(`Change wiring opens the actual Layout Specs controls at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const spec = cardState('installed-match');
-    await seedInstalledMatch(page, spec, {});
+    await seedCardAndDraft(page, spec, {});
     await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+    await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
     await page.getByTestId('fact-outputs').getByRole('button', { name: 'Change wiring' }).click();
     await expect(page).toHaveURL(/#screen=layout&mode=draw&panel=specs$/);
     await expect(page.getByTestId('layout-specs-panel')).toBeVisible();
@@ -185,9 +243,9 @@ for (const width of [1440, 390]) {
 
 test('a colour-order key tries that order on the strip and reads it back', async ({ page }) => {
   const spec = cardState('installed-match');
-  const card = await seedInstalledMatch(page, spec, {});
+  const card = await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
   const keys = page.getByTestId('fact-color-keys');
   await expect(keys.getByRole('button', { name: 'GRB', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -204,20 +262,17 @@ test('a colour-order key tries that order on the strip and reads it back', async
 
 test('Health remembers its last result', async ({ page }) => {
   const spec = cardState('installed-match');
-  await seedInstalledMatch(page, spec, {});
+  await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
   const health = page.getByTestId('card-checks-recovery');
   await expect(health.getByTestId('card-checks-last')).toContainText('Not checked yet');
   await health.getByRole('button', { name: 'Verify hardware' }).click();
   await expect(health.getByTestId('card-checks-message')).toContainText(/readback verified/i, { timeout: 15000 });
 
-  // Leave and come back: the row still says when the card was last read.
-  // (Stored per card id in localStorage, so it survives a full reload too;
-  // the in-app round trip is what an owner actually does.)
-  await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
-  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  // The per-card result must survive a full reload.
+  await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('card-checks-recovery').getByTestId('card-checks-last')).toContainText(/^Verified .* · readback verified/, { timeout: 20000 });
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_card_health_v1') || '{}'));
   expect(Object.values(stored)[0]).toEqual(expect.objectContaining({ status: 'ok' }));
@@ -283,10 +338,11 @@ for (const stateId of ['not-ready', 'provisional'] as const) {
 
 test('the project is renamed right in the status row', async ({ page }) => {
   const spec = cardState('installed-match');
-  await seedInstalledMatch(page, spec, {});
+  await seedCardAndDraft(page, spec, {});
   await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('setup-progress')).toHaveText('Setup complete', { timeout: 20000 });
+  await expect(page.getByTestId('setup-progress')).toHaveText('Installed project', { timeout: 20000 });
 
+  await page.getByRole('button', { name: 'Review and save draft' }).click();
   await page.getByTestId('setup-project-name-edit').click();
   const input = page.getByTestId('setup-project-name-input');
   await expect(input).toBeFocused();
@@ -301,7 +357,7 @@ test('the project is renamed right in the status row', async ({ page }) => {
   await expect(page.getByTestId('project-name-edit')).toHaveCount(0);
   await page.goto('/#screen=layout', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('project-name-edit')).toHaveText('Gallery north wall');
-  await page.goto('/#screen=card&section=overview', { waitUntil: 'domcontentloaded' });
+  await page.goto('/#screen=card&section=setup&task=install-project', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('setup-project-name-edit')).toContainText('Gallery north wall', { timeout: 20000 });
   await expect.poll(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'))).name, { timeout: 10000 }).toBe('Gallery north wall');
   // Escape cancels without renaming.

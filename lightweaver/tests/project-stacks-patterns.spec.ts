@@ -196,7 +196,7 @@ test('duplicate, revert and delete undo keep separate identities', async ({ page
   await openStackProject(page, 'stack-lifecycle', [namedLook('stack-one', 'One')]);
   await editStack(page, 'One');
   await page.getByTestId('stack-more-actions').click();
-  await page.getByRole('button', { name: 'Duplicate stack' }).click();
+  await page.getByRole('button', { name: 'Duplicate look' }).click();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(2);
   await expect(page.getByTestId('look-name')).toHaveValue('One 2');
   await page.getByTestId('section-target-patch-default-outer-circle').click();
@@ -413,4 +413,38 @@ test('unfinished new stack restores every section after opening another chip and
   await page.getByTestId('stack-new').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toContainText('Ocean');
+});
+
+test('returning a setting to its saved value clears dirty state with a canonical section key', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'canonical-look-dirty';
+  project.layout.starterPending = false;
+  const board = project.layout.patchBoard;
+  const originalId = board.patches[0].id;
+  const liveId = 'patch-Outer_Ring';
+  board.patches[0].id = liveId;
+  for (const chain of board.chains) chain.rowIds = chain.rowIds.map(id => id === originalId ? liveId : id);
+  const defaultLook = project.devices.standaloneController.defaultLook;
+  project.devices.standaloneController.looks = [{
+    id: 'canonical', label: 'Copper rings', sectionSnapshotVersion: 1, defaultLook,
+    sectionLooks: {
+      'patch-outer-ring': { ...defaultLook, patternId: 'fire', customHue: 72 },
+      'patch-default-inner-circle': defaultLook,
+    },
+  }];
+  await page.addInitScript(saved => localStorage.setItem('lw_autosave_v3', JSON.stringify(saved)), project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern');
+  await editStack(page, 'Copper rings');
+  await expect(page.getByTestId('look-name')).toHaveValue('Copper rings');
+  await page.getByTestId('section-target-patch-Outer_Ring').click();
+  const hue = page.getByTestId('look-hue-slider');
+  await expect(hue).toHaveValue('72');
+  await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Tune · Outer circle');
+  await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Fire');
+  await hue.press('ArrowRight');
+  await expect(page.getByTestId('look-save-status')).toContainText('Unsaved');
+  await hue.press('ArrowLeft');
+  await expect(hue).toHaveValue('72');
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
 });

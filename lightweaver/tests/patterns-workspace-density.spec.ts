@@ -63,6 +63,27 @@ test('whole-piece preview keeps every section and its distinct pattern while one
   await expect(page.getByTestId(`section-target-${ids[1]}`)).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('piece paints spatial paths and explicit strip mode paints a solid ribbon', async ({ page }) => {
+  await openFixture(page, 4);
+  const preview = page.getByTestId('pattern-piece-preview');
+  const canvas = preview.locator('canvas');
+  const renderedCornerAlpha = () => canvas.evaluate((node: HTMLCanvasElement) =>
+    node.getContext('2d')!.getImageData(0, 0, 1, 1).data[3],
+  );
+  // The existing spatial renderer uses a translucent base; the ribbon fills
+  // every column from top to bottom. Read pixels, not just the mode label.
+  await expect.poll(renderedCornerAlpha).toBeGreaterThan(0);
+  await expect.poll(renderedCornerAlpha, { timeout: 2500 }).toBeLessThan(64);
+  await page.getByTestId('section-target-patch-strip-2').click();
+  await expect(preview).toHaveAttribute('data-preview-patterns', PATTERNS.join(','));
+  await expect(preview).toHaveAttribute('data-preview-focus', 'patch-strip-2');
+  await expect(page.getByText('Focus · Section 2')).toBeVisible();
+  await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Section 2');
+  await page.getByLabel('Preview target').selectOption('patch-strip-2');
+  await expect(preview).toHaveAttribute('data-preview-patterns', 'ocean');
+  await expect.poll(renderedCornerAlpha).toBe(255);
+});
+
 test('four and twelve sections leave a usable pattern bank on desktop and fit a phone', async ({ browser }, testInfo) => {
   for (const { count, width, height } of [
     { count: 4, width: 1366, height: 900 },
@@ -147,11 +168,12 @@ test('four and twelve sections leave a usable pattern bank on desktop and fit a 
   await phone.close();
 });
 
-test('Save stack remains visible beside its name and status outside Tune', async ({ page }) => {
+test('Save look is visible beside its name and status outside Tune', async ({ page }) => {
   await openFixture(page, 4);
+  await page.getByTestId('stack-new').click();
   const group = page.getByTestId('stack-save-bar');
   const save = group.getByTestId('look-save-preset');
-  await expect(save).toHaveText(/Save stack/);
+  await expect(save).toHaveText(/Save look/);
   await expect(group.getByTestId('look-name')).toBeVisible();
   await expect(group.getByTestId('look-save-status')).toBeVisible();
   await expect(page.locator('.pm-tune-pane').getByTestId('look-save-preset')).toHaveCount(0);

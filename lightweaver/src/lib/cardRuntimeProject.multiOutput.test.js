@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
+import { createDefaultPatchBoard } from './patchBoard.js';
+import { deriveSectionTargets, saveCurrentLookToController } from './sectionLookModel.js';
+import { addProjectStacksToPlaylist } from './projectStacks.js';
+import { createDefaultProject, migrateProject } from './projectModel.js';
+import { importPortableProjectMedia, makePortableProject } from './projectTransfer.js';
 import { compileWiring } from './wiringCompiler.js';
 import { makeDefaultWiring } from './wiringModel.js';
 import { prepareCardStoragePayload } from './cardStoragePayload.js';
@@ -219,4 +224,83 @@ test('the 41-light three-section Card Install payload retains every named arrang
     ['fire', 0.3], ['ocean', 1], ['plasma', 1],
   ]);
   assert.deepEqual(JSON.parse(prepareCardStoragePayload(posted).json).looks, posted.looks);
+});
+
+test('A/B/C saved looks retain individual tuning and mirroring through project export, reload and two-GPIO reorder', async () => {
+  const strips = ['strip-1', 'strip-2', 'strip-3'].map(id => ({ id, name: id, pixelCount: 8 }));
+  const wiring = makeDefaultWiring(strips);
+  wiring.outputs = [
+    { id: 'out1', pin: 16, runIds: ['run-strip-1', 'run-strip-3'] },
+    { id: 'out2', pin: 17, runIds: ['run-strip-2'] },
+  ];
+  const patchBoard = createDefaultPatchBoard(strips);
+  patchBoard.patches[2].id = 'patch-Outer_Ring';
+  patchBoard.chains[0].rowIds[2] = 'patch-Outer_Ring';
+  const symmetry = { fold: 2, orientation: 'mirror', sides: [
+    { id: 'side-1', stripIds: ['strip-1'] }, { id: 'side-2', stripIds: ['strip-2'] },
+  ] };
+  const layout = { strips, wiring, patchBoard, symmetry };
+  const authored = [
+    ['A', true, [['fire', 0, 0.5, 10], ['fire', 0, 0.5, 10], ['scanner', 0.3, 0.8, 20]]],
+    ['B', false, [['ocean', 0.2, 0.9, 30], ['scanner', 0.5, 1.2, 40], ['fire', 0.6, 1.3, 50]]],
+    ['C', false, [['scanner', 0.7, 1.4, 60], ['fire', 0.8, 1.5, 70], ['ocean', 0.9, 1.6, 80]]],
+  ];
+  const zoneIds = ['side-1', 'side-2', 'strip-3'];
+  const outerTuning = {
+    hueShift: -18, customSaturation: 195, customDrift: true, customBreathe: true,
+    breatheLowerPct: 45, breatheUpperPct: 92, breatheCycleSeconds: 14,
+  };
+  let controller = {};
+  for (const [label, sidesMirrored, appearances] of authored) {
+    const targets = deriveSectionTargets({ ...layout, sidesMirrored }).filter(target => target.kind === 'section');
+    controller = saveCurrentLookToController(controller, { label, sidesMirrored, targets: targets.map(target => {
+      const [patternId, brightness, speed, customHue] = appearances[zoneIds.indexOf(target.zoneId)];
+      return { ...target, look: { patternId, brightness, speed, customHue, ...(label === 'C' && target.zoneId === 'strip-3' ? outerTuning : {}) } };
+    }) });
+  }
+  controller = addProjectStacksToPlaylist(controller, controller.looks.map(look => look.id));
+  const project = createDefaultProject();
+  Object.assign(project.layout, layout, { starterPending: false });
+  project.devices.standaloneController = controller;
+  const exported = JSON.parse(JSON.stringify(await makePortableProject(project)));
+  const reopened = migrateProject(await importPortableProjectMedia(exported));
+  assert.deepEqual(reopened.devices.standaloneController.looks, controller.looks);
+
+  function assertLooks(layout, rangeStart) {
+    const config = JSON.parse(prepareCardStoragePayload(buildCardRuntimePackageFromProject({
+      ...layout, standaloneController: reopened.devices.standaloneController,
+    })).json);
+    assert.deepEqual(config.led.outputs.map(output => output.pin), [16, 17]);
+    assert.equal(config.zones.find(zone => zone.id === 'strip-3').ranges[0].start, rangeStart);
+    assert.deepEqual(config.looks.map(look => [look.id, look.label]), [['combo-a', 'A'], ['combo-b', 'B'], ['combo-c', 'C']]);
+    for (const [label, mirrored, appearances] of authored) {
+      const zones = new Map(config.looks.find(look => look.label === label).zones.map(zone => [zone.id, zone]));
+      assert.deepEqual(zoneIds.map(id => {
+        const { patternId, brightness, speed, customHue } = zones.get(id);
+        return [patternId, brightness ?? 1, speed ?? 1, customHue ?? 32];
+      }), appearances);
+      assert.equal(zones.get('side-2').mirrorOf, mirrored ? 'side-1' : undefined);
+      assert.equal(zones.get('side-2').mirrorFlip, mirrored ? true : undefined);
+      if (label === 'C') {
+        assert.deepEqual(Object.fromEntries(Object.keys(outerTuning).map(key => [key, zones.get('strip-3')[key]])), outerTuning);
+      }
+    }
+  }
+  assertLooks(reopened.layout, 8);
+  reopened.layout.wiring.outputs[0].runIds.reverse();
+  assertLooks(reopened.layout, 0);
+});
+
+test('a legacy strip-keyed combo keeps its authored assignment without compiled wiring', () => {
+  const strips = [{ id: 'left', pixelCount: 8 }, { id: 'right', pixelCount: 8 }];
+  const config = buildCardRuntimePackageFromProject({
+    strips, patchBoard: createDefaultPatchBoard(strips),
+    standaloneController: {
+      looks: [{ id: 'a', sectionLooks: { right: { patternId: 'ocean', speed: 1.7 } } }],
+      playlist: [{ type: 'combo', lookId: 'a' }],
+    },
+  }).config;
+  const right = config.looks.find(look => look.id === 'combo-a').zones.find(zone => zone.id === 'patch-right');
+  assert.equal(right.patternId, 'ocean');
+  assert.equal(right.speed, 1.7);
 });

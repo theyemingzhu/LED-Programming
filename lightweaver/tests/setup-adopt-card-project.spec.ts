@@ -269,3 +269,60 @@ test('"Open installed project" cannot be activated while the card link is not co
 
   await expect(page.locator('[data-testid="installed-project-open"]:enabled')).toHaveCount(0);
 });
+
+test('Card Home offers Resume Layout after light discovery and leaves installed controls available', async ({ page }, testInfo) => {
+  let writes = 0;
+  await page.route('http://lightweaver.local/**', route => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes++;
+    return route.abort();
+  });
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('fact-artwork')).toBeVisible();
+  await page.evaluate(async () => {
+    const { createDefaultProject } = await import('/src/lib/projectModel.js');
+    const project = createDefaultProject();
+    project.id = 'lotus-gate';
+    project.name = 'Lotus Gate';
+    project.portRoles = [{ pin: 18, role: 'strip', pixelCount: 41 }];
+    Object.assign(project.devices.standaloneController.led, {
+      colorOrder: 'GRB', colorOrderConfirmed: true, confirmedColorOrder: 'GRB',
+    });
+    localStorage.setItem('lw_autosave_v3', JSON.stringify(project));
+  });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await connectLegacyCard(page);
+  await expectInstalledHome(page);
+
+  const artwork = page.getByTestId('fact-artwork');
+  const resume = artwork.getByRole('button', { name: 'Resume Layout' });
+  await expect(artwork).toContainText('Lights verified');
+  await expect(resume).toBeVisible();
+  const releaseRow = page.getByTestId('fact-release');
+  await expect(releaseRow).toContainText('A newer card release is available');
+  await expect(page.getByTestId('setup-optional-firmware')).toHaveCount(0);
+
+  if (process.env.LW_ARRIVAL_SCREENSHOTS) {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.screenshot({ path: testInfo.outputPath('card-home-readiness-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await artwork.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath('card-home-readiness-phone.png') });
+  }
+  await resume.click();
+  await expect(page).toHaveURL(/#screen=layout&mode=draw$/);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}').id)).toBe('lotus-gate');
+  expect(writes).toBe(0);
+});
+
+test('Card Home labels an explicit firmware blocker as required', async ({ page }) => {
+  await page.route('http://lightweaver.local/**', route => route.abort());
+  await page.goto('/#screen=setup', { waitUntil: 'domcontentloaded' });
+  const releaseRow = page.getByTestId('fact-release');
+  await expect(releaseRow).toBeVisible();
+  await dispatchCardLink(page, [{
+    type: 'direct-status', connected: false, host: 'lightweaver.local', reason: 'firmware-too-old',
+  }]);
+  await expect(releaseRow).toContainText('An update is required for this card to work with Studio.');
+  await expect(releaseRow.getByTestId('setup-update-card-required')).toBeVisible();
+});

@@ -121,6 +121,11 @@ import {
   readFirmwareUpdateSession,
 } from '../lib/cardFirmwareUpdater.js';
 import { persistCardIdentity, readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import {
+  pendingVerificationForCard,
+  readPendingInstallationVerification,
+  recordPendingInstallationVerification,
+} from '../lib/studioPendingInstallationVerification.js';
 import { getActiveCardTransportAuthority, reacquireCardTransportAuthority } from '../lib/cardTransport.js';
 import { sha256Canonical, validateProjectEnvelope } from '../lib/projectRepository.js';
 import {
@@ -1141,13 +1146,26 @@ function Shell({ offlineUpdateController = null }) {
     if (['preflight', 'sending', 'verifying'].includes(session.phase)) return { phase: session.phase };
     return { phase: 'restarting' };
   });
+  const [lastUpdateVerification, setLastUpdateVerification] = useState(null);
   const retainFirmwareRecoveryState = useCallback(next => {
+    if (!next) return;
+    if (next.phase === 'reconnected') {
+      const pending = recordPendingInstallationVerification(next);
+      if (pending) setLastUpdateVerification(pending);
+      setFirmwareRecoveryState(null);
+      return;
+    }
     setFirmwareRecoveryState(current => {
-      if (!next) return current;
-      if (next.phase === 'reconnected') return null;
-      return next;
+      return current === next ? current : next;
     });
   }, []);
+  const pendingInstallationVerification = useMemo(() => {
+    const cardId = cardLink.readiness?.cardId;
+    const pending = lastUpdateVerification?.record.cardId === cardId
+      ? lastUpdateVerification
+      : readPendingInstallationVerification(cardId);
+    return pendingVerificationForCard(pending, cardLink);
+  }, [cardLink, lastUpdateVerification]);
   useEffect(() => {
     const session = readFirmwareUpdateSession();
     const readiness = cardLink.readiness;
@@ -1181,7 +1199,8 @@ function Shell({ offlineUpdateController = null }) {
         buildId: readiness.buildId || previous.buildId,
         buildNumber: readiness.buildNumber || previous.buildNumber,
       });
-      if (clearFirmwareUpdateSessionIfMatches(session)) setFirmwareRecoveryState(null);
+      retainFirmwareRecoveryState({ phase: 'reconnected', session, readiness, updateStatus: readiness.firmwareUpdate });
+      clearFirmwareUpdateSessionIfMatches(session);
       return;
     }
     if (correlation.terminal && correlation.phase === 'rolled-back') {
@@ -1193,7 +1212,7 @@ function Shell({ offlineUpdateController = null }) {
         ? current
         : { phase: 'blocked', reason: correlation.reason });
     }
-  }, [cardLink.readiness]);
+  }, [cardLink.readiness, retainFirmwareRecoveryState]);
   // A reload restores the installation record unverified (it is a memory, not
   // proof). When the exact card that is connected right now still reports the
   // same project id, revision, and fingerprint the record names, that IS the
@@ -2470,6 +2489,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenSection={openCardSection}
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
+              pendingInstallationVerification={pendingInstallationVerification}
               firmwareStatus={firmwareStatus}
               firmwareReleaseManifest={firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null}
               onRenameProject={setProjectName}

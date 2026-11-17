@@ -99,3 +99,33 @@ test('native compatibility admits only a validated recipe identity, never arbitr
  assert.equal(getProjectStackCompatibility({...look,nativeRecipe:{id:'journey'}}).ok,false);
  assert.equal(getProjectStackCompatibility({...look,patternLabRecipe:null}).ok,false);
 });
+
+test('saving refuses two distinct sections that use the same saved key', () => {
+  const colliding = [{ ...targets[0], id: 'Outer_Ring' }, { ...targets[1], id: 'outer-ring' }];
+  assert.throws(() => saveCurrentLookToController({}, { targets: colliding }), /share a saved look key/);
+});
+
+test('new and removed section IDs require review before any enabled look is installed', () => {
+  const strips = ['left', 'right'].map(id => ({ id, pixelCount: 8 }));
+  const patchBoard = createDefaultPatchBoard(strips);
+  const savedTargets = deriveSectionTargets({ strips, patchBoard });
+  let controller = saveCurrentLookToController({}, { label: 'A', targets: savedTargets });
+  controller = addProjectStacksToPlaylist(controller, ['a']);
+  const added = { id: 'extra', pixelCount: 4 };
+  const leftAfterSplit = { ...strips[0], pixelCount: 4 };
+  const changes = [
+    ['add', [...strips, added], ['patch-extra'], []],
+    ['split retaining first ID', [leftAfterSplit, added, strips[1]], ['patch-extra'], []],
+    ['remove', [strips[0]], [], ['patch-right']],
+  ];
+  for (const [operation, next, missingSectionIds, removedSectionIds] of changes) {
+    const nextBoard = createDefaultPatchBoard(next);
+    const nextTargets = deriveSectionTargets({ strips: next, patchBoard: nextBoard });
+    assert.deepEqual(getProjectStackReview(controller.looks[0], nextTargets), {
+      needsReview: true, missingSectionIds, removedSectionIds,
+    }, operation);
+    assert.throws(() => buildCardRuntimePackageFromProject({
+      strips: next, patchBoard: nextBoard, wiring: makeDefaultWiring(next), standaloneController: controller,
+    }), /Review sections for stack “A”/);
+  }
+});

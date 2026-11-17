@@ -20,7 +20,8 @@ import {
 import { createShowAudioFeatures } from '../lib/showAudioFeatures.js';
 import { createDemoTrack, DEMO_TRACKS } from '../lib/demoTracks.js';
 import { ShowVoices } from './ShowVoices.jsx';
-import { loadCompositions, persistCompositions } from '../lib/showComposition.js';
+import { exportComposition, importCompositionFile, loadCompositions, persistCompositions } from '../lib/showComposition.js';
+import { download } from '../lib/export.js';
 import {
   buildStarterComposition,
   characterKeyOf,
@@ -264,7 +265,7 @@ function ShowScreen({
     });
     const nextController = await applyRecordedSequenceAsset(project.standaloneController, result);
     project.setStandaloneController(nextController);
-    return { ok: true, message: 'Recording saved in the project. Add it to Playlist, then install on the card.', asset: result.asset };
+    return { ok: true, message: 'Fixed-motion recording saved in the project. Add it to Playlist, then install it on the card.', asset: result.asset };
   }, [project]);
   const mandalaTemplate = useMemo(() => createMandalaSpatialTemplate(), []);
   const connectedTemplate = useMemo(
@@ -390,6 +391,18 @@ function ShowScreen({
   const [soloVoiceId, setSoloVoiceId] = useState(null);
   const [audition, setAudition] = useState(null);          // { voiceId, patch } | null
   const projectId = currentProject?.id || '';
+  const compositionFileInput = useRef(null);
+  const compositionTargetRef = useRef(null);
+  useEffect(() => {
+    compositionTargetRef.current = {
+      projectId,
+      stripIds: activeTemplateKind === 'mandala' ? templateStripIds(mandalaTemplate) : strips.map(strip => strip.id),
+    };
+    return () => { compositionTargetRef.current = null; };
+  }, [activeTemplateKind, mandalaTemplate, projectId, strips]);
+  const [compositionImporting, setCompositionImporting] = useState(false);
+  const [pendingVoicesFile, setPendingVoicesFile] = useState(null);
+  const [compositionFileStatus, setCompositionFileStatus] = useState('');
 
   const modeInfo = MODE_LIBRARY.find((m) => m.key === modeKey) || MODE_LIBRARY[0];
 
@@ -453,6 +466,8 @@ function ShowScreen({
     setSoloVoiceId(null);
     setAudition(null);
     setExpandedVoiceId(null);
+    setCompositionFileStatus('');
+    setPendingVoicesFile(null);
     if (!projectId) { setComposition(null); return; }
     const saved = loadCompositions(projectId);
     setComposition(saved.length > 0 ? restoreCharacters(saved[0]) : null);
@@ -476,6 +491,52 @@ function ShowScreen({
     setAudition(null);
     setComposition(buildStarter());
   }, [buildStarter]);
+
+  const exportVoices = () => {
+    if (!composition || !projectId) return;
+    download(exportComposition({ ...composition, projectId }), 'lightweaver.voices.json');
+  };
+
+  const importVoices = async (event) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file || !projectId) return;
+    setCompositionImporting(true);
+    setCompositionFileStatus('');
+    try {
+      const json = await file.text();
+      const target = compositionTargetRef.current;
+      if (!target) return;
+      if (target.projectId !== projectId) throw new Error('The project changed. Open the source project and try again.');
+      const imported = importCompositionFile(json, target);
+      setPendingVoicesFile({ json, imported, target });
+      setCompositionFileStatus('Replace the current Voices with this file?');
+    } catch (error) {
+      if (compositionTargetRef.current) setCompositionFileStatus(error.message || 'Could not read the Voices file.');
+    } finally {
+      if (compositionTargetRef.current) setCompositionImporting(false);
+    }
+  };
+
+  const replaceVoices = () => {
+    if (!pendingVoicesFile || !projectId) return;
+    const { json, imported, target } = pendingVoicesFile;
+    try {
+      const currentTarget = compositionTargetRef.current;
+      if (currentTarget?.projectId !== target.projectId) throw new Error('The project changed. Open the source project and try again.');
+      const next = currentTarget === target ? imported : importCompositionFile(json, currentTarget);
+      const [saved] = persistCompositions(projectId, [next], { strict: true });
+      setSoloVoiceId(null);
+      setAudition(null);
+      setExpandedVoiceId(null);
+      setComposition(restoreCharacters(saved));
+      setCompositionFileStatus('Voices imported.');
+    } catch (error) {
+      setCompositionFileStatus(error.message || 'Could not import Voices.');
+    } finally {
+      setPendingVoicesFile(null);
+    }
+  };
 
   // What the ENGINE gets: the authored composition plus the two live overlays
   // (solo dimming, held-chip audition) that are deliberately never saved.
@@ -678,7 +739,7 @@ function ShowScreen({
       if (stream) {
         const stats = stream.getStats();
         if (stats.lastSentAt && Date.now() - stats.lastSentAt > 2500) {
-          setNotice({ kind: 'info', text: "The lights paused while this tab was in the background — they're back now." });
+          setNotice({ kind: 'info', text: 'The stream may have paused in the background. Keep this Studio tab visible during playback.' });
         }
       }
     };
@@ -1032,6 +1093,10 @@ function ShowScreen({
     ? 'the room'
     : (source === 'demo' ? (demoTrack?.name || 'a demo track') : (fileName || 'your song'));
 
+  const soundStatus = songPaused ? `paused · ${hearing}`
+    : listening ? `hearing ${hearing} · ${engineMode === 'voices' ? `${voiceCards.length} voices` : modeInfo.name.toLowerCase()}`
+      : 'quiet · choose a sound source';
+
   const selectScene = useCallback((sceneId) => {
     setExpressionScenes(current => ({ ...current, activeSceneId: sceneId }));
   }, [setExpressionScenes]);
@@ -1073,6 +1138,9 @@ function ShowScreen({
 
   if (sceneEditorOpen) return <div className="show-scene-editor-host">
     {sceneEditorCloseError && <div className="show-scene-close-error" role="alert">{sceneEditorCloseError}</div>}
+    <p className="show-scene-execution">
+      Compatible scenes run on the card after installation. Flow recordings play fixed motion from Playlist.
+    </p>
     <SceneExpressionEditor
       hostName="Show"
       project={project}
@@ -1091,15 +1159,15 @@ function ShowScreen({
       <div className="sh">
         {/* top bar */}
         <div className="transport">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-hi)' }}>The piece listens</span>
+          <div className="show-transport-source">
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-hi)' }}>Live sound</span>
             <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-              {listening ? `hearing ${hearing} · ${engineMode === 'voices' ? `${voiceCards.length} voices` : modeInfo.name.toLowerCase()}` : 'quiet — pick a sound source to begin'}
+              {soundStatus}
             </span>
           </div>
           <div className="tp-spring" />
-          <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-            {onLights ? `playing on ${activePixels} LEDs` : `${activePixels} LEDs ready`}
+          <span className="show-stream-execution">
+            {onLights ? 'Streaming from Studio · keep this tab visible' : 'Keep this Studio tab visible during playback'}
           </span>
           <button
             type="button"
@@ -1373,6 +1441,25 @@ function ShowScreen({
 
               {engineMode === 'voices' ? (
                 <section className="sh-mod" data-testid="show-section-voices">
+                <p className="show-voices-storage">Voices are saved in this browser, separately from project and library backups. Import with the same project and preview open.</p>
+                {compositionFileStatus && <p className="show-voices-storage" role="status">{compositionFileStatus}</p>}
+                <div className="show-voices-file-actions">
+                  {pendingVoicesFile ? (
+                    <>
+                      <button type="button" className="btn primary" onClick={replaceVoices}>Replace Voices</button>
+                      <button type="button" className="btn" onClick={() => {
+                        setPendingVoicesFile(null);
+                        setCompositionFileStatus('');
+                      }}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn" onClick={exportVoices} disabled={!composition || !projectId}>Export Voices</button>
+                      <button type="button" className="btn" onClick={() => compositionFileInput.current?.click()} disabled={!projectId || compositionImporting}>Import Voices</button>
+                    </>
+                  )}
+                  <input ref={compositionFileInput} type="file" accept=".json" hidden onChange={importVoices} data-testid="show-voices-file" />
+                </div>
                 <ShowVoices
                   voices={voiceCards}
                   ground={composition?.ground || null}

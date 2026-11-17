@@ -1073,7 +1073,7 @@ test('a saved edit of the installed project can be installed on the same card', 
   await setRangeValue(page.getByTestId('look-brightness-slider'), '0.3');
   await page.getByTestId('stack-new').click();
   await page.getByTestId('look-name').fill('Aurora — steady 30%');
-  await expect(page.getByTestId('look-save-preset')).toHaveText('Save stack');
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Save look');
   await page.getByTestId('look-save-preset').click();
   await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
   await expect.poll(() => page.evaluate(() => {

@@ -723,10 +723,10 @@ test('Show reports live only after the first frame acknowledgement', async ({ pa
   await page.goto('/?show-ack=1#screen=show', { waitUntil: 'domcontentloaded' });
   const play = page.getByRole('button', { name: 'Play on the lights' });
   await play.click();
-  await expect(page.getByText(/LEDs ready/)).toBeVisible();
+  await expect(page.getByText('Keep this Studio tab visible during playback')).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).__showFrames.length)).toBeGreaterThan(0);
   expect(await page.evaluate(() => (window as any).__showFrames.every((frame: any) => frame.lwPhysical === 1))).toBe(true);
-  await expect(page.getByText(/playing on .* LEDs/)).toBeVisible();
+  await expect(page.getByText('Streaming from Studio · keep this tab visible')).toBeVisible();
 });
 
 test('Show delivery failure is visible and leaves playback retryable', async ({ page }) => {

@@ -4,6 +4,7 @@ import { useProject } from '../../state/ProjectContext.jsx';
 import { pushLiveHardwareToCard } from '../../lib/cardLiveControl.js';
 import { readCardStatusEnvelope } from '../../lib/cardPushClient.js';
 import { cardConnectionOptionsFor, cardLoadMethodForProtocol } from '../../lib/cardConnection.js';
+import { isCardTransportConnected } from '../../lib/cardConnectionFlow.js';
 import { readPowerSupplySettings, withPowerSupplySettings } from '../../lib/powerSupplySettings.js';
 import { readCardCommissioningVerification } from '../../lib/cardInstallGate.js';
 
@@ -58,6 +59,16 @@ function Readout({ children, dim, testId }) {
   return <span className={`lw-rv${dim ? ' is-dim' : ''}`} data-testid={testId}>{children}</span>;
 }
 
+function installedPowerLimit(link) {
+  const status = link?.readiness;
+  if (!isCardTransportConnected(link) || !status?.cardId || status.cardId !== link.card?.id
+    || (link.expectedCard?.id && status.cardId !== link.expectedCard.id)
+    || !status.bootId || status.bootId !== link.validatedBootId
+    || status.knownGoodProject !== true || status.provisionalSetup === true) return null;
+  const limit = status.maxMilliamps ?? status.led?.maxMilliamps;
+  return Number.isSafeInteger(limit) && limit > 0 ? limit : null;
+}
+
 function formatWhen(at) {
   if (!at) return '';
   const date = new Date(at);
@@ -69,7 +80,10 @@ function formatWhen(at) {
     : date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, go, health = null, countEditor = null }) {
+export function CardFacts({
+  currentProject, cardLink, cardHost, firmwareStatus, arrival, pendingInstallationVerification,
+  onReviewInstalledLooks, go, health = null, countEditor = null,
+}) {
   const { standaloneController, setStandaloneController } = useProject();
   const led = currentProject?.devices?.standaloneController?.led || {};
   const evidence = discoveryEvidence(currentProject);
@@ -80,18 +94,25 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
   const strips = Array.isArray(currentProject?.layout?.strips) ? currentProject.layout.strips : [];
   const drawn = currentProject?.layout?.starterPending === false && strips.length > 0;
   const powerLimit = Number.isFinite(Number(led.maxMilliamps)) && Number(led.maxMilliamps) > 0 ? Math.round(Number(led.maxMilliamps)) : 0;
+  const onCardLimit = installedPowerLimit(cardLink);
   const powerSupply = readPowerSupplySettings(standaloneController);
   const brightness255 = Math.round((Number.isFinite(Number(led.brightnessLimit)) ? Number(led.brightnessLimit) : 0.45) * 255);
   const installedBuild = Number.isSafeInteger(firmwareStatus?.installedBuildNumber)
     ? firmwareStatus.installedBuildNumber
     : (Number.isSafeInteger(cardLink?.readiness?.buildNumber) ? cardLink.readiness.buildNumber : null);
   const releaseBuild = Number.isSafeInteger(firmwareStatus?.releaseBuildNumber) ? firmwareStatus.releaseBuildNumber : null;
-  const updateAvailable = firmwareStatus?.actionable === true;
-  const updateRequired = updateAvailable && firmwareStatus?.state !== 'update-available';
+  const resumeLayout = arrival?.resumeTask === 'place-lights';
+  const updateAvailable = arrival?.update.available === true;
+  const updateRequired = arrival?.compatibility.state === 'update-required';
+  // The release row is about the card's installed lights, even when Studio
+  // has a different project draft open.
+  const updateOptional = arrival?.update.optional === true || arrival?.installedPlaybackReady === true;
   const releaseHint = updateRequired
-    ? 'This card’s software is behind. Update the card software before relying on it.'
+    ? 'An update is required for this card to work with Studio.'
     : updateAvailable && releaseBuild
-      ? `A newer card release is available. Your lights keep working on ${installedBuild || 'this build'}. Update to ${releaseBuild} when convenient.`
+      ? updateOptional
+        ? `A newer card release is available. Your lights keep working on ${installedBuild || 'this build'}. Update to ${releaseBuild} when convenient.`
+        : `Card build ${releaseBuild} is available. Check this card to confirm compatibility.`
       : 'The software the card is running';
 
   // ── light count, edited in the row ──────────────────────────────────
@@ -224,9 +245,9 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
             </div>
             <button type="button" className="btn" onClick={() => go('#screen=card&section=settings&tool=color-order')}>Check colors</button>
           </Row>
-          <Row label="Artwork placement" hint="Optional" testId="fact-artwork" last>
+          <Row label="Artwork placement" hint={resumeLayout ? (arrival.tasks.lights === 'verified' ? 'Lights verified' : 'Artwork in progress') : 'Optional'} testId="fact-artwork" last>
             <Readout dim={!drawn}>{drawn ? (strips.length === 1 ? '1 strip' : `${strips.length} strips`) : 'Not drawn'}</Readout>
-            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=draw')}>{drawn ? 'Open Layout' : 'Draw'}</button>
+            <button type="button" className="btn" onClick={() => go('#screen=layout&mode=draw')}>{resumeLayout ? 'Resume Layout' : drawn ? 'Open Layout' : 'Draw'}</button>
           </Row>
         </div>
         <div className="lw-facts-col">
@@ -243,7 +264,24 @@ export function CardFacts({ currentProject, cardLink, cardHost, firmwareStatus, 
               {updateAvailable ? 'Update card' : 'Card software'}
             </button>
           </Row>
-          <Row label="Power limit" hint="Supply size; the card caps itself at 80% of it" testId="fact-power">
+          {pendingInstallationVerification && (
+            <Row
+              label="Saved looks after update"
+              hint="Playback on the lights has yet to be checked."
+              note={!pendingInstallationVerification.retained && <span className="hh">This browser couldn’t save the reminder.</span>}
+              testId="fact-post-update-verification"
+            >
+              {onReviewInstalledLooks && <button type="button" className="btn" onClick={onReviewInstalledLooks}>Review saved looks</button>}
+            </Row>
+          )}
+          <Row
+            label="Project limit"
+            hint="80% of supply. Applies when saved to card."
+            testId="fact-power"
+            note={onCardLimit !== null && onCardLimit !== powerLimit && (
+              <span className="hh" data-testid="fact-card-power-limit">On card: {onCardLimit} mA</span>
+            )}
+          >
             <label className="lw-inline-field">
               <input
                 className="lw-stepper-input"

@@ -79,7 +79,7 @@ async function seedDefaultCircles(page: any) {
 
 async function exportProject(page: any, tmp: string, name = 'saved.json') {
   const pending = page.waitForEvent('download');
-  await page.getByTitle('Export a portable project file (.lw.json)').click();
+  await page.getByRole('button', { name: 'Export project', exact: true }).click();
   const download = await pending;
   const file = path.join(tmp, name);
   await download.saveAs(file);
