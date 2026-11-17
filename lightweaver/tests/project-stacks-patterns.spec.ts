@@ -52,6 +52,38 @@ const namedLook = (id: string, label: string) => ({
   },
 });
 
+test('opening a saved look on a phone keeps its preview and save action in view', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openStackProject(page, 'phone-look-preview', [namedLook('amber-tides', 'Amber Tides')], true);
+  await editStack(page, 'Amber Tides');
+
+  const piece = page.getByTestId('pattern-piece-preview');
+  await expect(piece).toHaveAttribute('data-preview-mode', 'piece');
+  await expect(piece.locator('canvas')).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByTestId('look-save-preset')).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByTestId('section-target-patch-default-outer-circle').locator('.pm-section-palette'))
+    .toHaveAttribute('data-pattern-id', 'aurora');
+  await expect(page.getByTestId('section-target-patch-default-inner-circle').locator('.pm-section-palette'))
+    .toHaveAttribute('data-pattern-id', 'ocean');
+
+  await page.getByLabel('Preview target').selectOption('patch-default-inner-circle');
+  await expect(piece).toHaveAttribute('data-preview-mode', 'strip');
+  await expect(piece).toHaveAttribute('data-preview-patterns', 'ocean');
+  await page.getByRole('button', { name: 'On my piece' }).click();
+  await expect(piece).toHaveAttribute('data-preview-mode', 'piece');
+});
+
+test('a Lab-only saved look opens the Lab directly from its preview', async ({ page }) => {
+  const saved = { ...namedLook('lab-nocturne', 'Lab Nocturne'), projectOnly: true };
+  await openStackProject(page, 'lab-only-preview', [saved], true);
+  await editStack(page, saved.label);
+  const preview = page.getByTestId('pattern-piece-preview');
+  await expect(preview.locator('canvas')).toHaveCount(0);
+  await preview.getByRole('button', { name: 'Preview in Lab' }).click();
+  await expect(page).toHaveURL(/screen=pattern-lab/);
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue(saved.label);
+});
+
 test('chip selection stays local while Preview, Edit, and Add remain explicit', async ({ page }) => {
   const project = createDefaultProject();
   project.id = 'project-stack-chip-actions';
@@ -308,7 +340,7 @@ test('ten project stacks fit desktop and phone without horizontal overflow', asy
   await page.screenshot({ path: '/tmp/lightweaver-stacks-patterns-phone.png' });
 });
 
-test('ten saved stack chips wrap into rows and the editor stays below them', async ({ page }) => {
+test('ten saved stack chips wrap and keep the open editor near the artwork', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openStackProject(page, 'stack-compact-density', Array.from({ length: 10 }, (_, index) => {
     const look = namedLook(`compact-${index}`, `Garden ${index + 1}`);
@@ -327,9 +359,11 @@ test('ten saved stack chips wrap into rows and the editor stays below them', asy
   await chips.first().getByRole('button', { name: /^Edit / }).click();
   const editor = page.getByTestId('stack-save-bar');
   await expect(editor).toBeVisible();
-  const lastChip = await chips.last().boundingBox();
+  const canvas = await page.getByTestId('pattern-piece-preview').boundingBox();
   const editorBox = await editor.boundingBox();
-  expect(lastChip && editorBox && editorBox.y >= lastChip.y + lastChip.height).toBe(true);
+  const savedLook = await chips.first().boundingBox();
+  expect(canvas && editorBox && savedLook && canvas.y + canvas.height <= editorBox.y
+    && editorBox.y + editorBox.height <= savedLook.y).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   const phoneFirst = await chips.nth(0).boundingBox();
   const phoneSecond = await chips.nth(1).boundingBox();

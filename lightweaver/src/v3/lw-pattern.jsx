@@ -543,15 +543,23 @@ function writeSectionDisplayOrder(projectId, ids) {
     const [libraryTab, setLibraryTab] = useState('patterns');
     const [expandedStackId, setExpandedStackId] = useState(null);
     const [newStackResumeMessage, setNewStackResumeMessage] = useState('');
+    const workspaceScrollRef = useRef(null);
+    const previewPaneRef = useRef(null);
     const stackEditorRef = useRef(null);
+    const revealLookPreview = useCallback(() => {
+      const viewport = workspaceScrollRef.current;
+      const preview = previewPaneRef.current;
+      if (!viewport || !preview) return;
+      viewport.scrollTop += preview.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    }, []);
     useEffect(() => {
       if (expandedStackId === null || libraryTab !== 'stacks') return;
       const frame = requestAnimationFrame(() => {
-        stackEditorRef.current?.scrollIntoView({ block: 'start' });
+        revealLookPreview();
         stackEditorRef.current?.querySelector('[data-testid="look-name"]')?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(frame);
-    }, [expandedStackId, libraryTab]);
+    }, [expandedStackId, libraryTab, revealLookPreview]);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const menuRef = useRef(null);
@@ -2067,6 +2075,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (action === 'edit' && expandedStackId === saved.id) return;
       if (action === 'preview' && activeLookId === saved.id) {
         setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+        revealLookPreview();
         return;
       }
       if (activeLookId !== saved.id && !keepCurrentStackDraft()) return;
@@ -2074,7 +2083,10 @@ function writeSectionDisplayOrder(projectId, ids) {
         if (needsReview) setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
         else selectCard(adaptSavedLook(saved), { preview: false });
       }
-      if (action === 'preview') setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+      if (action === 'preview' || action === 'edit') {
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+        if (action === 'preview') revealLookPreview();
+      }
       setNewStackResumeMessage('');
       setExpandedStackId(action === 'edit' ? saved.id : null);
       setLibraryTab('stacks');
@@ -3069,7 +3081,7 @@ function writeSectionDisplayOrder(projectId, ids) {
 
     return (
       <div className="screen">
-        <div className="screen-scroll">
+        <div className="screen-scroll" ref={workspaceScrollRef}>
           <div className="pm pm-workspace">
             {/* hero */}
             <header className="pm-hero">
@@ -3173,7 +3185,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                 {/* design target */}
                 <div className="pm-target">
                    <div className="sec-h"><span className="t">Sections</span><span className="m">{sectionCount} on this piece</span><span className="line" /></div>
-                <div className="card pm-pane pm-preview-pane">
+                <div className="card pm-pane pm-preview-pane" ref={previewPaneRef}>
                   <div className="pm-preview-controls" aria-label="Pattern preview controls">
                     <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${selectedDisplayLabel}`}>
                       <span className="t">Studio preview</span>
@@ -3233,7 +3245,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                       data-preview-patterns={visiblePatternPreviewSegments.map(segment => segment.sourcePatternId).join(',')}
                     >
                       {previewNeedsLab ? (
-                        <p className="pm-preview-empty">{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'} · open in Lab for its exact animated preview.</p>
+                        <div className="pm-preview-empty pm-lab-preview">
+                          <span>{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'}</span>
+                          <button type="button" className="btn" onClick={openLookInLab}>Preview in Lab</button>
+                        </div>
                       ) : visiblePatternPreviewSegments.length ? (
                         <PatternPreview
                           strips={visiblePatternPreviewSegments}
@@ -3296,6 +3311,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                        const rowLabel = showSides ? sectionLabelCopy({ target, symmetry: layoutSymmetry }) || row.label : row.label;
                        const selected = !handoffInvalid && row.id === selectedTarget?.id;
                        const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
+                       const palette = REAL_PATTERN_BY_ID.get(row.patternId)?.pal || customPatternById.get(row.patternId)?.pal;
+                       const paletteFill = palette?.length > 1 ? `linear-gradient(90deg, ${palette.join(', ')})` : palette?.[0];
                        return <div
                          key={row.id}
                          className={`pm-section-entry${selected ? ' on' : ''}`}
@@ -3313,7 +3330,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                          onClick={() => chooseSectionLook(target)}
                        >
                          <span className="pm-section-identity"><strong>{rowLabel}</strong><small data-testid={sidesMeta ? `section-meta-${row.id}` : undefined}>{sidesMeta || (row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`)}</small></span>
-                         <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
+                         <span className="pm-section-look">
+                           {paletteFill && <span className="pm-section-palette" data-pattern-id={row.patternId} style={{ background: paletteFill }} title={`${row.lookLabel} palette`} aria-hidden="true" />}
+                           <span className="pm-section-pattern-name" data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span>
+                         </span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
                        </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
                          <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
@@ -3355,6 +3375,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                   </div>
                 </div>
 
+                {expandedStackId !== null && libraryTab === 'stacks' && (
+                  <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef}>
+                    {stackSavePanel}
+                  </div>
+                )}
+
                 {/* browse */}
                  <div className={`pm-browse ${libraryTab === 'patterns' ? 'is-pattern-library' : 'is-stack-library'}`} data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
                   <div className="project-stack-library-head">
@@ -3394,7 +3420,6 @@ function writeSectionDisplayOrder(projectId, ids) {
                       })}
                       {!savedLooks.length && <p className="project-stack-empty">No saved looks yet. Choose a pattern for each section, then save a complete look.</p>}
                     </div>
-                    {expandedStackId !== null && <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef} style={{ scrollMarginTop: 84 }}>{stackSavePanel}</div>}
                   </div> : <>
                   <div className="pm-bank-bar">
                   <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">
