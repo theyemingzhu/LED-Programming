@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCloudLibrary } from '../../state/CloudLibraryContext.jsx';
+import { PasswordlessSignIn } from './PasswordlessSignIn.jsx';
 
 function messageFor(error, fallback) {
   if (error?.code === 'last_owner_required') return 'At least one active owner is required.';
@@ -53,10 +54,12 @@ function PasswordChange({ library, onCancel, onDone }) {
   );
 }
 
-function OwnerAccounts({ library }) {
+const EMPTY_ACCOUNT = { username: '', email: '', displayName: '', role: 'worker', temporaryPassword: '' };
+
+function OwnerAccounts({ library, passwordless = false }) {
   const [accounts, setAccounts] = useState([]);
   const [assignments, setAssignments] = useState({});
-  const [form, setForm] = useState({ username: '', displayName: '', role: 'worker', temporaryPassword: '' });
+  const [form, setForm] = useState(EMPTY_ACCOUNT);
   const [resetPasswords, setResetPasswords] = useState({});
   const [assignmentProjects, setAssignmentProjects] = useState({});
   const [notice, setNotice] = useState('');
@@ -94,8 +97,12 @@ function OwnerAccounts({ library }) {
 
   const create = async event => {
     event.preventDefault();
-    const succeeded = await run('create', () => library.createAccount(form), `Created @${form.username}.`);
-    if (succeeded) setForm({ username: '', displayName: '', role: 'worker', temporaryPassword: '' });
+    const { username, displayName, role, temporaryPassword } = form;
+    const email = form.email.trim();
+    const input = passwordless ? { email, displayName, role } : { username, displayName, role, temporaryPassword };
+    const succeeded = await run('create', () => library.createAccount(input),
+      passwordless ? `Added ${email}.` : `Created @${username}.`);
+    if (succeeded) setForm(EMPTY_ACCOUNT);
   };
 
   const reset = async account => {
@@ -116,15 +123,19 @@ function OwnerAccounts({ library }) {
         <span className="cloud-kicker">Owner controls</span>
         <h4 id="cloud-account-admin-title">Accounts</h4>
       </div>
-      <form className="cloud-account-create" onSubmit={create}>
-        <input className="pm-input" aria-label="New account username" placeholder="Username" required minLength={3} maxLength={64} value={form.username} onChange={event => setForm(current => ({ ...current, username: event.target.value }))} />
+      <form className={`cloud-account-create${passwordless ? ' is-passwordless' : ''}`} onSubmit={create}>
+        {passwordless
+          ? <input className="pm-input" aria-label="New account email" placeholder="Email address" type="email" required maxLength={254}
+            value={form.email} onChange={event => setForm(current => ({ ...current, email: event.target.value }))} />
+          : <input className="pm-input" aria-label="New account username" placeholder="Username" required minLength={3} maxLength={64}
+            value={form.username} onChange={event => setForm(current => ({ ...current, username: event.target.value }))} />}
         <input className="pm-input" aria-label="New account display name" placeholder="Display name" required maxLength={80} value={form.displayName} onChange={event => setForm(current => ({ ...current, displayName: event.target.value }))} />
         <select className="pm-input" aria-label="New account role" value={form.role} onChange={event => setForm(current => ({ ...current, role: event.target.value }))}>
           <option value="worker">Worker</option>
           <option value="customer">Customer</option>
         </select>
-        <input className="pm-input" aria-label="Temporary password" type="password" autoComplete="new-password" placeholder="Temporary password" required minLength={12} maxLength={256} value={form.temporaryPassword} onChange={event => setForm(current => ({ ...current, temporaryPassword: event.target.value }))} />
-        <button type="submit" className="btn primary" disabled={busy === 'create'}>Create account</button>
+        {!passwordless && <input className="pm-input" aria-label="Temporary password" type="password" autoComplete="new-password" placeholder="Temporary password" required minLength={12} maxLength={256} value={form.temporaryPassword} onChange={event => setForm(current => ({ ...current, temporaryPassword: event.target.value }))} />}
+        <button type="submit" className="btn primary" disabled={busy === 'create'}>{passwordless ? 'Add account' : 'Create account'}</button>
       </form>
       <div className="cloud-account-table-wrap">
         <table className="cloud-account-table">
@@ -136,7 +147,7 @@ function OwnerAccounts({ library }) {
             const available = library.activeProjects.filter(project => !assignedIds.has(project.id));
             return (
               <tr key={account.id} data-testid="account-row">
-                <td><strong>{account.displayName}</strong><span>@{account.username}</span></td>
+                <td><strong>{account.displayName}</strong><span>{passwordless && account.email ? account.email : `@${account.username}`}</span></td>
                 <td>
                   <select className="pm-input" aria-label={`Role for ${account.username}`} disabled={isSelf || busy === `role-${account.id}`} value={account.role} onChange={event => run(`role-${account.id}`, () => library.setAccountRole(account.id, event.target.value), `Updated @${account.username}’s role.`)}>
                     <option value="owner">Owner</option><option value="worker">Worker</option><option value="customer">Customer</option>
@@ -145,10 +156,10 @@ function OwnerAccounts({ library }) {
                 <td><span className={`cloud-account-status is-${account.status}`}>{account.status}</span></td>
                 <td>
                   <div className="cloud-account-actions">
-                    {isSelf ? <span>Use Change Password for your own account.</span> : <>
+                    {!passwordless && (isSelf ? <span>Use Change Password for your own account.</span> : <>
                       <input className="pm-input" aria-label={`Reset password for ${account.username}`} type="password" autoComplete="new-password" minLength={12} maxLength={256} placeholder="New temporary password" value={resetPasswords[account.id] || ''} onChange={event => setResetPasswords(current => ({ ...current, [account.id]: event.target.value }))} />
                       <button type="button" className="btn ghost-sm" disabled={(resetPasswords[account.id] || '').length < 12 || busy === `reset-${account.id}`} onClick={() => reset(account)}>Reset password</button>
-                    </>}
+                    </>)}
                     <button type="button" className="btn ghost-sm" disabled={isSelf || busy === `status-${account.id}`} onClick={() => run(`status-${account.id}`, () => library.setAccountStatus(account.id, account.status === 'active' ? 'disabled' : 'active'), `${account.status === 'active' ? 'Disabled' : 'Enabled'} @${account.username}.`)}>{account.status === 'active' ? 'Disable' : 'Enable'}</button>
                     {(account.role === 'customer' || accountAssignments.length > 0) && (
                       <div className="cloud-assignments">
@@ -168,7 +179,7 @@ function OwnerAccounts({ library }) {
   );
 }
 
-export function AccountAccessPanel() {
+export function AccountAccessPanel({ googleOutcome, methods, methodsError, retryMethods }) {
   const library = useCloudLibrary();
   const [login, setLogin] = useState({ username: '', password: '' });
   const [bootstrap, setBootstrap] = useState({ username: '', displayName: '', temporaryPassword: '' });
@@ -208,7 +219,22 @@ export function AccountAccessPanel() {
     else setBootstrap({ username: '', displayName: '', temporaryPassword: '' });
   };
 
-  if (library.session.status === 'loading') return <p role="status">Checking online library access…</p>;
+  if (!authenticated && (methodsError || (methods?.enabled && (
+    library.session.status === 'access-required' || (!methods.google && !methods.email)
+  )))) return (
+    <section className="cloud-library-guidance">
+      <strong>The online library is unavailable</strong>
+      <p>You can still open and save projects in this browser.</p>
+      <button type="button" className="btn" onClick={() => {
+        retryMethods();
+        void library.retrySession();
+      }}>Try again</button>
+    </section>
+  );
+  if ((!methods && !methodsError) || library.session.status === 'loading') return <p role="status">Checking online library access…</p>;
+  if (methods?.enabled && !authenticated) {
+    return <PasswordlessSignIn methods={methods} googleOutcome={googleOutcome} onSignedIn={library.retrySession} />;
+  }
   if (library.session.status === 'password-change') return <PasswordChange key={sessionBoundary} library={library} />;
   if (library.session.status === 'access-required') return (
     <section className="cloud-account-form cloud-library-guidance" aria-labelledby="cloud-access-required-title">
@@ -244,11 +270,11 @@ export function AccountAccessPanel() {
     <>
       <div className="cloud-account-session">
         <div className="cloud-identity"><strong>{library.session.displayName}</strong><span>@{library.session.username}</span><span>{roleLabel}</span></div>
-        <button type="button" className="btn ghost-sm" onClick={() => setChangingPassword(true)}>Change password</button>
+        {methods?.enabled === false && <button type="button" className="btn ghost-sm" onClick={() => setChangingPassword(true)}>Change password</button>}
         <button type="button" className="btn ghost-sm" onClick={library.logout}>Sign out</button>
       </div>
-      {changingPassword && <PasswordChange key={`personal:${sessionBoundary}`} library={library} onCancel={() => setChangingPassword(false)} onDone={() => setChangingPassword(false)} />}
-      {nativeOwner && <OwnerAccounts key={sessionBoundary} library={library} />}
+      {methods?.enabled === false && changingPassword && <PasswordChange key={`personal:${sessionBoundary}`} library={library} onCancel={() => setChangingPassword(false)} onDone={() => setChangingPassword(false)} />}
+      {nativeOwner && methods && <OwnerAccounts key={sessionBoundary} library={library} passwordless={methods.enabled} />}
     </>
   );
 }

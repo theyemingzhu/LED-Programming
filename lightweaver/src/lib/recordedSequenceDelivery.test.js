@@ -15,7 +15,12 @@ import { createPatternLabHandoff, applyPatternLabHandoff } from './patternLabHan
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
 import { prepareCardStoragePayload } from './cardStoragePayload.js';
 import { assertLwseqOutputTopology, toLwseqBytes } from './standaloneController.js';
-import { storeRecordedMedia } from './recordedSequenceMedia.js';
+import { deleteRecordedMedia, storeRecordedMedia } from './recordedSequenceMedia.js';
+import { createCloudLibraryClient } from './cloudLibraryClient.js';
+import { migrateProject } from './projectModel.js';
+import { createAccountStore, createMemoryAccountRepository } from '../../functions/api/library/_shared/accountStore.js';
+import { createMemoryLibraryStore } from '../../functions/api/library/_shared/memoryStore.js';
+import { handleLibraryRequest } from '../../functions/api/library/_shared/router.js';
 
 const strips = [{ id: 'left', pixels: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
   { id: 'right', pixels: [{ x: 2, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }] }];
@@ -161,6 +166,69 @@ test('portable project backup contains exact media and restores its SHA-verified
     await verifyStoredSequenceAsset(next.sequenceAssets[0]));
 });
 
+test('an assigned buyer opens the owner’s artwork and verified recording without the owner’s browser storage', async () => {
+  const { result, next } = await recorded('online-artwork');
+  const sourceAsset = next.sequenceAssets[0];
+  const bytes = await verifyStoredSequenceAsset(sourceAsset);
+  const { mediaRef } = sourceAsset;
+  const svgText = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L1 1"/></svg>';
+  const document = migrateProject({
+    version: 3,
+    id: 'online-artwork',
+    name: 'Online artwork',
+    layout: { svgText, strips: structuredClone(strips), wiring: structuredClone(wiring) },
+    devices: { standaloneController: { ...structuredClone(next), playlist: [makeSequencePlaylistItem(result.asset)] } },
+  });
+  const accountStore = createAccountStore(createMemoryAccountRepository(), {
+    passwordIterations: 1,
+  });
+  const store = createMemoryLibraryStore();
+  async function accountClient(username, role) {
+    const account = await accountStore.createAccount({ username, displayName: username, role, temporaryPassword: 'test-passphrase-only' });
+    const identity = { accountId: account.id, username, displayName: username, role, subject: account.id, mustChangePassword: false };
+    const origin = 'https://led.mandalacodes.com';
+    const client = createCloudLibraryClient({
+      fetchImpl(path, init) {
+        const headers = new Headers(init.headers);
+        headers.set('origin', origin);
+        return handleLibraryRequest({
+          request: new Request(new URL(path, origin), { ...init, headers }),
+          identity, store, accountStore,
+        });
+      },
+    });
+    return { id: account.id, client };
+  }
+  const owner = await accountClient('studio-owner', 'owner');
+  const buyer = await accountClient('art-buyer', 'customer');
+  const other = await accountClient('other-buyer', 'customer');
+  const official = await owner.client.createProject({ title: document.name, project: document });
+  const assignment = await owner.client.assignProject(buyer.id, official.id);
+  assert.deepEqual((await buyer.client.listProjects()).map(p => p.id), [assignment.draftProjectId]);
+  await assert.rejects(() => other.client.readProject(assignment.draftProjectId), error => error.status === 404);
+  await deleteRecordedMedia(mediaRef.sha256);
+  await assert.rejects(() => verifyStoredSequenceAsset(sourceAsset), /missing from this browser/i);
+  await assert.rejects(
+    () => owner.client.updateProject(official.id, { baseRevision: official.revision, project: document }),
+    error => error.code === 'project_media_unavailable' && /missing from this browser/i.test(error.message),
+  );
+  const opened = await buyer.client.readProject(assignment.draftProjectId);
+  assert.equal(opened.document.layout.svgText, svgText);
+  assert.deepEqual(opened.document.layout.wiring, document.layout.wiring);
+  assert.deepEqual(await verifyStoredSequenceAsset(opened.document.devices.standaloneController.sequenceAssets[0]), bytes);
+  assert.equal(opened.document.devices.standaloneController.sequenceAssets[0].media, undefined);
+
+  const changed = structuredClone(opened.document);
+  changed.name = 'My artwork settings';
+  await buyer.client.updateProject(opened.id, { baseRevision: opened.revision, project: changed });
+  await deleteRecordedMedia(mediaRef.sha256);
+  const reviewed = await owner.client.readProject(opened.id);
+  assert.equal(reviewed.document.name, changed.name);
+  assert.deepEqual(await verifyStoredSequenceAsset(reviewed.document.devices.standaloneController.sequenceAssets[0]), bytes);
+  assert.equal((await owner.client.readProject(official.id)).document.name, document.name);
+  assert.equal((await owner.client.readProject(official.id)).revision, official.revision);
+});
+
 test('legacy source-only recording survives project backup and restore but cannot enter Playlist', async () => {
   const { next } = await recorded('legacy');
   const old = structuredClone(next.sequenceAssets[0]);
@@ -174,6 +242,42 @@ test('legacy source-only recording survives project backup and restore but canno
   assert.equal(normalizeCardPlaylist([{
     type: 'sequence', sequenceAssetId: asset.id, id: asset.id,
   }], { sequenceAssets: [asset], allowEmpty: true }).length, 0);
+});
+
+test('an older online project with missing local recording bytes opens for editing with a clear recovery notice', async () => {
+  const { next } = await recorded('legacy-online-missing');
+  const asset = next.sequenceAssets[0];
+  const document = migrateProject({
+    version: 3,
+    id: 'legacy-online',
+    name: 'Legacy artwork',
+    layout: { svgText: '<svg xmlns="http://www.w3.org/2000/svg"/>' },
+    devices: { standaloneController: { ...next, playlist: [makeSequencePlaylistItem(asset)] } },
+  });
+  const complete = await makePortableProject(document);
+  const brokenAsset = complete.devices.standaloneController.sequenceAssets[0];
+  brokenAsset.portableMedia.data = brokenAsset.portableMedia.data.replace(/^./, 'A');
+  await deleteRecordedMedia(asset.mediaRef.sha256);
+  let servedProject = document;
+  let writes = 0;
+  const client = createCloudLibraryClient({
+    async fetchImpl(_, { method }) {
+      if (method !== 'GET') writes += 1;
+      return Response.json({ project: { id: 'legacy-online', title: document.name, revision: 1, archived: false, document: servedProject } });
+    },
+  });
+  const opened = await client.readProject('legacy-online');
+  assert.equal(opened.document.name, 'Legacy artwork');
+  assert.deepEqual(opened.document.devices.standaloneController.sequenceAssets[0].mediaRef, asset.mediaRef);
+  assert.match(opened.missingRecordingNotice, /recording missing.*original backup/i);
+  await assert.rejects(() => makePortableProject(opened.document), /missing from this browser/i);
+  await assert.rejects(
+    () => client.updateProject(opened.id, { baseRevision: 1, project: opened.document }),
+    error => error.code === 'project_media_unavailable',
+  );
+  assert.equal(writes, 0);
+  servedProject = complete;
+  await assert.rejects(() => client.readProject(opened.id), error => error.code === 'project_media_unavailable');
 });
 
 test('same GPIO pins and counts with reversed physical order cannot install old recording', async () => {

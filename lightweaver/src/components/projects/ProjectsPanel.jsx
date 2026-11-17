@@ -28,6 +28,7 @@ import {
   renameProjectLibraryRecordGuarded,
 } from '../../lib/projectStorage.js';
 import { projectCopyKind, projectCopyLabel } from '../../lib/projectCopyLabel.js';
+import { readStudioPasswordlessMethods } from '../../lib/studioPasswordlessClient.js';
 import { ProjectLibraryPanel } from './ProjectLibraryPanel.jsx';
 
 // Preferences (and any other surface) asks the shell to open the panel by
@@ -65,6 +66,8 @@ export function ProjectsPanel({
   onOpenFailure,
   onImport,
   onExport,
+  openingFile,
+  googleOutcome,
   onLibraryMutated,
 }) {
   const {
@@ -88,6 +91,21 @@ export function ProjectsPanel({
   const [storageLimited, setStorageLimited] = useState(() => readAutosaveStorageLimited());
   const closeRef = useRef(null);
   const searchRef = useRef(null);
+  const onlineHeadingRef = useRef(null);
+  const [signInMethods, setSignInMethods] = useState(null);
+  const [signInMethodsError, setSignInMethodsError] = useState(false);
+  const [signInMethodsAttempt, setSignInMethodsAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let active = true;
+    setSignInMethodsError(false);
+    readStudioPasswordlessMethods().then(
+      value => { if (active) setSignInMethods(value); },
+      () => { if (active) setSignInMethodsError(true); },
+    );
+    return () => { active = false; };
+  }, [open, signInMethodsAttempt]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -152,10 +170,11 @@ export function ProjectsPanel({
 
   if (!open) return null;
 
-  const currentProjectId = serializeProject().id;
+  const project = serializeProject();
+  const partialCardCopy = projectCopyKind(project) === 'card-partial';
   const activeRecordId = readActiveProjectLibraryRecordId();
   const browserRecord = !library.activeRemoteProject && activeRecordId
-    ? records.find(record => record.id === activeRecordId && record.project?.id === currentProjectId) || null
+    ? records.find(record => record.id === activeRecordId && record.project?.id === project.id) || null
     : null;
   const atCapacity = records.length >= PROJECT_LIBRARY_LIMIT;
 
@@ -211,17 +230,22 @@ export function ProjectsPanel({
       onKeyDown={onPanelKeyDown}
     >
       <div className="cloud-dialog-heading">
-        <div>
-          <span className="cloud-kicker">One place for every copy</span>
-          <h2>Projects</h2>
+        <h2>Projects</h2>
+        <div className="projects-heading-actions">
+          {signInMethods?.enabled && (
+            <button type="button" className="btn ghost-sm" onClick={() => {
+              onlineHeadingRef.current?.focus({ preventScroll: true });
+              onlineHeadingRef.current?.scrollIntoView({ block: 'start' });
+            }}>Online library</button>
+          )}
+          <button
+            ref={closeRef}
+            type="button"
+            className="btn ghost-sm topbar-dialog-close"
+            aria-label="Close Projects"
+            onClick={onClose}
+          >×</button>
         </div>
-        <button
-          ref={closeRef}
-          type="button"
-          className="btn ghost-sm topbar-dialog-close"
-          aria-label="Close Projects"
-          onClick={onClose}
-        >×</button>
       </div>
 
       <div className="projects-current" data-testid="projects-current">
@@ -234,13 +258,25 @@ export function ProjectsPanel({
         </div>
         <span className="projects-current-association" data-testid="projects-association">
           {describeAssociation({
-            project: serializeProject(),
+            project,
             activeRemoteProject: library.activeRemoteProject,
             browserRecord,
             persistedDestination: projectLifecycle?.persistedDestination,
           })}
         </span>
       </div>
+
+      <section className="projects-file" aria-labelledby="projects-file-heading">
+        <h3 id="projects-file-heading">Project file</h3>
+        <div className="topbar-project-secondary">
+          <button type="button" className="btn" disabled={openingFile} onClick={onImport}>
+            {openingFile ? 'Opening file…' : 'Import from computer'}
+          </button>
+          <button type="button" className="btn" onClick={onExport}>
+            {partialCardCopy ? 'Download card copy' : 'Download backup'}
+          </button>
+        </div>
+      </section>
 
       <div className="topbar-project-source">
         <div className="projects-source-heading">
@@ -314,11 +350,6 @@ export function ProjectsPanel({
         {rowNotice && <p className="cloud-library-notice" role="alert">{rowNotice}</p>}
       </div>
 
-      <div className="topbar-project-secondary">
-        <button type="button" className="btn" onClick={() => { onClose(); onImport(); }}>Import from computer</button>
-        <button type="button" className="btn" onClick={onExport}>Export to computer</button>
-      </div>
-
       <div className="topbar-project-source projects-recovery">
         <h3>Recovery copy</h3>
         <div className="set-recovery" data-testid="autosave-status">
@@ -343,7 +374,8 @@ export function ProjectsPanel({
       </div>
 
       <div className="projects-online">
-        <ProjectLibraryPanel />
+        <ProjectLibraryPanel googleOutcome={googleOutcome} methods={signInMethods} methodsError={signInMethodsError}
+          retryMethods={() => setSignInMethodsAttempt(attempt => attempt + 1)} headingRef={onlineHeadingRef} />
       </div>
     </section>
   );

@@ -7,6 +7,33 @@ Prove records belong in their session folders.
 
 Status values: `queued`, `active`, `needs-eyes`, `blocked`, `done`.
 
+## Current Sprint — Studio sign-in and artwork bundles — 2026-11-17
+Owner: primary. State: verified locally on `codex/project-backup-restore`,
+based on `a73e56e1`. Google and email-code sign-in share an approved Studio
+account. Owners add buyers by email and assign artwork. Local save and load
+remain signed out. An assigned buyer opened artwork, exact wiring and verified
+recordings with no prior cache; unassigned access was denied. Legacy projects
+with missing recordings open with a recovery notice and installation is blocked.
+Checkpoint: 3106/3106, production build and staged Pages graph passed. Project
+API checks: 166/166. Browser gate: 76/80 initially; three harness cases and the
+unchanged history/delete focus case passed on focused rerun after fixing the
+test-only Vite harness. Actual 390px screen inspected.
+Next: configure the Google client and verified email sender, enroll a reviewed
+owner, and prove the protected preview before production cutover. No publication.
+
+## Current Sprint — project backup and restore — 2026-11-17
+Owner: primary. State: verified locally on `codex/project-backup-restore`, based
+on `a73e56e1`. Projects puts file open and backup together above the libraries.
+Bad files support retry, cancel preserves the draft, delayed backup preserves
+newer unsaved edits, and partial card exports identify the missing artwork.
+Chromium 10/10, including actual download, fresh-profile import, and matching
+layout and device settings on re-export. Desktop and 390px inspected. Integrated
+checkpoint 3103/3103 and production build passed. Local Studio preview on 4173.
+Card `lw-b0fe81f61b44` on firmware 2407 retained the same boot, project and ready
+playback. Its editable repository head is empty. Next: reopen an exact editable
+copy of the development project and verify recovery before considering a factory
+erase. Publication is outside this Sprint.
+
 ## Current Sprint — remembered-card reconnect — 2026-11-06
 Owner: primary. State: implementation and verification active on
 `codex/reconnect-all-paths-20261106`. Prior PR416 is shipped: independent

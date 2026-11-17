@@ -23,6 +23,9 @@ export function productionWranglerToml(config) {
 ACCESS_AUD = ${tomlString(config.ACCESS_AUD)}
 OWNER_EMAILS = ${tomlString(config.OWNER_EMAILS)}
 `;
+  const passwordlessVariable = config.STUDIO_PASSWORDLESS_AUTH_ENABLED === 'true'
+    ? 'STUDIO_PASSWORDLESS_AUTH_ENABLED = "true"\n'
+    : '';
   return `name = "lightweaver"
 compatibility_date = "2026-07-15"
 compatibility_flags = ["nodejs_compat"]
@@ -43,7 +46,7 @@ class_name = "AllowanceGovernor"
 script_name = "i64os-quota-guard"
 
 [vars]
-${accessVariables}LIGHTWEAVER_NATIVE_AUTH_READY = ${tomlString(config.LIGHTWEAVER_NATIVE_AUTH_READY)}
+${accessVariables}${passwordlessVariable}LIGHTWEAVER_NATIVE_AUTH_READY = ${tomlString(config.LIGHTWEAVER_NATIVE_AUTH_READY)}
 MAX_LIBRARY_BODY_BYTES = ${tomlString(config.MAX_LIBRARY_BODY_BYTES)}
 MAX_LIBRARY_BACKUP_BYTES = ${tomlString(config.MAX_LIBRARY_BACKUP_BYTES)}
 MAX_LIBRARY_BACKUP_REVISIONS = ${tomlString(config.MAX_LIBRARY_BACKUP_REVISIONS)}

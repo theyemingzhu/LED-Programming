@@ -165,6 +165,7 @@ export async function handleLibraryRequest({
   identity,
   store,
   accountStore,
+  passwordlessAccounts = false,
   firmwareUpdateGrantIssuer,
   maxBytes = DEFAULT_MAX_BYTES,
   maxBackupBytes = DEFAULT_MAX_BACKUP_BYTES,
@@ -233,7 +234,7 @@ export async function handleLibraryRequest({
         if (method !== 'POST') {
           return errorResponse(405, 'method_not_allowed', 'The method is not allowed for this route.', requestId);
         }
-        if (!isAccessIdentity(identity) || identity.role !== 'owner') {
+        if (passwordlessAccounts || !isAccessIdentity(identity) || identity.role !== 'owner') {
           return errorResponse(403, 'forbidden', 'Only the verified Access owner may create the first native owner.', requestId);
         }
         if (!requireSameOrigin(request)) {
@@ -298,12 +299,18 @@ export async function handleLibraryRequest({
             return errorResponse(403, 'invalid_origin', 'The request origin is not allowed.', requestId);
           }
           const body = await readJson(request, maxBytes);
-          const account = await accountStore.createAccount({
-            username: body.username,
-            displayName: body.displayName,
-            role: body.role,
-            temporaryPassword: body.temporaryPassword,
-          });
+          const account = passwordlessAccounts
+            ? await accountStore.createPasswordlessAccount({
+                email: body.email,
+                displayName: body.displayName,
+                role: body.role,
+              })
+            : await accountStore.createAccount({
+                username: body.username,
+                displayName: body.displayName,
+                role: body.role,
+                temporaryPassword: body.temporaryPassword,
+              });
           return jsonResponse({ account }, 201);
         }
         return errorResponse(405, 'method_not_allowed', 'The method is not allowed for this route.', requestId);
@@ -317,6 +324,9 @@ export async function handleLibraryRequest({
           return errorResponse(403, 'invalid_origin', 'The request origin is not allowed.', requestId);
         }
         const id = segments[1];
+        if (passwordlessAccounts && segments[2] === 'reset') {
+          return errorResponse(404, 'not_found', 'The requested library route was not found.', requestId);
+        }
         if (segments[2] === 'reset' && id === identity.accountId) {
           return errorResponse(
             409,

@@ -4,6 +4,7 @@ import {
   serializeSessionCookieRemoval,
 } from '../library/_shared/accountAuth.js';
 import { createD1AccountStore } from '../library/_shared/accountStore.js';
+import { handleStudioPasswordless } from '../library/_shared/passwordlessAuth.js';
 
 const NO_STORE_HEADERS = {
   'cache-control': 'no-store',
@@ -146,9 +147,23 @@ function requireNewPassword(body) {
   }
 }
 
-async function handleAccountRequest(request, accountStore) {
+async function handleAccountRequest(context, accountStore, options) {
+  const { request } = context;
   const segments = parsePath(request);
   if (!segments) return errorResponse(404, 'not_found', 'The requested account route was not found.');
+  const passwordless = await handleStudioPasswordless({
+    context, options, segments, readJson, jsonResponse, errorResponse,
+    async openSession(challenge, email) {
+      const session = await accountStore.createSession(challenge.account_id, {
+        expectedGeneration: challenge.account_generation,
+        passwordlessEmail: email,
+      });
+      const identity = await accountStore.authenticateSession(session.token);
+      if (!identity) throw new Error('The new sign-in session could not be read.');
+      return { cookie: serializeSessionCookie(session.token), session: publicSession(identity) };
+    },
+  });
+  if (passwordless) return passwordless;
   if (!accountStore) return errorResponse(503, 'account_unavailable', 'Account access is unavailable.');
 
   if (segments.length === 1 && segments[0] === 'login') {
@@ -231,7 +246,7 @@ async function handleAccountRequest(request, accountStore) {
 export async function handleAccountPagesRequest(context, options = {}) {
   const accountStore = options.accountStore || createD1AccountStore(context.env);
   try {
-    return await handleAccountRequest(context.request, accountStore);
+    return await handleAccountRequest(context, accountStore, options);
   } catch (error) {
     if (error?.code === 'invalid_credentials') {
       return errorResponse(401, 'invalid_credentials', 'Invalid username or password.');
