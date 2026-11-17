@@ -10,6 +10,16 @@
         "kind": "patch",
         "patch": "firmware-queue/patches/relative-look-tuning-default-boot.patch"
       }
+    },
+    {
+      "id": "reclaim-idle-nvs-before-project-save",
+      "what": "Reclaim the idle wiring marker before saving a same-wiring project to flash.",
+      "why": "The fix passed offline replay and the one-strip card bench test and is waiting for the next signed card update.",
+      "added": "2026-11-17",
+      "source": {
+        "kind": "patch",
+        "patch": "firmware-queue/patches/reclaim-idle-nvs-before-project-save.patch"
+      }
     }
   ]
 }
