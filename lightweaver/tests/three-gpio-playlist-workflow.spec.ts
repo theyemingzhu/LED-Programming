@@ -108,6 +108,10 @@ test('three GPIO section patterns stay in Layout and a kept combo installs with 
   };
   await page.route('**/api/account/session', unauthenticatedSession);
   await page.route('**/api/library/session', unauthenticatedSession);
+  await page.route('**/api/account/methods', route => route.fulfill({
+    headers: { 'cache-control': 'no-store' },
+    json: { enabled: false, google: false, email: false },
+  }));
 
   await page.addInitScript(({ id, build, savedProject }) => {
     // This seed describes Studio's top frame, never the opaque pattern worker.
