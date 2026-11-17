@@ -469,20 +469,34 @@ test('with reduced motion, turning the light on shows a still frame, and Play st
   await expect.poll(async () => JSON.stringify((await readStrips(page, strip))[0])).not.toBe(JSON.stringify(still));
 });
 
-test('Play and Flip fit the desktop toolbar and a 390px phone', async ({ page }) => {
+test('Play and Flip fit on desktop and a 390px phone', async ({ page }) => {
   for (const [width, height, label] of [[1280, 860, 'desktop'], [390, 844, 'phone']] as const) {
     await page.setViewportSize({ width, height });
     await seedPiece(page, WINGED);
     await page.getByTestId('symmetry-offer-mirror').click();
+    const toolbar = page.locator('.la .toolbar');
+    const preview = toolbar.getByRole('button', { name: 'Preview', exact: true });
+    if (label === 'phone') {
+      await expect(playButton(page)).toBeHidden();
+      await preview.click();
+      await expect(preview).toHaveAttribute('aria-expanded', 'true');
+    }
     await playButton(page).click();
     await expect(playButton(page)).toHaveText('Pause');
-    const box = await playButton(page).boundingBox();
-    const toolbar = await page.locator('.la .toolbar').boundingBox();
-    expect(box).not.toBeNull();
-    // Reachable without scrolling the toolbar.
-    expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height + 1);
+    if (label === 'desktop') {
+      const box = (await playButton(page).boundingBox())!;
+      const bounds = (await toolbar.boundingBox())!;
+      expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height + 1);
+    } else {
+      const tools = toolbar.getByRole('group', { name: 'Preview controls' });
+      await expect(tools).toBeInViewport({ ratio: 1 });
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2)).toBe(false);
     await page.screenshot({ path: `test-results/layout-play-${label}.png` });
+    if (label === 'phone') {
+      await preview.click();
+      await expect(playButton(page)).toBeHidden();
+    }
     const head = page.getByTestId('side-group-side-2').locator('.la-side-head');
     await head.evaluate((el: HTMLElement) => el.scrollIntoView({ block: 'center' }));
     const fits = await head.evaluate((el: HTMLElement) => {
