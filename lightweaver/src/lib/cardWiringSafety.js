@@ -1,12 +1,14 @@
 import {
   canPushDirectlyToCard,
   cardHostToUrl,
+  isLocalCardHost,
   normalizeCardHost,
   readStoredCardHost,
 } from './cardConnection.js';
 import { sendCardBridgeRequest } from './cardBridge.js';
 import { isCardLedType } from './cardHardwareContract.js';
 import { guardDirectCardMutation } from './cardIdentity.js';
+import { CARD_TRANSPORTS } from './cardTransport.js';
 
 export const CARD_WIRING_STATES = Object.freeze([
   'factory',
@@ -36,6 +38,16 @@ const ENDPOINTS = Object.freeze({
   'wiring-rollback': { method: 'POST', path: '/api/wiring/rollback', retryOnTimeout: true },
   'wiring-discover': { method: 'POST', path: '/api/wiring/discover', retryOnTimeout: false },
 });
+
+function readTransportOptions(transport) {
+  if (transport === CARD_TRANSPORTS.BRIDGE) return { route: 'bridge' };
+  if (transport === CARD_TRANSPORTS.DIRECT) {
+    return { route: 'direct', request: { credentials: 'omit', targetAddressSpace: 'local' } };
+  }
+  if (transport === CARD_TRANSPORTS.LOCAL) {
+    return { route: 'direct', request: { credentials: 'omit' } };
+  }
+}
 
 export class CardWiringSafetyError extends Error {
   constructor(reason, message, { cause = null, status = 0, response = null } = {}) {
@@ -137,6 +149,7 @@ async function directRequest(endpoint, payload, {
   host,
   timeoutMs,
   fetchImpl,
+  requestOptions,
 }) {
   if (endpoint.method !== 'GET') {
     await guardDirectCardMutation(host, { fetchImpl, timeoutMs });
@@ -144,7 +157,7 @@ async function directRequest(endpoint, payload, {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const request = { method: endpoint.method, signal: ctrl.signal, ...(endpoint.method === 'GET' ? { cache: 'no-store' } : {}) };
+    const request = { ...requestOptions, method: endpoint.method, signal: ctrl.signal, ...(endpoint.method === 'GET' ? { cache: 'no-store' } : {}) };
     if (endpoint.method !== 'GET') {
       request.headers = { 'Content-Type': 'application/json' };
       request.body = JSON.stringify(payload || {});
@@ -170,8 +183,12 @@ async function directRequest(endpoint, payload, {
 async function requestCardWiring(type, payload = {}, options = {}) {
   const endpoint = ENDPOINTS[type];
   if (!endpoint) throw wiringError('invalid-request', `Unknown wiring request type: ${type}.`);
-  const transport = selectedTransport(options);
+  const statusTransport = type === 'wiring-status' ? readTransportOptions(options.transport) : undefined;
+  const transport = statusTransport?.route ?? selectedTransport(options);
   const host = normalizeCardHost(options.host || readStoredCardHost());
+  if (statusTransport?.route === 'direct' && !isLocalCardHost(host)) {
+    throw wiringError('invalid-host', 'A local Lightweaver card host is required.');
+  }
   const timeoutMs = Math.max(1, Number(options.timeoutMs) || 3000);
   try {
     if (transport === 'bridge') {
@@ -194,6 +211,7 @@ async function requestCardWiring(type, payload = {}, options = {}) {
       host,
       timeoutMs,
       fetchImpl: options.fetchImpl || globalThis.fetch,
+      requestOptions: statusTransport?.request,
     });
   } catch (error) {
     throw normalizeTransportError(error, transport);
