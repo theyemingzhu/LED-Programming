@@ -1042,14 +1042,18 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 @media (max-width: 640px) {
   .app {
     --studio-header-height: 68px;
-    --studio-rail-width: 48px;
     grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) 0px;
     grid-template-rows: auto minmax(36px, auto) minmax(0, 1fr) auto;
   }
 
-  .rail { padding-block: 6px; }
-  .rail-item { height: 44px; }
-  .rail-item.active::before { left: 0; width: 2px; }
+  .rail {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+  }
+  .rail-item { flex-shrink: 0; }
+  .rail-item.active::before { left: -6px; }
 
   .topbar {
     height: auto;
