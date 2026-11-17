@@ -220,6 +220,11 @@ export default function ClientApp() {
     : 'Update the card to adjust and save this whole look.';
   const disabled = !connected || busy;
   const totalSeconds = draft.reduce((sum, entry) => sum + entry.dwellSeconds, 0);
+  const brightnessControl = tuning
+    ? <RangeControl key={tuning.session} label="Brightness" value={Math.round(tuning.live.brightnessScale * 100)} min={2} max={100} suffix="%" disabled={disabled} onCommit={value => setLookTuning('brightnessScale', value / 100)} />
+    : data && legacyControls
+      ? <RangeControl label="Brightness" value={Math.round((data.controls.look.brightness || 0) * 100)} min={2} max={100} suffix="%" disabled={disabled} onCommit={value => control('brightness', value / 100)} />
+      : null;
 
   return <div className="cl-shell">
     <header className="cl-header"><a className="cl-brand" href={window.location.pathname + window.location.hash} aria-label="Lightweaver player"><span className="cl-brand-mark">✳</span> lightweaver<span className="cl-brand-sub">PLAYER</span></a><span className={`cl-connection ${connected ? 'is-connected' : ''}`}><i />{connected ? 'Lights connected' : connecting ? 'Connecting…' : 'Lights unavailable'}</span></header>
@@ -229,11 +234,9 @@ export default function ClientApp() {
       {data && <>
         <section className="cl-installation" aria-labelledby="installation-title">
           <h1 id="installation-title">{data.status.piece?.name || 'Your Lightweaver'}</h1>
-          <div className="cl-controls">
+          <div className={tab === 'looks' ? 'cl-controls is-looks' : 'cl-controls'}>
             <div className="cl-light-controls">
-              {tuning ? <RangeControl key={tuning.session} label="Brightness" value={Math.round(tuning.live.brightnessScale * 100)} min={2} max={100} suffix="%" disabled={disabled} onCommit={value => setLookTuning('brightnessScale', value / 100)} />
-                : legacyControls ? <RangeControl label="Brightness" value={Math.round((data.controls.look.brightness || 0) * 100)} min={2} max={100} suffix="%" disabled={disabled} onCommit={value => control('brightness', value / 100)} />
-                  : <p className="cl-hint">{tuningUnavailable}</p>}
+              {tab !== 'looks' && brightnessControl}
               <button className="cl-button" disabled={disabled} onClick={() => control('blackout', !blackout)}>{blackout ? 'Turn lights on' : 'Turn lights off'}</button>
             </div>
             {(playing || data.status.playlist?.configured) && <div className="cl-playback">
@@ -257,6 +260,9 @@ export default function ClientApp() {
                 {selected && <span className="cl-active-tag" aria-hidden="true">{activeLabel}</span>}
               </button>;
             })}
+          </div>
+          <div className="cl-controls">
+            <div className="cl-light-controls">{brightnessControl || <p className="cl-hint">{tuningUnavailable}</p>}</div>
           </div>
         </section>}
         {tab === 'tuning' && <section className="cl-tuning" aria-labelledby="tuning-title">

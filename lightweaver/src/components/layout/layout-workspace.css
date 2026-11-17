@@ -59,6 +59,28 @@
   color: var(--text-mid);
   font-variant-numeric: tabular-nums;
 }
+.la .la-led-strips-heading { min-height: 26px; padding: 4px 10px; background: transparent; }
+.la .la-gpio-group-head { min-height: 24px; padding: 4px 8px; }
+.la .la-gpio-group .la-strip-item.is-editing .la-strip-row { padding-block: 1px; }
+.la .la-gpio-group .la-strip-item.is-editing .la-strip-row button { min-height: 34px; }
+.la .la-strip-settings-head { padding-bottom: 2px; gap: 4px 6px; }
+.la .la-strip-settings-head:has(> .la-data-route > div:only-child) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+}
+.la .la-strip-settings-head .la-data-route > div { gap: 2px 5px; }
+.la .la-strip-settings-head .la-row-count {
+  height: 34px; gap: 2px; background: transparent; border: 0;
+}
+.la .la-strip-settings-head .la-row-count button {
+  width: 30px; min-width: 30px; height: 34px; min-height: 34px; padding: 0;
+}
+.la .la-strip-settings-head .la-row-count button:hover:not(:disabled) { background: var(--bg-elev-2); }
+.la .la-strip-settings-head .la-row-count input {
+  width: 38px; height: 34px; min-height: 34px; padding: 0 2px;
+  border: 0; border-radius: 0;
+  background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 24px 1px no-repeat;
+}
+
 .la-artwork-role button { max-width: 100%; }
 .la-data-route strong { color: var(--text-hi); font-weight: 600; }
 
@@ -127,6 +149,7 @@
   /* The rail claims 57px. At the narrowest widths the canvas keeps its
      separate Fit board button, so it need not compete for toolbar width. */
   .la .la-workspace-toolbar .la-toolbar-fit { display: none; }
-  .la .la-workspace-toolbar .la-create-tools { flex-wrap: wrap; }
+  .la .la-workspace-toolbar .la-create-tools { flex-wrap: wrap; gap: 3px; }
+  .la .la-workspace-toolbar .la-create-tools .tb-btn { padding-inline: 5px; }
   .la .la-fit-board { width: 44px; height: 44px; }
 }

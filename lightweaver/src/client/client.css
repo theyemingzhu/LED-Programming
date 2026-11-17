@@ -38,8 +38,9 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
 
 .cl-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 26px; margin-top: 18px; }
 .cl-light-controls, .cl-playback { display: flex; align-items: center; gap: 12px; }
-.cl-light-controls { flex: 1 1 300px; max-width: 440px; min-width: 0; }
+.cl-light-controls:has(.cl-range) { flex: 1 1 300px; max-width: 440px; min-width: 0; }
 .cl-playback { flex-wrap: wrap; }
+.cl-controls.is-looks .cl-playback { display: contents; }
 .cl-playing-detail { color: #b7c2a8; font-size: 12px; }
 
 .cl-range { display: block; flex: 1; min-width: 0; }
@@ -175,7 +176,7 @@ h1, h2, h3 { letter-spacing: -.035em; font-weight: 550; overflow-wrap: anywhere;
   .cl-brand-sub { display: none; }
   .cl-main { padding: 18px 0 24px; }
   .cl-controls { gap: 10px; margin-top: 12px; }
-  .cl-light-controls { flex-basis: 220px; }
+  .cl-light-controls:has(.cl-range) { flex-basis: 220px; }
   .cl-pattern-grid { grid-template-columns: 1fr; gap: 7px; }
   .cl-pattern { min-height: 52px; padding: 9px 11px; }
   .cl-playlist-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }

@@ -870,3 +870,18 @@
 @media (pointer: coarse) {
   .la .lww-tools-panel > summary.panel-head { min-height: 44px; }
 }
+
+
+@media (max-width: 600px) {
+  .la .la-install-actions { justify-content: flex-end; gap: 3px; }
+  .la .la-install-actions > .btn {
+    padding: 0 6px; min-height: 36px; white-space: nowrap;
+  }
+  .la .la-install-actions > .la-specs-trigger { min-width: 44px; }
+  .la .la-mode-nav .btn.primary {
+    background: transparent; color: var(--accent-hi);
+    border-color: var(--accent-line); box-shadow: none;
+  }
+  .la .la-mode-nav .btn.primary:hover { background: var(--bg-sel); }
+  .la .la-change-help > summary { width: 26px; }
+}

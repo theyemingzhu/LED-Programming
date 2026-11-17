@@ -694,13 +694,13 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
    can never be forgotten mid-session (see src/lib/testStrip.js). */
 .sb-teststrip { min-width: 0; overflow: hidden; flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 11px; color: var(--text-lo); }
 .sb-ts-toggle {
-  height: 20px; padding: 0 9px; border-radius: 100px;
-  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  height: 20px; padding: 0 6px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid var(--border-soft);
   color: var(--text-mid); font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em;
   transition: background .12s, color .12s, border-color .12s;
 }
 .sb-ts-toggle:hover { background: var(--bg-elev-2); color: var(--text-hi); }
-.sb-ts-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.sb-ts-toggle.on { border-color: var(--accent-line); color: var(--accent-hi); }
 .sb-ts-input {
   height: 20px; width: 52px; padding: 0 6px;
   background: var(--bg-elev); border: 1px solid var(--border-soft); border-radius: var(--r-sm);
@@ -739,6 +739,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   background: var(--bg-elev); color: var(--text-mid);
   transition: background .12s, border-color .12s, color .12s;
 }
+.card-status-control.is-not-connected:not(:hover) { background: transparent; border-color: transparent; }
 .card-status-control:hover { background: var(--bg-elev-2); border-color: var(--border); color: var(--text-hi); }
 .card-status-control:focus-visible,
 .card-connection-center button:focus-visible,
@@ -1044,20 +1045,25 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 
   .status-bar {
     display: grid; height: auto; min-height: 32px;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "card studio" "firmware test" "offline offline";
-    gap: 6px 8px; padding: 6px 12px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "card card studio" "firmware test test";
+    gap: 1px 6px; padding: 2px 7px;
+  }
+  .status-bar:has(.sb-offline) {
+    grid-template-areas: "card card studio" "firmware test test" "offline offline offline";
   }
   .sb-card { grid-area: card; min-width: 0; }
-  .sb-firmware { grid-area: firmware; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .sb-firmware { grid-area: firmware; justify-self: start; max-width: 100%; padding-inline: 4px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  button.sb-firmware { min-height: 34px; border-radius: var(--r-sm); }
   .sb-teststrip { grid-area: test; justify-self: end; }
-  .sb-teststrip.is-active { grid-column: 1 / -1; justify-self: stretch; flex-wrap: wrap; }
-  .sb-teststrip.is-active .sb-ts-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .sb-ts-toggle { min-height: 34px; }
+  .sb-ts-input { min-height: 34px; }
   .sb-freshness { grid-area: studio; justify-self: end; }
-  .sb-firmware.sb-offline { grid-area: offline; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-firmware.sb-offline { grid-area: offline; }
   .sb-spring { display: none; }
 
-  .card-status-control { min-height: 44px; max-width: min(100%, 300px); }
+  .card-status-control { min-height: 34px; max-width: min(100%, 300px); padding-inline: 4px; gap: 6px; }
+  .status-bar :is(button, input, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .card-connection-center {
     left: 0; right: 0; bottom: 0; width: 100%; max-height: min(76vh, 640px);
     padding: 18px 18px max(18px, env(safe-area-inset-bottom));
@@ -1079,6 +1085,12 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 
 @media (max-width: 360px) {
   .brand .name { display: none; }
+  .status-bar:has(.sb-teststrip.is-active) {
+    grid-template-areas: "card card studio" "firmware firmware firmware" "test test test";
+  }
+  .status-bar:has(.sb-teststrip.is-active):has(.sb-offline) {
+    grid-template-areas: "card card studio" "firmware firmware firmware" "test test test" "offline offline offline";
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

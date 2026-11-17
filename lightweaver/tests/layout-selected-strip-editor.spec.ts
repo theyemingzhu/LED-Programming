@@ -32,7 +32,10 @@ test('independent strip keeps its row compact and edits LEDs beside Layout', asy
   await expect(row.locator('.layer-name')).not.toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(row.locator('.la-strip-row-eye')).toBeVisible();
   await expect(row.getByTestId('layout-section-pattern-action')).toBeVisible();
-  await expect(editor.locator('.la-strip-settings-head')).toContainText('Layout ·');
+  const route = editor.getByTestId('layout-selected-data-route');
+  await expect(route).toContainText(/LEDs? \d/);
+  await expect(route).toContainText('Forward data');
+  await expect(page.getByTestId('gpio-group-16').locator('.la-gpio-group-head')).toContainText('GPIO 16');
   await expect(editor.getByRole('spinbutton', { name: /LED count/ })).toBeVisible();
   await editor.getByRole('spinbutton', { name: /LED count/ }).fill('13');
   await editor.getByRole('spinbutton', { name: /LED count/ }).blur();

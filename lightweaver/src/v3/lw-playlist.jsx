@@ -1120,7 +1120,6 @@ function realPatternShape(patternId) {
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
               </div>
               <div className="pm-actions">
-                <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                 <button
                   className="btn primary"
                   disabled={!installGate.allowed}
@@ -1187,39 +1186,6 @@ function realPatternShape(patternId) {
                     <p className="pl-order-help" data-testid="playlist-order-help">Drag to reorder.</p>
                     <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add saved looks</button>
                   </div>
-                  <div className="pl-timing">
-                    <label className="pl-timing-field">
-                      <span className="sf-l">Fade</span>
-                      <input
-                        type="number"
-                        className="pm-input pl-timing-input"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value={(playlistTiming.fadeMs / 1000).toFixed(1)}
-                        onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
-                        aria-label="Fade seconds between looks"
-                        data-testid="playlist-fade-seconds"
-                      />
-                      <span className="pl-timing-unit">s</span>
-                    </label>
-                    <label className="pl-timing-switch">
-                      <button
-                        type="button"
-                        aria-pressed={playlistTiming.enabled}
-                        className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")}
-                        onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
-                        data-testid="playlist-enabled-toggle"
-                      />
-                      <span>Play on the card</span>
-                    </label>
-                    <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
-                  </div>
-                  {playlistTiming.enabled && playlistOverflow > 0 &&
-                    <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
-                      Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
-                    </p>
-                  }
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>
@@ -1350,6 +1316,39 @@ function realPatternShape(patternId) {
                       </article>
                     );
                   })}
+                  <div className="pl-timing">
+                    <label className="pl-timing-field">
+                      <span className="sf-l">Fade</span>
+                      <input
+                        type="number"
+                        className="pm-input pl-timing-input"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={(playlistTiming.fadeMs / 1000).toFixed(1)}
+                        onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
+                        aria-label="Fade seconds between looks"
+                        data-testid="playlist-fade-seconds"
+                      />
+                      <span className="pl-timing-unit">s</span>
+                    </label>
+                    <label className="pl-timing-switch">
+                      <button
+                        type="button"
+                        aria-pressed={playlistTiming.enabled}
+                        className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")}
+                        onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
+                        data-testid="playlist-enabled-toggle"
+                      />
+                      <span>Play on the card</span>
+                    </label>
+                    <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
+                  </div>
+                  {playlistTiming.enabled && playlistOverflow > 0 &&
+                    <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
+                      Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
+                    </p>
+                  }
                 </div>
 
                 {/* What the card is carrying, under the order that produced it.
@@ -1390,6 +1389,7 @@ function realPatternShape(patternId) {
                       <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
                     </div>
                     <div className="pl-card-tools-actions">
+                      <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                       <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
                       <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
                       <button className="btn" onClick={openCard}>{I.open}Open card page</button>
