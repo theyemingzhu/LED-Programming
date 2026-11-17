@@ -4,6 +4,9 @@ async function openOfflineLayout(page: import('@playwright/test').Page, baseURL:
   const origin = new URL(baseURL).origin;
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
+    if (url.hostname === 'fonts.googleapis.com') {
+      return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+    }
     return url.origin === origin && !url.pathname.startsWith('/api/') ? route.continue() : route.abort();
   });
   await page.goto('/#screen=layout');
@@ -28,7 +31,7 @@ test('keeps current artwork and assigned routes when replacement is declined', a
   const row = page.locator('.la-strip-row');
   await row.click({ position: { x: 8, y: 8 } });
   const route = page.getByTestId('layout-selected-data-route');
-  await expect(route).toContainText('GPIO 16');
+  await expect(page.getByTestId('gpio-group-16').locator('.la-gpio-group-head')).toContainText('GPIO 16');
   await expect(route).toContainText('LEDs 1–');
   await expect(route).toContainText('Forward data');
   await page.getByRole('button', { name: /Reverse data direction of/ }).click();
@@ -62,7 +65,7 @@ test.describe('phone layout', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
     for (const control of await toolbar.getByRole('button').all()) {
       const box = (await control.boundingBox())!;
-      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBe(30);
       expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
       expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
     }

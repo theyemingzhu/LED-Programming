@@ -32,7 +32,10 @@ test('independent strip keeps its row compact and edits LEDs beside Layout', asy
   await expect(row.locator('.layer-name')).not.toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(row.locator('.la-strip-row-eye')).toBeVisible();
   await expect(row.getByTestId('layout-section-pattern-action')).toBeVisible();
-  await expect(editor.locator('.la-strip-settings-head')).toContainText('Layout ·');
+  const route = editor.getByTestId('layout-selected-data-route');
+  await expect(route).toContainText(/LEDs? \d/);
+  await expect(route).toContainText('Forward data');
+  await expect(page.getByTestId('gpio-group-16').locator('.la-gpio-group-head')).toContainText('GPIO 16');
   await expect(editor.getByRole('spinbutton', { name: /LED count/ })).toBeVisible();
   await editor.getByRole('spinbutton', { name: /LED count/ }).fill('13');
   await editor.getByRole('spinbutton', { name: /LED count/ }).blur();
@@ -96,8 +99,8 @@ test('one selected editor, direct counts, and no numbered or repeated section na
   await page.locator('.la-strip-row').first().evaluate((element: HTMLElement) => element.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: '/tmp/lightweaver-selected-editor-phone-strips.png', fullPage: true });
   await expect(page.locator('.lw-connected-bar')).toHaveCount(0);
-  await expect(page.locator('.la-wire-n')).toHaveCount(4);
-  for (const grip of await page.locator('.la-wire-n').all()) await expect(grip).not.toContainText(/\d/);
+  await expect(page.locator('.la-strip-row[draggable="true"]')).toHaveCount(4);
+  await expect(page.locator('.la-strip-row .la-wire-n')).toHaveCount(0);
   await expect(page.getByRole('spinbutton', { name: 'Ribbon 2 LED count' })).toHaveValue('10');
   await expect(page.getByTestId('connected-boundary')).toHaveCount(0);
   await page.getByRole('spinbutton', { name: 'Ribbon 2 LED count' }).fill('73');

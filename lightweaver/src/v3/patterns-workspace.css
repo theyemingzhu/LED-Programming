@@ -1,21 +1,22 @@
 /* Patterns workspace: a compact target register above a usable pattern bank.
    Display order below is a browser preference; it never changes LED routes. */
 .pm.pm-workspace .pm-main { min-width: 0; }
+.pm.pm-workspace .pm-hero { gap: 8px 12px; margin-bottom: 8px; }
 .pm.pm-workspace .pm-target {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(210px, .82fr);
   gap: 0 12px;
-  padding-bottom: 8px;
+  padding-bottom: 5px;
   margin: 0 0 8px;
 }
-.pm.pm-workspace .pm-target > .sec-h { grid-column: 1 / -1; min-height: 30px; margin-bottom: 6px; padding-block: 4px; }
+.pm.pm-workspace .pm-target > .sec-h { grid-column: 1 / -1; min-height: 26px; margin-bottom: 4px; padding-block: 3px; }
 .pm.pm-workspace .pm-section-register { min-width: 0; }
-.pm.pm-workspace .pm-target .pm-preview-pane { min-width: 0; margin: 0; padding: 6px 8px 8px; }
+.pm.pm-workspace .pm-target .pm-preview-pane { min-width: 0; margin: 0; padding: 3px 8px 4px; }
 .pm.pm-workspace .pm-target .pm-preview-controls {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 .pm.pm-workspace .pm-target .pm-preview-meta { flex: 1 1 auto; min-width: 84px; height: 44px; }
 .pm.pm-workspace .pm-target .pm-preview-meta .m { color: var(--text-mid); font: 500 11px/1 var(--font-ui); }
@@ -100,6 +101,7 @@
 .pm.pm-workspace .pm-section-entry { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--border-hair); }
 .pm.pm-workspace .pm-section-entry:last-child { border-bottom: 0; }
 .pm.pm-workspace .pm-section-entry.on { background: var(--accent-soft); }
+.pm.pm-workspace .pm-section-entry[data-drop-target] { box-shadow: inset 0 2px var(--accent); }
 .pm.pm-workspace .pm-section-entry.is-pattern-drop-target {
   background: var(--accent-soft);
   outline: 2px solid var(--accent);
@@ -107,8 +109,6 @@
 }
 .pm.pm-workspace .pmcard[draggable="true"] { cursor: grab; }
 .pm.pm-workspace .pmcard[draggable="true"]:active { cursor: grabbing; }
-.pm.pm-workspace .pm-section-entry[draggable="true"] { cursor: grab; }
-.pm.pm-workspace .pm-section-entry[draggable="true"]:active { cursor: grabbing; }
 .pm.pm-workspace .pm-section-item {
   flex: 1 1 auto;
   min-width: 0;
@@ -118,33 +118,43 @@
   border: 0;
   background: transparent;
 }
-.pm.pm-workspace .pm-section-layout {
-  flex: none;
-  align-self: center;
-  min-height: 23px;
-  margin: 2px 4px 2px 0;
-  padding: 0 8px;
-  border-color: var(--border);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.pm.pm-workspace .pm-section-layout:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
 .pm.pm-workspace .pm-section-identity { flex-direction: row; align-items: baseline; gap: 6px; }
 .pm.pm-workspace .pm-section-identity strong { flex: 0 1 auto; max-width: 65%; font-size: 11.5px; }
 .pm.pm-workspace .pm-section-identity small { flex: 1 1 auto; font-size: 9px; }
 .pm.pm-workspace .pm-section-look { flex: 0 1 34%; max-width: 34%; font-size: 11px; }
-.pm.pm-workspace .pm-section-look span:last-child { display: none; }
-.pm.pm-workspace .pm-order-tools { flex: none; display: flex; align-items: center; gap: 1px; padding: 0 3px; color: var(--text-lo); }
-.pm.pm-workspace .pm-order-tools button { display: grid; place-items: center; width: 24px; height: 25px; color: var(--text-mid); border-radius: 2px; }
-.pm.pm-workspace .pm-order-tools button:hover:not(:disabled) { color: var(--text-hi); background: var(--bg-elev); }
-.pm.pm-workspace .pm-order-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.pm.pm-workspace .pm-order-tools button:disabled { opacity: .3; }
-.pm.pm-workspace .pm-order-tools svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.pm.pm-workspace .pm-drag-mark { display: grid; place-items: center; width: 14px; }
-.pm.pm-workspace .pm-drag-mark svg { fill: currentColor; stroke: none; }
+.pm.pm-workspace .pm-section-pattern-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm.pm-workspace .pm-section-palette {
+  flex: none;
+  width: 24px;
+  height: 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.pm.pm-workspace .pm-preview-empty.pm-lab-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+.pm.pm-workspace .pm-lab-preview .btn { min-height: 44px; }
+.pm.pm-workspace .pm-section-grip {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  color: var(--text-mid);
+  font: 500 11px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.pm.pm-workspace .pm-section-grip:hover { color: var(--text-hi); background: var(--bg-elev); }
+.pm.pm-workspace .pm-section-grip:active { cursor: grabbing; }
+.pm.pm-workspace .pm-section-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (pointer: coarse) {
+  .pm.pm-workspace .pm-section-grip { flex-basis: 44px; min-height: 44px; }
+}
 .pm.pm-workspace .pm-section-help { grid-column: 1 / -1; margin: 5px 0; }
 .pm.pm-workspace .pm-section-footer {
   grid-column: 1 / -1;
@@ -152,8 +162,8 @@
   align-items: center;
   gap: 5px 12px;
   min-height: 26px;
-  margin-top: 5px;
-  padding-top: 5px;
+  margin-top: 3px;
+  padding-top: 2px;
   border-top: 1px solid var(--border-hair);
   font-size: 11px;
 }
@@ -258,7 +268,7 @@
 }
 @media (max-width: 900px) {
   .pm.pm-workspace .pm-target { grid-template-columns: 1fr; }
-  .pm.pm-workspace .pm-section-list { margin-top: 7px; }
+  .pm.pm-workspace .pm-section-list { margin-top: 4px; }
   .pm.pm-workspace .pm-section-register.is-dense .pm-section-list { max-height: min(220px, 28vh); }
   .pm.pm-workspace .pm-target .pm-piece-stage[data-preview-mode="piece"]:not(:has(.pm-preview-empty)) {
     height: clamp(112px, 38vw, 140px);
@@ -269,29 +279,54 @@
   .pm.pm-workspace .pm-bank-filters .pt-tools { flex: 1 1 100%; }
 }
 @media (max-width: 560px) {
-  .pm.pm-workspace .pm-target .pm-preview-controls { flex-wrap: wrap; gap: 0; padding-bottom: 6px; }
-  .pm.pm-workspace .pm-target .pm-preview-meta { flex: 1 1 100%; height: 22px; }
-  .pm.pm-workspace .pm-preview-nav { flex: 1 1 100%; margin-top: 6px; }
+  .pm.pm-workspace .pm-target { padding: 0 6px 4px; margin-bottom: 4px; }
+  .pm.pm-workspace .pm-target > .sec-h { margin-inline: -6px; padding-inline: 6px; }
+  .pm.pm-workspace .project-stack-save { margin-inline: 0; padding-inline: 6px; }
+  .pm.pm-workspace .project-stack-inline-editor { margin-top: 4px; }
+  .pm.pm-workspace .project-stack-inline-editor .project-stack-save { padding: 8px; }
+  .pm.pm-workspace .pm-target .pm-preview-pane { padding-inline: 0; }
+  .pm.pm-workspace .pm-target .pm-preview-controls { flex-wrap: wrap; gap: 0; }
+  .pm.pm-workspace .pm-target .pm-preview-meta { flex: 1 1 100%; height: auto; min-height: 18px; }
+  .pm.pm-workspace .pm-target .pm-preview-meta .m { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+  .pm.pm-workspace .pm-preview-nav { flex: 1 1 100%; margin-top: 3px; }
+  .pm.pm-workspace .pm-target .pm-preview-step,
+  .pm.pm-workspace .pm-target .pm-piece-toggle,
+  .pm.pm-workspace .pm-target .pm-preview-select select,
+  .pm.pm-workspace .pm-preview-nav .pm-preview-select { min-height: 30px; height: 30px; }
+  .pm.pm-workspace .pm-preview-nav .pm-preview-select::after { top: 11px; }
+  .pm.pm-workspace .pm-actions > .btn.primary:not([data-testid="recover-lights"]),
+  .pm.pm-workspace .pm-actions .pm-menu > .btn,
+  .pm.pm-workspace .project-stack-save-controls > .btn.primary,
+  .pm.pm-workspace .project-stack-save-controls > .pm-input { min-height: 30px; padding-block: 0; }
   .pm.pm-workspace .pm-preview-meta .t { display: inline; }
   .pm.pm-workspace .pm-hue { position: relative; }
   .pm.pm-workspace .pm-swatches { grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); }
   .pm.pm-workspace .pm-swatches > .pm-sw { max-width: 44px; }
   .pm.pm-workspace .pm-section-identity small { display: none; }
-  .pm.pm-workspace .pm-section-entry.is-all .pm-section-identity small { display: block; }
-  .pm.pm-workspace .pm-section-layout { min-height: 28px; }
-  .pm.pm-workspace .pm-section-look { flex-basis: 42%; max-width: 42%; }
+  .pm.pm-workspace .pm-section-item {
+    justify-content: space-between;
+    min-height: 44px;
+    padding-block: 4px;
+    flex-wrap: wrap;
+    column-gap: 8px;
+    row-gap: 3px;
+  }
+  .pm.pm-workspace .pm-section-identity { flex: 1 1 auto; min-width: 0; }
+  .pm.pm-workspace .pm-section-look { flex: 0 1 auto; max-width: 100%; gap: 5px; }
+  .pm.pm-workspace .pm-section-item:focus-visible { outline-offset: -2px; }
+  .pm.pm-workspace .project-stack-save-controls { grid-template-columns: minmax(0, 1fr) auto; }
+  .pm.pm-workspace .project-stack-save > .sec-h { justify-content: space-between; column-gap: 6px; }
+  .pm.pm-workspace .project-stack-save > .sec-h .t { letter-spacing: .08em; }
+  .pm.pm-workspace .project-stack-save > .sec-h .m { margin-left: 0; }
   .pm.pm-workspace .pm-bank-context { flex-wrap: wrap; }
   .pm.pm-workspace .pm-save-primary { flex-wrap: wrap; }
   .pm.pm-workspace .pm-save-status { flex-basis: 100%; }
 }
 
 
-/* The mobile controls keep touch targets without overflowing smaller pieces. */
 @media (max-width: 560px) and (pointer: coarse) {
   .pm.pm-workspace .pm-preview-nav {
-    min-height: 44px;
     grid-template-columns: 76px 44px minmax(0, 1fr) 44px;
-    grid-template-rows: 44px;
   }
   .pm.pm-workspace .pm-preview-nav .pm-preview-step { width: 44px; }
   .pm.pm-workspace .pm-preview-nav .pm-preview-select select { padding-inline: 5px 13px; }
@@ -328,9 +363,20 @@
     display: flex;
     min-height: 44px;
   }
-  .pm.pm-workspace .pm-actions { justify-content: flex-start; }
+  .pm.pm-workspace .pm-actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    gap: 4px;
+    margin-left: 0;
+  }
+  .pm.pm-workspace .pm-actions > .btn,
+  .pm.pm-workspace .pm-menu > .btn { padding-inline: 7px; justify-content: center; }
+  .pm.pm-workspace .pm-actions > .btn,
+  .pm.pm-workspace .pm-actions > .pm-menu { flex: 1 0 auto; }
+  .pm.pm-workspace .pm-menu > .btn { width: 100%; }
+  .pm.pm-workspace .project-stack-tabs button { padding-inline: 8px; }
   .pm.pm-workspace .pm-section-identity > strong,
-  .pm.pm-workspace .pm-section-look > span:nth-child(2) {
+  .pm.pm-workspace .pm-section-pattern-name {
     max-width: none;
     white-space: normal;
     overflow-wrap: anywhere;

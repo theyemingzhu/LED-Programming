@@ -373,8 +373,8 @@
 .la .la-strip-toolbar .la-inline-unit { padding-inline: 3px; }
 .la .la-gpio-group .la-strip-row {
   gap: 4px;
-  padding: 4px 6px;
-  min-height: 36px;
+  padding: 1px 6px;
+  min-height: 34px;
 }
 .la .la-gpio-group .la-strip-row .la-wire-n { gap: 1px; font-size: 10px; }
 .la .la-gpio-group .la-section-miniature { flex-basis: 24px; width: 24px; height: 24px; }
@@ -391,22 +391,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.la-pattern-details { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border-soft); color: var(--text-mid); font-size: 11px; }
-.la-pattern-details > span { min-width: 0; overflow-wrap: anywhere; }
-.la-pattern-details > .btn { flex: 0 0 auto; min-height: 32px; }
+.la-pattern-details { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border-soft); color: var(--text-mid); font-size: 11px; }
+.la-pattern-details > span { margin-inline-end: auto; min-width: 0; overflow-wrap: anywhere; }
+.la .la-pattern-details > .btn {
+  flex: 0 0 auto; min-height: 32px; padding-inline: 6px;
+  border: 0; background: transparent; box-shadow: none;
+  color: var(--accent-hi); text-decoration: underline; text-underline-offset: 3px;
+}
+.la .la-pattern-details > .btn:hover { background: var(--bg-elev-2); }
+.la .la-pattern-details > .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .la .la-gpio-group .la-section-pattern-unavailable,
 .la .la-gpio-group .la-strip-routes { flex-basis: 100%; }
 .la .la-strip-menu-popover .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 @media (max-width: 600px), (pointer: coarse) {
   .la .la-strip-toolbar .la-add-strip,
-  .la .la-strip-toolbar .la-total-led-field,
   .la .la-strip-connection .btn,
   .la .la-strip-connection .la-gpio-select,
   .la .la-strip-menu > summary,
   .la .la-strip-menu-popover .btn,
-  .la .la-divide-toggle,
-  .la .la-gpio-group .la-section-pattern-action { min-height: 44px; }
-  .la-pattern-details > .btn { min-height: 44px; }
+  .la .la-divide-toggle { min-height: 44px; }
+}
+@media (max-width: 600px) {
+  .la .la-strip-connection :is(.btn, .la-gpio-select) {
+    min-height: 30px;
+    padding-block: 0;
+  }
 }
 
 /* Keep artwork creation, the project total, and selected-strip edits distinct. */
@@ -444,8 +453,6 @@
 .la .la-gpio-group-head { flex-wrap: wrap; gap: 4px 8px; }
 .la .la-gpio-group-head > span { white-space: nowrap; }
 
-.la .la-gpio-group .la-strip-row .la-wire-n { font-size: 0; width: 12px; flex: 0 0 12px; }
-.la .la-gpio-group .la-strip-row .la-wire-n svg { width: 12px; height: 16px; opacity: .8; }
 .la .la-gpio-group .la-strip-row .layer-name { min-width: 50px !important; }
 .la-row-count { display: inline-flex; align-items: stretch; flex: 0 0 auto; height: 28px; border: 1px solid var(--border-soft); border-radius: var(--r-sm); overflow: hidden; background: var(--bg-app); }
 .la-row-count button { width: 16px; border: 0; padding: 0; background: transparent; color: var(--text-mid); cursor: pointer; }
@@ -599,7 +606,6 @@
 .la-side-empty,
 .la-side-foot { margin: 0; padding: 7px 10px 8px 12px; color: var(--text-faint); font-size: 11px; line-height: 1.45; }
 .la-side-foot { border-top: 1px solid var(--border-hair); }
-/* Specific enough to beat the compact list's hidden handle text. */
 .la .la-gpio-group .la-strip-row .la-wire-n.la-flow-n {
   flex: 0 0 16px;
   width: 16px;

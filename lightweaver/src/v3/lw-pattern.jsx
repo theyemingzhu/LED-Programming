@@ -544,15 +544,23 @@ function writeSectionDisplayOrder(projectId, ids) {
     const [libraryTab, setLibraryTab] = useState('patterns');
     const [expandedStackId, setExpandedStackId] = useState(null);
     const [newStackResumeMessage, setNewStackResumeMessage] = useState('');
+    const workspaceScrollRef = useRef(null);
+    const previewPaneRef = useRef(null);
     const stackEditorRef = useRef(null);
+    const revealLookPreview = useCallback(() => {
+      const viewport = workspaceScrollRef.current;
+      const preview = previewPaneRef.current;
+      if (!viewport || !preview) return;
+      viewport.scrollTop += preview.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    }, []);
     useEffect(() => {
       if (expandedStackId === null || libraryTab !== 'stacks') return;
       const frame = requestAnimationFrame(() => {
-        stackEditorRef.current?.scrollIntoView({ block: 'start' });
+        revealLookPreview();
         stackEditorRef.current?.querySelector('[data-testid="look-name"]')?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(frame);
-    }, [expandedStackId, libraryTab]);
+    }, [expandedStackId, libraryTab, revealLookPreview]);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const menuRef = useRef(null);
@@ -1253,7 +1261,13 @@ function writeSectionDisplayOrder(projectId, ids) {
           - (positions.get(b.id) ?? (savedOrder.length + natural.get(b.id)));
       });
     }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
-    const dragSectionId = useRef('');
+    const sectionListRef = useRef(null);
+    const sectionDragRef = useRef(null);
+    const [sectionDropTarget, setSectionDropTarget] = useState('');
+    useEffect(() => () => {
+      cancelAnimationFrame(sectionDragRef.current?.frame);
+      sectionDragRef.current = null;
+    }, [projectId]);
     const [patternDropTargetId, setPatternDropTargetId] = useState('');
     const moveDisplayedSection = (sourceId, targetId) => {
       if (!sourceId || !targetId || sourceId === targetId) return;
@@ -1265,13 +1279,56 @@ function writeSectionDisplayOrder(projectId, ids) {
       ids.splice(to, 0, sourceId);
       setSectionDisplayOrder({ projectId, ids });
       writeSectionDisplayOrder(projectId, ids);
-      requestAnimationFrame(() => sectionRowRefs.current.get(sourceId)?.focus());
     };
     const nudgeDisplayedSection = (id, direction) => {
       const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
       const index = ids.indexOf(id);
       if (index < 0 || index + direction < 0 || index + direction >= ids.length) return;
       moveDisplayedSection(id, ids[index + direction]);
+      requestAnimationFrame(() => sectionRowRefs.current.get(id)?.parentElement?.querySelector('.pm-section-grip')?.focus());
+    };
+    const updateSectionDropTarget = (drag) => {
+      const list = sectionListRef.current;
+      const row = document.elementFromPoint(drag.x, drag.y)?.closest('[data-section-order-id]');
+      const targetId = list?.contains(row) ? row.dataset.sectionOrderId : '';
+      if (targetId === drag.targetId) return;
+      drag.targetId = targetId;
+      setSectionDropTarget(targetId === drag.sourceId ? '' : targetId);
+    };
+    const startSectionDrag = (event, sourceId) => {
+      if (!event.isPrimary || event.button !== 0 || sectionDragRef.current) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const drag = { pointerId: event.pointerId, sourceId, targetId: sourceId, x: event.clientX, y: event.clientY, frame: 0 };
+      sectionDragRef.current = drag;
+      const scrollAtEdge = () => {
+        const list = sectionListRef.current;
+        if (sectionDragRef.current !== drag || !list) return;
+        const { top, bottom, left, right } = list.getBoundingClientRect();
+        if (drag.x >= left && drag.x <= right && drag.y >= top && drag.y <= bottom) {
+          const step = drag.y < top + 14 ? -5 : drag.y > bottom - 14 ? 5 : 0;
+          if (step) {
+            list.scrollTop += step;
+            updateSectionDropTarget(drag);
+          }
+        }
+        drag.frame = requestAnimationFrame(scrollAtEdge);
+      };
+      drag.frame = requestAnimationFrame(scrollAtEdge);
+    };
+    const moveSectionDrag = (event) => {
+      const drag = sectionDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      updateSectionDropTarget(drag);
+    };
+    const endSectionDrag = (event, commit = false) => {
+      const drag = sectionDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      sectionDragRef.current = null;
+      cancelAnimationFrame(drag.frame);
+      setSectionDropTarget('');
+      if (commit) moveDisplayedSection(drag.sourceId, drag.targetId);
     };
     const sectionRowRefs = useRef(new Map());
     const bankRef = useRef(null);
@@ -1279,7 +1336,6 @@ function writeSectionDisplayOrder(projectId, ids) {
     const cardHoldsLine = useMemo(() => cardSectionSummary(sectionTargets, cardZonesPayload), [sectionTargets, cardZonesPayload]);
     const sectionCount = sectionTargets.filter(target => target.kind === 'section').length;
     const showCopyToSections = selectedTarget?.kind === 'section' && sectionCount > 1;
-    const showDivideLayoutLink = sectionCount <= 1 && layoutReturnStrip;
     const openSectionLayout = () => {
       if (layoutReturnStrip) {
         selectStrip(layoutReturnStrip);
@@ -2080,6 +2136,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (action === 'edit' && expandedStackId === saved.id) return;
       if (action === 'preview' && activeLookId === saved.id) {
         setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+        revealLookPreview();
         return;
       }
       if (activeLookId !== saved.id && !keepCurrentStackDraft()) return;
@@ -2087,7 +2144,10 @@ function writeSectionDisplayOrder(projectId, ids) {
         if (needsReview) setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
         else selectCard(adaptSavedLook(saved), { preview: false });
       }
-      if (action === 'preview') setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+      if (action === 'preview' || action === 'edit') {
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+        if (action === 'preview') revealLookPreview();
+      }
       setNewStackResumeMessage('');
       setExpandedStackId(action === 'edit' ? saved.id : null);
       setLibraryTab('stacks');
@@ -3061,7 +3121,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
     const stackSavePanel = (
                 <div className="project-stack-save" data-testid="stack-save-bar" aria-label="Save complete look">
-                  <div className="sec-h"><span className="t">Complete look</span><span className="m">{sectionCount} {sectionCount === 1 ? 'section' : 'sections'} together</span></div>
+                  <div className="sec-h"><span className="t">Complete look</span><span className="m">{sectionCount} {sectionCount === 1 ? 'section' : 'sections'}</span></div>
                   {newStackResumeMessage && !editingSavedLook && <p className="project-stack-resume-note">{newStackResumeMessage}</p>}
                   <label className="project-stack-name-label" htmlFor="project-stack-name">Look name</label>
                   <div className="project-stack-save-controls">
@@ -3100,7 +3160,7 @@ function writeSectionDisplayOrder(projectId, ids) {
 
     return (
       <div className="screen">
-        <div className="screen-scroll">
+        <div className="screen-scroll" ref={workspaceScrollRef}>
           <div className="pm pm-workspace">
             {/* hero */}
             <header className="pm-hero">
@@ -3204,7 +3264,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                 {/* design target */}
                 <div className="pm-target">
                    <div className="sec-h"><span className="t">Sections</span><span className="m">{sectionCount} on this piece</span><span className="line" /></div>
-                <div className="card pm-pane pm-preview-pane">
+                <div className="card pm-pane pm-preview-pane" ref={previewPaneRef}>
                   <div className="pm-preview-controls" aria-label="Pattern preview controls">
                     <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${selectedDisplayLabel}`}>
                       <span className="t">Studio preview</span>
@@ -3265,7 +3325,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                       data-preview-patterns={visiblePatternPreviewSegments.map(segment => segment.sourcePatternId).join(',')}
                     >
                       {previewNeedsLab ? (
-                        <p className="pm-preview-empty">{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'} · open in Lab for its exact animated preview.</p>
+                        <div className="pm-preview-empty pm-lab-preview">
+                          <span>{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'}</span>
+                          <button type="button" className="btn" onClick={openLookInLab}>Preview in Lab</button>
+                        </div>
                       ) : visiblePatternPreviewSegments.length ? (
                         <PatternPreview
                           strips={visiblePatternPreviewSegments}
@@ -3321,26 +3384,26 @@ function writeSectionDisplayOrder(projectId, ids) {
                      </div>
                      <p className="pm-section-help" data-testid="sides-hint">{sidesHintCopy({ symmetry: layoutSymmetry, sidesMirrored: sidesMirrored !== false })}</p>
                    </>}
-                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections">
-                     {displayedSectionRows.map((row, rowIndex) => {
+                   <span className="sr-only" id="pattern-section-order-help">Drag to reorder, or use the Up and Down keys. Display order only.</span>
+                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections" ref={sectionListRef}>
+                     {displayedSectionRows.map((row, index) => {
                        const target = sectionTargets.find(item => item.id === row.id);
                        const sidesMeta = showSides ? sectionMetaCopy({ target, symmetry: layoutSymmetry, strips, ledCount: row.pixelCount }) : null;
                        const rowLabel = showSides ? sectionLabelCopy({ target, symmetry: layoutSymmetry }) || row.label : row.label;
                        const selected = !handoffInvalid && row.id === selectedTarget?.id;
                        const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
+                       const palette = REAL_PATTERN_BY_ID.get(row.patternId)?.pal || customPatternById.get(row.patternId)?.pal;
+                       const paletteFill = palette?.length > 1 ? `linear-gradient(90deg, ${palette.join(', ')})` : palette?.[0];
                        return <div
                          key={row.id}
-                         className={`pm-section-entry${canReorder ? '' : ' is-all'}${selected ? ' on' : ''}${patternDropTargetId === row.id ? ' is-pattern-drop-target' : ''}`}
-                         draggable={canReorder}
-                         onDragStart={event => { if (!canReorder) return; dragSectionId.current = row.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.id); }}
+                         className={`pm-section-entry${selected ? ' on' : ''}${patternDropTargetId === row.id ? ' is-pattern-drop-target' : ''}`}
+                         data-section-order-id={canReorder ? row.id : undefined}
+                         data-drop-target={sectionDropTarget === row.id || undefined}
                          onDragOver={event => {
-                           if (canDropPattern(event, target)) {
-                             event.preventDefault();
-                             event.dataTransfer.dropEffect = 'copy';
-                             setPatternDropTargetId(row.id);
-                           } else if (canReorder && dragSectionId.current) {
-                             event.preventDefault();
-                           }
+                           if (!canDropPattern(event, target)) return;
+                           event.preventDefault();
+                           event.dataTransfer.dropEffect = 'copy';
+                           setPatternDropTargetId(row.id);
                          }}
                          onDragLeave={event => {
                            if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -3348,16 +3411,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                            }
                          }}
                          onDrop={event => {
-                           if (canDropPattern(event, target)) {
-                             event.preventDefault();
-                             dropPatternOnSection(event, target);
-                           } else if (canReorder && dragSectionId.current) {
-                             event.preventDefault();
-                             moveDisplayedSection(dragSectionId.current, row.id);
-                             dragSectionId.current = '';
-                           }
+                           if (!canDropPattern(event, target)) return;
+                           event.preventDefault();
+                           dropPatternOnSection(event, target);
                          }}
-                         onDragEnd={() => { dragSectionId.current = ''; }}
                        ><button
                          type="button"
                          ref={node => { if (node) sectionRowRefs.current.set(row.id, node); else sectionRowRefs.current.delete(row.id); }}
@@ -3367,18 +3424,33 @@ function writeSectionDisplayOrder(projectId, ids) {
                          onClick={() => chooseSectionLook(target)}
                        >
                          <span className="pm-section-identity"><strong>{rowLabel}</strong><small data-testid={sidesMeta ? `section-meta-${row.id}` : undefined}>{sidesMeta || (row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`)}</small></span>
-                         {(canReorder || row.patternId) && <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>}
+                         <span className="pm-section-look">
+                           {paletteFill && <span className="pm-section-palette" data-pattern-id={row.patternId} style={{ background: paletteFill }} title={`${row.lookLabel} palette`} aria-hidden="true" />}
+                           <span className="pm-section-pattern-name" data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span>
+                         </span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
-                       </button>{canReorder ? <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
-                         <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
-                         <button type="button" data-testid={`section-move-up-${row.id}`} aria-label={`Move ${row.label} up in display order`} disabled={rowIndex <= 1} onClick={() => nudgeDisplayedSection(row.id, -1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg></button>
-                         <button type="button" data-testid={`section-move-down-${row.id}`} aria-label={`Move ${row.label} down in display order`} disabled={rowIndex >= displayedSectionRows.length - 1} onClick={() => nudgeDisplayedSection(row.id, 1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
-                       </span> : <button
-                         type="button"
-                         className="btn pm-section-layout"
-                         data-testid={layoutReturnStrip ? 'return-to-layout-section' : sectionCount <= 1 ? 'divide-in-layout' : 'edit-section-layout'}
-                         onClick={openSectionLayout}
-                       >{layoutReturnStrip ? 'Back to Layout' : sectionCount <= 1 ? 'Divide in Layout' : 'Edit layout'}</button>}</div>;
+                       </button>{canReorder && sectionCount > 1 && (
+                         <button
+                           type="button"
+                           className="pm-section-grip"
+                           aria-label={`Reorder ${rowLabel}`}
+                           aria-describedby="pattern-section-order-help"
+                           aria-keyshortcuts="ArrowUp ArrowDown"
+                           title="Drag to reorder. Display order only."
+                           onPointerDown={event => startSectionDrag(event, row.id)}
+                           onPointerMove={moveSectionDrag}
+                           onPointerUp={event => endSectionDrag(event, true)}
+                           onPointerCancel={endSectionDrag}
+                           onLostPointerCapture={endSectionDrag}
+                           onKeyDown={event => {
+                             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                             event.preventDefault();
+                             nudgeDisplayedSection(row.id, event.key === 'ArrowUp' ? -1 : 1);
+                           }}
+                         >
+                           <span aria-hidden="true">{index + (displayedSectionRows[0]?.id === ALL_SECTIONS_TARGET_ID ? 0 : 1)}</span>
+                         </button>
+                       )}</div>;
                      })}
                    </div>
                   {selectedTarget?.kind === 'section' && !isSideTarget(selectedTarget, layoutSymmetry) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
@@ -3390,13 +3462,16 @@ function writeSectionDisplayOrder(projectId, ids) {
                       </button>{' '}to make separate named sections. If Add split is unavailable, adjust its Advanced wiring runs first.
                     </p>}
                   </div>
-                  {(cardHoldsLine || showDivideLayoutLink || showCopyToSections) && <div className="pm-section-footer">
+                  <div className="pm-section-footer">
                     {cardHoldsLine && <span className="pm-cardholds" data-testid="card-holds" title={cardHoldsLine}>{cardHoldsLine}</span>}
-                    {showDivideLayoutLink &&
-                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
-                    }
+                    <button
+                      type="button"
+                      className="wordlink"
+                      data-testid={sectionCount <= 1 ? 'divide-in-layout' : layoutReturnStrip ? 'return-to-layout-section' : 'edit-section-layout'}
+                      onClick={openSectionLayout}
+                    >{sectionCount <= 1 ? 'Divide in Layout' : layoutReturnStrip ? 'Back to Layout' : 'Edit layout'}</button>
                     {showCopyToSections && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
-                  </div>}
+                  </div>
                   {copyToSectionsOpen && <div className="project-stack-copy" data-testid="stack-copy-panel">
                     <strong>Copy {targetLabel(selectedTarget)} settings to:</strong>
                     {sectionTargets.filter(target => target.kind === 'section' && target.id !== selectedTargetId).map(target => <label key={target.id}>
@@ -3406,6 +3481,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                     <button type="button" className="btn" onClick={() => setCopyToSectionsOpen(false)}>Cancel</button>
                   </div>}
                 </div>
+
+                {expandedStackId !== null && libraryTab === 'stacks' && (
+                  <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef}>
+                    {stackSavePanel}
+                  </div>
+                )}
 
                 {/* browse */}
                  <div className={`pm-browse ${libraryTab === 'patterns' ? 'is-pattern-library' : 'is-stack-library'}`} data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
@@ -3446,7 +3527,6 @@ function writeSectionDisplayOrder(projectId, ids) {
                       })}
                       {!savedLooks.length && <p className="project-stack-empty">No saved looks yet. Choose a pattern for each section, then save a complete look.</p>}
                     </div>
-                    {expandedStackId !== null && <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef} style={{ scrollMarginTop: 84 }}>{stackSavePanel}</div>}
                   </div> : <>
                   <div className="pm-bank-bar">
                   <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">

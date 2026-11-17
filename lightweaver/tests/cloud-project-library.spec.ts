@@ -1784,8 +1784,10 @@ for (const width of [320, 390]) {
 
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
     const noticeBox = await page.getByTestId('workspace-notice').boundingBox();
+    const railBox = await page.locator('.rail').boundingBox();
     expect(noticeBox).not.toBeNull();
-    expect(noticeBox!.x).toBeGreaterThanOrEqual(58);
+    expect(railBox).not.toBeNull();
+    expect(noticeBox!.x).toBeGreaterThanOrEqual(railBox!.x + railBox!.width);
     expect(noticeBox!.x + noticeBox!.width).toBeLessThanOrEqual(width);
     for (const box of boxes) {
       expect(noticeBox!.y).toBeGreaterThanOrEqual(box.y + box.height);

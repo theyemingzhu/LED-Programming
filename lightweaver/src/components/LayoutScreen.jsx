@@ -563,28 +563,18 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
       {/* ── Right panel (mockup .side) ─────────────────────────────── */}
       <aside className={`side${inspectorCollapsed ? ' is-collapsed' : ''}`}>
-        <button
-          type="button"
-          className="la-sheet-handle"
-          data-testid="layout-sheet-handle"
-          aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
-          aria-expanded={!inspectorCollapsed}
-          onClick={() => setInspectorCollapsed(collapsed => !collapsed)}>
-          <span aria-hidden="true"/>
-          <strong>Inspector</strong>
-        </button>
         <WireHoverDescription className="la-mode-nav">
+          <button
+            type="button"
+            className="la-sheet-handle"
+            data-testid="layout-sheet-handle"
+            aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
+            aria-expanded={!inspectorCollapsed}
+            onClick={() => setInspectorCollapsed(collapsed => !collapsed)}>
+            <span aria-hidden="true"/>
+            <strong>Inspector</strong>
+          </button>
           <div className="la-install-actions">
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="layout-check-and-install"
-              title="Check the lights and install this project on the connected card."
-              data-tooltip="Check the lights and install this project on the connected card."
-              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
-            >
-              Install on card
-            </button>
             <button
               ref={specsButtonRef}
               type="button"
@@ -598,6 +588,16 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
             >
               Specs
               {specsAttention && <span className="la-specs-attention" aria-hidden="true"/>}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="layout-check-and-install"
+              title="Check the lights and install this project on the connected card."
+              data-tooltip="Check the lights and install this project on the connected card."
+              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
+            >
+              Install on card
             </button>
             {layoutChangeKind && (
               <details className="la-change-help" data-testid="layout-change-help">

@@ -8,6 +8,7 @@ import { openControls } from './helpers/pattern-lab';
 test('Sculpt in Lab opens Lab on the Patterns selection', async ({ page }) => {
   await page.goto('/#screen=pattern', { waitUntil: 'domcontentloaded' });
   await page.locator('.pmcard[data-pattern-id="plasma"]').click();
+  await page.getByTestId('stack-new').click();
   const selectedName = 'My plasma evening';
   await page.getByTestId('look-name').fill(selectedName);
   await page.getByTestId('open-pattern-lab').click();

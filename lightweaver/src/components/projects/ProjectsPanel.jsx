@@ -220,6 +220,20 @@ export function ProjectsPanel({
     onLibraryMutated?.();
   };
 
+  const projectFileActions = (
+    <section className="projects-file" aria-labelledby="projects-file-heading">
+      <h3 id="projects-file-heading">Project file</h3>
+      <div className="topbar-project-secondary">
+        <button type="button" className="btn" disabled={openingFile} onClick={onImport}>
+          {openingFile ? 'Opening file…' : 'Import from computer'}
+        </button>
+        <button type="button" className="btn" onClick={onExport}>
+          {partialCardCopy ? 'Download card copy' : 'Download backup'}
+        </button>
+      </div>
+    </section>
+  );
+
   return (
     <section
       ref={sectionRef}
@@ -266,17 +280,7 @@ export function ProjectsPanel({
         </span>
       </div>
 
-      <section className="projects-file" aria-labelledby="projects-file-heading">
-        <h3 id="projects-file-heading">Project file</h3>
-        <div className="topbar-project-secondary">
-          <button type="button" className="btn" disabled={openingFile} onClick={onImport}>
-            {openingFile ? 'Opening file…' : 'Import from computer'}
-          </button>
-          <button type="button" className="btn" onClick={onExport}>
-            {partialCardCopy ? 'Download card copy' : 'Download backup'}
-          </button>
-        </div>
-      </section>
+      {!records.length && projectFileActions}
 
       <div className="topbar-project-source">
         <div className="projects-source-heading">
@@ -349,6 +353,8 @@ export function ProjectsPanel({
         </div>
         {rowNotice && <p className="cloud-library-notice" role="alert">{rowNotice}</p>}
       </div>
+
+      {!!records.length && projectFileActions}
 
       <div className="topbar-project-source projects-recovery">
         <h3>Recovery copy</h3>

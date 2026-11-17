@@ -8,7 +8,7 @@
   z-index: 3;
   top: 0;
   flex: 0 0 auto;
-  padding: 10px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border-hair);
   background: var(--bg-panel);
 }
@@ -661,12 +661,12 @@
   .la {
     --mobile-sheet-height: clamp(180px, 28dvh, 240px);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(48px, auto) minmax(0, 1fr);
+    grid-template-rows: minmax(36px, auto) minmax(0, 1fr);
     grid-template-areas: "tool" "body";
     padding-bottom: var(--mobile-sheet-height);
   }
   .la.mode-wire { --mobile-sheet-height: clamp(300px, 44dvh, 480px); }
-  .la.inspector-collapsed { --mobile-sheet-height: 44px; }
+  .la.inspector-collapsed { --mobile-sheet-height: 36px; }
   .la .side {
     position: absolute;
     z-index: 35;
@@ -680,30 +680,30 @@
     box-shadow: 0 -10px 30px color-mix(in oklab, var(--bg-app) 75%, transparent);
     resize: vertical;
   }
-  .la-sheet-handle {
-    position: sticky;
-    z-index: 2;
-    top: 0;
+  .la .la-mode-nav {
     display: flex;
-    width: 100%;
-    min-height: 44px;
-    padding: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px;
+    padding: 0 5px;
+  }
+  .la-sheet-handle {
+    display: inline-flex;
+    min-height: 36px;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    border-bottom: 1px solid var(--border-hair);
-    background: var(--bg-panel);
-    color: var(--text-faint);
-    font-size: 10px;
-    letter-spacing: .08em;
-    text-transform: uppercase;
+    gap: 4px;
+    padding: 0 3px;
+    color: var(--text-mid);
+    font-size: 12px;
   }
-  .la-mode-nav { top: 44px; padding-block: 7px; }
-  .la .side.is-collapsed > :not(.la-sheet-handle) { display: none; }
+  .la .side.is-collapsed > :not(.la-mode-nav),
+  .la .side.is-collapsed .la-install-actions { display: none; }
+  .la .side.is-collapsed .la-sheet-handle { flex: 1; }
   .la-sheet-handle > span {
-    width: 32px;
-    height: 3px;
-    border-radius: 999px;
+    width: 12px;
+    height: 2px;
+    border-radius: 2px;
     background: var(--border);
   }
   .la .toolbar { max-height: 110px; overflow-y: auto; }

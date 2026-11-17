@@ -1116,11 +1116,9 @@ function realPatternShape(patternId) {
             <header className="pm-hero">
               <div className="pm-title">
                 <h1>Playlist</h1>
-                <p>Arrange the dial order and timed playback.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
               </div>
               <div className="pm-actions">
-                <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                 <button
                   className="btn primary"
                   disabled={!installGate.allowed}
@@ -1175,51 +1173,13 @@ function realPatternShape(patternId) {
                 }
 
                 <div className="pl-list" ref={playlistOrderRef} tabIndex={-1} data-testid="playlist-order-section">
-                  {/* The list is a module, so it says what it is and how many, in
-                      its own bar. The count used to float in the card-address row
-                      above, where it described something two elements away. */}
                   <div className="sec-h">
-                    <h2 className="t">Playlist order</h2>
-                    <span className="m">{playlist.length} {playlist.length === 1 ? 'entry' : 'entries'}</span>
-                    <span className="line" />
-                  </div>
-                  <div className="pl-order-help-row">
-                    <p className="pl-order-help" data-testid="playlist-order-help">Drag to reorder.</p>
+                    <div className="pl-order-heading">
+                      <h2 className="t">Dial order</h2>
+                      <span className="m">{playlist.length} {playlist.length === 1 ? 'entry' : 'entries'}</span>
+                    </div>
                     <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add saved looks</button>
                   </div>
-                  <div className="pl-timing">
-                    <label className="pl-timing-field">
-                      <span className="sf-l">Fade</span>
-                      <input
-                        type="number"
-                        className="pm-input pl-timing-input"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value={(playlistTiming.fadeMs / 1000).toFixed(1)}
-                        onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
-                        aria-label="Fade seconds between looks"
-                        data-testid="playlist-fade-seconds"
-                      />
-                      <span className="pl-timing-unit">s</span>
-                    </label>
-                    <label className="pl-timing-switch">
-                      <button
-                        type="button"
-                        aria-pressed={playlistTiming.enabled}
-                        className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")}
-                        onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
-                        data-testid="playlist-enabled-toggle"
-                      />
-                      <span>Play on the card</span>
-                    </label>
-                    <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
-                  </div>
-                  {playlistTiming.enabled && playlistOverflow > 0 &&
-                    <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
-                      Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
-                    </p>
-                  }
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
                     Use Arrow Up or Arrow Down to move one place. Use Home or End to move to the bounds. Drag with a pointer or touch.
                   </span>
@@ -1267,10 +1227,8 @@ function realPatternShape(patternId) {
                             onDragStart={(event) => startDrag(event, i)}
                             onDragEnd={endDrag}
                           >
-                            <span className="pl-grip-dots" aria-hidden="true">::</span>
-                            <span className="pl-grip-position" aria-hidden="true">{i + 1}</span>
+                            <strong aria-hidden="true">{i + 1}</strong>
                           </button>
-                          <strong>{String(i + 1).padStart(2, "0")}</strong>
                           <span>{i === 0 ? "first" : "press"}</span>
                         </div>
                         {stackSummary ? <StackArtwork summary={stackSummary} /> : <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>}
@@ -1350,6 +1308,39 @@ function realPatternShape(patternId) {
                       </article>
                     );
                   })}
+                  <div className="pl-timing">
+                    <label className="pl-timing-field">
+                      <span className="sf-l">Fade</span>
+                      <input
+                        type="number"
+                        className="pm-input pl-timing-input"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={(playlistTiming.fadeMs / 1000).toFixed(1)}
+                        onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
+                        aria-label="Fade seconds between looks"
+                        data-testid="playlist-fade-seconds"
+                      />
+                      <span className="pl-timing-unit">s</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="pl-timing-switch"
+                      aria-pressed={playlistTiming.enabled}
+                      onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
+                      data-testid="playlist-enabled-toggle"
+                    >
+                      <span aria-hidden="true" className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")} />
+                      <span>Play on the card</span>
+                    </button>
+                    <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
+                  </div>
+                  {playlistTiming.enabled && playlistOverflow > 0 &&
+                    <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
+                      Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
+                    </p>
+                  }
                 </div>
 
                 {/* What the card is carrying, under the order that produced it.
@@ -1390,6 +1381,7 @@ function realPatternShape(patternId) {
                       <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
                     </div>
                     <div className="pl-card-tools-actions">
+                      <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                       <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
                       <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
                       <button className="btn" onClick={openCard}>{I.open}Open card page</button>
@@ -1407,7 +1399,7 @@ function realPatternShape(patternId) {
                   </div>
                   {sourceChoice === 'stacks' ? <div role="tabpanel" aria-label="Project stacks">
                     <div className="sec-h"><h2 className="t">Saved looks</h2><span className="m">{savedLooks.length}</span></div>
-                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Selected looks are added at the end, in library order. Arrange playback in Playlist order. Repeat a look from its playlist row.</p>
+                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Adds to the end in library order. Drag entries to set the dial order. To repeat a look, use its playlist row.</p>
                     {!!selectedStacksInLibraryOrder.length && <ol className="pl-stack-selection-preview" data-testid="playlist-stack-selection-preview" aria-label="Selected looks in add order">
                       {selectedStacksInLibraryOrder.map((look, index) => <li key={look.id}>{index + 1}. {look.label}</li>)}
                     </ol>}

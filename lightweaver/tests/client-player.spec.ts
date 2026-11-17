@@ -128,6 +128,8 @@ test('three named complete looks fit the first viewport and select the whole ins
   await connect(page);
   const looks = page.getByRole('region', { name: 'Installed looks' });
   const choice = (label: string) => looks.getByRole('button', { name: label, exact: true });
+  const brightness = page.getByRole('slider', { name: 'Brightness' });
+  const power = page.getByRole('button', { name: 'Turn lights off' });
   await expect(choice(patterns[0].label)).toHaveAttribute('aria-pressed', 'true');
   await expect(choice(patterns[0].label)).toContainText('Playing');
   for (const [width, height, image] of [
@@ -138,9 +140,11 @@ test('three named complete looks fit the first viewport and select the whole ins
     await page.setViewportSize({ width, height });
     for (const { label } of patterns) await expect(choice(label)).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-    await expect(page.getByRole('slider', { name: 'Brightness' })).toBeInViewport({ ratio: 1 });
-    await expect(page.getByRole('button', { name: 'Turn lights off' })).toBeInViewport({ ratio: 1 });
+    await expect(brightness).toBeInViewport({ ratio: 1 });
+    await expect(power).toBeInViewport({ ratio: 1 });
     await expect(page.getByRole('button', { name: 'Play playlist' })).toBeInViewport({ ratio: 1 });
+    expect((await power.boundingBox())!.y).toBeLessThan((await choice(patterns[0].label).boundingBox())!.y);
+    expect((await choice(patterns[2].label).boundingBox())!.y).toBeLessThan((await brightness.boundingBox())!.y);
     await page.screenshot({ path: testInfo.outputPath(image) });
   }
   await page.setViewportSize({ width: 320, height: 568 });

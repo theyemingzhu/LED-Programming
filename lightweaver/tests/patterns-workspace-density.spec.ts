@@ -220,19 +220,50 @@ test('five sections fit without nested scrolling and the square bank shows more 
 
 test('section order controls reorder the visual list without changing physical topology', async ({ page }) => {
   const project = await openFixture(page, 4);
-  const firstId = project.layout.patchBoard.patches[0].id;
   const firstOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
-  const move = page.getByTestId(`section-move-down-${firstId}`);
-  await move.focus();
-  await page.keyboard.press('Enter');
+  const grip = page.getByRole('button', { name: 'Reorder Section 1', exact: true });
+  await grip.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(grip).toBeFocused();
   const nextOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
   expect(nextOrder).toEqual([firstOrder[0], firstOrder[2], firstOrder[1], ...firstOrder.slice(3)]);
-  const draggable = page.locator('.pm-section-entry[draggable="true"]');
-  await draggable.first().dragTo(draggable.last());
+  const target = page.getByTestId(firstOrder[4]!);
+  await target.scrollIntoViewIfNeeded();
+  const from = await page.getByRole('button', { name: 'Reorder Section 2', exact: true }).boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('Section drag controls are unavailable.');
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
   const draggedOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
   expect(draggedOrder).toEqual([firstOrder[0], firstOrder[1], firstOrder[3], firstOrder[4], firstOrder[2]]);
   await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-targets', project.layout.patchBoard.patches.map(patch => patch.id).join(','));
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   expect(saved.layout.patchBoard.chains).toEqual(project.layout.patchBoard.chains);
   expect({ ...saved.layout.wiring, migrationWarnings: undefined }).toEqual({ ...project.layout.wiring, migrationWarnings: undefined });
+});
+
+test('a phone can drag the section grip without changing the selected pattern', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Touch input is dispatched with CDP.');
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const project = await openFixture(phone, 2);
+  const [first, second] = project.layout.patchBoard.patches;
+  const grip = phone.getByRole('button', { name: 'Reorder Section 1', exact: true });
+  const target = phone.getByTestId(`section-target-${second.id}`);
+  await target.scrollIntoViewIfNeeded();
+  const from = await grip.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('Touch reorder controls are unavailable.');
+  expect(from.width).toBeGreaterThanOrEqual(44);
+  expect(from.height).toBeGreaterThanOrEqual(44);
+  const client = await phone.context().newCDPSession(phone);
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x + from.width / 2, y: from.y + from.height / 2 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + from.width / 2, y: to.y + to.height / 2 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const rows = phone.locator('.pm-section-list .pm-section-item');
+  await expect(rows.nth(1)).toHaveAttribute('data-testid', `section-target-${second.id}`);
+  await expect(rows.nth(2)).toHaveAttribute('data-testid', `section-target-${first.id}`);
+  await expect(phone.getByTestId('section-target-all')).toHaveAttribute('aria-pressed', 'true');
+  await phone.close();
 });

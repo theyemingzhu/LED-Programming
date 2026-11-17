@@ -284,7 +284,7 @@ test('mixed mirror modes use each saved look’s own section assignments', async
 
 test.describe('Playlist compact touch rows', () => {
   test.use({ hasTouch: true });
-  test('short names stay on one line and the long name and minutes fit at phone widths', async ({ page }) => {
+  test('Playlist names, swatches and timing controls fit at phone widths', async ({ page }) => {
     const { project } = projectWithStacks(3, false);
     const names = ['A — Warm rings', 'B — Blue currents', 'C — Copper sparks across the outer ring'];
     for (const [index, look] of project.devices.standaloneController.looks.entries()) {
@@ -298,8 +298,8 @@ test.describe('Playlist compact touch rows', () => {
     await openPlaylist(page, project);
     const rows = page.locator('[data-playlist-index]');
     await expect(rows).toHaveCount(3);
-    for (const width of [320, 390]) {
-      await page.setViewportSize({ width, height: 844 });
+    for (const [width, height] of [[320, 760], [390, 844]]) {
+      await page.setViewportSize({ width, height });
       const layout = await rows.evaluateAll(elements => elements.map(row => {
         const title = row.querySelector('.pl-copy > strong')!;
         const range = document.createRange();
@@ -308,14 +308,22 @@ test.describe('Playlist compact touch rows', () => {
         const bounds = title.getBoundingClientRect();
         const length = row.querySelector('.pl-dwell')!.getBoundingClientRect();
         const unit = row.querySelector('.pl-dwell-unit')!.getBoundingClientRect();
+        const label = row.querySelector('.pl-dwell .sf-l')!.getBoundingClientRect();
+        const swatch = row.querySelector('.pl-art')!.getBoundingClientRect();
         return {
           titleLines: new Set(lines.map(line => line.y)).size,
           fullTitleVisible: lines.every(line => line.right <= bounds.right + 1),
-          unitFits: unit.width > 0 && unit.right <= length.right + 1,
+          lengthFits: label.width > 20 && unit.width > 0 && unit.right <= length.right + 1,
+          swatchFits: swatch.height >= 20 && swatch.left >= bounds.right && swatch.right <= row.getBoundingClientRect().right,
         };
       }));
       expect(layout[0].titleLines).toBe(1);
-      expect(layout.every(row => row.fullTitleVisible && row.unitFits)).toBe(true);
+      expect(layout.every(row => row.fullTitleVisible && row.lengthFits && row.swatchFits)).toBe(true);
+      const { fade, playback } = await page.locator('.pl-timing').evaluate(panel => ({
+        fade: panel.querySelector('.pl-timing-input')!.getBoundingClientRect().top,
+        playback: panel.querySelector('.pl-timing-switch')!.getBoundingClientRect().top,
+      }));
+      expect(Math.abs(fade - playback)).toBeLessThan(4);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     }
   });
