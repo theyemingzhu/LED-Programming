@@ -1116,7 +1116,6 @@ function realPatternShape(patternId) {
             <header className="pm-hero">
               <div className="pm-title">
                 <h1>Playlist</h1>
-                <p>Arrange the dial order and timed playback.</p>
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
               </div>
               <div className="pm-actions">
@@ -1174,16 +1173,11 @@ function realPatternShape(patternId) {
                 }
 
                 <div className="pl-list" ref={playlistOrderRef} tabIndex={-1} data-testid="playlist-order-section">
-                  {/* The list is a module, so it says what it is and how many, in
-                      its own bar. The count used to float in the card-address row
-                      above, where it described something two elements away. */}
                   <div className="sec-h">
-                    <h2 className="t">Playlist order</h2>
-                    <span className="m">{playlist.length} {playlist.length === 1 ? 'entry' : 'entries'}</span>
-                    <span className="line" />
-                  </div>
-                  <div className="pl-order-help-row">
-                    <p className="pl-order-help" data-testid="playlist-order-help">Drag to reorder.</p>
+                    <div className="pl-order-heading">
+                      <h2 className="t">Dial order</h2>
+                      <span className="m">{playlist.length} {playlist.length === 1 ? 'entry' : 'entries'}</span>
+                    </div>
                     <button type="button" className="pl-order-jump" onClick={() => { sourcePickerRef.current?.scrollIntoView({ block: 'start' }); sourcePickerRef.current?.focus({ preventScroll: true }); }}>Add saved looks</button>
                   </div>
                   <span id="playlist-reorder-instructions" className="pl-reorder-instructions">
@@ -1407,7 +1401,7 @@ function realPatternShape(patternId) {
                   </div>
                   {sourceChoice === 'stacks' ? <div role="tabpanel" aria-label="Project stacks">
                     <div className="sec-h"><h2 className="t">Saved looks</h2><span className="m">{savedLooks.length}</span></div>
-                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Selected looks are added at the end, in library order. Arrange playback in Playlist order. Repeat a look from its playlist row.</p>
+                    <p className="pl-stack-order-help" data-testid="playlist-stack-order-help">Adds to the end in library order. Drag entries to set the dial order. To repeat a look, use its playlist row.</p>
                     {!!selectedStacksInLibraryOrder.length && <ol className="pl-stack-selection-preview" data-testid="playlist-stack-selection-preview" aria-label="Selected looks in add order">
                       {selectedStacksInLibraryOrder.map((look, index) => <li key={look.id}>{index + 1}. {look.label}</li>)}
                     </ol>}

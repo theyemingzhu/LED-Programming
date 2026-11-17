@@ -24,8 +24,7 @@
   font-weight: 700;
 }
 
-.pl-order-help-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pl-order-help, .pl-stack-order-help { margin: 6px 0 12px; color: var(--text-mid); font-size: 12px; line-height: 1.45; }
+.pl-stack-order-help { margin: 4px 0 6px; color: var(--text-mid); font-size: 12px; line-height: 1.45; }
 .pl-order-jump { flex: none; min-height: 44px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .pl-back-to-order { display: none; margin: -6px 0 4px; }
 .pl-stack-selection-preview { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0; padding: 8px 10px; list-style: none; border: 1px solid var(--accent-line); border-radius: 7px; background: var(--accent-soft); font-size: 12px; }
@@ -33,7 +32,7 @@
 .pl-repeat-feedback { margin: 8px 0; color: var(--danger); font-size: 12px; }
 .pl-stack-list { display: grid; gap: 7px; }
 .pl-stack-card {
-  padding: 10px;
+  padding: 6px 8px;
   border: 1px solid var(--border-soft);
   border-radius: 9px;
 }
@@ -67,7 +66,7 @@
 .pl-project-save-status { margin: -2px 0 12px; color: var(--text-mid); font-size: 12px; }
 .pm .pl-art.pl-art-combo { display: flex; align-items: stretch; justify-content: stretch; gap: 1px; }
 .pm .pl-art.pl-art-combo .pl-art-slice { display: block; flex: 1 1 0; min-width: 5px; height: 100%; }
-.pl-row-stack-details { grid-column: 3 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: -2px 0 8px; }
+.pl-row-stack-details { grid-column: 3 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; }
 .pl-row-stack-details .pl-stack-assignment-list { flex: 0 0 100%; margin-top: 2px; }
 
 @media (max-width: 700px) {
@@ -78,9 +77,9 @@
 /* Connection and transfer actions sit with the card facts they affect. */
 .pl-card-tools {
   display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--border-hair);
 }
 .pm .pl-card-tools .pl-hostrow {
@@ -106,6 +105,7 @@
   }
   .pm .pl-list > .sec-h {
     margin-inline: -8px;
+    padding-inline: 8px;
   }
   .pm .pl-row {
     grid-template-columns: 44px minmax(0, 1fr) 24px;

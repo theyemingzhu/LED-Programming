@@ -606,7 +606,7 @@
 .la-mapping-details summary { min-height: 36px; padding: 8px; cursor: pointer; }
 .la-mapping-list { display: grid; gap: 5px; padding: 4px 10px 10px; font-family: var(--font-mono); }
 @media (max-width: 500px) {
-  .la-section-pattern-action { min-height: 44px; text-align: left; margin-left: 28px; }
+  .la-section-pattern-action { text-align: left; }
 }
 .la-wire-n { display: inline-flex; align-items: center; gap: 4px; }
 .la-wire-n svg { opacity: .45; transition: opacity 150ms ease-out, transform 180ms cubic-bezier(.25, 1, .5, 1); }

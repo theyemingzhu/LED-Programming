@@ -2,7 +2,7 @@
   position: relative;
   overflow: visible;
   max-height: none;
-  padding-block: 6px;
+  padding-block: 3px;
 }
 
 .la-workspace-toolbar .tb-btn { white-space: nowrap; }
@@ -61,24 +61,47 @@
 }
 .la .la-led-strips-heading { min-height: 26px; padding: 4px 10px; background: transparent; }
 .la .la-gpio-group-head { min-height: 24px; padding: 4px 8px; }
-.la .la-gpio-group .la-strip-item.is-editing .la-strip-row { padding-block: 1px; }
-.la .la-gpio-group .la-strip-item.is-editing .la-strip-row button { min-height: 34px; }
+.la .la-gpio-group .la-strip-row button { min-height: 32px; }
 .la .la-strip-settings-head { padding-bottom: 2px; gap: 4px 6px; }
 .la .la-strip-settings-head:has(> .la-data-route > div:only-child) {
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
 }
 .la .la-strip-settings-head .la-data-route > div { gap: 2px 5px; }
 .la .la-strip-settings-head .la-row-count {
-  height: 34px; gap: 2px; background: transparent; border: 0;
+  height: 32px; gap: 2px; background: transparent; border: 0;
 }
 .la .la-strip-settings-head .la-row-count button {
-  width: 30px; min-width: 30px; height: 34px; min-height: 34px; padding: 0;
+  width: 30px; min-width: 30px; height: 32px; min-height: 32px; padding: 0;
 }
 .la .la-strip-settings-head .la-row-count button:hover:not(:disabled) { background: var(--bg-elev-2); }
 .la .la-strip-settings-head .la-row-count input {
-  width: 38px; height: 34px; min-height: 34px; padding: 0 2px;
+  width: 38px; height: 32px; min-height: 32px; padding: 0 2px;
   border: 0; border-radius: 0;
   background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 24px 1px no-repeat;
+}
+.la .la-strip-toolbar .la-total-led-field {
+  min-height: 32px;
+  gap: 2px;
+  background: transparent;
+  border: 0;
+}
+.la .la-strip-toolbar .la-total-led-field .la-inline-unit {
+  order: -1;
+  margin-inline-end: auto;
+  color: var(--text-mid);
+}
+.la .la-strip-toolbar .la-total-led-field .btn {
+  width: 30px; min-width: 30px; height: 32px; min-height: 32px; padding: 0;
+  background: transparent; border: 0; box-shadow: none;
+}
+.la .la-strip-toolbar .la-total-led-field .btn:hover:not(:disabled) { background: var(--bg-elev-2); }
+.la .la-strip-toolbar .la-total-led-field input {
+  flex: 0 0 62px; width: 62px; min-height: 32px; height: 32px; padding: 0 2px;
+  text-align: center; border: 0; border-radius: 0;
+  background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 46px 1px no-repeat;
+}
+.la .la-total-led-field :is(button,input):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px;
 }
 
 .la-artwork-role button { max-width: 100%; }
@@ -100,19 +123,19 @@
   .la .toolbar.la-workspace-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 4px;
-    padding: 5px 8px;
+    gap: 2px 4px;
+    padding: 3px 8px;
     z-index: 39;
   }
   .la .la-workspace-toolbar .la-create-tools { grid-column: 1 / -1; }
   .la .la-workspace-toolbar .tb-btn,
   .la .la-workspace-toolbar .la-zoom button {
-    min-height: 44px;
+    min-height: 34px;
     justify-content: center;
     padding-inline: 8px;
   }
   .la .la-workspace-toolbar .tb-btn.icon,
-  .la .la-workspace-toolbar .la-zoom button { min-width: 44px; }
+  .la .la-workspace-toolbar .la-zoom button { min-width: 34px; }
   .la .la-workspace-toolbar .la-zoom .zv { display: none; }
   .la .la-workspace-toolbar .la-preview-trigger { display: inline-flex; }
   .la .la-workspace-toolbar .la-preview-backdrop {

@@ -8,7 +8,7 @@
   z-index: 3;
   top: 0;
   flex: 0 0 auto;
-  padding: 10px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border-hair);
   background: var(--bg-panel);
 }
@@ -661,12 +661,12 @@
   .la {
     --mobile-sheet-height: clamp(180px, 28dvh, 240px);
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(48px, auto) minmax(0, 1fr);
+    grid-template-rows: minmax(36px, auto) minmax(0, 1fr);
     grid-template-areas: "tool" "body";
     padding-bottom: var(--mobile-sheet-height);
   }
   .la.mode-wire { --mobile-sheet-height: clamp(300px, 44dvh, 480px); }
-  .la.inspector-collapsed { --mobile-sheet-height: 44px; }
+  .la.inspector-collapsed { --mobile-sheet-height: 36px; }
   .la .side {
     position: absolute;
     z-index: 35;
@@ -689,7 +689,7 @@
   }
   .la-sheet-handle {
     display: inline-flex;
-    min-height: 44px;
+    min-height: 36px;
     align-items: center;
     justify-content: center;
     gap: 4px;

@@ -373,8 +373,8 @@
 .la .la-strip-toolbar .la-inline-unit { padding-inline: 3px; }
 .la .la-gpio-group .la-strip-row {
   gap: 4px;
-  padding: 4px 6px;
-  min-height: 36px;
+  padding: 1px 6px;
+  min-height: 34px;
 }
 .la .la-gpio-group .la-strip-row .la-wire-n { gap: 1px; font-size: 10px; }
 .la .la-gpio-group .la-section-miniature { flex-basis: 24px; width: 24px; height: 24px; }
@@ -394,7 +394,7 @@
 .la-pattern-details { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border-soft); color: var(--text-mid); font-size: 11px; }
 .la-pattern-details > span { margin-inline-end: auto; min-width: 0; overflow-wrap: anywhere; }
 .la .la-pattern-details > .btn {
-  flex: 0 0 auto; min-height: 34px; padding-inline: 6px;
+  flex: 0 0 auto; min-height: 32px; padding-inline: 6px;
   border: 0; background: transparent; box-shadow: none;
   color: var(--accent-hi); text-decoration: underline; text-underline-offset: 3px;
 }
@@ -405,13 +405,11 @@
 .la .la-strip-menu-popover .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 @media (max-width: 600px), (pointer: coarse) {
   .la .la-strip-toolbar .la-add-strip,
-  .la .la-strip-toolbar .la-total-led-field,
   .la .la-strip-connection .btn,
   .la .la-strip-connection .la-gpio-select,
   .la .la-strip-menu > summary,
   .la .la-strip-menu-popover .btn,
-  .la .la-divide-toggle,
-  .la .la-gpio-group .la-section-pattern-action { min-height: 44px; }
+  .la .la-divide-toggle { min-height: 44px; }
 }
 
 /* Keep artwork creation, the project total, and selected-strip edits distinct. */
