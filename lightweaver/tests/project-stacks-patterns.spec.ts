@@ -261,6 +261,33 @@ test('a changed section map asks for review before updating a stack', async ({ p
   await expect(page.getByTestId('stack-review')).toHaveCount(0);
 });
 
+test('an outdated playlist stack opens its section review from the install warning', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'playlist-stack-needs-section-review';
+  const look = {
+    ...namedLook('outdated-stack', 'Old arrangement'),
+    sectionLooks: { 'section-that-no-longer-exists': { patternId: 'fire' } },
+  };
+  project.devices.standaloneController.looks = [look];
+  project.devices.standaloneController.playlist = [
+    { id: 'combo-outdated', type: 'combo', lookId: look.id, label: look.label, enabled: true },
+  ];
+  await page.addInitScript(saved => localStorage.setItem('lw_autosave_v3', JSON.stringify(saved)), project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern');
+
+  const notice = page.getByTestId('hardware-configuration-warning');
+  await expect(notice).toContainText(look.label);
+  await expect(notice.getByRole('button', { name: 'Fix automatically' })).toHaveCount(0);
+  await notice.getByRole('button', { name: 'Review sections' }).click();
+  const review = page.getByTestId('stack-review');
+  await expect(review).toBeVisible();
+  await expect(page.getByTestId('look-name')).toHaveValue(look.label);
+  await review.getByRole('button', { name: /Use saved settings/ }).click();
+  await expect(review).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+});
+
 test('failed browser persistence keeps the stack draft and offers retry', async ({ page }) => {
   await openStackProject(page, 'stack-quota-retry');
   await newStack(page);

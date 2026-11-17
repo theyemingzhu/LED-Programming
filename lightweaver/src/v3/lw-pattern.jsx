@@ -163,6 +163,7 @@ function lookDeletionState({ looks, playlist, activeLookId, controls }) {
 }
 
 const sectionOrderKey = projectId => `lw_pattern_section_display_v1:${String(projectId || 'default')}`;
+const PATTERN_DRAG_TYPE = 'application/x-lightweaver-pattern';
 function readSectionDisplayOrder(projectId) {
   try {
     const value = JSON.parse(window.localStorage.getItem(sectionOrderKey(projectId)) || '[]');
@@ -580,6 +581,14 @@ function writeSectionDisplayOrder(projectId, ids) {
     const chooseLedMode = mode => {
       setLedMode(mode);
       try { localStorage.setItem('lw_led_mode', mode); } catch { /* private mode */ }
+    };
+    const [tileShape, setTileShape] = useState(() => {
+      try { return localStorage.getItem('lw_pattern_tile_shape') === 'square' ? 'square' : 'horizontal'; }
+      catch { return 'horizontal'; }
+    });
+    const chooseTileShape = shape => {
+      setTileShape(shape);
+      try { localStorage.setItem('lw_pattern_tile_shape', shape); } catch { /* private mode */ }
     };
     const patternSentinelRef = useRef(null);
     useEffect(() => { setVisibleCount(PATTERN_PAGE); }, [cat, q]);
@@ -1245,6 +1254,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       });
     }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
     const dragSectionId = useRef('');
+    const [patternDropTargetId, setPatternDropTargetId] = useState('');
     const moveDisplayedSection = (sourceId, targetId) => {
       if (!sourceId || !targetId || sourceId === targetId) return;
       const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
@@ -1268,6 +1278,16 @@ function writeSectionDisplayOrder(projectId, ids) {
     const bankOriginRef = useRef(null);
     const cardHoldsLine = useMemo(() => cardSectionSummary(sectionTargets, cardZonesPayload), [sectionTargets, cardZonesPayload]);
     const sectionCount = sectionTargets.filter(target => target.kind === 'section').length;
+    const showCopyToSections = selectedTarget?.kind === 'section' && sectionCount > 1;
+    const showDivideLayoutLink = sectionCount <= 1 && layoutReturnStrip;
+    const openSectionLayout = () => {
+      if (layoutReturnStrip) {
+        selectStrip(layoutReturnStrip);
+        window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
+      } else {
+        window.location.hash = '#screen=layout&mode=draw';
+      }
+    };
     const currentComboLabel = (() => {
       const sections = effectiveSectionTargets.filter(t => t.kind === 'section');
       if (sections.length > 2) return `${sections.length}-layer mix`;
@@ -1334,15 +1354,14 @@ function writeSectionDisplayOrder(projectId, ids) {
       } catch (error) {
         return { runtimePackage: null, error };
       }
-    }, [projectId, projectName, strips, board, compiledWiring, layoutSymmetry, sidesMirrored, standaloneController]);
+    }, [projectId, projectName, strips, board, wiring, compiledWiring, layoutSymmetry, sidesMirrored, symSettings, standaloneController]);
     const runtimePackage = runtimeBuild.runtimePackage;
     const hardwareConfigurationIssue = runtimeBuild.error
       ? String(runtimeBuild.error.message || runtimeBuild.error).replace('is already owned by an LED output or another control', 'is already used by an LED output or another control')
       : '';
-    const encoderPins = standaloneController?.controls?.encoder || {};
-    const canRemoveDuplicateAlternatePress = hardwareConfigurationIssue
-      && Number(encoderPins.press) >= 0
-      && Number(encoderPins.press) === Number(encoderPins.alternatePress);
+    const stackNeedingSectionReviewId = runtimeBuild.error?.code === 'stack-sections-changed'
+      ? runtimeBuild.error.lookId
+      : '';
     const safeProjectName = (projectName || 'lightweaver-piece').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
     const updateController = (patch) => {
@@ -1366,14 +1385,6 @@ function writeSectionDisplayOrder(projectId, ids) {
             : current.controls,
         };
       });
-    };
-
-    const removeDuplicateAlternatePress = () => {
-      const result = updateController({ controls: { encoder: { alternatePress: -1 } } });
-      if (result?.ok === false) {
-        setStatusKind('err');
-        setStatus(result.errors?.[0]?.message || 'Open wiring to change the duplicate GPIO assignment.');
-      }
     };
 
     const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 0, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
@@ -1670,16 +1681,17 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (allTarget && connected) scheduleLivePreview(shared, allTarget, 80);
     };
 
-    const updatePreviewLook = (patch, { push = true } = {}) => {
+    const updatePreviewLook = (patch, { push = true, target = selectedTarget } = {}) => {
       if (editingColorJourney) {
         setLookSaveState('Open this Color Journey in Lab to change its colors, timing, or movement.');
         return null;
       }
-      if (!selectedTarget) return null;
-      const nextLook = normalizeSectionVisualLook({ ...look, ...patch });
-      setDraftLooks(prev => ({ ...prev, [selectedTarget.id]: nextLook }));
+      if (!target) return null;
+      const previousLook = target.id === selectedTarget?.id ? look : resolveDraftTargetLook(target);
+      const nextLook = normalizeSectionVisualLook({ ...previousLook, ...patch });
+      setDraftLooks(prev => ({ ...prev, [target.id]: nextLook }));
       setLookSaveState('');
-      if (push) scheduleLivePreview(nextLook, selectedTarget, 80, { expectedControlPatch: patch });
+      if (push) scheduleLivePreview(nextLook, target, 80, { expectedControlPatch: patch });
       return nextLook;
     };
 
@@ -1861,7 +1873,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       }).catch(() => {}).finally(() => { flashInFlightRef.current = false; });
     };
 
-    const selectTarget = (target) => {
+    const selectTarget = (target, { preview = true } = {}) => {
       if (!target) return;
       invalidatePendingPreview();
       setSelectedTargetId(target.id);
@@ -1873,6 +1885,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           ? target.id
           : (previewTargetIds.includes(previous.lastTargetId) ? previous.lastTargetId : previewTargetIds[0] || ''),
       }));
+      if (!preview) return;
       if (!connected) {
         setStatusKind('err');
         setStatus(`Not connected to the card, so the lights can't follow this selection. Use Connect to card in the bottom bar.`);
@@ -2078,6 +2091,11 @@ function writeSectionDisplayOrder(projectId, ids) {
       setNewStackResumeMessage('');
       setExpandedStackId(action === 'edit' ? saved.id : null);
       setLibraryTab('stacks');
+    };
+    const openStackReview = useRef(null);
+    openStackReview.current = lookId => {
+      const savedLook = savedLooks.find(saved => saved.id === lookId);
+      if (savedLook) selectSavedStack(savedLook, true, 'edit');
     };
 
     // ── handlers ────────────────────────────────────────────────────────
@@ -2522,7 +2540,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
 
     // Select a browse card: pattern -> preview; saved mix -> apply look.
-    const selectCard = (p, { preview = true } = {}) => {
+    const selectCard = (p, { preview = true, target = selectedTarget } = {}) => {
       if (handoffInvalid) return;
       if (p.mix) {
         const realLook = findSavedLook(p.id);
@@ -2562,8 +2580,23 @@ function writeSectionDisplayOrder(projectId, ids) {
       setActivePatternId(p.id);
       if (!editingSavedLook) setMixName('');
       setLookSaveState('');
-      const nextLook = updatePreviewLook({ patternId: p.id }, { push: false });
-      scheduleBrowseLivePreview(nextLook, selectedTarget);
+      const nextLook = updatePreviewLook({ patternId: p.id }, { push: false, target });
+      scheduleBrowseLivePreview(nextLook, target);
+    };
+
+    const canDropPattern = (event, target) => target?.kind === 'section'
+      && !handoffInvalid && !editingColorJourney
+      && event.dataTransfer.types.includes(PATTERN_DRAG_TYPE);
+
+    const dropPatternOnSection = (event, target) => {
+      setPatternDropTargetId('');
+      const patternId = event.dataTransfer.getData(PATTERN_DRAG_TYPE);
+      const pattern = customPatternById.get(patternId) || REAL_PATTERN_BY_ID.get(patternId);
+      if (!pattern || pattern.mix) return;
+      setBankOriginId('');
+      bankOriginRef.current = null;
+      selectTarget(target, { preview: false });
+      selectCard(pattern, { target });
     };
 
     const copyConfig = async () => {
@@ -2911,30 +2944,28 @@ function writeSectionDisplayOrder(projectId, ids) {
       });
     }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
 
+    const stackReviewIsOpen = stackNeedingSectionReviewId
+      && expandedStackId === stackNeedingSectionReviewId && libraryTab === 'stacks';
     useEffect(() => {
-      if (!hardwareConfigurationIssue) {
+      if (!hardwareConfigurationIssue || stackReviewIsOpen) {
         dismissNoticeKey('hardware-configuration-warning');
         return;
       }
-      // Two buttons existed in the old box: "Fix automatically" (one-click,
-      // only offered when the fix is unambiguous) and "Fix wiring" (always
-      // offered, navigates to Layout). When both are available the automatic
-      // fix is strictly better, so it is the notice's action and "Fix wiring"
-      // is dropped — tests/patterns-v3.spec.ts's own duplicate-encoder test
-      // only exercises the case where "Fix automatically" is ABSENT, so
-      // "Fix wiring" stays the action in that (tested) case.
       publishNotice({
         key: 'hardware-configuration-warning',
         testId: 'hardware-configuration-warning',
         tone: 'error',
-        title: 'Hardware setup needs attention.',
-        body: `${hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.`,
-        source: 'pattern-hardware',
-        action: canRemoveDuplicateAlternatePress
-          ? { label: 'Fix automatically', onSelect: removeDuplicateAlternatePress }
+        title: stackNeedingSectionReviewId ? 'Saved look needs section review.' : 'Hardware setup needs attention.',
+        body: stackNeedingSectionReviewId
+          ? hardwareConfigurationIssue
+          : `${hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.`,
+        source: stackNeedingSectionReviewId ? 'pattern-stack-review' : 'pattern-hardware',
+        action: stackNeedingSectionReviewId
+          ? { label: 'Review sections', onSelect: () => openStackReview.current(stackNeedingSectionReviewId) }
           : { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
       });
-    }, [hardwareConfigurationIssue, canRemoveDuplicateAlternatePress]);
+      if (stackNeedingSectionReviewId) return () => dismissNoticeKey('hardware-configuration-warning');
+    }, [hardwareConfigurationIssue, stackNeedingSectionReviewId, stackReviewIsOpen]);
 
     useEffect(() => {
       if (!isPatternRecoveryConfirmFlow) {
@@ -3216,6 +3247,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                     </div>
                   </div>
                   <div
+                    className="pm-project-preview"
                     data-testid="pattern-project-preview"
                     data-preview-led-count={projectPreviewStrip?.pts?.length || 0}
                     data-preview-order={(projectPreviewStrip?.order || []).join(',')}
@@ -3298,11 +3330,33 @@ function writeSectionDisplayOrder(projectId, ids) {
                        const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
                        return <div
                          key={row.id}
-                         className={`pm-section-entry${selected ? ' on' : ''}`}
+                         className={`pm-section-entry${canReorder ? '' : ' is-all'}${selected ? ' on' : ''}${patternDropTargetId === row.id ? ' is-pattern-drop-target' : ''}`}
                          draggable={canReorder}
                          onDragStart={event => { if (!canReorder) return; dragSectionId.current = row.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.id); }}
-                         onDragOver={event => { if (canReorder && dragSectionId.current) event.preventDefault(); }}
-                         onDrop={event => { event.preventDefault(); moveDisplayedSection(dragSectionId.current, row.id); dragSectionId.current = ''; }}
+                         onDragOver={event => {
+                           if (canDropPattern(event, target)) {
+                             event.preventDefault();
+                             event.dataTransfer.dropEffect = 'copy';
+                             setPatternDropTargetId(row.id);
+                           } else if (canReorder && dragSectionId.current) {
+                             event.preventDefault();
+                           }
+                         }}
+                         onDragLeave={event => {
+                           if (!event.currentTarget.contains(event.relatedTarget)) {
+                             setPatternDropTargetId(previous => previous === row.id ? '' : previous);
+                           }
+                         }}
+                         onDrop={event => {
+                           if (canDropPattern(event, target)) {
+                             event.preventDefault();
+                             dropPatternOnSection(event, target);
+                           } else if (canReorder && dragSectionId.current) {
+                             event.preventDefault();
+                             moveDisplayedSection(dragSectionId.current, row.id);
+                             dragSectionId.current = '';
+                           }
+                         }}
                          onDragEnd={() => { dragSectionId.current = ''; }}
                        ><button
                          type="button"
@@ -3313,13 +3367,18 @@ function writeSectionDisplayOrder(projectId, ids) {
                          onClick={() => chooseSectionLook(target)}
                        >
                          <span className="pm-section-identity"><strong>{rowLabel}</strong><small data-testid={sidesMeta ? `section-meta-${row.id}` : undefined}>{sidesMeta || (row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`)}</small></span>
-                         <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
+                         {(canReorder || row.patternId) && <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>}
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
-                       </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
+                       </button>{canReorder ? <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
                          <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
                          <button type="button" data-testid={`section-move-up-${row.id}`} aria-label={`Move ${row.label} up in display order`} disabled={rowIndex <= 1} onClick={() => nudgeDisplayedSection(row.id, -1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg></button>
                          <button type="button" data-testid={`section-move-down-${row.id}`} aria-label={`Move ${row.label} down in display order`} disabled={rowIndex >= displayedSectionRows.length - 1} onClick={() => nudgeDisplayedSection(row.id, 1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
-                       </span>}</div>;
+                       </span> : <button
+                         type="button"
+                         className="btn pm-section-layout"
+                         data-testid={layoutReturnStrip ? 'return-to-layout-section' : sectionCount <= 1 ? 'divide-in-layout' : 'edit-section-layout'}
+                         onClick={openSectionLayout}
+                       >{layoutReturnStrip ? 'Back to Layout' : sectionCount <= 1 ? 'Divide in Layout' : 'Edit layout'}</button>}</div>;
                      })}
                    </div>
                   {selectedTarget?.kind === 'section' && !isSideTarget(selectedTarget, layoutSymmetry) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
@@ -3330,20 +3389,14 @@ function writeSectionDisplayOrder(projectId, ids) {
                         Open this strip in Layout
                       </button>{' '}to make separate named sections. If Add split is unavailable, adjust its Advanced wiring runs first.
                     </p>}
-                  {/* One status line about sections: what the card holds, read from
-                      the card itself. Empty until the card has been read. */}
-                  <div className="pm-section-footer">
+                  </div>
+                  {(cardHoldsLine || showDivideLayoutLink || showCopyToSections) && <div className="pm-section-footer">
                     {cardHoldsLine && <span className="pm-cardholds" data-testid="card-holds" title={cardHoldsLine}>{cardHoldsLine}</span>}
-                    {sectionCount <= 1 &&
+                    {showDivideLayoutLink &&
                       <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
                     }
-                    {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
-                     selectStrip(layoutReturnStrip);
-                     window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
-                   }}>Back to Layout</button>}
-                    {sectionCount > 1 && !layoutReturnStrip && <button type="button" className="wordlink" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Edit layout</button>}
-                    {selectedTarget?.kind === 'section' && sectionCount > 1 && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
-                  </div>
+                    {showCopyToSections && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
+                  </div>}
                   {copyToSectionsOpen && <div className="project-stack-copy" data-testid="stack-copy-panel">
                     <strong>Copy {targetLabel(selectedTarget)} settings to:</strong>
                     {sectionTargets.filter(target => target.kind === 'section' && target.id !== selectedTargetId).map(target => <label key={target.id}>
@@ -3352,7 +3405,6 @@ function writeSectionDisplayOrder(projectId, ids) {
                     <button type="button" className="btn" disabled={!copyDestinations.length} onClick={copySettingsToSections}>Copy settings</button>
                     <button type="button" className="btn" onClick={() => setCopyToSectionsOpen(false)}>Cancel</button>
                   </div>}
-                  </div>
                 </div>
 
                 {/* browse */}
@@ -3423,7 +3475,16 @@ function writeSectionDisplayOrder(projectId, ids) {
                       <button type="button" aria-pressed={ledMode === 'gradient'}
                               className={ledMode === 'gradient' ? 'on' : undefined}
                               onClick={() => chooseLedMode('gradient')}>Gradient</button>
-                    </div></div>
+                    </div>
+                    <div className="pm-ledmode" role="group" aria-label="Pattern tile shape">
+                      <button type="button" aria-pressed={tileShape === 'horizontal'}
+                              className={tileShape === 'horizontal' ? 'on' : undefined}
+                              onClick={() => chooseTileShape('horizontal')}>Horizontal</button>
+                      <button type="button" aria-pressed={tileShape === 'square'}
+                              className={tileShape === 'square' ? 'on' : undefined}
+                              onClick={() => chooseTileShape('square')}>Square</button>
+                    </div>
+                  </div>
                   </div>
                   <div className="pm-bank-filters">
                   <div className="search">{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
@@ -3438,8 +3499,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                       effect above) instead of living in document flow here,
                       so it no longer needs scrolling into view when the hero
                       status is off-screen — it is always visible. */}
-                  <div className="pm-cards">
-                     {filtered.slice(0, visibleCount).map((p) => {
+                  <div className={`pm-cards${tileShape === 'square' ? ' is-square' : ''}`}>
+                     {filtered.slice(0, visibleCount).map((p, index) => {
                        const cardInPlaylist = inPlaylist(p);
                        const savedMix = p.mix ? findSavedLook(p.id) : null;
                        const mixPairs = Object.entries(savedMix?.sectionLooks || {}).map(([id, sectionLook]) => {
@@ -3457,7 +3518,20 @@ function writeSectionDisplayOrder(projectId, ids) {
                            : (mixPairs.length ? mixPairs.slice(0, 2).join(' · ') : `${patternNameFor(savedMix?.defaultLook?.patternId)} on all sections`);
                        return (
                     <div key={`${p.mix ? 'mix' : 'pattern'}:${p.id}`} className="pmcard-wrap">
-                      <button type="button" className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")} data-pattern-id={p.id} aria-pressed={p.id === selId} onClick={() => selectCard(p)}>
+                      <button
+                        type="button"
+                        className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")}
+                        data-pattern-id={p.id}
+                        aria-pressed={p.id === selId}
+                        draggable={!p.mix && !editingColorJourney}
+                        onDragStart={event => {
+                          if (p.mix || editingColorJourney) return;
+                          event.dataTransfer.effectAllowed = 'copy';
+                          event.dataTransfer.setData(PATTERN_DRAG_TYPE, p.id);
+                        }}
+                        onDragEnd={() => setPatternDropTargetId('')}
+                        onClick={() => selectCard(p)}
+                      >
                         {/* Speed rides the LED window's top-right corner; the
                             playlist star takes the row slot it used to hold.
                             Speed is a property of the preview you are looking
@@ -3471,6 +3545,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
                           {p.mix && <span className="mixtag">{p.projectOnly ? 'Lab only' : 'mix'}</span>}
+                          <span className="pmcard-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
                         </div>
                         <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
                        </button>
