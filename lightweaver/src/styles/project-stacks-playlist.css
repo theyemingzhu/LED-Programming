@@ -256,11 +256,18 @@
   border: 1px solid var(--border-hair);
 }
 .pm.pl-workspace .pl-transport { padding: 6px 8px; }
-.pm.pl-workspace .pl-transport-actions { gap: 4px; flex-wrap: wrap; }
+.pm.pl-workspace .pl-transport-actions {
+  gap: 4px;
+  flex-wrap: wrap;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+}
 .pm.pl-workspace .pl-transport-actions > .btn {
   min-height: 30px;
   height: 30px;
-  padding: 0 6px;
+  padding: 0 4px;
+  gap: 4px;
   font-size: 12px;
 }
 @media (max-width: 640px) {
