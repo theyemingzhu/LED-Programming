@@ -249,20 +249,27 @@ for (const viewport of VIEWPORTS) {
       await expect(playback).toHaveText('Pause');
       await expect(page.locator('.pl-row')).toHaveCount(CARD_PLAYLIST_ENTRY_LIMIT);
       await page.locator('.screen-scroll').evaluate(node => { node.scrollTop = 0; });
-      const firstRow = (await page.locator('.pl-row').first().boundingBox())!;
-      const footer = (await page.locator('.status-bar').boundingBox())!;
-      for (const control of [
-        page.getByRole('button', { name: 'Install playlist on card' }),
-        page.getByTestId('playlist-fade-seconds'),
-        page.getByTestId('playlist-enabled-toggle'),
-        page.getByRole('button', { name: 'Reset live', exact: true }),
-        playback,
-      ]) {
-        const box = (await control.boundingBox())!;
-        expect(box.y).toBeGreaterThanOrEqual(0);
-        expect(box.y + box.height).toBeLessThanOrEqual(Math.min(firstRow.y, footer.y));
-        expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      for (const useFallbackFont of [false, true]) {
+        await page.evaluate(useFallback => {
+          if (useFallback) document.documentElement.style.setProperty('--font-ui', 'system-ui');
+          else document.documentElement.style.removeProperty('--font-ui');
+        }, useFallbackFont);
+        const firstRow = (await page.locator('.pl-row').first().boundingBox())!;
+        const footer = (await page.locator('.status-bar').boundingBox())!;
+        for (const control of [
+          page.getByRole('button', { name: 'Install playlist on card' }),
+          page.getByTestId('playlist-fade-seconds'),
+          page.getByTestId('playlist-enabled-toggle'),
+          page.getByRole('button', { name: 'Reset live', exact: true }),
+          playback,
+        ]) {
+          const box = (await control.boundingBox())!;
+          expect(box.y).toBeGreaterThanOrEqual(0);
+          expect(box.y + box.height).toBeLessThanOrEqual(Math.min(firstRow.y, footer.y));
+          expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+        }
       }
+      await page.evaluate(() => document.documentElement.style.removeProperty('--font-ui'));
       await playback.click();
       await expect(playback).toHaveText('Play');
       expect(card.state.playlistPlaying).toBe(false);
