@@ -94,12 +94,7 @@
   .pm .pl-list {
     padding-inline: 4px;
   }
-  .pm .pl-list .pl-timing {
-    padding: 8px;
-    margin-inline: -4px;
-    gap: 4px 8px;
-  }
-  .pm .pl-list .pl-timing-input {
+  .pm .pl-timing .pl-timing-input {
     width: 52px;
     min-height: 30px;
     padding-block: 0;
@@ -251,5 +246,27 @@
   .pm.pl-workspace .pm-actions { justify-content: flex-start; }
   .pm.pl-workspace .pl-install-location { display: none; }
   .pm.pl-workspace .pl-timing-note { font-family: var(--font-ui); }
-  .pm.pl-workspace .pl-list .pl-timing-switch { margin-left: auto; }
+  .pm.pl-workspace .pl-timing-switch { margin-left: auto; }
+}
+
+.pm.pl-workspace .pm-main > .pl-timing {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  gap: 4px 8px;
+  border: 1px solid var(--border-hair);
+}
+.pm.pl-workspace .pl-transport { padding: 6px 8px; }
+.pm.pl-workspace .pl-transport-actions { gap: 4px; flex-wrap: wrap; }
+.pm.pl-workspace .pl-transport-actions > .btn {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .pm.pl-workspace .pm-main > .pl-timing {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .pm.pl-workspace .pl-timing-note { grid-column: 1 / -1; text-align: left; }
 }

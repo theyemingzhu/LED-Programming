@@ -116,6 +116,7 @@ async function mockConnectedTimedCard(
 const VIEWPORTS = [
   { label: 'desktop', width: 1280, height: 900 },
   { label: '390px', width: 390, height: 844 },
+  { label: '320px', width: 320, height: 760 },
 ];
 
 for (const viewport of VIEWPORTS) {
@@ -236,6 +237,38 @@ for (const viewport of VIEWPORTS) {
         await expect(transportStatus).toContainText('Playing');
         await page.screenshot({ path: 'test-results/playlist-390.png', fullPage: true });
       }
+    });
+
+    test('long playlist keeps timing, reset and playback above its entries', async ({ page }) => {
+      const project = makeTimedPlaylistProject({ count: CARD_PLAYLIST_ENTRY_LIMIT });
+      const card = await mockConnectedTimedCard(page, project, `lw-playlist-long-${viewport.label}`);
+      await gotoPlaylist(page, project);
+      await page.getByTestId('playlist-enabled-toggle').click();
+      await page.getByRole('button', { name: 'Install playlist on card' }).click();
+      const playback = page.getByTestId('playlist-play-toggle');
+      await expect(playback).toHaveText('Pause');
+      await expect(page.locator('.pl-row')).toHaveCount(CARD_PLAYLIST_ENTRY_LIMIT);
+      await page.locator('.screen-scroll').evaluate(node => { node.scrollTop = 0; });
+      const firstRow = (await page.locator('.pl-row').first().boundingBox())!;
+      const footer = (await page.locator('.status-bar').boundingBox())!;
+      for (const control of [
+        page.getByRole('button', { name: 'Install playlist on card' }),
+        page.getByTestId('playlist-fade-seconds'),
+        page.getByTestId('playlist-enabled-toggle'),
+        page.getByRole('button', { name: 'Reset live', exact: true }),
+        playback,
+      ]) {
+        const box = (await control.boundingBox())!;
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height).toBeLessThanOrEqual(Math.min(firstRow.y, footer.y));
+        expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      }
+      await playback.click();
+      await expect(playback).toHaveText('Play');
+      expect(card.state.playlistPlaying).toBe(false);
+      await playback.click();
+      await expect(playback).toHaveText('Pause');
+      expect(card.state.playlistPlaying).toBe(true);
     });
 
     test('a playlist past the 16-entry card cap says so plainly', async ({ page }) => {
