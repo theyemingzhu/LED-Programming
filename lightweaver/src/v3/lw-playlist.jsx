@@ -1144,33 +1144,61 @@ function realPatternShape(patternId) {
 
             <div className="pm-grid">
               <section className="pm-main">
-                {connected && cardPlaylistStatus &&
-                  <div className="pl-transport" data-testid="playlist-card-transport">
-                    <span className="pl-transport-status" data-testid="playlist-card-transport-status">{playlistStatusLine}</span>
-                    {cardPlaylistStatus.configured &&
-                      <div className="pl-transport-actions">
-                        {/* Transport is state, not the screen's action: Install
-                            playlist on card is the one filled button here, so
-                            Play/Pause reads as a pressed toggle (the card's own
-                            playing flag), in words. */}
-                        <button
-                          className={"btn pl-transport-toggle" + (cardPlaylistStatus.playing ? " is-on" : "")}
-                          aria-pressed={cardPlaylistStatus.playing}
-                          data-testid="playlist-play-toggle"
-                          disabled={playlistControlPending || recoveryPending}
-                          onClick={() => sendPlaylistControl(cardPlaylistStatus.playing ? 'pause' : 'play')}
-                        >
-                          {cardPlaylistStatus.playing ? 'Pause' : 'Play'}
-                        </button>
-                        <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('previous')}>Previous</button>
-                        <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('next')}>Next</button>
-                      </div>
-                    }
-                    {playlistControlError &&
-                      <p className="pl-transport-error" role="alert" data-testid="playlist-card-transport-error">{playlistControlError}</p>
-                    }
+                <div className="pl-transport" data-testid="playlist-card-transport">
+                  {connected && cardPlaylistStatus && <span className="pl-transport-status" data-testid="playlist-card-transport-status">{playlistStatusLine}</span>}
+                  <div className="pl-transport-actions">
+                    {connected && cardPlaylistStatus?.configured && <>
+                      {/* Transport is state, not the screen's action: Install
+                          playlist on card is the one filled button here, so
+                          Play/Pause reads as a pressed toggle (the card's own
+                          playing flag), in words. */}
+                      <button
+                        className={"btn pl-transport-toggle" + (cardPlaylistStatus.playing ? " is-on" : "")}
+                        aria-pressed={cardPlaylistStatus.playing}
+                        data-testid="playlist-play-toggle"
+                        disabled={playlistControlPending || recoveryPending}
+                        onClick={() => sendPlaylistControl(cardPlaylistStatus.playing ? 'pause' : 'play')}
+                      >
+                        {cardPlaylistStatus.playing ? 'Pause' : 'Play'}
+                      </button>
+                      <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('previous')}>Previous</button>
+                      <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('next')}>Next</button>
+                    </>}
+                    <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                   </div>
-                }
+                  {connected && cardPlaylistStatus && playlistControlError &&
+                    <p className="pl-transport-error" role="alert" data-testid="playlist-card-transport-error">{playlistControlError}</p>
+                  }
+                </div>
+
+                <div className="pl-timing">
+                  <label className="pl-timing-field">
+                    <span className="sf-l">Fade</span>
+                    <input
+                      type="number"
+                      className="pm-input pl-timing-input"
+                      min="0"
+                      max="10"
+                      step="0.1"
+                      value={(playlistTiming.fadeMs / 1000).toFixed(1)}
+                      onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
+                      aria-label="Fade seconds between looks"
+                      data-testid="playlist-fade-seconds"
+                    />
+                    <span className="pl-timing-unit">s</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="pl-timing-switch"
+                    aria-pressed={playlistTiming.enabled}
+                    onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
+                    data-testid="playlist-enabled-toggle"
+                  >
+                    <span aria-hidden="true" className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")} />
+                    <span>Play on the card</span>
+                  </button>
+                  <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
+                </div>
 
                 <div className="pl-list" ref={playlistOrderRef} tabIndex={-1} data-testid="playlist-order-section">
                   <div className="sec-h">
@@ -1308,34 +1336,6 @@ function realPatternShape(patternId) {
                       </article>
                     );
                   })}
-                  <div className="pl-timing">
-                    <label className="pl-timing-field">
-                      <span className="sf-l">Fade</span>
-                      <input
-                        type="number"
-                        className="pm-input pl-timing-input"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        value={(playlistTiming.fadeMs / 1000).toFixed(1)}
-                        onChange={(e) => setPlaylistFadeSeconds(e.target.value)}
-                        aria-label="Fade seconds between looks"
-                        data-testid="playlist-fade-seconds"
-                      />
-                      <span className="pl-timing-unit">s</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="pl-timing-switch"
-                      aria-pressed={playlistTiming.enabled}
-                      onClick={() => setPlaylistEnabled(!playlistTiming.enabled)}
-                      data-testid="playlist-enabled-toggle"
-                    >
-                      <span aria-hidden="true" className={"ex-toggle" + (playlistTiming.enabled ? " on" : "")} />
-                      <span>Play on the card</span>
-                    </button>
-                    <p className="pl-timing-note">Each entry plays for its length, then fades to the next{playlistTiming.enabled ? '. The order repeats.' : '.'}</p>
-                  </div>
                   {playlistTiming.enabled && playlistOverflow > 0 &&
                     <p className="pl-timing-overflow" role="status" data-testid="playlist-overflow-notice">
                       Timed playback cannot be installed with {enabledPlaylistCount} active entries. The limit is {CARD_PLAYLIST_ENTRY_LIMIT}; remove or disable {playlistOverflow} {playlistOverflow === 1 ? 'entry' : 'entries'} first. Manual dial order supports up to {CARD_PLAYLIST_LIMIT} entries.
@@ -1381,7 +1381,6 @@ function realPatternShape(patternId) {
                       <input className="pm-input" value={host} disabled={recoveryPending} onChange={(e) => persistHost(e.target.value)} style={{ maxWidth: 260 }} aria-label="Card address" />
                     </div>
                     <div className="pl-card-tools-actions">
-                      <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                       <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={copyConfig}>{I.copy}Copy chip config</button>
                       <button className="btn" disabled={Boolean(hardwareConfigurationIssue)} onClick={downloadConfig}>{I.download}Download</button>
                       <button className="btn" onClick={openCard}>{I.open}Open card page</button>
