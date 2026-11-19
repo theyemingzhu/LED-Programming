@@ -14,3 +14,11 @@ test('installed facts carry exact observation outputs and never take stale statu
   assert.equal(view.installation.outputs[0].pixels,41);
   assert.deepEqual(deriveCardSessionView({link,status:{cardId:'lw-other',bootId:'old',outputs:[{pixels:99}]}}).installation.outputs,[]);
 });
+test('an untouched starter draft is not "a draft that differs"', () => {
+  // A phone that remembers the card but never opened a design holds only the
+  // starter. Telling a client "Your draft differs" about work they never made
+  // is a false alarm on a healthy card.
+  const v = deriveCardSessionView({ link, project: { id: 'starter', fingerprint: 'bbb', layout: { starterPending: true } } });
+  assert.equal(v.draft.relationship, 'none');
+  assert.equal(v.differenceCopy, '');
+});

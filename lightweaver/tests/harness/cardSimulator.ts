@@ -343,6 +343,9 @@ function statusBody(state: CardSimulator['state']) {
       activeSlot: 'app0', pendingSlot: '', lastError: '', rollbackReason: '',
       rebootCorrelation: '', restoredFirmwareVersion: '', restoredBuildId: '',
       restoredBuildNumber: 0,
+      // A fixture may describe a card still carrying an old update outcome
+      // (the real card reports `rolled-back` long after it recovered).
+      ...((state as { firmwareUpdateOverride?: Record<string, unknown> }).firmwareUpdateOverride || {}),
     },
     pixelCapacity: { schemaLimit: 65535, allocatedBoot: 512 },
     outputInitialization: outputReadyOf(state)

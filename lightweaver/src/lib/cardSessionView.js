@@ -14,8 +14,11 @@ export function deriveCardSessionView({ link = {}, project = null, lifecycle = n
   const cardId = sanitizeProjectId(r.projectId);
   const fp = String(project?.fingerprint || project?.projectFingerprint || '').toLowerCase();
   const cardFp = String(r.projectFingerprint || '').toLowerCase();
-  let relationship = !project ? 'none' : 'unknown';
-  if (life.exactProject) relationship = 'matches';
+  // A starter nobody has touched is not a draft: it holds no owner work.
+  const untouchedStarter = project?.layout?.starterPending === true;
+  let relationship = !project || untouchedStarter ? 'none' : 'unknown';
+  if (untouchedStarter) { /* nothing to compare */ }
+  else if (life.exactProject) relationship = 'matches';
   else if (id && cardId && id !== cardId || fp && cardFp && fp !== cardFp
     || ['length-mismatch','content-mismatch'].includes(life.state)) relationship = 'differs';
   const changedDomains = life.state === 'length-mismatch' ? ['wiring'] : [];
@@ -41,7 +44,7 @@ export function deriveCardSessionView({ link = {}, project = null, lifecycle = n
     capabilities: { installedControl, draftEdit: installedControl && life.exactProject, projectReadback: current },
     summaryCode,
     primaryAction: installedControl ? 'Control installed project' : life.label,
-    differenceCopy: relationship === 'matches' ? 'Your draft matches the installed project.' : relationship === 'differs'
+    differenceCopy: untouchedStarter ? '' : relationship === 'matches' ? 'Your draft matches the installed project.' : relationship === 'differs'
       ? changedDomains.includes('wiring') ? 'Your draft has a different configured pixel count.' : 'Your draft differs from the installed project.'
       : 'The installed project and your draft have not been fully compared.',
   };
