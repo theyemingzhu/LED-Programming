@@ -62,17 +62,19 @@ was fixed at the time.
 - `docs/wiring-sizing-ui-redesign.md`, `docs/layout-redesign-plan.md`: July Wire/Size/Draw modes.
 - `todo/plans/software-first-card-flow.md`: 2026-08-11 baseline.
 
+## Words on screen — decided 2026-11-19
+
+[GLOSSARY.md](GLOSSARY.md) is the one list: **Save to card**, **Look**, the
+**Looks** screen, **Connect**, **Output** (GPIO only as a detail). A test holds
+Studio to it, and the 184 rejected words still on screen can only go down. This
+settles the naming half of the old contradictions 1 and 2. Still open: whether
+Show becomes Player, and where Playlist sits.
+
 ## Open contradictions — undecided
 
-1. **What a step is called.** The live app says Patterns, Playlist and Show. The
-   proposal says Looks, Install and Player. `owner-workflow.md` itself says
-   "consistent look terminology still needs a separate review".
-2. **The verb for writing to the card.** `TODO.md` reserves "Install" for
-   firmware and uses "Save to card" for the project. The proposal uses "Install
-   on card".
-3. **Step order.** `TODO.md`: Connect → Layout → Looks → Playlist → Install.
+1. **Step order.** `TODO.md`: Connect → Layout → Looks → Playlist → Install.
    Proposal: Card → Layout → Looks → Install (with Playlist inside it) → Player.
    `owner-workflow.md`: nine stages from Connect to Maintain, explicitly "not a
    forced nine-page wizard".
-4. **Folds.** `owner-workflow.md` says no accordions. Card Home (2026-09-11)
+2. **Folds.** `owner-workflow.md` says no accordions. Card Home (2026-09-11)
    still uses folds.
