@@ -907,6 +907,17 @@ function writeSectionDisplayOrder(projectId, ids) {
       setStatus(patternGateMessage(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery'));
     }, [invalidatePendingPreview]);
 
+    // A "not ready" refusal describes the card at the moment of the tap. When
+    // the card comes back by itself (a Wi-Fi blip, a restart), the refusal is
+    // no longer true, so it steps down without the owner pressing anything.
+    // 'blank' and 'project' refusals are about what the card holds and stay.
+    useEffect(() => {
+      if (patternCardAccess !== 'ready' || patternCardGate !== 'recovery') return;
+      setPatternCardGate('');
+      setStatusKind('');
+      setStatus('');
+    }, [patternCardAccess, patternCardGate]);
+
     // Was: a scrollIntoView effect keyed on patternCardGateSeq, bringing the
     // in-flow refusal notice back into view on a repeated tap because the
     // hero status sits far above the pattern grid. The refusal now floats in
