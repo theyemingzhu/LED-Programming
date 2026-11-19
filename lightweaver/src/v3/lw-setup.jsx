@@ -1150,7 +1150,7 @@ export function SetupScreen({
           <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openCard?.()}>Control installed project</button>
           {displaySession.differenceCopy && <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>}
           {session.draft.relationship !== 'matches' && <div className="lw-setup-banner-actions">
-            <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>
+            {currentProject?.layout?.starterPending !== true && <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>}
             <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard)}>Open installed project</button>
           </div>}
           <p>The recoverable card copy may not include original artwork or editor assets.</p>
