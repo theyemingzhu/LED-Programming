@@ -7,7 +7,7 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 
 **Live (2 fixes, 1 of 4 ships):** Studio build 2471 (PR #438): Card Home no longer calls an untouched starter "a draft that differs", and no longer offers to save that empty starter over a working card.
 **Rejected:** 70f4a99b (Patterns refusal clears on reconnect) — also wiped refusals raised while the card was ready, so an unsent tap showed nothing.
-**Needs Adrian:** 70f4a99b + 60d314dd together are now correct (reviewed) but held because 70f4a99b was rejected tonight; ship them as one change if you agree.
+**Needs Adrian:** 70f4a99b + 60d314dd together are now correct (reviewed) but held because 70f4a99b was rejected tonight; ship them as one change if you agree. The replacement durability run (v3) never pushed a branch, so anything it fixed is not on GitHub.
 
 ## Log
 
@@ -42,3 +42,4 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 05:14 Cycle: no new commits since 990b70aa (00:16). Waiting 45 min.
 - 05:59 Cycle: no new commits since 990b70aa (00:16). Waiting 45 min.
 - 06:44 Final cycle: no new commits since 990b70aa (00:16). Live studio-release.json still buildNumber 2471. Night ends here (~8 h). Batch worktree removed, local batch branches deleted; no batch branch left on the remote.
+- 07:35 Coordinator asked to also ship from `claude/overnight-durability-v3`. Measured: that branch does not exist on the remote (ls-remote shows only v2 at 990b70aa and this log branch). Nothing to review; the 8-hour window is over, so the night ends with Studio build 2471.
