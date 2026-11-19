@@ -108,3 +108,9 @@ No firmware fix is pending yet, so nothing has been flashed.
 - OPEN F3: after a 5 s drop, "The card did not answer in time. Reconnect if needed, then retry the preview command." stays with a Retry button (cardAction.js:30). Next to fix.
 - OPEN F4: during 4 s slow replies, the card screen says "Not connected" while the link is only revalidating. It clears afterwards.
 - Clean: HTTP 500, truncated status, connection cut, and every card-screen drop.
+
+## Run 3 (07:34–07:45, 2026-11-20): wrap-up only
+- Started too late to test. No new fixes; this branch equals v2 (990b70aa, live as build 2471). No draft PR needed.
+- Card read-back 07:40: lw-b0fe81f61b44, 1.2.4 signed build 2464, new boot (up 8 h, so restarted ~23:20, not by us), project lightweaver-bench-discovery-v1 rev 0 fp 48a1f978…, 41 px, 2000 mA, calibration 1/1/1, Sparkle playing, playlist empty. Matches baseline. Zero writes, zero flashes.
+- Second-browser and owner-function tables: not run.
+- Morning page: https://claude.ai/artifact/H85EWoxomhL9jMNzhdv9gA
