@@ -1148,7 +1148,7 @@ export function SetupScreen({
           <p>{displaySession.installation.name || 'Installed project'}{rememberedInstalled ? ' · Last seen' : ''}</p>
           <p>{rememberedInstalled ? 'Last seen installation · waiting for fresh card state' : session.playback.state === 'playing' ? `Playing: ${session.playback.patternId || 'card playlist'}` : session.playback.state === 'paused' ? 'Playlist paused' : session.playback.state === 'externally-driven' ? 'Playing from an external source' : 'Installed playback available'}</p>
           <button type="button" className="btn primary" data-testid="installed-control-open" disabled={!session.capabilities.installedControl} onClick={() => cardActions?.openCard?.()}>Control installed project</button>
-          <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>
+          {displaySession.differenceCopy && <p data-testid="card-draft-difference">{displaySession.differenceCopy} Your draft: {projectDisplayName}. Opening controls keeps it.</p>}
           {session.draft.relationship !== 'matches' && <div className="lw-setup-banner-actions">
             <button type="button" className="btn" data-testid="installed-draft-review" onClick={() => go('#screen=card&section=setup&task=install-project')}>Review and save draft</button>
             <button type="button" className="btn" data-testid="installed-project-open" disabled={!session.capabilities.installedControl} onClick={byOwner(resolution.kind === 'saved-match' ? loadResolvedProject : startFromCard)}>Open installed project</button>
