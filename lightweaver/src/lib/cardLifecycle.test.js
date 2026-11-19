@@ -27,6 +27,33 @@ const READY_LINK = Object.freeze({
   },
 });
 
+// Bench card lw-b0fe81f61b44, 2026-11-19: an update attempt had rolled back two
+// days earlier. The card was on the current release, playing, command-ready —
+// and repeated `firmwareUpdate.phase: 'rolled-back'` on every status read, as
+// it does until it restarts. Studio read that as a live failure: "Update rolled
+// back" in the footer of every screen and setup held on "the last card
+// operation failed", whose only button re-read the same flag.
+test('a past rollback on a card that is ready again is history, not a failure', () => {
+  const rolledBack = { phase: 'rolled-back', rollbackReason: 'new-slot-rollback-detected', restoredBuildNumber: 2407 };
+  const link = { ...READY_LINK, readiness: { ...READY_LINK.readiness, firmwareUpdate: rolledBack } };
+  const project = { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64) };
+
+  const settled = deriveCardLifecycle({ link, project });
+  assert.equal(settled.state, 'ready');
+  assert.equal(settled.label, 'Connected');
+  assert.equal(settled.reason, '');
+  assert.equal(settled.pastUpdateRolledBack, true, 'the fact is kept for the update screen to mention');
+
+  // An update THIS Studio is running, or was running, still stops the owner.
+  const own = deriveCardLifecycle({ link, project, update: { phase: 'rolled-back', reason: 'boot-health-failed' } });
+  assert.equal(own.state, 'update-rolled-back');
+  assert.equal(own.pastUpdateRolledBack, false);
+
+  // And a card that rolled back and is NOT healthy is still a failure.
+  const unwell = deriveCardLifecycle({ link: { ...link, readiness: { ...link.readiness, outputReady: false } }, project });
+  assert.equal(unwell.state, 'update-rolled-back');
+});
+
 test('one lifecycle orders exact failures ahead of generic connection copy', () => {
   const cases = [
     [{ link: { state: 'disconnected' } }, 'disconnected', 'Not connected', 'connect-card'],
@@ -53,7 +80,7 @@ test('one lifecycle orders exact failures ahead of generic connection copy', () 
       link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, requestedPixels: 41 } },
       project: { id: 'piece-a', revision: 7, fingerprint: 'a'.repeat(64), totalPixels: 39 },
     }, 'length-mismatch', 'Save to card', 'save-led-count'],
-    [{ link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, firmwareUpdate: { phase: 'rolled-back', rollbackReason: 'health-check-failed' } } } }, 'update-rolled-back', 'Update rolled back', 'recover-operation'],
+    [{ link: { ...READY_LINK, readiness: { ...READY_LINK.readiness, commandReady: false, firmwareUpdate: { phase: 'rolled-back', rollbackReason: 'health-check-failed' } } } }, 'update-rolled-back', 'Update rolled back', 'recover-operation'],
   ];
 
   for (const [input, state, label, setupTaskId] of cases) {

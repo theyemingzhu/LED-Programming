@@ -243,8 +243,19 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
     || typeof readiness.outputReady !== 'boolean'
     || !normalized(readiness.bootId);
 
+  // The card repeats a rollback on every status read until it next restarts —
+  // days, on a piece that is simply left running. When no update of Studio's
+  // own is open and the card is verified, on a known-good project and taking
+  // commands, the rollback has already done its job: there is nothing left to
+  // recover, and "read this card again" can only re-read the same flag. That
+  // is history. A rollback Studio is party to (`update`), or one that left the
+  // card unwell, is still a failure and still stops here.
+  const pastUpdateRolledBack = !update
+    && readiness.firmwareUpdate?.phase === 'rolled-back'
+    && commandReady;
+
   let state = 'disconnected';
-  if (updateEvidence?.phase === 'rolled-back') state = 'update-rolled-back';
+  if (updateEvidence?.phase === 'rolled-back' && !pastUpdateRolledBack) state = 'update-rolled-back';
   else if (['preflight', 'sending', 'verifying'].includes(updateEvidence?.phase)) state = 'updating';
   else if (['restarting', 'probation', 'recovering'].includes(updateEvidence?.phase)) state = 'update-recovering';
   else if (updateEvidence?.phase === 'blocked' && updateEvidence?.reason === 'wrong-card') state = 'wrong-card';
@@ -304,6 +315,9 @@ export function deriveCardLifecycle({ link = {}, update = null, project = null }
       : lifecycleLabel(state),
     connectionLabel: lifecycleConnectionLabel(state),
     setupTaskId: lifecycleSetupTask(state),
-    reason: normalized(updateEvidence?.reason || updateEvidence?.rollbackReason || link.reason),
+    pastUpdateRolledBack,
+    reason: normalized(pastUpdateRolledBack
+      ? link.reason
+      : (updateEvidence?.reason || updateEvidence?.rollbackReason || link.reason)),
   });
 }
