@@ -2988,7 +2988,7 @@ String runtimeFirmwareInfo() {
   doc["limits"]["looks"] = LW_MAX_LOOKS;
   doc["limits"]["zones"] = LW_MAX_ZONES;
   doc["limits"]["rangesPerZone"] = LW_MAX_RANGES_PER_ZONE;
-  doc["limits"]["configStorageBytes"] = 3968;
+  doc["limits"]["configStorageBytes"] = runtimeConfigStorageLimitBytes();
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["rssi"] = WiFi.RSSI();
   doc["wifi"]["ip"] = runtimeConfig.activeIp;

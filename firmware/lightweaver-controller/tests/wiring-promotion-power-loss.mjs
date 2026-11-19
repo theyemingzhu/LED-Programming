@@ -70,10 +70,10 @@ function assertRecoverableCommittedState(state, message) {
 const restoreBody = functionBody('restorePreviousKnownGood', 'finalizeCommittedPromotion');
 const armedRestoreBody = restoreBody.slice(restoreBody.indexOf('String previous'));
 assert.match(armedRestoreBody,
-  /String currentKnownGood = prefs\.getString\(NVS_KNOWN_GOOD_CONFIG_KEY[\s\S]*currentKnownGood == previous[\s\S]*prefs\.putString\(NVS_KNOWN_GOOD_CONFIG_KEY/,
+  /String currentKnownGood = readKnownGood\(prefs[\s\S]*currentKnownGood == previous[\s\S]*writeKnownGood\(prefs/,
   'rollback must treat an unchanged old canonical as already restored instead of appending another full string under NVS pressure');
 const restoreActions = orderedActions(armedRestoreBody, [
-  ['restore-known-good', 'prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY'],
+  ['restore-known-good', 'writeKnownGood(prefs'],
   ['disarm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, false)'],
   ['drop-journal', 'prefs.remove(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
 ]);
@@ -134,9 +134,9 @@ const saveEnd = storage.indexOf('bool stageRuntimeConfigJson(', saveStart);
 const saveBody = storage.slice(saveStart, saveEnd);
 const clearConfirmed = saveBody.indexOf('prefs.remove(NVS_CONFIRMED_ID_KEY)');
 const rejectCandidate = saveBody.indexOf('readCandidateState(prefs) != WIRING_CANDIDATE_NONE');
-const snapshotKnownGood = saveBody.indexOf('String previousCanonical = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY');
+const snapshotKnownGood = saveBody.indexOf('String previousCanonical = readKnownGood(prefs');
 const pruneLegacy = saveBody.indexOf('prefs.remove(NVS_LEGACY_CONFIG_KEY)');
-const replaceKnownGood = saveBody.indexOf('prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, json)');
+const replaceKnownGood = saveBody.indexOf('writeKnownGood(prefs, json)');
 assert.ok(clearConfirmed >= 0 && replaceKnownGood > clearConfirmed,
   'ordinary known-good writes must fence confirmed activation replay before replacing config identity');
 assert.ok(rejectCandidate >= 0 && snapshotKnownGood > rejectCandidate &&
@@ -148,7 +148,7 @@ assert.match(compactionBoundary, /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPA
 assert.doesNotMatch(saveBody.slice(replaceKnownGood), /prefs\.putString\(NVS_LEGACY_CONFIG_KEY, json\)/,
   'ordinary saves must retire the full legacy mirror instead of recreating 2x steady-state NVS pressure');
 assert.match(saveBody.slice(replaceKnownGood),
-  /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)[\s\S]*prefs\.getString\(NVS_KNOWN_GOOD_CONFIG_KEY/,
+  /prefs\.end\(\)[\s\S]*prefs\.begin\(NVS_NAMESPACE, false\)[\s\S]*readKnownGood\(prefs/,
   'the canonical replacement must be closed, reopened, and compared byte-for-byte before the live config changes');
 assert.doesNotMatch(saveBody, /putString\(NVS_WIFI_KEY|remove\(NVS_WIFI_KEY|prefs\.clear\(\)/,
   'a project install must never mutate saved WiFi or erase the namespace');
@@ -530,7 +530,7 @@ const confirmBody = functionBody('confirmCandidateRuntimeConfig', 'rollbackCandi
 const confirmPrefixWrites = orderedActions(confirmBody, [
   ['journal-old', 'prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY'],
   ['arm', 'prefs.putBool(NVS_PROMOTION_ARMED_KEY, true)'],
-  ['promote-candidate', 'prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, candidate)'],
+  ['promote-candidate', 'writeKnownGood(prefs, candidate)'],
   ['confirm-id', 'prefs.putString(NVS_CONFIRMED_ID_KEY, activationId)'],
   ['mark-none', 'writeCandidateState(prefs, WIRING_CANDIDATE_NONE)'],
 ]);
