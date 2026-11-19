@@ -1119,6 +1119,7 @@ function realPatternShape(patternId) {
                 <SetupJourneyChip cardLink={cardLink} cardLifecycle={cardLifecycle} project={currentProject} />
               </div>
               <div className="pm-actions">
+                <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
                 <button
                   className="btn primary"
                   disabled={!installGate.allowed}
@@ -1144,32 +1145,26 @@ function realPatternShape(patternId) {
 
             <div className="pm-grid">
               <section className="pm-main">
-                <div className="pl-transport" data-testid="playlist-card-transport">
+                {((connected && cardPlaylistStatus) || playlistControlError) && <div className="pl-transport" data-testid="playlist-card-transport">
                   {connected && cardPlaylistStatus && <span className="pl-transport-status" data-testid="playlist-card-transport-status">{playlistStatusLine}</span>}
-                  <div className="pl-transport-actions">
-                    {connected && cardPlaylistStatus?.configured && <>
-                      {/* Transport is state, not the screen's action: Install
-                          playlist on card is the one filled button here, so
-                          Play/Pause reads as a pressed toggle (the card's own
-                          playing flag), in words. */}
-                      <button
-                        className={"btn pl-transport-toggle" + (cardPlaylistStatus.playing ? " is-on" : "")}
-                        aria-pressed={cardPlaylistStatus.playing}
-                        data-testid="playlist-play-toggle"
-                        disabled={playlistControlPending || recoveryPending}
-                        onClick={() => sendPlaylistControl(cardPlaylistStatus.playing ? 'pause' : 'play')}
-                      >
-                        {cardPlaylistStatus.playing ? 'Pause' : 'Play'}
-                      </button>
-                      <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('previous')}>Previous</button>
-                      <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('next')}>Next</button>
-                    </>}
-                    <button className="btn" disabled={recoveryPending} onClick={resetLiveOutput}>{I.refresh}Reset live</button>
-                  </div>
-                  {connected && cardPlaylistStatus && playlistControlError &&
+                  {connected && cardPlaylistStatus?.configured && <div className="pl-transport-actions">
+                    {/* Play/Pause reflects the card's current playing flag. */}
+                    <button
+                      className={"btn pl-transport-toggle" + (cardPlaylistStatus.playing ? " is-on" : "")}
+                      aria-pressed={cardPlaylistStatus.playing}
+                      data-testid="playlist-play-toggle"
+                      disabled={playlistControlPending || recoveryPending}
+                      onClick={() => sendPlaylistControl(cardPlaylistStatus.playing ? 'pause' : 'play')}
+                    >
+                      {cardPlaylistStatus.playing ? 'Pause' : 'Play'}
+                    </button>
+                    <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('previous')}>Previous</button>
+                    <button className="btn" disabled={playlistControlPending || recoveryPending} onClick={() => sendPlaylistControl('next')}>Next</button>
+                  </div>}
+                  {playlistControlError &&
                     <p className="pl-transport-error" role="alert" data-testid="playlist-card-transport-error">{playlistControlError}</p>
                   }
-                </div>
+                </div>}
 
                 <div className="pl-timing">
                   <label className="pl-timing-field">
@@ -1262,7 +1257,7 @@ function realPatternShape(patternId) {
                         {stackSummary ? <StackArtwork summary={stackSummary} /> : <span className="pl-art"><LedRow pal={p.pal} n={5} /></span>}
                         <div className="pl-copy">
                           <strong>{displayLabel}{item.type === 'combo' && <span className="mixtag pl-look-kind">Look</span>}{item.type === 'sequence' && <span className="mixtag">recording</span>}</strong>
-                          <span className="pl-row-summary">{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : item.type === 'combo' ? `${stackSummary?.sectionCount || 0} ${stackSummary?.sectionCount === 1 ? 'section' : 'sections'}` : `${p.label} across the piece`}</span>
+                          {item.type !== 'pattern' && <span className="pl-row-summary">{item.type === 'sequence' ? `${recorded?.manifest?.fps || 24} fps recorded playback · microSD` : `${stackSummary?.sectionCount || 0} ${stackSummary?.sectionCount === 1 ? 'section' : 'sections'}`}</span>}
                           {recorded && <RecordedSequenceChoice asset={recorded} />}
                         </div>
                         <div className="pl-actions">
