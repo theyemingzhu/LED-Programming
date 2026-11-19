@@ -30,7 +30,7 @@
 // exists for screens that never received the handlers as props (Setup).
 import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import { guardedResolutionRun } from '../lib/cardProjectAdoption.js';
-import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
+import { readCardFirmwareInfoEnvelope, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { loadProductionJobFromIndexEntry, loadProductionJobIndex } from '../lib/productionJobPackage.js';
 import { readCardPatternsFromCard, readCardZonesFromCard } from '../lib/cardLiveControl.js';
 import { recoverCardLightsVerified } from '../lib/cardRecoverLights.js';
@@ -97,6 +97,7 @@ export function CardActionsProvider({ deps, children }) {
         readBrowserProjects: app.readBrowserProjects,
         readCardPatternsFromCard,
         readCardZonesFromCard,
+        readCardFirmwareInfoEnvelope,
       },
       actions: {
         replaceProject: replaceProject || app.replaceProject,

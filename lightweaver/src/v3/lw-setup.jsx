@@ -16,7 +16,7 @@ import { CARD_COMMISSIONING_CHANGED_EVENT, inspectCardCommissioning } from '../l
 import { hasResumableCommissioning, hasResumablePreservingUsbUpdate, openCardFlow } from '../lib/cardFlowEntry.js';
 import { readFirmwareUpdateSession } from '../lib/cardFirmwareUpdater.js';
 import { openLocalCardPage } from '../lib/cardBridge.js';
-import { readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
+import { readCardFirmwareInfoEnvelope, readCardProjectEvidence, readCardStatusEnvelope } from '../lib/cardPushClient.js';
 import { applyLedCountOnCard, cardStatusWithPixelCount } from '../lib/applyLedCountToCard.js';
 import { recoverCardLights } from '../lib/cardLiveControl.js';
 import { canPushDirectlyToCard, cardConnectionOptionsFor, readStoredCardHost } from '../lib/cardConnection.js';
@@ -610,7 +610,7 @@ export function SetupScreen({
       },
       getSharedCardLink: getCardLinkState,
       isCardLinkConnected,
-      io: { readCardStatusEnvelope, readCardPatternsFromCard, readCardZonesFromCard },
+      io: { readCardStatusEnvelope, readCardPatternsFromCard, readCardZonesFromCard, readCardFirmwareInfoEnvelope },
       actions: { applyCardParts },
     }, {
       strategy: 'reconstruct',

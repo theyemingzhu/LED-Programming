@@ -176,3 +176,17 @@ export function cardActionStatusLabel(state = {}) {
   if (state.status === 'confirmed') return 'Applied by Lightweaver runtime';
   return 'Previewing in Studio';
 }
+
+// The line under the pattern list on the Looks screen. With nothing sent yet
+// from this window (a fresh open, a reload, a second window) it used to read
+// "Previewing in Studio" even while the card was playing that same pattern —
+// seen on a real card 2026-11-19. When the card's own status names the pattern
+// this screen shows, say where it is playing.
+export function physicalPreviewStatusLabel(state = {}, { cardPatternId = '', screenPatternId = '', connected = false, lightsOff = false } = {}) {
+  const label = cardActionStatusLabel(state);
+  if (label === 'Applied by Lightweaver runtime') return 'Preview sent to card';
+  if (label !== 'Previewing in Studio') return label;
+  const onCard = String(cardPatternId || '').trim();
+  if (connected && !lightsOff && onCard && onCard === String(screenPatternId || '').trim()) return 'Playing on the card';
+  return label;
+}
