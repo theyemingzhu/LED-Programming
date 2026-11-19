@@ -5,9 +5,9 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 
 ## Summary (kept current)
 
-**Live:** nothing yet.
-**Rejected:** nothing yet.
-**Needs Adrian:** nothing yet.
+**Live:** Studio build 2471 (PR #438): Card Home no longer calls an untouched starter "a draft that differs", and no longer offers to save that empty starter over a working card.
+**Rejected:** 70f4a99b (Patterns refusal clears on reconnect) — also wiped refusals raised while the card was ready, so an unsent tap showed nothing.
+**Needs Adrian:** 70f4a99b + 60d314dd together are now correct (reviewed) but held because 70f4a99b was rejected tonight; ship them as one change if you agree.
 
 ## Log
 
@@ -30,3 +30,7 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 00:16 Reviewed `990b70aa` "card-workspace: untouched starter shows no draft line or save-over offer" — ACCEPT (test update for the two reds found at 00:20).
 - 00:20 Batch 3 = 3a2b3009, 208ec663, 607082e8, 001b6092, 990b70aa on 1ecb9ab1 (branch claude/overnight-batch-3). preflight Studio-only. test:unit 3146/3146, workflow tests 23/23. Browser 142/143; the red https-direct-reconnect:25 (reconnect timing, 3 workers) passed 3/3 alone, batch touches no reconnect code → contention, not a regression.
 - 00:25 SHIP 1 of 4: PR #438 merged → main f47b85b8 (build 2471). Batch branch deleted on remote (ls-remote empty). Watching Tests run 44565289582.
+- 00:39 Tests run 44565289582 on f47b85b8: success (first try, no apt failure).
+- 00:47 Deploy site 44568506509: success. Build firmware binary: success, no signer commit on main (Studio-only, as preflight said).
+- 00:48 Live proof: studio-release.json buildNumber 2471, sourceRevision f47b85b8 (= origin/main, rev-list count 2471). Served main-CNFcUASO.js contains `differenceCopy:m?"":w==="matches"?"Your draft matches…` (3a2b3009); lw-card-ByMqEEyX.js contains `starterPending)!==!0&&…"installed-draft-review"` (208ec663).
+- **Shipped — Studio build 2471**: untouched starter is not "a draft that differs" (3a2b3009); no save-over offer for an untouched starter (208ec663); tests 607082e8, 001b6092, 990b70aa. Ships used: 1 of 4.
