@@ -1985,7 +1985,9 @@ test('connected Card Home identifies the installed card without replacing the op
   // The installed card is available directly; the starter draft remains a
   // separate choice until the owner explicitly opens the card's project.
   await expect(page.getByTestId('card-installed-home')).toBeVisible();
-  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft: Untitled Project');
+  // An untouched starter is not owner work: no draft line, no save-over offer.
+  await expect(page.getByTestId('card-draft-difference')).toHaveCount(0);
+  await expect(page.getByTestId('installed-draft-review')).toHaveCount(0);
   await expect(page.getByTestId('installed-control-open')).toBeEnabled();
   await expect(page.getByTestId('installed-project-open')).toBeVisible();
   await expect(page.getByTestId('setup-active-task')).toHaveCount(0);
@@ -2231,7 +2233,9 @@ test('ready overview offers Batch production as a low-emphasis link, not a setup
     readiness: status,
   }]);
   await expect(page.getByTestId('card-installed-home')).toBeVisible();
-  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft: Untitled Project');
+  // An untouched starter is not owner work: no draft line, no save-over offer.
+  await expect(page.getByTestId('card-draft-difference')).toHaveCount(0);
+  await expect(page.getByTestId('installed-draft-review')).toHaveCount(0);
   await expect(page.getByTestId('setup-active-task')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Verify in workshop', exact: true })).toHaveCount(0);
 
