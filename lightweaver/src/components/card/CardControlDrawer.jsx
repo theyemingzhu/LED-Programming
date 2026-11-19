@@ -203,7 +203,8 @@ export function CardControlDrawer({ open, link, lifecycle = null, host, onClose,
             <p>Changes the running lights; does not save your draft. Selecting a pattern stops the current playlist. Brightness keeps the playlist running.</p>
             <div className="card-pattern-select">
               <button type="button" onClick={() => cyclePattern(-1)} disabled={mutationDisabled} aria-label="Previous pattern">Previous</button>
-              <select aria-label="Pattern" value={view.activePatternId} disabled={mutationDisabled} onChange={event => runControl({ patternId: event.target.value })}>
+              <select aria-label="Pattern" data-testid="card-control-pattern" value={view.unsavedPatternId ? '' : view.activePatternId} disabled={mutationDisabled} onChange={event => { if (event.target.value) runControl({ patternId: event.target.value }); }}>
+                {view.unsavedPatternId && <option value="">{view.unsavedPatternLabel} · playing now, not saved</option>}
                 {view.patterns.map(pattern => <option key={pattern.id} value={pattern.id}>{pattern.label}</option>)}
               </select>
               <button type="button" onClick={() => cyclePattern(1)} disabled={mutationDisabled} aria-label="Next pattern">Next</button>

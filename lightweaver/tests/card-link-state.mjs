@@ -1649,6 +1649,72 @@ assert.equal(shared.getState().readiness, null,
   closed.destroy();
 }
 
+// ── a quiet card on a DIRECT link is not the end either ─────────────────────
+// The same outage on the direct transport ended the session for good wherever
+// nothing else was polling. Localhost Studio has useCardStatus to find the
+// card again; the public https Studio does not run it, so after the reconnect
+// window closed the link sat on "Not connected" with the card back and
+// answering. The link itself now keeps asking the card it already knew.
+{
+  let answering = true;
+  let asks = 0;
+  let answerAs = 'lw-direct';
+  const direct = createCardLink({
+    host: '192.168.1.50',
+    fetchImpl: async () => {
+      asks += 1;
+      if (!answering) throw new Error('unreachable');
+      return { ok: true, json: async () => readyEnvelope(answerAs) };
+    },
+    // Idle cadence slower than the reconnect window, as in production (20s vs
+    // 15s): that gap is what made "reconnecting" never ask again.
+    directPingIntervalMs: 300,
+    pingIntervalMs: 5,
+    pingTimeoutMs: 5,
+    connectTimeoutMs: 100,
+    visibilityTarget: { hidden: false },
+  });
+  direct.dispatch({
+    type: 'direct-status', connected: true, host: '192.168.1.50',
+    card: { id: 'lw-direct' }, expectedCard: { id: 'lw-direct' },
+    readiness: readyEnvelope('lw-direct'),
+  });
+  assert.equal(direct.getState().state, 'connected-direct');
+
+  answering = false;
+  await waitFor(() => direct.getState().state === 'disconnected', 2000, 'the direct card is eventually given up on');
+  assert.equal(direct.getState().reason, 'no-answer');
+  assert.equal(direct.getState().directCardMayReturn, true,
+    'a known card that went quiet is worth asking again');
+
+  const asksWhileDown = asks;
+  await waitFor(() => asks > asksWhileDown, 2000,
+    'Studio keeps asking a direct card that went quiet');
+
+  answering = true;
+  await waitFor(() => direct.getState().state === 'connected-direct', 3000,
+    'the direct card reconnects by itself when it answers again');
+  assert.equal(direct.getState().directCardMayReturn, false);
+
+  // A different card answering on the old address is never adopted.
+  answering = false;
+  await waitFor(() => direct.getState().state === 'disconnected', 2000, 'second outage');
+  answerAs = 'lw-stranger';
+  answering = true;
+  await waitFor(() => direct.getState().reason !== 'no-answer', 2000, 'the stranger is noticed');
+  assert.equal(direct.getState().state, 'disconnected');
+  assert.equal(direct.getState().card, null);
+  assert.equal(direct.getState().directCardMayReturn, false,
+    'a wrong card stops the retry instead of being asked forever');
+  direct.destroy();
+
+  // A probe that never reached a card has nothing to keep asking.
+  const never = reduceCardLink(initialCardLinkState('192.168.1.50'), {
+    type: 'direct-status', connected: false, host: '192.168.1.50', reason: 'no-answer',
+  });
+  assert.notEqual(never.directCardMayReturn, true);
+}
+
 // ── keepalive: a miss means ASKED TWICE, answered neither time ──────────────
 // Studio pings a bridged card every 5s with a 2.5s timeout — 720 asks an hour
 // over WiFi. Scoring a miss on the first unanswered ask meant one lost packet

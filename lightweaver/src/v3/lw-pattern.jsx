@@ -40,6 +40,7 @@ import {
   copyLookToAllSections,
   deriveSectionTargets,
   deleteSavedLookFromController,
+  findSavedSectionLook,
   normalizeSavedLooks,
   normalizeSectionVisualLook,
   saveCurrentLookToController,
@@ -93,7 +94,7 @@ import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import {
   cardActionReducer,
-  cardActionStatusLabel,
+  physicalPreviewStatusLabel,
   classifyCardActionFailure,
   createCardActionState,
 } from '../lib/cardAction.js';
@@ -155,7 +156,14 @@ function applySavedLookWithSides({ patchBoard, strips, savedLook, symmetry = nul
   return next;
 }
 
+// Deleting a look changes these fields together. The controller provider
+// independently retains hardware verification and may normalize other fields.
+function lookDeletionState({ looks, playlist, activeLookId, controls }) {
+  return { looks, playlist, activeLookId, patternCycleIds: controls?.encoder?.patternCycleIds };
+}
+
 const sectionOrderKey = projectId => `lw_pattern_section_display_v1:${String(projectId || 'default')}`;
+const PATTERN_DRAG_TYPE = 'application/x-lightweaver-pattern';
 function readSectionDisplayOrder(projectId) {
   try {
     const value = JSON.parse(window.localStorage.getItem(sectionOrderKey(projectId)) || '[]');
@@ -536,15 +544,23 @@ function writeSectionDisplayOrder(projectId, ids) {
     const [libraryTab, setLibraryTab] = useState('patterns');
     const [expandedStackId, setExpandedStackId] = useState(null);
     const [newStackResumeMessage, setNewStackResumeMessage] = useState('');
+    const workspaceScrollRef = useRef(null);
+    const previewPaneRef = useRef(null);
     const stackEditorRef = useRef(null);
+    const revealLookPreview = useCallback(() => {
+      const viewport = workspaceScrollRef.current;
+      const preview = previewPaneRef.current;
+      if (!viewport || !preview) return;
+      viewport.scrollTop += preview.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    }, []);
     useEffect(() => {
       if (expandedStackId === null || libraryTab !== 'stacks') return;
       const frame = requestAnimationFrame(() => {
-        stackEditorRef.current?.scrollIntoView({ block: 'start' });
+        revealLookPreview();
         stackEditorRef.current?.querySelector('[data-testid="look-name"]')?.focus({ preventScroll: true });
       });
       return () => cancelAnimationFrame(frame);
-    }, [expandedStackId, libraryTab]);
+    }, [expandedStackId, libraryTab, revealLookPreview]);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuButtonRef = useRef(null);
     const menuRef = useRef(null);
@@ -574,11 +590,20 @@ function writeSectionDisplayOrder(projectId, ids) {
       setLedMode(mode);
       try { localStorage.setItem('lw_led_mode', mode); } catch { /* private mode */ }
     };
+    const [tileShape, setTileShape] = useState(() => {
+      try { return localStorage.getItem('lw_pattern_tile_shape') === 'square' ? 'square' : 'horizontal'; }
+      catch { return 'horizontal'; }
+    });
+    const chooseTileShape = shape => {
+      setTileShape(shape);
+      try { localStorage.setItem('lw_pattern_tile_shape', shape); } catch { /* private mode */ }
+    };
     const patternSentinelRef = useRef(null);
     useEffect(() => { setVisibleCount(PATTERN_PAGE); }, [cat, q]);
     useEffect(() => {
       if (!menuOpen) return undefined;
-      menuRef.current?.querySelector('button')?.focus();
+      [...(menuRef.current?.querySelectorAll('button:not(:disabled)') || [])]
+        .find(button => button.getClientRects().length)?.focus();
       const onKeyDown = event => {
         if (event.key !== 'Escape') return;
         event.preventDefault();
@@ -590,7 +615,10 @@ function writeSectionDisplayOrder(projectId, ids) {
     }, [menuOpen]);
     const closeColorOrder = useCallback((restoreFocus = true) => {
       setColorOrderOpen(false);
-      if (restoreFocus) requestAnimationFrame(() => colorOrderButtonRef.current?.focus());
+      if (restoreFocus) requestAnimationFrame(() => {
+        const opener = colorOrderButtonRef.current;
+        (opener?.getClientRects().length ? opener : menuButtonRef.current)?.focus();
+      });
     }, []);
     useEffect(() => {
       if (!colorOrderOpen) return undefined;
@@ -1012,7 +1040,6 @@ function writeSectionDisplayOrder(projectId, ids) {
       .find(item => item && item.id === activeLookId)?.sidesMirrored;
     const sidesSaved = typeof savedLookSidesMirrored === 'boolean' ? savedLookSidesMirrored : null;
     const showSides = hasSymmetrySides(layoutSymmetry);
-    const hasUnsavedLookChanges = Object.entries(draftLooks).some(([id, value]) => JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(id === ALL_SECTIONS_TARGET_ID ? editingSavedLook?.defaultLook || standaloneController?.defaultLook : editingSavedLook?.sectionLooks?.[id]))) || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label) || (showSides && sidesSaved !== null && sidesSaved !== (sidesMirrored !== false));
     // Opening a saved look brings back how it plays its sides. Keyed on the
     // look id only, so choosing the other option while editing is never undone.
     useEffect(() => {
@@ -1036,6 +1063,28 @@ function writeSectionDisplayOrder(projectId, ids) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [hasSavedDefaultPattern, projectSectionTargets, deriveProjectSectionTargets, savedGlobalLookKey],
     );
+    const liveSidesMirrored = sidesMirrored !== false;
+    const otherModeTargets = useMemo(() => showSides
+      ? deriveSectionTargets({
+          strips, patchBoard: board, wiring, compiledWiring, symmetry: layoutSymmetry,
+          sidesMirrored: !liveSidesMirrored,
+        })
+      : sectionTargets, [board, compiledWiring, layoutSymmetry, liveSidesMirrored, sectionTargets, showSides, strips, wiring]);
+    const targetsForSavedLook = saved =>
+      (saved.sidesMirrored !== false) === liveSidesMirrored ? sectionTargets : otherModeTargets;
+    const savedLookTargets = editingSavedLook ? targetsForSavedLook(editingSavedLook) : sectionTargets;
+    const savedLookReview = editingSavedLook && getProjectStackReview(editingSavedLook, savedLookTargets);
+    const hasChangedAssignments = Object.entries(draftLooks).some(([id, value]) => {
+      const target = sectionTargets.find(row => row.id === id) || savedLookTargets.find(row => row.id === id) || { id };
+      const saved = id === ALL_SECTIONS_TARGET_ID
+        ? editingSavedLook?.defaultLook || standaloneController?.defaultLook
+        : findSavedSectionLook(editingSavedLook, target) || editingSavedLook?.defaultLook;
+      return JSON.stringify(normalizeSectionVisualLook(value)) !== JSON.stringify(normalizeSectionVisualLook(saved));
+    });
+    const hasUnsavedLookChanges = hasChangedAssignments
+      || Boolean(mixName.trim() && mixName.trim() !== editingSavedLook?.label)
+      || (showSides && sidesSaved !== null && sidesSaved !== liveSidesMirrored);
+
     const selectedTarget = sectionTargets.find(target => target.id === selectedTargetId) || sectionTargets[0];
     const savedTargetLook = normalizeSectionVisualLook(selectedTarget?.look || savedGlobalLook);
     const draftDefaultLook = normalizeSectionVisualLook(draftLooks[ALL_SECTIONS_TARGET_ID] || savedGlobalLook);
@@ -1132,9 +1181,13 @@ function writeSectionDisplayOrder(projectId, ids) {
     const visiblePatternPreviewSegments = previewMode === 'piece'
       ? patternPreviewSegments
       : patternPreviewSegments.filter(segment => segment.id === lastPreviewTargetId);
-    const patternPreviewViewBox = previewMode === 'piece'
-      ? viewBox
-      : fitPreviewViewBox(visiblePatternPreviewSegments, viewBox);
+    const patternPreviewViewBox = fitPreviewViewBox(visiblePatternPreviewSegments, viewBox);
+    const previewFocusId = previewMode === 'piece' && !handoffInvalid && selectedTarget?.kind === 'section'
+      ? selectedTarget.id : '';
+    const dimmedPreviewSegmentIds = useMemo(() => previewFocusId
+      ? new Set(patternPreviewSegments.filter(segment => segment.id !== previewFocusId).map(segment => segment.id))
+      : null, [patternPreviewSegments, previewFocusId]);
+    const previewNeedsLab = editingColorJourney || editingProjectOnly || editingLayered;
     const previewTargetName = previewMode === 'piece'
       ? 'Whole piece'
       : (visiblePatternPreviewSegments[0]?.label || 'LED strip');
@@ -1185,6 +1238,8 @@ function writeSectionDisplayOrder(projectId, ids) {
       const entry = REAL_PATTERN_BY_ID.get(patternId) || customPatternById.get(patternId) || adaptPattern(patternId) || getCardPatternById(patternId);
       return entry?.label || entry?.name || String(patternId);
     }, [customPatternById]);
+    const tuningScope = selectedTarget?.kind === 'section' ? targetLabel(selectedTarget) : 'All sections';
+    const tuningPattern = selectedTarget?.kind === 'section' ? patternNameFor(look.patternId) : selectedDisplayLabel;
     const presentationRows = useMemo(() => deriveSectionPresentationRows({
       targets: effectiveSectionTargets,
       compiledWiring,
@@ -1206,7 +1261,14 @@ function writeSectionDisplayOrder(projectId, ids) {
           - (positions.get(b.id) ?? (savedOrder.length + natural.get(b.id)));
       });
     }, [presentationRows, previewTargetKey, sectionDisplayOrder, projectId]);
-    const dragSectionId = useRef('');
+    const sectionListRef = useRef(null);
+    const sectionDragRef = useRef(null);
+    const [sectionDropTarget, setSectionDropTarget] = useState('');
+    useEffect(() => () => {
+      cancelAnimationFrame(sectionDragRef.current?.frame);
+      sectionDragRef.current = null;
+    }, [projectId]);
+    const [patternDropTargetId, setPatternDropTargetId] = useState('');
     const moveDisplayedSection = (sourceId, targetId) => {
       if (!sourceId || !targetId || sourceId === targetId) return;
       const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
@@ -1217,19 +1279,71 @@ function writeSectionDisplayOrder(projectId, ids) {
       ids.splice(to, 0, sourceId);
       setSectionDisplayOrder({ projectId, ids });
       writeSectionDisplayOrder(projectId, ids);
-      requestAnimationFrame(() => sectionRowRefs.current.get(sourceId)?.focus());
     };
     const nudgeDisplayedSection = (id, direction) => {
       const ids = displayedSectionRows.filter(row => row.id !== ALL_SECTIONS_TARGET_ID).map(row => row.id);
       const index = ids.indexOf(id);
       if (index < 0 || index + direction < 0 || index + direction >= ids.length) return;
       moveDisplayedSection(id, ids[index + direction]);
+      requestAnimationFrame(() => sectionRowRefs.current.get(id)?.parentElement?.querySelector('.pm-section-grip')?.focus());
+    };
+    const updateSectionDropTarget = (drag) => {
+      const list = sectionListRef.current;
+      const row = document.elementFromPoint(drag.x, drag.y)?.closest('[data-section-order-id]');
+      const targetId = list?.contains(row) ? row.dataset.sectionOrderId : '';
+      if (targetId === drag.targetId) return;
+      drag.targetId = targetId;
+      setSectionDropTarget(targetId === drag.sourceId ? '' : targetId);
+    };
+    const startSectionDrag = (event, sourceId) => {
+      if (!event.isPrimary || event.button !== 0 || sectionDragRef.current) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const drag = { pointerId: event.pointerId, sourceId, targetId: sourceId, x: event.clientX, y: event.clientY, frame: 0 };
+      sectionDragRef.current = drag;
+      const scrollAtEdge = () => {
+        const list = sectionListRef.current;
+        if (sectionDragRef.current !== drag || !list) return;
+        const { top, bottom, left, right } = list.getBoundingClientRect();
+        if (drag.x >= left && drag.x <= right && drag.y >= top && drag.y <= bottom) {
+          const step = drag.y < top + 14 ? -5 : drag.y > bottom - 14 ? 5 : 0;
+          if (step) {
+            list.scrollTop += step;
+            updateSectionDropTarget(drag);
+          }
+        }
+        drag.frame = requestAnimationFrame(scrollAtEdge);
+      };
+      drag.frame = requestAnimationFrame(scrollAtEdge);
+    };
+    const moveSectionDrag = (event) => {
+      const drag = sectionDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      updateSectionDropTarget(drag);
+    };
+    const endSectionDrag = (event, commit = false) => {
+      const drag = sectionDragRef.current;
+      if (drag?.pointerId !== event.pointerId) return;
+      sectionDragRef.current = null;
+      cancelAnimationFrame(drag.frame);
+      setSectionDropTarget('');
+      if (commit) moveDisplayedSection(drag.sourceId, drag.targetId);
     };
     const sectionRowRefs = useRef(new Map());
     const bankRef = useRef(null);
     const bankOriginRef = useRef(null);
     const cardHoldsLine = useMemo(() => cardSectionSummary(sectionTargets, cardZonesPayload), [sectionTargets, cardZonesPayload]);
     const sectionCount = sectionTargets.filter(target => target.kind === 'section').length;
+    const showCopyToSections = selectedTarget?.kind === 'section' && sectionCount > 1;
+    const openSectionLayout = () => {
+      if (layoutReturnStrip) {
+        selectStrip(layoutReturnStrip);
+        window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
+      } else {
+        window.location.hash = '#screen=layout&mode=draw';
+      }
+    };
     const currentComboLabel = (() => {
       const sections = effectiveSectionTargets.filter(t => t.kind === 'section');
       if (sections.length > 2) return `${sections.length}-layer mix`;
@@ -1296,15 +1410,14 @@ function writeSectionDisplayOrder(projectId, ids) {
       } catch (error) {
         return { runtimePackage: null, error };
       }
-    }, [projectId, projectName, strips, board, compiledWiring, layoutSymmetry, sidesMirrored, standaloneController]);
+    }, [projectId, projectName, strips, board, wiring, compiledWiring, layoutSymmetry, sidesMirrored, symSettings, standaloneController]);
     const runtimePackage = runtimeBuild.runtimePackage;
     const hardwareConfigurationIssue = runtimeBuild.error
       ? String(runtimeBuild.error.message || runtimeBuild.error).replace('is already owned by an LED output or another control', 'is already used by an LED output or another control')
       : '';
-    const encoderPins = standaloneController?.controls?.encoder || {};
-    const canRemoveDuplicateAlternatePress = hardwareConfigurationIssue
-      && Number(encoderPins.press) >= 0
-      && Number(encoderPins.press) === Number(encoderPins.alternatePress);
+    const stackNeedingSectionReviewId = runtimeBuild.error?.code === 'stack-sections-changed'
+      ? runtimeBuild.error.lookId
+      : '';
     const safeProjectName = (projectName || 'lightweaver-piece').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
     const updateController = (patch) => {
@@ -1328,14 +1441,6 @@ function writeSectionDisplayOrder(projectId, ids) {
             : current.controls,
         };
       });
-    };
-
-    const removeDuplicateAlternatePress = () => {
-      const result = updateController({ controls: { encoder: { alternatePress: -1 } } });
-      if (result?.ok === false) {
-        setStatusKind('err');
-        setStatus(result.errors?.[0]?.message || 'Open wiring to change the duplicate GPIO assignment.');
-      }
     };
 
     const scheduleLivePreview = useCallback((nextLook, target = selectedTarget, delayMs = 0, { bridgeAuthority = null, expectedControlPatch = null } = {}) => {
@@ -1513,7 +1618,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           const held = persisted?.devices?.standaloneController;
           verified = persisted?.id === pendingLookSave.projectId
             && JSON.stringify(normalizeSavedLooks(held?.looks)) === JSON.stringify(pendingLookSave.expectedLooks)
-            && JSON.stringify(normalizeCardPlaylist(held?.playlist, { savedLooks: normalizeSavedLooks(held?.looks), allowEmpty: true })) === JSON.stringify(pendingLookSave.expectedPlaylist);
+            && JSON.stringify(normalizeCardPlaylist(held?.playlist, { savedLooks: normalizeSavedLooks(held?.looks), sequenceAssets: held?.sequenceAssets, allowEmpty: true })) === JSON.stringify(pendingLookSave.expectedPlaylist);
         } catch { verified = false; }
       }
       setPendingLookSave(null);
@@ -1534,6 +1639,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
       setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: saved, symmetry: layoutSymmetry }));
       setLibraryTab('stacks');
+      setExpandedStackId(saved.id);
       params.delete('editStack');
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${params.toString()}`);
     }, [board, layoutSymmetry, savedLooks, setPatchBoard, setStandaloneController, strips]);
@@ -1631,16 +1737,17 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (allTarget && connected) scheduleLivePreview(shared, allTarget, 80);
     };
 
-    const updatePreviewLook = (patch, { push = true } = {}) => {
+    const updatePreviewLook = (patch, { push = true, target = selectedTarget } = {}) => {
       if (editingColorJourney) {
         setLookSaveState('Open this Color Journey in Lab to change its colors, timing, or movement.');
         return null;
       }
-      if (!selectedTarget) return null;
-      const nextLook = normalizeSectionVisualLook({ ...look, ...patch });
-      setDraftLooks(prev => ({ ...prev, [selectedTarget.id]: nextLook }));
+      if (!target) return null;
+      const previousLook = target.id === selectedTarget?.id ? look : resolveDraftTargetLook(target);
+      const nextLook = normalizeSectionVisualLook({ ...previousLook, ...patch });
+      setDraftLooks(prev => ({ ...prev, [target.id]: nextLook }));
       setLookSaveState('');
-      if (push) scheduleLivePreview(nextLook, selectedTarget, 80, { expectedControlPatch: patch });
+      if (push) scheduleLivePreview(nextLook, target, 80, { expectedControlPatch: patch });
       return nextLook;
     };
 
@@ -1822,7 +1929,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       }).catch(() => {}).finally(() => { flashInFlightRef.current = false; });
     };
 
-    const selectTarget = (target) => {
+    const selectTarget = (target, { preview = true } = {}) => {
       if (!target) return;
       invalidatePendingPreview();
       setSelectedTargetId(target.id);
@@ -1834,6 +1941,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           ? target.id
           : (previewTargetIds.includes(previous.lastTargetId) ? previous.lastTargetId : previewTargetIds[0] || ''),
       }));
+      if (!preview) return;
       if (!connected) {
         setStatusKind('err');
         setStatus(`Not connected to the card, so the lights can't follow this selection. Use Connect to card in the bottom bar.`);
@@ -2019,7 +2127,7 @@ function writeSectionDisplayOrder(projectId, ids) {
           return;
         }
       }
-      setNewStackResumeMessage(existing && (existing.mixName?.trim() || Object.keys(existing.draftLooks || {}).length) ? 'Resumed your unfinished new stack.' : '');
+      setNewStackResumeMessage(existing && (existing.mixName?.trim() || Object.keys(existing.draftLooks || {}).length) ? 'Resumed your unfinished look.' : '');
       setStandaloneController(previous => ({ ...previous, activeLookId: '' }));
       setExpandedStackId('');
       setLibraryTab('stacks');
@@ -2028,6 +2136,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (action === 'edit' && expandedStackId === saved.id) return;
       if (action === 'preview' && activeLookId === saved.id) {
         setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+        revealLookPreview();
         return;
       }
       if (activeLookId !== saved.id && !keepCurrentStackDraft()) return;
@@ -2035,10 +2144,18 @@ function writeSectionDisplayOrder(projectId, ids) {
         if (needsReview) setStandaloneController(previous => ({ ...previous, activeLookId: saved.id }));
         else selectCard(adaptSavedLook(saved), { preview: false });
       }
-      if (action === 'preview') setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+      if (action === 'preview' || action === 'edit') {
+        setPreviewUiState(previous => ({ ...previous, projectId, mode: 'piece' }));
+        if (action === 'preview') revealLookPreview();
+      }
       setNewStackResumeMessage('');
       setExpandedStackId(action === 'edit' ? saved.id : null);
       setLibraryTab('stacks');
+    };
+    const openStackReview = useRef(null);
+    openStackReview.current = lookId => {
+      const savedLook = savedLooks.find(saved => saved.id === lookId);
+      if (savedLook) selectSavedStack(savedLook, true, 'edit');
     };
 
     // ── handlers ────────────────────────────────────────────────────────
@@ -2281,10 +2398,10 @@ function writeSectionDisplayOrder(projectId, ids) {
           // (paste the setup on the card page) fails in exactly the same way,
           // so the owner is sent to do work that cannot succeed.
           setStatusKind('err');
-          setStatus(`The card was reached but would not take this setup: ${error.message}`);
+          setStatus(error.message);
         } else {
           setStatusKind('err');
-          setStatus('Saved in the Studio, but could not reach the card. Copy or download the setup JSON and paste it on the card page.');
+          setStatus('Not saved to the card: it did not answer. Your work is kept in Studio. Check the card has power and is on this Wi-Fi, then try again.');
         }
       } finally {
         if (installIntentRef.current === installIntent) installIntentRef.current = null;
@@ -2297,12 +2414,12 @@ function writeSectionDisplayOrder(projectId, ids) {
       clearDraftIds: [...new Set(clearDraftIds)],
       resetActiveDraft,
       expectedLooks: normalizeSavedLooks(controller.looks),
-      expectedPlaylist: normalizeCardPlaylist(controller.playlist, { savedLooks: normalizeSavedLooks(controller.looks), allowEmpty: true }),
+      expectedPlaylist: normalizeCardPlaylist(controller.playlist, { savedLooks: normalizeSavedLooks(controller.looks), sequenceAssets: controller.sequenceAssets, allowEmpty: true }),
       message,
     });
     const saveLook = (saveAsNew = false, addToPlaylist = false) => {
       try {
-        if (editingSavedLook && getProjectStackReview(editingSavedLook, sectionTargets).needsReview) throw new Error('Review sections before saving this stack.');
+        if (savedLookReview?.needsReview) throw new Error('Review sections before saving this look.');
         const label = mixName.trim() || (saveAsNew ? suggestProjectStackName(savedLooks) : editingSavedLook?.label || suggestProjectStackName(savedLooks));
         const { nextController: savedController, nextBoard } = buildCurrentHardwareState({ saveNamedLook: true, label, uniqueLookId: saveAsNew });
         const savedId = savedController.activeLookId;
@@ -2345,22 +2462,40 @@ function writeSectionDisplayOrder(projectId, ids) {
       if (!savedLook) return;
       const next = deleteSavedLookFromController(standaloneController, savedLook.id);
       const wasActive = savedLook.id === activeLookId;
-      setDeletedLook({ projectId, previous: standaloneController, next, label: savedLook.label, wasActive });
-      setStandaloneController(next);
+      if (!setStandaloneController(next)?.ok) {
+        setLookSaveState('Could not delete this look. Check the project and try again.');
+        return;
+      }
+      setDeletedLook({
+        projectId, previous: lookDeletionState(standaloneController), next: lookDeletionState(next),
+        label: savedLook.label, wasActive,
+      });
       if (wasActive) { setDraftLooks({}); setMixName(''); }
       setPendingLookSave(saveReceipt(next, `Deleted from ${projectName || 'this project'}.`, { clearDraftIds: [savedLook.id], resetActiveDraft: wasActive }));
       setLookSaveState('Saving…');
     };
     const undoDeleteLook = () => {
       if (!deletedLook || deletedLook.projectId !== projectId) return;
-      if (JSON.stringify(standaloneController) !== JSON.stringify(deletedLook.next)) {
-        setLookSaveState('The project changed after deletion. Undo is unavailable to protect your newer edits.');
+      if (JSON.stringify(lookDeletionState(standaloneController)) !== JSON.stringify(deletedLook.next)) {
+        setLookSaveState('The looks or playlist changed after deletion. Undo is unavailable to protect your newer edits.');
         return;
       }
-      setStandaloneController(deletedLook.previous);
+      const { patternCycleIds, ...previous } = deletedLook.previous;
+      const restored = {
+        ...standaloneController,
+        ...previous,
+        controls: {
+          ...standaloneController.controls,
+          encoder: { ...standaloneController.controls?.encoder, patternCycleIds },
+        },
+      };
+      if (!setStandaloneController(restored)?.ok) {
+        setLookSaveState('Could not restore this look. Check the project and try again.');
+        return;
+      }
       if (deletedLook.wasActive) setMixName(deletedLook.label);
       setDeletedLook(null);
-      setPendingLookSave(saveReceipt(deletedLook.previous, `Restored in ${projectName || 'this project'}.`, { clearDraftIds: [], resetActiveDraft: false }));
+      setPendingLookSave(saveReceipt(restored, `Restored in ${projectName || 'this project'}.`, { clearDraftIds: [], resetActiveDraft: false }));
       setLookSaveState('Saving…');
     };
     const duplicateStack = (savedLook) => {
@@ -2382,7 +2517,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
     const repairCurrentStack = () => {
       if (!editingSavedLook) return;
-      const repaired = repairProjectStack(editingSavedLook, sectionTargets);
+      const repaired = repairProjectStack(editingSavedLook, savedLookTargets);
       setStandaloneController(previous => ({ ...previous, looks: previous.looks.map(item => item.id === repaired.id ? repaired : item) }));
       setPatchBoard(applySavedLookWithSides({ patchBoard: board, strips, savedLook: repaired, symmetry: layoutSymmetry }));
       setLookSaveState('Saving…');
@@ -2395,7 +2530,7 @@ function writeSectionDisplayOrder(projectId, ids) {
       setDraftLooks(previous => ({ ...previous, ...Object.fromEntries(copyDestinations.map(id => [id, { ...shared }])) }));
       setCopyToSectionsOpen(false);
       setCopyDestinations([]);
-      setLookSaveState('Copied to selected sections. Save stack to keep these changes.');
+      setLookSaveState('Copied to selected sections. Save look to keep these changes.');
     };
     const openLookInLab = () => {
       if (editingProjectOnly) {
@@ -2465,7 +2600,7 @@ function writeSectionDisplayOrder(projectId, ids) {
     };
 
     // Select a browse card: pattern -> preview; saved mix -> apply look.
-    const selectCard = (p, { preview = true } = {}) => {
+    const selectCard = (p, { preview = true, target = selectedTarget } = {}) => {
       if (handoffInvalid) return;
       if (p.mix) {
         const realLook = findSavedLook(p.id);
@@ -2505,8 +2640,23 @@ function writeSectionDisplayOrder(projectId, ids) {
       setActivePatternId(p.id);
       if (!editingSavedLook) setMixName('');
       setLookSaveState('');
-      const nextLook = updatePreviewLook({ patternId: p.id }, { push: false });
-      scheduleBrowseLivePreview(nextLook, selectedTarget);
+      const nextLook = updatePreviewLook({ patternId: p.id }, { push: false, target });
+      scheduleBrowseLivePreview(nextLook, target);
+    };
+
+    const canDropPattern = (event, target) => target?.kind === 'section'
+      && !handoffInvalid && !editingColorJourney
+      && event.dataTransfer.types.includes(PATTERN_DRAG_TYPE);
+
+    const dropPatternOnSection = (event, target) => {
+      setPatternDropTargetId('');
+      const patternId = event.dataTransfer.getData(PATTERN_DRAG_TYPE);
+      const pattern = customPatternById.get(patternId) || REAL_PATTERN_BY_ID.get(patternId);
+      if (!pattern || pattern.mix) return;
+      setBankOriginId('');
+      bankOriginRef.current = null;
+      selectTarget(target, { preview: false });
+      selectCard(pattern, { target });
     };
 
     const copyConfig = async () => {
@@ -2854,30 +3004,28 @@ function writeSectionDisplayOrder(projectId, ids) {
       });
     }, [status, statusKind, isPatternRecoveryConfirmFlow, patternCardGate, handoffUrl, showFlashAction, hasPreviewFailureAction, previewFailure]);
 
+    const stackReviewIsOpen = stackNeedingSectionReviewId
+      && expandedStackId === stackNeedingSectionReviewId && libraryTab === 'stacks';
     useEffect(() => {
-      if (!hardwareConfigurationIssue) {
+      if (!hardwareConfigurationIssue || stackReviewIsOpen) {
         dismissNoticeKey('hardware-configuration-warning');
         return;
       }
-      // Two buttons existed in the old box: "Fix automatically" (one-click,
-      // only offered when the fix is unambiguous) and "Fix wiring" (always
-      // offered, navigates to Layout). When both are available the automatic
-      // fix is strictly better, so it is the notice's action and "Fix wiring"
-      // is dropped — tests/patterns-v3.spec.ts's own duplicate-encoder test
-      // only exercises the case where "Fix automatically" is ABSENT, so
-      // "Fix wiring" stays the action in that (tested) case.
       publishNotice({
         key: 'hardware-configuration-warning',
         testId: 'hardware-configuration-warning',
         tone: 'error',
-        title: 'Hardware setup needs attention.',
-        body: `${hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.`,
-        source: 'pattern-hardware',
-        action: canRemoveDuplicateAlternatePress
-          ? { label: 'Fix automatically', onSelect: removeDuplicateAlternatePress }
+        title: stackNeedingSectionReviewId ? 'Saved look needs section review.' : 'Hardware setup needs attention.',
+        body: stackNeedingSectionReviewId
+          ? hardwareConfigurationIssue
+          : `${hardwareConfigurationIssue} Patterns are still available, but Lightweaver will not send an unsafe setup to the card.`,
+        source: stackNeedingSectionReviewId ? 'pattern-stack-review' : 'pattern-hardware',
+        action: stackNeedingSectionReviewId
+          ? { label: 'Review sections', onSelect: () => openStackReview.current(stackNeedingSectionReviewId) }
           : { label: 'Fix wiring', onSelect: () => { window.location.hash = '#screen=layout&mode=draw'; } },
       });
-    }, [hardwareConfigurationIssue, canRemoveDuplicateAlternatePress]);
+      if (stackNeedingSectionReviewId) return () => dismissNoticeKey('hardware-configuration-warning');
+    }, [hardwareConfigurationIssue, stackNeedingSectionReviewId, stackReviewIsOpen]);
 
     useEffect(() => {
       if (!isPatternRecoveryConfirmFlow) {
@@ -2948,17 +3096,39 @@ function writeSectionDisplayOrder(projectId, ids) {
     const activeStackPlaylistUseCount = editingSavedLook ? playlist.filter(item => item.lookId === editingSavedLook.id).length : 0;
     const unfinishedNewDraft = activeLookId !== '' ? readProjectStackDraft(projectId, '') : null;
     const canResumeNewDraft = Boolean(unfinishedNewDraft?.mixName?.trim() || Object.keys(unfinishedNewDraft?.draftLooks || {}).length);
+    const openColorOrder = async () => {
+      if (colorOrderOpen) {
+        closeColorOrder();
+        return;
+      }
+      if (currentPatternCardAccess() !== 'ready') {
+        blockPatternCardEffect(currentPatternCardAccess());
+        return;
+      }
+      try {
+        const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
+        if (!matchesCurrentCardProjectEvidence(evidence)) {
+          blockPatternCardEffect('project');
+          return;
+        }
+      } catch (error) {
+        setStatusKind('err');
+        setStatus(error?.message || 'The card could not be reverified before the color test.');
+        return;
+      }
+      setMenuOpen(false);
+      setColorOrderOpen(true);
+    };
     const stackSavePanel = (
-                <div className="project-stack-save" data-testid="stack-save-bar" aria-label="Save project stack">
-                  <div className="sec-h"><span className="t">{editingSavedLook ? `Edit ${editingSavedLook.label}` : 'New stack'}</span><span className="m">{sectionCount} sections together</span></div>
-                  <p className="project-stack-save-intro">Choose a pattern for each section, then save them together.</p>
+                <div className="project-stack-save" data-testid="stack-save-bar" aria-label="Save complete look">
+                  <div className="sec-h"><span className="t">Complete look</span><span className="m">{sectionCount} {sectionCount === 1 ? 'section' : 'sections'}</span></div>
                   {newStackResumeMessage && !editingSavedLook && <p className="project-stack-resume-note">{newStackResumeMessage}</p>}
-                  <label className="project-stack-name-label" htmlFor="project-stack-name">Stack name</label>
+                  <label className="project-stack-name-label" htmlFor="project-stack-name">Look name</label>
                   <div className="project-stack-save-controls">
-                    <input id="project-stack-name" className="pm-input" data-testid="look-name" aria-label="Stack name" placeholder="Name your stack" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
-                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingLabAuthored ? 'Open in Lab' : editingSavedLook ? 'Save changes' : 'Save stack'}</button>
+                    <input id="project-stack-name" className="pm-input" data-testid="look-name" aria-label="Look name" placeholder="Name your look" value={mixName} onChange={event => { setMixName(event.target.value); setLookSaveState(''); }} />
+                    <button type="button" className="btn primary" data-testid="look-save-preset" onClick={savePreset}>{editingLabAuthored ? 'Open in Lab' : editingSavedLook ? 'Save changes' : 'Save look'}</button>
                   </div>
-                  <span role="status" data-testid="look-save-status" className={`project-stack-save-status${/could not|error|full|review sections/i.test(lookSaveState || scratchError) ? ' is-error' : ''}`}>{scratchError || (lookSaveState && !/^Saved in /.test(lookSaveState) ? lookSaveState : hasUnsavedLookChanges && !pendingLookSave ? 'Unsaved stack changes' : lookSaveState || (editingSavedLook ? `Saved in project: ${projectName || 'this project'}` : 'Draft in this browser'))}</span>
+                  <span role="status" data-testid="look-save-status" className={`project-stack-save-status${/could not|error|full|review sections/i.test(lookSaveState || scratchError) ? ' is-error' : ''}`}>{scratchError || (lookSaveState && !/^Saved in /.test(lookSaveState) ? lookSaveState : hasUnsavedLookChanges && !pendingLookSave ? 'Unsaved look changes' : lookSaveState || (editingSavedLook ? `Saved in project: ${projectName || 'this project'}` : 'Draft in this browser'))}</span>
                   {failedLookSave?.projectId === projectId && <button type="button" className="btn" data-testid="stack-save-retry" onClick={() => { setLookSaveState('Retrying…'); setPendingLookSave(failedLookSave); }}>Retry project save</button>}
                   {activeStackPlaylistUseCount > 0 && hasUnsavedLookChanges && <div className="project-stack-use-note">
                     Updating changes {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again to update the card.
@@ -2968,29 +3138,29 @@ function writeSectionDisplayOrder(projectId, ids) {
                       ? <button type="button" className="wordlink" data-testid="stack-arrange-playlist" onClick={() => { window.location.hash = '#screen=playlist'; }}>Arrange playlist</button>
                       : <button type="button" className="wordlink" data-testid="stack-save-add" onClick={() => saveLook(false, true)}>Save &amp; add to playlist</button>)}
                     {editingSavedLook && <StackMoreActions label="More actions" testId="stack-more-actions">
-                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new stack'}</button>
-                      <button type="button" className="btn" onClick={() => duplicateStack(editingSavedLook)}>Duplicate stack</button>
+                      <button type="button" className="btn" data-testid="look-save-as-new" onClick={editingLabAuthored ? openLookInLab : () => saveLook(true)}>{editingProjectOnly ? 'Duplicate in Lab' : 'Save as new look'}</button>
+                      <button type="button" className="btn" onClick={() => duplicateStack(editingSavedLook)}>Duplicate look</button>
                       <button type="button" className="btn" data-testid="stack-revert" disabled={!hasUnsavedLookChanges} onClick={revertStackChanges}>Revert changes</button>
-                      <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={() => renameLook()}>Rename stack</button>
-                      <button type="button" className="btn" data-testid="look-delete" onClick={() => deleteLook()}>Delete stack{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` and remove ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist ${playlist.filter(item => item.lookId === editingSavedLook.id).length === 1 ? 'entry' : 'entries'}` : ''}</button>
+                      <button type="button" className="btn" data-testid="look-rename" disabled={!mixName.trim() || mixName.trim() === editingSavedLook.label} onClick={() => renameLook()}>Rename look</button>
+                      <button type="button" className="btn" data-testid="look-delete" onClick={() => deleteLook()}>Delete look{playlist.filter(item => item.lookId === editingSavedLook.id).length ? ` and remove ${playlist.filter(item => item.lookId === editingSavedLook.id).length} playlist ${playlist.filter(item => item.lookId === editingSavedLook.id).length === 1 ? 'entry' : 'entries'}` : ''}</button>
                     </StackMoreActions>}
                   </div>
                   <div className="project-stack-composition" data-testid="stack-details">
                     <ProjectStackSummary sections={effectiveSectionTargets.filter(target => target.kind === 'section').map(target => ({ id: target.id, label: targetLabel(target), look: target.look }))} patternName={patternNameFor} patternColor={id => REAL_PATTERN_BY_ID.get(id)?.pal?.[2] || '#8398aa'} compact />
-                    {activeStackPlaylistUseCount > 0 && <p>This stack is in {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again after an update to refresh the card.</p>}
+                    {activeStackPlaylistUseCount > 0 && <p>This look is in {activeStackPlaylistUseCount} playlist {activeStackPlaylistUseCount === 1 ? 'entry' : 'entries'}. Install again after an update to refresh the card.</p>}
                   </div>
                   {copyUndo && <button type="button" className="btn" data-testid="stack-copy-undo" onClick={() => { setDraftLooks(copyUndo); setCopyUndo(null); }}>Undo copy</button>}
                   {deletedLook?.projectId === projectId && <button type="button" className="btn" data-testid="look-delete-undo" onClick={undoDeleteLook}>Undo delete {deletedLook.label}</button>}
-                  {editingSavedLook && getProjectStackReview(editingSavedLook, sectionTargets).needsReview && <div className="project-stack-review" data-testid="stack-review">
-                    <strong>Review sections</strong><p>The project&apos;s sections changed since this stack was saved. Review its assignments before installing.</p>
-                    <button type="button" className="btn" onClick={repairCurrentStack}>Use saved settings where sections still match; inherit the stack default for new sections</button>
+                  {savedLookReview?.needsReview && <div className="project-stack-review" data-testid="stack-review">
+                    <strong>Review sections</strong><p>The project&apos;s sections changed since this look was saved. Review its assignments before installing.</p>
+                    <button type="button" className="btn" onClick={repairCurrentStack}>Use saved settings where sections still match; inherit the look default for new sections</button>
                   </div>}
                 </div>
     );
 
     return (
       <div className="screen">
-        <div className="screen-scroll">
+        <div className="screen-scroll" ref={workspaceScrollRef}>
           <div className="pm pm-workspace">
             {/* hero */}
             <header className="pm-hero">
@@ -3044,29 +3214,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                     aria-expanded={colorOrderOpen}
                     aria-haspopup="dialog"
                     disabled={authorizedPatternCardAccess !== 'ready'}
-                    onClick={async () => {
-                      if (colorOrderOpen) {
-                        closeColorOrder();
-                        return;
-                      }
-                      if (currentPatternCardAccess() !== 'ready') {
-                        blockPatternCardEffect(currentPatternCardAccess());
-                        return;
-                      }
-                      try {
-                        const evidence = await readCardProjectEvidence({ host: cardHost, transport: cardLink?.transport });
-                        if (!matchesCurrentCardProjectEvidence(evidence)) {
-                          blockPatternCardEffect('project');
-                          return;
-                        }
-                      } catch (error) {
-                        setStatusKind('err');
-                        setStatus(error?.message || 'The card could not be reverified before the color test.');
-                        return;
-                      }
-                      setMenuOpen(false);
-                      setColorOrderOpen(true);
-                    }}
+                    onClick={openColorOrder}
                   >{I.refresh}Shift colors</button>
                   {colorOrderOpen &&
                     <>
@@ -3083,7 +3231,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                     </>
                   }
                 </div>
-                <div className="ag-conn">
+                <div className="ag-conn pm-desktop-card-page">
                   <button className="btn" onClick={openCardPage}>{I.open}Open card page</button>
                 </div>
                 <div className="pm-menu">
@@ -3092,6 +3240,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                   <>
                       <div className="pm-menu-backdrop" aria-hidden="true" onClick={() => setMenuOpen(false)} />
                       <div ref={menuRef} className="pm-menu-pop" role="menu" aria-label="Card tools">
+                        <button className="pm-menu-item pm-mobile-card-tool" role="menuitem" onClick={() => { setMenuOpen(false); openCardPage(); }}>{I.open}Open card page</button>
+                        <button className="pm-menu-item pm-mobile-card-tool" role="menuitem" disabled={authorizedPatternCardAccess !== 'ready'} onClick={openColorOrder}>{I.refresh}Shift colors</button>
                         {/* "Repair LED" removed: it called the identical
                             repairLed() handler as the toolbar's own
                             "Recover lights" button (now rendered whenever a
@@ -3114,10 +3264,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                 {/* design target */}
                 <div className="pm-target">
                    <div className="sec-h"><span className="t">Sections</span><span className="m">{sectionCount} on this piece</span><span className="line" /></div>
-                <div className="card pm-pane pm-preview-pane">
+                <div className="card pm-pane pm-preview-pane" ref={previewPaneRef}>
                   <div className="pm-preview-controls" aria-label="Pattern preview controls">
                     <div className="pm-preview-meta" data-testid="pattern-preview-meta" title={`${previewTargetName} · ${selectedDisplayLabel}`}>
-                      <span className="t">Preview</span>
+                      <span className="t">Studio preview</span>
                       <span className="m">{selectedDisplayLabel}</span>
                     </div>
                     <div className="pm-preview-nav" role="group" aria-label="Preview navigation">
@@ -3157,6 +3307,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                     </div>
                   </div>
                   <div
+                    className="pm-project-preview"
                     data-testid="pattern-project-preview"
                     data-preview-led-count={projectPreviewStrip?.pts?.length || 0}
                     data-preview-order={(projectPreviewStrip?.order || []).join(',')}
@@ -3167,17 +3318,22 @@ function writeSectionDisplayOrder(projectId, ids) {
                       data-testid="pattern-piece-preview"
                       data-preview-mode={previewMode}
                       data-preview-target={previewMode === 'piece' ? 'piece' : lastPreviewTargetId}
+                      data-preview-focus={previewFocusId || undefined}
                       data-preview-led-count={visiblePatternPreviewSegments.reduce((sum, segment) => sum + segment.pixels.length, 0)}
                       data-preview-view-box={patternPreviewViewBox}
                       data-preview-targets={visiblePatternPreviewSegments.map(segment => segment.id).join(',')}
                       data-preview-patterns={visiblePatternPreviewSegments.map(segment => segment.sourcePatternId).join(',')}
                     >
-                      {editingColorJourney || editingProjectOnly || editingLayered ? (
-                        <p className="pm-preview-empty">{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'} · open in Lab for its exact animated preview.</p>
+                      {previewNeedsLab ? (
+                        <div className="pm-preview-empty pm-lab-preview">
+                          <span>{editingColorJourney ? 'Color Journey' : editingLayered ? 'Layered look' : 'Lab design'}</span>
+                          <button type="button" className="btn" onClick={openLookInLab}>Preview in Lab</button>
+                        </div>
                       ) : visiblePatternPreviewSegments.length ? (
                         <PatternPreview
                           strips={visiblePatternPreviewSegments}
-                          compactRibbon
+                          compactRibbon={previewMode === 'strip'}
+                          dimmedStripIds={dimmedPreviewSegmentIds}
                           hidden={{}}
                           symmetry={layoutSymmetry}
                           sidesMirrored={sidesMirrored}
@@ -3205,9 +3361,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                         <p className="pm-preview-empty">Add LEDs in Layout to preview this piece.</p>
                       )}
                     </div>
+                    {previewFocusId && !previewNeedsLab && visiblePatternPreviewSegments.length > 0 &&
+                      <div className="pm-piece-focus">Focus · {targetLabel(selectedTarget)}</div>}
                   </div>
                 </div>
 
+                  <div className={`pm-section-register${sectionCount >= 9 ? ' is-dense' : ''}`}>
                    {showSides && <>
                      <div className="sec-h"><span className="t">{SIDES_HEADING}</span><span className="line" /></div>
                      <div className="geo-seg" data-testid="pattern-sides" role="group" aria-label={SIDES_HEADING} style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
@@ -3225,21 +3384,37 @@ function writeSectionDisplayOrder(projectId, ids) {
                      </div>
                      <p className="pm-section-help" data-testid="sides-hint">{sidesHintCopy({ symmetry: layoutSymmetry, sidesMirrored: sidesMirrored !== false })}</p>
                    </>}
-                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections">
-                     {displayedSectionRows.map((row, rowIndex) => {
+                   <span className="sr-only" id="pattern-section-order-help">Drag to reorder, or use the Up and Down keys. Display order only.</span>
+                   <div className="pm-section-list" data-testid="pattern-section-list" aria-label="Pattern target sections" ref={sectionListRef}>
+                     {displayedSectionRows.map((row, index) => {
                        const target = sectionTargets.find(item => item.id === row.id);
                        const sidesMeta = showSides ? sectionMetaCopy({ target, symmetry: layoutSymmetry, strips, ledCount: row.pixelCount }) : null;
                        const rowLabel = showSides ? sectionLabelCopy({ target, symmetry: layoutSymmetry }) || row.label : row.label;
                        const selected = !handoffInvalid && row.id === selectedTarget?.id;
                        const canReorder = row.id !== ALL_SECTIONS_TARGET_ID;
+                       const palette = REAL_PATTERN_BY_ID.get(row.patternId)?.pal || customPatternById.get(row.patternId)?.pal;
+                       const paletteFill = palette?.length > 1 ? `linear-gradient(90deg, ${palette.join(', ')})` : palette?.[0];
                        return <div
                          key={row.id}
-                         className={`pm-section-entry${selected ? ' on' : ''}`}
-                         draggable={canReorder}
-                         onDragStart={event => { if (!canReorder) return; dragSectionId.current = row.id; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.id); }}
-                         onDragOver={event => { if (canReorder && dragSectionId.current) event.preventDefault(); }}
-                         onDrop={event => { event.preventDefault(); moveDisplayedSection(dragSectionId.current, row.id); dragSectionId.current = ''; }}
-                         onDragEnd={() => { dragSectionId.current = ''; }}
+                         className={`pm-section-entry${selected ? ' on' : ''}${patternDropTargetId === row.id ? ' is-pattern-drop-target' : ''}`}
+                         data-section-order-id={canReorder ? row.id : undefined}
+                         data-drop-target={sectionDropTarget === row.id || undefined}
+                         onDragOver={event => {
+                           if (!canDropPattern(event, target)) return;
+                           event.preventDefault();
+                           event.dataTransfer.dropEffect = 'copy';
+                           setPatternDropTargetId(row.id);
+                         }}
+                         onDragLeave={event => {
+                           if (!event.currentTarget.contains(event.relatedTarget)) {
+                             setPatternDropTargetId(previous => previous === row.id ? '' : previous);
+                           }
+                         }}
+                         onDrop={event => {
+                           if (!canDropPattern(event, target)) return;
+                           event.preventDefault();
+                           dropPatternOnSection(event, target);
+                         }}
                        ><button
                          type="button"
                          ref={node => { if (node) sectionRowRefs.current.set(row.id, node); else sectionRowRefs.current.delete(row.id); }}
@@ -3249,13 +3424,33 @@ function writeSectionDisplayOrder(projectId, ids) {
                          onClick={() => chooseSectionLook(target)}
                        >
                          <span className="pm-section-identity"><strong>{rowLabel}</strong><small data-testid={sidesMeta ? `section-meta-${row.id}` : undefined}>{sidesMeta || (row.id === ALL_SECTIONS_TARGET_ID ? `${row.pixelCount} LEDs` : `${row.routeLabel || 'Output not mapped'} · ${row.pixelCount} LEDs`)}</small></span>
-                         <span className="pm-section-look"><span className="pm-section-swatch" style={{ background: row.patternId ? (REAL_PATTERN_BY_ID.get(row.patternId)?.pal?.[2] || 'var(--accent)') : 'var(--text-faint)' }} aria-hidden="true" /><span data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span><span aria-hidden="true">›</span></span>
+                         <span className="pm-section-look">
+                           {paletteFill && <span className="pm-section-palette" data-pattern-id={row.patternId} style={{ background: paletteFill }} title={`${row.lookLabel} palette`} aria-hidden="true" />}
+                           <span className="pm-section-pattern-name" data-testid={`section-pattern-${row.id}`}>{row.lookLabel || 'Choose pattern'}</span>
+                         </span>
                          {row.routeLabel && <span className="sr-only" data-testid={`section-gpio-${row.id}`}>{row.routeLabel}</span>}
-                       </button>{canReorder && <span className="pm-order-tools" title="Display order only · LED wiring stays unchanged">
-                         <span className="pm-drag-mark" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></span>
-                         <button type="button" data-testid={`section-move-up-${row.id}`} aria-label={`Move ${row.label} up in display order`} disabled={rowIndex <= 1} onClick={() => nudgeDisplayedSection(row.id, -1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 10 4-4 4 4"/></svg></button>
-                         <button type="button" data-testid={`section-move-down-${row.id}`} aria-label={`Move ${row.label} down in display order`} disabled={rowIndex >= displayedSectionRows.length - 1} onClick={() => nudgeDisplayedSection(row.id, 1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
-                       </span>}</div>;
+                       </button>{canReorder && sectionCount > 1 && (
+                         <button
+                           type="button"
+                           className="pm-section-grip"
+                           aria-label={`Reorder ${rowLabel}`}
+                           aria-describedby="pattern-section-order-help"
+                           aria-keyshortcuts="ArrowUp ArrowDown"
+                           title="Drag to reorder. Display order only."
+                           onPointerDown={event => startSectionDrag(event, row.id)}
+                           onPointerMove={moveSectionDrag}
+                           onPointerUp={event => endSectionDrag(event, true)}
+                           onPointerCancel={endSectionDrag}
+                           onLostPointerCapture={endSectionDrag}
+                           onKeyDown={event => {
+                             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                             event.preventDefault();
+                             nudgeDisplayedSection(row.id, event.key === 'ArrowUp' ? -1 : 1);
+                           }}
+                         >
+                           <span aria-hidden="true">{index + (displayedSectionRows[0]?.id === ALL_SECTIONS_TARGET_ID ? 0 : 1)}</span>
+                         </button>
+                       )}</div>;
                      })}
                    </div>
                   {selectedTarget?.kind === 'section' && !isSideTarget(selectedTarget, layoutSymmetry) && sectionGpioLabels.get(selectedTarget.id)?.includes(' · ') &&
@@ -3266,19 +3461,16 @@ function writeSectionDisplayOrder(projectId, ids) {
                         Open this strip in Layout
                       </button>{' '}to make separate named sections. If Add split is unavailable, adjust its Advanced wiring runs first.
                     </p>}
-                  {/* One status line about sections: what the card holds, read from
-                      the card itself. Empty until the card has been read. */}
+                  </div>
                   <div className="pm-section-footer">
                     {cardHoldsLine && <span className="pm-cardholds" data-testid="card-holds" title={cardHoldsLine}>{cardHoldsLine}</span>}
-                    {sectionCount <= 1 &&
-                      <button type="button" className="wordlink" data-testid="divide-in-layout" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Divide in Layout</button>
-                    }
-                    {layoutReturnStrip && <button type="button" className="wordlink" data-testid="return-to-layout-section" onClick={() => {
-                     selectStrip(layoutReturnStrip);
-                     window.location.hash = `#screen=layout&mode=draw&focusTarget=${encodeURIComponent(layoutReturnTargetId)}&project=${encodeURIComponent(projectId)}&generation=${encodeURIComponent(projectLifecycle?.generation ?? 0)}`;
-                   }}>Back to Layout</button>}
-                    {sectionCount > 1 && !layoutReturnStrip && <button type="button" className="wordlink" onClick={() => { window.location.hash = '#screen=layout&mode=draw'; }}>Edit layout</button>}
-                    {selectedTarget?.kind === 'section' && sectionCount > 1 && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
+                    <button
+                      type="button"
+                      className="wordlink"
+                      data-testid={sectionCount <= 1 ? 'divide-in-layout' : layoutReturnStrip ? 'return-to-layout-section' : 'edit-section-layout'}
+                      onClick={openSectionLayout}
+                    >{sectionCount <= 1 ? 'Divide in Layout' : layoutReturnStrip ? 'Back to Layout' : 'Edit layout'}</button>
+                    {showCopyToSections && <button type="button" className="wordlink" data-testid="stack-copy-open" onClick={() => { setCopyToSectionsOpen(true); setCopyDestinations([]); }}>Copy settings to sections…</button>}
                   </div>
                   {copyToSectionsOpen && <div className="project-stack-copy" data-testid="stack-copy-panel">
                     <strong>Copy {targetLabel(selectedTarget)} settings to:</strong>
@@ -3290,6 +3482,12 @@ function writeSectionDisplayOrder(projectId, ids) {
                   </div>}
                 </div>
 
+                {expandedStackId !== null && libraryTab === 'stacks' && (
+                  <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef}>
+                    {stackSavePanel}
+                  </div>
+                )}
+
                 {/* browse */}
                  <div className={`pm-browse ${libraryTab === 'patterns' ? 'is-pattern-library' : 'is-stack-library'}`} data-testid="pattern-library" ref={bankRef} tabIndex={-1} inert={handoffInvalid ? '' : undefined} onKeyDown={event => { if (event.key === 'Escape' && bankOriginRef.current) { sectionRowRefs.current.get(bankOriginRef.current)?.focus(); bankOriginRef.current = null; } }}>
                   <div className="project-stack-library-head">
@@ -3297,15 +3495,15 @@ function writeSectionDisplayOrder(projectId, ids) {
                       <button type="button" role="tab" aria-selected={libraryTab === 'patterns'} onClick={() => setLibraryTab('patterns')}>Patterns</button>
                       <button type="button" role="tab" aria-selected={libraryTab === 'stacks'} onClick={() => setLibraryTab('stacks')}>Project stacks ({savedLooks.length})</button>
                     </div>
-                    <button type="button" className="btn project-stack-new" data-testid="stack-new" onClick={startNewStack}>{canResumeNewDraft ? 'Resume new draft' : '+ New stack'}</button>
+                    <button type="button" className="btn project-stack-new" data-testid="stack-new" onClick={startNewStack}>{canResumeNewDraft ? 'Resume new draft' : '+ New look'}</button>
                   </div>
                   {expandedStackId === null && (scratchError || /could not|wait for|error/i.test(lookSaveState)) && <p className="project-stack-launch-error" role="alert">{scratchError || lookSaveState}</p>}
-                  {libraryTab === 'patterns' && <div className="project-stack-howto">Choose a pattern for each section, then save them together.{expandedStackId !== null && <button type="button" className="wordlink" data-testid="stack-return-save" onClick={() => setLibraryTab('stacks')}>Return to save stack</button>}</div>}
+                  {libraryTab === 'patterns' && expandedStackId !== null && <div className="project-stack-howto"><button type="button" className="wordlink" data-testid="stack-return-save" onClick={() => setLibraryTab('stacks')}>Back to look</button></div>}
                   {libraryTab === 'stacks' ? <div className="project-stack-library" role="tabpanel" aria-label="Project stacks">
-                    <label className="search"><span className="sr-only">Search project stacks</span>{I.search}<input value={stackSearch} onChange={event => setStackSearch(event.target.value)} placeholder={`Search stacks in ${projectName || 'this project'}`} /></label>
+                    <label className="search"><span className="sr-only">Search saved looks</span>{I.search}<input value={stackSearch} onChange={event => setStackSearch(event.target.value)} placeholder={`Search looks in ${projectName || 'this project'}`} /></label>
                     <div className="project-stack-shelf">
                       {savedLooks.filter(saved => saved.label.toLowerCase().includes(stackSearch.toLowerCase())).map(saved => {
-                        const summary = summarizeProjectStack(saved, sectionTargets);
+                        const summary = summarizeProjectStack(saved, targetsForSavedLook(saved));
                         const compatibility = getProjectStackCompatibility(saved);
                         const useCount = playlist.filter(item => item.lookId === saved.id).length;
                         return <article key={saved.id} className={`project-stack-card${saved.id === activeLookId ? ' is-active' : ''}`} data-testid="project-stack-card">
@@ -3327,32 +3525,10 @@ function writeSectionDisplayOrder(projectId, ids) {
                           {(!compatibility.ok || summary.review.needsReview) && <div className="project-stack-card-warning">{!compatibility.ok ? compatibility.reason : 'Review sections'}</div>}
                         </article>;
                       })}
-                      {!savedLooks.length && <p className="project-stack-empty">No project stacks yet. Choose a pattern for each section, then save the whole arrangement above.</p>}
+                      {!savedLooks.length && <p className="project-stack-empty">No saved looks yet. Choose a pattern for each section, then save a complete look.</p>}
                     </div>
-                    {expandedStackId !== null && <div className="project-stack-inline-editor" id="stack-editor" ref={stackEditorRef} style={{ scrollMarginTop: 84 }}>{stackSavePanel}</div>}
                   </div> : <>
-                  {/* One header bar for the whole module: the light, the name,
-                      and the counts pushed right. The counts are read with a
-                      single separator so the bar scans as one sentence rather
-                      than a sum and a fraction. */}
-                  {/* Was: "{filtered.length} shown of {REAL_PATTERNS.length}
-                      chip-ready" — filtered.length counts across mixes +
-                      custom patterns + real patterns, divided against real
-                      patterns alone, so it could read as MORE shown than
-                      exist the moment a saved look or custom pattern is on
-                      the bank. The correct, differently-scoped count already
-                      sits a few lines down (`pt-count`, next to the category
-                      chips); this header keeps only the two facts nothing
-                      else on the panel states. */}
-                  <div className="sec-h"><span className="t">Patterns</span><span className="m">{playlistSize} in playlist</span>
-                    <div className="pm-ledmode" role="group" aria-label="Swatch style">
-                      <button type="button" aria-pressed={ledMode === 'beads'}
-                              className={ledMode === 'beads' ? 'on' : undefined}
-                              onClick={() => chooseLedMode('beads')}>Beads</button>
-                      <button type="button" aria-pressed={ledMode === 'gradient'}
-                              className={ledMode === 'gradient' ? 'on' : undefined}
-                              onClick={() => chooseLedMode('gradient')}>Gradient</button>
-                    </div><span className="line" /></div>
+                  <div className="pm-bank-bar">
                   <div className="pm-bank-context"><p className="pm-bank-scope" data-testid="pattern-bank-scope">
                     <strong>{handoffInvalid ? 'Choose a current section' : `Editing: ${selectedTarget?.kind === 'section'
                       ? `${targetLabel(selectedTarget)}${sectionGpioLabels.get(selectedTarget.id) ? ` · ${sectionGpioLabels.get(selectedTarget.id)}` : ''}`
@@ -3369,7 +3545,26 @@ function writeSectionDisplayOrder(projectId, ids) {
                       card — it is the scratchpad for trying patterns on the real
                       strip — and an off checkbox only produced taps that looked
                       broken. Every tap sends. */}
-                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction) === 'Applied by Lightweaver runtime' ? 'Preview sent to card' : cardActionStatusLabel(previewAction)}</span>
+                    <span className="pm-saved" data-testid="physical-preview-status">{physicalPreviewStatusLabel(previewAction, { cardPatternId: cardLink?.readiness?.currentPatternId, screenPatternId: look?.patternId, connected: Boolean(connected), lightsOff: cardBlackedOut })}</span>
+                  </div>
+                  <div className="sec-h"><span className="m">{playlistSize} in playlist</span>
+                    <div className="pm-ledmode" role="group" aria-label="Swatch style">
+                      <button type="button" aria-pressed={ledMode === 'beads'}
+                              className={ledMode === 'beads' ? 'on' : undefined}
+                              onClick={() => chooseLedMode('beads')}>Beads</button>
+                      <button type="button" aria-pressed={ledMode === 'gradient'}
+                              className={ledMode === 'gradient' ? 'on' : undefined}
+                              onClick={() => chooseLedMode('gradient')}>Gradient</button>
+                    </div>
+                    <div className="pm-ledmode" role="group" aria-label="Pattern tile shape">
+                      <button type="button" aria-pressed={tileShape === 'horizontal'}
+                              className={tileShape === 'horizontal' ? 'on' : undefined}
+                              onClick={() => chooseTileShape('horizontal')}>Horizontal</button>
+                      <button type="button" aria-pressed={tileShape === 'square'}
+                              className={tileShape === 'square' ? 'on' : undefined}
+                              onClick={() => chooseTileShape('square')}>Square</button>
+                    </div>
+                  </div>
                   </div>
                   <div className="pm-bank-filters">
                   <div className="search">{I.search}<input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chip patterns" /></div>
@@ -3384,8 +3579,8 @@ function writeSectionDisplayOrder(projectId, ids) {
                       effect above) instead of living in document flow here,
                       so it no longer needs scrolling into view when the hero
                       status is off-screen — it is always visible. */}
-                  <div className="pm-cards">
-                     {filtered.slice(0, visibleCount).map((p) => {
+                  <div className={`pm-cards${tileShape === 'square' ? ' is-square' : ''}`}>
+                     {filtered.slice(0, visibleCount).map((p, index) => {
                        const cardInPlaylist = inPlaylist(p);
                        const savedMix = p.mix ? findSavedLook(p.id) : null;
                        const mixPairs = Object.entries(savedMix?.sectionLooks || {}).map(([id, sectionLook]) => {
@@ -3403,7 +3598,20 @@ function writeSectionDisplayOrder(projectId, ids) {
                            : (mixPairs.length ? mixPairs.slice(0, 2).join(' · ') : `${patternNameFor(savedMix?.defaultLook?.patternId)} on all sections`);
                        return (
                     <div key={`${p.mix ? 'mix' : 'pattern'}:${p.id}`} className="pmcard-wrap">
-                      <button type="button" className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")} data-pattern-id={p.id} aria-pressed={p.id === selId} onClick={() => selectCard(p)}>
+                      <button
+                        type="button"
+                        className={"pmcard" + (p.id === selId ? " on" : "") + (cardInPlaylist ? " in-playlist" : "")}
+                        data-pattern-id={p.id}
+                        aria-pressed={p.id === selId}
+                        draggable={!p.mix && !editingColorJourney}
+                        onDragStart={event => {
+                          if (p.mix || editingColorJourney) return;
+                          event.dataTransfer.effectAllowed = 'copy';
+                          event.dataTransfer.setData(PATTERN_DRAG_TYPE, p.id);
+                        }}
+                        onDragEnd={() => setPatternDropTargetId('')}
+                        onClick={() => selectCard(p)}
+                      >
                         {/* Speed rides the LED window's top-right corner; the
                             playlist star takes the row slot it used to hold.
                             Speed is a property of the preview you are looking
@@ -3417,6 +3625,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                         <div className="pmcard-row">
                           <span className="pmcard-nm">{p.label}</span>
                           {p.mix && <span className="mixtag">{p.projectOnly ? 'Lab only' : 'mix'}</span>}
+                          <span className="pmcard-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
                         </div>
                         <div className="pmcard-sub"><span className="pmcard-sp">{p.sp}</span><span className="pmcard-dot" aria-hidden="true">·</span><span className="pmcard-cat">{String(p.cat || '').toUpperCase()}</span></div>
                        </button>
@@ -3482,12 +3691,14 @@ function writeSectionDisplayOrder(projectId, ids) {
                       rather than a stack of controls. The tuning pane was the
                       one panel on this screen with no head at all, so four
                       faders floated between two headed modules. */}
-                  <div className="sec-h"><span className="t">Tune</span><span className="m">{selectedDisplayLabel}</span><span className="line" /></div>
+                  <div className="sec-h pm-tuning-scope" data-testid="pattern-tuning-scope">
+                    <span className="t">Tune · {tuningScope}</span><span className="m">{tuningPattern}</span>
+                  </div>
                   {/* color picker (drives the live custom hue/sat) */}
                   <div className="pm-hue">
                     <div className="pm-hue-lab"><span>Hue</span><span className="hv" data-testid="look-hue-readout">{hueDeg}°</span></div>
                     <input className="lw pm-huerange" type="range" min="0" max="255" step="1" value={look.customHue} style={{ '--pm-hue-thumb': colorHex }} data-testid="look-hue-slider" aria-label="Hue" onChange={(e) => updatePreviewLook({ customHue: parseInt(e.target.value) })} />
-                    <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+                    <input type="color" value={colorHex} data-testid="look-color-picker" aria-label="Pick color" onChange={(e) => updatePreviewLook(hexToCardColor(e.target.value, look))} style={{ position: 'absolute', inset: '0 auto auto 0', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
                   </div>
                   <Slider k="Saturation" hint="How much colour" v={`${satPct}%`} value={look.customSaturation} min={0} max={255} step={1} testId="look-saturation" onChange={(customSaturation) => updatePreviewLook({ customSaturation })} />
                   <Slider k="Brightness" hint="Overall output level" v={`${briPct}%`} value={look.brightness} min={0.05} max={1} step={0.01} testId="look-brightness" onChange={(brightness) => updatePreviewLook({ brightness })} />

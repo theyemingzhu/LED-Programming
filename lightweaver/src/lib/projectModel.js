@@ -15,7 +15,7 @@ import { normalizeCardLedType } from './cardHardwareContract.js';
 import { defaultPortRoles, normalizePortRoles } from './portRoles.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { normalizePatternLabSequenceAssets } from './patternLabHandoff.js';
-import { normalizeSavedLooks } from './sectionLookModel.js';
+import { normalizeSavedLooks, sectionLookKey } from './sectionLookModel.js';
 import {
   createDefaultPatchBoard,
   DEFAULT_DATA_WIRE_COUNT,
@@ -238,6 +238,47 @@ export function createDefaultProject() {
   };
 }
 
+function migrateSavedSectionAssignments(controller, identities) {
+  if (!Array.isArray(controller?.looks)) return controller;
+  const destinations = new Map();
+  const sources = new Map();
+  for (const [before, after] of identities) {
+    const source = sectionLookKey(before);
+    const destination = sectionLookKey(after);
+    if (!source || !destination) continue;
+    if (!destinations.has(source)) destinations.set(source, new Set());
+    if (!sources.has(destination)) sources.set(destination, new Set());
+    destinations.get(source).add(destination);
+    sources.get(destination).add(source);
+  }
+
+  const looks = [];
+  for (const look of controller.looks) {
+    const field = look?.sectionLooks ? 'sectionLooks' : 'zones';
+    const assignments = look?.[field];
+    if (!assignments || typeof assignments !== 'object') {
+      looks.push(look);
+      continue;
+    }
+
+    // Check raw entries before normalization can collapse distinct keys.
+    const remapped = new Map();
+    for (const [id, appearance] of Object.entries(assignments)) {
+      const key = sectionLookKey(id);
+      if (!key) continue;
+      const candidates = destinations.get(key);
+      if (candidates?.size > 1) return null;
+      const destination = candidates?.values().next().value ?? key;
+      const previousOwners = sources.get(destination);
+      if (remapped.has(destination) || previousOwners?.size > 1) return null;
+      if (!candidates && previousOwners) return null;
+      remapped.set(destination, appearance);
+    }
+    looks.push({ ...look, [field]: Object.fromEntries(remapped) });
+  }
+  return { ...controller, looks };
+}
+
 // Move legacy strips onto their own `strip-<n>` id namespace. Historically a
 // strip reused its source layer/path id as its own id, forcing every consumer to
 // guess whether an id meant a layer or a strip. This rewrites strip ids and every
@@ -280,8 +321,37 @@ export function migrateStripIdNamespace(project) {
   }
   if (!oldToNew.size) return project;
 
-  // 1. Strip ids. The old id was the strip's source layer/path id, so preserve it
-  //    as sourceLayerId where the strip doesn't already record a source.
+  const board = layout.patchBoard;
+  const patchIdMap = new Map();
+  const patches = Array.isArray(board?.patches) ? board.patches : [];
+  for (const patch of patches) {
+    const src = patch?.source;
+    if (src?.type !== 'strip' || !oldToNew.has(src.stripId)) continue;
+    const oldPrefix = `patch-${src.stripId}`;
+    if (typeof patch.id !== 'string') continue;
+    if (patch.id !== oldPrefix && !patch.id.startsWith(`${oldPrefix}-`)) continue;
+    if (patches.some(other => other !== patch && other?.id === patch.id)) return null;
+    const suffix = patch.id.slice(oldPrefix.length);
+    patchIdMap.set(patch.id, `patch-${oldToNew.get(src.stripId)}${suffix}`);
+  }
+
+  // Include identities that stay put so a rename cannot steal an override
+  // from an existing patch, group, or symmetry side with the same key.
+  const controller = project.devices?.standaloneController;
+  const sides = normalizeSymmetry(layout.symmetry, strips)?.sides || [];
+  const groups = Array.isArray(layout.layerGroups) ? layout.layerGroups : [];
+  const identities = [
+    ...strips.map(({ id }) => [id, oldToNew.get(id) ?? id]),
+    ...patches.filter(patch => patch?.source?.type === 'strip')
+      .map(({ id }) => [id, patchIdMap.get(id) ?? id]),
+    ...sides.map(({ id }) => [id, id]),
+    ...groups.map(group => group?.groupId || group?.id).map(id => [id, id]),
+  ];
+  const migratedController = migrateSavedSectionAssignments(controller, identities);
+  if (migratedController === null) return null;
+  if (controller) project.devices.standaloneController = migratedController;
+
+  // 1. Preserve the artwork identity and move each legacy strip.
   for (const strip of strips) {
     const next = oldToNew.get(strip.id);
     if (!next) continue;
@@ -291,34 +361,25 @@ export function migrateStripIdNamespace(project) {
     strip.id = next;
   }
 
-  // 2. patchBoard: patch ids (patch-<stripId>[-start-end]), source.stripId, and
-  //    chain rowIds (which reference patch ids).
-  const board = layout.patchBoard;
-  if (board && Array.isArray(board.patches)) {
-    const patchIdMap = new Map();
-    for (const patch of board.patches) {
-      const src = patch?.source;
-      if (src?.type !== 'strip' || !oldToNew.has(src.stripId)) continue;
-      const oldStripId = src.stripId;
-      const newStripId = oldToNew.get(oldStripId);
-      const oldPrefix = `patch-${oldStripId}`;
-      let newPatchId = patch.id;
-      if (patch.id === oldPrefix) {
-        newPatchId = `patch-${newStripId}`;
-      } else if (typeof patch.id === 'string' && patch.id.startsWith(`${oldPrefix}-`)) {
-        newPatchId = `patch-${newStripId}${patch.id.slice(oldPrefix.length)}`;
-      }
-      if (newPatchId !== patch.id) patchIdMap.set(patch.id, newPatchId);
-      patch.id = newPatchId;
-      src.stripId = newStripId;
-    }
-    if (patchIdMap.size && Array.isArray(board.chains)) {
-      for (const chain of board.chains) {
-        if (Array.isArray(chain.rowIds)) {
-          chain.rowIds = chain.rowIds.map(rowId => patchIdMap.get(rowId) ?? rowId);
-        }
-      }
-    }
+  // 2. Rewrite patch IDs, strip references, and chain rows together.
+  if (Array.isArray(board?.patches)) {
+    layout.patchBoard = {
+      ...board,
+      patches: patches.map(patch => {
+        const src = patch?.source;
+        if (src?.type !== 'strip' || !oldToNew.has(src.stripId)) return patch;
+        return {
+          ...patch,
+          id: patchIdMap.get(patch.id) ?? patch.id,
+          source: { ...src, stripId: oldToNew.get(src.stripId) },
+        };
+      }),
+      ...(patchIdMap.size && Array.isArray(board.chains) ? {
+        chains: board.chains.map(chain => Array.isArray(chain.rowIds)
+          ? { ...chain, rowIds: chain.rowIds.map(rowId => patchIdMap.get(rowId) ?? rowId) }
+          : chain),
+      } : {}),
+    };
   }
   const wiring = layout.wiring;
   if (wiring && Array.isArray(wiring.runs)) {
@@ -386,7 +447,8 @@ export function migrateStripIdNamespace(project) {
 // retain its order; normalization only removes invalid row references and
 // synthesizes strip order when no saved physical chain exists.
 function alignChainToStripOrder(project) {
-  migrateStripIdNamespace(project);
+  if (!migrateStripIdNamespace(project)) return null;
+  project.devices.standaloneController = defaultStandaloneController(project.devices.standaloneController);
   const layout = project?.layout;
   if (!layout || !Array.isArray(layout.strips)) return project;
   const kaleidoscopeWarnings = [];
@@ -528,7 +590,7 @@ export function migrateProject(data) {
         ...base.devices,
         ...(data.devices || {}),
         physicalControls: normalizeWledPhysicalControls(data.devices?.physicalControls),
-        standaloneController: defaultStandaloneController(data.devices?.standaloneController),
+        standaloneController: data.devices?.standaloneController || {},
       },
     });
   }
@@ -591,7 +653,7 @@ export function migrateProject(data) {
         wledIp: data.wledIp || '',
         segmentMap: data.wledSegmentMap || {},
         physicalControls: normalizeWledPhysicalControls(data.devices?.physicalControls),
-        standaloneController: defaultStandaloneController(data.devices?.standaloneController),
+        standaloneController: data.devices?.standaloneController || {},
       },
     });
   }

@@ -51,14 +51,14 @@ for (const message of [
 const saveStart = storage.indexOf('bool saveRuntimeConfigJson(');
 const stageStart = storage.indexOf('bool stageRuntimeConfigJson(', saveStart);
 const saveBody = storage.slice(saveStart, stageStart);
-assert.match(saveBody, /validateRuntimeConfigJsonStrict\(json, \*parsed, message\)[\s\S]*putString\(NVS_KNOWN_GOOD_CONFIG_KEY, json\)/);
+assert.match(saveBody, /validateRuntimeConfigJsonStrict\(json, \*parsed, message\)[\s\S]*writeKnownGood\(prefs, json\)/);
 assert.match(saveBody, /if \(!committed\)[\s\S]*return false;[\s\S]*config = \*parsed;/,
   'active identity must change only after the canonical config is committed');
 
 const stageEnd = storage.indexOf('bool activateStagedRuntimeConfig(', stageStart);
 const stageBody = storage.slice(stageStart, stageEnd);
 assert.match(stageBody, /validateRuntimeConfigJsonStrict\(json, \*parsed, message\)[\s\S]*putString\(NVS_CANDIDATE_CONFIG_KEY, json\)/);
-assert.doesNotMatch(stageBody, /NVS_KNOWN_GOOD_CONFIG_KEY/, 'staging must not overwrite acknowledged identity');
+assert.doesNotMatch(stageBody, /NVS_KNOWN_GOOD_CONFIG_KEY|NVS_KNOWN_GOOD_BLOB_KEY|writeKnownGood|removeKnownGood/, 'staging must not overwrite acknowledged identity');
 
 const statusStart = storage.indexOf('String runtimeWiringSafetyStatusJson()');
 const statusEnd = storage.indexOf('bool runtimeConfigJsonChangesWiring(', statusStart);

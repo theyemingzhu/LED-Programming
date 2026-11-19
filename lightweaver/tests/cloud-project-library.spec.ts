@@ -1784,8 +1784,10 @@ for (const width of [320, 390]) {
 
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
     const noticeBox = await page.getByTestId('workspace-notice').boundingBox();
+    const railBox = await page.locator('.rail').boundingBox();
     expect(noticeBox).not.toBeNull();
-    expect(noticeBox!.x).toBeGreaterThanOrEqual(58);
+    expect(railBox).not.toBeNull();
+    expect(noticeBox!.x).toBeGreaterThanOrEqual(railBox!.x + railBox!.width);
     expect(noticeBox!.x + noticeBox!.width).toBeLessThanOrEqual(width);
     for (const box of boxes) {
       expect(noticeBox!.y).toBeGreaterThanOrEqual(box.y + box.height);
@@ -1838,10 +1840,8 @@ async function installAuthEpochHarness(page: Page) {
   await openIsolatedCloudHarnessPage(page);
   await page.evaluate(async () => {
     document.body.innerHTML = '<div id="auth-epoch-root"></div>';
-    const React = (await import('/node_modules/.vite/deps/react.js')).default;
-    const { createRoot } = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
-    const { CloudLibraryProvider, useCloudLibrary } = await import('/src/state/CloudLibraryContext.jsx');
-    const { ProjectProvider } = await import('/src/state/ProjectContext.jsx');
+    const { React, createRoot, CloudLibraryProvider, useCloudLibrary, ProjectProvider } =
+      await import('/tests/helpers/cloudHarnessRuntime.js');
 
     const identities = {
       'account-a': { username: 'account-a', displayName: 'Account A', role: 'customer', mustChangePassword: false },
@@ -3026,11 +3026,8 @@ test('cancels a pending transient retry when the cloud provider unmounts', async
   await openIsolatedCloudHarnessPage(page);
   await page.evaluate(async () => {
     document.body.innerHTML = '<div id="cloud-unmount-root"></div>';
-    const React = (await import('/node_modules/.vite/deps/react.js')).default;
-    const { createRoot } = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
-    const { CloudLibraryError } = await import('/src/lib/cloudLibraryClient.js');
-    const { CloudLibraryProvider, useCloudLibrary } = await import('/src/state/CloudLibraryContext.jsx');
-    const { ProjectProvider, useProject } = await import('/src/state/ProjectContext.jsx');
+    const { React, createRoot, CloudLibraryError, CloudLibraryProvider, useCloudLibrary, ProjectProvider, useProject } =
+      await import('/tests/helpers/cloudHarnessRuntime.js');
 
     const stats = { updates: 0 };
     let stored = null;

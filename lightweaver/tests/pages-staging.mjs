@@ -112,11 +112,13 @@ assert.equal(pkg.scripts['test:studio-release'], 'node --test src/lib/studioRele
 assert.match(pkg.scripts['launch:source'], /npm run test:build-graph/);
 assert.match(pkg.scripts['launch:source'], /npm run test:studio-release/);
 assert.match(pkg.scripts['test:projects'], /accountAuth\.test\.js/);
+assert.match(pkg.scripts['test:projects'], /account\/passwordless\.test\.js/);
 assert.match(pkg.scripts['test:projects'], /library-api\.test\.js/);
-assert.equal(
-  pkg.scripts['test:projects:browser'],
-  'playwright test tests/cloud-project-library.spec.ts --project=chromium --workers=1',
-);
+const browserProjectSuite = pkg.scripts['test:projects:browser'].split(' ');
+for (const spec of ['cloud-project-library', 'project-portable-backup', 'studio-passwordless']) {
+  assert.ok(browserProjectSuite.includes(`tests/${spec}.spec.ts`), `the project browser gate includes ${spec}`);
+}
+assert.deepEqual(browserProjectSuite.slice(-2), ['--project=chromium', '--workers=1']);
 assert.match(pkg.scripts['test:projects'], /tests\/cloud-bindings\.mjs/);
 assert.match(pkg.scripts['launch:source'], /npm run test:projects && npm run test:projects:browser && npm run test:mapper/);
 assert.equal(
@@ -229,6 +231,20 @@ const nativeToml = productionWranglerToml(nativeConfiguration);
 assert.doesNotMatch(nativeToml, /^ACCESS_TEAM_DOMAIN\s*=/m);
 assert.doesNotMatch(nativeToml, /^ACCESS_AUD\s*=/m);
 assert.doesNotMatch(nativeToml, /^OWNER_EMAILS\s*=/m);
+
+const passwordlessConfiguration = readProductionLibraryConfiguration({
+  ...productionConfiguration,
+  ...accessConfiguration,
+  STUDIO_PASSWORDLESS_AUTH_ENABLED: 'true',
+});
+assert.match(productionWranglerToml(passwordlessConfiguration), /^STUDIO_PASSWORDLESS_AUTH_ENABLED = "true"$/m,
+  'the staged rollout can enable both sign-in methods while retaining Access');
+assert.match(productionWranglerToml(passwordlessConfiguration), /^ACCESS_TEAM_DOMAIN\s*=/m);
+assert.doesNotMatch(nativeToml, /^STUDIO_PASSWORDLESS_AUTH_ENABLED\s*=/m);
+assert.throws(
+  () => readProductionLibraryConfiguration({ ...productionConfiguration, ...accessConfiguration, STUDIO_PASSWORDLESS_AUTH_ENABLED: 'enabled' }),
+  error => error instanceof ProductionLibraryConfigurationError && error.names.includes('STUDIO_PASSWORDLESS_AUTH_ENABLED'),
+);
 
 const injectionRoot = mkdtempSync(join(tmpdir(), 'lightweaver-workflow-injection-'));
 try {

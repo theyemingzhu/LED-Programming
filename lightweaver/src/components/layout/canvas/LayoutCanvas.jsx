@@ -1027,7 +1027,7 @@ export function LayoutCanvas({
         <div className="la-overlay br">
           <div><span className="k">emit</span><span className="v">{existingStrip ? (existingStrip.emit === 'omni' ? 'omni' : `dir ${existingStrip.angle || 0}°`) : '—'}</span></div>
           {cursorSvgPt && (
-            <div><span className="k">cursor</span><span className="v">{cursorSvgPt.x.toFixed(0)} · {cursorSvgPt.y.toFixed(0)}</span></div>
+            <div className="la-canvas-cursor"><span className="k">cursor</span><span className="v">{cursorSvgPt.x.toFixed(0)} · {cursorSvgPt.y.toFixed(0)}</span></div>
           )}
           <div><span className="k">zoom</span><span className="v">{Math.round(zoom * 100)}%</span></div>
           <div className="la-canvas-view-actions">

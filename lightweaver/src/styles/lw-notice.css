@@ -22,11 +22,8 @@
    information always arrives at the same place on screen rather
    than the stack growing under the eye. */
 .lw-notice-layer {
-  /* The tool rail is 58px at every width — it does NOT collapse on narrow
-     screens (v3-styles.css keeps `58px minmax(0,1fr) 0px` under 640px), so
-     the stack must start clear of it or a notice lands on the navigation.
-     tests/cloud-project-library.spec.ts asserts this at 320px and 390px. */
-  --lw-rail: 58px;
+  /* Dock beside the active rail width so notices stay clear of navigation. */
+  --lw-rail: var(--studio-rail-width, 58px);
   position: fixed;
   left: calc(var(--lw-rail) + 14px);
   /* --lw-statusbar-h is measured live by NoticeLayer: the bar is 32px by its

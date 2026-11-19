@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { cardProjectFingerprint } from '../src/lib/cardProjectResolver.js';
 
 const capturedPageErrors = new WeakMap<object, string[]>();
@@ -7,10 +8,12 @@ test.afterEach(async ({ page }) => {
   expect(capturedPageErrors.get(page) || [], 'Show emitted an uncaught page error').toEqual([]);
 });
 
-async function installShowStubs(page: any) {
-  await page.addInitScript(() => {
+async function installShowStubs(page: any, { seedProject = null as any, realJsonDownloads = false } = {}) {
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.4\.1)(?::\d+)?\//, (route) => route.abort());
+  await page.addInitScript(({ seedProject, realJsonDownloads }) => {
     if (!sessionStorage.getItem('show-test-initialized')) {
       localStorage.clear();
+      if (seedProject) localStorage.setItem('lw_autosave_v3', JSON.stringify(seedProject));
       sessionStorage.setItem('show-test-initialized', 'true');
     }
     // Show frame streaming is a hardware mutation. The real Studio requires a
@@ -52,10 +55,15 @@ async function installShowStubs(page: any) {
           led: { pixels: 44 },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
+      if (url === 'http://lightweaver.local/api/control' && init?.method === 'POST') {
+        (window as any).__showControls.push(JSON.parse(String(init.body)));
+        return Promise.resolve(Response.json({ ok: true }));
+      }
       return nativeFetch(input, init);
     };
     (window as any).__audioReads = 0;
     (window as any).__frames = [];
+    (window as any).__showControls = [];
     (window as any).__micRequests = [];
     (window as any).__stoppedMicTracks = 0;
 
@@ -113,10 +121,11 @@ async function installShowStubs(page: any) {
     });
     (window as any).__showProjectBlob = null;
     (window as any).showSaveFilePicker = undefined;
+    const createObjectURL = URL.createObjectURL.bind(URL);
     (URL as any).createObjectURL = (value: Blob) => {
       if (value?.type === 'application/json') {
         (window as any).__showProjectBlob = value;
-        return 'blob:show-project';
+        return realJsonDownloads ? createObjectURL(value) : 'blob:show-project';
       }
       return 'blob:show-song';
     };
@@ -170,7 +179,7 @@ async function installShowStubs(page: any) {
     (window as any).__distinctFrames = () => (window as any).__streamedFrames()
       .filter((pixels: string[], index: number, all: string[][]) => index === 0
         || pixels.join() !== all[index - 1].join());
-  });
+  }, { seedProject, realJsonDownloads });
 }
 
 async function installMatchingShowCardProject(page: any, project: any) {
@@ -250,11 +259,11 @@ async function connectMatchingShowCard(page: any) {
   }, project);
 }
 
-async function openShow(page: any) {
+async function openShow(page: any, options = {}) {
   const pageErrors: string[] = [];
   capturedPageErrors.set(page, pageErrors);
   page.on('pageerror', (error: Error) => pageErrors.push(error.stack || error.message));
-  await installShowStubs(page);
+  await installShowStubs(page, options);
   await page.goto('/#screen=show', { waitUntil: 'domcontentloaded' });
   const stage = page.getByTestId('show-stage');
   await expect(stage).toBeVisible({ timeout: 10_000 });
@@ -424,7 +433,7 @@ test('a rejected microphone request preserves a paused song and its selected sou
   await page.evaluate(() => (window as any).__rejectMic('permission denied'));
   await expect(page.getByText(/couldn't use the microphone: permission denied/i)).toBeVisible();
   await expect(page.getByTestId('show-pause')).toHaveText('Resume song');
-  await expect(page.getByText(/hearing still-playing\.wav/i)).toBeVisible();
+  await expect(page.getByText(/paused · still-playing\.wav/i)).toBeVisible();
 });
 
 test('a late microphone result cannot replace a newer song selection', async ({ page }) => {
@@ -448,7 +457,7 @@ test('a late microphone result cannot leave Quiet mode', async ({ page }) => {
   await page.getByRole('button', { name: 'Quiet' }).click();
   await page.evaluate(() => (window as any).__resolveMic());
 
-  await expect(page.getByText(/quiet — pick a sound source to begin/i)).toBeVisible();
+  await expect(page.getByText(/quiet · choose a sound source/i)).toBeVisible();
   await expect(page.getByTestId('show-pause')).toHaveCount(0);
   await expect.poll(async () => page.evaluate(() => (window as any).__stoppedMicTracks)).toBe(1);
 });
@@ -494,11 +503,13 @@ test('switching templates stops the old stream and requires an explicit restart 
   expect(latest, 'the restarted stream reassembles the new rendering contract').toHaveLength(675);
 });
 
-test('pausing with lights active atomically pushes the displayed frame and freezes it', async ({ page }) => {
+test('pausing with lights active atomically pushes the displayed frame and freezes it', async ({ page }, testInfo) => {
   await openShow(page);
   await loadSong(page);
   await page.getByRole('button', { name: 'Play on the lights' }).click();
   await expect.poll(async () => page.evaluate(() => (window as any).__streamedFrames().length)).toBeGreaterThan(0);
+  await expect(page.getByText('Streaming from Studio · keep this tab visible')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('show-streaming-desktop.png') });
   const beforePauseFrames = await page.evaluate(() => (window as any).__distinctFrames().length);
   await page.getByTestId('show-pause').click();
   const frozen = await page.getByTestId('show-stage').getAttribute('data-frame-hash');
@@ -520,12 +531,26 @@ test('pausing with lights active atomically pushes the displayed frame and freez
   await page.waitForTimeout(1200);
   expect(await page.evaluate(() => (window as any).__distinctFrames().length)).toBe(frozenFrames);
   expect(await page.getByTestId('show-stage').getAttribute('data-frame-hash')).toBe(frozen);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const stop = page.getByRole('button', { name: 'Stop playing on the lights' });
+  await expect(stop).toBeInViewport({ ratio: 1 });
+  await expect(page.getByText('paused · fixture.wav')).toBeInViewport({ ratio: 1 });
+  await expect(page.getByText('Streaming from Studio · keep this tab visible')).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: testInfo.outputPath('show-streaming-phone.png') });
+  await stop.click();
+  await expect(page.getByText('Keep this Studio tab visible during playback')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__showControls)).toContainEqual({ cancelStream: true });
 });
 
-test('mobile Show uses one document column with the inspector below the canvas', async ({ page }) => {
+test('mobile Show uses one document column with the inspector below the canvas', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openShow(page);
 
+  await expect(page.getByText('Live sound', { exact: true })).toBeVisible();
+  await expect(page.getByText('Keep this Studio tab visible during playback')).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: 'Play on the lights' })).toBeInViewport({ ratio: 1 });
+  await page.mouse.move(5, 75);
+  await page.screenshot({ path: testInfo.outputPath('show-idle-phone.png') });
   const layout = await page.evaluate(() => {
     const body = document.querySelector('.sh-body');
     const timeline = document.querySelector('.sh-body > :first-child');
@@ -546,6 +571,104 @@ test('mobile Show uses one document column with the inspector below the canvas',
   expect(layout?.columns).toBe(1);
   expect(layout?.inspectorTop).toBeGreaterThanOrEqual((layout?.timelineBottom || 0) - 1);
   expect(layout?.scrollWidth).toBeLessThanOrEqual(layout?.viewportWidth || 0);
+});
+
+test('Voices export and restore separately from the editable project', async ({ page, browser }, testInfo) => {
+  await openShow(page, { realJsonDownloads: true });
+  const project = await readCanonicalShowProject(page);
+  await page.getByTestId('show-engine-voices').click();
+  const section = page.getByTestId('show-section-voices');
+  await expect(section.getByText(/separately from project and library backups/)).toBeVisible();
+  await section.getByTestId('show-voice-expand-ground').click();
+  await section.getByLabel('Coals').fill('0.34');
+  await expect(section.getByLabel('Coals')).toHaveValue('0.34');
+
+  const downloading = page.waitForEvent('download');
+  await section.getByRole('button', { name: 'Export Voices' }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('lightweaver.voices.json');
+  const file = await readFile((await download.path())!, 'utf8');
+  const exported = JSON.parse(file);
+  expect(exported.projectId).toBe(project.id);
+  expect(exported.ground.level).toBe(0.34);
+
+  await page.evaluate(() => { (window as any).__showProjectBlob = null; });
+  const after = await readCanonicalShowProject(page);
+  expect(cardProjectFingerprint(after)).toBe(cardProjectFingerprint(project));
+  expect(after).toEqual(project);
+
+  await loadSong(page);
+  await page.getByRole('button', { name: 'Play on the lights' }).click();
+  await expect(page.getByRole('button', { name: 'Stop playing on the lights' })).toBeVisible();
+  await section.getByTestId('show-voices-file').setInputFiles((await download.path())!);
+  const replaceLive = section.getByRole('button', { name: 'Replace Voices' });
+  await expect(replaceLive).toBeVisible();
+  const framesBeforeReplace = await page.evaluate(() => (window as any).__streamedFrames().length);
+  await replaceLive.click();
+  await expect(section.getByRole('status')).toHaveText('Voices imported.');
+  await expect.poll(() => page.evaluate(() => (window as any).__streamedFrames().length)).toBeGreaterThan(framesBeforeReplace);
+  await page.getByRole('button', { name: 'Stop playing on the lights' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__showControls)).toContainEqual({ cancelStream: true });
+
+  const clean = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
+  try {
+    const restore = await clean.newPage();
+    await installShowStubs(restore, { seedProject: after });
+    await restore.goto(page.url(), { waitUntil: 'domcontentloaded' });
+    await expect(restore.getByTestId('show-stage')).toBeVisible();
+    expect(await restore.evaluate(() => localStorage.getItem('lw.show.compositions.v1'))).toBeNull();
+    await restore.getByTestId('show-engine-voices').click();
+    const voices = restore.getByTestId('show-section-voices');
+    const savedVoices = () => restore.evaluate(id => (
+      JSON.parse(localStorage.getItem('lw.show.compositions.v1') || '{}')[id]?.[0]
+    ), project.id);
+    await expect.poll(async () => (await savedVoices())?.ground.level).toBe(0.12);
+    const starter = await savedVoices();
+
+    const upload = (contents: string) => voices.getByTestId('show-voices-file').setInputFiles({
+      name: 'lightweaver.voices.json', mimeType: 'application/json', buffer: Buffer.from(contents),
+    });
+    const replace = voices.getByRole('button', { name: 'Replace Voices' });
+    await upload('{');
+    await expect(voices.getByRole('status')).toContainText('valid Voices file');
+    await upload(JSON.stringify({ ...exported, projectId: 'other-project' }));
+    await expect(voices.getByRole('status')).toContainText('project this Voices file came from');
+    await expect(replace).toHaveCount(0);
+    expect(await savedVoices()).toEqual(starter);
+
+    const choosing = restore.waitForEvent('filechooser');
+    await voices.getByRole('button', { name: 'Import Voices' }).click();
+    await (await choosing).setFiles((await download.path())!);
+    await expect(replace).toBeVisible();
+    expect(await savedVoices()).toEqual(starter);
+    await voices.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(await savedVoices()).toEqual(starter);
+
+    await upload(file);
+    await expect(replace).toBeVisible();
+    await restore.getByTestId('show-template-mandala').click();
+    await replace.click();
+    await expect(voices.getByRole('status')).toContainText('strips in this Voices file are missing');
+    expect(await savedVoices()).toEqual(starter);
+
+    await restore.getByTestId('show-template-connected').click();
+    await upload(file);
+    await expect(replace).toBeVisible();
+    await voices.screenshot({ path: testInfo.outputPath('show-voices-replace-phone.png') });
+    await replace.click();
+    await expect(voices.getByRole('status')).toHaveText('Voices imported.');
+    expect(await savedVoices()).toEqual(exported);
+    await voices.screenshot({ path: testInfo.outputPath('show-voices-import-phone.png') });
+
+    await restore.reload({ waitUntil: 'domcontentloaded' });
+    await restore.getByTestId('show-engine-voices').click();
+    await voices.getByTestId('show-voice-expand-ground').click();
+    await expect(voices.getByLabel('Coals')).toHaveValue('0.34');
+    expect(await savedVoices()).toEqual(exported);
+  } finally {
+    await clean.close();
+  }
+  await section.screenshot({ path: testInfo.outputPath('show-voices-export-desktop.png') });
 });
 
 // A design bigger than the strip on the desk is the normal state while a piece

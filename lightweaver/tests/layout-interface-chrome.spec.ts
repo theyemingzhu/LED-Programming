@@ -14,11 +14,13 @@ test('Layout chrome uses compact UI type and keeps explanations out of the worki
   await expect(page.getByTestId('layout-check-and-install')).toHaveText('Install on card');
   await expect(page.locator('.la-strip-caption')).toHaveCount(0);
 
-  const valueStyle = await page.getByLabel('Strip LED count', { exact: true }).evaluate(element => {
+  const digitWidths = await page.getByRole('spinbutton', { name: 'Line LED count', exact: true }).evaluate(element => {
     const style = getComputedStyle(element);
-    return { numerals: style.fontVariantNumeric };
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return new Set(Array.from('0123456789', digit => ctx.measureText(digit).width)).size;
   });
-  expect(valueStyle.numerals).toContain('tabular-nums');
+  expect(digitWidths).toBe(1);
 
   const canvasName = page.locator('.lw-strip-label-name').first();
   await expect(canvasName).toBeVisible();
@@ -34,7 +36,7 @@ test('compact inspector keeps units inline and moves selected-strip facts to Spe
   await expect(inspector.getByText('First light', { exact: true })).toHaveCount(0);
   await expect(inspector.getByText('Size', { exact: true })).toHaveCount(0);
   await expect(inspector.getByText('Chipset · data pin', { exact: true })).toHaveCount(0);
-  await expect(inspector.getByLabel('Strip LED count', { exact: true })).toBeVisible();
+  await expect(inspector.getByRole('spinbutton', { name: 'Line LED count', exact: true })).toBeVisible();
   await expect(inspector.getByLabel('Strip length in metres')).toBeVisible();
   await page.getByTestId('layout-specs-trigger').click();
   const specs = page.getByTestId('layout-specs-panel');
@@ -47,7 +49,9 @@ test('compact inspector keeps units inline and moves selected-strip facts to Spe
 
 test('section fields stay dense and keep accessible names without repeated visible labels', async ({ page }) => {
   await openOneStrip(page);
-  await page.getByLabel('Strip LED count', { exact: true }).fill('41');
+  const count = page.getByRole('spinbutton', { name: 'Line LED count', exact: true });
+  await count.fill('41');
+  await count.press('Enter');
   const toggle = page.locator('[data-testid^="divide-toggle-"]');
   await toggle.click();
   const sections = page.locator('[data-testid^="divide-sections-"]');

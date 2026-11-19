@@ -100,7 +100,7 @@ assert.ok(stageBody.indexOf('validateRuntimeConfigJsonStrict') >= 0,
   'candidate raw JSON must be strictly validated');
 assert.ok(stageBody.indexOf('validateRuntimeConfigJsonStrict') < stageBody.indexOf('prefs.putString(NVS_CANDIDATE_CONFIG_KEY'),
   'rejected raw JSON must not replace candidate or known-good storage');
-assert.doesNotMatch(stageBody.slice(0, stageBody.indexOf('validateRuntimeConfigJsonStrict')), /NVS_KNOWN_GOOD_CONFIG_KEY|prefs\.remove|prefs\.put/,
+assert.doesNotMatch(stageBody.slice(0, stageBody.indexOf('validateRuntimeConfigJsonStrict')), /NVS_KNOWN_GOOD_CONFIG_KEY|NVS_KNOWN_GOOD_BLOB_KEY|writeKnownGood|removeKnownGood|prefs\.remove|prefs\.put/,
   'candidate known-good state must be untouched before raw validation succeeds');
 
 execFileSync(process.execPath, [resolve(import.meta.dirname, 'kaleidoscope-render-golden.mjs')], {

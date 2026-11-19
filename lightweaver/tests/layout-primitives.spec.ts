@@ -577,13 +577,13 @@ test('Draw strip rows drag into first-to-last wiring order', async ({ page }) =>
     }
   });
   const source = await rows.nth(1).boundingBox();
-  const handle = await rows.nth(1).locator('.la-wire-n').boundingBox();
+  const name = await rows.nth(1).locator('.layer-name').boundingBox();
   const target = await rows.nth(0).boundingBox();
-  if (!source || !handle || !target) throw new Error('Expected both strip rows and the drag handle.');
-  // Start on the real drag handle and drop inside the target's upper half.
+  if (!source || !name || !target) throw new Error('Expected both strip rows and the source name.');
+  // Start on the strip name and drop inside the target's upper half.
   // Measured coordinates avoid a fixed point on a wrapping row's edge.
   await rows.nth(1).dragTo(rows.nth(0), {
-    sourcePosition: { x: handle.x + handle.width / 2 - source.x, y: handle.y + handle.height / 2 - source.y },
+    sourcePosition: { x: name.x + name.width / 2 - source.x, y: name.y + name.height / 2 - source.y },
     targetPosition: { x: Math.min(80, target.width / 3), y: Math.max(10, target.height / 4) },
   });
   const dragTrace = await page.evaluate(() => (window as any).__stripDragTrace);

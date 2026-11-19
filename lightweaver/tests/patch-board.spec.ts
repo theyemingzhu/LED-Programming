@@ -79,7 +79,7 @@ async function seedDefaultCircles(page: any) {
 
 async function exportProject(page: any, tmp: string, name = 'saved.json') {
   const pending = page.waitForEvent('download');
-  await page.getByTitle('Export a portable project file (.lw.json)').click();
+  await page.getByRole('button', { name: 'Export project', exact: true }).click();
   const download = await pending;
   const file = path.join(tmp, name);
   await download.saveAs(file);
@@ -143,16 +143,16 @@ test('Draw lists strips grouped by GPIO in data-wire order and drag reorder writ
   await expect(group).toContainText('GPIO 16');
   const rows = group.locator('.la-strip-row');
   await expect(rows).toHaveCount(2);
-  await expect(rows.nth(0).locator('.la-wire-n')).toHaveAttribute('title', 'Drag to change physical wire order');
+  await expect(rows.nth(0)).toHaveAttribute('title', 'Drag to change physical wire order');
   await expect(rows.nth(0)).toContainText('Outer circle');
   await rows.nth(0).click();
   await expect(group.getByRole('spinbutton', { name: 'Outer circle LED count' })).toHaveValue('27');
-  await expect(rows.nth(1).locator('.la-wire-n')).toHaveAttribute('title', 'Drag to change physical wire order');
+  await expect(rows.nth(1)).toHaveAttribute('title', 'Drag to change physical wire order');
   await expect(rows.nth(1)).toContainText('Inner circle');
 
   await rows.nth(1).dragTo(rows.nth(0));
   await expect(rows.nth(0)).toContainText('Inner circle');
-  await expect(rows.nth(0).locator('.la-wire-n')).toHaveAttribute('title', 'Drag to change physical wire order');
+  await expect(rows.nth(0)).toHaveAttribute('title', 'Drag to change physical wire order');
 
   const project = await exportProject(page, tmp);
   expect(project.layout.wiring.outputs).toHaveLength(1);

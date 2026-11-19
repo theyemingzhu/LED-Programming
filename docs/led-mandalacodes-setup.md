@@ -301,6 +301,56 @@ gh workflow run deploy-site.yml --ref main
 Never run the production migration until the preview proof has passed and the
 compatible source commit is the intended release.
 
+### Studio sign-in with Google and email codes
+
+Studio's online library can use two passwordless methods backed by the same
+account and session. Google and email codes grant the role and project
+assignments of the account already approved for that address. The signed-out
+Studio keeps browser saves and portable files available.
+
+Prepare this candidate in the isolated, protected preview first.
+
+1. Register a Google web OAuth client for the preview origin. Its redirect
+   URI is `https://<preview-host>/api/account/google/callback`. Register
+   `https://led.mandalacodes.com/api/account/google/callback` on the production
+   client before its own cutover. Store each environment's
+   `STUDIO_GOOGLE_CLIENT_ID` and `STUDIO_GOOGLE_CLIENT_SECRET` in Pages.
+2. Onboard the sender domain to
+   [Cloudflare Email Service](https://developers.cloudflare.com/email-service/get-started/send-emails/).
+   Add `STUDIO_EMAIL_ACCOUNT_ID`, a token limited to Email Sending
+   (`STUDIO_EMAIL_API_TOKEN`), and the verified `STUDIO_EMAIL_FROM` address.
+   Give each environment a separate random `STUDIO_AUTH_CODE_KEY`, at least
+   32 characters long. Keep provider credentials in Pages secrets.
+3. Apply the additive sign-in migration and enroll reviewed email addresses
+   against their existing account IDs. Preserve owner, worker and customer
+   roles, and keep customer assignments linked to the same account IDs.
+   For an existing owner row, add its exact lowercase address to
+   `account_sign_in_emails(email, account_id)` against that owner ID. If there
+   is no native owner, an operator provisions the first owner in an atomic D1
+   batch. Add an active `accounts` row with a new UUID, unique internal
+   username, display name, `role='owner'`, `password_hash='passwordless'`,
+   `must_change_password=0`, and current ISO timestamps, then link its reviewed
+   email in the same batch. Leave `google_subject` empty until Google verifies
+   the first sign-in. The owner can then use **Add account** in Studio to
+   approve buyer and worker addresses.
+4. Set `STUDIO_PASSWORDLESS_AUTH_ENABLED=true` in preview and verify both
+   methods on the same approved account. Test a buyer with an ordinary
+   non-Google inbox, an unapproved address, code expiration and reuse,
+   authenticated and signed-out local save/load, owner access, and two
+   separate buyers' project assignments.
+5. Once production provider secrets and account mappings are ready, use the
+   existing native-auth cutover checklist and set the GitHub Actions variable
+   `STUDIO_PASSWORDLESS_AUTH_ENABLED=true` for the authorized deployment.
+   The deployment checks that both sign-in methods are present and that
+   signed-out private project requests receive a no-store HTTP 401 when Access
+   has been removed. Verify a real owner and a real buyer can sign in from a
+   clean profile and check the separate artwork assignments before calling
+   the cutover complete.
+
+Online revisions carry the artwork, lighting settings and required recordings.
+Projects above the existing online upload limit can use **Download backup**
+for the full portable file.
+
 ### Backup restore and rollback
 
 Before release, download the dated master `.lw-library.json` backup. In preview,

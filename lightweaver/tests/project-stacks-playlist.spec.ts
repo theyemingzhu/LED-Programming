@@ -73,14 +73,14 @@ test('project stacks have their own picker, exact details, and ordered multi-add
   await expect(page.getByTestId('playlist-stack-stack-1')).toBeVisible();
 
   const first = page.locator('[data-testid^="playlist-row-combo-"]').first();
-  await expect(first).toContainText('Stack');
+  await expect(first).toContainText('Look');
   await expect(first.locator('.pl-art-slice').first()).toHaveCSS('background-color', 'rgb(23, 27, 33)');
   await first.getByRole('button', { name: 'Show sections' }).click();
   for (const target of targets) await expect(first).toContainText(target.label);
-  await expect(first.getByRole('link', { name: 'Edit stack' })).toHaveAttribute('href', /editStack=stack-1/);
-  await first.getByRole('link', { name: 'Edit stack' }).click();
+  await expect(first.getByRole('link', { name: 'Edit look' })).toHaveAttribute('href', /editStack=stack-1/);
+  await first.getByRole('link', { name: 'Edit look' }).click();
   await expect(page).toHaveURL(/screen=pattern/);
-  await expect(page.getByTestId('look-save-preset')).toHaveText('Update stack');
+  await expect(page.getByTestId('look-save-preset')).toHaveText('Save changes');
   await expect(page.getByTestId('look-name')).toHaveValue('Stack 1');
 });
 
@@ -93,7 +93,7 @@ test('repeating a stack creates a separate occurrence with its own Length', asyn
   await openPlaylist(page, project);
   const original = page.getByTestId('playlist-row-combo-stack-1');
   await original.getByRole('button', { name: 'More actions for Stack 1' }).click();
-  await original.getByRole('menuitem', { name: 'Repeat this stack' }).click();
+  await original.getByRole('menuitem', { name: 'Repeat this look' }).click();
   const occurrences = page.locator('[data-testid^="playlist-row-combo-stack-1"]');
   await expect(occurrences).toHaveCount(2);
   await expect(occurrences.first().getByRole('spinbutton', { name: 'Length in minutes for Stack 1' })).toHaveValue('1.5');
@@ -116,7 +116,7 @@ test('repeat refuses a full 16-entry timed playlist without changing its order',
   await openPlaylist(page, project);
   const fullOriginal = page.getByTestId('playlist-row-combo-stack-1');
   await fullOriginal.getByRole('button', { name: 'More actions for Stack 1' }).click();
-  await fullOriginal.getByRole('menuitem', { name: 'Repeat this stack' }).click();
+  await fullOriginal.getByRole('menuitem', { name: 'Repeat this look' }).click();
   await expect(page.locator('[data-testid^="playlist-row-combo-stack-1"]')).toHaveCount(1);
   await expect(page.getByTestId('playlist-repeat-feedback')).toContainText('16');
 });
@@ -131,7 +131,7 @@ test('repeat refuses a full 32-entry manual bank', async ({ page }) => {
   await expect(page.getByTestId('playlist-overflow-notice')).toHaveCount(0);
   const row = page.getByTestId('playlist-row-combo-stack-1');
   await row.getByRole('button', { name: 'More actions for Stack 1' }).click();
-  await row.getByRole('menuitem', { name: 'Repeat this stack' }).click();
+  await row.getByRole('menuitem', { name: 'Repeat this look' }).click();
   await expect(page.locator('.pl-row')).toHaveCount(32);
   await expect(page.getByTestId('playlist-repeat-feedback')).toContainText('32');
 });
@@ -155,7 +155,7 @@ test('an older partial saved look keeps its historical default-section inheritan
   await openPlaylist(page, project);
   const source = page.getByTestId('playlist-stack-stack-1');
   await expect(source).not.toContainText('Review sections');
-  await source.getByRole('button', { name: 'Add stack' }).click();
+  await source.getByRole('button', { name: 'Add look' }).click();
   await expect(page.getByTestId('playlist-row-combo-stack-1')).toBeVisible();
 });
 
@@ -211,10 +211,120 @@ test('phone jumps between playlist order and the stack picker', async ({ page })
   await openPlaylist(page, project);
   const order = page.getByTestId('playlist-order-section');
   const picker = page.getByTestId('playlist-source-picker');
-  await order.getByRole('button', { name: 'Add stacks' }).click();
+  await order.getByRole('button', { name: 'Add saved looks' }).click();
   await expect(picker).toBeInViewport({ ratio: 0.01 });
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('playlist-source-picker');
   await picker.getByRole('button', { name: 'Back to order' }).click();
   await expect(order).toBeInViewport({ ratio: 0.01 });
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('playlist-order-section');
+});
+
+test('mixed mirror modes use each saved look’s own section assignments', async ({ page }) => {
+  const { project } = projectWithStacks(2, false);
+  project.layout.strips = createDefaultCircleLayout({ sectionPixelCounts: [27, 17] });
+  project.layout.patchBoard = createDefaultPatchBoard(project.layout.strips);
+  project.layout.wiring = makeDefaultWiring(project.layout.strips);
+  project.layout.symmetry = {
+    fold: 2, orientation: 'mirror', sides: [
+      { id: 'side-1', label: 'Left side', stripIds: [project.layout.strips[0].id] },
+      { id: 'side-2', label: 'Right side', stripIds: [project.layout.strips[1].id] },
+    ],
+  };
+  project.pattern.sidesMirrored = true;
+  project.devices.standaloneController.looks = [
+    { id: 'mirror', label: 'A — Warm rings', sidesMirrored: true, sectionSnapshotVersion: 1,
+      defaultLook: { patternId: 'fire' }, sectionLooks: { 'side-1': { patternId: 'fire' } } },
+    { id: 'own', label: 'B — Blue currents across both sides', sidesMirrored: false, sectionSnapshotVersion: 1,
+      defaultLook: { patternId: 'ocean' }, sectionLooks: { 'side-1': { patternId: 'ocean' }, 'side-2': { patternId: 'plasma' } } },
+    { id: 'stale', label: 'Old mirrored look', sidesMirrored: true, sectionSnapshotVersion: 1,
+      defaultLook: { patternId: 'fire' }, sectionLooks: { 'old-side': { patternId: 'fire' } } },
+  ];
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await openPlaylist(page, project);
+  const mirrored = page.getByTestId('playlist-stack-mirror');
+  const independent = page.getByTestId('playlist-stack-own');
+  await expect(mirrored).toContainText('1 section');
+  await expect(independent).toContainText('2 sections');
+  await expect(page.getByTestId('playlist-stack-stale').getByRole('checkbox')).toBeDisabled();
+  await mirrored.getByRole('checkbox').check();
+  await independent.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Add selected' }).click();
+  const second = page.getByTestId('playlist-row-combo-own');
+  await expect(second).toContainText('B — Blue currents');
+  await second.getByRole('button', { name: 'Show sections' }).click();
+  await expect(second).toContainText('Right side');
+  await expect(second).toContainText('Plasma');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const titleFits = await second.locator('.pl-copy > strong').evaluate(title => {
+    const text = document.createRange();
+    text.selectNodeContents(title);
+    const bounds = title.getBoundingClientRect();
+    return [...text.getClientRects()].every(rect => rect.right <= bounds.right + 1);
+  });
+  expect(titleFits).toBe(true);
+  const actions = second.getByRole('button', { name: /More actions/ });
+  await actions.click();
+  await second.getByRole('menuitem', { name: 'View sections' }).click();
+  const assignments = page.getByRole('dialog', { name: 'B — Blue currents across both sides' });
+  await expect(assignments).toContainText('Plasma');
+  await assignments.getByRole('button', { name: 'Done' }).click();
+  await expect(actions).toBeFocused();
+  await actions.click();
+  await second.getByRole('menuitem', { name: 'Edit look' }).click();
+  await expect(page.getByTestId('look-name')).toHaveValue('B — Blue currents across both sides');
+  await expect(page.getByTestId('stack-review')).toHaveCount(0);
+  await page.getByTestId('pattern-sides').getByRole('button', { name: 'Mirror each other' }).click();
+  await expect(page.getByTestId('stack-review')).toHaveCount(0);
+  await page.getByTestId('look-save-preset').click();
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
+  await page.goBack();
+  await expect(second).toContainText('B — Blue currents');
+  await expect(second).toContainText('1 section');
+});
+
+test.describe('Playlist compact touch rows', () => {
+  test.use({ hasTouch: true });
+  test('Playlist names, swatches and timing controls fit at phone widths', async ({ page }) => {
+    const { project } = projectWithStacks(3, false);
+    const names = ['A — Warm rings', 'B — Blue currents', 'C — Copper sparks across the outer ring'];
+    for (const [index, look] of project.devices.standaloneController.looks.entries()) {
+      look.label = names[index];
+      project.devices.standaloneController.playlist.push({
+        id: `combo-${look.id}`, type: 'combo', lookId: look.id, label: look.label,
+        dwellSeconds: 30, enabled: true, createdAt: index,
+      });
+    }
+    await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+    await openPlaylist(page, project);
+    const rows = page.locator('[data-playlist-index]');
+    await expect(rows).toHaveCount(3);
+    for (const [width, height] of [[320, 760], [390, 844]]) {
+      await page.setViewportSize({ width, height });
+      const layout = await rows.evaluateAll(elements => elements.map(row => {
+        const title = row.querySelector('.pl-copy > strong')!;
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        const lines = [...range.getClientRects()];
+        const bounds = title.getBoundingClientRect();
+        const length = row.querySelector('.pl-dwell')!.getBoundingClientRect();
+        const unit = row.querySelector('.pl-dwell-unit')!.getBoundingClientRect();
+        const label = row.querySelector('.pl-dwell .sf-l')!.getBoundingClientRect();
+        const swatch = row.querySelector('.pl-art')!.getBoundingClientRect();
+        return {
+          titleLines: new Set(lines.map(line => line.y)).size,
+          fullTitleVisible: lines.every(line => line.right <= bounds.right + 1),
+          lengthFits: label.width > 20 && unit.width > 0 && unit.right <= length.right + 1,
+          swatchFits: swatch.height >= 20 && swatch.left >= bounds.right && swatch.right <= row.getBoundingClientRect().right,
+        };
+      }));
+      expect(layout[0].titleLines).toBe(1);
+      expect(layout.every(row => row.fullTitleVisible && row.lengthFits && row.swatchFits)).toBe(true);
+      const { fade, playback } = await page.locator('.pl-timing').evaluate(panel => ({
+        fade: panel.querySelector('.pl-timing-input')!.getBoundingClientRect().top,
+        playback: panel.querySelector('.pl-timing-switch')!.getBoundingClientRect().top,
+      }));
+      expect(Math.abs(fade - playback)).toBeLessThan(4);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    }
+  });
 });

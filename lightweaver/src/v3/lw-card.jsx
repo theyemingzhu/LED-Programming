@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AutomaticInstallScreen, TechnicianFlashScreen } from './lw-flash.jsx';
 import { InstallerScreen } from './lw-installer.jsx';
 import { CardFacts } from '../components/card/CardFacts.jsx';
+import { deriveStudioArrivalReadiness } from '../lib/studioArrivalReadiness.js';
 import { CardInstallAction } from '../components/card/CardInstallAction.jsx';
 import { DeploymentCheckPanel } from '../components/card/DeploymentCheckPanel.jsx';
 import { ProductionScreen } from './lw-production.jsx';
 import { SettingsScreen } from './lw-settings.jsx';
 import { SetupScreen } from './lw-setup.jsx';
+import { useCardActions } from './CardActionsProvider.jsx';
 import { useSetupJourney, useCommissioningFlow } from '../hooks/useSetupJourney.js';
 import { ladderOwnsPrimary as deriveLadderOwnsPrimary, showFreshWorkerStart } from '../lib/setupJourneyInputs.js';
 import { consumeCardSectionNavigation, DEFAULT_CARD_SECTION } from './cardWorkspaceRoute.js';
@@ -173,8 +175,11 @@ function CardHomePanels({
   wiringTestActive = false,
   blackedOut = false,
   firmwareStatus = null,
+  arrival,
+  pendingInstallationVerification,
   countEditor = null,
 }) {
+  const cardActions = useCardActions();
   const [matchingProjectState, setMatchingProjectState] = useState({ status: 'idle', message: '' });
   const [hardwareActionState, setHardwareActionState] = useState({ status: 'idle', message: '' });
   const healthCardId = cardLink?.card?.id || cardLink?.readiness?.cardId || '';
@@ -775,6 +780,9 @@ function CardHomePanels({
         cardLink={cardLink}
         cardHost={cardHost}
         firmwareStatus={firmwareStatus}
+        arrival={arrival}
+        pendingInstallationVerification={pendingInstallationVerification}
+        onReviewInstalledLooks={cardLifecycle?.installedControlsReady ? cardActions?.openCard : null}
         countEditor={countEditor}
         go={hash => { window.location.hash = hash; }}
         health={(ready || verifiedTransport) ? {
@@ -917,7 +925,7 @@ function CardSupport({ initialTool, cardProps, onOpenConnectionCenter, onOpenSec
   );
 }
 
-export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
+export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onConnectCard, onOpenConnectionCenter, onOpenProjects, onOpenSection, onOpenSetupTask, onFirmwareRecoveryState, pendingInstallationVerification, firmwareStatus = null, firmwareReleaseManifest = null, onRenameProject = null, go, replaceProject, currentProject, projectGeneration, activeCloudProjects, browserProjects, readBrowserProjects, readCloudProject, openMatchingCardProject, confirmProjectReplacement, saveBeforeCardProjectSwitch, saveProjectToBrowserGuarded, isProjectSwitchSnapshotCurrent, onMatchedProjectLoaded, onMatchedProjectVerified, onStartNewProject, onSaveProject, route = { section: DEFAULT_CARD_SECTION, supportTool: '' } }) {
   const headingRef = useRef(null);
   const mountedRef = useRef(false);
   // Whether the Setup journey's saved-match banner is currently offering a
@@ -932,6 +940,10 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
     project: currentProject,
     refresh: false,
     rememberedHost,
+  });
+  const arrival = deriveStudioArrivalReadiness({
+    cardLink, cardLifecycle, setupJourney: sharedJourney, project: currentProject, firmwareStatus,
+    postUpdateVerificationPending: Boolean(pendingInstallationVerification),
   });
   // The card is mid light-test. Read straight from the SHARED journey (the
   // same one the Patterns/Playlist chip and the shell's task router read),
@@ -1099,7 +1111,6 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
         browserProjects={browserProjects}
         replaceProject={replaceProject}
         onSaveProject={onSaveProject}
-        firmwareStatus={firmwareStatus}
         firmwareReleaseManifest={firmwareReleaseManifest}
         onLoadOfferChange={setSetupLoadOffer}
         onCountEditor={setCountEditor}
@@ -1108,6 +1119,8 @@ export function CardScreen({ connected, cardHost, cardLink, cardLifecycle, onCon
       <CardHomePanels
         {...cardProps}
         firmwareStatus={firmwareStatus}
+        arrival={arrival}
+        pendingInstallationVerification={pendingInstallationVerification}
         countEditor={countEditor}
         suppressMatchingProject={setupLoadOffer}
         yieldPrimary={homeOwnsPrimary}

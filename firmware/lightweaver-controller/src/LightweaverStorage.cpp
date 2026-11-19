@@ -8,10 +8,12 @@
 #include "LightweaverRecipe.h"
 #include "LightweaverLookModePolicy.h"
 #include "LightweaverWifiChannelPolicy.h"
+#include "LightweaverProjectStore.h"
 #include <cstring>
 #include <new>
 #include <esp_system.h>
 #include <mbedtls/sha256.h>
+#include <nvs.h>
 
 // Non-PlatformIO compile fallback only; PlatformIO injects canonical VERSION.
 #ifndef LW_FIRMWARE_VERSION
@@ -56,6 +58,39 @@ constexpr const char* NVS_SD_AUTORUN_SUPPRESSED_KEY = "sdAutorunOff";
 // a live tweak must never touch the fingerprinted project JSON or its budget.
 constexpr const char* NVS_LIVE_LOOK_KEY = "liveLook";
 constexpr size_t NVS_STRING_LIMIT = 3968;
+// The canonical project is a blob (see LightweaverProjectStore.h for why a
+// string cannot be relied on). NVS_KNOWN_GOOD_CONFIG_KEY is the string an
+// older firmware left; it is read until the first save replaces it.
+constexpr const char* NVS_KNOWN_GOOD_BLOB_KEY = "kgConfigBlob";
+
+String readKnownGood(Preferences& prefs) {
+  return lightweaver::readProject(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY);
+}
+size_t writeKnownGood(Preferences& prefs, const String& json) {
+  return lightweaver::writeProject(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY, json);
+}
+bool hasKnownGood(Preferences& prefs) {
+  return lightweaver::projectStored(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY);
+}
+bool removeKnownGood(Preferences& prefs) {
+  return lightweaver::removeProject(prefs, NVS_KNOWN_GOOD_BLOB_KEY, NVS_KNOWN_GOOD_CONFIG_KEY);
+}
+bool isKnownGoodKey(const char* key) {
+  return strcmp(key, NVS_KNOWN_GOOD_CONFIG_KEY) == 0;
+}
+// Entries in the NVS partition not holding live data, or 0 when unreadable.
+size_t nvsFreeEntries() {
+  nvs_stats_t stats;
+  return nvs_get_stats(nullptr, &stats) == ESP_OK ? stats.free_entries : 0;
+}
+// Saved looks and the playlist share the partition with the project. Neither
+// may grow into the room a full-size project needs to replace the current one.
+bool clientRecordLeavesProjectRoom(Preferences& prefs, const char* key, size_t newBytes) {
+  const bool hadOld = prefs.isKey(key);
+  const size_t oldBytes = hadOld ? prefs.getString(key, "").length() : 0;
+  return lightweaver::recordLeavesProjectRoom(
+      nvsFreeEntries(), oldBytes, hadOld, newBytes, NVS_STRING_LIMIT);
+}
 
 // LW_PLAYLIST_RECORD_MAX_ENTRIES (LightweaverStorage.h, Arduino-free) and
 // LW_MAX_PLAYLIST_ENTRIES (LightweaverTypes.h, pulled in transitively via
@@ -1442,6 +1477,21 @@ ProvisioningStorageState readNvsString(Preferences& prefs,
                                        const char* key,
                                        String& value,
                                        String& message) {
+  if (isKnownGoodKey(key)) {
+    if (!hasKnownGood(prefs)) return ProvisioningStorageState::Absent;
+    if (prefs.isKey(NVS_KNOWN_GOOD_BLOB_KEY)
+            ? prefs.getType(NVS_KNOWN_GOOD_BLOB_KEY) != PT_BLOB
+            : prefs.getType(key) != PT_STR) {
+      message = String("nvs value has invalid type: ") + key;
+      return ProvisioningStorageState::Error;
+    }
+    value = readKnownGood(prefs);
+    if (!value.length()) {
+      message = String("nvs value read failed or empty: ") + key;
+      return ProvisioningStorageState::Error;
+    }
+    return ProvisioningStorageState::Present;
+  }
   if (!prefs.isKey(key)) return ProvisioningStorageState::Absent;
   if (prefs.getType(key) != PT_STR) {
     message = String("nvs value has invalid type: ") + key;
@@ -1480,14 +1530,15 @@ ProvisioningStorageState loadNvsConfigKeyStrict(const char* key,
       message = "legacy wiring digest upgrade could not open canonical storage";
       return ProvisioningStorageState::Error;
     }
-    prefs.putString(key, json);
+    if (isKnownGoodKey(key)) writeKnownGood(prefs, json);
+    else prefs.putString(key, json);
     prefs.end();
     if (!prefs.begin(NVS_NAMESPACE, true)) {
       configParsed = false;
       message = "legacy wiring digest upgrade readback unavailable";
       return ProvisioningStorageState::Error;
     }
-    String readback = prefs.getString(key, "");
+    String readback = isKnownGoodKey(key) ? readKnownGood(prefs) : prefs.getString(key, "");
     prefs.end();
     if (readback != json) {
       configParsed = false;
@@ -1521,15 +1572,15 @@ bool restorePreviousKnownGood(Preferences& prefs) {
   }
   if (!prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY)) return false;
   String previous = prefs.getString(NVS_PREVIOUS_KNOWN_GOOD_KEY, "");
-  String currentKnownGood = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String currentKnownGood = readKnownGood(prefs);
   bool restored = false;
   if (previous == NVS_NO_PREVIOUS_KNOWN_GOOD) {
-    restored = !prefs.isKey(NVS_KNOWN_GOOD_CONFIG_KEY) ||
-               prefs.remove(NVS_KNOWN_GOOD_CONFIG_KEY);
+    restored = !hasKnownGood(prefs) ||
+               removeKnownGood(prefs);
   } else if (previous.length()) {
     restored = currentKnownGood == previous ||
-               (prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, previous) == previous.length() &&
-                prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "") == previous);
+               (writeKnownGood(prefs, previous) == previous.length() &&
+                readKnownGood(prefs) == previous);
   }
   if (!restored) return false;
   bool disarmed = prefs.putBool(NVS_PROMOTION_ARMED_KEY, false) > 0 ||
@@ -1541,7 +1592,7 @@ bool restorePreviousKnownGood(Preferences& prefs) {
 
 bool finalizeCommittedPromotion(Preferences& prefs) {
   if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) return false;
-  String knownGood = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String knownGood = readKnownGood(prefs);
   String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
   String candidateId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
   String confirmedId = prefs.getString(NVS_CONFIRMED_ID_KEY, "");
@@ -1584,7 +1635,7 @@ bool validateCandidateMetadataForBoot(Preferences& prefs, WiringCandidateState s
   bool armedKeyPresent = prefs.isKey(NVS_PROMOTION_ARMED_KEY);
   bool armed = prefs.getBool(NVS_PROMOTION_ARMED_KEY, false);
   bool journalPresent = prefs.isKey(NVS_PREVIOUS_KNOWN_GOOD_KEY);
-  String knownGood = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String knownGood = readKnownGood(prefs);
   String candidate = prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "");
   String candidateId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
   String confirmedId = prefs.getString(NVS_CONFIRMED_ID_KEY, "");
@@ -1665,13 +1716,13 @@ ProvisioningStorageState migrateLegacyKnownGood(String& message) {
     prefs.end();
     return ProvisioningStorageState::Error;
   }
-  prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, legacy);
+  writeKnownGood(prefs, legacy);
   prefs.end();
   if (!prefs.begin(NVS_NAMESPACE, true)) {
     message = "known-good migration readback unavailable; legacy config preserved";
     return ProvisioningStorageState::Error;
   }
-  String canonicalReadback = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String canonicalReadback = readKnownGood(prefs);
   prefs.end();
   if (canonicalReadback != legacy) {
     message = "known-good migration failed; legacy config preserved";
@@ -2175,6 +2226,9 @@ bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String
   if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) {
     prefs.end(); message = "wiring transaction is active"; return false;
   }
+  if (!clientRecordLeavesProjectRoom(prefs, CLIENT_PLAYLIST_KEY, json.length())) {
+    prefs.end(); message = "playlist would leave no room to save the project; runtime unchanged"; return false;
+  }
   bool written = prefs.putString(CLIENT_PLAYLIST_KEY, json) == json.length();
   prefs.end();
   if (!written || !prefs.begin(NVS_NAMESPACE, true)) {
@@ -2275,6 +2329,9 @@ bool saveClientPattern(RuntimeConfig& config, const String& patternId, JsonVaria
   if (readCandidateState(prefs) != WIRING_CANDIDATE_NONE) {
     prefs.end(); message = "wiring transaction is active"; return false;
   }
+  if (!clientRecordLeavesProjectRoom(prefs, CLIENT_PATTERN_KEY, json.length())) {
+    prefs.end(); message = "saved pattern controls would leave no room to save the project; runtime unchanged"; return false;
+  }
   const bool written = prefs.putString(CLIENT_PATTERN_KEY, json) == json.length(); prefs.end();
   if (!written || !prefs.begin(NVS_NAMESPACE, true)) {
     message = "pattern write could not be verified; runtime unchanged"; return false;
@@ -2294,11 +2351,16 @@ bool saveClientPattern(RuntimeConfig& config, const String& patternId, JsonVaria
   return true;
 }
 
+// What limits.configStorageBytes reports: the largest project a save can take
+// right now, never more. On a healthy card this is NVS_STRING_LIMIT, because
+// saved looks and the playlist are refused before they grow into that room.
+size_t runtimeConfigStorageLimitBytes() {
+  return lightweaver::projectRoomBytes(nvsFreeEntries(), NVS_STRING_LIMIT);
+}
+
 bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message) {
-  // ESP-IDF NVS caps a single string entry at ~4000 bytes. A large playlist
-  // pushed from the Studio would otherwise fail deep in putString with an
-  // opaque "nvs write failed" — reject it up front, before any deserialize or
-  // heap allocation, with an actionable error.
+  // Reject an over-limit project up front, before any deserialize or heap
+  // allocation, with an actionable error.
   if (json.length() > NVS_STRING_LIMIT) {
     message = String("config too large for card storage (") + json.length() +
               " bytes, max " + NVS_STRING_LIMIT + ") — remove some looks or zones";
@@ -2343,7 +2405,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
     return false;
   }
 
-  String previousCanonical = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String previousCanonical = readKnownGood(prefs);
 
   // NVS strings occupy page-sized entry runs and updates are append-first.
   // Keeping a second full config beside knownGoodConfig can leave no page for
@@ -2367,7 +2429,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
     return false;
   }
   if (previousCanonical != json) {
-    prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, json);
+    writeKnownGood(prefs, json);
   }
   prefs.end();
   if (!prefs.begin(NVS_NAMESPACE, false)) {
@@ -2375,7 +2437,7 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
     message = "nvs canonical readback reopen failed; runtime unchanged";
     return false;
   }
-  String canonicalReadback = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String canonicalReadback = readKnownGood(prefs);
   bool committed = canonicalReadback == json;
   bool cleanupOk = true;
   if (committed) {
@@ -2391,8 +2453,10 @@ bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& me
   if (!committed) {
     delete parsed;
     message = canonicalReadback == previousCanonical
-        ? "nvs write failed; previous project remains intact and runtime unchanged"
-        : "nvs write failed; canonical readback changed unexpectedly and runtime unchanged";
+        ? String("nvs write failed; previous project remains intact and runtime unchanged (project is ") +
+              json.length() + " bytes, card storage has room for " +
+              runtimeConfigStorageLimitBytes() + ")"
+        : String("nvs write failed; canonical readback changed unexpectedly and runtime unchanged");
     return false;
   }
   WifiConfig preservedWifi = config.wifi;
@@ -2468,6 +2532,7 @@ bool clearRuntimeProjectStorage(String& message) {
     NVS_PREVIOUS_KNOWN_GOOD_KEY,
     NVS_LEGACY_CONFIG_KEY,
     NVS_KNOWN_GOOD_CONFIG_KEY,
+    NVS_KNOWN_GOOD_BLOB_KEY,
     // A cleared project cannot leave a live-tweak record behind: nothing
     // installed after this could ever match its project id/revision, but an
     // orphaned key is still bytes on flash for no reason.
@@ -2476,7 +2541,7 @@ bool clearRuntimeProjectStorage(String& message) {
   for (const char* key : orderedKeys) {
     if (prefs.isKey(key) && !prefs.remove(key)) ok = false;
   }
-  bool projectGone = !prefs.isKey(NVS_KNOWN_GOOD_CONFIG_KEY) &&
+  bool projectGone = !hasKnownGood(prefs) &&
                      !prefs.isKey(NVS_CANDIDATE_CONFIG_KEY);
   prefs.end();
   if (!ok || !projectGone) {
@@ -2504,6 +2569,11 @@ bool persistLiveLookRecord(const LiveLookRecord& record, String& message) {
   Preferences prefs;
   if (!prefs.begin(NVS_NAMESPACE, false)) {
     message = "nvs live-look write open failed";
+    return false;
+  }
+  if (!clientRecordLeavesProjectRoom(prefs, NVS_LIVE_LOOK_KEY, written)) {
+    prefs.end();
+    message = "live tweaks would leave no room to save the project";
     return false;
   }
   bool ok = prefs.putString(NVS_LIVE_LOOK_KEY, buffer) > 0;
@@ -2669,14 +2739,14 @@ bool confirmCandidateRuntimeConfig(const String& activationId, String& message) 
     message = "nvs duplicate cleanup failed before candidate confirmation";
     return false;
   }
-  String previous = prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "");
+  String previous = readKnownGood(prefs);
   bool journaled = previous.length()
     ? prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY, previous) == previous.length()
     : prefs.putString(NVS_PREVIOUS_KNOWN_GOOD_KEY, NVS_NO_PREVIOUS_KNOWN_GOOD) ==
         strlen(NVS_NO_PREVIOUS_KNOWN_GOOD);
   bool armed = journaled && prefs.putBool(NVS_PROMOTION_ARMED_KEY, true) > 0;
-  bool promoted = armed && prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, candidate) == candidate.length() &&
-                  prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "") == candidate;
+  bool promoted = armed && writeKnownGood(prefs, candidate) == candidate.length() &&
+                  readKnownGood(prefs) == candidate;
   bool confirmed = promoted && prefs.putString(NVS_CONFIRMED_ID_KEY, activationId) == activationId.length();
   promoted = confirmed && writeCandidateState(prefs, WIRING_CANDIDATE_NONE);
   if (promoted) {
@@ -2731,8 +2801,8 @@ WiringSafetyStatus getRuntimeWiringSafetyStatus() {
   Preferences prefs;
   if (!prefs.begin(NVS_NAMESPACE, true)) return status;
   status.candidateState = readCandidateState(prefs);
-  status.hasKnownGood = prefs.isKey(NVS_KNOWN_GOOD_CONFIG_KEY) &&
-                        prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY, "").length() > 0;
+  status.hasKnownGood = hasKnownGood(prefs) &&
+                        readKnownGood(prefs).length() > 0;
   status.hasCandidate = prefs.isKey(NVS_CANDIDATE_CONFIG_KEY) &&
                         prefs.getString(NVS_CANDIDATE_CONFIG_KEY, "").length() > 0;
   if (status.hasCandidate) status.activationId = prefs.getString(NVS_CANDIDATE_ID_KEY, "");
@@ -3083,7 +3153,7 @@ String runtimeStatusJson(const RuntimeConfig& config, ErrorCode errorCode, uint1
   doc["limits"]["looks"] = LW_MAX_LOOKS;
   doc["limits"]["zones"] = LW_MAX_ZONES;
   doc["limits"]["rangesPerZone"] = LW_MAX_RANGES_PER_ZONE;
-  doc["limits"]["configStorageBytes"] = NVS_STRING_LIMIT;
+  doc["limits"]["configStorageBytes"] = runtimeConfigStorageLimitBytes();
   serializeKaleidoscopeMappings(
       doc["kaleidoscopeMappings"].to<JsonArray>(), config);
   lightweaver::writeNativeRecipeCapabilities(

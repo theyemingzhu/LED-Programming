@@ -41,12 +41,12 @@ const saveEnd = storage.indexOf('bool suppressSdProjectAutorunAfterFactoryReset(
 assert.ok(saveStart >= 0 && saveEnd > saveStart, 'internal-flash config save should exist');
 const save = storage.slice(saveStart, saveEnd);
 assert.ok(
-  save.indexOf('putString(NVS_KNOWN_GOOD_CONFIG_KEY, json)') < save.indexOf('config = *parsed'),
+  save.indexOf('writeKnownGood(prefs, json)') < save.indexOf('config = *parsed'),
   'install acknowledgement must persist the startup selection before replacing live config state',
 );
 assert.match(
   save,
-  /putString\(NVS_KNOWN_GOOD_CONFIG_KEY, json\)[\s\S]*canonicalReadback\s*==\s*json/,
+  /writeKnownGood\(prefs, json\)[\s\S]*canonicalReadback\s*==\s*json/,
   'the complete validated multi-look package must be durably stored and exactly read back, not only its first pattern',
 );
 

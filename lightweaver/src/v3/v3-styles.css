@@ -238,15 +238,19 @@ input[type=number]::-webkit-outer-spin-button {
    App shell — single continuous grid
    ============================================================ */
 .app {
+  --studio-header-height: 44px;
+  --studio-footer-height: 28px;
+  --studio-rail-width: 58px;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 320px;
-  grid-template-rows: 52px minmax(48px, auto) 1fr 32px;
+  grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) 320px;
+  grid-template-rows: var(--studio-header-height) minmax(36px, auto) minmax(0, 1fr) minmax(var(--studio-footer-height), auto);
   grid-template-areas:
     "top   top   top"
     "rail  tool  side"
     "rail  body  side"
     "stat  stat  stat";
   height: 100vh;
+  height: 100dvh;
   background: var(--bg-app);
 }
 
@@ -258,7 +262,7 @@ input[type=number]::-webkit-outer-spin-button {
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 0 18px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-hair);
   background: var(--bg-app);
 }
@@ -321,12 +325,9 @@ input[type=number]::-webkit-outer-spin-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 2px 8px;
-  border: 1px solid var(--border-hair);
-  border-radius: 999px;
+  padding: 0 2px;
   font-size: 11px;
   color: var(--text-lo);
-  background: var(--bg-inset, rgba(128, 128, 128, 0.08));
 }
 .top-right { min-width: 0; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .top-div { width: 1px; height: 18px; background: var(--border-hair); margin: 0 5px; }
@@ -339,6 +340,24 @@ input[type=number]::-webkit-outer-spin-button {
 .link-btn:hover { background: var(--bg-elev); color: var(--text-hi); }
 .link-btn .arrow { color: var(--text-faint); font-family: var(--font-mono); }
 .top-action { justify-content: center; }
+.top-action.btn.primary {
+  position: relative;
+  isolation: isolate;
+  color: var(--accent-hi);
+  background: transparent;
+}
+.top-action.btn.primary::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  z-index: -1;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  pointer-events: none;
+}
+.top-action.btn.primary:hover::before,
+.top-action.btn.primary:focus-visible::before { background: var(--accent-soft); }
+.top-action.btn.primary:hover { background: transparent; }
 .top-action-icon {
   width: 17px;
   height: 17px;
@@ -632,7 +651,7 @@ input[type=number]::-webkit-outer-spin-button {
   position: relative; z-index: 36;
   min-width: 0; overflow: hidden;
   display: flex; align-items: center; gap: 9px;
-  padding: 0 12px; height: 32px;
+  padding: 0 10px; height: var(--studio-footer-height, 28px);
   border-top: 1px solid var(--border-hair);
   background: var(--bg-app);
   font-size: 11.5px; color: var(--text-lo);
@@ -694,13 +713,13 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
    can never be forgotten mid-session (see src/lib/testStrip.js). */
 .sb-teststrip { min-width: 0; overflow: hidden; flex: 0 0 auto; display: flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 11px; color: var(--text-lo); }
 .sb-ts-toggle {
-  height: 20px; padding: 0 9px; border-radius: 100px;
-  background: var(--bg-elev); border: 1px solid var(--border-soft);
+  height: 20px; padding: 0 6px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid var(--border-soft);
   color: var(--text-mid); font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em;
   transition: background .12s, color .12s, border-color .12s;
 }
 .sb-ts-toggle:hover { background: var(--bg-elev-2); color: var(--text-hi); }
-.sb-ts-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.sb-ts-toggle.on { border-color: var(--accent-line); color: var(--accent-hi); }
 .sb-ts-input {
   height: 20px; width: 52px; padding: 0 6px;
   background: var(--bg-elev); border: 1px solid var(--border-soft); border-radius: var(--r-sm);
@@ -739,6 +758,7 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
   background: var(--bg-elev); color: var(--text-mid);
   transition: background .12s, border-color .12s, color .12s;
 }
+.card-status-control.is-not-connected:not(:hover) { background: transparent; border-color: transparent; }
 .card-status-control:hover { background: var(--bg-elev-2); border-color: var(--border); color: var(--text-hi); }
 .card-status-control:focus-visible,
 .card-connection-center button:focus-visible,
@@ -1011,8 +1031,8 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 
 @media (max-width: 1024px) {
   .status-bar {
-    flex-wrap: wrap; height: auto; min-height: 32px;
-    row-gap: 6px; padding: 6px 12px;
+    flex-wrap: wrap; height: auto; min-height: var(--studio-footer-height);
+    row-gap: 2px; padding: 2px 8px;
   }
   .sb-card { min-width: 0; flex: 0 1 auto; }
   .card-status-control { max-width: 100%; }
@@ -1021,43 +1041,61 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 
 @media (max-width: 640px) {
   .app {
-    grid-template-columns: 58px minmax(0, 1fr) 0px;
-    grid-template-rows: minmax(52px, auto) minmax(48px, auto) 1fr minmax(32px, auto);
+    --studio-header-height: 68px;
+    grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) 0px;
+    grid-template-rows: auto minmax(36px, auto) minmax(0, 1fr) auto;
   }
+
+  .rail {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+  }
+  .rail-item { flex-shrink: 0; }
+  .rail-item.active::before { left: -6px; }
 
   .topbar {
     height: auto;
-    min-height: 52px;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: 44px 20px;
     grid-template-areas:
       "brand actions"
       "crumb crumb";
-    gap: 5px 8px;
-    padding: 6px 12px;
+    gap: 0 6px;
+    padding: 1px 8px 3px;
   }
+  .topbar:has(.crumb:empty) { grid-template-rows: 44px 0; }
   .topbar .brand { grid-area: brand; }
-  .topbar .crumb { grid-area: crumb; width: 100%; }
-  .top-right { grid-area: actions; justify-self: end; gap: 4px; }
+  .topbar .crumb { grid-area: crumb; width: 100%; gap: 6px; }
+  .topbar .crumb:empty { display: none; }
+  .top-right { grid-area: actions; justify-self: end; gap: 2px; }
   .top-div { display: none; }
   .top-action { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .top-action.btn.primary::before { inset: 7px; }
 
   .status-bar {
-    display: grid; height: auto; min-height: 32px;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "card studio" "firmware test" "offline offline";
-    gap: 6px 8px; padding: 6px 12px;
+    display: grid; height: auto; min-height: var(--studio-footer-height);
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "card card studio" "firmware test test";
+    gap: 0 6px; padding: 1px 7px;
+  }
+  .status-bar:has(.sb-offline) {
+    grid-template-areas: "card card studio" "firmware test test" "offline offline offline";
   }
   .sb-card { grid-area: card; min-width: 0; }
-  .sb-firmware { grid-area: firmware; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .sb-firmware { grid-area: firmware; justify-self: start; max-width: 100%; padding-inline: 4px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  button.sb-firmware { min-height: 32px; border-radius: var(--r-sm); }
   .sb-teststrip { grid-area: test; justify-self: end; }
-  .sb-teststrip.is-active { grid-column: 1 / -1; justify-self: stretch; flex-wrap: wrap; }
-  .sb-teststrip.is-active .sb-ts-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .sb-ts-toggle { min-height: 32px; }
+  .sb-ts-input { min-height: 32px; }
   .sb-freshness { grid-area: studio; justify-self: end; }
-  .sb-firmware.sb-offline { grid-area: offline; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-firmware.sb-offline { grid-area: offline; }
   .sb-spring { display: none; }
 
-  .card-status-control { min-height: 44px; max-width: min(100%, 300px); }
+  .card-status-control { min-height: 32px; max-width: min(100%, 300px); padding-inline: 4px; gap: 6px; }
+  .status-bar :is(button, input, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .card-connection-center {
     left: 0; right: 0; bottom: 0; width: 100%; max-height: min(76vh, 640px);
     padding: 18px 18px max(18px, env(safe-area-inset-bottom));
@@ -1079,6 +1117,12 @@ button.sb-firmware:hover { background: var(--bg-elev-2); color: var(--text-hi); 
 
 @media (max-width: 360px) {
   .brand .name { display: none; }
+  .status-bar:has(.sb-teststrip.is-active) {
+    grid-template-areas: "card card studio" "firmware firmware firmware" "test test test";
+  }
+  .status-bar:has(.sb-teststrip.is-active):has(.sb-offline) {
+    grid-template-areas: "card card studio" "firmware firmware firmware" "test test test" "offline offline offline";
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

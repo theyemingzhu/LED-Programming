@@ -74,8 +74,6 @@ export function useLayoutState() {
     togglePathSel,
     clearLayoutSelection,
     renameLayoutSelection,
-    serializeProject,
-    loadProject,
     activePatternId,
     palette,
     masterSpeed,
@@ -213,7 +211,7 @@ export function useLayoutState() {
     // reducer-owned state + dispatchers
     strips, setStrips,
     viewBox, setViewBox,
-    svgText, setSvgText,
+    svgText, setSvgText, starterLayoutActive,
     hidden, setHidden,
     layers, setLayers,
     density, setDensity,
@@ -231,7 +229,6 @@ export function useLayoutState() {
     selection,
     selectStrip, selectStrips, toggleStripSel, selectLayer,
     selectPaths, togglePathSel, clearLayoutSelection, renameLayoutSelection,
-    serializeProject, loadProject,
     // pattern state for the preview frame
     activePatternId, palette, bpm,
     masterSpeed, masterBrightness, masterSaturation, masterHueShift,

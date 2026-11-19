@@ -138,7 +138,7 @@ assert.equal((factoryFrame.match(/fill_solid\(physicalLeds \+ bufferStart/g) || 
 
 const wiringSafety = functionBody(storage, 'WiringSafetyStatus getRuntimeWiringSafetyStatus()', 'String runtimeWiringSafetyStatusJson()');
 assert.match(wiringSafety,
-  /prefs\.isKey\(NVS_KNOWN_GOOD_CONFIG_KEY\)[\s\S]*prefs\.getString\(NVS_KNOWN_GOOD_CONFIG_KEY/,
+  /hasKnownGood\(prefs\)[\s\S]*readKnownGood\(prefs/,
   'an erased card must not call getString for a missing known-good key');
 assert.match(wiringSafety,
   /prefs\.isKey\(NVS_CANDIDATE_CONFIG_KEY\)[\s\S]*prefs\.getString\(NVS_CANDIDATE_CONFIG_KEY/,

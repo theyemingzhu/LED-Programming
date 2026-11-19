@@ -33,6 +33,11 @@
 }
 .pm .pm-title p { color: var(--text-lo); }
 
+@media (max-width: 640px) {
+  .pm:is(.pm-workspace, .pl-workspace) { padding-inline: 0; }
+  .pm:is(.pm-workspace, .pl-workspace) .pm-hero { padding-inline: 6px; }
+}
+
 /* ── section heads: a mono label on a hairline rule ──────── */
 /* .sec-h already lays out as label + meta + rule. The schematic
    register only changes the register of the label, and adds the
@@ -163,6 +168,38 @@
   border-color: var(--accent-hi);
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
     0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.pm:is(.pm-workspace, .pl-workspace) .pm-actions > .btn.primary:not([data-testid="recover-lights"]),
+.pm.pm-workspace .project-stack-save-controls > .btn.primary {
+  min-height: 34px;
+  padding-block: 0;
+  color: var(--accent-hi);
+  background: transparent;
+  border-color: var(--accent-line);
+  box-shadow: none;
+}
+.pm.pm-workspace .pm-actions .pm-menu > .btn {
+  min-height: 34px;
+  background: transparent;
+  border-color: var(--border);
+  box-shadow: none;
+}
+.pm:is(.pm-workspace, .pl-workspace) .pm-actions > .btn.primary:not([data-testid="recover-lights"]):hover:not(:disabled),
+.pm.pm-workspace .project-stack-save-controls > .btn.primary:hover:not(:disabled),
+.pm.pm-workspace .pm-actions .pm-menu > .btn:is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: var(--bg-elev-2);
+}
+.pm:is(.pm-workspace, .pl-workspace) .pm-actions > .btn.primary:not([data-testid="recover-lights"]):disabled {
+  color: var(--control-disabled-ink, var(--text-lo));
+  border-color: var(--control-disabled-edge, var(--border-soft));
+}
+.pm.pm-workspace .project-stack-save-controls > .pm-input {
+  min-height: 34px;
+  padding-block: 0;
+}
+@media (min-width: 641px) and (pointer: fine) {
+  .pm:is(.pm-workspace, .pl-workspace) .pm-actions > .btn.primary:not([data-testid="recover-lights"]),
+  .pm.pm-workspace .pm-actions .pm-menu > .btn { min-height: 32px; }
 }
 .pm .pm-pane { padding: 0 12px 12px; }
 .pm .pm-pane > .sec-h { margin: 0 -12px 10px; padding: 11px 12px; }

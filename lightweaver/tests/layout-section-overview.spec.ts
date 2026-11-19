@@ -24,6 +24,13 @@ test('Layout shows actual section shape, output inventory, and exact pattern act
   await section.locator('.layer-name').click();
   const settings = page.getByRole('region', { name: 'Branch layout settings', exact: true });
   await expect(settings.getByRole('spinbutton', { name: 'Branch LED count', exact: true })).toHaveValue(/^[1-9]\d*$/);
+  const artworkHeading = page.getByText('Artwork layers', { exact: true });
+  expect(await group.evaluate(group => {
+    const artwork = [...document.querySelectorAll('.la-inspector-main .panel-head .ttl')]
+      .find(heading => heading.textContent === 'Artwork layers');
+    return Boolean(artwork && (group.compareDocumentPosition(artwork) & Node.DOCUMENT_POSITION_FOLLOWING));
+  })).toBe(true);
+  await expect(artworkHeading).toBeAttached();
   const changePattern = section.getByRole('button', { name: /Change pattern for/ });
   await expect(changePattern).toHaveAttribute('data-target-id', /.+/);
   await expect(page.getByTestId('layout-mapping-details')).toHaveCount(1);

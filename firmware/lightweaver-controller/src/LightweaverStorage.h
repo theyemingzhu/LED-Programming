@@ -448,6 +448,8 @@ String clientPlaylistJson(const RuntimeConfig& config);
 bool saveClientPlaylist(JsonVariantConst playlist, RuntimeConfig& config, String& message);
 bool loadClientPlaylist(RuntimeConfig& config);
 bool saveRuntimeConfigJson(const String& json, RuntimeConfig& config, String& message);
+// The largest project a save can take right now (limits.configStorageBytes).
+size_t runtimeConfigStorageLimitBytes();
 bool suppressSdProjectAutorunAfterFactoryReset(String& message);
 bool clearRuntimeProjectStorage(String& message);
 bool stageRuntimeConfigJson(const String& json, String& activationId, String& message);

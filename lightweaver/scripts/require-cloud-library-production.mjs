@@ -31,6 +31,9 @@ export function readProductionLibraryConfiguration(env = process.env) {
   const nativeAuthReady = env.LIGHTWEAVER_NATIVE_AUTH_READY === 'confirmed';
   values.LIGHTWEAVER_NATIVE_AUTH_READY = nativeAuthReady ? 'confirmed' : 'pending';
   const invalid = BASE_REQUIRED.filter(name => !values[name]);
+  const passwordless = env.STUDIO_PASSWORDLESS_AUTH_ENABLED?.trim() || '';
+  if (passwordless === 'true') values.STUDIO_PASSWORDLESS_AUTH_ENABLED = passwordless;
+  else if (passwordless && passwordless !== 'false') invalid.push('STUDIO_PASSWORDLESS_AUTH_ENABLED');
 
   if (!nativeAuthReady) {
     invalid.push(...ACCESS_REQUIRED.filter(name => !values[name]));

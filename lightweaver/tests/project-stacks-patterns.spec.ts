@@ -52,6 +52,38 @@ const namedLook = (id: string, label: string) => ({
   },
 });
 
+test('opening a saved look on a phone keeps its preview and save action in view', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openStackProject(page, 'phone-look-preview', [namedLook('amber-tides', 'Amber Tides')], true);
+  await editStack(page, 'Amber Tides');
+
+  const piece = page.getByTestId('pattern-piece-preview');
+  await expect(piece).toHaveAttribute('data-preview-mode', 'piece');
+  await expect(piece.locator('canvas')).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByTestId('look-save-preset')).toBeInViewport({ ratio: 0.9 });
+  await expect(page.getByTestId('section-target-patch-default-outer-circle').locator('.pm-section-palette'))
+    .toHaveAttribute('data-pattern-id', 'aurora');
+  await expect(page.getByTestId('section-target-patch-default-inner-circle').locator('.pm-section-palette'))
+    .toHaveAttribute('data-pattern-id', 'ocean');
+
+  await page.getByLabel('Preview target').selectOption('patch-default-inner-circle');
+  await expect(piece).toHaveAttribute('data-preview-mode', 'strip');
+  await expect(piece).toHaveAttribute('data-preview-patterns', 'ocean');
+  await page.getByRole('button', { name: 'On my piece' }).click();
+  await expect(piece).toHaveAttribute('data-preview-mode', 'piece');
+});
+
+test('a Lab-only saved look opens the Lab directly from its preview', async ({ page }) => {
+  const saved = { ...namedLook('lab-nocturne', 'Lab Nocturne'), projectOnly: true };
+  await openStackProject(page, 'lab-only-preview', [saved], true);
+  await editStack(page, saved.label);
+  const preview = page.getByTestId('pattern-piece-preview');
+  await expect(preview.locator('canvas')).toHaveCount(0);
+  await preview.getByRole('button', { name: 'Preview in Lab' }).click();
+  await expect(page).toHaveURL(/screen=pattern-lab/);
+  await expect(page.getByTestId('pattern-lab-draft-name')).toHaveValue(saved.label);
+});
+
 test('chip selection stays local while Preview, Edit, and Add remain explicit', async ({ page }) => {
   const project = createDefaultProject();
   project.id = 'project-stack-chip-actions';
@@ -196,7 +228,7 @@ test('duplicate, revert and delete undo keep separate identities', async ({ page
   await openStackProject(page, 'stack-lifecycle', [namedLook('stack-one', 'One')]);
   await editStack(page, 'One');
   await page.getByTestId('stack-more-actions').click();
-  await page.getByRole('button', { name: 'Duplicate stack' }).click();
+  await page.getByRole('button', { name: 'Duplicate look' }).click();
   await expect(page.getByTestId('project-stack-card')).toHaveCount(2);
   await expect(page.getByTestId('look-name')).toHaveValue('One 2');
   await page.getByTestId('section-target-patch-default-outer-circle').click();
@@ -261,6 +293,33 @@ test('a changed section map asks for review before updating a stack', async ({ p
   await expect(page.getByTestId('stack-review')).toHaveCount(0);
 });
 
+test('an outdated playlist stack opens its section review from the install warning', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'playlist-stack-needs-section-review';
+  const look = {
+    ...namedLook('outdated-stack', 'Old arrangement'),
+    sectionLooks: { 'section-that-no-longer-exists': { patternId: 'fire' } },
+  };
+  project.devices.standaloneController.looks = [look];
+  project.devices.standaloneController.playlist = [
+    { id: 'combo-outdated', type: 'combo', lookId: look.id, label: look.label, enabled: true },
+  ];
+  await page.addInitScript(saved => localStorage.setItem('lw_autosave_v3', JSON.stringify(saved)), project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern');
+
+  const notice = page.getByTestId('hardware-configuration-warning');
+  await expect(notice).toContainText(look.label);
+  await expect(notice.getByRole('button', { name: 'Fix automatically' })).toHaveCount(0);
+  await notice.getByRole('button', { name: 'Review sections' }).click();
+  const review = page.getByTestId('stack-review');
+  await expect(review).toBeVisible();
+  await expect(page.getByTestId('look-name')).toHaveValue(look.label);
+  await review.getByRole('button', { name: /Use saved settings/ }).click();
+  await expect(review).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+});
+
 test('failed browser persistence keeps the stack draft and offers retry', async ({ page }) => {
   await openStackProject(page, 'stack-quota-retry');
   await newStack(page);
@@ -308,7 +367,7 @@ test('ten project stacks fit desktop and phone without horizontal overflow', asy
   await page.screenshot({ path: '/tmp/lightweaver-stacks-patterns-phone.png' });
 });
 
-test('ten saved stack chips wrap into rows and the editor stays below them', async ({ page }) => {
+test('ten saved stack chips wrap and keep the open editor near the artwork', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await openStackProject(page, 'stack-compact-density', Array.from({ length: 10 }, (_, index) => {
     const look = namedLook(`compact-${index}`, `Garden ${index + 1}`);
@@ -327,9 +386,11 @@ test('ten saved stack chips wrap into rows and the editor stays below them', asy
   await chips.first().getByRole('button', { name: /^Edit / }).click();
   const editor = page.getByTestId('stack-save-bar');
   await expect(editor).toBeVisible();
-  const lastChip = await chips.last().boundingBox();
+  const canvas = await page.getByTestId('pattern-piece-preview').boundingBox();
   const editorBox = await editor.boundingBox();
-  expect(lastChip && editorBox && editorBox.y >= lastChip.y + lastChip.height).toBe(true);
+  const savedLook = await chips.first().boundingBox();
+  expect(canvas && editorBox && savedLook && canvas.y + canvas.height <= editorBox.y
+    && editorBox.y + editorBox.height <= savedLook.y).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   const phoneFirst = await chips.nth(0).boundingBox();
   const phoneSecond = await chips.nth(1).boundingBox();
@@ -413,4 +474,38 @@ test('unfinished new stack restores every section after opening another chip and
   await page.getByTestId('stack-new').click();
   await expect(page.getByTestId('section-pattern-patch-default-outer-circle')).toContainText('Fire');
   await expect(page.getByTestId('section-pattern-patch-default-inner-circle')).toContainText('Ocean');
+});
+
+test('returning a setting to its saved value clears dirty state with a canonical section key', async ({ page }) => {
+  const project = createDefaultProject();
+  project.id = 'canonical-look-dirty';
+  project.layout.starterPending = false;
+  const board = project.layout.patchBoard;
+  const originalId = board.patches[0].id;
+  const liveId = 'patch-Outer_Ring';
+  board.patches[0].id = liveId;
+  for (const chain of board.chains) chain.rowIds = chain.rowIds.map(id => id === originalId ? liveId : id);
+  const defaultLook = project.devices.standaloneController.defaultLook;
+  project.devices.standaloneController.looks = [{
+    id: 'canonical', label: 'Copper rings', sectionSnapshotVersion: 1, defaultLook,
+    sectionLooks: {
+      'patch-outer-ring': { ...defaultLook, patternId: 'fire', customHue: 72 },
+      'patch-default-inner-circle': defaultLook,
+    },
+  }];
+  await page.addInitScript(saved => localStorage.setItem('lw_autosave_v3', JSON.stringify(saved)), project);
+  await page.route(/^https?:\/\/(?:lightweaver\.local|192\.168\.|10\.)/, route => route.abort());
+  await page.goto('/#screen=pattern');
+  await editStack(page, 'Copper rings');
+  await expect(page.getByTestId('look-name')).toHaveValue('Copper rings');
+  await page.getByTestId('section-target-patch-Outer_Ring').click();
+  const hue = page.getByTestId('look-hue-slider');
+  await expect(hue).toHaveValue('72');
+  await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Tune · Outer circle');
+  await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Fire');
+  await hue.press('ArrowRight');
+  await expect(page.getByTestId('look-save-status')).toContainText('Unsaved');
+  await hue.press('ArrowLeft');
+  await expect(hue).toHaveValue('72');
+  await expect(page.getByTestId('look-save-status')).toContainText('Saved in project');
 });

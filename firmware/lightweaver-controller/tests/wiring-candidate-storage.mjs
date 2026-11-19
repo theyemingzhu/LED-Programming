@@ -74,13 +74,13 @@ assert.match(stageBody, /validateRuntimeConfigJsonStrict\(json, \*parsed, messag
 assert.doesNotMatch(stageBody, /config\s*=\s*\*parsed/, 'staging must not mutate the active runtime config');
 
 assert.match(storage, /readNvsString\(prefs,\s*NVS_LEGACY_CONFIG_KEY/);
-assert.match(storage, /putString\(NVS_KNOWN_GOOD_CONFIG_KEY/);
+assert.match(storage, /writeKnownGood\(prefs/);
 assert.match(storage, /known-good migration failed/);
 const migrateStart = storage.indexOf('ProvisioningStorageState migrateLegacyKnownGood(');
 const migrateEnd = storage.indexOf('const char* candidateStateLabel(', migrateStart);
 const migrateBody = storage.slice(migrateStart, migrateEnd);
-const migrateWrite = migrateBody.indexOf('prefs.putString(NVS_KNOWN_GOOD_CONFIG_KEY, legacy)');
-const migrateReadback = migrateBody.indexOf('prefs.getString(NVS_KNOWN_GOOD_CONFIG_KEY', migrateWrite);
+const migrateWrite = migrateBody.indexOf('writeKnownGood(prefs, legacy)');
+const migrateReadback = migrateBody.indexOf('readKnownGood(prefs', migrateWrite);
 const migratePrune = migrateBody.indexOf('prefs.remove(NVS_LEGACY_CONFIG_KEY)', migrateReadback);
 assert.ok(migrateWrite >= 0 && migrateReadback > migrateWrite && migratePrune > migrateReadback,
   'legacy-only migration must copy and exactly read back canonical known-good before retiring the duplicate');
@@ -101,7 +101,7 @@ const confirmEnd = storage.indexOf('bool rollbackCandidateRuntimeConfig(', confi
 const confirmBody = storage.slice(confirmStart, confirmEnd);
 const previousWrite = confirmBody.indexOf('NVS_PREVIOUS_KNOWN_GOOD_KEY', confirmBody.indexOf('String previous ='));
 const armWrite = confirmBody.indexOf('NVS_PROMOTION_ARMED_KEY', previousWrite);
-const knownGoodWrite = confirmBody.indexOf('putString(NVS_KNOWN_GOOD_CONFIG_KEY', armWrite);
+const knownGoodWrite = confirmBody.indexOf('writeKnownGood(prefs', armWrite);
 const stateClear = confirmBody.indexOf('writeCandidateState(prefs, WIRING_CANDIDATE_NONE)', knownGoodWrite);
 assert.ok(previousWrite > -1 && armWrite > previousWrite && knownGoodWrite > armWrite && stateClear > knownGoodWrite,
   'confirmation must journal the prior identity before promotion and clear candidate state last');

@@ -20,7 +20,7 @@ function body(source, signature, nextSignature) {
 test('creative save cannot replace known-good during a wiring transaction', () => {
   const saveBody = body(storage, 'bool saveRuntimeConfigJson(', 'bool stageRuntimeConfigJson(');
   const guardAt = saveBody.indexOf('WIRING_CANDIDATE_NONE');
-  const knownGoodWriteAt = saveBody.indexOf('putString(NVS_KNOWN_GOOD_CONFIG_KEY');
+  const knownGoodWriteAt = saveBody.indexOf('writeKnownGood(prefs');
   assert.ok(guardAt >= 0 && guardAt < knownGoodWriteAt,
     'save must reject an active wiring transaction before writing known-good');
   assert.match(saveBody, /wiring transaction[^"\n]*active/i);
@@ -76,7 +76,7 @@ test('discovery is one approved assignment per rebooted step and never persists 
   assert.match(discovery, /doc\["brightnessLimit"\]/);
   assert.match(discovery, /doc\["pixelLimit"\]/);
   assert.match(discovery, /doc\["nextStep"\]/);
-  assert.doesNotMatch(discovery, /saveRuntimeConfigJson|stageRuntimeConfigJson|NVS_KNOWN_GOOD_CONFIG_KEY/);
+  assert.doesNotMatch(discovery, /saveRuntimeConfigJson|stageRuntimeConfigJson|NVS_KNOWN_GOOD_CONFIG_KEY|NVS_KNOWN_GOOD_BLOB_KEY|writeKnownGood|removeKnownGood/);
   assert.doesNotMatch(discovery, /assignments\.add|for\s*\([^)]*DISCOVERY_OUTPUT/,
     'a discovery response must not expose multiple active assignments');
 });

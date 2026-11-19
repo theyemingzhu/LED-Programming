@@ -5,6 +5,9 @@ import { canonicalLibraryBackupFileName, isLibraryBackup } from '../lib/libraryB
 import { downloadJsonFile, downloadTextFile } from '../lib/downloadFile.js';
 import { canonicalProjectFileName } from '../lib/projectFiles.js';
 import { createProjectId, migrateProject } from '../lib/projectModel.js';
+import { makePortableProject } from '../lib/projectTransfer.js';
+import { restoreOnlineProjectMedia } from '../lib/onlineProjectMedia.js';
+import { readStudioPasswordlessMethods } from '../lib/studioPasswordlessClient.js';
 import { cardProjectId, matchesCardProjectEvidence } from '../lib/cardProjectResolver.js';
 import {
   PROJECT_LIBRARY_BACKUP_STORAGE_KEY,
@@ -888,6 +891,11 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
         const normalizedAccountError = normalizeError(accountError);
         if (!isAuthenticationError(normalizedAccountError)) throw normalizedAccountError;
+        if (!suppliedClient && typeof client.getAccountSession === 'function') {
+          const methods = await readStudioPasswordlessMethods();
+          if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
+          if (methods.enabled) throw normalizedAccountError;
+        }
         try {
           const transitional = await client.getSession();
           if (!authEpochIsCurrent(authEpoch)) return { ok: false, reason: 'stale-session' };
@@ -1020,7 +1028,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         generation: current.generation + 1,
       }));
     }
-  }, [authEpochIsCurrent, beginAuthTransition, client, handleLibraryError, loadWorkspaceAssets, markProjectPersisted, refreshProjects, setActiveRemote, setCurrentConflict]);
+  }, [authEpochIsCurrent, beginAuthTransition, client, handleLibraryError, loadWorkspaceAssets, markProjectPersisted, refreshProjects, setActiveRemote, setCurrentConflict, suppliedClient]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1160,7 +1168,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         baseRevision: operation.baseRevision,
         title: operation.document.name || remote.title,
         project: operation.document,
-      }, { requestId: operation.requestId });
+      }, { requestId: operation.requestId, isCurrent: operationIsCurrent });
       if (!acknowledge(acknowledged)) {
         return replacedResult();
       }
@@ -1293,7 +1301,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
       document.name = cleanTitle;
       const created = await client.createProject(
         { title: cleanTitle, project: document },
-        { requestId: mutationRequestId() },
+        { requestId: mutationRequestId(), isCurrent: () => authenticatedSessionIsCurrent(authToken) },
       );
       if (!authenticatedSessionIsCurrent(authToken)) return { ok: false, reason: 'stale-session' };
       if (lifecycleRef.current.generation !== capturedMarker.generation) {
@@ -1487,7 +1495,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         baseRevision: opened.revision,
         title: cleanTitle,
         project: { ...opened.document, name: cleanTitle },
-      }, { requestId: mutationRequestId() });
+      }, { requestId: mutationRequestId(), isCurrent: () => authenticatedSessionIsCurrent(authToken) });
       if (!authenticatedSessionIsCurrent(authToken)) return { ok: false, reason: 'stale-session' };
       if (isActive
         && activeRemoteRef.current?.id === project.id
@@ -1598,10 +1606,11 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
     if (!authToken) return false;
     try {
       const opened = await client.readProject(project.id);
+      const file = await makePortableProject(opened.document);
       if (!authenticatedSessionIsCurrent(authToken)) return false;
       // The network read completes after the click's transient user activation;
       // use the deterministic anchor path instead of reopening a native picker.
-      return downloadJsonFile(canonicalProjectFileName(opened.title), opened.document, { preferPicker: false });
+      return downloadJsonFile(canonicalProjectFileName(opened.title), file, { preferPicker: false });
     } catch (error) {
       if (!authenticatedSessionIsCurrent(authToken)) return false;
       handleLibraryError(error);
@@ -1612,10 +1621,14 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
   const importProject = useCallback(async candidate => {
     const authToken = captureAuthenticatedSession();
     if (!authToken) return { ok: false, reason: 'stale-session' };
-    const project = migrateProject(candidate);
-    if (!project || isLibraryBackup(candidate)) return { ok: false, reason: 'invalid' };
+    if (isLibraryBackup(candidate)) return { ok: false, reason: 'invalid' };
     try {
-      const created = await client.createProject({ title: project.name || 'Imported project', project });
+      const project = migrateProject(await restoreOnlineProjectMedia(candidate));
+      if (!project) return { ok: false, reason: 'invalid' };
+      if (!authenticatedSessionIsCurrent(authToken)) return { ok: false, reason: 'stale-session' };
+      const created = await client.createProject({ title: project.name || 'Imported project', project }, {
+        isCurrent: () => authenticatedSessionIsCurrent(authToken),
+      });
       if (!authenticatedSessionIsCurrent(authToken)) return { ok: false, reason: 'stale-session' };
       await refreshProjects();
       return { ok: true, project: created };
@@ -1715,7 +1728,9 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         continue;
       }
       try {
-        await client.createProject({ title: record.name || project.name, project });
+        await client.createProject({ title: record.name || project.name, project }, {
+          isCurrent: () => authenticatedSessionIsCurrent(authToken),
+        });
         if (!authenticatedSessionIsCurrent(authToken)) return { imported, rejected, reason: 'stale-session' };
         imported += 1;
         claimedIds.add(record.id);
@@ -1748,7 +1763,7 @@ export function CloudLibraryProvider({ children, client: suppliedClient }) {
         localDocument.name = `${localDocument.name || projectName || 'Untitled Project'} copy`;
         const created = await client.createProject(
           { title: localDocument.name, project: localDocument },
-          { requestId: mutationRequestId() },
+          { requestId: mutationRequestId(), isCurrent: () => authenticatedSessionIsCurrent(authToken) },
         );
         if (!authenticatedSessionIsCurrent(authToken)) return { ok: false, reason: 'stale-session' };
         setCurrentConflict(null);

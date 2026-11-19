@@ -50,12 +50,10 @@
 .pl-index {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
-  grid-template-rows: auto auto;
+  align-items: center;
   column-gap: 7px;
-  row-gap: 1px;
 }
 .pl-grip {
-  grid-row: 1 / span 2;
   width: 36px;
   height: 36px;
   padding: 0;
@@ -64,7 +62,7 @@
   color: var(--text-faint);
   background: var(--bg-elev);
   font-family: var(--font-mono);
-  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
   cursor: grab;
   touch-action: none;
 }
@@ -76,8 +74,6 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.pl-index strong { grid-column: 2; grid-row: 1; }
-.pl-index > span { grid-column: 2; grid-row: 2; }
 .pl-actions {
   min-width: 0;
   max-width: 100%;
