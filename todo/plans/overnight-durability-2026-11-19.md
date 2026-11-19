@@ -59,3 +59,8 @@ Rule: simulator browser runs go one at a time, so timing results aren't faked by
 
 ## Decided overnight
 - D1: Card Home hides "Review and save draft" when the browser holds only an untouched starter. Reason: saving an empty starter over a working card would wipe a client's piece. "Open installed project" and "Control installed project" stay. Test: tests/starter-no-save-over-card.spec.ts (failed before, passes after). Unit tests: 3146 pass.
+
+## Quiet run 2: 69 of 84 passed, then the 14 Patterns cells pass after the test fix
+- Every remembered cell passes: connects with zero clicks and no alarms, in all 7 healthy states including the real card's exact shape (dev build, revision 0, rolled-back).
+- A fresh browser on Patterns needs two named presses: "Found — pair", then "Connect" under "Pair this Lightweaver card". The test now allows this. Decided: this is the designed consent step, not a fault.
+- One "revision-went-back · fresh · phone · home" failure showed "Not connected" once. I didn't rerun it.
