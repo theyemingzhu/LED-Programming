@@ -50,3 +50,12 @@ Same boot (boot-9e7f4078), uptime 58 min, free heap 46576, reply 0.10 s.
 | 8 small screens | 0 | 0 | - |
 | 9 real card gentle | 0 | 0 | - |
 Rule: simulator browser runs go one at a time, so timing results aren't faked by host load.
+
+## Quiet run 1: 14 of 84 passed
+- FAULT F1 (fixed in 3a2b3009, simulated): with the card remembered and nothing designed yet, Home and Card showed "Your draft differs from the installed project." on all 7 healthy states (28 cells). Cause: cardSessionView.js compared the untouched starter draft as if it were owner work. Fix: an untouched starter counts as no draft and the line is hidden. Unit test added. setup-adopt and reconstruction specs: 13 of 13 pass.
+- NEEDS ADRIAN N1: in the same state Card Home still offers "Review and save draft", which would save an empty starter over the card. I left it in place (rule: no removing controls). My guess: hide it when there is no owner draft.
+- The fresh-browser cells failed because of my test's connect step, not Studio. The test now clicks the same connect button as the matrix spec.
+- Patterns showed no alarm in any remembered cell.
+
+## Decided overnight
+- D1: Card Home hides "Review and save draft" when the browser holds only an untouched starter. Reason: saving an empty starter over a working card would wipe a client's piece. "Open installed project" and "Control installed project" stay. Test: tests/starter-no-save-over-card.spec.ts (failed before, passes after). Unit tests: 3146 pass.
