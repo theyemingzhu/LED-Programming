@@ -130,8 +130,22 @@ function clearedLiveEvidence(prev, additions = {}, {
     handoffBridgeLifecycle: null,
     handoffStationVerified: false,
     handoffReloadRecovery: false,
+    // Only the one transition that earns it sets this (see 'direct-status').
+    directCardMayReturn: false,
     ...additions,
   };
+}
+
+// A card Studio already knew, on a direct link, that simply stopped answering.
+// The link keeps asking that exact card at that exact address; see the
+// 'disconnected' branch of the runtime dispatch.
+function directCardWorthAsking(candidate) {
+  return candidate.state === 'disconnected'
+    && candidate.transport === 'direct'
+    && candidate.reason === 'no-answer'
+    && candidate.directCardMayReturn === true
+    && Boolean(candidate.host)
+    && Boolean(candidate.expectedCard?.id);
 }
 
 function sameWifiHandoffCorrelation(left, right) {
@@ -304,6 +318,7 @@ function applyStatusEnvelope(prev, event, transport, host) {
     // outlive the bridge session and make a later DIRECT disconnect schedule a
     // bridge ping, which self-corrects but reports the wrong reason on the way.
     bridgeWindowMayRemain: false,
+    directCardMayReturn: false,
     readiness,
     cardBlank: blank,
     validatedBootId: completeEnvelope ? incomingBootId : prev.validatedBootId,
@@ -767,8 +782,17 @@ export function reduceCardLink(prev = initialCardLinkState(), event = {}, {
       if (prev.state === 'connecting' && prev.transport === 'bridge') return prev;
       const reason = event.reason || 'card-unreachable';
       if (prev.state === 'disconnected' && prev.reason === reason && prev.host === host) return prev;
+      // 'no-answer' after an established direct link means the CARD went
+      // quiet — a router hiccup, a reboot, a power blip. That is worth asking
+      // again without a click. A probe that never reached a card, or any other
+      // reason (wrong card, unreachable host from discovery), is not.
+      const wasLiveDirect = prev.transport === 'direct'
+        && (prev.state === 'reconnecting' || prev.state === 'revalidating');
+      const knownCard = prev.expectedCard?.id ? prev.expectedCard : (prev.card?.id ? prev.card : null);
+      const directCardMayReturn = reason === 'no-answer' && wasLiveDirect && Boolean(knownCard) && Boolean(host);
       return clearedLiveEvidence(prev, {
         state: 'disconnected', reason, transport: event.transport || 'direct', host, missedPings: 0, card: null,
+        ...(directCardMayReturn ? { directCardMayReturn: true, expectedCard: knownCard } : {}),
         ...(event.discoveredCard ? { discoveredCard: event.discoveredCard } : {}),
       });
     }
@@ -1018,12 +1042,24 @@ export function createCardLink({
     }
   }
 
+  // Every state in which asking the card directly is worthwhile — including
+  // the one after the reconnect window closed on a card Studio still knows.
+  const directPingable = (candidate = state) => candidate.state === 'connected-direct'
+    || candidate.state === 'reconnecting'
+    || (candidate.state === 'revalidating' && candidate.transport === 'direct')
+    || directCardWorthAsking(candidate);
+  // A card that is being looked for is asked at the bridge keepalive cadence,
+  // not the slow one a healthy direct link idles at. At the idle cadence the
+  // next ask landed AFTER the reconnect window had already closed, so
+  // "reconnecting…" never actually asked again.
+  const directPingDelay = (candidate = state) => {
+    if (candidate.state === 'revalidating') return 0;
+    if (candidate.state === 'reconnecting' || directCardWorthAsking(candidate)) return Math.min(pingIntervalMs, directPingIntervalMs);
+    return directPingIntervalMs;
+  };
+
   async function runDirectPing() {
-    if (destroyed || directPinging || (
-      state.state !== 'connected-direct'
-      && state.state !== 'reconnecting'
-      && !(state.state === 'revalidating' && state.transport === 'direct')
-    )) return;
+    if (destroyed || directPinging || !directPingable()) return;
     if (isHidden()) {
       scheduleDirectPing();
       return;
@@ -1031,9 +1067,6 @@ export function createCardLink({
     const pingHost = state.host;
     const epoch = visibilityEpoch;
     directPinging = true;
-    const directPingable = () => state.state === 'connected-direct'
-      || state.state === 'reconnecting'
-      || (state.state === 'revalidating' && state.transport === 'direct');
     const askDirectOnce = async () => {
       const fetcher = fetchImpl || (typeof globalThis !== 'undefined' ? globalThis.fetch : null);
       if (typeof fetcher !== 'function') throw new Error('fetch unavailable');
@@ -1056,11 +1089,7 @@ export function createCardLink({
         if (epoch !== visibilityEpoch || state.host !== pingHost || !directPingable()) throw firstError;
         readiness = await askDirectOnce();
       }
-      if (epoch === visibilityEpoch && state.host === pingHost && (
-        state.state === 'connected-direct'
-        || state.state === 'reconnecting'
-        || (state.state === 'revalidating' && state.transport === 'direct')
-      )) {
+      if (epoch === visibilityEpoch && state.host === pingHost && directPingable()) {
         dispatch({
           type: 'direct-ping-ok', host: pingHost, readiness,
           card: normalizeCardIdentity(readiness, pingHost),
@@ -1070,17 +1099,13 @@ export function createCardLink({
     } catch {
       // As with the bridge ping: a probe that spanned a visibility change is
       // not evidence the card went away.
-      if (epoch === visibilityEpoch && state.host === pingHost && (
-        state.state === 'connected-direct'
-        || state.state === 'reconnecting'
-        || (state.state === 'revalidating' && state.transport === 'direct')
-      )) {
+      if (epoch === visibilityEpoch && state.host === pingHost && directPingable()) {
         dispatch({ type: 'direct-ping-missed', host: pingHost });
       }
     } finally {
       directPinging = false;
     }
-    if (state.state === 'connected-direct' || state.state === 'reconnecting' || (state.state === 'revalidating' && state.transport === 'direct')) scheduleDirectPing(state.state === 'revalidating' ? 0 : directPingIntervalMs);
+    if (directPingable()) scheduleDirectPing(directPingDelay());
   }
 
   function dispatch(event) {
@@ -1155,15 +1180,20 @@ export function createCardLink({
       stopKeepalive();
       if (!directPinging && (prev.state === 'revalidating' || !directPingTimer)) scheduleDirectPing();
     } else if (state.state === 'reconnecting' && state.transport === 'direct') {
-      clearConnectTimer();
       stopKeepalive();
-      if (connectTimeoutMs > 0) {
-        connectTimer = setTimeout(() => {
-          connectTimer = null;
-          dispatch({ type: 'direct-status', connected: false, host: state.host, reason: 'no-answer' });
-        }, connectTimeoutMs);
-      }
-      if (!directPingTimer && !directPinging) scheduleDirectPing();
+      // Armed once, on entry, as the bridge does. Re-arming on every miss let
+      // each unanswered ask push the deadline back, so the window never closed.
+      if (prev.state !== 'reconnecting') {
+        clearConnectTimer();
+        if (connectTimeoutMs > 0) {
+          connectTimer = setTimeout(() => {
+            connectTimer = null;
+            dispatch({ type: 'direct-status', connected: false, host: state.host, reason: 'no-answer' });
+          }, connectTimeoutMs);
+        }
+        // The pending ask was scheduled at the idle cadence; bring it forward.
+        if (!directPinging) scheduleDirectPing(directPingDelay());
+      } else if (!directPingTimer && !directPinging) scheduleDirectPing(directPingDelay());
     } else if (state.state === 'connecting' && state.transport === 'bridge') {
       stopKeepalive();
       stopDirectKeepalive();
@@ -1174,6 +1204,17 @@ export function createCardLink({
           dispatch({ type: 'bridge-lost', reason: 'no-answer' });
         }, connectTimeoutMs);
       }
+    } else if (directCardWorthAsking(state)) {
+      // NOT terminal, for the same reason the bridge case below is not. The
+      // local Studio has useCardStatus polling to find the card again; the
+      // public https Studio does not run it, so giving up here left a card
+      // that was back and answering on "Not connected" until someone clicked.
+      // Only the exact card Studio already knew is asked, at the address it
+      // had: a different card answering there is refused by the reducer, which
+      // also ends this loop.
+      stopKeepalive();
+      clearConnectTimer();
+      if (!directPingTimer && !directPinging) scheduleDirectPing(directPingDelay());
     } else if (state.state === 'disconnected' && state.bridgeWindowMayRemain) {
       // NOT terminal any more. The card page window may still be open — the
       // card simply went quiet (a router hiccup, a reboot, a moment of
