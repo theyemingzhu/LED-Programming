@@ -145,7 +145,10 @@ test('[J02] a returning browser recognizes the installed project without re-onbo
   // project is ready to control, while the untouched browser draft stays put
   // until the owner explicitly asks to open the card's recoverable copy.
   await expect(page.getByTestId('card-installed-home')).toContainText('Matrix piece');
-  await expect(page.getByTestId('card-installed-home')).toContainText('Your draft: Untitled Project');
+  // An untouched starter is not owner work: no "draft differs" line, and no
+  // offer to save that empty starter over the card.
+  await expect(page.getByTestId('card-draft-difference')).toHaveCount(0);
+  await expect(page.getByTestId('installed-draft-review')).toHaveCount(0);
   await expect(page.getByTestId('installed-control-open')).toBeEnabled();
   await expect(journeyLocator(page)).toHaveAttribute('data-journey-task', 'load-matching-project');
   await page.getByTestId('installed-project-open').click();
