@@ -6,6 +6,7 @@
    the real handlers ported from the old PatternsScreen. No visual markup, class
    names, or LED-render helpers changed. */
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { shouldClearRecoveryGate } from '../lib/patternGate.js';
 import { I, LedRow, PATTERN_CATS, SWATCHES, GEOMETRY } from './lw-shared.jsx';
 import { SetupJourneyChip } from '../components/SetupJourneyChip.jsx';
 import { REAL_PATTERNS, REAL_PATTERN_BY_ID, adaptPattern, adaptSavedLook, defaultWarmPatternId } from './v3-data.js';
@@ -899,7 +900,12 @@ function writeSectionDisplayOrder(projectId, ids) {
       setPreviewFailure(null);
     }, []);
 
+    // True only when the current refusal was raised while the card was NOT
+    // ready. A refusal raised while access reads 'ready' (stale authority,
+    // bridge not fresh) is about something else and must stay visible.
+    const gateRaisedWhileUnreadyRef = useRef(false);
     const blockPatternCardEffect = useCallback((access = patternAccessRef.current) => {
+      gateRaisedWhileUnreadyRef.current = access !== 'ready';
       invalidatePendingPreview();
       setPatternCardGate(access === 'blank' ? 'blank' : access === 'project' ? 'project' : 'recovery');
       setHandoffUrl('');
@@ -912,7 +918,8 @@ function writeSectionDisplayOrder(projectId, ids) {
     // no longer true, so it steps down without the owner pressing anything.
     // 'blank' and 'project' refusals are about what the card holds and stay.
     useEffect(() => {
-      if (patternCardAccess !== 'ready' || patternCardGate !== 'recovery') return;
+      if (!shouldClearRecoveryGate({ access: patternCardAccess, gate: patternCardGate, raisedWhileUnready: gateRaisedWhileUnreadyRef.current })) return;
+      gateRaisedWhileUnreadyRef.current = false;
       setPatternCardGate('');
       setStatusKind('');
       setStatus('');
