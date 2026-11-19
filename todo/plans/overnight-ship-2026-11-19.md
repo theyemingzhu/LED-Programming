@@ -35,3 +35,4 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - 00:48 Live proof: studio-release.json buildNumber 2471, sourceRevision f47b85b8 (= origin/main, rev-list count 2471). Served main-CNFcUASO.js contains `differenceCopy:m?"":w==="matches"?"Your draft matches…` (3a2b3009); lw-card-ByMqEEyX.js contains `starterPending)!==!0&&…"installed-draft-review"` (208ec663).
 - **Shipped — Studio build 2471**: untouched starter is not "a draft that differs" (3a2b3009); no save-over offer for an untouched starter (208ec663); tests 607082e8, 001b6092, 990b70aa. Ships used: 1 of 4.
 - 01:27 Cycle: no new commits on the durability branch since 990b70aa. Waiting 45 min.
+- 02:13 Cycle: still no new commits since 990b70aa (00:16); durability session reported running. Waiting 45 min.
