@@ -36,3 +36,4 @@ Studio-only fixes, batched, at most four ships. Never firmware.
 - **Shipped — Studio build 2471**: untouched starter is not "a draft that differs" (3a2b3009); no save-over offer for an untouched starter (208ec663); tests 607082e8, 001b6092, 990b70aa. Ships used: 1 of 4.
 - 01:27 Cycle: no new commits on the durability branch since 990b70aa. Waiting 45 min.
 - 02:13 Cycle: still no new commits since 990b70aa (00:16); durability session reported running. Waiting 45 min.
+- 02:58 Cycle: no new commits since 990b70aa (00:16). Batch-3 branch confirmed gone on the remote (ls-remote 0). Waiting 45 min.
