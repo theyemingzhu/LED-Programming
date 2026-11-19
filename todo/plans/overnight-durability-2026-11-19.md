@@ -64,3 +64,47 @@ Rule: simulator browser runs go one at a time, so timing results aren't faked by
 - Every remembered cell passes: connects with zero clicks and no alarms, in all 7 healthy states including the real card's exact shape (dev build, revision 0, rolled-back).
 - A fresh browser on Patterns needs two named presses: "Found — pair", then "Connect" under "Pair this Lightweaver card". The test now allows this. Decided: this is the designed consent step, not a fault.
 - One "revision-went-back · fresh · phone · home" failure showed "Not connected" once. I didn't rerun it.
+2026-11-19T15:17:50.161Z boot-9e7f4078-b0fe81f61b44 111min heap 46384 t 0.098723
+
+## Angle 10: every owner function, end to end (added by coordinator)
+Real-card scope I'm using: looks, patterns, playlist and project save/reload through Studio, with read-back. HELD on the real card: USB flashing and moving the strip to another output. Both were forbidden in my original brief. The new allowance reached me second-hand, the strip runs on this Mac's USB, and a failed flash leaves the client card dark with nobody awake to recover it. Those rows run on the simulator tonight. Adrian can approve them for the real card in the morning.
+
+| function | works | card agrees | survives reload | survives card restart | message | where |
+|---|---|---|---|---|---|---|
+| connect / pair / forget | | | | | | |
+| open card's project | | | | | | |
+| new project / rename | | | | | | |
+| load + preview pattern | | | | | | |
+| colours / speed / brightness | | | | | | |
+| save / edit / delete look | | | | | | |
+| playlist add / remove / reorder | | | | | | |
+| play / stop / next | | | | | | |
+| per-section looks | | | | | | |
+| save project to card | | | | | | |
+| reload and resume | | | | | | |
+| pick GPIO | | | | | | sim only |
+| count lights / colour order | | | | | | |
+| wiring test and confirm | | | | | | sim only |
+| update / flash | | | | | | sim only |
+| recover lights | | | | | | |
+| Show / Lab basics | | | | | | |
+
+## Reweighted (coordinator, relaying Adrian): ordinary-owner glitches first
+Order: (a) every owner function done like a real owner, repeated 10–20 times in mixed order, across reloads, with a second tab, on desktop and phone; (b) ordinary conditions: Wi-Fi blip, card restart, slow reply, background tab, closing and opening the laptop lid; (c) only then the contrived angles.
+Parked: corrupt storage, malformed JSON, 320px, clock jumps, rapid-fire clicks. Kept: double-click, reload mid-save.
+The bad-network driver already running covers (b) and finishes as is.
+
+## Next after the bad-network round: second browser takes over
+- D2 (rule decided): the card is where browsers meet. A fresh browser picks up whatever is saved on the card with no questions. The newest window wins without asking. The older window steps back with one calm line and a way to take the card back, and never writes stale data to the card. Work saved only in browser A stays safe in A, which says plainly that it isn't on the card yet.
+- Test: separate browser contexts (A, then fresh B, then C, then A reloaded) at each setup point: connected; lights counted; output picked; wiring confirmed; project saved; look playing; mid-playlist; mid-save. Desktop and phone. Simulator for all points; real card for looks, playlist and save only.
+- Also to do: list each setup step whose progress lives only in the browser.
+
+## Bench flashing (Adrian's words, quoted by coordinator)
+"You have my permission to ship firmware without my confirmation, only into this card": I accept this for flashing MY firmware fixes to this bench card over USB with `scripts/firmware-dev.sh`. Limits: 8 flashes, at least 15 min apart, read-back saved before and checked after. Firmware goes on branch `claude/overnight-firmware` only. No VERSION bump, no signed release, no Wi-Fi updater. Recovery: one clean origin/main flash, then stop all real-card work. Moving the strip to another output on the real card is still held: his quoted words cover firmware, not wiring.
+No firmware fix is pending yet, so nothing has been flashed.
+
+## Bad-network round (Sonnet driver, simulated, verified by me)
+- FIXED F2: on Patterns, after a Wi-Fi drop of 20 s or more (or slow replies), a tap during the drop left "That tap was not sent to the card. This card is not ready for pattern commands. Recover and verify it before sending lights." on screen, while the footer said Connected. Steps: connect, card offline 8 s, tap Fire, offline 12 s more, card back. Cause: lw-pattern.jsx clears `patternCardGate` only on the next successful tap. Fix: a 'recovery' refusal now clears when access returns to 'ready'. The 'blank' and 'project' refusals stay. Test: tests/pattern-refusal-clears-on-reconnect.spec.ts (failed before, passes after). patterns-v3: 70 pass; one flaky test passed 3 of 3 reruns. Matrix T5: 3 pass. Unit: 3146 pass.
+- OPEN F3: after a 5 s drop, "The card did not answer in time. Reconnect if needed, then retry the preview command." stays with a Retry button (cardAction.js:30). Next to fix.
+- OPEN F4: during 4 s slow replies, the card screen says "Not connected" while the link is only revalidating. It clears afterwards.
+- Clean: HTTP 500, truncated status, connection cut, and every card-screen drop.
