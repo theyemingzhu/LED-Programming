@@ -102,9 +102,21 @@ export function normalizeCardCustomerControls(zonesPayload = {}, patternsPayload
   const activePatternId = patterns.some(pattern => pattern.id === boundedText(patternsPayload.currentId))
     ? boundedText(patternsPayload.currentId)
     : (patterns.some(pattern => pattern.id === zone.look.patternId) ? zone.look.patternId : patterns[0].id);
+  // The card can be playing a pattern that is not one of its saved looks (a
+  // live preview sent from Studio). The list has no row for it, so the picker
+  // used to show the first saved look as if it were playing (seen on a real
+  // card 2026-11-19: "Sparkle" shown while the card played Plasma).
+  const currentId = boundedText(patternsPayload.currentId);
+  const unsavedPatternId = currentId && PATTERN_ID.test(currentId) && !patterns.some(pattern => pattern.id === currentId)
+    ? currentId
+    : '';
   return {
     zone: { id: zone.id, label: zone.label },
     patterns,
+    unsavedPatternId,
+    unsavedPatternLabel: unsavedPatternId
+      ? unsavedPatternId.split(/[-_]+/).filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1)).join(' ')
+      : '',
     activePatternId,
     look: normalizedLook({ ...zone.look, patternId: activePatternId }, patterns),
     blackout: zone.blackout,
@@ -136,6 +148,10 @@ export function beginCustomerControl(state, patch = {}, options = {}) {
     look: normalizedLook({ ...state.view.look, ...patch }, state.view.patterns),
     blackout: typeof patch.blackout === 'boolean' ? patch.blackout : state.view.blackout,
   };
+  if (patch.patternId && state.view.patterns.some(pattern => pattern.id === patch.patternId)) {
+    nextView.unsavedPatternId = '';
+    nextView.unsavedPatternLabel = '';
+  }
   nextView.look.patternId = nextView.activePatternId;
   return { ...state, view: nextView, pending: command, failure: null, retry: null, command };
 }
@@ -147,8 +163,10 @@ function responseLook(model, response = {}, patch = {}) {
       ? []
       : [[field.control, response[field.acknowledgement]]]
   )));
+  const choseSavedPattern = Boolean(patch.patternId) && model.patterns.some(pattern => pattern.id === patch.patternId);
   return {
     ...model,
+    ...(choseSavedPattern ? { unsavedPatternId: '', unsavedPatternLabel: '' } : {}),
     activePatternId: model.patterns.some(pattern => pattern.id === patternId) ? patternId : model.activePatternId,
     look: normalizedLook({
       ...model.look,

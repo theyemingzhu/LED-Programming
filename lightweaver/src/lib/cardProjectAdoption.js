@@ -26,7 +26,8 @@
 //     io: { readCardProjectEvidence, readCardStatusEnvelope,
 //           loadProductionJobIndex, loadProductionJobFromIndexEntry,
 //           readCloudProject?, readBrowserProjects?,
-//           readCardPatternsFromCard?, readCardZonesFromCard? },
+//           readCardPatternsFromCard?, readCardZonesFromCard?,
+//           readCardFirmwareInfoEnvelope? },
 //     actions: { replaceProject, saveBeforeCardProjectSwitch?,
 //                isProjectSwitchSnapshotCurrent?, openMatchingCardProject?,
 //                onMatchedProjectLoaded?, onMatchedProjectVerified?,
@@ -213,7 +214,34 @@ function alignSkeletonToInstalledZones(skeleton, installedZones) {
   };
 }
 
-export function reconstructInstalledCardState({ skeleton = {}, patterns = null, zones = null, cardId = '' } = {}) {
+// The card reports its own control pins on /api/firmware-info. Adoption used
+// to drop them, so the adopted project carried Studio's default pins and the
+// next Save to card silently rewrote the card's buttons (seen on a real card,
+// 2026-11-19: press 6 -> 0). Returns {} unless the report is complete, so a
+// partial answer never invents a pin.
+export function controlPinsFromCardReport(reported = null) {
+  const encoder = reported?.encoder;
+  const pin = value => Number.isInteger(value) && value >= -1 && value <= 48;
+  if (!encoder || ![encoder.a, encoder.b, encoder.press, reported.previous, reported.next, reported.blackout, reported.statusLed].every(pin)) return {};
+  return {
+    encoder: {
+      a: encoder.a,
+      b: encoder.b,
+      press: encoder.press,
+      alternatePress: pin(encoder.configuredAlternatePress) ? encoder.configuredAlternatePress : -1,
+      ...(encoder.rotateDirection ? { rotateDirection: encoder.rotateDirection } : {}),
+      ...(Number.isInteger(encoder.brightnessStep) ? { brightnessStep: encoder.brightnessStep } : {}),
+    },
+    previous: reported.previous,
+    next: reported.next,
+    blackout: reported.blackout,
+    ...(pin(reported.brightnessAnalog) ? { brightness: reported.brightnessAnalog } : {}),
+    statusLed: reported.statusLed,
+  };
+}
+
+export function reconstructInstalledCardState({ skeleton = {}, patterns = null, zones = null, cardId = '', firmwareInfo = null } = {}) {
+  const cardControlPins = controlPinsFromCardReport(firmwareInfo?.controls);
   const installedPatterns = Array.isArray(patterns?.patterns) ? patterns.patterns : [];
   const installedZones = Array.isArray(zones?.zones) ? zones.zones : [];
   const alignedSkeleton = alignSkeletonToInstalledZones(skeleton, installedZones);
@@ -290,7 +318,10 @@ export function reconstructInstalledCardState({ skeleton = {}, patterns = null, 
         activeLookId: lookIdByPatternId.get(patterns?.currentId || startupPatternId) || '',
         looks,
         playlist,
-        controls: { encoder: { patternCycleIds: looks.map(look => look.defaultLook.patternId) } },
+        controls: {
+          ...cardControlPins,
+          encoder: { ...cardControlPins.encoder, patternCycleIds: looks.map(look => look.defaultLook.patternId) },
+        },
       },
     },
   };
@@ -397,14 +428,20 @@ async function runReconstructStrategy(deps, params = {}) {
   // failure like every other exit from this strategy.
   let patterns;
   let zones;
+  let firmwareInfo;
   let skeleton;
   try {
     const installedState = await Promise.allSettled([
       io.readCardPatternsFromCard({ host: readHost }),
       io.readCardZonesFromCard({ host: readHost }),
+      // Optional: older callers and legacy cards adopt without it.
+      io.readCardFirmwareInfoEnvelope
+        ? io.readCardFirmwareInfoEnvelope({ host: readHost, transport: cardLink?.transport })
+        : Promise.resolve(null),
     ]);
     patterns = installedState[0].status === 'fulfilled' ? installedState[0].value : null;
     zones = installedState[1].status === 'fulfilled' ? installedState[1].value : null;
+    firmwareInfo = installedState[2].status === 'fulfilled' ? installedState[2].value : null;
     skeleton = projectSkeletonFromCardStatus(status || {});
   } catch (error) {
     return { ok: false, reason: '', error, status };
@@ -416,7 +453,7 @@ async function runReconstructStrategy(deps, params = {}) {
   try {
     if (!contextIsCurrent(status)) return cancelled(status);
     const applied = await actions.applyCardParts(
-      reconstructInstalledCardState({ skeleton, patterns, zones, cardId: reconstructionCardId }),
+      reconstructInstalledCardState({ skeleton, patterns, zones, cardId: reconstructionCardId, firmwareInfo }),
       status,
     );
     if (!applied?.ok) return { ok: false, reason: applied?.reason, status };

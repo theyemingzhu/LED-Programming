@@ -94,7 +94,7 @@ import { withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
 import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import {
   cardActionReducer,
-  cardActionStatusLabel,
+  physicalPreviewStatusLabel,
   classifyCardActionFailure,
   createCardActionState,
 } from '../lib/cardAction.js';
@@ -2398,10 +2398,10 @@ function writeSectionDisplayOrder(projectId, ids) {
           // (paste the setup on the card page) fails in exactly the same way,
           // so the owner is sent to do work that cannot succeed.
           setStatusKind('err');
-          setStatus(`The card was reached but would not take this setup: ${error.message}`);
+          setStatus(error.message);
         } else {
           setStatusKind('err');
-          setStatus('Saved in the Studio, but could not reach the card. Copy or download the setup JSON and paste it on the card page.');
+          setStatus('Not saved to the card: it did not answer. Your work is kept in Studio. Check the card has power and is on this Wi-Fi, then try again.');
         }
       } finally {
         if (installIntentRef.current === installIntent) installIntentRef.current = null;
@@ -3545,7 +3545,7 @@ function writeSectionDisplayOrder(projectId, ids) {
                       card — it is the scratchpad for trying patterns on the real
                       strip — and an off checkbox only produced taps that looked
                       broken. Every tap sends. */}
-                    <span className="pm-saved" data-testid="physical-preview-status">{cardActionStatusLabel(previewAction) === 'Applied by Lightweaver runtime' ? 'Preview sent to card' : cardActionStatusLabel(previewAction)}</span>
+                    <span className="pm-saved" data-testid="physical-preview-status">{physicalPreviewStatusLabel(previewAction, { cardPatternId: cardLink?.readiness?.currentPatternId, screenPatternId: look?.patternId, connected: Boolean(connected), lightsOff: cardBlackedOut })}</span>
                   </div>
                   <div className="sec-h"><span className="m">{playlistSize} in playlist</span>
                     <div className="pm-ledmode" role="group" aria-label="Swatch style">
