@@ -138,6 +138,22 @@ function bridgeRequest(type, payload, requestOptions, options = {}) {
   return requestImpl(type, payload, requestOptions);
 }
 
+// What an owner reads when the card answers a project save with a refusal.
+// The card's raw reply ("card returned 400: {"ok":false,"error":"nvs write
+// failed; …"}") was shown as-is; seen on a real card 2026-11-19. The raw text
+// stays on error.detail for the connection log.
+export function cardConfigRefusalMessage(status, text = '') {
+  let said = '';
+  try { said = String(JSON.parse(text)?.error || ''); } catch { said = ''; }
+  if (/nvs write failed|too large for card storage|exceed storage limit/i.test(said || text)) {
+    return 'The card has no room to store this project, so it kept the one it already had. Remove a look from the playlist, then save again.';
+  }
+  if (said) return `The card did not accept this project. It said: ${said}`;
+  return `The card did not accept this project (code ${status}). Nothing on the card was changed by Studio; try again.`;
+}
+
+export const CARD_DID_NOT_ANSWER_MESSAGE = 'The card did not answer. Check it has power and is on this Wi-Fi, then try again.';
+
 async function postConfigToHost(host, runtimePackage, options = {}) {
   const url = `${cardHostToUrl(host)}/api/config`;
   const body = options.preparedPayload?.json || cardStorageJson(runtimePackage);
@@ -153,7 +169,9 @@ async function postConfigToHost(host, runtimePackage, options = {}) {
     });
     if (!r.ok) {
       const text = await r.text().catch(() => '');
-      const error = new CardPushError('http', `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
+      const refused = r.status >= 400 && r.status < 500 && r.status !== 423;
+      const error = new CardPushError('http', refused ? cardConfigRefusalMessage(r.status, text) : `card returned ${r.status}: ${text || 'no body'}`, null, r.status);
+      error.detail = `card returned ${r.status}: ${text || 'no body'}`;
       // A received client-error response is a refusal, not a lost save reply.
       // Server errors stay ambiguous: persistence may already have occurred.
       if (r.status >= 400 && r.status < 500) error.delivery = 'rejected';
@@ -464,7 +482,7 @@ function normalizeConfigPushError(host, err, transport = '') {
   if (err && err.name === 'AbortError') {
     return new CardPushError('offline', `Timed out reaching ${cardHostToUrl(host)}`, err);
   }
-  return new CardPushError('offline', `Could not reach ${cardHostToUrl(host)}`, err);
+  return new CardPushError('offline', CARD_DID_NOT_ANSWER_MESSAGE, err);
 }
 
 // POST the runtime config to the card. Returns the parsed JSON echo on

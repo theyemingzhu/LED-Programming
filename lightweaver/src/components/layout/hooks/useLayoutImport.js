@@ -5,46 +5,31 @@ import {
 } from '../../../lib/layoutGeometry.js';
 import { normalizePatchBoard } from '../../../lib/patchBoard.js';
 import { prepareSvgDocumentForImport } from '../../../lib/svgImportGeometry.js';
-import { PROJECT_IMPORT_ACCEPT } from '../../../lib/projectFiles.js';
-import { exportProjectToFile, importProjectFromPickedFile } from '../../../lib/projectTransfer.js';
-import { useProject } from '../../../state/ProjectContext.jsx';
-import { useCardActions } from '../../../v3/CardActionsProvider.jsx';
 
-// SVG import (button + drag-drop), project save/load, and import error state.
+// SVG artwork import from the file picker or canvas drop.
 // `ctx` is the shared layout bundle; view-state resets flow in via `deps`.
 export function useLayoutImport(ctx, deps) {
   const {
     strips, setStrips,
     layers, setLayers,
-    editCounts, setEditCounts,
-    hidden, setHidden,
-    svgText, setSvgText,
-    viewBox, setViewBox,
-    density,
-    pxPerMm, setPxPerMm,
-    layerGroups, layerOrder, setLayerGroups, setLayerOrder,
+    setEditCounts,
+    setHidden,
+    svgText, setSvgText, starterLayoutActive,
+    setViewBox,
+    setPxPerMm,
+    setLayerGroups, setLayerOrder,
     setSectionFamilies,
     setPatchBoard,
     pushLayoutHistory,
     clearLayoutSelection,
-    serializeProject, loadProject: replaceProject,
     colorIdxRef, nextColor,
   } = ctx;
-  // Naming + lifecycle live on the project context (not in the layout ctx
-  // bundle): exports carry the canonical project file name and count as a
-  // "file" persistence destination, exactly like the top-bar download.
-  const { projectName, markProjectPersisted } = useProject();
-  // Imports run through the shell's CardActionsProvider so the association
-  // cleanup (browser record, cloud detach, save-block reset) is the app's
-  // canonical sequence — identical to the top bar's.
-  const cardActions = useCardActions();
 
   const { resetView, setDrawMode, setWaypoints } = deps;
 
   const [error, setError]       = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
-  const loadRef = useRef(null);
 
   // ── File processing (shared by button + drag-drop) ─────────────────────────
   const processFile = useCallback(async (file) => {
@@ -66,7 +51,6 @@ export function useLayoutImport(ctx, deps) {
 
     const vb = srcSvg.getAttribute('viewBox') || '0 0 640 400';
     const newPxPerMm = getPxPerMm(srcSvg);
-    colorIdxRef.current = 0;
     // Bake `<g transform>` and expand `<use>` instancing into plain absolute
     // path geometry BEFORE measuring. `measureLayers`/`shapeToD` read raw
     // geometry attributes and match no `<use>`, so without this a mandala
@@ -88,6 +72,10 @@ export function useLayoutImport(ctx, deps) {
       setError('No layers found. In Illustrator use File → Export As → SVG (not Save As).');
       return;
     }
+    if ((svgText || layers.length || (!starterLayoutActive && strips.length)) && !window.confirm(
+      'Replace the current artwork and LED strips? This clears the existing layout and its strip connections. Review affected looks before installing again. Choose Cancel to keep this layout.',
+    )) return;
+    colorIdxRef.current = 0;
     const newLayers = parsed.map(l => ({ ...l, _color: nextColor(), _emit: 'dir', _angle: 0 }));
     const newLayerOrder = parsed.map(l => ({ type: 'layer', id: l.layerId }));
     pushLayoutHistory();
@@ -106,7 +94,7 @@ export function useLayoutImport(ctx, deps) {
     setDrawMode(false);
     setWaypoints([]);
     resetView();
-  }, [strips, layers, editCounts, hidden, svgText, viewBox, density, pushLayoutHistory, setPatchBoard, clearLayoutSelection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [strips, layers, svgText, starterLayoutActive, pushLayoutHistory, setPatchBoard, clearLayoutSelection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
@@ -130,67 +118,14 @@ export function useLayoutImport(ctx, deps) {
     if (file) await processFile(file);
   };
 
-  // ── Save / Load project ────────────────────────────────────────────────────
-  const saveProject = async () => {
-    // THE project export (lib/projectTransfer.js): canonical
-    // `<project-name>.lw.json` name, shared download mechanics, "file"
-    // persistence in the lifecycle. Layout's payload folds the live geometry
-    // state over the serialized project — that re-spread is this screen's
-    // own and stays exactly as it was.
-    await exportProjectToFile({
-      serializeProject,
-      projectName,
-      markPersisted: markProjectPersisted,
-      buildPayload: () => ({
-        ...serializeProject(),
-        layout: {
-          ...serializeProject().layout,
-          strips,
-          layers,
-          svgText,
-          viewBox,
-          density,
-          pxPerMm,
-          editCounts,
-          hidden,
-          layerGroups,
-          layerOrder,
-        },
-      }),
-    });
-  };
-
-  const handleLoad = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = '';
-    try {
-      // THE project import; a bare render without the provider (test
-      // harnesses) still imports, just without the app-level association
-      // handles.
-      const result = cardActions?.importProjectFile
-        ? await cardActions.importProjectFile(file, replaceProject)
-        : await importProjectFromPickedFile(file, { replaceProject });
-      if (result.reason === 'invalid') alert('Unrecognised file format.');
-    } catch (err) {
-      alert('Could not load file: ' + err.message);
-    }
-  };
-
   return {
     error, setError,
     dragOver,
-    fileRef, loadRef,
+    fileRef,
     processFile,
     handleFile,
     handleDragOver,
     handleDragLeave,
     handleDrop,
-    saveProject,
-    handleLoad,
-    // Permissive accept list for the project-file input (canonical .lw.json
-    // plus legacy export names). The rendering component owns the <input>;
-    // wire this onto its `accept` attribute.
-    importAccept: PROJECT_IMPORT_ACCEPT,
   };
 }

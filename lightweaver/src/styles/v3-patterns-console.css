@@ -28,8 +28,7 @@
 
 /* ── the pattern bank: schematic cells ───────────────────── */
 
-.pm .pm-cards { gap: 8px; counter-reset: patcell; }
-.pm .pmcard-wrap { position: relative; counter-increment: patcell; }
+.pm .pm-cards { gap: 8px; }
 .pm .pmcard {
   gap: 7px;
   border-radius: 2px;
@@ -39,22 +38,14 @@
 }
 .pm .pmcard:hover { border-color: var(--border-soft); }
 
-/* An index down the left of the bank, mirroring the tempo chip on the right.
-   It is not a slot number and does not survive filtering — it is the reading
-   order of what is on screen, which is what a schedule numbers. */
-.pm .pmcard-wrap::before {
-  content: counter(patcell, decimal-leading-zero);
-  position: absolute;
-  z-index: 1;
-  top: 13px;
-  left: 14px;
+.pm .pmcard-index {
+  flex: none;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.1em;
   color: var(--text-faint);
-  pointer-events: none;
 }
-.pm .pmcard-wrap:has(.pmcard.on)::before { color: var(--lw-live-ink); }
+.pm .pmcard.on .pmcard-index { color: var(--lw-live-ink); }
 .pm .pmcard-nm {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -320,9 +311,6 @@
 }
 .pm .pmcard-sub .pmcard-cat { color: var(--text-faint); }
 .pm .pmcard.on .pmcard-sub .pmcard-sp { color: var(--lw-live-ink); }
-/* the index sits over the tile's top-left, where the tempo used to sit right */
-.pm .pmcard-wrap::before { top: 15px; left: 16px; }
-
 /* ── the design target reads as three facts, then its controls ── */
 /* naming and saving the mix is the one thing in here that is not a readout,
    so it sits under the tiles rather than above them */
@@ -589,19 +577,5 @@
 .pm .pm-preview-meta .t {
   font-family: var(--font-mono);
   letter-spacing: .2em;
-  color: var(--text-lo);
-}
-
-/* ── The index gets its own column, as the board draws it ─────────────────
-   The counter was overlaid on the cell art. That was legible while the art
-   was a bead strand on a dark bed; against a full-bleed gradient it lands on
-   whatever colour happens to be at the top-left — white on Sparkle, pale
-   green on Aurora — and disappears. The board never had it there: the number
-   sits in its own narrow column beside the art, in the cell's own ground. */
-.pm .pmcard { padding-left: 26px; }
-.pm .pmcard-wrap::before {
-  top: 11px;
-  left: 9px;
-  z-index: 2;
   color: var(--text-lo);
 }

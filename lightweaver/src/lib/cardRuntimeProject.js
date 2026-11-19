@@ -3,7 +3,7 @@ import { DEFAULT_CARD_CONTROLS, DEFAULT_CARD_LED, DEFAULT_CARD_PATTERN_BANK, mak
 import { DEFAULT_STANDALONE_OUTPUTS, deriveStandaloneOutputsFromStrips, normalizeStandaloneOutputs, totalStandalonePixels } from './standaloneController.js';
 import { normalizeCardVisualLook } from './cardVisualLook.js';
 import { getCardPatternById, getCardPatternRuntimeId, orderedCardPatterns } from './cardPatternBank.js';
-import { applySavedLookToPatchBoard, deriveSectionTargets, normalizeSavedLooks } from './sectionLookModel.js';
+import { applySavedLookToPatchBoard, deriveSectionTargets, findSavedSectionLook, normalizeSavedLooks } from './sectionLookModel.js';
 import { chainAddressCount } from './patchBoard.js';
 import { sideFlipped } from './pieceSymmetry.js';
 import { compileWiring } from './wiringCompiler.js';
@@ -139,13 +139,15 @@ export function buildCardRuntimePackageFromProject({
     }
     return stackTargetsByMode.get(mirrored);
   };
-  const stackTargets = stackTargetsFor(liveMirrored);
   for (const item of playlist.filter(item => item.type === 'combo' && item.enabled !== false)) {
     const look = savedLooks.find(look => look.id === item.lookId);
     const compatibility = getProjectStackCompatibility(look);
     if (!compatibility.ok) throw new Error(compatibility.reason);
     if (getProjectStackReview(look, stackTargetsFor(look?.sidesMirrored !== false)).needsReview) {
-      throw new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
+      const error = new Error(`Review sections for stack “${look.label}” before installation. The project sections have changed.`);
+      error.code = 'stack-sections-changed';
+      error.lookId = look.id;
+      throw error;
     }
   }
   const playlistTiming = normalizePlaylistTiming(standaloneController?.controls?.playlist);
@@ -159,6 +161,7 @@ export function buildCardRuntimePackageFromProject({
     runtimeZones,
     visualLook,
     compiled: Boolean(compiled),
+    stackTargetsFor,
     compiledWiring: compiled,
     wiring,
     symSettings,
@@ -335,6 +338,7 @@ function buildRuntimeLooksFromPlaylist({
   runtimeZones = [],
   visualLook = {},
   compiled = false,
+  stackTargetsFor,
   compiledWiring = null,
   wiring = null,
   symSettings = null,
@@ -342,9 +346,7 @@ function buildRuntimeLooksFromPlaylist({
 } = {}) {
   const savedLookById = new Map(savedLooks.map(look => [look.id, look]));
   const sequenceAssetById = new Map(sequenceAssets.map(asset => [asset.id, asset]));
-  const patchIdByZoneId = new Map(compiledWiring?.ok ? deriveSectionTargets({
-    strips, patchBoard, compiledWiring, sidesMirrored: false, defaultLook: visualLook,
-  }).filter(target => target.kind === 'section').map(target => [target.zoneId, target.patchId]) : []);
+
   return (playlist || [])
     .filter(item => item?.enabled !== false)
     .map(item => {
@@ -396,14 +398,15 @@ function buildRuntimeLooksFromPlaylist({
               : compiledNative,
           };
         }
+        const targetByZoneId = new Map(compiled ? stackTargetsFor(lookMirrored)
+          .filter(target => target.kind === 'section').map(target => [target.zoneId, target]) : []);
         const effectiveZones = compiled
           ? mirrorSideZones(runtimeZones.map(zone => {
               // A mirrored look shows side 1's section look on every side.
               const sourceId = sideSourceZoneId(symmetry, zone.id, lookMirrored);
-              return applyLookFieldsToZone(
-                zone,
-                normalizeCardVisualLook(savedLook.sectionLooks?.[patchIdByZoneId.get(sourceId)] || savedLook.sectionLooks?.[sourceId] || comboDefault),
-              );
+              const target = targetByZoneId.get(sourceId);
+              const appearance = target && findSavedSectionLook(savedLook, target);
+              return applyLookFieldsToZone(zone, appearance ? normalizeCardVisualLook(appearance) : comboDefault);
             }), symmetry, lookMirrored)
           : (() => {
               const comboBoard = applySavedLookToPatchBoard({ patchBoard, strips, savedLook });

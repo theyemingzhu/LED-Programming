@@ -54,6 +54,7 @@ const {
 const productionOrigin = new URL(studioUrl).origin;
 const librarySessionUrl = new URL('/api/library/session', productionOrigin);
 const accountSessionUrl = new URL('/api/account/session', productionOrigin);
+const accountMethodsUrl = new URL('/api/account/methods', productionOrigin);
 const accountLoginUrl = new URL('/api/account/login', productionOrigin);
 const nativeAuthReady = process.env.LIGHTWEAVER_NATIVE_AUTH_READY === 'confirmed';
 const productionFetch = (input, init = {}) => fetch(new URL(String(input), productionOrigin), {
@@ -164,6 +165,15 @@ if (nativeAuthReady) {
     );
   }
 
+}
+
+if (process.env.STUDIO_PASSWORDLESS_AUTH_ENABLED === 'true') {
+  const response = await fetchAuthProbe(accountMethodsUrl);
+  const methods = await response.json().catch(() => null);
+  if (response.status !== 200 || !hasNoStore(response)
+    || methods?.enabled !== true || methods.google !== true || methods.email !== true) {
+    fail('Studio passwordless sign-in is enabled but Google and email code are not both ready.');
+  }
 }
 
 let studioBuildFileCount = 0;

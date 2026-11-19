@@ -190,9 +190,14 @@ test('imports SVG, creates strips, saves, reloads, and previews on the Show scre
   await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  const saveDownload = page.waitForEvent('download');
-  await page.getByTitle('Export a portable project file (.lw.json)').click();
-  const savedProject = await saveDownload;
+  await page.getByTestId('topbar-projects').click();
+  const projectFile = page.getByRole('dialog', { name: 'Projects' }).getByRole('region', { name: 'Project file' });
+  const downloadBackup = projectFile.getByRole('button', { name: 'Download backup', exact: true });
+  await expect(downloadBackup).toBeVisible();
+  const [savedProject] = await Promise.all([
+    page.waitForEvent('download'),
+    downloadBackup.click(),
+  ]);
   const projectPath = path.join(tmp, await savedProject.suggestedFilename());
   await savedProject.saveAs(projectPath);
 
@@ -214,7 +219,10 @@ test('imports SVG, creates strips, saves, reloads, and previews on the Show scre
   await expect(page.getByTestId('layout-primitive-picker')).toBeVisible();
   await expect(page.locator('.savechip')).toHaveCount(0);
   await expect(page.getByTestId('workspace-notice')).toHaveCount(0);
-  await page.setInputFiles('[data-testid="layout-import-input"]', projectPath);
+  await page.getByTestId('topbar-projects').click();
+  const fileChooser = page.waitForEvent('filechooser');
+  await projectFile.getByRole('button', { name: 'Import from computer', exact: true }).click();
+  await (await fileChooser).setFiles(projectPath);
   await expect(page.getByRole('dialog', { name: 'Replace current project?' })).toHaveCount(0);
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
@@ -225,19 +233,14 @@ test('imports SVG, creates strips, saves, reloads, and previews on the Show scre
   // tests/layout-send-to-card.spec.ts, so this workflow test doesn't
   // duplicate it.
   //
-  // The live LED preview also moved off the Patterns screen onto its own
-  // "Show" screen (src/v3/lw-show.jsx): an always-on audio-reactive mandala
-  // canvas rather than a per-pattern strip preview. Its idle/quiet state is
-  // deliberately "barely-there" (src/lib/mandalaEngine.js fades to a dim coal
-  // idle over ~8s when not listening to anything), so a bright-pixel-count
-  // assertion like the old test's would be measuring the wrong thing here —
-  // it can legitimately stay near-black. What still proves the reload
-  // actually plumbed the strips through to a live screen is the pixel-count
-  // readout, which is derived straight from `strips` in ProjectContext.
+  // Show must use the reimported geometry. Check the stage's actual
+  // frame size because ambient playback may be dark and transport copy varies.
   const totalPixels = projectData.layout.strips.reduce((sum: number, strip: any) => sum + strip.pixels.length, 0);
   await page.locator('.rail-item', { hasText: 'Show' }).click();
-  await page.waitForSelector('canvas');
-  await expect(page.getByText(`${totalPixels} LEDs ready`)).toBeVisible();
+  const stage = page.getByTestId('show-stage');
+  await expect(stage).toHaveAttribute('data-template', 'connected');
+  await expect(stage).toHaveAttribute('data-frame-size', String(totalPixels));
+  await expect(stage.locator('canvas')).toBeVisible();
   const canvasSize = await page.evaluate(() => {
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     return { width: canvas?.width || 0, height: canvas?.height || 0 };
@@ -257,9 +260,9 @@ test('groups selected strips and merges them into one composite strip', async ({
   await page.getByRole('button', { name: /\+ All \(3\)/ }).click();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  await page.locator('.la-strip-row').nth(0).locator('.la-wire-n').click();
-  await page.locator('.la-strip-row').nth(1).locator('.la-wire-n').click({ modifiers: ['Shift'] });
-  await page.locator('.la-strip-row').nth(2).locator('.la-wire-n').click({ modifiers: ['Shift'] });
+  await page.locator('.la-strip-row').nth(0).locator('.layer-name').click();
+  await page.locator('.la-strip-row').nth(1).locator('.layer-name').click({ modifiers: ['Shift'] });
+  await page.locator('.la-strip-row').nth(2).locator('.layer-name').click({ modifiers: ['Shift'] });
   await expect(page.getByText('3 strips selected')).toBeVisible();
 
   await page.locator('.la-batch-actions input').fill('Heart outline');
@@ -267,11 +270,10 @@ test('groups selected strips and merges them into one composite strip', async ({
   await expect(page.getByText('Heart outline', { exact: true })).toBeVisible();
   await expect(page.locator('.la-strip-row')).toHaveCount(3);
 
-  // Row centers contain pattern buttons after grouping; use the wire-number
-  // handle so these clicks select strips rather than opening Patterns.
-  await page.locator('.la-strip-row').nth(0).locator('.la-wire-n').click();
-  await page.locator('.la-strip-row').nth(1).locator('.la-wire-n').click({ modifiers: ['Shift'] });
-  await page.locator('.la-strip-row').nth(2).locator('.la-wire-n').click({ modifiers: ['Shift'] });
+  // Click each strip name to select it within the group.
+  await page.locator('.la-strip-row').nth(0).locator('.layer-name').click();
+  await page.locator('.la-strip-row').nth(1).locator('.layer-name').click({ modifiers: ['Shift'] });
+  await page.locator('.la-strip-row').nth(2).locator('.layer-name').click({ modifiers: ['Shift'] });
   await page.locator('.la-batch-actions input').fill('Heart merged');
   // Step 10 renamed the destructive strip merge to "Combine into one strip".
   await page.getByRole('button', { name: 'Combine into one strip' }).click();
@@ -362,7 +364,7 @@ test('clicked vector path can be deleted from the canvas with the keyboard', asy
   await expect(page.locator('path[data-vector-path-id^="circle-layer-"]')).toHaveCount(0);
 
   const saveDownload = page.waitForEvent('download');
-  await page.getByTitle('Export a portable project file (.lw.json)').click();
+  await page.getByRole('button', { name: 'Export project', exact: true }).click();
   const savedProject = await saveDownload;
   const projectPath = path.join(tmp, await savedProject.suggestedFilename());
   await savedProject.saveAs(projectPath);

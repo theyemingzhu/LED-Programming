@@ -67,12 +67,19 @@ export async function makePortableProject(project) {
   return portable;
 }
 
-export async function importPortableProjectMedia(project) {
+export async function importPortableProjectMedia(project, { onMissingLegacyMedia } = {}) {
   const copy = structuredClone(project);
   const assets = copy?.devices?.standaloneController?.sequenceAssets || [];
   for (const asset of assets) {
     if (!asset.portableMedia) {
-      if (asset.mediaRef) await verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput: true });
+      if (asset.mediaRef) {
+        try {
+          await verifyStoredSequenceAsset(asset, { allowLegacyMultiOutput: true });
+        } catch (error) {
+          if (error?.code !== 'recorded_media_missing' || !onMissingLegacyMedia) throw error;
+          onMissingLegacyMedia(asset);
+        }
+      }
       continue;
     }
     const media = asset.portableMedia;

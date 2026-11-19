@@ -48,6 +48,20 @@ export function normalizeUsername(username) {
   return normalized;
 }
 
+export function normalizeSignInEmail(value) {
+  if (typeof value !== 'string') return null;
+  const email = value.trim().toLowerCase();
+  const [local, domain, ...extra] = email.split('@');
+  if (extra.length || email.length > 254 || !local || local.length > 64
+    || !/^[a-z0-9.!#$%&'*+=?^`{|}~_/-]+$/.test(local)
+    || local.startsWith('.') || local.endsWith('.') || local.includes('..')
+    || !domain || !domain.includes('.')
+    || !domain.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
+    return null;
+  }
+  return email;
+}
+
 function cleanDisplayName(displayName) {
   const value = typeof displayName === 'string' ? displayName.trim() : '';
   if (!value || [...value].length > 80) {
@@ -76,6 +90,7 @@ function publicAccount(row) {
     mustChangePassword: row.must_change_password === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(row.sign_in_email ? { email: row.sign_in_email } : {}),
   };
 }
 
@@ -198,6 +213,37 @@ export function createAccountStore(repository, options = {}) {
       throw error;
     }
     return publicAccount(row);
+  }
+
+  async function createPasswordlessAccount({ email: rawEmail, displayName, role }) {
+    const email = normalizeSignInEmail(rawEmail);
+    if (!email) fail('invalid_email', 'Enter a valid email address.', 400);
+    const id = crypto.randomUUID();
+    const createdAt = timestamp();
+    const handle = email.split('@')[0].replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 42);
+    const username = `${handle || 'studio-account'}-${id.slice(0, 13)}`;
+    const row = {
+      id,
+      username,
+      normalized_username: username,
+      display_name: cleanDisplayName(displayName),
+      role: cleanRole(role),
+      status: 'active',
+      // An invalid encoding deliberately has no usable password.
+      password_hash: 'passwordless',
+      must_change_password: 0,
+      created_at: createdAt,
+      updated_at: createdAt,
+    };
+    try {
+      await repository.insertPasswordlessAccount(row, email);
+    } catch (error) {
+      if (/unique constraint failed:\s*account_sign_in_emails\.email/i.test(error?.message)) {
+        fail('email_taken', 'This email is already linked to an account.', 409);
+      }
+      throw error;
+    }
+    return publicAccount({ ...row, sign_in_email: email });
   }
 
   async function bootstrapOwner({ username, displayName, temporaryPassword }) {
@@ -337,6 +383,10 @@ export function createAccountStore(repository, options = {}) {
     const createdAt = timestamp();
     const expiresAt = new Date(Date.parse(createdAt) + ttlSeconds * 1000).toISOString();
     const credential = await createSessionCredential({ crypto: options.crypto });
+    const passwordlessEmail = normalizeSignInEmail(sessionOptions.passwordlessEmail);
+    if (sessionOptions.passwordlessEmail !== undefined && !passwordlessEmail) {
+      fail('invalid_request', 'A verified sign-in email is required.', 400);
+    }
     const inserted = await repository.insertSessionForCurrentGeneration({
       token_hash: credential.digest,
       account_id: account.id,
@@ -344,6 +394,7 @@ export function createAccountStore(repository, options = {}) {
       created_at: createdAt,
       expires_at: expiresAt,
       revoked_at: null,
+      ...(passwordlessEmail ? { passwordless_email: passwordlessEmail } : {}),
     }, expectedGeneration);
     if (!inserted) {
       fail('session_state_changed', 'The account security state changed. Sign in again.', 409);
@@ -360,10 +411,12 @@ export function createAccountStore(repository, options = {}) {
     if (result.session.revoked_at
       || Date.parse(result.session.expires_at) <= currentMs
       || result.account.status !== 'active'
-      || result.session.account_generation !== result.account.session_generation) {
+      || result.session.account_generation !== result.account.session_generation
+      || (result.session.passwordless_email && !result.session.passwordless_email_is_current)) {
       return null;
     }
     const identity = accountIdentity(result.account);
+    if (result.session.passwordless_email) identity.mustChangePassword = false;
     return authenticationOptions.includeGeneration
       ? {
           identity,
@@ -406,6 +459,7 @@ export function createAccountStore(repository, options = {}) {
     bootstrapOwner,
     changePassword,
     createAccount,
+    createPasswordlessAccount,
     createSession,
     getAccount,
     listAccounts,
@@ -417,8 +471,26 @@ export function createAccountStore(repository, options = {}) {
   };
 }
 
-export function createD1AccountRepository(db) {
+export function createD1AccountRepository(db, { passwordless = false } = {}) {
+  const accountSelection = passwordless ? `
+    SELECT accounts.*, e.email AS sign_in_email FROM accounts
+    LEFT JOIN account_sign_in_emails AS e ON accounts.id = e.account_id
+  ` : 'SELECT * FROM accounts';
+  const eligibleRemainingOwner = passwordless ? `
+    AND EXISTS (SELECT 1 FROM account_sign_in_emails WHERE account_id = other.id)
+  ` : '';
   return {
+    async insertPasswordlessAccount(row, email) {
+      await db.batch([
+        db.prepare(`
+          INSERT INTO accounts (id, username, normalized_username, display_name, role, status,
+            password_hash, must_change_password, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(row.id, row.username, row.normalized_username, row.display_name, row.role, row.status,
+          row.password_hash, row.must_change_password, row.created_at, row.updated_at),
+        db.prepare('INSERT INTO account_sign_in_emails (email, account_id) VALUES (?, ?)').bind(email, row.id),
+      ]);
+    },
     async insertAccount(row) {
       await db.prepare(`
         INSERT INTO accounts (
@@ -472,12 +544,12 @@ export function createD1AccountRepository(db) {
     },
     async listAccounts() {
       const { results } = await db.prepare(
-        'SELECT * FROM accounts ORDER BY created_at ASC, id ASC',
+        `${accountSelection} ORDER BY accounts.created_at ASC, accounts.id ASC`,
       ).all();
       return results;
     },
     findAccountById(id) {
-      return db.prepare('SELECT * FROM accounts WHERE id = ?').bind(id).first();
+      return db.prepare(`${accountSelection} WHERE accounts.id = ?`).bind(id).first();
     },
     findAccountByNormalizedUsername(username) {
       return db.prepare(
@@ -541,6 +613,7 @@ export function createD1AccountRepository(db) {
               OR EXISTS (
                 SELECT 1 FROM accounts AS other
                 WHERE other.id <> ? AND other.role = 'owner' AND other.status = 'active'
+                ${eligibleRemainingOwner}
               )
             )
         `)
@@ -566,6 +639,7 @@ export function createD1AccountRepository(db) {
               OR EXISTS (
                 SELECT 1 FROM accounts AS other
                 WHERE other.id <> ? AND other.role = 'owner' AND other.status = 'active'
+                ${eligibleRemainingOwner}
               )
             )
         `)
@@ -620,6 +694,18 @@ export function createD1AccountRepository(db) {
       ).run();
     },
     async insertSessionForCurrentGeneration(row, generation) {
+      if (row.passwordless_email) {
+        const result = await db.prepare(`
+          INSERT INTO account_sessions (
+            token_hash, account_id, account_generation, created_at, expires_at, revoked_at, passwordless_email
+          )
+          SELECT ?, a.id, a.session_generation, ?, ?, ?, e.email FROM accounts AS a
+          JOIN account_sign_in_emails AS e ON a.id = e.account_id
+          WHERE a.id = ? AND a.status = 'active' AND a.session_generation = ? AND e.email = ?
+        `).bind(row.token_hash, row.created_at, row.expires_at, row.revoked_at,
+          row.account_id, generation, row.passwordless_email).run();
+        return (result?.meta?.changes || 0) > 0;
+      }
       const result = await db.prepare(`
         INSERT INTO account_sessions (
           token_hash, account_id, account_generation, created_at, expires_at, revoked_at
@@ -639,12 +725,17 @@ export function createD1AccountRepository(db) {
     async findSessionWithAccount(tokenHash) {
       const row = await db.prepare(`
         SELECT
+          s.*,
           s.token_hash AS session_token_hash,
           s.account_id AS session_account_id,
           s.account_generation AS session_account_generation,
           s.created_at AS session_created_at,
           s.expires_at AS session_expires_at,
           s.revoked_at AS session_revoked_at,
+          ${passwordless ? `EXISTS (
+            SELECT 1 FROM account_sign_in_emails AS email
+            WHERE email.email = s.passwordless_email AND email.account_id = a.id
+          ) AS passwordless_email_is_current,` : ''}
           a.*
         FROM account_sessions s
         JOIN accounts a ON a.id = s.account_id
@@ -659,6 +750,10 @@ export function createD1AccountRepository(db) {
           created_at: row.session_created_at,
           expires_at: row.session_expires_at,
           revoked_at: row.session_revoked_at,
+          ...(row.passwordless_email ? {
+            passwordless_email: row.passwordless_email,
+            passwordless_email_is_current: row.passwordless_email_is_current === 1,
+          } : {}),
         },
         account: row,
       };
@@ -675,7 +770,9 @@ export function createD1AccountRepository(db) {
 
 export function createD1AccountStore(env, options = {}) {
   if (!env?.PROJECTS_DB) return null;
-  return createAccountStore(createD1AccountRepository(env.PROJECTS_DB), options);
+  return createAccountStore(createD1AccountRepository(env.PROJECTS_DB, {
+    passwordless: env.STUDIO_PASSWORDLESS_AUTH_ENABLED === 'true',
+  }), options);
 }
 
 export function createMemoryAccountRepository(seed = {}) {

@@ -4,6 +4,7 @@ import {
   PHYSICAL_PREVIEW_FAILURE_MESSAGE,
   cardActionReducer,
   cardActionStatusLabel,
+  physicalPreviewStatusLabel,
   classifyCardActionFailure,
   createCardActionState,
   needsStripDiscovery,
@@ -215,4 +216,15 @@ test('the bench card discovery just installed is never routed back into discover
   // The route opens on the card's own report of having no project, and on
   // nothing else — an unrecognised fact must never widen it.
   assert.equal(needsStripDiscovery({ readinessState: 'connected', anythingElse: true }), false);
+});
+
+test('the Looks status line says when the card is already playing the pattern on screen', () => {
+  const idle = {};
+  assert.equal(physicalPreviewStatusLabel(idle, { cardPatternId: 'ocean', screenPatternId: 'ocean', connected: true }), 'Playing on the card');
+  assert.equal(physicalPreviewStatusLabel(idle, { cardPatternId: 'fire', screenPatternId: 'ocean', connected: true }), 'Previewing in Studio');
+  assert.equal(physicalPreviewStatusLabel(idle, { cardPatternId: 'ocean', screenPatternId: 'ocean', connected: false }), 'Previewing in Studio');
+  assert.equal(physicalPreviewStatusLabel(idle, { cardPatternId: 'ocean', screenPatternId: 'ocean', connected: true, lightsOff: true }), 'Previewing in Studio');
+  assert.equal(physicalPreviewStatusLabel(idle, { cardPatternId: '', screenPatternId: '', connected: true }), 'Previewing in Studio');
+  assert.equal(physicalPreviewStatusLabel({ status: 'pending' }, { cardPatternId: 'ocean', screenPatternId: 'ocean', connected: true }), 'Sending to Lightweaver');
+  assert.equal(physicalPreviewStatusLabel({ status: 'confirmed' }, { cardPatternId: 'fire', screenPatternId: 'ocean', connected: true }), 'Preview sent to card');
 });

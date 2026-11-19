@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import './layout/layout-workspace.css';
 import { TbIcon } from './layout/shared/InspectorPrimitives.jsx';
 import { GLOW_MODES, svgPt, sampleStripPixels } from '../lib/layoutGeometry.js';
 import { createPrimitiveStripDefinition } from '../lib/layoutPrimitives.js';
@@ -82,6 +83,10 @@ function SelectedStripSpecs({ strip, sectionFamilies, wiring, pxPerMm, ledType }
 
 export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnectionCenter }) {
   const state = useLayoutState();
+  const [shapesOpen, setShapesOpen] = useState(false);
+  const [previewToolsOpen, setPreviewToolsOpen] = useState(false);
+  const previewTrigger = useRef(null);
+  const shapesTrigger = useRef(null);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const specsDeepLink = typeof window !== 'undefined' && isLayoutSpecsRoute(window.location.hash);
   const [specsOpen, setSpecsOpen] = useState(specsDeepLink);
@@ -96,6 +101,10 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
   const closeSpecs = () => {
     setSpecsOpen(false);
     requestAnimationFrame(() => specsButtonRef.current?.focus());
+  };
+  const closeShapes = () => {
+    setShapesOpen(false);
+    shapesTrigger.current?.focus({ preventScroll: true });
   };
   const [firstLedPicker, setFirstLedPicker] = useState(null);
   const [firstLedError, setFirstLedError] = useState(null);
@@ -176,8 +185,6 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     selectedPathDecorations,
     totalLeds,
     svgRef, artworkRef, vpRef,
-    // strips
-    addAllStrips,
     // artwork
     artworkHTML,
     setHoveredLayerId, hoveredSubPathId, setHoveredSubPathId,
@@ -199,8 +206,8 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     isEditingGesture, layoutPatternFrame, layoutPreviewError, retryLayoutPreview, stripSamples, stripArrows,
     visibleWirePathCanvasSegments, wireRouteJumps, wireCutMarkers,
     // import
-    dragOver, fileRef, loadRef,
-    handleFile, handleDragOver, handleDragLeave, handleDrop, saveProject, handleLoad, importAccept,
+    dragOver, fileRef,
+    handleFile, handleDragOver, handleDragLeave, handleDrop,
     // mode (Draw | Wire)
     mode, setMode,
   } = state;
@@ -421,136 +428,134 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
     <div className="screen">
       <div className={`la mode-${mode}${inspectorCollapsed ? ' inspector-collapsed' : ''}${specsOpen ? ' specs-open' : ''}`}>
 
-      {/* ── Hidden file inputs ─────────────────────────────────────── */}
-      <input ref={fileRef} type="file" accept=".svg"  style={{ display: 'none' }} onChange={handleFile}/>
-      <input ref={loadRef} type="file" accept={importAccept} data-testid="layout-import-input" style={{ display: 'none' }} onChange={handleLoad}/>
+        <input ref={fileRef} type="file" accept=".svg" hidden onChange={handleFile}/>
 
-      {/* ── Toolbar (mockup .toolbar) ──────────────────────────────── */}
-        <div className="toolbar">
-          <div className="tb-group" role="group" aria-label="Mode actions">
-          {mode === 'draw' && (
-            <>
-              <button className="tb-btn solid" onClick={() => fileRef.current?.click()}
-                      title="Import an SVG to map LED strips">
-                {TbIcon.import}Import SVG
+        <div className="toolbar la-workspace-toolbar" onKeyDown={event => {
+          if (event.key !== 'Escape' || !previewToolsOpen) return;
+          event.stopPropagation();
+          setPreviewToolsOpen(false);
+          setLightMenuOpen(false);
+          previewTrigger.current?.focus();
+        }}>
+          <div className="tb-group la-create-tools" role="group" aria-label="Create layout">
+            <button type="button" className="tb-btn solid" onClick={() => fileRef.current?.click()}
+                    title={svgText || (!state.starterLayoutActive && strips.length) ? 'Import an SVG to replace this layout' : 'Import an SVG to map LED strips'}>
+              Import SVG
+            </button>
+            <button type="button" className={`tb-btn${drawMode ? ' active' : ''}`}
+                    aria-pressed={drawMode} title="Draw a new LED strip path on the artwork."
+                    onClick={() => {
+                      if (!drawMode && state.starterLayoutActive) state.clearStarterLayout();
+                      setDrawMode(v => !v);
+                      state.setWaypoints([]);
+                      setWireOverlayMode('idle');
+                      setGhostPt(null);
+                      setShapesOpen(false);
+                    }}>
+              {drawMode ? 'Drawing…' : 'Draw'}
+            </button>
+            <button type="button" className="tb-btn" ref={shapesTrigger} data-testid="layout-add-strip"
+                    title="Choose a shape for a new LED strip"
+                    onClick={() => {
+                      setSpecsOpen(false);
+                      setInspectorCollapsed(false);
+                      if (state.starterLayoutActive) {
+                        setDrawMode(false);
+                        state.setWaypoints([]);
+                        setGhostPt(null);
+                        requestAnimationFrame(() => {
+                          const picker = document.querySelector('[data-testid="layout-primitive-picker"]');
+                          picker?.scrollIntoView({ block: 'nearest' });
+                          picker?.querySelector('[aria-pressed="true"]')?.focus({ preventScroll: true });
+                        });
+                      } else setShapesOpen(v => !v);
+                    }}>
+              Shapes
+            </button>
+            {__LIGHTWEAVER_BUILD_TARGET__ !== 'card-local' && <a className="tb-btn" href="#screen=mapper" title="Open the standalone path Mapper">Mapper</a>}
+          </div>
+          <div className="la-view-tools">
+            <div className="tb-group" role="group" aria-label="Edit history">
+              <button type="button" className="tb-btn icon" onClick={doUndo} disabled={layoutHistLen === 0}
+                      aria-label="Undo" title={`Undo (⌘Z) · ${layoutHistLen} step(s)`}>
+                {TbIcon.undo}
               </button>
-
-              {layers.length > 0 && (
-                <button className="tb-btn" onClick={addAllStrips}
-                        data-testid="artwork-create-all-strips"
-                        aria-label={`+ All (${layers.length}) — Create LED strips from all layers`}
-                        title={`Add all ${layers.length} layers as strips (A)`}>
-                  + LED strips ({layers.length})
-                </button>
+              <button type="button" className="tb-btn icon" onClick={doRedo} disabled={layoutFutLen === 0}
+                      aria-label="Redo" title={`Redo (⌘⇧Z) · ${layoutFutLen} step(s)`}>
+                {TbIcon.redo}
+              </button>
+            </div>
+            <div className="la-zoom" role="group" aria-label="View">
+              <button type="button" onClick={() => zoomByFactor(1 / 1.25)} aria-label="Zoom out" title="Zoom out (-)">−</button>
+              <span className="zv" aria-label={`Zoom ${Math.round(zoom * 100)}%`} data-testid="layout-zoom-percentage">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button type="button" onClick={() => zoomByFactor(1.25)} aria-label="Zoom in" title="Zoom in (+)">+</button>
+              <button type="button" className="la-toolbar-fit" onClick={resetView} aria-label="Fit all" title="Fit all (F, Cmd/Ctrl+0)">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>
+              </button>
+            </div>
+          </div>
+          <button type="button" className={`tb-btn la-preview-trigger${previewPlaying || previewToolsOpen ? ' active' : ''}`} ref={previewTrigger}
+                  aria-expanded={previewToolsOpen} aria-controls="layout-preview-tools"
+                  onClick={() => {
+                    setPreviewToolsOpen(v => !v);
+                    setLightMenuOpen(false);
+                  }}>
+            Preview
+          </button>
+          {previewToolsOpen && <div className="la-preview-backdrop" aria-hidden="true"
+            onClick={() => { setPreviewToolsOpen(false); setLightMenuOpen(false); }}/>}
+          <div className={`la-preview-tools${previewToolsOpen ? ' is-open' : ''}`} id="layout-preview-tools"
+               role="group" aria-label="Preview controls">
+            <button type="button"
+                    className={`tb-btn la-preview-play${previewPlaying ? ' active' : ''}`}
+                    data-testid="layout-preview-play"
+                    aria-pressed={previewPlaying}
+                    onClick={togglePreviewPlaying}
+                    title={previewPlaying ? 'Hold the pattern on this frame' : 'Play the pattern on the artwork'}>
+              {previewPlaying ? 'Pause' : 'Play'}
+            </button>
+            <div className="la-light-wrap">
+              <button className={`tb-btn${showLight ? ' active' : ''}`}
+                      aria-pressed={showLight}
+                      onClick={toggleShowLight}
+                      onContextMenu={e => { e.preventDefault(); setLightMenuOpen(o => !o); }}
+                      title="Toggle ambient light preview (click). Right-click or use ▾ for glow options.">
+                {TbIcon.bulb}Light
+              </button>
+              <button className="tb-btn icon" title="Light glow options"
+                      aria-expanded={lightMenuOpen} onClick={() => setLightMenuOpen(o => !o)}>▾</button>
+              {lightMenuOpen && (
+                <>
+                  <div className="la-light-pop-backdrop" onClick={() => setLightMenuOpen(false)}/>
+                  <div className="la-light-pop" role="menu">
+                    <button className={`la-light-item${directedGlow ? ' on' : ''}`}
+                            onClick={() => { setDirectedGlow(v => !v); enableLightPreview(); }}
+                            title="Directed glow — elongate bloom along strip direction">
+                      <span>Directed glow</span>
+                      <span className="st">{directedGlow ? 'on' : 'off'}</span>
+                    </button>
+                    <div className="la-light-sep"/>
+                    <button className="la-light-item"
+                            onClick={() => setGlowMode(m => GLOW_MODES[(GLOW_MODES.indexOf(m) + 1) % GLOW_MODES.length])}
+                            title="Cycle glow mode (dots is fastest for editing)">
+                      <span>Glow mode</span>
+                      <span className="st">{glowMode}</span>
+                    </button>
+                  </div>
+                </>
               )}
-
-              <div className="tb-div"/>
-
-              <button
-                className={`tb-btn${drawMode ? ' active' : ''}`}
-                title="Draw a new LED strip path on the artwork."
-                onClick={() => { setDrawMode(m => !m); setWireOverlayMode('idle'); setGhostPt(null); }}>
-                {TbIcon.draw}{drawMode ? 'Drawing…' : 'Draw'}
-              </button>
-            </>
-          )}
-
-          {/* Split and cable-jump tools live inside Test & Install's closed
-              Advanced section so the normal toolbar stays task-focused. */}
-          </div>
-
-          {/* Undo / Redo */}
-          <button className="tb-btn icon" onClick={doUndo} disabled={layoutHistLen === 0}
-                  title={`Undo (⌘Z) · ${layoutHistLen} step${layoutHistLen !== 1 ? 's' : ''}`}>
-            {TbIcon.undo}{layoutHistLen > 0 && <span className="cnt">{layoutHistLen}</span>}
-          </button>
-          <button className="tb-btn icon" onClick={doRedo} disabled={layoutFutLen === 0}
-                  title={`Redo (⌘⇧Z) · ${layoutFutLen} step${layoutFutLen !== 1 ? 's' : ''}`}>
-            {TbIcon.redo}{layoutFutLen > 0 && <span className="cnt">{layoutFutLen}</span>}
-          </button>
-
-          {/* Density + artwork-size controls live in Size mode only now
-              (docs/layout-redesign-plan.md step 10 — the toolbar duplicates of
-              the Size panel's density seg and width field were removed). */}
-
-          <div className="tb-spring"/>
-
-          {/* Zoom cluster */}
-          <div className="la-zoom" role="group" aria-label="View">
-            <button onClick={() => zoomByFactor(1 / 1.25)} aria-label="Zoom out" title="Zoom out (-)">−</button>
-            <span
-              className="zv"
-              aria-label={`Zoom ${Math.round(zoom * 100)}%`}
-              data-testid="layout-zoom-percentage">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button onClick={() => zoomByFactor(1.25)} aria-label="Zoom in" title="Zoom in (+)">+</button>
-            <button onClick={resetView} aria-label="Fit all" title="Fit all (F, Cmd/Ctrl+0)">Fit</button>
-          </div>
-
-          <div className="tb-div"/>
-
-          {/* Save / Load */}
-          <div className="tb-group" role="group" aria-label="Project">
-            <button className="tb-btn" onClick={saveProject} title="Export a portable project file (.lw.json)">
-              {TbIcon.save}Export
+            </div>
+            <button className={`tb-btn${showLeds ? ' active' : ''}`} onClick={() => setShowLeds(v => !v)}
+                    aria-pressed={showLeds} title="Toggle LED dots">
+              {TbIcon.grid}LEDs
             </button>
-            <button className="tb-btn" onClick={() => loadRef.current?.click()} title="Import a project file">
-              {TbIcon.load}Import
+            <button className={`tb-btn${showHeat ? ' active' : ''}`} onClick={() => setShowHeat(v => !v)}
+                    aria-pressed={showHeat} title="Coverage heatmap">
+              {TbIcon.heat}Heat
             </button>
-            {__LIGHTWEAVER_BUILD_TARGET__ !== 'card-local' && <a className="tb-btn" href="#screen=mapper">Mapper</a>}
           </div>
-
-          <div className="tb-div"/>
-
-          {/* Render toggles — LEDs + Heat top-level; Directed-glow + glow-mode tuck under Light.
-              Play is the Light preview's clock: it lights the preview and sets the pattern moving. */}
-          <button type="button"
-                  className={`tb-btn la-preview-play${previewPlaying ? ' active' : ''}`}
-                  data-testid="layout-preview-play"
-                  aria-pressed={previewPlaying}
-                  onClick={togglePreviewPlaying}
-                  title={previewPlaying ? 'Hold the pattern on this frame' : 'Play the pattern on the artwork'}>
-            {previewPlaying ? 'Pause' : 'Play'}
-          </button>
-          <div className="la-light-wrap">
-            <button className={`tb-btn${showLight ? ' active' : ''}`}
-                    onClick={toggleShowLight}
-                    onContextMenu={e => { e.preventDefault(); setLightMenuOpen(o => !o); }}
-                    title="Toggle ambient light preview (click). Right-click or use ▾ for glow options.">
-              {TbIcon.bulb}Light
-            </button>
-            <button className="tb-btn icon" title="Light glow options"
-                    onClick={() => setLightMenuOpen(o => !o)}>▾</button>
-            {lightMenuOpen && (
-              <>
-                <div className="la-light-pop-backdrop" onClick={() => setLightMenuOpen(false)}/>
-                <div className="la-light-pop" role="menu">
-                  <button className={`la-light-item${directedGlow ? ' on' : ''}`}
-                          onClick={() => { setDirectedGlow(v => !v); enableLightPreview(); }}
-                          title="Directed glow — elongate bloom along strip direction">
-                    <span>Directed glow</span>
-                    <span className="st">{directedGlow ? 'on' : 'off'}</span>
-                  </button>
-                  <div className="la-light-sep"/>
-                  <button className="la-light-item"
-                          onClick={() => setGlowMode(m => GLOW_MODES[(GLOW_MODES.indexOf(m) + 1) % GLOW_MODES.length])}
-                          title="Cycle glow mode (dots is fastest for editing)">
-                    <span>Glow mode</span>
-                    <span className="st">{glowMode}</span>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-          <button className={`tb-btn${showLeds ? ' active' : ''}`} onClick={() => setShowLeds(v => !v)}
-                  title="Toggle LED dots">
-            {TbIcon.grid}LEDs
-          </button>
-          <button className={`tb-btn${showHeat ? ' active' : ''}`} onClick={() => setShowHeat(v => !v)}
-                  title="Coverage heatmap">
-            {TbIcon.heat}Heat
-          </button>
         </div>
 
         {/* ── Canvas (SVG stage + overlays) ─────────────────────────── */}
@@ -558,28 +563,18 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
 
       {/* ── Right panel (mockup .side) ─────────────────────────────── */}
       <aside className={`side${inspectorCollapsed ? ' is-collapsed' : ''}`}>
-        <button
-          type="button"
-          className="la-sheet-handle"
-          data-testid="layout-sheet-handle"
-          aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
-          aria-expanded={!inspectorCollapsed}
-          onClick={() => setInspectorCollapsed(collapsed => !collapsed)}>
-          <span aria-hidden="true"/>
-          <strong>Inspector</strong>
-        </button>
         <WireHoverDescription className="la-mode-nav">
+          <button
+            type="button"
+            className="la-sheet-handle"
+            data-testid="layout-sheet-handle"
+            aria-label={inspectorCollapsed ? 'Expand inspector' : 'Collapse inspector'}
+            aria-expanded={!inspectorCollapsed}
+            onClick={() => setInspectorCollapsed(collapsed => !collapsed)}>
+            <span aria-hidden="true"/>
+            <strong>Inspector</strong>
+          </button>
           <div className="la-install-actions">
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="layout-check-and-install"
-              title="Check the lights and install this project on the connected card."
-              data-tooltip="Check the lights and install this project on the connected card."
-              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
-            >
-              Install on card
-            </button>
             <button
               ref={specsButtonRef}
               type="button"
@@ -589,10 +584,20 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
               aria-controls="layout-specs-panel"
               aria-label={specsAttention ? 'Specs, attention needed' : 'Specs'}
               title={specsAttention ? 'Open wiring, hardware, and build specs. A spec needs attention.' : 'Open wiring, hardware, and build specs.'}
-              onClick={() => setSpecsOpen(open => !open)}
+              onClick={() => { setShapesOpen(false); setSpecsOpen(open => !open); }}
             >
               Specs
               {specsAttention && <span className="la-specs-attention" aria-hidden="true"/>}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="layout-check-and-install"
+              title="Check the lights and install this project on the connected card."
+              data-tooltip="Check the lights and install this project on the connected card."
+              onClick={() => openCardFlow('install-project', { startProjectInstall: true })}
+            >
+              Install on card
             </button>
             {layoutChangeKind && (
               <details className="la-change-help" data-testid="layout-change-help">
@@ -615,8 +620,11 @@ export function LayoutScreen({ connected, cardHost, onConnectCard, onOpenConnect
           </div>
         </WireHoverDescription>
         <div className="la-mode-content is-draw">
-          <div className="la-inspector-main" hidden={specsOpen}>
+          <div className={`la-inspector-main${shapesOpen && !state.starterLayoutActive ? ' is-choosing-shape' : ''}`} hidden={specsOpen}>
             <DrawModePanel state={state}
+                         addChooserOpen={shapesOpen}
+                         setAddChooserOpen={setShapesOpen}
+                         onCloseShapes={closeShapes}
                          onChangePattern={changeSectionPattern}
                          cardHost={cardHost}
                          firstLedPicker={firstLedPicker}

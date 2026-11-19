@@ -362,6 +362,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           LIGHTWEAVER_NATIVE_AUTH_READY: ${{ vars.LIGHTWEAVER_NATIVE_AUTH_READY }}
+          STUDIO_PASSWORDLESS_AUTH_ENABLED: ${{ vars.STUDIO_PASSWORDLESS_AUTH_ENABLED }}
           LIGHTWEAVER_PRODUCTION_LIBRARY_READY: ${{ vars.LIGHTWEAVER_PRODUCTION_LIBRARY_READY }}
           PROJECTS_DB_DATABASE_ID: ${{ secrets.PROJECTS_DB_DATABASE_ID }}
           PROJECTS_DB_DATABASE_NAME: ${{ vars.PROJECTS_DB_DATABASE_NAME }}
@@ -385,6 +386,7 @@ jobs:
         working-directory: lightweaver
         env:
           LIGHTWEAVER_NATIVE_AUTH_READY: ${{ vars.LIGHTWEAVER_NATIVE_AUTH_READY }}
+          STUDIO_PASSWORDLESS_AUTH_ENABLED: ${{ vars.STUDIO_PASSWORDLESS_AUTH_ENABLED }}
           PROD_CHECK_REQUIRED: '1'
         run: |
           # Cloudflare Pages can expose the new no-store graph before every

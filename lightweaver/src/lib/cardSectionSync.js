@@ -228,11 +228,13 @@ export function cardSectionDifference(sectionTargets = [], zonesPayload = null) 
 
 export function cardSectionSummary(sectionTargets = [], zonesPayload = null) {
   const difference = cardSectionDifference(sectionTargets, zonesPayload);
-  if (!difference.known) return '';
-  const heldNames = difference.held.map(section => section.label);
-  if (difference.missing.length === 0) {
-    return heldNames.length ? `Card holds ${heldNames.join(', ')}` : '';
+  if (!difference.known || (!difference.missing.length && !difference.extra.length)) return '';
+  if (!difference.missing.length) {
+    return difference.extra.length === 1
+      ? 'Card has one extra section; Install to send yours'
+      : `Card has ${difference.extra.length} extra sections; Install to send yours`;
   }
+  const heldNames = difference.held.map(section => section.label);
   const heldText = heldNames.length
     ? heldNames.join(', ')
     : (zonesPayload.zones.length === 1 ? 'one section' : `${zonesPayload.zones.length} sections`);

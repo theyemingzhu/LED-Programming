@@ -4,6 +4,7 @@ import { createD1AccountStore } from './_shared/accountStore.js';
 import { createFirmwareUpdateGrantIssuer } from './_shared/firmwareUpdateGrant.js';
 import { handleLibraryRequest } from './_shared/router.js';
 import { createD1R2LibraryStore } from './_shared/store.js';
+import { studioPasswordlessEnabled } from './_shared/passwordlessAuth.js';
 
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -20,6 +21,7 @@ function configuredPositiveInteger(env, name) {
 export async function handleLibraryPagesRequest(context, options = {}) {
   const { accountStore: injectedAccountStore, ...authOptions } = options;
   const accountStore = injectedAccountStore || createD1AccountStore(context.env);
+  const passwordlessAccounts = studioPasswordlessEnabled(context.env);
   let identity = null;
   const token = readSessionCookie(context.request);
   if (accountStore && token) {
@@ -29,7 +31,7 @@ export async function handleLibraryPagesRequest(context, options = {}) {
       identity = null;
     }
   }
-  if (!identity) {
+  if (!identity && !passwordlessAccounts) {
     try {
       const accessIdentity = await authenticateAccessRequest(
         context.request,
@@ -60,6 +62,7 @@ export async function handleLibraryPagesRequest(context, options = {}) {
     request: context.request,
     identity,
     accountStore,
+    passwordlessAccounts,
     firmwareUpdateGrantIssuer,
     maxBytes,
     store,

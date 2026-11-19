@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
 import { installHttpsStudio, STUDIO_ORIGIN } from './harness/bridgeTransport';
@@ -731,3 +732,31 @@ test('USB Wi-Fi form stays usable on a narrow browser viewport', async ({ page, 
   expect(input!.x + input!.width).toBeLessThanOrEqual(390);
   await form.screenshot({ path: '/tmp/lightweaver-usb-wifi-narrow.png' });
 });
+
+for (const resetFirst of [true, false]) {
+  test(resetFirst ? 'HTTPS Studio proxy recovers a reset read without changing its response' : 'HTTPS Studio proxy preserves HTTP failure without retrying', async ({ page }) => {
+    let requests = 0;
+    const server = createServer((request, response) => {
+      requests += 1;
+      if (resetFirst && requests === 1) {
+        request.socket.destroy();
+        return;
+      }
+      response.writeHead(resetFirst ? 200 : 503, { 'content-type': 'text/plain' });
+      response.end(resetFirst ? 'exact local response' : 'upstream unavailable');
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test server address');
+    try {
+      await installHttpsStudio(page, `http://127.0.0.1:${address.port}`);
+      const response = await page.goto(`${STUDIO_ORIGIN}/proxy-fixture`);
+      expect(response?.status()).toBe(resetFirst ? 200 : 503);
+      await expect(page.locator('body')).toHaveText(resetFirst ? 'exact local response' : 'upstream unavailable');
+      expect(requests).toBe(resetFirst ? 2 : 1);
+    } finally {
+      await page.unrouteAll({ behavior: 'wait' });
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+}

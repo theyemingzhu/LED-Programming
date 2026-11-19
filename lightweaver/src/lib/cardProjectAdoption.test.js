@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adoptedProjectName, guardedResolutionRun, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
+import { adoptedProjectName, controlPinsFromCardReport, guardedResolutionRun, reconstructInstalledCardState, resolvedMatchKey } from './cardProjectAdoption.js';
 import { cardProjectFingerprint } from './cardProjectResolver.js';
 import { createDefaultProject } from './projectModel.js';
 import { buildCardRuntimePackageFromProject } from './cardRuntimeProject.js';
@@ -819,4 +819,41 @@ test('adopting a card project takes the card’s name instead of leaving Untitle
     adoptedProjectName('Untitled Project', { piece: { name: 'Lightweaver Bench Discovery' } }),
     'Untitled Project',
   );
+});
+
+// Seen on the real gallery card lw-b0fe81f61b44 (2026-11-19): it reports
+// encoder press on pin 6 with no alternate. Adoption dropped that, and the
+// next Save to card wrote Studio's defaults (press 0, alternate 6) back.
+const REPORTED_CARD_CONTROLS = {
+  encoder: { a: 4, b: 5, press: 6, configuredAlternatePress: -1, effectiveAlternatePress: 0, rotateDirection: 'clockwise-brighter', brightnessStep: 18 },
+  previous: 7, next: 8, blackout: 9, statusLed: 2, brightnessAnalog: -1,
+};
+
+test('reconstruct strategy carries the card-reported control pins into the adopted project', async () => {
+  const { deps, calls } = makeDeps();
+  deps.io.readCardStatusEnvelope = async () => statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] });
+  deps.io.readCardPatternsFromCard = async () => ({ currentId: 'fire', patterns: [{ id: 'fire', label: 'Fire', zones: [{ id: 'strip-1', patternId: 'fire' }] }] });
+  deps.io.readCardZonesFromCard = async () => ({ zones: [{ id: 'strip-1', patternId: 'fire', brightness: 1 }] });
+  deps.io.readCardFirmwareInfoEnvelope = async () => ({ controls: REPORTED_CARD_CONTROLS });
+  const result = await guardedResolutionRun(deps, { strategy: 'reconstruct' });
+  assert.equal(result.ok, true);
+  const adopted = calls.appliedParts[0].parts;
+  const exported = buildCardRuntimePackageFromProject({
+    projectId: 'readback', projectName: 'Readback', strips: adopted.strips,
+    patchBoard: adopted.patchBoard, wiring: adopted.wiring,
+    standaloneController: adopted.devices.standaloneController,
+  });
+  const { encoder, previous, next, blackout, statusLed } = exported.config.controls;
+  assert.deepEqual([encoder.a, encoder.b, encoder.press, encoder.alternatePress], [4, 5, 6, -1]);
+  assert.deepEqual([previous, next, blackout, statusLed], [7, 8, 9, 2]);
+  assert.deepEqual(adopted.devices.standaloneController.controls.encoder.patternCycleIds, ['fire']);
+});
+
+test('a card that reports no complete control pins adopts without inventing any', () => {
+  assert.deepEqual(controlPinsFromCardReport(null), {});
+  assert.deepEqual(controlPinsFromCardReport({ encoder: { a: 4, b: 5 }, previous: 7 }), {});
+  const skeleton = projectSkeletonFromCardStatus(statusEnvelope({ outputs: [{ id: 'out1', pin: 18, pixels: 41 }] }));
+  const adopted = reconstructInstalledCardState({ skeleton, patterns: null, zones: { zones: [{ id: 'strip-1', patternId: 'fire' }] } });
+  assert.deepEqual(Object.keys(adopted.devices.standaloneController.controls), ['encoder']);
+  assert.deepEqual(Object.keys(adopted.devices.standaloneController.controls.encoder), ['patternCycleIds']);
 });

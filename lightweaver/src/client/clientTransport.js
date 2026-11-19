@@ -1,4 +1,4 @@
-import { normalizeClientPattern } from './clientPattern.js';
+import { normalizeClientPattern, normalizeLookTuning, normalizeSavedLookTuning } from './clientPattern.js';
 import { connectCardTransport } from '../lib/cardTransport.js';
 import { acquireCardBridgeFromGesture, adoptDiscoveredCardBridgeIdentity, getCardBridgeState, sendCardBridgeRequest, cardBridgeFeatureGap } from '../lib/cardBridge.js';
 import { normalizeCardCustomerControls } from '../lib/cardCustomerControls.js';
@@ -47,9 +47,19 @@ export async function connectClient(host, { bridge = false, expectedCardId = '' 
     const controls = normalizeCardCustomerControls(zones, patterns);
     const reportedId = patterns.currentId || zones.zones?.[0]?.patternId || '';
     controls.activePatternId = reportedId;
+    controls.multipleZones = zones.zones.length > 1;
+    if (nextStatus.capabilities?.lookTuning?.version === 1) {
+      if (typeof zones.blackout === 'boolean') controls.blackout = zones.blackout;
+      // Separate reads can straddle a timed selection. Wait for coherent readback.
+      if (zones.lookTuning?.patternId && zones.lookTuning.patternId === reportedId) {
+        controls.tuning = normalizeLookTuning(zones.lookTuning, reportedId);
+      }
+    }
     return { status: nextStatus, controls };
   };
-  session.readPattern = async patternId => normalizeClientPattern(await request(`/api/client-pattern?patternId=${encodeURIComponent(patternId)}`), identity.cardId, patternId);
+  const readPattern = patternId => request(`/api/client-pattern?patternId=${encodeURIComponent(patternId)}`);
+  session.readPattern = async patternId => normalizeClientPattern(await readPattern(patternId), identity.cardId, patternId);
+  session.readTuning = async patternId => normalizeSavedLookTuning(await readPattern(patternId), identity.cardId, patternId);
   session.readPlaylist = async patterns => normalizeClientPlaylist(await request('/api/client-playlist'), patterns, identity.cardId);
   session.write = async (path, body) => {
     // Every mutation is bound to this exact live card and boot, including bridge requests.

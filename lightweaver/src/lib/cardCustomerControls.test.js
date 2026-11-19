@@ -32,6 +32,17 @@ const initial = normalizeCardCustomerControls({
 });
 
 assert.equal(initial.activePatternId, 'bench-warm');
+// The card plays 'aurora', which is not one of its two saved looks: say so
+// instead of presenting the first saved look as the one playing.
+assert.equal(initial.unsavedPatternId, 'aurora');
+assert.equal(initial.unsavedPatternLabel, 'Aurora');
+{
+  const state = createCardCustomerControls(initial);
+  assert.equal(beginCustomerControl(state, { brightness: 0.5 }).view.unsavedPatternId, 'aurora', 'a brightness change leaves the playing pattern alone');
+  assert.equal(beginCustomerControl(state, { patternId: 'combo-moon-look' }).view.unsavedPatternId, '', 'choosing a saved look replaces it');
+  const saved = normalizeCardCustomerControls({ zones: [{ id: 'strip-1', patternId: 'ocean' }] }, { currentId: 'combo-moon-look', patterns: initial.patterns.map(pattern => ({ ...pattern, controls: { customColor: false, breathe: false, drift: false } })) });
+  assert.equal(saved.unsavedPatternId, '', 'a saved look that is playing is not marked unsaved');
+}
 assert.deepEqual(initial.patterns.map(pattern => pattern.id), ['bench-warm', 'combo-moon-look']);
 assert.equal(initial.look.brightness, 0.7);
 assert.equal(initial.look.driftHueMin, 17, 'the card-confirmed drift lower bound survives normalization');

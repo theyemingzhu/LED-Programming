@@ -16,6 +16,25 @@ function projectMetadata(overrides = {}) {
   };
 }
 
+test('a too-large artwork save offers a portable backup and a superseded save never sends', async () => {
+  let sends = 0;
+  const client = createCloudLibraryClient({
+    async fetchImpl() {
+      sends += 1;
+      return Response.json({ error: { code: 'payload_too_large', message: 'The JSON payload is too large.' } }, { status: 413 });
+    },
+  });
+  const document = { id: 'artwork', name: 'Artwork', version: 3 };
+  await assert.rejects(() => client.createProject({ title: document.name, project: document }), error => (
+    error.code === 'payload_too_large' && /Download a backup from Projects/.test(error.message)
+  ));
+  await assert.rejects(
+    () => client.updateProject('remote-artwork', { baseRevision: 1, project: document }, { isCurrent: () => false }),
+    error => error.code === 'project_write_superseded',
+  );
+  assert.equal(sends, 1);
+});
+
 function nativeSession(overrides = {}) {
   return {
     username: 'studio-owner',

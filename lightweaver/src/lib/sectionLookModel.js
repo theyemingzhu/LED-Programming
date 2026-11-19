@@ -236,7 +236,7 @@ export function saveCurrentLookToController(controller = {}, {
     type: COMPOUND_PATTERN_TYPE,
     label: String(label || titleFromId(id)),
     defaultLook: normalizeSectionVisualLook(defaultLook),
-    sectionLooks: sectionLooksFromTargets(targets),
+    sectionLooks: snapshotSectionLooks(targets, target => normalizeSectionVisualLook(target.look)),
     sectionSnapshotVersion: 1,
     // Each look remembers whether it mirrors the sides, so a playlist can
     // alternate. A look saved on a piece with sides defaults to mirrored.
@@ -285,23 +285,16 @@ export function applySavedLookToPatchBoard({
   if (!look) return normalizePatchBoard(patchBoard, strips);
   for (const value of [look.defaultLook, ...Object.values(look.sectionLooks || {})]) assertSupportedStackAppearance(value);
 
-  let board = applyLookToPatchBoard({
-    patchBoard,
-    strips,
-    targetId: ALL_SECTIONS_TARGET_ID,
-    look: look.defaultLook,
-  });
-
-  for (const [targetId, sectionLook] of Object.entries(look.sectionLooks || {})) {
-    board = applyLookToPatchBoard({
-      patchBoard: board,
-      strips,
-      targetId,
-      look: sectionLook,
-    });
+  const board = normalizePatchBoard(patchBoard, strips);
+  const targetsByPatchId = new Map(deriveSectionTargets({ patchBoard: board, strips })
+    .filter(target => target.kind === 'section').map(target => [target.patchId, target]));
+  for (const patch of board.patches) {
+    if (patch?.source?.type !== 'strip' || patch.output?.mode === 'off') continue;
+    const target = targetsByPatchId.get(patch.id);
+    const appearance = (target && findSavedSectionLook(look, target)) || look.defaultLook;
+    patch.playback = lookToPlayback(appearance, patch.playback);
   }
-
-  return normalizePatchBoard(board, strips);
+  return board;
 }
 
 export function targetLabel(target) {
@@ -342,12 +335,39 @@ function lookToPlayback(look, previous = {}) {
   };
 }
 
-function sectionLooksFromTargets(targets = []) {
-  return Object.fromEntries(
-    (targets || [])
-      .filter(target => target?.kind === 'section' && target.id)
-      .map(target => [target.id, normalizeSectionVisualLook(target.look)]),
-  );
+// Match the canonical key used by normalizeSavedLooks without renaming the
+// live patch, zone, or strip. Complete snapshots never match a legacy alias.
+export { sanitizeId as sectionLookKey };
+
+export function savedSectionLookKeys(look, target) {
+  const ids = look?.sectionSnapshotVersion === 1
+    ? [target.id]
+    : [target.id, target.zoneId, target.patchId, target.stripId];
+  return [...new Set(ids.map(sanitizeId).filter(Boolean))];
+}
+
+export function findSavedSectionLook(look, target) {
+  const appearances = look?.sectionLooks || {};
+  for (const key of savedSectionLookKeys(look, target)) {
+    if (Object.hasOwn(appearances, key)) return appearances[key];
+    // Some drafts and older raw documents still carry the original spelling.
+    const originalKey = Object.keys(appearances).find(id => sanitizeId(id) === key);
+    if (originalKey) return appearances[originalKey];
+  }
+  return undefined;
+}
+
+export function snapshotSectionLooks(targets, appearanceFor) {
+  const seen = new Set();
+  return Object.fromEntries((targets || [])
+    .filter(target => target?.kind === 'section')
+    .map(target => {
+      const key = sanitizeId(target.id);
+      if (!key) throw new Error('A section is missing its saved look key.');
+      if (seen.has(key)) throw new Error(`Two sections share a saved look key (“${key}”). Resolve their section IDs before saving.`);
+      seen.add(key);
+      return [key, appearanceFor(target)];
+    }));
 }
 
 function normalizeSectionLooks(sectionLooks = {}) {

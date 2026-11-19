@@ -271,7 +271,7 @@ test('Playlist touch handle reorders on a coarse pointer', async ({ browser }) =
   }
 });
 
-test('Playlist coarse-pointer reorder, Live, more, and menu targets are at least 44px', async ({ browser }) => {
+test('Playlist keeps a full drag target beside slim Live and More buttons', async ({ browser }) => {
   const context = await browser.newContext({
     hasTouch: true,
     isMobile: true,
@@ -281,14 +281,12 @@ test('Playlist coarse-pointer reorder, Live, more, and menu targets are at least
   try {
     await gotoPlaylist(page, makePlaylistProject({ count: 3 }));
     const more = page.getByRole('button', { name: 'More actions for Aurora', exact: true });
-    for (const control of [
-      page.getByRole('button', { name: 'Reorder Aurora', exact: true }),
-      page.getByRole('button', { name: 'Live', exact: true }).first(),
-      more,
-    ]) {
+    const reorder = page.getByRole('button', { name: 'Reorder Aurora', exact: true });
+    const live = page.getByRole('button', { name: 'Live', exact: true }).first();
+    for (const [control, height] of [[reorder, 44], [live, 30], [more, 30]] as const) {
       const box = await control.boundingBox();
       expect(box?.width).toBeGreaterThanOrEqual(44);
-      expect(box?.height).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBe(height);
     }
     await more.click();
     const remove = page.getByRole('menuitem', { name: 'Remove Aurora', exact: true });

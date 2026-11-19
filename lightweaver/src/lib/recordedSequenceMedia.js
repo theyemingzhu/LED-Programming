@@ -50,7 +50,11 @@ export async function readRecordedMedia(sha256) {
         return requestResult(tx.objectStore(STORE).get(sha256));
       })()
     : memoryForNode.get(sha256);
-  if (!record?.bytes) throw new Error('Recorded media is missing from this browser. Import the original project backup or record it again.');
+  if (!record?.bytes) {
+    throw Object.assign(new Error('Recorded media is missing from this browser. Import the original project backup or record it again.'), {
+      code: 'recorded_media_missing',
+    });
+  }
   const bytes = new Uint8Array(record.bytes);
   if (await sha256RecordingBytes(bytes) !== sha256) throw new Error('Recorded media failed SHA-256 readback.');
   return bytes;

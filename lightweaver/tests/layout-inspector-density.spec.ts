@@ -24,10 +24,9 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
   const evidence: any[] = [];
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
-    await page.getByTestId('layout-add-strip').evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await page.locator('.la .side').evaluate(el => { el.scrollTop = 0; });
     const metrics = await page.evaluate(() => {
       const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
-      const add = rect('[data-testid="layout-add-strip"]');
       const total = rect('[data-testid="layout-total-led-control"]');
       const row = rect('.la-strip-row');
       const detail = rect('.la-strip-inspector');
@@ -37,7 +36,7 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
       const rows = [...document.querySelectorAll('.la-strip-row')].map(el => el.getBoundingClientRect());
       return { width: innerWidth, inspectorWidth: side.width, detailHeight: detail.height,
         countHeaderHeight: countHeader.height, detailBodyHeight: detail.height - countHeader.height, rowHeight: row.height,
-        sameAddRow: Math.abs(add.top - total.top) < 3, patternInline: Math.abs((pattern.top + pattern.bottom) / 2 - (row.top + row.bottom) / 2) < 3,
+        stripBeforeProjectTotal: countHeader.bottom <= total.top, patternInline: Math.abs((pattern.top + pattern.bottom) / 2 - (row.top + row.bottom) / 2) < 3,
         nameWidth: rect('.la-strip-row .layer-name').width,
         visibleRows: rows.filter(r => r.top >= side.top && r.bottom <= Math.min(side.bottom, innerHeight)).length,
         overflow: document.documentElement.scrollWidth > innerWidth + 2,
@@ -57,7 +56,7 @@ test('eight strips retain a compact overview and keyboard-accessible secondary a
   expect(evidence[0].visibleRows).toBe(8);
   for (const item of evidence) {
     expect(item.nameWidth).toBeGreaterThanOrEqual(58);
-    expect(item.sameAddRow).toBe(true);
+    expect(item.stripBeforeProjectTotal).toBe(true);
     expect(item.patternInline).toBe(true);
     expect(item.overflow).toBe(false);
     expect(item.panelOverflow).toBe(false);

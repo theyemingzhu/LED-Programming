@@ -9,6 +9,7 @@ import {
   normalizeComposition,
   exportComposition,
   importComposition,
+  importCompositionFile,
   resolveComposition,
   loadCompositions,
   persistCompositions,
@@ -72,6 +73,52 @@ test('normalize -> export -> import is idempotent', () => {
   // And normalizing an already-normalized composition changes nothing.
   const renormalized = normalizeComposition(reimported);
   assert.equal(exportComposition(renormalized), exported);
+});
+
+test('Show files restore the original composition regardless of JSON key order', () => {
+  const source = baseComposition({
+    fields: [{ id: 'field-1', fold: 2, scope: { kind: 'radius', inner: 1, outer: null } }],
+  });
+  const exported = JSON.parse(exportComposition(source));
+  const reordered = Object.fromEntries(Object.entries(exported).reverse());
+  const restored = importCompositionFile(JSON.stringify(reordered), {
+    projectId: source.projectId,
+    stripIds: ['s0', 's1', 's2', 's3', 's4', 's5'],
+  });
+  assert.deepEqual(restored, source);
+
+  const whole = baseComposition({
+    areas: [{ id: 'area-lotus', instances: [{ stripIds: '*' }] }],
+  });
+  assert.deepEqual(importCompositionFile(exportComposition(whole), {
+    projectId: whole.projectId, stripIds: [],
+  }), whole);
+});
+
+test('Show files reject unsupported versions, wrong projects, and missing scope or area strips', () => {
+  const source = baseComposition({
+    fields: [{ id: 'field-1', fold: 2, scope: { kind: 'strips', stripIds: ['field-only'] } }],
+  });
+  const projectId = source.projectId;
+  const stripIds = ['field-only', 's0', 's1', 's2', 's3', 's4', 's5'];
+  const file = exportComposition(source);
+  assert.throws(() => importCompositionFile(file, { projectId: 'copy', stripIds }), /project this Voices file/);
+  assert.throws(() => importCompositionFile(file, { projectId, stripIds: stripIds.slice(1) }), /strips .* missing/);
+  assert.throws(() => importCompositionFile(file, { projectId, stripIds: stripIds.slice(0, -1) }), /strips .* missing/);
+
+  const future = { ...JSON.parse(file), version: SHOW_COMPOSITION_VERSION + 1 };
+  assert.throws(() => importCompositionFile(JSON.stringify(future), { projectId, stripIds }), /unsupported version/);
+});
+
+test('Show files reject malformed input before permitting replacement', () => {
+  const source = baseComposition();
+  const target = { projectId: source.projectId, stripIds: ['s0', 's1', 's2', 's3', 's4', 's5'] };
+  const raw = JSON.parse(exportComposition(source));
+  const badVoice = { ...raw, voices: [{ ...raw.voices[0], depth: '0.6' }] };
+  const badArea = { ...raw, areas: [{ ...raw.areas[0], instances: [{ index: 0, stripIds: null }] }] };
+  for (const file of ['{', '{}', JSON.stringify(badVoice), JSON.stringify(badArea)]) {
+    assert.throws(() => importCompositionFile(file, target), /valid Voices file/);
+  }
 });
 
 test('missing area keeps the voice with a warning, never deletes it', () => {
@@ -324,5 +371,26 @@ test('persistence: bad/missing localStorage never throws', () => {
     assert.deepEqual(loadCompositions('proj-z'), []);
   } finally {
     if (originalDescriptor) Object.defineProperty(global, 'localStorage', originalDescriptor);
+  }
+});
+
+test('strict import persistence surfaces failure and preserves saved Voices', () => {
+  const source = baseComposition();
+  const saved = JSON.stringify({ [source.projectId]: [source] });
+  let writes = 0;
+  global.localStorage = {
+    getItem: () => saved,
+    setItem: () => { writes += 1; throw new Error('Storage full'); },
+  };
+  try {
+    assert.throws(() => persistCompositions(source.projectId, [], { strict: true }), /could not save Voices/);
+    assert.equal(writes, 1);
+    assert.deepEqual(loadCompositions(source.projectId), [source]);
+
+    global.localStorage.getItem = () => 'malformed store';
+    assert.throws(() => persistCompositions(source.projectId, [], { strict: true }), /could not read/);
+    assert.equal(writes, 1, 'a read failure never writes a replacement store');
+  } finally {
+    delete global.localStorage;
   }
 });

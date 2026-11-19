@@ -63,6 +63,27 @@ test('whole-piece preview keeps every section and its distinct pattern while one
   await expect(page.getByTestId(`section-target-${ids[1]}`)).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('piece paints spatial paths and explicit strip mode paints a solid ribbon', async ({ page }) => {
+  await openFixture(page, 4);
+  const preview = page.getByTestId('pattern-piece-preview');
+  const canvas = preview.locator('canvas');
+  const renderedCornerAlpha = () => canvas.evaluate((node: HTMLCanvasElement) =>
+    node.getContext('2d')!.getImageData(0, 0, 1, 1).data[3],
+  );
+  // The existing spatial renderer uses a translucent base; the ribbon fills
+  // every column from top to bottom. Read pixels, not just the mode label.
+  await expect.poll(renderedCornerAlpha).toBeGreaterThan(0);
+  await expect.poll(renderedCornerAlpha, { timeout: 2500 }).toBeLessThan(64);
+  await page.getByTestId('section-target-patch-strip-2').click();
+  await expect(preview).toHaveAttribute('data-preview-patterns', PATTERNS.join(','));
+  await expect(preview).toHaveAttribute('data-preview-focus', 'patch-strip-2');
+  await expect(page.getByText('Focus · Section 2')).toBeVisible();
+  await expect(page.getByTestId('pattern-tuning-scope')).toContainText('Section 2');
+  await page.getByLabel('Preview target').selectOption('patch-strip-2');
+  await expect(preview).toHaveAttribute('data-preview-patterns', 'ocean');
+  await expect.poll(renderedCornerAlpha).toBe(255);
+});
+
 test('four and twelve sections leave a usable pattern bank on desktop and fit a phone', async ({ browser }, testInfo) => {
   for (const { count, width, height } of [
     { count: 4, width: 1366, height: 900 },
@@ -147,31 +168,102 @@ test('four and twelve sections leave a usable pattern bank on desktop and fit a 
   await phone.close();
 });
 
-test('Save stack remains visible beside its name and status outside Tune', async ({ page }) => {
+test('Save look is visible beside its name and status outside Tune', async ({ page }) => {
   await openFixture(page, 4);
+  await page.getByTestId('stack-new').click();
   const group = page.getByTestId('stack-save-bar');
   const save = group.getByTestId('look-save-preset');
-  await expect(save).toHaveText(/Save stack/);
+  await expect(save).toHaveText(/Save look/);
   await expect(group.getByTestId('look-name')).toBeVisible();
   await expect(group.getByTestId('look-save-status')).toBeVisible();
   await expect(page.locator('.pm-tune-pane').getByTestId('look-save-preset')).toHaveCount(0);
 });
 
+test('five sections fit without nested scrolling and the square bank shows more columns', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openFixture(page, 5);
+  const sections = page.getByTestId('pattern-section-list');
+  const lastSection = page.getByTestId('section-target-patch-strip-5');
+  const expectAllSectionsVisible = async () => {
+    await expect(lastSection).toBeInViewport({ ratio: 0.99 });
+    const { clientHeight, scrollHeight } = await sections.evaluate(node => ({
+      clientHeight: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+    }));
+    expect(scrollHeight).toBeLessThanOrEqual(clientHeight + 1);
+  };
+  await expectAllSectionsVisible();
+  const listBox = (await sections.boundingBox())!;
+  const previewBox = (await page.getByTestId('pattern-project-preview').boundingBox())!;
+  expect(Math.abs(listBox.y + listBox.height - previewBox.y - previewBox.height)).toBeLessThanOrEqual(2);
+  const firstCard = page.locator('.pm-cards .pmcard').first();
+  const horizontal = page.getByRole('button', { name: 'Horizontal', exact: true });
+  const square = page.getByRole('button', { name: 'Square', exact: true });
+  await horizontal.click();
+  const horizontalWidth = (await firstCard.boundingBox())!.width;
+  await square.click();
+  await expect(square).toHaveAttribute('aria-pressed', 'true');
+  const tile = (await firstCard.boundingBox())!;
+  const swatch = (await firstCard.locator('.pmcard-led').boundingBox())!;
+  expect(Math.abs(tile.width - tile.height)).toBeLessThanOrEqual(2);
+  expect(tile.width).toBeLessThan(horizontalWidth);
+  expect(Math.abs(swatch.width - tile.width)).toBeLessThanOrEqual(2);
+  await expect(firstCard.locator('.pmcard-row .pmcard-index')).toHaveText('01');
+  await page.screenshot({ path: testInfo.outputPath('patterns-square-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.screen-scroll').evaluate(node => { node.scrollTop = 0; });
+  await expectAllSectionsVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(2);
+  await firstCard.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('patterns-square-phone.png') });
+});
+
 test('section order controls reorder the visual list without changing physical topology', async ({ page }) => {
   const project = await openFixture(page, 4);
-  const firstId = project.layout.patchBoard.patches[0].id;
   const firstOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
-  const move = page.getByTestId(`section-move-down-${firstId}`);
-  await move.focus();
-  await page.keyboard.press('Enter');
+  const grip = page.getByRole('button', { name: 'Reorder Section 1', exact: true });
+  await grip.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(grip).toBeFocused();
   const nextOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
   expect(nextOrder).toEqual([firstOrder[0], firstOrder[2], firstOrder[1], ...firstOrder.slice(3)]);
-  const draggable = page.locator('.pm-section-entry[draggable="true"]');
-  await draggable.first().dragTo(draggable.last());
+  const target = page.getByTestId(firstOrder[4]!);
+  await target.scrollIntoViewIfNeeded();
+  const from = await page.getByRole('button', { name: 'Reorder Section 2', exact: true }).boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('Section drag controls are unavailable.');
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
   const draggedOrder = await page.locator('.pm-section-list .pm-section-item').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')));
   expect(draggedOrder).toEqual([firstOrder[0], firstOrder[1], firstOrder[3], firstOrder[4], firstOrder[2]]);
   await expect(page.getByTestId('pattern-piece-preview')).toHaveAttribute('data-preview-targets', project.layout.patchBoard.patches.map(patch => patch.id).join(','));
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('lw_autosave_v3') || '{}'));
   expect(saved.layout.patchBoard.chains).toEqual(project.layout.patchBoard.chains);
   expect({ ...saved.layout.wiring, migrationWarnings: undefined }).toEqual({ ...project.layout.wiring, migrationWarnings: undefined });
+});
+
+test('a phone can drag the section grip without changing the selected pattern', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Touch input is dispatched with CDP.');
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const project = await openFixture(phone, 2);
+  const [first, second] = project.layout.patchBoard.patches;
+  const grip = phone.getByRole('button', { name: 'Reorder Section 1', exact: true });
+  const target = phone.getByTestId(`section-target-${second.id}`);
+  await target.scrollIntoViewIfNeeded();
+  const from = await grip.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('Touch reorder controls are unavailable.');
+  expect(from.width).toBeGreaterThanOrEqual(44);
+  expect(from.height).toBeGreaterThanOrEqual(44);
+  const client = await phone.context().newCDPSession(phone);
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x + from.width / 2, y: from.y + from.height / 2 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + from.width / 2, y: to.y + to.height / 2 }] });
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const rows = phone.locator('.pm-section-list .pm-section-item');
+  await expect(rows.nth(1)).toHaveAttribute('data-testid', `section-target-${second.id}`);
+  await expect(rows.nth(2)).toHaveAttribute('data-testid', `section-target-${first.id}`);
+  await expect(phone.getByTestId('section-target-all')).toHaveAttribute('aria-pressed', 'true');
+  await phone.close();
 });

@@ -15,11 +15,60 @@ import {
   stageCardWiringCandidate,
   waitForCardWiringReconnect,
 } from './cardWiringSafety.js';
+import { CARD_TRANSPORTS } from './cardTransport.js';
 
 test('factory wiring status is a valid read-only state before the first project', () => {
   const status = normalizeCardWiringStatus({ app: 'Lightweaver', state: 'factory', hasCandidate: false, outputs: [] });
   assert.equal(status.state, 'factory');
   assert.equal(status.hasCandidate, false);
+});
+
+test('wiring status honors the explicit transport independently of the page protocol', async () => {
+  const originalWindow = globalThis.window;
+  const host = '192.168.4.1';
+  try {
+    globalThis.window = { location: { protocol: 'https:' } };
+    for (const transport of [CARD_TRANSPORTS.DIRECT, CARD_TRANSPORTS.LOCAL]) {
+      const status = await getCardWiringStatus({
+        host,
+        transport,
+        bridgeRequestImpl: async () => assert.fail('explicit card transport must not use the bridge'),
+        fetchImpl: async (url, request) => {
+          assert.equal(url, `http://${host}/api/wiring/status`);
+          assert.equal(request.method, 'GET');
+          assert.equal(request.credentials, 'omit');
+          assert.equal(request.targetAddressSpace, transport === CARD_TRANSPORTS.DIRECT ? 'local' : undefined);
+          return jsonResponse({ app: 'Lightweaver', state: 'factory' });
+        },
+      });
+      assert.equal(status.state, 'factory');
+    }
+    globalThis.window = { location: { protocol: 'http:' } };
+    const bridged = await getCardWiringStatus({
+      host,
+      transport: CARD_TRANSPORTS.BRIDGE,
+      fetchImpl: async () => assert.fail('explicit bridge transport must not fetch directly'),
+      bridgeRequestImpl: async (type, _payload, options) => {
+        assert.equal(type, 'wiring-status');
+        assert.equal(options.host, host);
+        return { app: 'Lightweaver', state: 'factory' };
+      },
+    });
+    assert.equal(bridged.state, 'factory');
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
+test('explicit direct wiring status rejects a nonlocal host before requesting it', async () => {
+  await assert.rejects(
+    getCardWiringStatus({
+      host: 'example.com',
+      transport: CARD_TRANSPORTS.DIRECT,
+      fetchImpl: async () => assert.fail('nonlocal host must not be fetched'),
+    }),
+    error => error instanceof CardWiringSafetyError && error.reason === 'invalid-host',
+  );
 });
 
 test('candidate evidence is an uncached exact status GET and rejects another activation', async () => {

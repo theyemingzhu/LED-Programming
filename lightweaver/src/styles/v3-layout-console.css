@@ -93,6 +93,19 @@
   color: var(--text-mid);
   letter-spacing: 0.04em;
 }
+.la .toolbar.la-workspace-toolbar .la-view-tools :is(.tb-btn, .la-zoom button) {
+  background: transparent;
+  border-color: transparent;
+}
+.la .toolbar.la-workspace-toolbar .la-view-tools :is(.tb-btn, .la-zoom button):hover:not(:disabled) {
+  background: var(--control-hover);
+  border-color: var(--control-edge);
+}
+.la .toolbar.la-workspace-toolbar .la-view-tools .tb-btn:disabled { opacity: .55; }
+.la .toolbar.la-workspace-toolbar .la-create-tools a {
+  background: transparent;
+  border-color: transparent;
+}
 
 /* ── the side panel is the instrument, over a measured field ─ */
 
@@ -228,12 +241,12 @@
 
 .la .la-mode-nav .btn.primary {
   border-radius: 3px;
-  color: var(--on-accent);
-  background: linear-gradient(var(--accent-hi), var(--accent));
-  border-color: var(--accent-hi);
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.22),
-    0 3px 12px color-mix(in srgb, var(--accent) 34%, transparent);
+  color: var(--accent-hi);
+  background: transparent;
+  border-color: var(--accent-line);
+  box-shadow: none;
 }
+.la .la-mode-nav .btn.primary:hover { background: var(--bg-sel); }
 .la .la-mode-nav .btn,
 .la .la-change-help,
 .la .la-change-kind {
@@ -599,11 +612,51 @@
   align-items: stretch;
   gap: 4px;
 }
-.la .la-strip-detail .lw-sel-grid .la-size-ctrl { gap: 3px; }
-.la .la-strip-detail .lw-sel-grid .la-size-readout { flex: 1 1 auto; gap: 3px; }
+.la .la-strip-detail .la-strip-length-field {
+  justify-content: space-between;
+  gap: 6px;
+}
+.la .la-strip-detail .la-strip-length-label {
+  color: var(--text-mid);
+  font-size: 11px;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl {
+  flex: 0 0 auto;
+  width: auto;
+  gap: 2px;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn {
+  width: 30px;
+  min-width: 30px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-mid);
+}
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn:hover:not(:disabled) {
+  background: var(--bg-elev-2);
+}
+.la .la-strip-detail .lw-sel-grid .la-size-readout { flex: 0 0 auto; gap: 3px; }
 .la .la-strip-detail .lw-sel-grid .la-size-readout input[type=number] {
-  width: 100%;
+  width: 58px;
   min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 2px;
+  text-align: center;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / 40px 1px no-repeat;
+  box-shadow: none;
+  appearance: textfield;
+}
+.la .la-strip-detail .lw-sel-grid .la-size-readout input::-webkit-inner-spin-button { appearance: none; }
+.la .la-strip-detail .lw-sel-grid .la-size-ctrl :is(button, input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .la .la-strip-detail .lw-sel-grid .la-led-count-field { flex: 1 1 auto; min-width: 0; }
 .la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number] {
@@ -653,8 +706,6 @@
 @media (pointer: coarse) {
   .la .la-strip-detail .lw-sel-grid .la-led-count-field .btn,
   .la .la-strip-detail .lw-sel-grid .la-led-count-field input[type=number],
-  .la .la-strip-detail .lw-sel-grid .la-size-ctrl .btn,
-  .la .la-strip-detail .lw-sel-grid .la-size-readout input[type=number],
   .la .la-strip-detail .lw-sel-grid .la-strip-density .btn,
   .la .la-strip-detail .lw-sel-grid .la-gpio-select { min-height: 44px; height: 44px; }
   .la .la-strip-detail .actions .btn { min-height: 44px; }
@@ -869,4 +920,14 @@
 .la .lwbs-summary > summary.panel-head .meta { white-space: normal; }
 @media (pointer: coarse) {
   .la .lww-tools-panel > summary.panel-head { min-height: 44px; }
+}
+
+
+@media (max-width: 600px) {
+  .la .la-install-actions { justify-content: flex-end; gap: 3px; }
+  .la .la-install-actions > .btn {
+    padding: 0 6px; min-height: 32px; white-space: nowrap;
+  }
+  .la .la-install-actions > .la-specs-trigger { min-width: 44px; }
+  .la .la-change-help > summary { width: 26px; }
 }

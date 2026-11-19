@@ -13,6 +13,7 @@ import { useSetupJourney } from '../hooks/useSetupJourney.js';
 import { useFirmwareReleaseIdentity } from '../hooks/useFirmwareReleaseIdentity.js';
 import { ProjectSaveDialog } from '../components/projects/TopBarProjectDialogs.jsx';
 import { OPEN_PROJECTS_PANEL_EVENT, ProjectsPanel } from '../components/projects/ProjectsPanel.jsx';
+import { clearStudioGoogleSignInReturn, studioGoogleSignInOutcome } from '../lib/studioPasswordlessClient.js';
 import { NoticeLayer } from '../components/NoticeLayer.jsx';
 import { dismissNoticeKey, publishNotice } from '../lib/noticeLayer.js';
 import { releaseCardBridge, releaseInheritedBridgeWindowName } from '../lib/cardBridge.js';
@@ -37,6 +38,7 @@ import {
   subscribeCardLink,
 } from '../lib/cardLink.js';
 import { exportProjectToFile, importProjectFromPickedFile } from '../lib/projectTransfer.js';
+import { projectCopyKind } from '../lib/projectCopyLabel.js';
 import {
   associateProjectLibraryRecordGuarded,
   clearProjectLibraryAssociationGuarded,
@@ -90,7 +92,7 @@ import {
   normalizeStudioView,
   studioViewFromHash,
 } from '../lib/studioRoute.js';
-import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
+import { canonicalProjectFileName, PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
 import { clearScreenFailure, rememberScreenFailure } from '../lib/screenRecoveryDiagnostics.js';
 import { createStudioFreshnessMonitor } from '../lib/studioFreshness.js';
 import { beginStudioHardwareOperation, STUDIO_HARDWARE_OPERATION_EVENT, withStudioHardwareOperation } from '../lib/studioHardwareOperation.js';
@@ -119,6 +121,11 @@ import {
   readFirmwareUpdateSession,
 } from '../lib/cardFirmwareUpdater.js';
 import { persistCardIdentity, readPersistedCardIdentity } from '../lib/cardIdentity.js';
+import {
+  pendingVerificationForCard,
+  readPendingInstallationVerification,
+  recordPendingInstallationVerification,
+} from '../lib/studioPendingInstallationVerification.js';
 import { getActiveCardTransportAuthority, reacquireCardTransportAuthority } from '../lib/cardTransport.js';
 import { sha256Canonical, validateProjectEnvelope } from '../lib/projectRepository.js';
 import {
@@ -389,7 +396,7 @@ const I = {
 };
 
 /* ---------- Top bar (wired to real project state via props) ---------- */
-function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProject, onNew, onLoad, onDownload, onSave, onPreferences, showProject = true }) {
+function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProject, onNew, onLoad, onDownload, onSave, saveTitle, onPreferences, showProject = true }) {
   // In-place project rename: click the breadcrumb name → input; Enter/blur
   // commit through the SAME state path as the Preferences editor
   // (setProjectName); Escape cancels. The blur that follows an Enter/Escape
@@ -465,11 +472,11 @@ function TopBar({ projectName, lifecycleLabel, hasUnsavedChanges, onRenameProjec
       </>}</nav>
       <div className="top-right">
         {action({ label: 'New project', title: 'Start a new empty project', icon: I.newProject, onClick: onNew })}
-        {action({ label: 'Projects', title: 'Your saved projects — this browser, the online library, import and export', icon: I.importProject, testId: 'topbar-projects', onClick: onLoad })}
+        {action({ label: 'Projects', title: 'Open a saved project or import a project file', icon: I.importProject, testId: 'topbar-projects', onClick: onLoad })}
         {action({ label: 'Preferences', title: 'Open Studio preferences', icon: I.preferences, onClick: onPreferences })}
         <span className="top-div" />
-        {action({ label: 'Export project', title: 'Download a portable project file to your computer (import it anytime)', icon: I.exportProject, onClick: onDownload })}
-        {action({ label: 'Save project', title: 'Save the project in this browser', icon: I.saveProject, primary: true, tooltipAlign: 'end', onClick: onSave })}
+        {action({ label: 'Export project', title: 'Download a project file you can reopen on another device', icon: I.exportProject, onClick: onDownload })}
+        {action({ label: 'Save project', title: saveTitle, icon: I.saveProject, primary: true, tooltipAlign: 'end', onClick: onSave })}
       </div>
     </header>
   );
@@ -825,7 +832,14 @@ function Shell({ offlineUpdateController = null }) {
     },
     remoteId: cloudLibrary.activeRemoteProject?.id || '',
   };
-  const [projectsPanelOpen, setProjectsPanelOpen] = useState(false);
+  const [googleOutcome, setGoogleOutcome] = useState(studioGoogleSignInOutcome);
+  const [projectsPanelOpen, setProjectsPanelOpen] = useState(() => Boolean(googleOutcome));
+  useEffect(() => {
+    if (!googleOutcome || !studioGoogleSignInOutcome()) return;
+    const returnHash = clearStudioGoogleSignInReturn();
+    resumeUserNavigated.current = true;
+    routeStore.replace(returnHash);
+  }, [googleOutcome, routeStore]);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [projectAssociationSaveBlocked, setProjectAssociationSaveBlockedState] = useState(isProjectLibrarySaveBlocked);
   const setProjectAssociationSaveBlocked = useCallback(blocked => {
@@ -878,6 +892,8 @@ function Shell({ offlineUpdateController = null }) {
   const [dismissedPersistentKey, setDismissedPersistentKey] = useState('');
   const workspaceEventIdRef = useRef(0);
   const fileInputRef = useRef(null);
+  const projectFileOpeningRef = useRef(false);
+  const [projectFileOpening, setProjectFileOpening] = useState(false);
   const showWorkspaceEvent = useCallback((message, options = {}) => {
     workspaceEventIdRef.current += 1;
     setWorkspaceEvent({ id: workspaceEventIdRef.current, message, kind: options.kind || 'success', persistent: options.persistent === true, review: options.review === true, source: options.source || '' });
@@ -1130,13 +1146,26 @@ function Shell({ offlineUpdateController = null }) {
     if (['preflight', 'sending', 'verifying'].includes(session.phase)) return { phase: session.phase };
     return { phase: 'restarting' };
   });
+  const [lastUpdateVerification, setLastUpdateVerification] = useState(null);
   const retainFirmwareRecoveryState = useCallback(next => {
+    if (!next) return;
+    if (next.phase === 'reconnected') {
+      const pending = recordPendingInstallationVerification(next);
+      if (pending) setLastUpdateVerification(pending);
+      setFirmwareRecoveryState(null);
+      return;
+    }
     setFirmwareRecoveryState(current => {
-      if (!next) return current;
-      if (next.phase === 'reconnected') return null;
-      return next;
+      return current === next ? current : next;
     });
   }, []);
+  const pendingInstallationVerification = useMemo(() => {
+    const cardId = cardLink.readiness?.cardId;
+    const pending = lastUpdateVerification?.record.cardId === cardId
+      ? lastUpdateVerification
+      : readPendingInstallationVerification(cardId);
+    return pendingVerificationForCard(pending, cardLink);
+  }, [cardLink, lastUpdateVerification]);
   useEffect(() => {
     const session = readFirmwareUpdateSession();
     const readiness = cardLink.readiness;
@@ -1170,7 +1199,8 @@ function Shell({ offlineUpdateController = null }) {
         buildId: readiness.buildId || previous.buildId,
         buildNumber: readiness.buildNumber || previous.buildNumber,
       });
-      if (clearFirmwareUpdateSessionIfMatches(session)) setFirmwareRecoveryState(null);
+      retainFirmwareRecoveryState({ phase: 'reconnected', session, readiness, updateStatus: readiness.firmwareUpdate });
+      clearFirmwareUpdateSessionIfMatches(session);
       return;
     }
     if (correlation.terminal && correlation.phase === 'rolled-back') {
@@ -1182,7 +1212,7 @@ function Shell({ offlineUpdateController = null }) {
         ? current
         : { phase: 'blocked', reason: correlation.reason });
     }
-  }, [cardLink.readiness]);
+  }, [cardLink.readiness, retainFirmwareRecoveryState]);
   // A reload restores the installation record unverified (it is a memory, not
   // proof). When the exact card that is connected right now still reports the
   // same project id, revision, and fingerprint the record names, that IS the
@@ -1739,7 +1769,8 @@ function Shell({ offlineUpdateController = null }) {
       return { ok: false, reason: 'destination-required' };
     }
     try {
-      const result = await saveProjectToBrowserGuarded(serializeProject());
+      const { project, marker } = latestProjectSaveStateRef.current;
+      const result = await saveProjectToBrowserGuarded(project);
       if (!result?.ok) {
         const error = new Error(result?.reason === 'browser-conflict'
           ? 'Another tab saved a newer browser copy. Reopen that copy before saving again.'
@@ -1747,14 +1778,14 @@ function Shell({ offlineUpdateController = null }) {
         error.reason = result?.reason;
         throw error;
       }
-      markProjectPersisted('browser');
+      if (isProjectLifecycleMarkerCurrent(marker)) markProjectPersisted('browser', marker);
       showWorkspaceEvent(formatBrowserProjectSaveLabel(result.record));
       return result;
     } catch (error) {
       showWorkspaceEvent(error?.message || 'Browser save failed', { kind: 'error', persistent: true, review: true });
       return { ok: false, reason: error?.reason || 'browser-save-failed', error };
     }
-  }, [cloudLibrary, markProjectPersisted, projectAssociationSaveBlocked, saveProjectToBrowserGuarded, serializeProject, showWorkspaceEvent]);
+  }, [cloudLibrary, isProjectLifecycleMarkerCurrent, markProjectPersisted, projectAssociationSaveBlocked, saveProjectToBrowserGuarded, showWorkspaceEvent]);
 
   const stopExpressionScenePreview = useCallback(async (reason = 'user') => {
     const active = expressionPreviewRef.current;
@@ -2132,13 +2163,24 @@ function Shell({ offlineUpdateController = null }) {
     });
   }, [markProjectPersisted, projectLifecycle.editedRevision, projectLifecycle.generation, saveProjectToBrowserGuarded, serializeProject]);
   const onDownload = useCallback(async () => {
-    const ok = await exportProjectToFile({
-      serializeProject,
-      projectName,
-      markPersisted: markProjectPersisted,
-    });
-    if (!ok) showWorkspaceEvent('Download failed', { kind: 'error', persistent: true, review: true });
-  }, [markProjectPersisted, projectName, serializeProject, showWorkspaceEvent]);
+    const { project, marker } = latestProjectSaveStateRef.current;
+    const partialCardCopy = projectCopyKind(project) === 'card-partial';
+    try {
+      const ok = await exportProjectToFile({ serializeProject: () => project, projectName: project.name });
+      if (!ok) {
+        showWorkspaceEvent('No backup file was saved.', { kind: 'info' });
+        return;
+      }
+      if (isProjectLifecycleMarkerCurrent(marker)) markProjectPersisted('file', marker);
+      const filename = canonicalProjectFileName(project.name);
+      showWorkspaceEvent(partialCardCopy
+        ? `Partial card copy saved: ${filename} (no artwork)`
+        : `Backup ready: ${filename}`);
+    } catch (error) {
+      const reason = error?.message || 'Try saving again.';
+      showWorkspaceEvent(`Could not save the project backup. ${reason}`, { kind: 'error', persistent: true });
+    }
+  }, [isProjectLifecycleMarkerCurrent, markProjectPersisted, showWorkspaceEvent]);
   const onLoad = useCallback(() => setProjectsPanelOpen(true), []);
   // Preferences' "Manage projects" button (and any other surface) opens the
   // panel through this event, the same pattern as the Connect panel.
@@ -2233,7 +2275,9 @@ function Shell({ offlineUpdateController = null }) {
     });
     return association.ok ? replacement : { ...association, replacementCommitted: true };
   }, [onMatchedCardProjectLoaded, replaceProject]);
-  const onImport = useCallback(() => fileInputRef.current?.click(), []);
+  const onImport = useCallback(() => {
+    if (!projectFileOpeningRef.current) fileInputRef.current?.click();
+  }, []);
   const onNew = useCallback(async () => {
     const result = await replaceWithNewProject();
     if (result.ok) clearAllProjectAssociations(associationIo);
@@ -2253,17 +2297,30 @@ function Shell({ offlineUpdateController = null }) {
     () => createImportAssociationCleanup(associationIo),
     [associationIo],
   );
-  const onFile = useCallback((e) => {
-    const file = e.target.files?.[0];
+  const onFile = useCallback(async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    importProjectFromPickedFile(file, { replaceProject, ...projectImportCleanup })
-      .then(result => {
-        if (result.ok) setProjectsPanelOpen(false);
-        if (result.reason === 'invalid') alert('Invalid project file (version mismatch).');
-      })
-      .catch(() => { alert('Could not parse project file.'); });
-    e.target.value = '';
-  }, [projectImportCleanup, replaceProject]);
+    input.value = '';
+    if (projectFileOpeningRef.current) return;
+    projectFileOpeningRef.current = true;
+    setProjectFileOpening(true);
+    try {
+      const result = await importProjectFromPickedFile(file, { replaceProject, ...projectImportCleanup });
+      if (result.ok) {
+        setProjectsPanelOpen(false);
+        showWorkspaceEvent(`Opened ${result.project?.name || 'project'} from file`);
+      } else if (result.reason === 'invalid') {
+        showWorkspaceEvent('Could not open this project file. Choose a compatible Lightweaver project backup.', { kind: 'error', persistent: true });
+      }
+    } catch (error) {
+      const reason = error instanceof SyntaxError ? 'Choose a valid Lightweaver project backup.' : error?.message || 'Try opening the file again.';
+      showWorkspaceEvent(`Could not open this project file. ${reason}`, { kind: 'error', persistent: true });
+    } finally {
+      projectFileOpeningRef.current = false;
+      setProjectFileOpening(false);
+    }
+  }, [projectImportCleanup, replaceProject, showWorkspaceEvent]);
 
   const cardSetupOpen = view === 'discovery' || cardSetupPersistent;
   const underlyingView = view === 'discovery'
@@ -2283,10 +2340,12 @@ function Shell({ offlineUpdateController = null }) {
       review: true,
     };
   } else if (cloudLibrary.activeRemoteProject && cloudLibrary.syncState.status === 'error') {
+    const syncError = cloudLibrary.syncState.error;
     persistentNotice = {
-      key: `error:${cloudLibrary.activeRemoteProject.id}:${cloudLibrary.syncState.error?.code || cloudLibrary.syncState.error?.message || 'active'}`,
+      key: `error:${cloudLibrary.activeRemoteProject.id}:${syncError?.code || syncError?.message || 'active'}`,
       kind: 'error',
-      message: 'Online save needs attention.',
+      message: (['payload_too_large', 'project_media_unavailable'].includes(syncError?.code) && syncError.message)
+        || 'Online save needs attention.',
       persistent: true,
       review: true,
     };
@@ -2406,6 +2465,11 @@ function Shell({ offlineUpdateController = null }) {
         hasUnsavedChanges={projectHasUnsavedChanges}
         onRenameProject={setProjectName}
         onNew={onNew} onLoad={onLoad} onDownload={onDownload} onSave={onSave}
+        saveTitle={cloudLibrary.session.status === 'authenticated' && cloudLibrary.activeRemoteProject
+          ? 'Save changes to the online project'
+          : cloudLibrary.session.status === 'authenticated' && cloudLibrary.session.role !== 'customer'
+            ? 'Choose where to save the project'
+            : 'Save a copy in this browser'}
         onPreferences={() => openCardSection('preferences')}
       />
       <Rail view={underlyingView} navigate={navigateStudio} openCard={openCardSection} />
@@ -2425,6 +2489,7 @@ function Shell({ offlineUpdateController = null }) {
               onOpenSection={openCardSection}
               onOpenSetupTask={openSetupTask}
               onFirmwareRecoveryState={retainFirmwareRecoveryState}
+              pendingInstallationVerification={pendingInstallationVerification}
               firmwareStatus={firmwareStatus}
               firmwareReleaseManifest={firmwareReleaseIdentity.state === 'verified' ? firmwareReleaseIdentity.manifest : null}
               onRenameProject={setProjectName}
@@ -2562,9 +2627,11 @@ function Shell({ offlineUpdateController = null }) {
       />
       <ProjectsPanel
         open={projectsPanelOpen}
-        onClose={() => setProjectsPanelOpen(false)}
+        onClose={() => { setProjectsPanelOpen(false); setGoogleOutcome(null); }}
         onImport={onImport}
         onExport={onDownload}
+        openingFile={projectFileOpening}
+        googleOutcome={googleOutcome}
         onOpenBrowserProject={openBrowserProject}
         onOpenFailure={result => showWorkspaceEvent(
           result?.error?.message || (result?.reason === 'stale-session'

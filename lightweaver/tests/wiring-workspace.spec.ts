@@ -90,7 +90,7 @@ async function saveProject(page: any) {
   const fromStorage = await page.evaluate(() => localStorage.getItem('lw_autosave_v3'));
   if (fromStorage) return JSON.parse(fromStorage);
   const pending = page.waitForEvent('download');
-  await page.locator('.la .toolbar').getByRole('button', { name: 'Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Export project', exact: true }).click();
   const download = await pending;
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lw-wire-save-')), 'project.json');
   await download.saveAs(file);

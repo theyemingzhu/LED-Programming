@@ -13,10 +13,13 @@
 
 /* ── Playlist: the same cells, and beads instead of smears ── */
 
+.pm.pl-workspace .pm-hero { gap: 8px 12px; margin-bottom: 8px; }
+
 .pm .pl-row {
   grid-template-columns: 76px 44px minmax(140px, 1fr) auto;
-  gap: 10px;
-  min-height: 60px;
+  gap: 6px 10px;
+  min-height: 56px;
+  padding-block: 6px;
   border-radius: 2px;
   border-color: var(--border-hair);
 }
@@ -59,8 +62,8 @@
 /* ═══ Playlist: the order is a module, the boot look is lit ═══ */
 
 .pm .pl-list {
-  gap: 8px;
-  padding: 0 14px 14px;
+  gap: 6px;
+  padding: 0 12px 10px;
   border: 1px solid var(--border-hair);
   border-radius: 2px;
   background-color: var(--bg-panel);
@@ -70,22 +73,20 @@
   background-size: var(--lw-graph-step) var(--lw-graph-step);
 }
 .pm .pl-list > .sec-h {
-  margin: 0 -14px 4px;
-  padding: 12px 14px;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin: 0 -12px;
+  padding: 0 12px;
   background: var(--bg-elev);
   border-bottom: 1px solid var(--border-hair);
 }
-.pm .pl-list > .sec-h::before {
-  content: "";
-  flex: 0 0 auto;
-  align-self: center;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--idle);
+.pm .pl-order-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
 }
-.pm .pl-list > .sec-h .line { display: none; }
-.pm .pl-list > .sec-h .m { margin-left: auto; }
 
 /* The card address is a field, not a panel. It sat in a full-width well that
    read as the most important thing on the screen; it is a setting you touch
@@ -128,6 +129,17 @@
   font-family: var(--font-mono);
   flex: 0 0 auto;
 }
+.pm.pl-workspace .pl-row .pl-dwell-input {
+  height: 34px;
+  min-height: 34px;
+  background: linear-gradient(var(--border), var(--border)) center calc(100% - 6px) / calc(100% - 12px) 1px no-repeat;
+  border-color: transparent;
+  box-shadow: none;
+}
+.pm.pl-workspace .pl-row .pl-dwell-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .pm .pl-dwell-unit {
   font-size: 11px;
   color: var(--text-lo);
@@ -144,19 +156,19 @@
   border: 0;
 }
 
-/* Fade + "Play on the card" sit in the playlist's own header bar, not per
-   row — they describe how the WHOLE order behaves on the card, the same
-   altitude as the "N looks · dial press advances" line beside them. */
+/* Order and per-look lengths come first. These controls apply to the
+   entire playlist before it is installed on the card. */
 .pm .pl-timing {
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
   padding: 10px 14px;
-  margin: 0 -14px 4px;
+  margin: 2px -12px 0;
   background: var(--bg-elev);
-  border-bottom: 1px solid var(--border-hair);
+  border-top: 1px solid var(--border-hair);
 }
+.pm .pl-timing:last-child { margin-bottom: -10px; }
 .pm .pl-timing-field {
   display: flex;
   align-items: center;
@@ -176,10 +188,18 @@
 .pm .pl-timing-switch {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: 12.5px;
   color: var(--text-mid);
+  text-align: left;
+  cursor: pointer;
 }
+.pm .pl-timing-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pm .pl-timing-note {
   flex: 1 1 240px;
   margin: 0 0 0 auto;
@@ -193,7 +213,7 @@
   padding: 8px 14px;
   font-size: 12px;
   color: var(--text-faint);
-  border-bottom: 1px solid var(--border-hair);
+  border-top: 1px solid var(--border-hair);
 }
 
 /* The card's own transport — status line plus play/pause/next/previous.
@@ -267,6 +287,28 @@
   height: 36px;
   border-radius: var(--r-md);
 }
+.pm.pl-workspace .pl-row .pl-actions > .plbtn,
+.pm.pl-workspace .pl-row .pl-more {
+  height: 34px;
+  min-height: 34px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+.pm.pl-workspace .pl-row .pl-more {
+  min-width: 36px;
+  border-color: transparent;
+}
+.pm.pl-workspace .pl-row .pl-actions > .plbtn:is(:hover, :focus-visible):not(:disabled),
+.pm.pl-workspace .pl-row .pl-more:is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: var(--bg-elev-2);
+}
+.pm.pl-workspace .pl-row .pl-actions > .plbtn.on {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
 .pm .pl-more {
   width: 36px;
   min-width: 36px;
@@ -290,8 +332,8 @@
    this screen cannot stand behind. */
 
 .pm .pl-cardnow {
-  margin-top: 14px;
-  padding: 0 14px 14px;
+  margin-top: 8px;
+  padding: 0 12px 10px;
   border: 1px solid var(--border-hair);
   border-radius: 2px;
   background-color: var(--bg-panel);
@@ -301,8 +343,8 @@
   background-size: var(--lw-graph-step) var(--lw-graph-step);
 }
 .pm .pl-cardnow > .sec-h {
-  margin: 0 -14px 12px;
-  padding: 12px 14px;
+  margin: 0 -12px 6px;
+  padding: 7px 12px;
   background: var(--bg-elev);
   border-bottom: 1px solid var(--border-hair);
 }
@@ -331,17 +373,14 @@
 .pm .pl-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-@media (max-width: 720px) {
-  .pm .pl-stats { grid-template-columns: minmax(0, 1fr); }
+  gap: 6px;
 }
 .pm .pl-stat {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 6px 8px;
   border: 1px solid var(--border-hair);
   border-radius: 2px;
   background: var(--lw-well);
@@ -373,6 +412,17 @@
 .pm .pl-stat.is-live { border-color: var(--lw-live-ink); }
 .pm .pl-stat.is-live .v { color: var(--lw-live-ink); }
 .pm .pl-stat.is-ok .v { color: var(--ok); }
+@media (max-width: 720px) {
+  .pm .pl-stats { grid-template-columns: minmax(0, 1fr); }
+  .pm .pl-stat {
+    display: grid;
+    grid-template-columns: minmax(84px, 1fr) minmax(0, 1.2fr);
+    align-items: baseline;
+    gap: 0 8px;
+  }
+  .pm .pl-stat .n { grid-column: 2; }
+  .pm .pl-stat .v { white-space: normal; overflow-wrap: anywhere; }
+}
 
 /* ── Stable canonical pattern grid ─────────────────────────────────────── */
 .pl-pool-help {
