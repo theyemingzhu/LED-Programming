@@ -31,6 +31,7 @@ import { deriveCardLifecycle } from '../lib/cardLifecycle.js';
 import { readyBannerFirmwareCopy } from '../lib/readyBannerFirmwareCopy.js';
 import { useProject } from '../state/ProjectContext.jsx';
 import { currentInstallation, lifecycleLabel, structurallyInstalledRecord } from '../lib/projectLifecycle.js';
+import { projectFromCardParts } from '../lib/cardPickup.js';
 import { adoptedProjectName, guardedResolutionRun, resolvedMatchKey } from '../lib/cardProjectAdoption.js';
 import { importProjectFromPickedFile } from '../lib/projectTransfer.js';
 import { PROJECT_IMPORT_ACCEPT } from '../lib/projectFiles.js';
@@ -241,53 +242,8 @@ export function SetupScreen({
 
   const applyCardParts = async (parts, status = null) => {
     const nextOutputs = Array.isArray(parts?.outputs) ? parts.outputs : null;
-    const installedController = parts?.devices?.standaloneController || parts?.standaloneController || {};
-    const nextController = {
-      ...(currentProject?.devices?.standaloneController || {}),
-      ...installedController,
-      ...(installedController.controls ? {
-        controls: {
-          ...(currentProject?.devices?.standaloneController?.controls || {}),
-          ...installedController.controls,
-          encoder: {
-            ...(currentProject?.devices?.standaloneController?.controls?.encoder || {}),
-            ...(installedController.controls.encoder || {}),
-          },
-        },
-      } : {}),
-      ...(nextOutputs ? { outputs: nextOutputs } : {}),
-      led: {
-        ...(currentProject?.devices?.standaloneController?.led || {}),
-        ...(installedController.led || {}),
-        ...(parts?.led || {}),
-        // A card read reports its configured byte order, not a human color
-        // observation. Keep any earlier proof only if it still matches.
-        ...(parts?.colorOrder ? { colorOrder: parts.colorOrder } : {}),
-        ...(nextOutputs ? {
-          outputs: nextOutputs,
-          pixels: nextOutputs.reduce((sum, output) => sum + Number(output.pixels || 0), 0),
-        } : {}),
-      },
-    };
     if (replaceProject && Array.isArray(parts?.strips) && parts.strips.length) {
-      const replacement = await replaceProject({
-        ...currentProject,
-        ...(status?.projectId ? { id: status.projectId } : {}),
-        name: adoptedProjectName(currentProject?.name, status),
-        ...(parts?.origin ? { origin: parts.origin } : {}),
-        ...(Array.isArray(parts?.portRoles) ? { portRoles: parts.portRoles } : {}),
-        layout: {
-          ...(currentProject?.layout || {}),
-          strips: parts.strips,
-          starterPending: false,
-          patchBoard: parts.patchBoard,
-          wiring: parts.wiring,
-        },
-        devices: {
-          ...(currentProject?.devices || {}),
-          standaloneController: nextController,
-        },
-      }, { confirmDiscard: () => true });
+      const replacement = await replaceProject(projectFromCardParts(currentProject, parts, status), { confirmDiscard: () => true });
       // An installation record must never outlive the replacement that earned
       // it. Recording unconditionally marked the card's project as installed
       // against a project that was never adopted — a lie that then failed
