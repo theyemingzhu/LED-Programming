@@ -220,7 +220,18 @@ export function correlateFirmwareUpdateRecovery(rawSession, updateStatus = {}, r
       && text(readiness.projectFingerprint, 64).toLowerCase() !== session.expectedProjectFingerprint)) {
     return { ok: false, terminal: false, phase: '', reason: 'project-changed' };
   }
-  const phase = text(updateStatus.phase, 32);
+  const reportedPhase = text(updateStatus.phase, 32);
+  const runningTarget = text(readiness.firmwareVersion, 48) === session.targetFirmwareVersion
+    && text(readiness.buildId, 40).toLowerCase() === session.targetBuildId;
+  // The card keeps its rollback record in memory that survives every restart
+  // and every USB flash, and repeats it on each status read until it loses
+  // power. A rollback of THIS update leaves the card on the build it had
+  // before, never on the target. So a card that is running the exact target
+  // build and still says `rolled-back` is repeating an older update's record:
+  // it says nothing about this one, and is read as the card saying nothing.
+  // Without this a preserving USB update, which arms no handoff of its own and
+  // so can never overwrite that record, is reported as failed after it worked.
+  const phase = reportedPhase === 'rolled-back' && runningTarget ? 'idle' : reportedPhase;
   if (phase === 'rolled-back') {
     const reportedRestoredBuild = Number(updateStatus.restoredBuildNumber);
     return {
@@ -230,8 +241,7 @@ export function correlateFirmwareUpdateRecovery(rawSession, updateStatus = {}, r
         : Number.isSafeInteger(Number(readiness.buildNumber)) ? Number(readiness.buildNumber) : null,
     };
   }
-  if (text(readiness.firmwareVersion, 48) !== session.targetFirmwareVersion
-    || text(readiness.buildId, 40).toLowerCase() !== session.targetBuildId) {
+  if (!runningTarget) {
     return { ok: false, terminal: false, phase, reason: 'target-mismatch' };
   }
   if (phase === 'probation') return { ok: false, terminal: false, phase, reason: '' };

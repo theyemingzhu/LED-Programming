@@ -210,6 +210,34 @@ test('reload recovery distinguishes probation, valid, and rollback without weake
   assert.equal(correlateFirmwareUpdateRecovery(session, { phase: 'valid' }, {
     ...readiness, projectFingerprint: 'f'.repeat(64),
   }).reason, 'project-changed');
+
+  // Measured on card lw-b0fe81f61b44 on 2026-11-19: after a USB flash to the
+  // signed build 2464 the card was on that exact build, ready and playing, and
+  // /api/update/status still answered `rolled-back` with reason
+  // `new-slot-rollback-detected` and restoredBuildNumber 2464 — an older
+  // update's record, kept in memory that survives restarts. A card on the
+  // target build has not rolled this update back.
+  const staleRollback = {
+    phase: 'rolled-back', rollbackReason: 'new-slot-rollback-detected', restoredBuildNumber: 1300,
+  };
+  const healthy = {
+    ...readiness, buildNumber: 1300, runtimePhase: 'ready', knownGoodProject: true,
+    commandReady: true, outputReady: true, playbackReady: true,
+  };
+  assert.deepEqual(
+    correlateFirmwareUpdateRecovery({ ...session, mode: 'usb', previousBootId: '' }, staleRollback, healthy),
+    { ok: true, terminal: true, phase: 'valid', reason: '', evidence: 'runtime-known-good' },
+    'a USB update that landed on the target build is not failed by an older rollback record',
+  );
+  assert.deepEqual(
+    correlateFirmwareUpdateRecovery(session, staleRollback, healthy),
+    { ok: true, terminal: true, phase: 'valid', reason: '', evidence: 'runtime-known-good' },
+  );
+  // The stale record earns no free pass: the card must still prove it is well.
+  assert.equal(
+    correlateFirmwareUpdateRecovery(session, staleRollback, { ...healthy, outputReady: false }).reason,
+    'runtime-not-known-good',
+  );
   assert.equal(correlateFirmwareUpdateRecovery(session, { phase: 'valid' }, {
     ...readiness, capabilities: { firmwareUpdate: { version: 1, network: false } },
   }).reason, 'update-capability-missing');

@@ -54,7 +54,11 @@ test('a correlated update records pending look verification across reload and du
 test('unmatched or unconfirmed completion and blank bootstrap never create a receipt', () => {
   const storage = memoryStorage();
   for (const result of [
-    { ...update, updateStatus: { phase: 'rolled-back' } },
+    // A rollback leaves the card on the build it had before, never the target.
+    {
+      ...update, updateStatus: { phase: 'rolled-back' },
+      readiness: { ...readiness, firmwareVersion: '1.2.2', buildId: '9'.repeat(40) },
+    },
     { ...update, updateStatus: { phase: 'probation' } },
     { ...update, readiness: { ...readiness, bootId: 'old' } },
     { ...update, readiness: { ...readiness, cardId: 'lw-other' } },
